@@ -3,6 +3,7 @@ import { type PropsWithChildren, useMemo } from "react";
 import { BackgroundTasksProvider } from "@/contexts/BackgroundTasksContext";
 import { ComposeProviders, withProps } from "@/contexts/composeProviders";
 import { ConfigProvider } from "@/contexts/ConfigProvider";
+import { HeaderActionSlotProvider } from "@/contexts/HeaderActionSlotContext";
 import { PowerActionProvider } from "@/contexts/PowerActionProvider";
 import { ToastProvider } from "@/contexts/ToastProvider";
 import { UpdateProvider } from "@/contexts/UpdateProvider";
@@ -42,6 +43,7 @@ export default function AuthenticatedRuntimeProvider({
         PowerActionProvider,
         UpdateProvider,
         SidebarProvider,
+        HeaderActionSlotProvider,
       ]}
     >
       {children}

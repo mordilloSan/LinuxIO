@@ -1,7 +1,34 @@
 /* ── AppGrid ─────────────────────────────────────────── */
+/* Column steps mirror theme/breakpoints.ts (sm 770, md 960, lg 1380,
+   xl 1740) so grids reflow at the same widths where useAppMediaQuery and
+   hideBelow logic switch. */
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: repeat(var(--_gcols-xs, 12), 1fr);
+}
+
+@media (min-width: 770px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-sm, 12), 1fr);
+  }
+}
+
+@media (min-width: 960px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-md, 12), 1fr);
+  }
+}
+
+@media (min-width: 1380px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-lg, 12), 1fr);
+  }
+}
+
+@media (min-width: 1740px) {
+  .app-grid {
+    grid-template-columns: repeat(var(--_gcols-xl, 12), 1fr);
+  }
 }
 
 /* ── items ─────────────────────────────────────── */
@@ -10,25 +37,25 @@
   min-width: 0;
 }
 
-@media (min-width: 600px) {
+@media (min-width: 770px) {
   .app-grid-item {
     grid-column: span var(--_gc-sm);
   }
 }
 
-@media (min-width: 900px) {
+@media (min-width: 960px) {
   .app-grid-item {
     grid-column: span var(--_gc-md);
   }
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 1380px) {
   .app-grid-item {
     grid-column: span var(--_gc-lg);
   }
 }
 
-@media (min-width: 1536px) {
+@media (min-width: 1740px) {
   .app-grid-item {
     grid-column: span var(--_gc-xl);
   }

@@ -29,8 +29,8 @@ interface Item {
 const getId = (item: Item) => item.id;
 const items: Item[] = [{ id: "a" }, { id: "b" }, { id: "c" }];
 
-const dragStart = (id: string) =>
-  ({ active: { id } }) as unknown as DragStartEvent;
+const dragStart = (id: string, activatorEvent?: Event) =>
+  ({ active: { id }, activatorEvent }) as unknown as DragStartEvent;
 
 const dragEnd = (activeId: string, overId: string) =>
   ({
@@ -70,6 +70,26 @@ describe("useReorderableSurface", () => {
     const { result } = renderSurface();
 
     expect(result.current.ids).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps DnD identities stable when refreshed items keep the same order", () => {
+    const { result, rerender } = renderHook(
+      ({ surfaceItems }: { surfaceItems: Item[] }) =>
+        useReorderableSurface({
+          getId,
+          items: surfaceItems,
+          surface: "test",
+        }),
+      { initialProps: { surfaceItems: items } },
+    );
+    const initialIds = result.current.ids;
+    const initialContextProps = result.current.dndContextProps;
+
+    rerender({ surfaceItems: items.map((item) => ({ ...item })) });
+
+    expect(result.current.items).not.toBe(items);
+    expect(result.current.ids).toBe(initialIds);
+    expect(result.current.dndContextProps).toBe(initialContextProps);
   });
 
   it("persists the moved order under its own surface key", () => {
@@ -216,6 +236,30 @@ describe("useReorderableSurface", () => {
     });
 
     expect(result.current.editMode).toBe(false);
+  });
+
+  it("leaves focus ownership untouched when Escape exits layout mode", () => {
+    const pressed = document.createElement("button");
+    document.body.append(pressed);
+    pressed.focus();
+
+    try {
+      const { result } = renderSurface();
+
+      act(() => {
+        result.current.dndContextProps.onDragStart(dragStart("a"));
+        result.current.dndContextProps.onDragEnd(dragEnd("a", "a"));
+      });
+      expect(document.activeElement).toBe(pressed);
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      });
+
+      expect(document.activeElement).toBe(pressed);
+    } finally {
+      pressed.remove();
+    }
   });
 
   it("reports no layout mode while disabled", () => {

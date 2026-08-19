@@ -1,112 +1,35 @@
-import { Icon } from "@iconify/react";
 import {
   useQuery,
   useSuspenseQueries,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { useMemo, useState } from "react";
 
 import type { GpuDevice } from "@/api";
 import { linuxio } from "@/api";
-import CardIconHeader from "@/components/cards/CardIconHeader";
-import FrostedCard from "@/components/cards/FrostedCard";
 import HardwareCard from "@/components/cards/HardwareCard";
-import HistoryAreaChart from "@/components/charts/HistoryAreaChart";
 import {
-  formatChartClock,
-  formatChartDay,
-} from "@/components/charts/timeFormat";
+  historyCardMessage,
+  historyRequest,
+  HistoryCardBody,
+  HistoryCardShell,
+  rangeById,
+  RangeSelect,
+  SynchronizedHistoryAreaChart,
+  useHistoryTimestampFormatter,
+  type HistoryCardProps,
+  type HistoryLiveProps,
+} from "@/components/charts/HistoryCard";
 import AppSelect from "@/components/ui/AppSelect";
-import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
-import { cardHeight } from "@/theme/constants";
 import { formatThroughput } from "@/utils/formaters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
-import "./hardware-history.css";
 
-import {
-  HARDWARE_HISTORY_RANGES,
-  type HardwareHistoryRangeId,
-} from "./hardwareHistoryRanges";
 import {
   hardwareGpuQueryOptions,
   hardwareStableQueryOptions,
 } from "./hardwareQueryOptions";
-
-type HistoryHoverListener = () => void;
-
-/** Scoped external store for the four history charts' synchronized crosshair. */
-export class HistoryHoverStore {
-  private hoverTime: number | null = null;
-  private readonly listeners = new Set<HistoryHoverListener>();
-
-  getSnapshot = (): number | null => this.hoverTime;
-
-  setHoverTime = (hoverTime: number | null): void => {
-    if (this.hoverTime === hoverTime) return;
-    this.hoverTime = hoverTime;
-    for (const listener of this.listeners) listener();
-  };
-
-  subscribe = (listener: HistoryHoverListener): (() => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  };
-}
-
-const HistoryHoverContext = createContext<HistoryHoverStore | null>(null);
-
-export const HistoryHoverProvider = ({ children }: { children: ReactNode }) => {
-  const [store] = useState(() => new HistoryHoverStore());
-  return (
-    <HistoryHoverContext.Provider value={store}>
-      {children}
-    </HistoryHoverContext.Provider>
-  );
-};
-
-const useHistoryHover = (): [number | null, (time: number | null) => void] => {
-  const store = useContext(HistoryHoverContext);
-  if (!store) {
-    throw new Error(
-      "History charts must be rendered inside HistoryHoverProvider",
-    );
-  }
-  const hoverTime = useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
-  );
-  return [hoverTime, store.setHoverTime];
-};
-
-type SynchronizedHistoryAreaChartProps = Omit<
-  ComponentProps<typeof HistoryAreaChart>,
-  "hoverTime" | "onHoverTimeChange"
->;
-
-/** Only this chart leaf subscribes to crosshair movement. */
-const SynchronizedHistoryAreaChart = (
-  props: SynchronizedHistoryAreaChartProps,
-) => {
-  const [hoverTime, onHoverTimeChange] = useHistoryHover();
-  return (
-    <HistoryAreaChart
-      {...props}
-      hoverTime={hoverTime}
-      onHoverTimeChange={onHoverTimeChange}
-    />
-  );
-};
 
 // ─── GPU helpers ──────────────────────────────────────────────────────────────
 
@@ -349,26 +272,6 @@ export const GPUInfoCard = () => {
 
 // ─── History cards ───────────────────────────────────────────────────────────
 
-type HardwareHistoryRange = (typeof HARDWARE_HISTORY_RANGES)[number];
-
-// Each resolution's retention window is the range: 1m→1h, 10m→12h, 20m→24h,
-// 120m→7d, 480m→30d. Asking for up to `limit` points without `from` therefore
-// returns exactly the retained window with a cache-stable request.
-const HISTORY_REQUEST_LIMIT = 400;
-
-const rangeById = (id: HardwareHistoryRangeId): HardwareHistoryRange =>
-  HARDWARE_HISTORY_RANGES.find((range) => range.id === id) ??
-  HARDWARE_HISTORY_RANGES[0];
-
-const useHistoryTimestampFormatter = (range: HardwareHistoryRange) =>
-  useMemo(
-    () =>
-      range.id === "7d" || range.id === "30d"
-        ? formatChartDay
-        : formatChartClock,
-    [range.id],
-  );
-
 const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 const formatPercentTick = (value: number): string => `${Math.round(value)}%`;
 const percentOfTotal = (value: number, total: number): number =>
@@ -380,156 +283,15 @@ const stackBandColor = (index: number, count: number): string => {
   return `hsl(${Math.round(280 - 280 * ratio)}, 70%, 55%)`;
 };
 
-const RangeSelect = ({
-  value,
-  onChange,
-}: {
-  value: HardwareHistoryRangeId;
-  onChange: (id: HardwareHistoryRangeId) => void;
-}) => {
-  const theme = useAppTheme();
-
-  return (
-    <AppSelect
-      className="history-range-select"
-      disableUnderline
-      onChange={(event) =>
-        onChange(event.target.value as HardwareHistoryRangeId)
-      }
-      renderValue={(selected) => selected}
-      size="small"
-      style={{
-        ["--app-select-input-font-size" as string]: "0.72rem",
-        width: 46,
-        opacity: 0.65,
-        color: theme.palette.text.secondary,
-        fontSize: "0.78rem",
-        lineHeight: theme.typography.body2.lineHeight,
-      }}
-      value={value}
-      variant="standard"
-    >
-      {HARDWARE_HISTORY_RANGES.map((range) => (
-        <option key={range.id} value={range.id}>
-          {range.label}
-        </option>
-      ))}
-    </AppSelect>
-  );
-};
-
-const HistoryCardShell = ({
-  title,
-  avatarIcon,
-  headerRight,
-  children,
-}: {
-  title: string;
-  avatarIcon: string;
-  headerRight?: ReactNode;
-  children: ReactNode;
-}) => {
-  const theme = useAppTheme();
-
-  return (
-    <FrostedCard
-      style={{
-        minHeight: cardHeight,
-        boxSizing: "border-box",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        padding: 6,
-      }}
-    >
-      <CardIconHeader
-        icon={
-          <Icon
-            color={theme.palette.primary.main}
-            height={28}
-            icon={avatarIcon}
-            width={28}
-          />
-        }
-        right={headerRight}
-        style={{ marginBottom: 8 }}
-        title={title}
-      />
-      {children}
-    </FrostedCard>
-  );
-};
-
-const HistoryCardBody = ({
-  children,
-  message,
-}: {
-  children: ReactNode;
-  message: string | null;
-}) => {
-  const theme = useAppTheme();
-
-  return message ? (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: theme.palette.text.secondary,
-        padding: 16,
-      }}
-    >
-      <AppTypography align="center" variant="body2">
-        {message}
-      </AppTypography>
-    </div>
-  ) : (
-    <div style={{ flex: 1, minHeight: 0, padding: "0 4px 2px" }}>
-      {children}
-    </div>
-  );
-};
-
-interface HistoryCardProps {
-  /** Shared time range so the four cards stay synchronized. */
-  rangeId: HardwareHistoryRangeId;
-  onRangeChange: (id: HardwareHistoryRangeId) => void;
-}
-
-type HistoryLiveProps = Pick<HistoryCardProps, "rangeId">;
-
-const historyCardMessage = (
-  points: readonly unknown[] | undefined,
-  isLoading: boolean,
-  error: { message: string } | null,
-  monitoringEnabled: boolean,
-  monitoringReason: string | undefined,
-): string | null => {
-  if (!monitoringEnabled) {
-    return monitoringReason ?? "Monitoring agent is unavailable.";
-  }
-  if (error) {
-    return `Historical data not available. ${error.message}`;
-  }
-  if (isLoading) {
-    return "Loading history…";
-  }
-  if (!points || points.length === 0) {
-    return "Historical data not available.";
-  }
-  return null;
-};
-
 const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_cpu_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,
@@ -601,12 +363,12 @@ const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
 const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_memory_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,
@@ -682,12 +444,12 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
 const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_diskio_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,
@@ -734,12 +496,12 @@ const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
 const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const theme = useAppTheme();
   const range = rangeById(rangeId);
+  const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_network_history({
-      resolution: range.resolution,
-      limit: HISTORY_REQUEST_LIMIT,
+      ...request,
     }),
     enabled: isEnabled,
     refetchInterval: range.refetchMs,

@@ -8,6 +8,10 @@ import { useAppTheme } from "@/theme";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
+interface ConfirmProgressDetail {
+  processed?: number;
+}
+
 interface ConfirmDialogProps {
   cancelText?: string;
   confirmText?: string;
@@ -16,7 +20,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   open: boolean;
   isPending?: boolean;
-  progress?: TaskProgress | null;
+  progress?: TaskProgress<ConfirmProgressDetail> | null;
   title: string;
 }
 
@@ -49,6 +53,15 @@ const ConfirmDialog = ({
   };
 
   const progressText = progress?.message ?? progress?.phase ?? "Deleting items";
+  const processed = progress?.detail?.processed;
+  // Indeterminate progress carries no percentage; fall back to the running
+  // item count so the dialog never sits on a frozen 0%.
+  const progressSuffix =
+    progress?.percentage !== undefined
+      ? ` (${progress.percentage}%)`
+      : typeof processed === "number" && processed > 0
+        ? ` (${processed.toLocaleString()} items)`
+        : "";
 
   return (
     <GeneralDialog
@@ -90,9 +103,7 @@ const ConfirmDialog = ({
             variant="body2"
           >
             {progressText}
-            {progress?.percentage !== undefined
-              ? ` (${progress.percentage}%)`
-              : ""}
+            {progressSuffix}
           </AppTypography>
         )}
 

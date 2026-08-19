@@ -151,30 +151,30 @@ func ListLogicalVolumes(ctx context.Context) ([]apischema.LogicalVolume, error) 
 }
 
 // CreateLogicalVolume creates a new logical volume
-func CreateLogicalVolume(ctx context.Context, vgName, lvName, size string) (apischema.StorageCreateLVResult, error) {
+func CreateLogicalVolume(ctx context.Context, vgName, lvName, size string) (apischema.SuccessPathResponse, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
 		slog.Warn("invalid volume group name", "volume_group", vgName)
-		return apischema.StorageCreateLVResult{}, fmt.Errorf("invalid volume group name")
+		return apischema.SuccessPathResponse{}, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
 		slog.Warn("invalid logical volume name", "name", lvName)
-		return apischema.StorageCreateLVResult{}, fmt.Errorf("invalid logical volume name")
+		return apischema.SuccessPathResponse{}, fmt.Errorf("invalid logical volume name")
 	}
 	if !validSize.MatchString(size) {
 		slog.Warn("invalid logical volume size", "size", size)
-		return apischema.StorageCreateLVResult{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
+		return apischema.SuccessPathResponse{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
 	slog.Info("creating logical volume", "volume_group", vgName, "name", lvName, "size", size)
 	cmd := exec.CommandContext(ctx, "lvcreate", "-L", size, "-n", lvName, vgName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("lvcreate failed", "volume_group", vgName, "name", lvName, "output", strings.TrimSpace(string(out)))
-		return apischema.StorageCreateLVResult{}, fmt.Errorf("lvcreate failed: %s", strings.TrimSpace(string(out)))
+		return apischema.SuccessPathResponse{}, fmt.Errorf("lvcreate failed: %s", strings.TrimSpace(string(out)))
 	}
 	path := fmt.Sprintf("/dev/%s/%s", vgName, lvName)
 	slog.Info("logical volume created", "path", path, "size", size)
-	return apischema.StorageCreateLVResult{
+	return apischema.SuccessPathResponse{
 		Success: true,
 		Path:    path,
 	}, nil

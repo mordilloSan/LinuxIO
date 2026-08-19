@@ -6,6 +6,8 @@ import {
   type Ref,
 } from "react";
 
+import { BASE_SPACING_UNIT } from "@/theme";
+
 import "./app-grid.css";
 
 export type GridSize =
@@ -23,6 +25,8 @@ export interface AppGridProps extends HTMLAttributes<HTMLElement> {
   [key: string]: unknown;
   alignItems?: CSSProperties["alignItems"];
   component?: ElementType;
+  /** Number of equal-width columns at each breakpoint when used as a container. */
+  columns?: GridSize;
   container?: boolean;
   size?: GridSize;
   spacing?: number;
@@ -31,6 +35,7 @@ export interface AppGridProps extends HTMLAttributes<HTMLElement> {
 function AppGrid(
   {
     container,
+    columns,
     spacing,
     size,
     alignItems,
@@ -44,13 +49,39 @@ function AppGrid(
 ) {
   if (container) {
     const cls = ["app-grid", className].filter(Boolean).join(" ");
+    const columnVars =
+      columns == null
+        ? undefined
+        : typeof columns === "number"
+          ? {
+              "--_gcols-xs": columns,
+              "--_gcols-sm": columns,
+              "--_gcols-md": columns,
+              "--_gcols-lg": columns,
+              "--_gcols-xl": columns,
+            }
+          : {
+              "--_gcols-xs": columns.xs ?? 12,
+              "--_gcols-sm": columns.sm ?? columns.xs ?? 12,
+              "--_gcols-md": columns.md ?? columns.sm ?? columns.xs ?? 12,
+              "--_gcols-lg":
+                columns.lg ?? columns.md ?? columns.sm ?? columns.xs ?? 12,
+              "--_gcols-xl":
+                columns.xl ??
+                columns.lg ??
+                columns.md ??
+                columns.sm ??
+                columns.xs ??
+                12,
+            };
     return (
       <Component
         className={cls}
         ref={ref}
         style={{
-          gap: spacing ? spacing * 4 : undefined,
+          gap: spacing ? spacing * BASE_SPACING_UNIT : undefined,
           alignItems,
+          ...columnVars,
           ...style,
         }}
         {...rest}

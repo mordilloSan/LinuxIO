@@ -2,12 +2,15 @@ import { memo } from "react";
 
 import type { ComposeProject } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { getComposeStatusColor } from "@/constants/statusColors";
+import { CARD_PADDING_SM } from "@/theme/constants";
 
 const getStatusColor = (status: string) => {
   return getComposeStatusColor(status);
@@ -23,6 +26,8 @@ interface ComposeStackCardProps {
   onDelete: (project: ComposeProject) => void;
   onEdit?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
+  onOpen?: () => void;
+  selected?: boolean;
 }
 
 function areStringArraysEqual(previous: string[], next: string[]) {
@@ -59,7 +64,9 @@ function areComposeStackCardPropsEqual(
     previous.onEdit !== next.onEdit ||
     previous.onRestart !== next.onRestart ||
     previous.onStart !== next.onStart ||
-    previous.onStop !== next.onStop
+    previous.onStop !== next.onStop ||
+    previous.onOpen !== next.onOpen ||
+    previous.selected !== next.selected
   ) {
     return false;
   }
@@ -93,6 +100,8 @@ const ComposeStackCard = ({
   onDelete,
   onEdit,
   isLoading = false,
+  onOpen,
+  selected = false,
 }: ComposeStackCardProps) => {
   const totalContainers = Object.values(project.services).reduce(
     (acc, service) => acc + service.container_count,
@@ -104,34 +113,8 @@ const ComposeStackCard = ({
   const totalServices = Object.keys(project.services).length;
   const isRunning =
     project.status === "running" || project.status === "partial";
-
-  return (
-    <FrostedCard
-      hoverLift
-      style={{
-        padding: 8,
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        position: "relative",
-      }}
-    >
-      {/* Status chip top-right */}
-      <div style={{ position: "absolute", top: 12, right: 12 }}>
-        <Chip
-          color={getStatusColor(project.status)}
-          label={project.status}
-          size="small"
-          style={{
-            textTransform: "capitalize",
-            fontSize: "0.65rem",
-          }}
-          labelStyle={{ paddingInline: 6 }}
-          variant="soft"
-        />
-      </div>
-
-      {/* Icon + Name */}
+  const summary = (
+    <>
       <div
         style={{
           display: "flex",
@@ -152,7 +135,6 @@ const ComposeStackCard = ({
         </AppTypography>
       </div>
 
-      {/* Stats */}
       <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
         <AppTypography color="text.secondary" variant="body2">
           {totalServices > 0
@@ -174,8 +156,109 @@ const ComposeStackCard = ({
           />
         )}
       </div>
+    </>
+  );
+
+  return (
+    <FrostedCard
+      accent
+      hoverLift={!selected}
+      style={{
+        padding: CARD_PADDING_SM,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minWidth: 0,
+        position: "relative",
+        width: "100%",
+      }}
+    >
+      {/* Status chip top-right */}
+      <div style={{ position: "absolute", top: 12, right: 12 }}>
+        <Chip
+          color={getStatusColor(project.status)}
+          label={project.status}
+          size="small"
+          style={{
+            textTransform: "capitalize",
+            fontSize: "0.65rem",
+          }}
+          labelStyle={{ paddingInline: 6 }}
+          variant="soft"
+        />
+      </div>
+
+      {onOpen ? (
+        <AppButton
+          aria-label={`Open stack ${project.name} details`}
+          color="inherit"
+          fullWidth
+          onClick={onOpen}
+          style={{
+            alignItems: "stretch",
+            color: "inherit",
+            flexDirection: "column",
+            justifyContent: "flex-start",
+            padding: 0,
+            textAlign: "left",
+          }}
+        >
+          {summary}
+        </AppButton>
+      ) : (
+        summary
+      )}
 
       <AppDivider style={{ marginBlock: 12 }} />
+
+      {selected && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <DetailRow label="Compose files" noBorder>
+            {project.config_files.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {project.config_files.map((filePath) => (
+                  <AppTypography
+                    className="expand-panel__mono"
+                    component="span"
+                    copyText={filePath}
+                    fontSize="0.75rem"
+                    fontWeight={500}
+                    key={filePath}
+                    noWrap
+                    title={filePath}
+                    variant="body2"
+                  >
+                    {filePath}
+                  </AppTypography>
+                ))}
+              </div>
+            ) : (
+              <AppTypography
+                color="text.secondary"
+                component="span"
+                fontSize="0.75rem"
+                variant="body2"
+              >
+                No compose files found.
+              </AppTypography>
+            )}
+          </DetailRow>
+          <DetailRow label="Location">
+            <AppTypography
+              className="expand-panel__mono"
+              component="span"
+              copyText={project.working_dir}
+              fontSize="0.75rem"
+              fontWeight={500}
+              noWrap
+              title={project.working_dir}
+              variant="body2"
+            >
+              {project.working_dir || "-"}
+            </AppTypography>
+          </DetailRow>
+        </div>
+      )}
 
       {/* Actions */}
       <div
@@ -208,7 +291,7 @@ const ComposeStackCard = ({
                 />
                 <AppActionIconButton
                   disabled={isLoading}
-                  icon="mdi:stop-circle"
+                  icon="mdi:stop"
                   iconSize={20}
                   label="Stop"
                   onClick={() => onStop(project.name)}

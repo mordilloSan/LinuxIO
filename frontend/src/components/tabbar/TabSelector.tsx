@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 import "./tab-selector.css";
 
-import { useAppTheme } from "@/theme";
+import { type AppTheme, useAppTheme } from "@/theme";
 
 interface TabOption<TValue extends string> {
   label: string;
@@ -16,6 +16,16 @@ interface TabSelectorProps<TValue extends string> {
   value: TValue;
 }
 
+// Shared by TabSelector and RoutedTabContainer's own tab strip so the two
+// implementations of the same `tab-selector` class can never drift apart.
+export const getTabSelectorThemeVars = (theme: AppTheme): CSSProperties =>
+  ({
+    "--tab-selector-active-bg": theme.palette.primary.main,
+    "--tab-selector-active-color": theme.palette.primary.contrastText,
+    "--tab-selector-hover": theme.palette.action.hover,
+    "--tab-selector-text": theme.palette.text.secondary,
+  }) as CSSProperties;
+
 const TabSelector = <TValue extends string>({
   value,
   onChange,
@@ -25,22 +35,13 @@ const TabSelector = <TValue extends string>({
 }: TabSelectorProps<TValue>) => {
   const theme = useAppTheme();
 
-  const primaryHex = theme.palette.primary.main;
-  const contrast = theme.palette.primary.contrastText;
-
   return (
     <div
       className={["tab-selector", className].filter(Boolean).join(" ")}
-      style={
-        {
-          "--tab-selector-active-bg": primaryHex,
-          "--tab-selector-active-color": contrast,
-          "--tab-selector-border": theme.palette.divider,
-          "--tab-selector-hover": theme.palette.action.hover,
-          "--tab-selector-text": theme.palette.text.secondary,
-          ...style,
-        } as CSSProperties
-      }
+      style={{
+        ...getTabSelectorThemeVars(theme),
+        ...style,
+      }}
     >
       <div className="tab-selector__scroller custom-scrollbar">
         <div aria-label="Tabs" className="tab-selector__pills" role="tablist">

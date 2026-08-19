@@ -1,10 +1,50 @@
 .tab-container {
+  /*
+    Headroom between the strip and route content, sitting in the panels where
+    a hover-lifted card has somewhere to rise into. The strip is sticky with
+    an opaque background painted OVER the cards (z-index below), so a card
+    that lifts into it is occluded, not clipped, and reads as cropped along
+    its top edge. Keep the headroom >= the tallest card lift (--hover-lift-y,
+    up to 4px on .fc-hover-lift, plus ~1% of card height where
+    --hover-lift-scale is 1.02).
+
+    A panel that scrolls internally (AppVirtualGrid) clips against its own edge
+    long before a card reaches the strip, so headroom out here does nothing
+    for it. Those components reclaim this space and re-reserve it inside their
+    scrollport instead — see HOVER_LIFT_HEADROOM in theme/constants.ts.
+  */
+  --tab-strip-headroom: 6px;
+
+  /*
+    The page's own top padding (MainLayout's --page-inset-block-start),
+    reclaimed and discarded: the strip sits flush under the header as a
+    fixed-height bar — the same geometry as the file browser header — and the
+    bar's own height replaces the gap. The negative margin cancels the page
+    padding; min-height adds it back so the panel floor still reaches the
+    padding edge the page laid out.
+  */
+  --tab-strip-inset: var(--page-inset-block-start, 0px);
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
   min-width: 0;
-  min-height: 0;
+
+  /*
+    A sticky box cannot leave its containing block, so the strip stays put only
+    for as long as this element is on screen. At `height: 100%` that is one
+    scrollport, and a page taller than that (any card grid — those are not
+    virtualized) drags the strip off the top on the way down. Growing to the
+    content keeps the strip pinned for the whole scroll.
+
+    Panels claim the remaining space with `flex: 1 1 auto` against a `flex-basis:
+    0` child (.app-dt--fill, AppVirtualGrid), so a self-scrolling panel still
+    contributes no height of its own and the floor below is what sizes it. The
+    inset is added back so that floor still reaches the padding edge the page
+    laid out — the negative margin above must not shorten the panel.
+  */
+  height: auto;
+  min-height: calc(100% + var(--tab-strip-inset));
+  margin-top: calc(-1 * var(--tab-strip-inset));
 }
 
 .tab-selector.tab-container__selector {
@@ -12,7 +52,25 @@
   top: 0;
   z-index: 10;
   margin-bottom: 0;
-  padding-bottom: 8px;
+
+  /*
+    A full-bleed bar with the file browser header's geometry: 64px tall,
+    contents vertically centered, escaping the page's inline padding (handed
+    down as --page-inset-inline) to carry the same 8px inline inset the file
+    browser header uses. `width: auto` is required for the bleed: the strip is
+    a flex item, so stretching absorbs the negative margins and widens the box
+    past both padded edges, while the base .tab-selector `width: 100%` would
+    keep the box one container wide and merely shift it left.
+
+    The centering doubles as the curtain: the bar is taller than its pill row,
+    so the opaque space below the pills is what content scrolls under while
+    the bar is stuck.
+  */
+  width: auto;
+  min-height: 64px;
+  align-items: center;
+  margin-inline: calc(-1 * var(--page-inset-inline, 0px));
+  padding-inline: 8px;
   background: var(--app-palette-background-default);
 }
 
@@ -21,4 +79,7 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  /* Lift headroom, not decoration — see .tab-container. Routes must not add
+     their own top offset on top of it. */
+  padding-top: var(--tab-strip-headroom);
 }

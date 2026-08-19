@@ -1,25 +1,18 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import { memo, useCallback, useId } from "react";
+import { memo, useCallback } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
+import {
+  getNetworkStateColor,
+  getNetworkStateLabel,
+} from "@/components/network/networkInterfaceState";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
-
-const getStatusTooltip = (state: number) => {
-  if (state === 100) return "Connected";
-  if (state === 110) return "Deactivating";
-  if (state >= 40 && state <= 90) return "Connecting";
-  if (state === 30) return "Disconnected";
-  if (state === 20) return "Unavailable";
-  if (state === 120) return "Failed";
-  if (state === 10) return "Unmanaged";
-  return "Unknown";
-};
+import { CARD_PADDING_SM } from "@/theme/constants";
 
 const getInterfaceIcon = (type?: string) => {
   if (type === "wifi") return "mdi:wifi";
@@ -32,9 +25,7 @@ const formatBps = (bps?: number) =>
   typeof bps === "number" ? `${(bps / 1024).toFixed(1)} kB/s` : "N/A";
 
 export interface NetworkInterfaceCardProps {
-  expanded: boolean;
   name: string;
-  onClose: () => void;
   onToggle: (name: string) => void;
   type: string;
 }
@@ -83,18 +74,11 @@ const NetworkInterfaceTitle = memo(function NetworkInterfaceTitle({
   );
 });
 
-interface NetworkInterfaceCardContentProps extends NetworkInterfaceCardProps {
-  editorId: string;
-}
-
 const NetworkInterfaceCardContent = ({
-  editorId,
-  expanded,
   name,
-  onClose,
   onToggle,
   type,
-}: NetworkInterfaceCardContentProps) => {
+}: NetworkInterfaceCardProps) => {
   const theme = useAppTheme();
   const handleToggle = useCallback(() => onToggle(name), [name, onToggle]);
   const { data: rawInterface } = useQuery({
@@ -112,23 +96,13 @@ const NetworkInterfaceCardContent = ({
     <>
       <StatusDot
         absolute
-        color={
-          iface.state === 100
-            ? theme.palette.success.main
-            : iface.state >= 40 && iface.state <= 90
-              ? theme.palette.warning.main
-              : iface.state === 30 || iface.state === 120
-                ? theme.palette.error.main
-                : theme.palette.text.disabled
-        }
+        color={getNetworkStateColor(iface.state, theme)}
         size={10}
         style={{ top: 16, right: 8 }}
-        tooltip={getStatusTooltip(iface.state)}
+        tooltip={getNetworkStateLabel(iface.state)}
       />
 
       <AppButton
-        aria-controls={editorId}
-        aria-expanded={expanded}
         color="inherit"
         onClick={handleToggle}
         style={{
@@ -165,36 +139,26 @@ const NetworkInterfaceCardContent = ({
           </AppTypography>
         </div>
       </AppButton>
-      <div id={editorId}>
-        <NetworkInterfaceEditor
-          expanded={expanded}
-          iface={iface}
-          onClose={onClose}
-        />
-      </div>
     </>
   );
 };
 
 const NetworkInterfaceCard = ({
-  expanded,
   name,
   onToggle,
-  onClose,
   type,
 }: NetworkInterfaceCardProps) => {
-  const editorId = useId();
-
   return (
     <FrostedCard
-      hoverLift={!expanded}
-      style={{ padding: 8, position: "relative" }}
+      accent
+      hoverLift
+      style={{
+        padding: CARD_PADDING_SM,
+        position: "relative",
+      }}
     >
       <NetworkInterfaceCardContent
-        editorId={editorId}
-        expanded={expanded}
         name={name}
-        onClose={onClose}
         onToggle={onToggle}
         type={type}
       />

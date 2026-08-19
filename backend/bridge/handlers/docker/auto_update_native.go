@@ -55,6 +55,9 @@ type dockerUpdateScheduleDocument struct {
 	Time           string                                  `json:"time"`
 	Cleanup        bool                                    `json:"cleanup"`
 	ContainerNames []string                                `json:"container_names"`
+	IncludeStopped bool                                    `json:"include_stopped"`
+	UpdateStopped  bool                                    `json:"update_stopped"`
+	ReviveStopped  bool                                    `json:"revive_stopped"`
 }
 
 var (
@@ -152,6 +155,9 @@ func (s containerAutoUpdateStore) readOptions() (apischema.DockerContainerAutoUp
 			Time:           document.Time,
 			Cleanup:        document.Cleanup,
 			ContainerNames: document.ContainerNames,
+			IncludeStopped: document.IncludeStopped,
+			UpdateStopped:  document.UpdateStopped,
+			ReviveStopped:  document.ReviveStopped,
 		})
 	}
 	if !errors.Is(err, os.ErrNotExist) {
@@ -167,6 +173,9 @@ func (s containerAutoUpdateStore) writeOptions(opts apischema.DockerContainerAut
 		Time:           opts.Time,
 		Cleanup:        opts.Cleanup,
 		ContainerNames: opts.ContainerNames,
+		IncludeStopped: opts.IncludeStopped,
+		UpdateStopped:  opts.UpdateStopped,
+		ReviveStopped:  opts.ReviveStopped,
 	}
 	configBytes, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
@@ -209,12 +218,18 @@ func normalizeContainerAutoUpdateOptions(opts apischema.DockerContainerAutoUpdat
 	if !dailyDockerUpdateTimePattern.MatchString(timeOfDay) {
 		return apischema.DockerContainerAutoUpdateOptions{}, fmt.Errorf("invalid Docker update time %q", opts.Time)
 	}
+	if opts.ReviveStopped && !opts.UpdateStopped {
+		return apischema.DockerContainerAutoUpdateOptions{}, errors.New("starting stopped containers after update requires stopped-container updates")
+	}
 	return apischema.DockerContainerAutoUpdateOptions{
 		Cleanup:        opts.Cleanup,
 		ContainerNames: normalizeContainerNames(opts.ContainerNames),
 		Enabled:        opts.Enabled,
+		IncludeStopped: opts.IncludeStopped,
 		Mode:           apischema.DockerContainerAutoUpdateMode(mode),
+		ReviveStopped:  opts.ReviveStopped,
 		Time:           timeOfDay,
+		UpdateStopped:  opts.UpdateStopped,
 	}, nil
 }
 
@@ -349,13 +364,18 @@ func containerMutationEligibility(
 	ctr container.Summary,
 	replicas map[composeReplicaKey]int,
 ) (bool, *string) {
-	if strings.ToLower(strings.TrimSpace(string(ctr.State))) != "running" {
-		reason := "Container is not running; start it before enabling automatic updates."
+	state := strings.ToLower(strings.TrimSpace(string(ctr.State)))
+	if state != "running" && state != "exited" {
+		reason := fmt.Sprintf("Container state %q cannot be updated automatically.", state)
 		return false, &reason
 	}
 
 	project := strings.TrimSpace(ctr.Labels["com.docker.compose.project"])
 	service := strings.TrimSpace(ctr.Labels["com.docker.compose.service"])
+	if state == "exited" && project != "" {
+		reason := "Stopped Compose services cannot be updated safely without changing their lifecycle state."
+		return false, &reason
+	}
 	if project != "" && service != "" {
 		replicaCount := replicas[composeReplicaKey{project: project, service: service}]
 		if replicaCount > 1 {

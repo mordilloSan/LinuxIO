@@ -5,6 +5,7 @@ import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
 
 export type SummaryRow = {
   label: string;
@@ -95,13 +96,14 @@ const HardwareCard = ({
   actions?: ReactNode;
 }) => (
   <FrostedCard
+    accent
     hoverLift
     style={{
       display: "flex",
       flexDirection: "column",
       boxSizing: "border-box",
       height: "100%",
-      padding: 8,
+      padding: CARD_PADDING_SM,
     }}
   >
     <CardIconHeader
@@ -114,7 +116,7 @@ const HardwareCard = ({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 12,
+              gap: GAP_MD,
               flexShrink: 0,
             }}
           >

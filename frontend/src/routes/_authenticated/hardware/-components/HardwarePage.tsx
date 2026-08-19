@@ -3,21 +3,23 @@ import { Suspense, useCallback, useState } from "react";
 
 import { linuxio, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
+import { SensorEmptyCard } from "@/components/cards/SensorEmptyCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
-import { SensorEmptyCard } from "@/components/cards/SensorSummaryCard";
+import { HistoryHoverProvider } from "@/components/charts/HistoryCard";
+import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { cardHeight } from "@/theme/constants";
+import { cardHeight, DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 import {
   BIOSInfoCard,
@@ -25,12 +27,10 @@ import {
   CPUHistoryCard,
   DiskIOHistoryCard,
   GPUInfoCard,
-  HistoryHoverProvider,
   MemoryHistoryCard,
   MotherboardInfoCard,
   NetworkHistoryCard,
 } from "./HardwareHistoryCards";
-import type { HardwareHistoryRangeId } from "./hardwareHistoryRanges";
 import {
   hardwareSensorQueryOptions,
   hardwareStableQueryOptions,
@@ -105,6 +105,7 @@ function SensorReadings() {
         />
       </div>
       <ReorderableCardGrid
+        fillAvailable={false}
         getId={getSensorGroupId}
         renderItem={({ adapter, sourceIndex, visibleReadingCount }) => (
           <SensorGroupCard
@@ -146,6 +147,7 @@ function MemoryModulesTable() {
         accessorKey: "size",
         header: "Size",
         cell: ({ row }) => row.original.size,
+        meta: { align: "right" },
       },
       {
         accessorKey: "state",
@@ -164,11 +166,13 @@ function MemoryModulesTable() {
         accessorKey: "rank",
         header: "Rank",
         cell: ({ row }) => row.original.rank,
+        meta: { align: "right" },
       },
       {
         accessorKey: "speed",
         header: "Speed",
         cell: ({ row }) => row.original.speed,
+        meta: { align: "right" },
       },
     ];
 
@@ -242,8 +246,7 @@ function PciDevicesTable() {
 
 const HardwarePage = () => {
   // ── history range & synchronized crosshair ──
-  const [historyRange, setHistoryRange] =
-    useState<HardwareHistoryRangeId>("1h");
+  const [historyRange, setHistoryRange] = useState<HistoryRangeId>("1h");
 
   const systemInfoSurface = useReorderableSurface({
     getId: getSystemInfoCardId,
@@ -284,6 +287,7 @@ const HardwarePage = () => {
       <div id="hardware-system-info-panel">
         <AppCollapse in={sections.systemInfo} unmountOnExit>
           <ReorderableCardGrid
+            fillAvailable={false}
             getId={getSystemInfoCardId}
             renderItem={({ component: CardComponent }) => (
               <ErrorBoundary>
@@ -293,7 +297,6 @@ const HardwarePage = () => {
               </ErrorBoundary>
             )}
             size={{ xs: 12, md: 6, xl: 3 }}
-            spacing={4}
             surface={systemInfoSurface}
           />
         </AppCollapse>
@@ -312,7 +315,7 @@ const HardwarePage = () => {
             <AppGrid
               alignItems="stretch"
               container
-              spacing={4}
+              spacing={DASHBOARD_CARD_SPACING}
               style={{ marginBottom: 16 }}
             >
               <AppGrid size={{ xs: 12, md: 6, lg: 4, xl: 3 }}>

@@ -17,8 +17,8 @@ import {
 import type { Service } from "@/api";
 import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
-import AppVirtualDataTable from "@/components/tables/AppVirtualDataTable";
-import type { AppVirtualDataTableColumnDef } from "@/components/tables/AppVirtualDataTable";
+import AppDataTable from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -590,6 +590,8 @@ const GeneralLogsPage = () => {
     if (el && el.scrollTop <= 2) {
       el.scrollTop = 0;
     }
+    // `logs` intentionally retriggers the DOM scroll after a buffered flush renders.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [logs, liveMode]);
 
   // Flush queued log entries on the next animation frame. Coalesces bursts so
@@ -736,7 +738,10 @@ const GeneralLogsPage = () => {
     }
   });
 
-  // Open stream on mount, on filter changes, and on reconnect epochs.
+  // Open stream on mount, on filter changes, and on reconnect epochs. The
+  // filter values are read by the Effect Event; here they intentionally own
+  // the stream restart lifecycle rather than the event callback's identity.
+  // oxlint-disable react/exhaustive-effect-dependencies
   useEffect(() => {
     if (!muxIsOpen || streamRef.current) {
       return;
@@ -763,6 +768,7 @@ const GeneralLogsPage = () => {
     identifierIsExact,
     fieldFilters,
   ]);
+  // oxlint-enable react/exhaustive-effect-dependencies
 
   const handleLiveModeChange = (
     _: ChangeEvent<HTMLInputElement>,
@@ -1156,7 +1162,7 @@ const GeneralLogsPage = () => {
   // Memoized so cell component identities stay stable across flushes — a
   // fresh cell function per render remounts every visible cell in dev, where
   // the React Compiler doesn't run.
-  const columns = useMemo<AppVirtualDataTableColumnDef<LogEntry>[]>(
+  const columns = useMemo<AppDataTableColumnDef<LogEntry>[]>(
     () => [
       {
         id: "severityIcon",
@@ -1494,7 +1500,7 @@ const GeneralLogsPage = () => {
       )}
 
       {!isLoading && !error && (
-        <AppVirtualDataTable
+        <AppDataTable
           ariaLabel="General logs"
           columns={columns}
           data={displayedLogs}

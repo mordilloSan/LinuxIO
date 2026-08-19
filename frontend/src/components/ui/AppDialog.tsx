@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { acquireBodyScrollLock } from "./bodyScrollLock";
+import { useDialogFocusRestore } from "./useDialogFocusRestore";
 
 import "./app-dialog.css";
 
@@ -77,25 +78,23 @@ export const AppDialog = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const prevOpen = useRef(open);
-  const lastFocusedElement = useRef<HTMLElement | null>(null);
+
+  useDialogFocusRestore(open);
 
   // scroll lock + background blur class
   useEffect(() => {
-    if (open) {
-      lastFocusedElement.current = document.activeElement as HTMLElement | null;
-      const releaseBodyScrollLock = acquireBodyScrollLock();
-      _openDialogCount++;
-      if (_openDialogCount === 1) document.body.classList.add("dialog-open");
-
-      return () => {
-        releaseBodyScrollLock();
-        _openDialogCount--;
-        if (_openDialogCount === 0)
-          document.body.classList.remove("dialog-open");
-      };
-    } else if (lastFocusedElement.current) {
-      lastFocusedElement.current.focus();
+    if (!open) {
+      return;
     }
+    const releaseBodyScrollLock = acquireBodyScrollLock();
+    _openDialogCount += 1;
+    if (_openDialogCount === 1) document.body.classList.add("dialog-open");
+
+    return () => {
+      releaseBodyScrollLock();
+      _openDialogCount -= 1;
+      if (_openDialogCount === 0) document.body.classList.remove("dialog-open");
+    };
   }, [open]);
 
   // fire transition callbacks
@@ -181,6 +180,7 @@ export const AppDialog = ({
   };
   const mergedPaperClass = [
     "app-dialog__paper",
+    "custom-scrollbar",
     paperClassName,
     slotProps?.paper?.className,
   ]
@@ -255,7 +255,7 @@ export const AppDialogContent = forwardRef<
   AppDialogContentProps
 >(({ className, ...props }, ref) => (
   <div
-    className={`app-dialog-content ${className || ""}`.trim()}
+    className={`app-dialog-content custom-scrollbar ${className || ""}`.trim()}
     ref={ref}
     {...props}
   />

@@ -185,10 +185,10 @@ function ThemeColorsSection() {
     setThemeColors((prev) => {
       const modeColors = prev?.[editMode];
       if (!modeColors) return prev;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [key]: _, ...rest } = modeColors;
+      const rest = { ...modeColors };
+      delete rest[key];
       const newModeColors = Object.values(rest).some((v) => v != null)
-        ? (rest as ThemeColors)
+        ? rest
         : undefined;
       const next: ThemeColorsByMode = { ...prev, [editMode]: newModeColors };
       if (!next.light && !next.dark) return undefined;
@@ -217,13 +217,20 @@ function ThemeColorsSection() {
             Colors
           </AppTypography>
           <AppTypography color="text.secondary" variant="caption">
-            Customize light and dark theme colors.
+            Each mode carries its own palette. These swatches edit the mode
+            selected here, which is not necessarily the one on screen — switch
+            that under General.
           </AppTypography>
         </div>
+
+        <AppTypography color="text.secondary" variant="caption">
+          Editing
+        </AppTypography>
 
         <div style={{ display: "flex", gap: 2 }}>
           {(["light", "dark"] as const).map((m) => (
             <AppButton
+              aria-label={`Edit ${m} theme colors`}
               color={editMode === m ? "primary" : "inherit"}
               key={m}
               onClick={() => setEditMode(m)}
@@ -460,6 +467,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             height: 0,
             pointerEvents: "none",
           }}
+          tabIndex={-1}
           type="color"
           value={normalized}
         />

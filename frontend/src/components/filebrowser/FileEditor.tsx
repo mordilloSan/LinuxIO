@@ -19,6 +19,12 @@ const AceEditor =
     : ReactAce;
 
 interface FileEditorProps {
+  // Ace uses this as the editor container's DOM id, so it must be unique when
+  // two editors are mounted at once (compose + env panes).
+  editorName?: string;
+  // When two editors share a dialog, only the primary one may own the
+  // document-level Ctrl+S listener — both would fire on one keydown.
+  enableSaveShortcut?: boolean;
   fileName: string;
   filePath: string;
   initialContent: string;
@@ -60,6 +66,7 @@ const getLanguageMode = (fileName: string): string => {
     yml: "yaml",
     yaml: "yaml",
     sh: "sh",
+    env: "sh",
   };
   return modeMap[ext] || "text";
 };
@@ -124,6 +131,8 @@ const stateForSource = (
 };
 
 const FileEditor = ({
+  editorName = "file-editor",
+  enableSaveShortcut = true,
   filePath,
   fileName,
   initialContent,
@@ -193,9 +202,10 @@ const FileEditor = ({
   });
 
   useEffect(() => {
+    if (!enableSaveShortcut) return;
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [enableSaveShortcut]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -313,7 +323,7 @@ const FileEditor = ({
       }}
       fontSize={14}
       mode={language}
-      name="file-editor"
+      name={editorName}
       onChange={handleContentChange}
       readOnly={isSaving || readOnly}
       ref={editorRef}

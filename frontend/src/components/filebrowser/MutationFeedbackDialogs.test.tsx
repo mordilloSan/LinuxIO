@@ -141,6 +141,22 @@ describe("file mutation feedback dialogs", () => {
     expect(onConfirm).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("shows a running item count when delete progress has no percentage", () => {
+    render(
+      <ConfirmDialog
+        isPending
+        message="Delete one item?"
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        open
+        progress={{ phase: "deleting", detail: { processed: 42 } }}
+        title="Delete Items"
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("deleting (42 items)");
+  });
 });
 
 describe("inline rename feedback", () => {

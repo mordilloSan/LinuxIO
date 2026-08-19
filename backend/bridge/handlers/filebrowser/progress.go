@@ -68,6 +68,11 @@ type FileProgress struct {
 	Total int64  `json:"total"`           // Total bytes (0 if unknown)
 	Pct   int    `json:"pct"`             // Percentage (0-100)
 	Phase string `json:"phase,omitempty"` // Optional phase description
+	// Indeterminate marks progress whose total is not known yet, so Pct is
+	// meaningless and the client should show a busy bar rather than 0%. Archive
+	// compression starts before its size estimate finishes and clears this once
+	// the estimate lands.
+	Indeterminate bool `json:"indeterminate,omitempty"`
 }
 
 func (p FileProgress) ProgressEnvelope() bridgetask.TaskProgress {
@@ -91,8 +96,10 @@ func (p BatchUploadProgress) ProgressEnvelope() bridgetask.TaskProgress {
 	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
 }
 
-// DeleteProgress represents item-count progress for delete tasks.
-type DeleteProgress struct {
+// CountProgress represents item-count progress for batch tasks. When the
+// entry total is unknown, Indeterminate is set and the envelope omits the
+// percentage so clients show a running count instead of a frozen 0%.
+type CountProgress struct {
 	Processed     int64  `json:"processed"`
 	Total         int64  `json:"total"`
 	Pct           int    `json:"pct"`
@@ -100,18 +107,10 @@ type DeleteProgress struct {
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
 
-func (p DeleteProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
-}
-
-// ChmodProgress represents entry-count progress for chmod batch tasks. The
-// per-entry total is unknown up front, so the count is indeterminate.
-type ChmodProgress struct {
-	Processed     int64  `json:"processed"`
-	Phase         string `json:"phase,omitempty"`
-	Indeterminate bool   `json:"indeterminate,omitempty"`
-}
-
-func (p ChmodProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	return bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
+func (p CountProgress) ProgressEnvelope() bridgetask.TaskProgress {
+	envelope := bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
+	if !p.Indeterminate {
+		envelope.Percentage = &p.Pct
+	}
+	return envelope
 }

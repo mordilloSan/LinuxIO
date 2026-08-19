@@ -119,7 +119,7 @@ func runCopyBatchTask(ctx context.Context, task *bridgetasks.Task, store *config
 
 	// One shared callback/limiter across all items so byte progress accumulates
 	// into a single aggregate bar instead of resetting per file.
-	opts := newTaskPhaseCallbacks(ctx, task, store, grandTotal, "copying")
+	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(grandTotal), "copying")
 
 	succeeded := 0
 	for _, item := range items {
@@ -171,7 +171,7 @@ func runMoveBatchTask(ctx context.Context, task *bridgetasks.Task, store *config
 	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req.Sources, overwrite)
 	writeTaskPhaseProgress(task, grandTotal, "preparing")
 
-	opts := newTaskPhaseCallbacks(ctx, task, store, grandTotal, "moving")
+	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(grandTotal), "moving")
 
 	succeeded := 0
 	for _, item := range items {
@@ -201,56 +201,104 @@ func runMoveBatchTask(ctx context.Context, task *bridgetasks.Task, store *config
 	return batchResult(len(req.Sources), succeeded, failures), nil
 }
 
-// runDeleteBatchTask deletes many paths as a single task, reporting a running
-// processed-item count across all paths.
-func runDeleteBatchTask(ctx context.Context, task *bridgetasks.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
-	if len(req.Paths) == 0 {
-		return FileBatchResult{}, bridgetasks.NewError("no paths provided", 400)
-	}
+// deletePlanItem is one validated delete target with its known entry total
+// (0 when unknown).
+type deletePlanItem struct {
+	raw   string
+	path  string
+	total int64
+}
 
-	var processed int64
-	succeeded := 0
-	failures := make([]FileBatchItemFailure, 0)
+// planDeleteBatch validates each requested path and resolves how many entries
+// deleting it will remove, summing a grand total for aggregate progress. The
+// grand total is 0 (indeterminate) unless every item's total is known.
+func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanItem, grandTotal int64, failures []FileBatchItemFailure) {
+	failures = make([]FileBatchItemFailure, 0)
+	allKnown := true
 
-	for _, raw := range req.Paths {
+	for _, raw := range paths {
 		if ctx.Err() != nil {
-			return FileBatchResult{}, context.Canceled
+			return nil, 0, failures
 		}
 		path := utils.CleanAbsPath(raw)
 		if path == "/" {
 			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "cannot delete root"})
 			continue
 		}
-
 		isDir, err := deleteTargetIsDir(path)
 		if err != nil {
 			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "not found"})
 			continue
 		}
+		total := deleteEntryTotalForPath(ctx, path, isDir)
+		if total <= 0 {
+			allKnown = false
+		}
+		grandTotal += total
+		items = append(items, deletePlanItem{raw: raw, path: path, total: total})
+	}
 
-		opts := deleteOptionsForPath(ctx, path, isDir)
-		base := processed
-		opts.Progress = func(p, _ int64, _ bool) {
-			task.ReportProgress(DeleteProgress{
-				Processed:     base + p,
-				Phase:         "deleting",
-				Indeterminate: true,
-			})
+	if !allKnown {
+		grandTotal = 0
+	}
+	return items, grandTotal, failures
+}
+
+// runDeleteBatchTask deletes many paths as a single task. It resolves entry
+// totals up front (indexer, else a bounded prescan) so progress reports a real
+// aggregate percentage; when a total stays unknown the task reports an
+// indeterminate running count instead.
+func runDeleteBatchTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.BatchPathRequest) (FileBatchResult, error) {
+	if len(req.Paths) == 0 {
+		return FileBatchResult{}, bridgetasks.NewError("no paths provided", 400)
+	}
+
+	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
+	items, grandTotal, failures := planDeleteBatch(ctx, req.Paths)
+	if ctx.Err() != nil {
+		return FileBatchResult{}, context.Canceled
+	}
+
+	indeterminate := grandTotal <= 0
+	limiter := newCountProgressLimiter(taskSettingsForTask(ctx, task, store))
+	var processed int64
+	succeeded := 0
+
+	for _, item := range items {
+		if ctx.Err() != nil {
+			return FileBatchResult{}, context.Canceled
 		}
 
-		count, err := services.DeleteFilesWithProgress(ctx, path, opts)
+		base := processed
+		count, err := services.DeleteFilesWithProgress(ctx, item.path, services.DeleteOptions{
+			Progress: func(p int64) {
+				cur, pct, ok := limiter.Set(base+p, grandTotal)
+				if !ok {
+					return
+				}
+				task.ReportProgress(CountProgress{
+					Processed:     cur,
+					Total:         grandTotal,
+					Pct:           pct,
+					Phase:         "deleting",
+					Indeterminate: indeterminate,
+				})
+			},
+		})
+		// count reflects entries actually removed, even when the item failed
+		// partway through, so aggregate progress stays monotonic.
+		processed += count
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return FileBatchResult{}, err
 			}
-			slog.Debug("batch delete item failed", "path", path, "error", err)
-			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error()})
+			slog.Debug("batch delete item failed", "path", item.path, "error", err)
+			failures = append(failures, FileBatchItemFailure{Path: item.raw, Error: err.Error()})
 			continue
 		}
-		processed += count
 		succeeded++
 
-		p := path
+		p := item.path
 		runDetachedIndexerUpdate("delete_batch", func(ctx context.Context) error {
 			return deleteFromIndexer(ctx, p)
 		})
@@ -272,27 +320,52 @@ func parseChmodBatchRequest(req apischema.FileChmodBatchRequest) (paths []string
 }
 
 // chmodBatchReporter accumulates a running processed-entry count across all
-// items and phases of a chmod batch task, throttled by one shared limiter.
+// items and phases of a chmod batch task, throttled by one shared limiter and
+// reported against the planned grand total (0 when unknown).
 type chmodBatchReporter struct {
 	task      *bridgetasks.Task
 	limiter   *countProgressLimiter
+	total     int64
 	processed int64
 }
 
-func (r *chmodBatchReporter) phase(phase string) func(processed, total int64) {
+func (r *chmodBatchReporter) phase(phase string) func(processed int64) {
 	base := r.processed
-	return func(processed, _ int64) {
+	return func(processed int64) {
 		r.processed = base + processed
-		count, _, ok := r.limiter.Set(r.processed, 0)
+		count, pct, ok := r.limiter.Set(r.processed, r.total)
 		if !ok {
 			return
 		}
-		r.task.ReportProgress(ChmodProgress{
+		r.task.ReportProgress(CountProgress{
 			Processed:     count,
+			Total:         r.total,
+			Pct:           pct,
 			Phase:         phase,
-			Indeterminate: true,
+			Indeterminate: r.total <= 0,
 		})
 	}
+}
+
+// planChmodBatchTotal sums the entries every pass of the batch will touch:
+// each item's entry count times the number of passes (chmod, plus chown when
+// ownership changes). Items whose count fails contribute nothing — they fail
+// again during apply and report no progress, so excluding them keeps the
+// percentage honest. Returns 0 only when no item could be counted.
+func planChmodBatchTotal(ctx context.Context, paths []string, recursive bool, passes int64) int64 {
+	var grandTotal int64
+	for _, raw := range paths {
+		if ctx.Err() != nil {
+			return 0
+		}
+		total, err := services.CountEntries(ctx, utils.CleanAbsPath(raw), recursive)
+		if err != nil {
+			slog.Debug("failed to count chmod entries", "path", raw, "error", err)
+			continue
+		}
+		grandTotal += total * passes
+	}
+	return grandTotal
 }
 
 type batchOwnership struct {
@@ -344,10 +417,15 @@ func runChmodBatchTask(ctx context.Context, task *bridgetasks.Task, store *confi
 		return FileBatchResult{}, bridgetasks.NewError(err.Error(), 400)
 	}
 
-	task.ReportProgress(ChmodProgress{Phase: "preparing"})
+	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
+	passes := int64(1)
+	if ownership != nil {
+		passes = 2
+	}
 	reporter := &chmodBatchReporter{
 		task:    task,
 		limiter: newCountProgressLimiter(taskSettingsForTask(ctx, task, store)),
+		total:   planChmodBatchTotal(ctx, paths, recursive, passes),
 	}
 
 	succeeded := 0

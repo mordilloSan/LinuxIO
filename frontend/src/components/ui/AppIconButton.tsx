@@ -2,7 +2,12 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 
 import "./app-icon-button.css";
 
-type IconButtonColor = "default" | "inherit" | "primary" | "error";
+type IconButtonColor =
+  | "default"
+  | "error"
+  | "inherit"
+  | "primary"
+  | "secondary";
 
 type IconButtonSize = "small" | "medium";
 

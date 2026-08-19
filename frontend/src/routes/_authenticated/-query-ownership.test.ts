@@ -13,6 +13,63 @@ const readRouteSource = (relativePath: string) =>
   readFileSync(path.join(authenticatedRoutes, relativePath), "utf8");
 
 describe("targeted route query ownership", () => {
+  it("single-sources route-derived query options through route context", () => {
+    const cases = [
+      {
+        consumers: ["vm/machines/$name.tsx"],
+        fields: ["vmQueryOptions"],
+        route: "vm/machines/$name.tsx",
+      },
+      {
+        consumers: ["filebrowser/-components/FileBrowserPage.tsx"],
+        fields: ["fileBrowserListingQueryOptions"],
+        route: "filebrowser/$.tsx",
+      },
+      {
+        consumers: [
+          "accounts/-components/UsersTab.tsx",
+          "accounts/-components/components/UserAccountDetails.tsx",
+        ],
+        fields: [
+          "listUsersQueryOptions",
+          "selectedUserDetailsQueryOptions",
+          "selectedUserLoginsQueryOptions",
+        ],
+        route: "accounts/index.tsx",
+      },
+      {
+        consumers: ["services/index.tsx"],
+        fields: ["listQueryOptions", "selectedQueryOptions"],
+        route: "services/index.tsx",
+      },
+      {
+        consumers: ["services/timers.tsx"],
+        fields: ["listQueryOptions", "selectedQueryOptions"],
+        route: "services/timers.tsx",
+      },
+      {
+        consumers: ["services/sockets.tsx"],
+        fields: ["listQueryOptions", "selectedQueryOptions"],
+        route: "services/sockets.tsx",
+      },
+    ] as const;
+
+    for (const entry of cases) {
+      const route = readRouteSource(entry.route);
+      const loader = route.split("loader:", 2)[1]?.split("component:", 1)[0];
+      const consumers = entry.consumers.map(readRouteSource).join("\n");
+
+      expect(route, entry.route).toContain("context:");
+      expect(loader, entry.route).toContain("loaderArgs.context");
+      expect(loader, entry.route).not.toContain("linuxio.");
+      expect(consumers, entry.route).toContain("useRouteContext");
+      for (const field of entry.fields) {
+        expect(route, `${entry.route}: ${field}`).toContain(field);
+        expect(consumers, `${entry.route}: ${field}`).toContain(field);
+      }
+    }
+  });
+
   it("defaults query loaders to presence and keeps exceptions explicit", () => {
     const routeSources = sourceFiles(authenticatedRoutes)
       .filter((file) => file.endsWith(".tsx"))

@@ -5,7 +5,7 @@ import { ServerCogIcon } from "@/icons/svg";
 
 import { SERVICES_TABS } from "./-components/servicesTabs";
 
-const ServicesLayout = makeTabLayout(SERVICES_TABS, { paddingInline: 0 });
+const ServicesLayout = makeTabLayout(SERVICES_TABS);
 
 export const Route = createFileRoute("/_authenticated/services")({
   component: ServicesLayout,

@@ -1,20 +1,105 @@
-import { Icon } from "@iconify/react";
-import { useMemo, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import "@xterm/xterm/css/xterm.css";
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/700.css";
 
 import { openTerminalStream, useStreamMux } from "@/api";
 import TerminalContextMenu from "@/components/terminal/TerminalContextMenu";
-import AppIconButton from "@/components/ui/AppIconButton";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { useConfigValue } from "@/hooks/useConfig";
 import { useLiveStream } from "@/hooks/useLiveStream";
 import { useTerminalContextMenu } from "@/hooks/useTerminalContextMenu";
 import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
-import { shadowSm } from "@/theme/constants";
+import { cardBorderRadius, shadowSm } from "@/theme/constants";
+import { alpha } from "@/utils/color";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
 const DEFAULT_FONT = 16;
+
+const TERMINAL_FONT = "JetBrains Mono";
+const TERMINAL_FONT_STACK = `"${TERMINAL_FONT}", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+
+let terminalFontsReady = false;
+let terminalFontsLoading = false;
+const terminalFontListeners = new Set<() => void>();
+
+function markTerminalFontsReady() {
+  terminalFontsReady = true;
+  terminalFontListeners.forEach((listener) => listener());
+}
+
+function loadTerminalFonts() {
+  if (terminalFontsReady || terminalFontsLoading) return;
+
+  if (
+    typeof document === "undefined" ||
+    typeof document.fonts?.load !== "function"
+  ) {
+    markTerminalFontsReady();
+    return;
+  }
+
+  terminalFontsLoading = true;
+  void Promise.all([
+    document.fonts.load(`${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
+    document.fonts.load(`bold ${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
+  ]).then(markTerminalFontsReady, markTerminalFontsReady);
+}
+
+function subscribeToTerminalFonts(listener: () => void) {
+  terminalFontListeners.add(listener);
+  loadTerminalFonts();
+  return () => terminalFontListeners.delete(listener);
+}
+
+function getTerminalFontsReady() {
+  return (
+    typeof document !== "undefined" &&
+    (typeof document.fonts?.load !== "function" || terminalFontsReady)
+  );
+}
+
+// One Dark / One Light ANSI palettes: the xterm defaults are the harsh
+// pure-RGB primaries, which is most of what makes `ls` output look dated.
+const ANSI_DARK = {
+  black: "#3B4252",
+  red: "#E06C75",
+  green: "#98C379",
+  yellow: "#E5C07B",
+  blue: "#61AFEF",
+  magenta: "#C678DD",
+  cyan: "#56B6C2",
+  white: "#DCDFE4",
+  brightBlack: "#5C6370",
+  brightRed: "#E06C75",
+  brightGreen: "#98C379",
+  brightYellow: "#E5C07B",
+  brightBlue: "#61AFEF",
+  brightMagenta: "#C678DD",
+  brightCyan: "#56B6C2",
+  brightWhite: "#FFFFFF",
+};
+const ANSI_LIGHT = {
+  black: "#383A42",
+  red: "#CA1243",
+  green: "#50A14F",
+  yellow: "#C18401",
+  blue: "#4078F2",
+  magenta: "#A626A4",
+  cyan: "#0184BC",
+  white: "#FAFAFA",
+  brightBlack: "#A0A1A7",
+  brightRed: "#CA1243",
+  brightGreen: "#50A14F",
+  brightYellow: "#C18401",
+  brightBlue: "#4078F2",
+  brightMagenta: "#A626A4",
+  brightCyan: "#0184BC",
+  brightWhite: "#FFFFFF",
+};
 
 const TerminalXTerm = () => {
   const theme = useAppTheme();
@@ -25,15 +110,34 @@ const TerminalXTerm = () => {
   const { streamRef, openStream, closeStream, detachStream } = useLiveStream({
     closeOnUnmount: false,
   });
-  const [fontSize, setFontSize] = useState(DEFAULT_FONT);
+  const [configFontSize, setConfigFontSize] =
+    useConfigValue("terminalFontSize");
+  const fontSize = configFontSize ?? DEFAULT_FONT;
+
+  // xterm measures its cell grid once on open; opening before the bundled
+  // font is available would leave a mismatched grid until the next resize.
+  const fontsReady = useSyncExternalStore(
+    subscribeToTerminalFonts,
+    getTerminalFontsReady,
+    () => false,
+  );
+
+  const terminalTheme = useMemo(
+    () => ({
+      ...(theme.palette.mode === "light" ? ANSI_LIGHT : ANSI_DARK),
+      cursor: theme.palette.primary.main,
+      cursorAccent: theme.palette.background.default,
+      selectionBackground: alpha(theme.palette.primary.main, 0.35),
+    }),
+    [theme],
+  );
   const terminalOptions = useMemo(
     () => ({
-      fontFamily:
-        "DejaVu Sans Mono, Liberation Mono, Menlo, Consolas, monospace",
+      fontFamily: TERMINAL_FONT_STACK,
       fontSize,
-      fontWeight: "bold" as const,
+      theme: terminalTheme,
     }),
-    [fontSize],
+    [fontSize, terminalTheme],
   );
 
   const {
@@ -42,7 +146,7 @@ const TerminalXTerm = () => {
     writeData,
   } = useXtermStreamTerminal({
     background: theme.palette.background.default,
-    enabled: true,
+    enabled: fontsReady,
     foreground: theme.palette.text.primary,
     onReady: (terminal) => {
       if (!isOpen) return;
@@ -101,89 +205,82 @@ const TerminalXTerm = () => {
     terminal.focus();
   };
 
+  const adjustFontSize = (delta: number) => {
+    setConfigFontSize((prev) =>
+      Math.min(MAX_FONT, Math.max(MIN_FONT, (prev ?? DEFAULT_FONT) + delta)),
+    );
+  };
+
   return (
     <div
       style={{
         height: "100%",
         width: "100%",
-        background: theme.palette.background.default,
         display: "flex",
         flexDirection: "column",
+        minHeight: 0,
       }}
     >
-      {/* HEADER BAR */}
+      {/* Route actions: right-aligned icon row, same shape as the tab-strip
+          actions on other routes. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          padding: `${theme.spacing(1)} ${theme.spacing(3)}`,
-          minHeight: 64,
-          backgroundColor:
-            theme.palette.mode === "light"
-              ? theme.darken(theme.sidebar.background, 0.13)
-              : theme.lighten(theme.sidebar.background, 0.06),
-          boxShadow: shadowSm,
+          justifyContent: "flex-end",
+          flexShrink: 0,
+          marginBottom: 8,
         }}
       >
-        {/* Font Size Controls */}
-        <AppTypography
-          color="text.secondary"
-          fontWeight={500}
-          style={{ marginRight: 8 }}
-          variant="body2"
-        >
-          Font
-        </AppTypography>
-        <AppIconButton
-          aria-label="Decrease terminal font size"
-          onClick={() => setFontSize((f) => Math.max(MIN_FONT, f - 1))}
-          size="small"
-          style={{ color: "var(--app-palette-text-secondary)" }}
-        >
-          <Icon height={18} icon="mdi:minus" width={18} />
-        </AppIconButton>
+        <AppActionIconButton
+          disabled={fontSize <= MIN_FONT}
+          icon="mdi:format-font-size-decrease"
+          iconSize={20}
+          label="Decrease font size"
+          onClick={() => adjustFontSize(-1)}
+        />
         <AppTypography
           align="center"
           color="text.secondary"
-          style={{ minWidth: 28 }}
+          style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
           variant="body2"
         >
           {fontSize}
         </AppTypography>
-        <AppIconButton
-          aria-label="Increase terminal font size"
-          onClick={() => setFontSize((f) => Math.min(MAX_FONT, f + 1))}
-          size="small"
-          style={{ color: "var(--app-palette-text-secondary)" }}
-        >
-          <Icon height={18} icon="mdi:plus" width={18} />
-        </AppIconButton>
-
-        <div style={{ flex: 1 }} />
-
-        {/* Reset Button */}
-        <AppIconButton
-          aria-label="Reset terminal"
+        <AppActionIconButton
+          disabled={fontSize >= MAX_FONT}
+          icon="mdi:format-font-size-increase"
+          iconSize={20}
+          label="Increase font size"
+          onClick={() => adjustFontSize(1)}
+        />
+        <AppActionIconButton
+          icon="mdi:restart"
+          iconSize={20}
+          label="Reset terminal"
           onClick={handleReset}
-          size="small"
-          style={{ color: "var(--app-palette-text-secondary)", marginLeft: 8 }}
-          title="Reset Terminal"
-        >
-          <Icon height={18} icon="mdi:restart" width={18} />
-        </AppIconButton>
+        />
       </div>
       {/* TERMINAL */}
       <div
-        className="my-terminal-root"
-        onContextMenu={handleContextMenu}
-        ref={termRef}
         style={{
           flex: 1,
-          overflow: "hidden",
-          borderRadius: "0 0 16px 16px",
+          minHeight: 0,
+          display: "flex",
+          padding: 12,
+          borderRadius: cardBorderRadius,
+          border: `1px solid ${theme.palette.divider}`,
           background: theme.palette.background.default,
+          boxShadow: shadowSm,
+          overflow: "hidden",
         }}
-      />
+      >
+        <div
+          onContextMenu={handleContextMenu}
+          ref={termRef}
+          style={{ flex: 1, minWidth: 0, overflow: "hidden" }}
+        />
+      </div>
       <TerminalContextMenu
         contextMenu={contextMenu}
         onClose={handleCloseContextMenu}

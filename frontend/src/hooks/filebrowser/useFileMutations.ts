@@ -2,11 +2,11 @@ import { useCallback, useState } from "react";
 
 import {
   type ActionSourceDestinationRequest,
-  type ChmodProgress,
-  type DeleteProgress,
+  type CountProgress,
   type FileBatchResult,
   type FileChmodBatchRequest,
   type FileExtractRequest,
+  type FileProgress,
   type TaskProgress,
   linuxio,
   useCallMutation,
@@ -67,10 +67,12 @@ export const useFileMutations = ({
     null,
   );
   const [renamePending, setRenamePending] = useState(false);
+  const [renameProgress, setRenameProgress] =
+    useState<TaskProgress<FileProgress> | null>(null);
   const [deleteProgress, setDeleteProgress] =
-    useState<TaskProgress<DeleteProgress> | null>(null);
+    useState<TaskProgress<CountProgress> | null>(null);
   const [permissionsProgress, setPermissionsProgress] =
-    useState<TaskProgress<ChmodProgress> | null>(null);
+    useState<TaskProgress<CountProgress> | null>(null);
   const toast = useScopedToast(FILES_TOAST_META);
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundTaskActions();
@@ -249,14 +251,28 @@ export const useFileMutations = ({
     [changePermissionsAction],
   );
 
-  const renameMutation = linuxio.filebrowser.resource_patch.useTaskAction({
-    success: () => {
-      invalidateListing();
-      toast.success("Item renamed successfully");
+  // Renames are usually an atomic rename(2), but the backend falls back to
+  // copy+delete and reports byte progress; surface it for that slow path.
+  const renameMutation = linuxio.filebrowser.resource_patch.useTaskStreamAction(
+    {
+      closeMessage: "Rename task stream closed before completion",
+      onProgress: setRenameProgress,
+      success: () => {
+        setRenameProgress(null);
+        invalidateListing();
+        toast.success("Item renamed successfully");
+      },
+      error: (error) => {
+        setRenameProgress(null);
+        toast.error(getMutationErrorMessage(error, "Failed to rename item"));
+      },
     },
-    error: "Failed to rename item",
-    toast: FILES_TOAST_META,
-  });
+  );
+  // TanStack Query mutation result objects are recreated on renders. Keep the
+  // callback dependency scoped to the stable mutation function so unrelated
+  // parent updates (for example, selection changes) do not invalidate every
+  // directory item's rename handler.
+  const { mutateAsync: renameAsync } = renameMutation;
 
   const renameItem = useCallback(
     async ({ from, destination }: RenamePayload) => {
@@ -270,11 +286,10 @@ export const useFileMutations = ({
       };
       if (renamePending) return;
       setRenamePending(true);
-      await renameMutation
-        .mutateAsync(request)
-        .finally(() => setRenamePending(false));
+      setRenameProgress(null);
+      await renameAsync(request).finally(() => setRenamePending(false));
     },
-    [renameMutation, renamePending],
+    [renameAsync, renamePending],
   );
 
   // Transfers never overwrite silently: pre-check the landing paths and ask
@@ -380,5 +395,6 @@ export const useFileMutations = ({
     moveItems,
     renameItem,
     renamePending,
+    renameProgress,
   };
 };

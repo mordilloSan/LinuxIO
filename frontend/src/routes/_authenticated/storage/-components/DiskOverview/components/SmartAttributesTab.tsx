@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppTypography from "@/components/ui/AppTypography";
 
 import type { SmartAttribute, SmartData } from "../types";
@@ -234,6 +234,7 @@ export const SmartAttributesTab = ({
           data={rows}
           density="compact"
           emptyMessage="No SMART attributes available for this drive."
+          fillAvailable={false}
           getRowId={(row) => row.id}
           maxHeight={400}
           variant="embedded"
@@ -250,6 +251,7 @@ export const SmartAttributesTab = ({
         data={ataAttrs}
         density="compact"
         emptyMessage="No SMART attributes available for this drive."
+        fillAvailable={false}
         getRowId={(attr) => String(attr.id)}
         maxHeight={400}
         variant="embedded"

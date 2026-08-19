@@ -31,8 +31,7 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.NetworkInterface, error) {
-	result, err := GetNetworkInfo(ctx)
-	return networkInterfacesToAPI(result), err
+	return GetNetworkInfo(ctx)
 }
 
 func handleGetInterfaceStats(ctx context.Context, _ apischema.NoRequest) ([]apischema.InterfaceStats, error) {

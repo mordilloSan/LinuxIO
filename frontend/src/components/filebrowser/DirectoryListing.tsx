@@ -36,6 +36,7 @@ interface DirectoryListingProps {
   onStartRename: () => void;
   renamingPath: string | null;
   renamePendingPath?: string | null;
+  renameProgressPct?: number;
   resource: FileResource;
   selectedPaths: Set<string>;
   showHiddenFiles: boolean;
@@ -59,6 +60,7 @@ const DirectoryListing = ({
   onDelete,
   renamingPath,
   renamePendingPath,
+  renameProgressPct,
   onStartRename,
   onConfirmRename,
   onCancelRename,
@@ -163,6 +165,7 @@ const DirectoryListing = ({
 
   // Combine all items for keyboard navigation
   const allItems = useMemo(() => [...folders, ...files], [folders, files]);
+  const allItemsRef = useLatestRef(allItems);
 
   // Use keyboard navigation hook
   useFileListKeyboardNavigation({
@@ -204,16 +207,17 @@ const DirectoryListing = ({
 
   const focusItemByPath = useCallback(
     (path: string) => {
-      const index = allItems.findIndex((item) => item.path === path);
+      const index = allItemsRef.current.findIndex((item) => item.path === path);
       if (index === -1) return;
       focusIndexFromPointer(index);
     },
-    [allItems, focusIndexFromPointer],
+    [allItemsRef, focusIndexFromPointer],
   );
 
   const handleItemSelection = useCallback(
     (event: MouseEvent, path: string) => {
-      const currentIndex = allItems.findIndex((item) => item.path === path);
+      const currentItems = allItemsRef.current;
+      const currentIndex = currentItems.findIndex((item) => item.path === path);
       if (currentIndex === -1) return;
 
       focusItemByPath(path);
@@ -225,7 +229,7 @@ const DirectoryListing = ({
         const next = new Set(selectedPathsRef.current);
 
         for (let i = start; i <= end; i++) {
-          next.add(allItems[i].path);
+          next.add(currentItems[i].path);
         }
         onSelectedPathsChange(next);
         lastSelectedIndexRef.current = currentIndex;
@@ -245,13 +249,15 @@ const DirectoryListing = ({
         lastSelectedIndexRef.current = currentIndex;
       }
     },
-    [focusItemByPath, onSelectedPathsChange, allItems, selectedPathsRef],
+    [allItemsRef, focusItemByPath, onSelectedPathsChange, selectedPathsRef],
   );
 
   const handleItemContextMenu = useCallback(
     (event: MouseEvent, path: string) => {
       event.preventDefault();
-      const currentIndex = allItems.findIndex((item) => item.path === path);
+      const currentIndex = allItemsRef.current.findIndex(
+        (item) => item.path === path,
+      );
       if (currentIndex === -1) return;
 
       focusItemByPath(path);
@@ -260,7 +266,7 @@ const DirectoryListing = ({
       }
       lastSelectedIndexRef.current = currentIndex;
     },
-    [focusItemByPath, onSelectedPathsChange, allItems, selectedPathsRef],
+    [allItemsRef, focusItemByPath, onSelectedPathsChange, selectedPathsRef],
   );
 
   const handleContainerMouseDown = useCallback(
@@ -316,6 +322,7 @@ const DirectoryListing = ({
       onOpenDirectory={onOpenDirectory}
       renamingPath={renamingPath}
       renamePendingPath={renamePendingPath}
+      renameProgressPct={renameProgressPct}
       revealIndex={revealIndex}
       selectedPaths={selectedPaths}
       selectionBox={selectionBox}

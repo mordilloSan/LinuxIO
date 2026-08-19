@@ -5,18 +5,24 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
+
+import "./file-listing.css";
 
 import FileIcon from "@/components/filebrowser/FileIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
+import {
+  getFileEntryBackground,
+  getFileEntryHoverBackground,
+  mixWithTransparency,
+} from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
-
-// Styles are injected by FileCard.tsx (shared animation)
 
 export interface FileListRowProps {
   borderRadius?: number | string;
@@ -38,6 +44,7 @@ export interface FileListRowProps {
   onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
+  renameProgressPct?: number;
   selected?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   size?: number;
@@ -60,6 +67,7 @@ const FileListRow = memo<FileListRowProps>(
     isCut = false,
     isRenaming = false,
     isRenamePending = false,
+    renameProgressPct,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -70,6 +78,7 @@ const FileListRow = memo<FileListRowProps>(
     onConfirmRename,
     onCancelRename,
     borderRadius,
+    disableHover = false,
   }) => {
     const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
@@ -189,35 +198,39 @@ const FileListRow = memo<FileListRowProps>(
       [onDoubleClick],
     );
 
-    const baseBg = useMemo(() => {
-      if (selected) {
-        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
-      }
-      if (hidden) {
-        return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
-      }
-      return theme.fileBrowser.surface;
-    }, [hidden, selected, theme.fileBrowser.surface]);
+    const baseBg = useMemo(
+      () => getFileEntryBackground(theme, { hidden, selected }),
+      [hidden, selected, theme],
+    );
+
+    const hoverBg = useMemo(
+      () => getFileEntryHoverBackground(baseBg),
+      [baseBg],
+    );
 
     const resolvedBorderRadius = borderRadius ?? theme.shape.borderRadius;
 
     return (
       <div
+        className={`file-row hover-lift${disableHover ? " hover-lift--disabled" : ""}`}
         data-file-card="true"
         data-file-path={path}
         onClick={handleClick}
         onContextMenu={onContextMenu}
         onDoubleClick={handleDoubleClick}
-        style={{
-          display: "grid",
-          gridTemplateColumns: COLUMN_TEMPLATE,
-          alignItems: "center",
-          backgroundColor: baseBg,
-          cursor: "pointer",
-          borderRadius: resolvedBorderRadius,
-          userSelect: "none",
-          opacity: isCut ? 0.5 : 1,
-        }}
+        style={
+          {
+            display: "grid",
+            gridTemplateColumns: COLUMN_TEMPLATE,
+            alignItems: "center",
+            "--file-row-bg": baseBg,
+            "--file-row-bg-hover": hoverBg,
+            cursor: "pointer",
+            borderRadius: resolvedBorderRadius,
+            userSelect: "none",
+            opacity: isCut ? 0.5 : 1,
+          } as CSSProperties
+        }
       >
         {/* Name and Icon */}
         <div
@@ -236,6 +249,7 @@ const FileListRow = memo<FileListRowProps>(
         >
           <div style={{ flexShrink: 0 }}>
             <FileIcon
+              className="hover-lift__icon"
               filename={name}
               hidden={hidden}
               isDirectory={isDirectory}
@@ -297,7 +311,15 @@ const FileListRow = memo<FileListRowProps>(
                 </AppTypography>
               )}
               {isRenaming && isRenamePending && (
-                <AppCircularProgress aria-label="Renaming" size={16} />
+                <>
+                  <AppCircularProgress aria-label="Renaming" size={16} />
+                  {/* Only slow copy-fallback renames report a percentage. */}
+                  {renameProgressPct !== undefined && (
+                    <AppTypography color="text.secondary" variant="caption">
+                      {renameProgressPct}%
+                    </AppTypography>
+                  )}
+                </>
               )}
               {showFullPath && (
                 <span
@@ -308,8 +330,14 @@ const FileListRow = memo<FileListRowProps>(
                       ? theme.palette.primary.main
                       : theme.palette.text.secondary,
                     backgroundColor: isDirectory
-                      ? `color-mix(in srgb, var(--app-palette-primary-main), transparent 85%)`
-                      : `color-mix(in srgb, var(--app-palette-text-secondary), transparent 90%)`,
+                      ? mixWithTransparency(
+                          "var(--app-palette-primary-main)",
+                          0.15,
+                        )
+                      : mixWithTransparency(
+                          "var(--app-palette-text-secondary)",
+                          0.1,
+                        ),
                     padding: "2px 6px",
                     borderRadius: "4px",
                     textTransform: "uppercase",
@@ -353,13 +381,7 @@ const FileListRow = memo<FileListRowProps>(
           title={effectiveSizeError?.message}
         >
           {effectiveSizeLoading ? (
-            <span
-              style={{
-                animation: "sizeGlow 2.5s infinite",
-              }}
-            >
-              —
-            </span>
+            <span className="file-size-pending">—</span>
           ) : (
             formattedSize
           )}

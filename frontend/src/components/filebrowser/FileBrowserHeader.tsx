@@ -1,23 +1,21 @@
 import { Icon } from "@iconify/react";
-import { useCallback, useState } from "react";
+import { memo, type ReactNode } from "react";
 
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppMenu from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import ViewModeToggle from "@/components/ui/ViewModeToggle";
-import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
-import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
-import { useCapability } from "@/hooks/useCapabilities";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { shadowSm } from "@/theme/constants";
 
+import FileBrowserHeaderActions from "./FileBrowserHeaderActions";
 import IndexerDialog from "./IndexerDialog";
-import SearchBar from "./SearchBar";
 import type { ViewMode } from "../../types/filebrowser";
 
+const noopSearchChange = () => {};
+
 interface FileBrowserHeaderProps {
+  /** Leading slot for the browsing view — the breadcrumb trail. */
+  breadcrumbs?: ReactNode;
   editingFileName?: string;
   editingFilePath?: string;
   isDirty?: boolean;
@@ -41,39 +39,36 @@ const FileBrowserHeader = ({
   onCloseEditor,
   isSaving = false,
   viewMode,
+  breadcrumbs,
   editingFileName,
   editingFilePath,
   isDirty = false,
   searchQuery = "",
-  onSearchChange = () => {},
+  onSearchChange = noopSearchChange,
 }: FileBrowserHeaderProps) => {
   const theme = useAppTheme();
   const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const [actionsAnchorEl, setActionsAnchorEl] = useState<HTMLElement | null>(
-    null,
-  );
-  const { isEnabled: indexerEnabled, reason: indexerReason } =
-    useCapability("indexerAvailable");
-  const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
-  const isIndexing = useIsIndexing();
-  const handleIndexer = useCallback(() => {
-    setActionsAnchorEl(null);
-    openIndexerDialog();
-    void startIndexer({});
-  }, [openIndexerDialog, startIndexer]);
+  const isBrowsing = !showQuickSave;
+
   return (
     <>
       <div
+        className="file-browser-header"
         style={{
-          display: "flex",
+          display: isBrowsing ? "grid" : "flex",
+          // The desktop columns mirror .tab-selector (tab-selector.css), so
+          // the search sits at the same screen-centered spot here as on tab
+          // routes. Mobile collapses the field into the actions menu, matching
+          // the routed tab headers.
+          gridTemplateColumns: isBrowsing
+            ? isMobile
+              ? "minmax(0, 1fr) auto"
+              : "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(0, 1fr)"
+            : undefined,
+          gap: isBrowsing ? 6 : undefined,
           alignItems: "center",
-          paddingInline: 12,
+          paddingInline: theme.spacing(2),
           minHeight: 64,
-          backgroundColor:
-            theme.palette.mode === "light"
-              ? theme.darken(theme.sidebar.background, 0.13)
-              : theme.lighten(theme.sidebar.background, 0.06),
-          boxShadow: shadowSm,
         }}
       >
         {/* Left section - Status indicator when editing */}
@@ -103,7 +98,7 @@ const FileBrowserHeader = ({
             )}
           </div>
         )}
-        {/* Center section - File info when editing OR search bar when browsing */}
+        {/* Center section - File info when editing OR breadcrumbs + search when browsing */}
         {showQuickSave && editingFileName ? (
           <div
             style={{
@@ -120,225 +115,90 @@ const FileBrowserHeader = ({
             </AppTypography>
           </div>
         ) : (
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
-              display: "flex",
-              justifyContent: "center",
-              marginInline: 8,
-            }}
-          >
-            <SearchBar
-              onChange={onSearchChange}
-              placeholder={
-                isMobile ? "Search..." : "Search files and folders..."
-              }
-              value={searchQuery}
-            />
-          </div>
+          <>
+            <div
+              className="file-browser-header__breadcrumbs"
+              style={{
+                gridColumn: isBrowsing ? 1 : undefined,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                overflow: "hidden",
+              }}
+            >
+              {breadcrumbs}
+            </div>
+            {!isMobile ? (
+              <div
+                className="file-browser-header__search"
+                style={{
+                  flex: 1,
+                  gridColumn: isBrowsing ? 2 : undefined,
+                  minWidth: 0,
+                  display: "flex",
+                  justifyContent: "center",
+                  marginInline: isBrowsing ? 0 : 8,
+                }}
+              >
+                <AppHeaderSearch
+                  onChange={onSearchChange}
+                  placeholder="Search files and folders..."
+                  value={searchQuery}
+                />
+              </div>
+            ) : null}
+          </>
         )}
         {/* Right section - Action buttons */}
         <div
-          className={`header-right quick-actions${isMobile ? " is-mobile" : ""}`}
+          className="file-browser-header__actions"
           style={{
             display: "flex",
-            marginLeft: "auto",
+            alignItems: "center",
+            gridColumn: isBrowsing ? (isMobile ? 2 : 3) : undefined,
+            justifySelf: isBrowsing ? "end" : undefined,
+            marginLeft: isBrowsing ? 0 : "auto",
           }}
         >
-          <div
-            className="quick-actions-group"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4em",
-            }}
-          >
-            {showQuickSave && (
-              <>
-                <AppTooltip title="Close editor">
-                  <AppIconButton
-                    aria-label="Close editor"
-                    disabled={isSaving || !onCloseEditor}
-                    onClick={onCloseEditor}
-                  >
-                    <Icon height={22} icon="mdi:close" width={22} />
-                  </AppIconButton>
-                </AppTooltip>
+          {showQuickSave && (
+            <>
+              <AppTooltip title="Close editor">
+                <AppIconButton
+                  aria-label="Close editor"
+                  disabled={isSaving || !onCloseEditor}
+                  onClick={onCloseEditor}
+                >
+                  <Icon height={22} icon="mdi:close" width={22} />
+                </AppIconButton>
+              </AppTooltip>
 
-                <AppTooltip title="Save changes">
-                  <AppIconButton
-                    aria-label="Save changes"
-                    disabled={isSaving || !onSaveFile}
-                    onClick={onSaveFile}
-                  >
-                    <Icon height={22} icon="mdi:content-save" width={22} />
-                  </AppIconButton>
-                </AppTooltip>
-              </>
-            )}
+              <AppTooltip title="Save changes">
+                <AppIconButton
+                  aria-label="Save changes"
+                  disabled={isSaving || !onSaveFile}
+                  onClick={onSaveFile}
+                >
+                  <Icon height={22} icon="mdi:content-save" width={22} />
+                </AppIconButton>
+              </AppTooltip>
+            </>
+          )}
 
-            {!showQuickSave && (
-              <>
-                {isMobile ? (
-                  <>
-                    <AppIconButton
-                      aria-label="Actions"
-                      onClick={(e) => setActionsAnchorEl(e.currentTarget)}
-                      size="small"
-                    >
-                      <Icon height={20} icon="mdi:tune" width={20} />
-                    </AppIconButton>
-                    <AppMenu
-                      anchorEl={actionsAnchorEl}
-                      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                      minWidth="unset"
-                      onClose={() => setActionsAnchorEl(null)}
-                      open={Boolean(actionsAnchorEl)}
-                      transformOrigin={{ vertical: "top", horizontal: "right" }}
-                    >
-                      <div
-                        style={{ display: "flex", gap: 8, padding: "4px 8px" }}
-                      >
-                        <ViewModeToggle
-                          alternateMode="list"
-                          onViewModeChange={() => {
-                            setActionsAnchorEl(null);
-                            onSwitchView();
-                          }}
-                          viewMode={viewMode}
-                        />
-                        <AppTooltip
-                          title={
-                            showHiddenFiles
-                              ? "Hide hidden files"
-                              : "Show hidden files"
-                          }
-                        >
-                          <AppIconButton
-                            aria-label={
-                              showHiddenFiles
-                                ? "Hide hidden files"
-                                : "Show hidden files"
-                            }
-                            onClick={() => {
-                              setActionsAnchorEl(null);
-                              onToggleHiddenFiles();
-                            }}
-                          >
-                            {showHiddenFiles ? (
-                              <Icon height={22} icon="mdi:eye" width={22} />
-                            ) : (
-                              <Icon height={22} icon="mdi:eye-off" width={22} />
-                            )}
-                          </AppIconButton>
-                        </AppTooltip>
-                        <AppTooltip
-                          title={
-                            isIndexing
-                              ? "Indexing..."
-                              : !indexerEnabled
-                                ? indexerReason
-                                : "Index filesystem"
-                          }
-                        >
-                          <span>
-                            <AppIconButton
-                              aria-label="Index filesystem"
-                              disabled={isIndexing || !indexerEnabled}
-                              onClick={handleIndexer}
-                            >
-                              {isIndexing ? (
-                                <AppCircularProgress size={24} />
-                              ) : (
-                                <Icon
-                                  height={22}
-                                  icon="mdi:sync"
-                                  style={{
-                                    color: !indexerEnabled
-                                      ? theme.palette.text.disabled
-                                      : "inherit",
-                                  }}
-                                  width={22}
-                                />
-                              )}
-                            </AppIconButton>
-                          </span>
-                        </AppTooltip>
-                      </div>
-                    </AppMenu>
-                  </>
-                ) : (
-                  <>
-                    <ViewModeToggle
-                      alternateMode="list"
-                      onViewModeChange={onSwitchView}
-                      viewMode={viewMode}
-                    />
-                    <AppTooltip
-                      title={
-                        showHiddenFiles
-                          ? "Hide hidden files"
-                          : "Show hidden files"
-                      }
-                    >
-                      <AppIconButton
-                        aria-label={
-                          showHiddenFiles
-                            ? "Hide hidden files"
-                            : "Show hidden files"
-                        }
-                        onClick={onToggleHiddenFiles}
-                      >
-                        {showHiddenFiles ? (
-                          <Icon height={22} icon="mdi:eye" width={22} />
-                        ) : (
-                          <Icon height={22} icon="mdi:eye-off" width={22} />
-                        )}
-                      </AppIconButton>
-                    </AppTooltip>
-                    <AppTooltip
-                      title={
-                        isIndexing
-                          ? "Indexing..."
-                          : !indexerEnabled
-                            ? indexerReason
-                            : "Index filesystem"
-                      }
-                    >
-                      <span>
-                        <AppIconButton
-                          aria-label="Index filesystem"
-                          disabled={isIndexing || !indexerEnabled}
-                          onClick={handleIndexer}
-                          style={{ position: "relative" }}
-                        >
-                          {isIndexing ? (
-                            <AppCircularProgress size={24} />
-                          ) : (
-                            <Icon
-                              height={22}
-                              icon="mdi:sync"
-                              style={{
-                                color: !indexerEnabled
-                                  ? theme.palette.text.disabled
-                                  : "inherit",
-                              }}
-                              width={22}
-                            />
-                          )}
-                        </AppIconButton>
-                      </span>
-                    </AppTooltip>
-                  </>
-                )}
-              </>
-            )}
-          </div>
+          {!showQuickSave && (
+            <FileBrowserHeaderActions
+              isMobile={isMobile}
+              onSearchChange={onSearchChange}
+              onSwitchView={onSwitchView}
+              onToggleHiddenFiles={onToggleHiddenFiles}
+              searchQuery={isMobile ? searchQuery : ""}
+              showHiddenFiles={showHiddenFiles}
+              viewMode={viewMode}
+            />
+          )}
         </div>
       </div>
       <IndexerDialog />
     </>
   );
 };
-export default FileBrowserHeader;
+export default memo(FileBrowserHeader);

@@ -1,5 +1,4 @@
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
-import AppTypography from "@/components/ui/AppTypography";
 import type { TerminalContextMenuPosition } from "@/hooks/useTerminalContextMenu";
 
 interface TerminalContextMenuProps {
@@ -27,32 +26,12 @@ function TerminalContextMenu({
       onClose={onClose}
       open={contextMenu !== null}
     >
-      <AppMenuItem
-        endAdornment={
-          <AppTypography
-            color="text.secondary"
-            style={{ marginLeft: 8 }}
-            variant="body2"
-          >
-            Ctrl+Shift+C
-          </AppTypography>
-        }
-        onClick={onCopy}
-      >
+      {/* The end slot already renders shortcut hints muted and a size down
+          from the label, so they need no typography of their own. */}
+      <AppMenuItem endAdornment="Ctrl+Shift+C" onClick={onCopy}>
         Copy
       </AppMenuItem>
-      <AppMenuItem
-        endAdornment={
-          <AppTypography
-            color="text.secondary"
-            style={{ marginLeft: 8 }}
-            variant="body2"
-          >
-            Ctrl+Shift+V
-          </AppTypography>
-        }
-        onClick={onPaste}
-      >
+      <AppMenuItem endAdornment="Ctrl+Shift+V" onClick={onPaste}>
         Paste
       </AppMenuItem>
     </AppMenu>

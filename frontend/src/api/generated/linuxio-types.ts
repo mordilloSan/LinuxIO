@@ -136,13 +136,17 @@ export interface AppConfig {
 
 export interface AppSettings {
   chunkSizeMB?: number;
+  dockTileColors?: DockTileColors;
+  dockAccentGradient?: ConfigDockAccentGradient;
   dockerDashboardSections?: ConfigDockerDashboardSections;
   hardwareSections?: ConfigHardwareSections;
   hiddenCards?: string[];
   layoutOrders?: Record<string, string[]>;
+  navigationMode?: NavigationMode;
   primaryColor: string;
   showHiddenFiles: boolean;
   sidebarCollapsed: boolean;
+  terminalFontSize?: number;
   theme: Theme;
   themeColors?: ConfigThemeColorsByModePayload;
   viewModes?: Record<string, TableCardViewMode>;
@@ -153,7 +157,21 @@ export interface AppUpdateRequest {
   version?: string;
 }
 
+export type AutoUpdateBackend =
+  | "apt-unattended"
+  | "mintupdate-automation"
+  | "dnf-automatic"
+  | "dnf5-automatic";
+
 export type AutoUpdateFrequency = "hourly" | "daily" | "weekly";
+
+export interface AutoUpdateOptionSupport {
+  download_only: boolean;
+  exclude_packages: boolean;
+  frequencies: AutoUpdateFrequency[];
+  reboot_policies: AutoUpdateRebootPolicy[];
+  scopes: AutoUpdateScope[];
+}
 
 export interface AutoUpdateOptions {
   download_only: boolean;
@@ -173,9 +191,11 @@ export type AutoUpdateRebootPolicy =
 export type AutoUpdateScope = "security" | "updates" | "all";
 
 export interface AutoUpdateState {
-  backend: string;
+  backend: AutoUpdateBackend;
+  can_configure: boolean;
   notes?: string[];
   options: AutoUpdateOptions;
+  support: AutoUpdateOptionSupport;
 }
 
 export interface AvgStat {
@@ -304,12 +324,6 @@ export interface ChangePasswordRequest {
   password: string;
 }
 
-export interface ChmodProgress {
-  processed: number;
-  phase?: string;
-  indeterminate?: boolean;
-}
-
 export interface ComposeActionResult {
   message: string;
   output: string;
@@ -372,6 +386,9 @@ export interface ConfigAppSettingsPayload {
   primaryColor?: string;
   themeColors?: ConfigThemeColorsByModePayload;
   sidebarCollapsed?: boolean;
+  navigationMode?: string;
+  dockTileColors?: string;
+  dockAccentGradient?: ConfigDockAccentGradient;
   showHiddenFiles?: boolean;
   hiddenCards?: string[];
   dockerDashboardSections?: ConfigDockerDashboardSections;
@@ -379,11 +396,19 @@ export interface ConfigAppSettingsPayload {
   viewModes?: Record<string, string>;
   layoutOrders?: Record<string, string[]>;
   chunkSizeMB?: number;
+  terminalFontSize?: number;
 }
 
 export interface ConfigDismissalsPayload {
   uncleanShutdownBootId?: string;
   failedLoginAlertId?: string;
+}
+
+export interface ConfigDockAccentGradient {
+  startColor?: string;
+  endColor?: string;
+  rangeStart: number;
+  rangeEnd: number;
 }
 
 export interface ConfigDockerDashboardSections {
@@ -539,6 +564,14 @@ export interface ContentRequest {
   content: string;
 }
 
+export interface CountProgress {
+  processed: number;
+  total: number;
+  pct: number;
+  phase?: string;
+  indeterminate?: boolean;
+}
+
 export interface CreateGroupRequest {
   name: string;
   gid?: number;
@@ -558,14 +591,6 @@ export interface CreateUserRequest {
   shell?: string;
   groups?: string[];
   createHome?: boolean;
-}
-
-export interface DeleteProgress {
-  processed: number;
-  total: number;
-  pct: number;
-  phase?: string;
-  indeterminate?: boolean;
 }
 
 export interface DeleteStackRequest {
@@ -639,6 +664,8 @@ export interface Dismissals {
   uncleanShutdownBootId?: string;
 }
 
+export type DockTileColors = "accent" | "mono" | "neutral" | "vibrant";
+
 export interface DockerComposeRequest {
   action: string;
   projectName: string;
@@ -651,8 +678,11 @@ export interface DockerContainerAutoUpdateOptions {
   cleanup: boolean;
   container_names: string[];
   enabled: boolean;
+  include_stopped: boolean;
   mode: DockerContainerAutoUpdateMode;
+  revive_stopped: boolean;
   time: string;
+  update_stopped: boolean;
 }
 
 export interface DockerContainerAutoUpdateState {
@@ -948,12 +978,6 @@ export interface FileCompressResult {
   format: string;
 }
 
-export interface FileDownloadResult {
-  path: string;
-  size: number;
-  fileName: string;
-}
-
 export interface FileExtractRequest {
   archivePath: string;
   destination?: string;
@@ -963,15 +987,12 @@ export interface FileExtractResult {
   destination: string;
 }
 
-export interface FileOperationResult {
-  message: string;
-}
-
 export interface FileProgress {
   bytes: number;
   total: number;
   pct: number;
   phase?: string;
+  indeterminate?: boolean;
 }
 
 export interface FileResourceGetRequest {
@@ -1403,8 +1424,8 @@ export interface MonitoringCPUHistoryPoint {
 
 export interface MonitoringConfig {
   allow_remote_commands: boolean;
-  cache_ttl: Record<string, string>;
   collector_interval: string;
+  history_retention: string;
   smart_refresh_interval: string;
   history: string;
   listeners: MonitoringListener[];
@@ -1412,8 +1433,8 @@ export interface MonitoringConfig {
 }
 
 export interface MonitoringConfigMeta {
-  cache_ttl: Record<string, string>;
   collector_interval: string;
+  history_retention: string;
   history_plugins: string[];
   path: string;
   source: string;
@@ -1424,7 +1445,7 @@ export interface MonitoringConfigPatch {
   collector_interval?: string;
   smart_refresh_interval?: string;
   history?: string;
-  cache_ttl?: Record<string, string>;
+  history_retention?: string;
   allow_remote_commands?: boolean;
   listeners?: MonitoringListener[];
 }
@@ -1444,6 +1465,7 @@ export interface MonitoringHistoryRequest {
   resolution: MonitoringHistoryResolution;
   from_ms?: number;
   to_ms?: number;
+  window_ms?: number;
   limit?: number;
 }
 
@@ -1577,19 +1599,39 @@ export interface NameRequest {
   name: string;
 }
 
+export type NavigationMode = "sidebar" | "dock";
+
 export interface NetworkInterface {
+  carrier?: boolean;
+  config_backend?: string;
+  counters: NetworkInterfaceCounters;
   dns: string[];
+  driver?: string;
   duplex: string;
   gateway: string;
   ipv4: string[];
   ipv4_method?: string;
+  log_unit?: string;
   mac: string;
+  mtu: number;
   name: string;
+  operstate: string;
   rx_speed: number;
   speed: string;
   state: number;
   tx_speed: number;
   type: string;
+}
+
+export interface NetworkInterfaceCounters {
+  rx_bytes: number;
+  rx_dropped: number;
+  rx_errors: number;
+  rx_packets: number;
+  tx_bytes: number;
+  tx_dropped: number;
+  tx_errors: number;
+  tx_packets: number;
 }
 
 export interface OfflineUpdatesResponse {
@@ -1842,11 +1884,6 @@ export interface Socket {
 
 export interface StackNameRequest {
   stackName: string;
-}
-
-export interface StorageCreateLVResult {
-  success: boolean;
-  path: string;
 }
 
 export interface StorageMountResult {
@@ -2105,15 +2142,6 @@ export interface UpdatesFastResponse {
   updates?: UpdateItem[];
 }
 
-export interface UpdatesSetAutoUpdatesRequest {
-  enabled: boolean;
-  frequency: string;
-  scope: string;
-  download_only: boolean;
-  reboot_policy: string;
-  exclude_packages: string[];
-}
-
 export interface UpgradeItem {
   package: string;
   version?: string;
@@ -2223,6 +2251,12 @@ export interface ValidateComposeError {
   field?: string;
   message: string;
   type: ValidationIssueType;
+}
+
+export interface ValidateComposeRequest {
+  content: string;
+  envContent?: string;
+  workingDir?: string;
 }
 
 export interface ValidateComposeResponse {
@@ -2568,8 +2602,8 @@ export interface LinuxIOSchema {
       progress: TaskProgress<DockerContainerUpdateProgress>;
     };
     validate_compose: {
-      input: [content: string];
-      request: ContentRequest;
+      input: [request: ValidateComposeRequest];
+      request: ValidateComposeRequest;
       result: ValidateComposeResponse;
     };
     validate_stack_directory: {
@@ -2590,7 +2624,7 @@ export interface LinuxIOSchema {
       input: [request: FileChmodBatchRequest];
       request: FileChmodBatchRequest;
       result: FileBatchResult;
-      progress: TaskProgress<ChmodProgress>;
+      progress: TaskProgress<CountProgress>;
     };
     compress: {
       input: [request: FileCompressRequest];
@@ -2608,18 +2642,12 @@ export interface LinuxIOSchema {
       input: [paths: string[]];
       request: BatchPathRequest;
       result: FileBatchResult;
-      progress: TaskProgress<DeleteProgress>;
+      progress: TaskProgress<CountProgress>;
     };
     dir_size: {
       input: [path: string];
       request: PathRequest;
       result: DirectorySizeData;
-    };
-    download: {
-      input: [path: string];
-      request: PathRequest;
-      result: FileDownloadResult;
-      progress: TaskProgress<FileProgress>;
     };
     exists_batch: {
       input: [paths: string[]];
@@ -2653,7 +2681,7 @@ export interface LinuxIOSchema {
     resource_patch: {
       input: [request: ActionSourceDestinationRequest];
       request: ActionSourceDestinationRequest;
-      result: FileOperationResult;
+      result: MessageResponse;
       progress: TaskProgress<FileProgress>;
     };
     resource_post: {
@@ -2857,7 +2885,7 @@ export interface LinuxIOSchema {
     create_lv: {
       input: [request: CreateLogicalVolumeRequest];
       request: CreateLogicalVolumeRequest;
-      result: StorageCreateLVResult;
+      result: SuccessPathResponse;
     };
     delete_lv: {
       input: [request: VolumeGroupLogicalVolumeRequest];
@@ -3084,8 +3112,8 @@ export interface LinuxIOSchema {
     get_updates_basic: { input: []; request: void; result: Update[] };
     refresh_cache: { input: []; request: void; result: SuccessResponse };
     set_auto_updates: {
-      input: [request: UpdatesSetAutoUpdatesRequest];
-      request: UpdatesSetAutoUpdatesRequest;
+      input: [request: AutoUpdateOptions];
+      request: AutoUpdateOptions;
       result: AutoUpdateState;
     };
   };
@@ -3310,7 +3338,7 @@ export interface LinuxIOCallSchema {
     result: DockerSystemPruneResponse;
   };
   "docker.validate_compose": {
-    request: ContentRequest;
+    request: ValidateComposeRequest;
     result: ValidateComposeResponse;
   };
   "docker.validate_stack_directory": {
@@ -3427,7 +3455,7 @@ export interface LinuxIOCallSchema {
   };
   "storage.create_lv": {
     request: CreateLogicalVolumeRequest;
-    result: StorageCreateLVResult;
+    result: SuccessPathResponse;
   };
   "storage.delete_lv": {
     request: VolumeGroupLogicalVolumeRequest;
@@ -3533,7 +3561,7 @@ export interface LinuxIOCallSchema {
   "updates.get_updates_basic": { request: void; result: Update[] };
   "updates.refresh_cache": { request: void; result: SuccessResponse };
   "updates.set_auto_updates": {
-    request: UpdatesSetAutoUpdatesRequest;
+    request: AutoUpdateOptions;
     result: AutoUpdateState;
   };
   "virt.delete": { request: VMDeleteRequest; result: VMDeleteResult };
@@ -3629,6 +3657,7 @@ export interface LinuxIOStreamSchema {
   "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.normalize_compose": ContentRequest;
+  "filebrowser.download_stream": PathRequest;
   "logs.general.follow": GeneralLogsFollowRequest;
   "logs.service.follow": ServiceLogsFollowRequest;
   "system.get_services": void;

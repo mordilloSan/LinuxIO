@@ -4,6 +4,43 @@
     "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol";
+  /* Shared chrome for lightweight floating surfaces. Keep dock labels,
+     tooltips, and popovers visually aligned without imposing tooltip-sized
+     typography or padding on richer panel content. */
+  --app-floating-surface-radius: 8px;
+  --app-floating-surface-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.5);
+  /* One step up in scale, for floating surfaces that carry a header and a list
+     of rows. An 8px corner reads as a chamfer once a surface is 380px wide, so
+     panels take the dock tile's rounding, over a deeper shadow and the same lit
+     top edge the tiles have. */
+  --app-floating-panel-radius: 16px;
+  --app-floating-panel-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 2px 6px -2px rgba(0, 0, 0, 0.25), 0 20px 44px -16px rgba(0, 0, 0, 0.55);
+  /* The dock tile's face: lit from above, shaded along the bottom lip. Anything
+     meant to read as a dock icon reuses this and adds its own ground shadow,
+     because that one scales with the tile while the gloss does not. */
+  --app-tile-radius: 26%;
+  --app-tile-gloss:
+    inset 0 1px 1px rgba(255, 255, 255, 0.4),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.15);
+  /* The one scrim color, drawn behind dialogs and the mobile sidebar. */
+  --app-backdrop-overlay: rgba(0, 0, 0, 0.5);
+  /* Stock MUI elevation shadows kept by the app-* controls that replaced
+     their MUI counterparts: 1 switch thumb, 4 raised button hover, 8 select
+     menu, 24 dialog paper. */
+  --app-elevation-1:
+    0 2px 1px -1px rgba(0, 0, 0, 0.2), 0 1px 1px 0 rgba(0, 0, 0, 0.14),
+    0 1px 3px 0 rgba(0, 0, 0, 0.12);
+  --app-elevation-4:
+    0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 4px 5px 0 rgba(0, 0, 0, 0.14),
+    0 1px 10px 0 rgba(0, 0, 0, 0.12);
+  --app-elevation-8:
+    0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14),
+    0 3px 14px 2px rgba(0, 0, 0, 0.12);
+  --app-elevation-24:
+    0 11px 15px -7px rgba(0, 0, 0, 0.2), 0 24px 38px 3px rgba(0, 0, 0, 0.14),
+    0 9px 46px 8px rgba(0, 0, 0, 0.12);
   /* Kept in sync with FONT_FAMILY_MONO in theme/index.ts — see font-loading
      tests. Machine values (paths, addresses, port maps) use this; prose does
      not. */
@@ -90,6 +127,84 @@ a {
   opacity: 1;
 }
 
+/* Hover timing for anything card-shaped. Entering runs on the dock's
+   magnification spring, so a card and a dock tile accelerate and settle
+   identically; leaving runs on a plain, shorter ease-out, because sweeping the
+   cursor across a grid otherwise drags a trail of cards still easing back down.
+
+   That asymmetry lives in these two properties, which the state rules below
+   swap, rather than in a transition declaration — being properties is what lets
+   the timing reach a card that styles itself inline, since an inline
+   `transition` outranks any rule here. A card that times something of its own
+   alongside the lift — a border, a margin — declares its own transition and
+   reuses them.
+
+   They resolve at the root so those references still work on a card that lifts
+   only conditionally (hoverLift={!isSelected}); without the class, its own
+   transition would be left referencing undefined properties, which invalidates
+   the whole declaration. */
+:root {
+  --hover-lift-duration: var(--app-transition-duration-fast);
+  --hover-lift-ease: ease-out;
+}
+
+/* Consumers own their own depth (shadow, border, background) and just let it
+   ride these transitions; only the geometry is shared, tunable per card through
+   the custom properties below. Large cards should drop --hover-lift-scale to 1
+   — a percentage of a 220px card is a much bigger jump than of a 60px one. */
+.hover-lift {
+  --hover-lift-y: -3px;
+  --hover-lift-scale: 1.02;
+  --hover-lift-press-scale: 0.99;
+  transition:
+    transform var(--hover-lift-duration) var(--hover-lift-ease),
+    box-shadow var(--hover-lift-duration) var(--hover-lift-ease),
+    border-color var(--hover-lift-duration) var(--hover-lift-ease);
+}
+
+.hover-lift:hover {
+  --hover-lift-duration: var(--app-transition-duration-lift);
+  --hover-lift-ease: var(--app-easing-spring);
+  transform: translateY(var(--hover-lift-y)) scale(var(--hover-lift-scale));
+}
+
+/* Pressing overrides the hover lift, so it has to come after it. */
+.hover-lift:active {
+  --hover-lift-duration: 100ms;
+  --hover-lift-ease: ease-out;
+  transform: scale(var(--hover-lift-press-scale));
+}
+
+/* An icon growing inside the lifting card is what sells the depth — the dock
+   gets the same effect for free, since its icons scale with the tile. The
+   timing comes from the card, which the icon inherits. */
+.hover-lift__icon {
+  transition: transform var(--hover-lift-duration) var(--hover-lift-ease);
+}
+
+.hover-lift:hover .hover-lift__icon {
+  transform: scale(1.06);
+}
+
+/* Suppressed while a gesture owns the pointer (marquee selection), where cards
+   under the cursor are being swept, not hovered. */
+.hover-lift--disabled:hover,
+.hover-lift--disabled:active,
+.hover-lift--disabled:hover .hover-lift__icon {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hover feedback stays, as the consumer's shadow and border — those are not
+     movement. Only the geometry goes away, which also leaves nothing for the
+     swapped durations to animate. */
+  .hover-lift:hover,
+  .hover-lift:active,
+  .hover-lift:hover .hover-lift__icon {
+    transform: none;
+  }
+}
+
 .log-identifier-link {
   cursor: pointer;
 }
@@ -98,6 +213,28 @@ a {
   text-decoration: underline;
   text-decoration-color: var(--app-palette-text-secondary);
   text-underline-offset: 3px;
+}
+
+/* Focus and its presentation have separate ownership. The browser may keep a
+   pointer-focused element active across Escape presses and window returns, so
+   native :focus-visible alone can paint a stale ring. Only an explicit Tab
+   press opts into navigation rings; pointer input and window loss clear that
+   intent in tabNavigation.ts. This fallback also covers native controls that
+   do not have an app-owned ring yet. */
+:root:not([data-tab-navigation]) :focus-visible {
+  outline: none;
+}
+
+:root[data-tab-navigation] .log-identifier-link:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+/* The standard focus ring for focusable elements that have no stylesheet of
+   their own (inline-styled links, wrapper divs given tabIndex). */
+:root[data-tab-navigation] .app-focus-ring:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
 }
 
 /* App-owned side effects. */
@@ -126,12 +263,21 @@ a {
   --custom-scrollbar-thumb: var(--custom-scrollbar-thumb-hover);
 }
 
-.custom-scrollbar::-webkit-scrollbar {
+/* `.custom-scrollbar` styles the element it sits on. Pair it with
+   `.custom-scrollbar-nested` to style every scroller *inside* that element as
+   well — for third-party widgets (the devtools panels) whose scroll panes are
+   library-owned DOM we cannot put a class on. The class is repeated in those
+   selectors so they outrank the CSS-in-JS rules such widgets inject into the
+   head when they mount, which land after this stylesheet and would otherwise
+   win the tie on source order. */
+.custom-scrollbar::-webkit-scrollbar,
+.custom-scrollbar-nested.custom-scrollbar-nested *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-button {
+.custom-scrollbar::-webkit-scrollbar-button,
+.custom-scrollbar-nested.custom-scrollbar-nested *::-webkit-scrollbar-button {
   display: none;
   width: 0;
   height: 0;
@@ -140,13 +286,15 @@ a {
 /* Firefox-only fallback. Setting scrollbar-width on Chrome 121+ makes it
    ignore the ::-webkit-scrollbar rules and fall back to the GTK theme. */
 @supports not selector(::-webkit-scrollbar) {
-  .custom-scrollbar {
+  .custom-scrollbar,
+  .custom-scrollbar-nested * {
     scrollbar-width: thin;
     scrollbar-color: var(--custom-scrollbar-thumb) transparent;
   }
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.custom-scrollbar-nested.custom-scrollbar-nested *::-webkit-scrollbar-thumb {
   background-color: var(--custom-scrollbar-thumb);
   border-radius: 8px;
   border: 2px solid transparent;
@@ -154,17 +302,16 @@ a {
   transition: background-color 0.3s;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
+.custom-scrollbar::-webkit-scrollbar-track,
+.custom-scrollbar-nested.custom-scrollbar-nested *::-webkit-scrollbar-track {
   background: transparent;
   border-radius: 8px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar-nested.custom-scrollbar-nested
+  *::-webkit-scrollbar-thumb:hover {
   background-color: var(--custom-scrollbar-thumb-active);
-}
-
-.svc-detail-row:last-child {
-  border-bottom: none;
 }
 
 .xterm .scrollbar {

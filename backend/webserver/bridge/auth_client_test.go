@@ -31,25 +31,15 @@ func listenAuthSocket(t *testing.T) net.Listener {
 	return ln
 }
 
-// decodedRequest is the auth request frame decoded on the server side of
-// the test, so cases can assert on exactly what Authenticate sent.
-type decodedRequest struct {
-	Verbose    bool
-	User       string
-	Password   string
-	SessionID  string
-	RemoteHost string
-}
-
 // readDecodedRequest reads and decodes a full auth request frame: the
 // 8-byte header followed by the four length-prefixed strings.
-func readDecodedRequest(r io.Reader) (*decodedRequest, error) {
+func readDecodedRequest(r io.Reader) (*authipc.AuthRequest, error) {
 	var header [authipc.AuthReqHeaderSize]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
 		return nil, err
 	}
 
-	req := &decodedRequest{
+	req := &authipc.AuthRequest{
 		Verbose: header[4]&authipc.ReqFlagVerbose != 0,
 	}
 

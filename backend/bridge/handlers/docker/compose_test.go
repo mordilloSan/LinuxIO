@@ -60,7 +60,7 @@ services:
       - "53:53/udp"
 `
 
-	result, err := ValidateComposeFile(context.Background(), content)
+	result, err := ValidateComposeFile(context.Background(), content, "", "")
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
 	}
@@ -80,7 +80,7 @@ services:
       - "8080:8080/tcp"
 `
 
-	result, err := ValidateComposeFile(context.Background(), content)
+	result, err := ValidateComposeFile(context.Background(), content, "", "")
 	if err != nil {
 		t.Fatalf("ValidateComposeFile() error = %v", err)
 	}

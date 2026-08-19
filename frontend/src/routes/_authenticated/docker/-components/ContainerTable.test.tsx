@@ -1,10 +1,17 @@
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
 import * as core from "@/api/linuxio-core";
+import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
 import { act, render, screen, waitFor, within } from "@/test/render";
 
+import type { ContainerTableRow } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
+
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
 
 const media = vi.hoisted(() => ({ compact: false }));
 
@@ -57,7 +64,11 @@ beforeEach(() => {
 });
 
 vi.mock("@/components/docker/DockerIcon", () => ({
-  default: ({ alt }: { alt: string }) => <span>{alt}</span>,
+  default: ({ alt, identifier }: { alt: string; identifier: string }) => (
+    <span data-identifier={identifier} data-testid="docker-icon">
+      {alt}
+    </span>
+  ),
 }));
 
 interface Deferred<T> {
@@ -91,59 +102,54 @@ function container(
 }
 
 function renderTable(containers: ContainerInfo[]) {
-  return render(
-    <ContainerTable
-      autoUpdateBlockedReasons={new Map()}
-      autoUpdateDisabled={false}
-      autoUpdatePendingNames={new Set()}
-      autoUpdateSelectedNames={new Set()}
-      containers={containers}
-      onToggleAutoUpdate={vi.fn()}
-    />,
-  );
+  return render(<ContainerTable containers={containers} />);
 }
 
 function rowNamed(name: string) {
   return screen.getByRole("row", { name: new RegExp(name, "i") });
 }
 
-describe("ContainerTable mutation feedback", () => {
-  it("blocks unsafe automatic enrollment but still allows deselection", async () => {
-    media.compact = false;
-    const reason =
-      "Compose service media/web has 2 replicas; automatic updates require a single replica.";
-    const toggle = vi.fn();
-    const { rerender, user } = render(
-      <ContainerTable
-        autoUpdateBlockedReasons={new Map([["blocked", reason]])}
-        autoUpdateDisabled={false}
-        autoUpdatePendingNames={new Set()}
-        autoUpdateSelectedNames={new Set()}
-        containers={[container("blocked-id", "blocked", "running")]}
-        onToggleAutoUpdate={toggle}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: reason })).toBeDisabled();
-
-    rerender(
-      <ContainerTable
-        autoUpdateBlockedReasons={new Map([["blocked", reason]])}
-        autoUpdateDisabled={false}
-        autoUpdatePendingNames={new Set()}
-        autoUpdateSelectedNames={new Set(["blocked"])}
-        containers={[container("blocked-id", "blocked", "running")]}
-        onToggleAutoUpdate={toggle}
-      />,
-    );
-    const selected = screen.getByRole("button", {
-      name: new RegExp(`${reason} Disable this selection`),
-    });
-    expect(selected).toBeEnabled();
-    await user.click(selected);
-    expect(toggle).toHaveBeenCalledWith("blocked");
+function composeContainer(
+  id: string,
+  name: string,
+  project: string,
+  state: "exited" | "running" = "running",
+) {
+  return container(id, name, state, {
+    Labels: { "com.docker.compose.project": project },
   });
+}
 
+// The collapse state lives with the page (ContainerList); this stands in for
+// it so the toggle round-trips.
+function StatefulStackTable({ containers }: { containers: ContainerInfo[] }) {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  return (
+    <ContainerTable
+      collapsedStackIds={collapsed}
+      containers={containers}
+      onToggleStack={(project) =>
+        setCollapsed((previous) => {
+          const next = new Set(previous);
+          if (!next.delete(project)) next.add(project);
+          return next;
+        })
+      }
+    />
+  );
+}
+
+const reorderDnd: AppDataTableDndOptions<ContainerTableRow> = {
+  contextProps: {} as never,
+  editing: true,
+  getItemId: (row) => row.id,
+  handleAriaLabel: "Reorder container",
+  itemIds: [],
+};
+
+describe("ContainerTable mutation feedback", () => {
   it("shows a warning and never claims up to date after a failed per-container scan", async () => {
     media.compact = false;
     const { user } = renderTable([container("failed-id", "failed", "running")]);
@@ -238,6 +244,119 @@ describe("ContainerTable mutation feedback", () => {
       });
     },
   );
+
+  it("groups a multi-container compose project under a header row, singletons not", () => {
+    media.compact = false;
+    renderTable([
+      composeContainer("media-web-id", "media-web", "media"),
+      composeContainer("media-db-id", "media-db", "media"),
+      composeContainer("solo-id", "solo-app", "solo"),
+    ]);
+
+    const toggle = screen.getByRole("button", {
+      name: "Collapse stack media",
+    });
+    const header = toggle.closest('[role="row"]') as HTMLElement;
+    expect(
+      within(header).getByText("2 containers · 2 running"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Collapse stack solo" }),
+    ).not.toBeInTheDocument();
+    // Members still render as ordinary rows below the header.
+    expect(rowNamed("media-web")).toBeInTheDocument();
+    expect(rowNamed("media-db")).toBeInTheDocument();
+  });
+
+  it("collapses a stack to its header row and expands it back", async () => {
+    media.compact = false;
+    const { user } = render(
+      <StatefulStackTable
+        containers={[
+          composeContainer("media-web-id", "media-web", "media"),
+          composeContainer("media-db-id", "media-db", "media", "exited"),
+          composeContainer("solo-id", "solo-app", "solo"),
+        ]}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse stack media" }),
+    );
+
+    // Stack members remain mounted through the shared AppCollapse exit motion.
+    expect(rowNamed("media-web").closest(".app-collapse")).toHaveClass(
+      "app-collapse",
+    );
+    expect(rowNamed("media-db").closest(".app-collapse")).toHaveClass(
+      "app-collapse",
+    );
+    // The summary keeps counting the hidden members; the loose row stays.
+    expect(screen.getByText("2 containers · 1 running")).toBeInTheDocument();
+    expect(rowNamed("solo-app")).toBeInTheDocument();
+    const collapsedHeader = screen
+      .getByRole("button", { name: "Expand stack media" })
+      .closest('[role="row"]') as HTMLElement;
+    expect(within(collapsedHeader).getByTestId("docker-icon")).toHaveAttribute(
+      "data-identifier",
+      "media",
+    );
+
+    await expect
+      .poll(() => screen.queryAllByText("media-web").length, { timeout: 2000 })
+      .toBe(0);
+    await expect
+      .poll(() => screen.queryAllByText("media-db").length, { timeout: 2000 })
+      .toBe(0);
+
+    await user.click(
+      screen.getByRole("button", { name: "Expand stack media" }),
+    );
+
+    expect(rowNamed("media-web")).toBeInTheDocument();
+    expect(rowNamed("media-db")).toBeInTheDocument();
+  });
+
+  it("keeps stack members inert while reordering their header", () => {
+    media.compact = false;
+    render(
+      <ContainerTable
+        containers={[
+          composeContainer("media-web-id", "media-web", "media"),
+          composeContainer("media-db-id", "media-db", "media"),
+          container("solo-id", "solo-app", "running"),
+        ]}
+        dnd={reorderDnd}
+      />,
+    );
+
+    const stackHeader = screen
+      .getByRole("button", { name: "Collapse stack media" })
+      .closest('[role="row"]') as HTMLElement;
+    const mediaWeb = rowNamed("media-web");
+    const mediaDb = rowNamed("media-db");
+    const solo = rowNamed("solo-app");
+
+    expect(stackHeader).toHaveClass("app-dt__row--reordering");
+    expect(
+      within(stackHeader).getByLabelText("Reorder container"),
+    ).toBeInTheDocument();
+    expect(mediaWeb).not.toHaveClass("app-dt__row--reordering");
+    expect(mediaDb).not.toHaveClass("app-dt__row--reordering");
+    expect(within(mediaWeb).queryByLabelText("Reorder container")).toBeNull();
+    expect(within(mediaDb).queryByLabelText("Reorder container")).toBeNull();
+    expect(solo).toHaveClass("app-dt__row--reordering");
+    expect(
+      within(solo).getByLabelText("Reorder container"),
+    ).toBeInTheDocument();
+
+    const stackDragBlock = stackHeader.closest(
+      ".app-dt__sortable-group",
+    ) as HTMLElement;
+    expect(stackDragBlock).toContainElement(mediaWeb);
+    expect(stackDragBlock).toContainElement(mediaDb);
+    expect(stackDragBlock).not.toContainElement(solo);
+  });
 
   it("keeps a compact row spinner after its action menu closes", async () => {
     media.compact = true;

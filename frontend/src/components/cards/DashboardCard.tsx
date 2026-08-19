@@ -16,10 +16,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
 import { cardHeight } from "@/theme/constants";
-import {
-  getAccentCardStyles,
-  getFrostedCardLiftShadow,
-} from "@/theme/surfaces";
+
+import "./dashboard-card.css";
 
 import FrostedCard from "./FrostedCard";
 
@@ -45,6 +43,20 @@ export interface SelectOption {
  * burst out of the card boundary.
  */
 export type ContentLayout = "equal" | "auto" | [number, number];
+
+/**
+ * Layout numbers shared between DashboardCard and its skeleton so the two
+ * can't drift apart — the skeleton has to reproduce this card's geometry
+ * pixel-for-pixel while it has no real content to measure against.
+ */
+export const DASHBOARD_CARD_LAYOUT = {
+  headerMarginBottom: 4,
+  contentMarginTop: 12,
+  splitRowGap: 8,
+  chartHeight: 120,
+  avatarSize: 38,
+  statsOnlyMarginTop: 28,
+} as const;
 
 /** Colored header dot indicating whether the card's data source is reachable. */
 export const CardStatusDot = ({ online }: { online: boolean }) => {
@@ -277,19 +289,13 @@ const DashboardCard = ({
 
   return (
     <FrostedCard
-      className="dc-accent-card"
-      style={
-        {
-          minHeight: cardHeight,
-          display: "flex",
-          flexDirection: "column",
-          transition:
-            "border 0.3s ease-in-out, box-shadow 0.3s ease-in-out, margin 0.3s ease-in-out, transform 0.2s",
-          ...getAccentCardStyles(primaryColor),
-          "--dc-accent": primaryColor,
-          "--dc-hover-shadow": getFrostedCardLiftShadow(theme),
-        } as CSSProperties
-      }
+      accent
+      hoverLift
+      style={{
+        minHeight: cardHeight,
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
       <AppCardContent>
         {/* Header */}
@@ -298,7 +304,7 @@ const DashboardCard = ({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 4,
+            marginBottom: DASHBOARD_CARD_LAYOUT.headerMarginBottom,
           }}
         >
           {/* Title and optional extras */}
@@ -311,9 +317,9 @@ const DashboardCard = ({
           {/* Avatar/Icon */}
           <Icon
             color={primaryColor}
-            height="38px"
+            height={`${DASHBOARD_CARD_LAYOUT.avatarSize}px`}
             icon={avatarIcon}
-            width="38px"
+            width={`${DASHBOARD_CARD_LAYOUT.avatarSize}px`}
           />
         </div>
 
@@ -321,10 +327,10 @@ const DashboardCard = ({
         {stats2 ? (
           <div
             style={{
-              marginTop: 12,
+              marginTop: DASHBOARD_CARD_LAYOUT.contentMarginTop,
               display: "flex",
               flexDirection: "row",
-              gap: 8,
+              gap: DASHBOARD_CARD_LAYOUT.splitRowGap,
             }}
           >
             <div
@@ -346,7 +352,7 @@ const DashboardCard = ({
                 minWidth: 0,
                 overflow: "hidden",
                 display: "flex",
-                height: 120,
+                height: DASHBOARD_CARD_LAYOUT.chartHeight,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -355,7 +361,10 @@ const DashboardCard = ({
             </div>
           </div>
         ) : (
-          <div className="dc-stats-truncate" style={{ marginTop: 28 }}>
+          <div
+            className="dc-stats-truncate"
+            style={{ marginTop: DASHBOARD_CARD_LAYOUT.statsOnlyMarginTop }}
+          >
             {stats}
           </div>
         )}

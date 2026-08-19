@@ -14,6 +14,10 @@ import {
 import CIFSMounts from "./CIFSMounts";
 import NFSMounts from "./NFSMounts";
 
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
+
 vi.mock("@/hooks/useCapabilities", () => ({
   useCapability: () => ({ reason: "", status: "available" }),
 }));

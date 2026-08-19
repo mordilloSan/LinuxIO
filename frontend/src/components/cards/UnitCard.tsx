@@ -5,7 +5,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import { TRANSITION_SLOW_CSS } from "@/theme/constants";
+import { CARD_PADDING_LG, TRANSITION_SLOW_CSS } from "@/theme/constants";
 
 export interface UnitListItem {
   active_state: string;
@@ -16,23 +16,17 @@ export interface UnitListItem {
   unit_file_state: string;
 }
 
-const baseCardStyle: CSSProperties = {
-  padding: 12,
+const cardStyle: CSSProperties = {
+  padding: CARD_PADDING_LG,
   display: "flex",
   flexDirection: "column",
   height: "100%",
-  borderBottomWidth: 2,
-  borderBottomStyle: "solid",
 };
 
-const cardStyle: CSSProperties = {
-  ...baseCardStyle,
-  borderBottomColor:
-    "color-mix(in srgb, var(--svc-status-color), transparent 70%)",
-};
-
+/* Expanding a unit isolates the card outside the grid, where it can no longer
+   be held to reorder — so the accent line stands down with the lift. */
 const selectedCardStyle: CSSProperties = {
-  ...baseCardStyle,
+  ...cardStyle,
   width: "100%",
   borderBottomColor: "transparent",
 };
@@ -59,21 +53,18 @@ function UnitCard<T extends UnitListItem>({
 
   return (
     <FrostedCard
+      accent
       className="fc-svc-card"
       hoverLift={!isSelected}
-      style={
-        {
-          "--svc-status-color": statusColor,
-          ...(isSelected ? selectedCardStyle : cardStyle),
-          transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}, margin ${TRANSITION_SLOW_CSS}`,
-        } as CSSProperties
-      }
+      style={{
+        ...(isSelected ? selectedCardStyle : cardStyle),
+        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
+      }}
     >
       <AppButton
         aria-controls={detailsId}
         aria-expanded={isSelected}
         aria-label={`${isSelected ? "Collapse" : "Expand"} ${item.name}`}
-        className="fc-svc-card__trigger"
         color="inherit"
         fullWidth
         onClick={() => onExpand(isSelected ? null : item.name)}

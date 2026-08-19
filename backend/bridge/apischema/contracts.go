@@ -191,6 +191,12 @@ type ContentRequest struct {
 	Content string `json:"content"`
 }
 
+type ValidateComposeRequest struct {
+	Content    string `json:"content"`
+	EnvContent string `json:"envContent,omitempty"`
+	WorkingDir string `json:"workingDir,omitempty"`
+}
+
 type DirPathRequest struct {
 	DirPath string `json:"dirPath"`
 }
@@ -464,6 +470,9 @@ type ConfigAppSettingsPayload struct {
 	PrimaryColor            *string                         `json:"primaryColor,omitempty"`
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
 	SidebarCollapsed        *bool                           `json:"sidebarCollapsed,omitempty"`
+	NavigationMode          *string                         `json:"navigationMode,omitempty"`
+	DockTileColors          *string                         `json:"dockTileColors,omitempty"`
+	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
 	ShowHiddenFiles         *bool                           `json:"showHiddenFiles,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
@@ -471,6 +480,14 @@ type ConfigAppSettingsPayload struct {
 	ViewModes               map[string]string               `json:"viewModes,omitempty"`
 	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
+	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
+}
+
+type ConfigDockAccentGradient struct {
+	StartColor *string `json:"startColor,omitempty"`
+	EndColor   *string `json:"endColor,omitempty"`
+	RangeStart int     `json:"rangeStart"`
+	RangeEnd   int     `json:"rangeEnd"`
 }
 
 type ConfigThemeColorsByModePayload struct {
@@ -721,7 +738,7 @@ type MonitoringConfigPatch struct {
 	CollectorInterval    *string              `json:"collector_interval,omitempty"`
 	SmartRefreshInterval *string              `json:"smart_refresh_interval,omitempty"`
 	History              *string              `json:"history,omitempty"`
-	CacheTTL             map[string]string    `json:"cache_ttl,omitempty"`
+	HistoryRetention     *string              `json:"history_retention,omitempty"`
 	AllowRemoteCommands  *bool                `json:"allow_remote_commands,omitempty"`
 	Listeners            []MonitoringListener `json:"listeners,omitempty"`
 }
@@ -753,13 +770,4 @@ type ShareUpdateSambaRequest struct {
 
 type FailedLoginEventsRequest struct {
 	Limit *string `json:"limit,omitempty"`
-}
-
-type UpdatesSetAutoUpdatesRequest struct {
-	Enabled         bool     `json:"enabled"`
-	Frequency       string   `json:"frequency"`
-	Scope           string   `json:"scope"`
-	DownloadOnly    bool     `json:"download_only"`
-	RebootPolicy    string   `json:"reboot_policy"`
-	ExcludePackages []string `json:"exclude_packages"`
 }

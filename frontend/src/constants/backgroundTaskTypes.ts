@@ -9,7 +9,6 @@ export const TASK_TYPE_FILE_DELETE_BATCH = "filebrowser.delete_batch";
 export const TASK_TYPE_FILE_INDEXER = "filebrowser.index";
 export const TASK_TYPE_FILE_UPLOAD = "filebrowser.upload";
 export const TASK_TYPE_FILE_UPLOAD_BATCH = "filebrowser.upload_batch";
-export const TASK_TYPE_FILE_DOWNLOAD = "filebrowser.download";
 export const TASK_TYPE_FILE_ARCHIVE = "filebrowser.archive";
 export const TASK_TYPE_FILE_CHMOD_BATCH = "filebrowser.chmod_batch";
 export const TASK_TYPE_DOCKER_COMPOSE = "docker.compose";

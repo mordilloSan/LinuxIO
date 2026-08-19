@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ComposeProject, ContainerInfo } from "@/api";
 
 const frostedCardRender = vi.hoisted(() => vi.fn());
+const actionIconButtonRender = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/cards/FrostedCard", () => ({
   default: ({ children }: { children: React.ReactNode }) => {
@@ -13,6 +14,25 @@ vi.mock("@/components/cards/FrostedCard", () => ({
 
 vi.mock("@/components/docker/DockerIcon", () => ({
   default: ({ alt }: { alt: string }) => <span>{alt}</span>,
+}));
+
+vi.mock("@/components/ui/AppActionIconButton", () => ({
+  default: ({
+    icon,
+    label,
+    onClick,
+  }: {
+    icon: string;
+    label: string;
+    onClick: () => void;
+  }) => {
+    actionIconButtonRender(icon);
+    return (
+      <button data-icon={icon} onClick={onClick} type="button">
+        {label}
+      </button>
+    );
+  },
 }));
 
 const ComposeStackCard = (await import("@/components/cards/ComposeStackCard"))
@@ -51,10 +71,17 @@ const project: ComposeProject = {
 const noopProject = (_project: ComposeProject) => {};
 const noopProjectName = (_projectName: string) => {};
 
-function Card({ value }: { value: ComposeProject }) {
+function Card({
+  onOpen,
+  value,
+}: {
+  onOpen?: () => void;
+  value: ComposeProject;
+}) {
   return (
     <ComposeStackCard
       onDelete={noopProject}
+      onOpen={onOpen}
       onRestart={noopProjectName}
       onStart={noopProjectName}
       onStop={noopProjectName}
@@ -84,5 +111,20 @@ describe("ComposeStackCard", () => {
 
     expect(screen.getByText("stopped")).toBeInTheDocument();
     expect(frostedCardRender).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens details from the summary and uses the container stop icon", async () => {
+    const onOpen = vi.fn();
+    const { user } = render(<Card onOpen={onOpen} value={project} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Open stack demo details" }),
+    );
+
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Stop" })).toHaveAttribute(
+      "data-icon",
+      "mdi:stop",
+    );
   });
 });

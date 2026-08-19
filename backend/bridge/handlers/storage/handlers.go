@@ -13,7 +13,7 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.PhysicalVolume]("storage.list_pvs", apischema.RetrySafe()).Handle(handleListPVs),
 	apischema.Call[apischema.NoRequest, []apischema.VolumeGroup]("storage.list_vgs", apischema.RetrySafe()).Handle(handleListVGs),
 	apischema.Call[apischema.NoRequest, []apischema.LogicalVolume]("storage.list_lvs", apischema.RetrySafe()).Handle(handleListLVs),
-	apischema.Call[apischema.CreateLogicalVolumeRequest, apischema.StorageCreateLVResult]("storage.create_lv").Handle(handleCreateLV),
+	apischema.Call[apischema.CreateLogicalVolumeRequest, apischema.SuccessPathResponse]("storage.create_lv").Handle(handleCreateLV),
 	apischema.Call[apischema.VolumeGroupLogicalVolumeRequest, apischema.SuccessResponse]("storage.delete_lv").Handle(handleDeleteLV),
 	apischema.Call[apischema.ResizeLogicalVolumeRequest, apischema.SuccessResponse]("storage.resize_lv").Handle(handleResizeLV),
 	apischema.Call[apischema.NoRequest, []apischema.NFSMount]("storage.list_nfs_mounts", apischema.RetrySafe()).Handle(handleListNFSMounts),
@@ -73,12 +73,12 @@ func handleListLVs(ctx context.Context, _ apischema.NoRequest) ([]apischema.Logi
 	return lvs, nil
 }
 
-func handleCreateLV(ctx context.Context, req apischema.CreateLogicalVolumeRequest) (apischema.StorageCreateLVResult, error) {
+func handleCreateLV(ctx context.Context, req apischema.CreateLogicalVolumeRequest) (apischema.SuccessPathResponse, error) {
 	slog.Info("creating logical volume", "volume_group", req.VGName, "name", req.LVName, "size", req.Size)
 	result, err := CreateLogicalVolume(ctx, req.VGName, req.LVName, req.Size)
 	if err != nil {
 		slog.Error("failed to create logical volume", "volume_group", req.VGName, "name", req.LVName, "error", err)
-		return apischema.StorageCreateLVResult{}, err
+		return apischema.SuccessPathResponse{}, err
 	}
 	slog.Info("logical volume created", "volume_group", req.VGName, "name", req.LVName)
 	return result, nil

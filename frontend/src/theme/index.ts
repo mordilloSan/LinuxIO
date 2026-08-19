@@ -17,10 +17,8 @@ import type {
 import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
-  FILE_TYPE_COLORS,
   getContrastText,
   resolvePrimaryColor,
-  SEMANTIC_STATUS_COLORS,
 } from "@/theme/colors";
 import {
   EASING_STANDARD_CSS,
@@ -29,6 +27,7 @@ import {
   TRANSITION_DURATION_MEDIUM_MS,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
+import { getFrostedCardShadow } from "@/theme/surfaces";
 import variants from "@/theme/variants";
 import { alpha, darken, lighten } from "@/utils/color";
 
@@ -116,9 +115,6 @@ export interface AppTheme {
   header: {
     color: string;
     background: string;
-    search: {
-      color: string;
-    };
     indicator: {
       background: string;
     };
@@ -198,7 +194,9 @@ interface AppThemeProviderProps {
 }
 
 const APP_THEME_CONTEXT = createContext<AppTheme | undefined>(undefined);
-const BASE_SPACING_UNIT = 4;
+// The single source for the app's 4px spacing unit. AppGrid's gap math
+// imports this directly rather than restating the literal.
+export const BASE_SPACING_UNIT = 4;
 const FONT_FAMILY = [
   '"Inter Variable"',
   "Inter",
@@ -489,9 +487,6 @@ function resolveVariantTheme(
       color: themeConfig.header.color,
       background:
         themeColors?.headerBackground ?? themeConfig.header.background,
-      search: {
-        color: themeConfig.header.search.color,
-      },
       indicator: {
         background: themeConfig.header.indicator.background,
       },
@@ -580,11 +575,9 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-radius-base": `${theme.shape.borderRadius}px`,
     ...MOTION_CSS_VARS,
     "--app-palette-primary-main": theme.palette.primary.main,
-    "--app-palette-primary-light": theme.palette.primary.light,
     "--app-palette-primary-dark": theme.palette.primary.dark,
     "--app-palette-primary-contrast-text": theme.palette.primary.contrastText,
     "--app-palette-secondary-main": theme.palette.secondary.main,
-    "--app-palette-secondary-light": theme.palette.secondary.light,
     "--app-palette-secondary-dark": theme.palette.secondary.dark,
     "--app-palette-secondary-contrast-text":
       theme.palette.secondary.contrastText,
@@ -616,12 +609,10 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
       theme.palette.primary.main,
     ),
     "--app-palette-dividerChannel": toColorChannel(theme.palette.divider),
-    "--app-palette-common-blackChannel": "0 0 0",
     "--app-palette-grey-100": "#f5f5f5",
     "--app-palette-grey-900": "#212121",
     "--app-header-background": theme.header.background,
     "--app-header-color": theme.header.color,
-    "--app-header-search-color": theme.header.search.color,
     "--app-header-search-bg": alpha(
       theme.palette.common.white,
       theme.palette.mode === "dark" ? 0.04 : 0.6,
@@ -630,12 +621,9 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
       theme.palette.mode === "dark"
         ? lighten(theme.header.background, 0.07)
         : darken(theme.header.background, 0.07),
-    "--app-footer-background": theme.footer.background,
-    "--app-footer-color": theme.footer.color,
     "--app-sidebar-background": theme.sidebar.background,
     "--app-sidebar-color": theme.sidebar.color,
     "--app-sidebar-header-background": theme.sidebar.header.background,
-    "--app-sidebar-header-color": theme.sidebar.header.color,
     "--app-sidebar-item-hover-bg":
       theme.palette.mode === "dark"
         ? lighten(theme.sidebar.background, 0.07)
@@ -643,51 +631,21 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-sidebar-item-grad-start": lighten(theme.palette.primary.main, 0.35),
     "--app-sidebar-item-grad-end": theme.palette.primary.main,
     "--app-sidebar-item-active-color": theme.palette.primary.contrastText,
-    "--app-card-background": theme.card.background,
-    "--app-dialog-border": theme.dialog.border,
-    "--app-dialog-glow": theme.dialog.glow,
-    "--app-dialog-backdrop": theme.dialog.backdrop,
-    "--app-tooltip-bg":
-      theme.palette.mode === "dark"
-        ? "rgba(66, 66, 66, 0.95)"
-        : "rgba(110, 110, 110, 0.92)",
-    "--app-tooltip-color": "#ffffff",
     "--app-panel-background": theme.palette.background.paper,
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":
       theme.palette.mode === "dark"
-        ? "color-mix(in srgb, var(--app-palette-info-main) 30%, #fff)"
+        ? lighten("var(--app-palette-info-main)", 0.7)
         : "var(--app-palette-info-main)",
     "--app-panel-text": theme.palette.text.primary,
     "--app-panel-border": theme.palette.divider,
     "--app-panel-shadow":
       theme.palette.mode === "dark"
-        ? "0 16px 40px -28px rgba(0, 0, 0, 0.6)"
+        ? getFrostedCardShadow(theme)
         : "rgba(50, 50, 93, 0.025) 0px 2px 5px -1px, rgba(0, 0, 0, 0.05) 0px 1px 3px -1px",
-    "--breakpoint-sm": `${theme.breakpoints.values.sm}px`,
-    "--breakpoint-md": `${theme.breakpoints.values.md}px`,
-    "--breakpoint-lg": `${theme.breakpoints.values.lg}px`,
-    "--breakpoint-xl": `${theme.breakpoints.values.xl}px`,
     "--accent": theme.palette.primary.main,
     "--accent-soft": theme.palette.primary.light,
     "--accent-strong": theme.palette.primary.dark,
-    "--app-status-success": SEMANTIC_STATUS_COLORS.success,
-    "--app-status-warning": SEMANTIC_STATUS_COLORS.warning,
-    "--app-status-error": SEMANTIC_STATUS_COLORS.error,
-    "--app-status-danger": SEMANTIC_STATUS_COLORS.danger,
-    "--app-status-info": SEMANTIC_STATUS_COLORS.info,
-    "--app-status-neutral": SEMANTIC_STATUS_COLORS.neutral,
-    "--app-status-muted": SEMANTIC_STATUS_COLORS.muted,
-    "--app-status-caution": SEMANTIC_STATUS_COLORS.caution,
-    "--app-file-code": FILE_TYPE_COLORS.code,
-    "--app-file-pdf": FILE_TYPE_COLORS.pdf,
-    "--app-file-image": FILE_TYPE_COLORS.image,
-    "--app-file-video": FILE_TYPE_COLORS.video,
-    "--app-file-audio": FILE_TYPE_COLORS.audio,
-    "--app-file-archive": FILE_TYPE_COLORS.archive,
-    "--app-file-spreadsheet": FILE_TYPE_COLORS.spreadsheet,
-    "--app-file-document": FILE_TYPE_COLORS.document,
-    "--app-file-executable": FILE_TYPE_COLORS.executable,
     "--app-overlay-dark": "rgba(0, 0, 0, 0.35)",
   };
 }

@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 
-import { linuxio } from "@/api";
+import type { linuxio } from "@/api";
 import type { Socket, TableCardViewMode, UnitInfo } from "@/api";
 
 import SocketCardsView from "./SocketCardsView";
@@ -23,9 +23,12 @@ function matchesSocketSearch(socket: Socket, search: string): boolean {
   );
 }
 
-function useSocketsQuery(viewMode: TableCardViewMode) {
+function useSocketsQuery(
+  listQueryOptions: typeof linuxio.systemd.list_sockets,
+  viewMode: TableCardViewMode,
+) {
   return useSuspenseQuery({
-    ...linuxio.systemd.list_sockets,
+    ...listQueryOptions,
     refetchInterval: viewMode === "card" ? false : 5000,
   });
 }
@@ -54,19 +57,23 @@ function buildSocketInfoRows(socket: Socket, info: UnitInfo | undefined) {
 }
 
 interface SocketsTabProps {
+  listQueryOptions: typeof linuxio.systemd.list_sockets;
   onSelectedChange: (name: string | null) => void;
-  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
+  selectedQueryOptions:
+    | ReturnType<typeof linuxio.systemd.get_unit_info>
+    | undefined;
   viewMode: TableCardViewMode;
 }
 
 const SocketsTab = ({
+  listQueryOptions,
   onSelectedChange,
-  onViewModeChange,
   selected,
+  selectedQueryOptions,
   viewMode,
 }: SocketsTabProps) => {
-  const { data } = useSocketsQuery(viewMode);
+  const { data } = useSocketsQuery(listQueryOptions, viewMode);
 
   return (
     <UnitListTab
@@ -92,28 +99,22 @@ const SocketsTab = ({
       renderDetailPanel={(socket, onClose) => (
         <UnitInfoPanel
           onClose={onClose}
+          queryOptions={
+            selected === socket.name ? selectedQueryOptions : undefined
+          }
           renderInfoRows={(info) => buildSocketInfoRows(socket, info)}
           unitName={socket.name}
         />
       )}
-      renderTableView={({
-        items,
-        selected,
-        onSelect,
-        onDoubleClick,
-        surface,
-      }) => (
+      renderTableView={({ items, onSelect, surface }) => (
         <SocketTableView
-          onDoubleClick={onDoubleClick}
           onSelect={onSelect}
-          selected={selected}
           sockets={items}
           surface={surface}
         />
       )}
       searchPlaceholder="Search sockets…"
       selected={selected}
-      setViewMode={onViewModeChange}
       surfaceId="sockets.list"
       viewMode={viewMode}
     />

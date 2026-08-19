@@ -10,12 +10,11 @@
   max-height: calc(100vh - 16px);
   overflow: auto;
   pointer-events: auto;
-  border: 1px solid var(--app-panel-border);
-  border-radius: 16px;
-  background: var(--app-panel-background);
-  color: var(--app-panel-text);
-  box-shadow: var(--app-panel-shadow);
-  backdrop-filter: blur(12px);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-floating-surface-radius);
+  background: var(--app-palette-background-paper);
+  color: var(--app-palette-text-primary);
+  box-shadow: var(--app-floating-surface-shadow);
   animation: app-popover-enter 140ms ease;
 }
 

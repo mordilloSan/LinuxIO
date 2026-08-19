@@ -1,4 +1,4 @@
-import { transform as oxcTransform, type Severity } from "oxc-transform";
+import { transform as oxcTransform, type Severity } from "oxc-transform-react";
 import type { PluginOption } from "vite";
 
 interface OxcReactCompilerOptions {
@@ -13,11 +13,9 @@ const isTestModule = (filename: string): boolean => {
   );
 };
 
-// React Compiler via the oxc Rust port. oxc-transform is pinned to 0.136.0 —
-// the last release shipping `reactCompiler` — because Rolldown/Vite withdrew
-// the integration in 0.137.0 over napi binary size while a leaner
-// implementation is upstreamed. Unpin once it returns to a current release.
-// The port passed 100% of the upstream conformance fixtures at that point.
+// React Compiler via Oxc's dedicated Rust binding. Keeping it separate from
+// the general transformer avoids adding a framework compiler to every Oxc
+// consumer while allowing this integration to follow current Oxc releases.
 export function oxcReactCompiler({
   excludeTests = false,
 }: OxcReactCompilerOptions = {}): PluginOption {
@@ -48,9 +46,12 @@ export function oxcReactCompiler({
         const result = await oxcTransform(filename, code, {
           // Defaults mirror reactCompilerPreset(): compilationMode "infer",
           // panicThreshold "none" — components the compiler cannot memoize are
-          // skipped, not failed (oxlint's react/react-compiler rule lists them).
-          reactCompiler: { target: "19" },
-          target: "es2022",
+          // skipped, not failed (Oxlint's category-specific React Compiler rules
+          // surface the corresponding diagnostics).
+          reactCompiler: {
+            target: "19",
+          },
+          jsx: { runtime: "automatic" },
           // The production build emits no sourcemaps (build.sourcemap defaults
           // to false), so generating them here is wasted work.
           sourcemap: false,
@@ -66,15 +67,15 @@ export function oxcReactCompiler({
               hardErrors.map((error) => error.message).join("\n"),
           );
         }
-        // On "[ReactCompiler] ..." errors (compiler invariant panics) the
-        // transform emits no code. Fall back to Vite's normal pipeline so the
-        // file ships unmemoized — the same skip semantics the Babel plugin had.
-        // oxlint's react/react-compiler rule surfaces these at lint time.
-        if (result.code.length === 0) {
+        // On fatal React Compiler errors the transform emits no usable code.
+        // Fall back to Vite's normal pipeline so the file ships unmemoized —
+        // the same skip semantics the Babel plugin had. Oxlint's
+        // Oxlint's category-specific React Compiler rules surface these at lint time.
+        if (result.fatal || result.code.length === 0) {
           return null;
         }
-        // Output is fully lowered (TS stripped, JSX compiled), leaving nothing
-        // for Vite's own transform to do on these modules.
+        // TypeScript is stripped and JSX is compiled here. Vite retains
+        // ownership of the configured JavaScript build target.
         return { code: result.code, map: result.map ?? null };
       },
     },

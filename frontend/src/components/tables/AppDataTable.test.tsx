@@ -1,16 +1,77 @@
-import { useState, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
-import { act, render, screen } from "@/test/render";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import { render, screen } from "@/test/render";
+import { TABLE_ROW_MIN_HEIGHT } from "@/theme/constants";
 
-interface SelectableRow {
-  id: string;
-  name: string;
-}
+const virtualizerSpies = vi.hoisted(() => ({
+  measure: vi.fn(),
+  options: undefined as
+    | {
+        estimateSize: (index: number) => number;
+        getItemKey: (index: number) => string | number;
+      }
+    | undefined,
+}));
 
-const rows: SelectableRow[] = [{ id: "bridge", name: "bridge" }];
+vi.mock("@tanstack/react-virtual", async () => {
+  const { useRef } = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    useVirtualizer: ({
+      count,
+      estimateSize,
+      getItemKey,
+    }: {
+      count: number;
+      estimateSize: (index: number) => number;
+      getItemKey: (index: number) => string | number;
+    }) => {
+      const optionsRef = useRef({ count, estimateSize, getItemKey });
+      optionsRef.current = { count, estimateSize, getItemKey };
+      virtualizerSpies.options = { estimateSize, getItemKey };
+
+      const virtualizerRef = useRef<{
+        getTotalSize: () => number;
+        getVirtualItems: () => Array<{
+          end: number;
+          index: number;
+          key: string | number;
+          lane: number;
+          size: number;
+          start: number;
+        }>;
+        measure: typeof virtualizerSpies.measure;
+        measureElement: ReturnType<typeof vi.fn>;
+        resizeItem: ReturnType<typeof vi.fn>;
+        scrollToIndex: ReturnType<typeof vi.fn>;
+      } | null>(null);
+
+      if (!virtualizerRef.current) {
+        virtualizerRef.current = {
+          getTotalSize: () => optionsRef.current.count * 48,
+          getVirtualItems: () =>
+            Array.from({ length: optionsRef.current.count }, (_, index) => ({
+              end: (index + 1) * 48,
+              index,
+              key: optionsRef.current.getItemKey(index),
+              lane: 0,
+              size: 48,
+              start: index * 48,
+            })),
+          measure: virtualizerSpies.measure,
+          measureElement: vi.fn(),
+          resizeItem: vi.fn(),
+          scrollToIndex: vi.fn(),
+        };
+      }
+
+      return virtualizerRef.current;
+    },
+  };
+});
 
 interface TableRow {
   id: string;
@@ -24,13 +85,11 @@ const renderName = vi.fn(
 const renderStatus = vi.fn(
   ({ row }: { row: { original: TableRow } }) => row.original.status,
 );
-const renderNameHeader = vi.fn(() => "Name");
-const getRowAttributes = vi.fn(() => ({}));
 
-const tableColumns: AppDataTableColumnDef<TableRow>[] = [
+const columns: AppDataTableColumnDef<TableRow>[] = [
   {
     id: "name",
-    header: renderNameHeader,
+    header: "Name",
     cell: renderName,
     meta: {
       getCellRenderKey: (row) => {
@@ -52,125 +111,74 @@ const tableColumns: AppDataTableColumnDef<TableRow>[] = [
   },
 ];
 
-const tableRows: TableRow[] = [
+const initialRows: TableRow[] = [
   { id: "one", name: "Alpha", status: "running" },
   { id: "two", name: "Beta", status: "stopped" },
 ];
 
-const getTableRowId = (row: TableRow) => row.id;
-
 function TestTable({
-  columns = tableColumns,
-  data = tableRows,
+  data = initialRows,
   expandedContent,
+  persistExpandedKey,
   selectedRowId,
+  tableColumns = columns,
+  estimateRowHeight,
 }: {
-  columns?: AppDataTableColumnDef<TableRow>[];
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
+  persistExpandedKey?: string;
   selectedRowId?: string;
+  tableColumns?: AppDataTableColumnDef<TableRow>[];
+  estimateRowHeight?: number;
 }) {
   return (
     <AppDataTable
-      columns={columns}
+      columns={tableColumns}
       data={data}
-      getRowAttributes={getRowAttributes}
-      getRowId={getTableRowId}
+      estimateRowHeight={estimateRowHeight}
+      fillAvailable={false}
+      getRowId={(row) => row.id}
+      height={200}
+      persistExpandedKey={persistExpandedKey}
       renderExpandedContent={expandedContent}
       selectedRowId={selectedRowId}
     />
   );
 }
 
-function SelectableTable() {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const columns: AppDataTableColumnDef<SelectableRow>[] = [
-    {
-      id: "select",
-      header: "Select",
-      cell: ({ row }) => (
-        <input
-          aria-label={`Select ${row.original.name}`}
-          checked={selected.has(row.original.id)}
-          onChange={(event) => {
-            setSelected((current) => {
-              const next = new Set(current);
-              if (event.target.checked) {
-                next.add(row.original.id);
-              } else {
-                next.delete(row.original.id);
-              }
-              return next;
-            });
-          }}
-          type="checkbox"
-        />
-      ),
-      meta: {
-        getCellRenderKey: (row) => {
-          const item = row as SelectableRow;
-          return [item.id, selected.has(item.id)];
-        },
-      },
-    },
-    {
-      accessorKey: "name",
-      header: "Name",
-    },
-  ];
-
-  return (
-    <AppDataTable
-      ariaLabel="Selectable rows"
-      columns={columns}
-      data={rows}
-      getRowId={(row) => row.id}
-    />
-  );
-}
-
 describe("AppDataTable", () => {
-  beforeEach(() => {
-    getRowAttributes.mockClear();
-    renderName.mockClear();
-    renderNameHeader.mockClear();
-    renderStatus.mockClear();
+  it("exposes the canonical row floor and clamps low virtual estimates", () => {
+    const view = render(<TestTable estimateRowHeight={40} />);
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveStyle(
+      `--app-dt-row-min-height: ${TABLE_ROW_MIN_HEIGHT}px`,
+    );
+    expect(virtualizerSpies.options?.estimateSize(0)).toBe(
+      TABLE_ROW_MIN_HEIGHT,
+    );
+
+    view.rerender(<TestTable estimateRowHeight={72} />);
+    expect(virtualizerSpies.options?.estimateSize(0)).toBe(72);
   });
 
-  it("rerenders memoized cells when their render key changes", async () => {
-    const { user } = render(<SelectableTable />);
-    const checkbox = screen.getByRole("checkbox", { name: "Select bridge" });
-
-    expect(checkbox).not.toBeChecked();
-    await user.click(checkbox);
-    expect(checkbox).toBeChecked();
-    await user.click(checkbox);
-    expect(checkbox).not.toBeChecked();
-  });
-
-  it("isolates selection and field updates to affected rows and cells", () => {
+  it("renders only cells whose field render key changed", () => {
     const view = render(<TestTable />);
 
-    expect(getRowAttributes).toHaveBeenCalledTimes(2);
     expect(renderName).toHaveBeenCalledTimes(2);
-    expect(renderNameHeader).toHaveBeenCalledTimes(1);
     expect(renderStatus).toHaveBeenCalledTimes(2);
 
     view.rerender(<TestTable selectedRowId="two" />);
 
     expect(screen.getByText("Beta").closest('[role="row"]')).toHaveClass(
-      "app-vdt__row--selected",
+      "app-dt__row--selected",
     );
-    // The row boundary updates selection chrome without re-running cell
-    // formatters; the compiler may also reuse pure row-attribute derivation.
-    expect(getRowAttributes).toHaveBeenCalledTimes(2);
     expect(renderName).toHaveBeenCalledTimes(2);
-    expect(renderNameHeader).toHaveBeenCalledTimes(1);
     expect(renderStatus).toHaveBeenCalledTimes(2);
 
     view.rerender(
       <TestTable
-        data={[tableRows[0], { ...tableRows[1], status: "running" }]}
+        data={[initialRows[0], { ...initialRows[1], status: "running" }]}
         selectedRowId="two"
       />,
     );
@@ -183,99 +191,178 @@ describe("AppDataTable", () => {
     const view = render(<TestTable />);
     const replacementColumns: AppDataTableColumnDef<TableRow>[] = [
       {
-        ...tableColumns[0],
-        header: "Renamed",
+        ...columns[0],
         cell: ({ row }) => `renamed:${row.original.name}`,
       },
-      tableColumns[1],
+      columns[1],
     ];
 
-    view.rerender(<TestTable columns={replacementColumns} />);
+    view.rerender(<TestTable tableColumns={replacementColumns} />);
 
     expect(screen.getByText("renamed:Alpha")).toBeInTheDocument();
     expect(screen.getByText("renamed:Beta")).toBeInTheDocument();
-    expect(
-      screen.getByRole("columnheader", { name: "Renamed" }),
-    ).toBeInTheDocument();
   });
 
-  it("updates index-sensitive cells when stable rows are reordered", () => {
-    const indexedColumns: AppDataTableColumnDef<TableRow>[] = [
-      {
-        id: "name",
-        header: "Name",
-        cell: ({ row }) => `${row.index}:${row.original.name}`,
-        meta: {
-          getCellRenderKey: (row) => (row as TableRow).id,
-        },
-      },
-    ];
-    const view = render(<TestTable columns={indexedColumns} />);
+  it("toggles the detail panel when the row itself is clicked", async () => {
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+      />,
+    );
+    const row = screen.getByText("Alpha").closest('[role="row"]')!;
 
-    expect(screen.getByText("0:Alpha")).toBeInTheDocument();
-    expect(screen.getByText("1:Beta")).toBeInTheDocument();
+    expect(row).toHaveClass("app-dt__row--interactive");
+    expect(row).toHaveAttribute("aria-expanded", "false");
+
+    await view.user.click(row);
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(row).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("keeps virtualizer callbacks stable across unrelated table renders", () => {
+    const view = render(<TestTable />);
+    const firstOptions = virtualizerSpies.options;
+
+    view.rerender(<TestTable selectedRowId="two" />);
+
+    expect(virtualizerSpies.options?.estimateSize).toBe(
+      firstOptions?.estimateSize,
+    );
+    expect(virtualizerSpies.options?.getItemKey).toBe(firstOptions?.getItemKey);
+  });
+
+  it("toggles detail entries without resetting the virtualizer", async () => {
+    virtualizerSpies.measure.mockClear();
+    const view = render(
+      <TestTable
+        expandedContent={({ original }) => (
+          <div>{`Details for ${original.name}`}</div>
+        )}
+      />,
+    );
+    const row = screen.getByText("Alpha").closest('[role="row"]')!;
+
+    await view.user.click(row);
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(virtualizerSpies.measure).not.toHaveBeenCalled();
+
+    await view.user.click(row);
+    expect(virtualizerSpies.measure).not.toHaveBeenCalled();
+  });
+
+  it("does not restart detail animation for a new renderer identity", async () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ height: 100 }) as DOMRect);
+    const frameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation(() => 1);
+
+    try {
+      const view = render(
+        <TestTable
+          expandedContent={({ original }) => (
+            <div>{`Details for ${original.name}`}</div>
+          )}
+        />,
+      );
+      await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
+      const framesAfterExpand = frameSpy.mock.calls.length;
+
+      view.rerender(
+        <TestTable
+          expandedContent={({ original }) => (
+            <div>{`Updated details for ${original.name}`}</div>
+          )}
+        />,
+      );
+
+      expect(screen.getByText("Updated details for Alpha")).toBeInTheDocument();
+      expect(frameSpy).toHaveBeenCalledTimes(framesAfterExpand);
+
+      view.unmount();
+    } finally {
+      frameSpy.mockRestore();
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("does not rerender stable explicit-key cells when live rows prepend", () => {
+    const view = render(<TestTable />);
+
+    expect(renderName).toHaveBeenCalledTimes(2);
+    expect(renderStatus).toHaveBeenCalledTimes(2);
 
     view.rerender(
       <TestTable
-        columns={indexedColumns}
-        data={[tableRows[1], tableRows[0]]}
+        data={[
+          { id: "new", name: "Newest", status: "running" },
+          ...initialRows,
+        ]}
       />,
     );
 
-    expect(screen.getByText("0:Beta")).toBeInTheDocument();
-    expect(screen.getByText("1:Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Newest")).toBeInTheDocument();
+    expect(renderName).toHaveBeenCalledTimes(3);
+    expect(renderStatus).toHaveBeenCalledTimes(3);
   });
 
-  it("does not construct collapsed detail content", async () => {
-    const renderExpandedContent = vi.fn(
-      ({ original }: { original: TableRow }) => (
-        <div>{`Details for ${original.name}`}</div>
-      ),
-    );
-    const view = render(<TestTable expandedContent={renderExpandedContent} />);
-
-    expect(renderExpandedContent).not.toHaveBeenCalled();
-
-    await view.user.click(
-      screen.getAllByRole("button", { name: "Expand row" })[0],
-    );
-
-    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
-    expect(renderExpandedContent).toHaveBeenCalledTimes(1);
-
-    view.rerender(
-      <TestTable expandedContent={renderExpandedContent} selectedRowId="two" />,
-    );
-
-    expect(renderExpandedContent).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps rows expanded when polled data is replaced", async () => {
-    const renderExpandedContent = ({ original }: { original: TableRow }) => (
+  it("restores persisted expansion on a fresh mount", async () => {
+    const expandedContent = ({ original }: { original: TableRow }) => (
       <div>{`Details for ${original.name}`}</div>
     );
-    const view = render(<TestTable expandedContent={renderExpandedContent} />);
+    const view = render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
+    );
 
-    await view.user.click(
-      screen.getAllByRole("button", { name: "Expand row" })[0],
+    await view.user.click(screen.getByText("Alpha").closest('[role="row"]')!);
+    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    view.unmount();
+
+    render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
     );
     expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Alpha").closest('[role="row"]')).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.queryByText("Details for Beta")).not.toBeInTheDocument();
+  });
 
-    // What a refetch looks like: same row ids, new array and row objects, one
-    // drifting field (Docker's "Up 4 minutes" status). TanStack's auto-reset
-    // runs in a queueMicrotask, so the collapse this guards against only shows
-    // up after the flush that the async act below performs.
-    await act(async () => {
-      view.rerender(
-        <TestTable
-          data={tableRows.map((row) =>
-            row.id === "one" ? { ...row, status: "running (2m)" } : { ...row },
-          )}
-          expandedContent={renderExpandedContent}
-        />,
-      );
-    });
+  it("persists a collapse, not just an expand", async () => {
+    const expandedContent = ({ original }: { original: TableRow }) => (
+      <div>{`Details for ${original.name}`}</div>
+    );
+    const view = render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
+    );
+    const row = screen.getByText("Alpha").closest('[role="row"]')!;
 
-    expect(screen.getByText("Details for Alpha")).toBeInTheDocument();
+    await view.user.click(row);
+    await view.user.click(row);
+    view.unmount();
+
+    render(
+      <TestTable
+        expandedContent={expandedContent}
+        persistExpandedKey="test-table"
+      />,
+    );
+    expect(screen.getByText("Alpha").closest('[role="row"]')).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });

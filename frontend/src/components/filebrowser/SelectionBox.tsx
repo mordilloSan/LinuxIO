@@ -1,4 +1,5 @@
 import { useAppTheme } from "@/theme";
+import { mixWithTransparency } from "@/theme/surfaces";
 
 interface SelectionBoxProps {
   height: number;
@@ -22,8 +23,10 @@ const SelectionBox = ({ left, top, width, height }: SelectionBoxProps) => {
         width: `${width}px`,
         height: `${height}px`,
         border: `2px solid ${theme.palette.primary.main}`,
-        backgroundColor:
-          "color-mix(in srgb, var(--app-palette-primary-main), transparent 90%)",
+        backgroundColor: mixWithTransparency(
+          "var(--app-palette-primary-main)",
+          0.1,
+        ),
         pointerEvents: "none",
         zIndex: 1000,
         borderRadius: "4px",

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -10,7 +11,7 @@ import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
 const DockerComposePage = () => {
   const { button: checkUpdatesButton } = useDockerUpdateCheck();
-  const [stacksView, setStacksView] = useViewMode("docker.stacks", "table");
+  const [stacksView, setStacksView] = useViewMode("docker.stacks");
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
   >(null);
@@ -19,23 +20,27 @@ const DockerComposePage = () => {
   }, []);
 
   const actions = (
-    <>
-      {checkUpdatesButton}
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={setStacksView}
-        viewMode={stacksView}
-      />
-      {createStackHandler && (
-        <AppActionIconButton
-          ariaLabel="Create Stack"
-          icon="mdi:plus"
-          iconSize={20}
-          label="Create Stack"
-          onClick={createStackHandler}
+    <HeaderActions
+      create={
+        createStackHandler && (
+          <AppActionIconButton
+            ariaLabel="Create Stack"
+            icon="mdi:plus"
+            iconSize={20}
+            label="Create Stack"
+            onClick={createStackHandler}
+          />
+        )
+      }
+      refresh={checkUpdatesButton}
+      view={
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setStacksView}
+          viewMode={stacksView}
         />
-      )}
-    </>
+      }
+    />
   );
 
   return (

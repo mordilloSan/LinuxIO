@@ -29,10 +29,41 @@ const SUSPENSE_HOOK_CALL = /(?<![A-Za-z0-9_$.])useSuspenseQuer(?:y|ies)\s*\(/g;
 //   linuxio.systemd.get_unit_info({ unit })
 //
 // Coverage is compared at handler.command granularity only, never on arguments
-// or query keys: loaders warm parameterized endpoints from loader deps while
-// observers may pass component-derived values.
+// or query keys. Route-derived critical options are single-sourced through route
+// context and guarded separately in `_authenticated/-query-ownership.test.ts`;
+// observers may still pass component-derived values for deliberately local work.
 const ENDPOINT_QUERY_REFERENCE =
   /\blinuxio\.(\w+)\.(\w+)(?:\s*\(|(?=\s*[,)}\]]))/g;
+const QUERY_OPTIONS_REFERENCE = /\b[A-Za-z_$][\w$]*QueryOptions\b/g;
+
+// Route-context descriptors are intentionally opaque at the observer call.
+// This map connects each consumer-local option name back to the endpoint that
+// the route context resolves. The targeted query-ownership guard separately
+// verifies that these routes construct options only in context and that their
+// loaders consume `loaderArgs.context`.
+const ROUTE_CONTEXT_OBSERVER_ENDPOINTS: Record<
+  string,
+  Record<string, string>
+> = {
+  "/_authenticated/accounts/": {
+    listUsersQueryOptions: "accounts.list_users",
+  },
+  "/_authenticated/filebrowser/$": {
+    listingQueryOptions: "filebrowser.resource_get",
+  },
+  "/_authenticated/services/": {
+    listQueryOptions: "systemd.list_services",
+  },
+  "/_authenticated/services/sockets": {
+    listQueryOptions: "systemd.list_sockets",
+  },
+  "/_authenticated/services/timers": {
+    listQueryOptions: "systemd.list_timers",
+  },
+  "/_authenticated/vm/machines/$name": {
+    vmQueryOptions: "virt.get",
+  },
+};
 
 // `createFileRoute("<id>")` / `createRootRouteWithContext` — the router's own
 // route id, preferred over deriving one from the file path.
@@ -222,14 +253,23 @@ function endpointsIn(text: string): string[] {
 interface SuspenseSite {
   line: number;
   endpoints: string[];
+  queryOptionReferences: string[];
 }
 
 function suspenseSitesIn(source: string, code: string): SuspenseSite[] {
   return [...code.matchAll(SUSPENSE_HOOK_CALL)].map((match) => {
     const openParen = (match.index ?? 0) + match[0].length - 1;
+    const region = balancedRegion(code, openParen);
     return {
       line: lineNumberForIndex(source, match.index ?? 0),
-      endpoints: [...new Set(endpointsIn(balancedRegion(code, openParen)))],
+      endpoints: [...new Set(endpointsIn(region))],
+      queryOptionReferences: [
+        ...new Set(
+          [...region.matchAll(QUERY_OPTIONS_REFERENCE)].map(
+            (reference) => reference[0],
+          ),
+        ),
+      ],
     };
   });
 }
@@ -237,6 +277,15 @@ function suspenseSitesIn(source: string, code: string): SuspenseSite[] {
 function loaderEndpointsIn(code: string): string[] {
   const found: string[] = [];
   for (const match of code.matchAll(/\bloader:\s*/g)) {
+    const start = (match.index ?? 0) + match[0].length;
+    found.push(...endpointsIn(propertyValueRegion(code, start)));
+  }
+  return found;
+}
+
+function routeContextEndpointsIn(code: string): string[] {
+  const found: string[] = [];
+  for (const match of code.matchAll(/\bcontext:\s*/g)) {
     const start = (match.index ?? 0) + match[0].length;
     found.push(...endpointsIn(propertyValueRegion(code, start)));
   }
@@ -351,10 +400,15 @@ interface RouteNode {
 const routes: RouteNode[] = routeFiles.map((file) => {
   const { code } = readModule(file);
   const match = code.match(CREATE_FILE_ROUTE);
+  const id = match ? match[1] : ROOT_ROUTE_ID;
   return {
     file,
-    id: match ? match[1] : ROOT_ROUTE_ID,
-    loaderEndpoints: loaderEndpointsIn(code),
+    id,
+    loaderEndpoints: [
+      ...loaderEndpointsIn(code),
+      ...routeContextEndpointsIn(code),
+      ...Object.values(ROUTE_CONTEXT_OBSERVER_ENDPOINTS[id] ?? {}),
+    ],
   };
 });
 const routesById = new Map(routes.map((route) => [route.id, route]));
@@ -468,9 +522,15 @@ function scanRouteCoverage(): CoverageScan {
       for (const site of readModule(file).suspenseSites) {
         const at = `${relativeToSrc(file)}:${site.line}`;
         observerSites.add(at);
-        if (site.endpoints.length === 0) emptySites.add(at);
+        const endpoints = new Set(site.endpoints);
+        const contextEndpoints = ROUTE_CONTEXT_OBSERVER_ENDPOINTS[route.id];
+        for (const reference of site.queryOptionReferences) {
+          const endpoint = contextEndpoints?.[reference];
+          if (endpoint) endpoints.add(endpoint);
+        }
+        if (endpoints.size === 0) emptySites.add(`${at} for ${route.id}`);
 
-        for (const endpoint of site.endpoints) {
+        for (const endpoint of endpoints) {
           endpointChecks += 1;
           if (warmed.has(endpoint)) continue;
           violations.push(
@@ -541,19 +601,12 @@ describe("suspense loader coverage guard", () => {
   });
 
   it("resolves an endpoint literal inside every suspense call", () => {
-    const opaque = suspenseFilesInTree.flatMap(({ rel, sites }) =>
-      sites
-        .filter((site) => site.endpoints.length === 0)
-        .map((site) => `${rel}:${site.line}`),
-    );
-
     expect(
-      opaque,
-      "Every suspense call must pass a literal linuxio endpoint descriptor " +
-        "(a Call value or factory). A call this scan " +
-        "cannot read (a variable, a helper return, a prop, a spread) is " +
-        "invisible to the coverage check above, so the indirection has to be " +
-        "removed or this guard taught to follow it.",
+      coverage.emptySites,
+      "Every suspense call must expose a literal linuxio descriptor or a " +
+        "route-context option name registered in " +
+        "ROUTE_CONTEXT_OBSERVER_ENDPOINTS. Otherwise the coverage scan cannot " +
+        "prove that its route loader warms the same endpoint.",
     ).toEqual([]);
   });
 
@@ -602,11 +655,14 @@ describe("suspense loader coverage guard", () => {
       suspenseFilesInTree.reduce((total, { sites }) => total + sites.length, 0),
     ).toBeGreaterThan(45);
     expect(
-      new Set(
-        suspenseFilesInTree.flatMap(({ sites }) =>
+      new Set([
+        ...suspenseFilesInTree.flatMap(({ sites }) =>
           sites.flatMap((site) => site.endpoints),
         ),
-      ).size,
+        ...Object.values(ROUTE_CONTEXT_OBSERVER_ENDPOINTS).flatMap(
+          (endpoints) => Object.values(endpoints),
+        ),
+      ]).size,
     ).toBeGreaterThan(40);
 
     // Every route resolves a parent except the root, and the loader chain is

@@ -10,7 +10,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-import { GAP_SM } from "@/theme/constants";
+import { CARD_PADDING_MD, GAP_SM } from "@/theme/constants";
 
 export interface GroupCardProps {
   group: AccountGroup;
@@ -74,9 +74,10 @@ const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
 
   return (
     <FrostedCard
+      accent
       hoverLift
       style={{
-        padding: 10,
+        padding: CARD_PADDING_MD,
         display: "flex",
         flexDirection: "column",
         height: "100%",

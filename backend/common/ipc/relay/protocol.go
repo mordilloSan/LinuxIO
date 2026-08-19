@@ -52,6 +52,14 @@ type StreamFrame struct {
 	Payload  []byte
 }
 
+// StreamFrameHeader is the fixed-size portion of a relay frame. PayloadLength
+// is validated against the protocol limit by ReadRelayFrameHeader.
+type StreamFrameHeader struct {
+	Opcode        byte
+	StreamID      uint32
+	PayloadLength uint32
+}
+
 // checkPayloadSize validates that a payload length is within supported bounds.
 // It enforces the protocol-level maximum payload size for a single relay frame.
 func checkPayloadSize(payload []byte) (int, error) {
@@ -90,48 +98,64 @@ func WriteRelayFrame(w io.Writer, f *StreamFrame) error {
 	return nil
 }
 
-// ReadRelayFrame reads a StreamFrame from the reader.
-func ReadRelayFrame(r io.Reader) (*StreamFrame, error) {
-	header := make([]byte, relayFrameHeaderSize)
-	if _, err := io.ReadFull(r, header); err != nil {
-		return nil, fmt.Errorf("read header: %w", err)
+// ReadRelayFrameHeader reads and validates a frame header without consuming its
+// payload. Callers can then stream large payloads instead of allocating them.
+func ReadRelayFrameHeader(r io.Reader) (StreamFrameHeader, error) {
+	var raw [relayFrameHeaderSize]byte
+	if _, err := io.ReadFull(r, raw[:]); err != nil {
+		return StreamFrameHeader{}, fmt.Errorf("read header: %w", err)
 	}
 
-	f := &StreamFrame{
-		Opcode:   header[0],
-		StreamID: binary.BigEndian.Uint32(header[1:5]),
+	header := StreamFrameHeader{
+		Opcode:        raw[0],
+		StreamID:      binary.BigEndian.Uint32(raw[1:5]),
+		PayloadLength: binary.BigEndian.Uint32(raw[5:9]),
 	}
-	length := binary.BigEndian.Uint32(header[5:9])
+	if header.PayloadLength > maxRelayPayloadSize {
+		return StreamFrameHeader{}, fmt.Errorf("payload too large: %d bytes", header.PayloadLength)
+	}
+	return header, nil
+}
 
-	if length > 0 {
-		if length > maxRelayPayloadSize {
-			return nil, fmt.Errorf("payload too large: %d bytes", length)
-		}
-		f.Payload = make([]byte, length)
-		if _, err := io.ReadFull(r, f.Payload); err != nil {
-			return nil, fmt.Errorf("read payload: %w", err)
-		}
+// ReadRelayFramePayload reads the payload described by a previously validated
+// header and returns the complete frame.
+func ReadRelayFramePayload(r io.Reader, header StreamFrameHeader) (*StreamFrame, error) {
+	if header.PayloadLength > maxRelayPayloadSize {
+		return nil, fmt.Errorf("payload too large: %d bytes", header.PayloadLength)
+	}
+	f := &StreamFrame{Opcode: header.Opcode, StreamID: header.StreamID}
+	if header.PayloadLength == 0 {
+		return f, nil
+	}
+	f.Payload = make([]byte, header.PayloadLength)
+	if _, err := io.ReadFull(r, f.Payload); err != nil {
+		return nil, fmt.Errorf("read payload: %w", err)
 	}
 	return f, nil
+}
+
+// ReadRelayFrame reads a complete StreamFrame from the reader.
+func ReadRelayFrame(r io.Reader) (*StreamFrame, error) {
+	header, err := ReadRelayFrameHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	return ReadRelayFramePayload(r, header)
 }
 
 // ReadRelayFrameProgressive reads a frame while growing the payload only as
 // bytes arrive. It is intended for the first frame on an untrusted stream,
 // where a large declared length must not cause an immediate allocation.
 func ReadRelayFrameProgressive(r io.Reader) (*StreamFrame, error) {
-	header := make([]byte, relayFrameHeaderSize)
-	if _, err := io.ReadFull(r, header); err != nil {
-		return nil, fmt.Errorf("read header: %w", err)
+	header, err := ReadRelayFrameHeader(r)
+	if err != nil {
+		return nil, err
 	}
-	f := &StreamFrame{Opcode: header[0], StreamID: binary.BigEndian.Uint32(header[1:5])}
-	length := binary.BigEndian.Uint32(header[5:9])
-	if length > maxRelayPayloadSize {
-		return nil, fmt.Errorf("payload too large: %d bytes", length)
-	}
-	if length == 0 {
+	f := &StreamFrame{Opcode: header.Opcode, StreamID: header.StreamID}
+	if header.PayloadLength == 0 {
 		return f, nil
 	}
-	remaining := int(length)
+	remaining := int(header.PayloadLength)
 	for remaining > 0 {
 		chunkLen := min(remaining, firstFrameReadChunkSize)
 		chunk := make([]byte, chunkLen)

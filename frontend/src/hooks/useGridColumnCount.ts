@@ -19,6 +19,8 @@ export function useGridColumnCount(
   containerRef: RefObject<HTMLElement | null>,
   { gap, minItemWidth, padding }: GridColumnCountOptions,
 ) {
+  // The element does not exist during render, so zero means "not measured".
+  // The layout effect replaces it with clientWidth before the browser paints.
   const [viewportWidth, setViewportWidth] = useState(0);
 
   useLayoutEffect(() => {

@@ -11,12 +11,23 @@ import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
+import { installTabNavigationIntent } from "@/utils/tabNavigation";
 
 import "@/theme/variables.css";
+
+installTabNavigationIntent();
 
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
+const ScrollingTabsPage = lazy(() => import("./routes/ScrollingTabsPage"));
+const VirtualFileBrowserPage = lazy(
+  () => import("./routes/VirtualFileBrowserPage"),
+);
+const VirtualGridPage = lazy(() => import("./routes/VirtualGridPage"));
+const VirtualExpansionTablePage = lazy(
+  () => import("./routes/VirtualExpansionTablePage"),
+);
 
 const tabs = [
   { label: "Users", to: "/accounts" },
@@ -69,6 +80,36 @@ const accessibilityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "accessibility",
 });
+const growingTabsRoute = createRoute({
+  component: () => <ScrollingTabsPage panel="grow" />,
+  getParentRoute: () => rootRoute,
+  path: "scrolling-tabs/grow",
+});
+const fillingTabsRoute = createRoute({
+  component: () => <ScrollingTabsPage panel="fill" />,
+  getParentRoute: () => rootRoute,
+  path: "scrolling-tabs/fill",
+});
+const cardTabsRoute = createRoute({
+  component: () => <ScrollingTabsPage panel="cards" />,
+  getParentRoute: () => rootRoute,
+  path: "scrolling-tabs/cards",
+});
+const virtualExpansionRoute = createRoute({
+  component: VirtualExpansionTablePage,
+  getParentRoute: () => rootRoute,
+  path: "tables/virtual-expansion",
+});
+const virtualFileBrowserRoute = createRoute({
+  component: VirtualFileBrowserPage,
+  getParentRoute: () => rootRoute,
+  path: "filebrowser/virtual",
+});
+const virtualGridRoute = createRoute({
+  component: VirtualGridPage,
+  getParentRoute: () => rootRoute,
+  path: "grids/virtual",
+});
 const accountsIndexRoute = createRoute({
   component: UsersPage,
   getParentRoute: () => accountsRoute,
@@ -95,6 +136,12 @@ const failedRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
+  growingTabsRoute,
+  fillingTabsRoute,
+  cardTabsRoute,
+  virtualExpansionRoute,
+  virtualFileBrowserRoute,
+  virtualGridRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

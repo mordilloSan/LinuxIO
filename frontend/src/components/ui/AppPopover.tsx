@@ -153,6 +153,15 @@ const AppPopover = ({
   }, [anchorEl, anchorOrigin, anchorPosition, open, transformOrigin]);
 
   const handleReposition = useEffectEvent(() => {
+    // A detached anchor still answers getBoundingClientRect(), just with an
+    // all-zero box — which sails past updatePosition's `!anchorBox` guard and
+    // clamps the surface into the top-left corner, an orphan menu acting on a
+    // row that is no longer there. Close instead of repositioning.
+    if (anchorEl && !anchorEl.isConnected) {
+      onClose?.();
+      return;
+    }
+
     updatePosition();
   });
 
@@ -199,9 +208,24 @@ const AppPopover = ({
   });
 
   const handleDismissKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "Escape") {
-      onClose?.();
+    if (event.key !== "Escape" || event.defaultPrevented) {
+      return;
     }
+    // Escape in a filled text control edits the field — its own handler
+    // clears it — so only an empty field lets Escape dismiss, the native
+    // combobox cascade. This listener runs in the capture phase, before the
+    // field could mark the event handled, so the check is on the target.
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      internalPaperRef.current?.contains(target) &&
+      (target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement) &&
+      target.value !== ""
+    ) {
+      return;
+    }
+    onClose?.();
   });
 
   useLayoutEffect(() => {

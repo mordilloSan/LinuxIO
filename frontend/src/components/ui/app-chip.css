@@ -1,5 +1,5 @@
 .app-chip {
-  display: var(--app-chip-display, inline-flex);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
@@ -14,7 +14,7 @@
   font-size: var(--app-chip-font-size);
   font-weight: var(--app-chip-font-weight);
   line-height: var(--app-chip-line-height);
-  opacity: var(--app-chip-opacity, 1);
+  opacity: 1;
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
@@ -54,7 +54,7 @@
   cursor: pointer;
 }
 
-.app-chip--interactive:focus-visible {
+:root[data-tab-navigation] .app-chip--interactive:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }

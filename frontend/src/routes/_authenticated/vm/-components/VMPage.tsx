@@ -7,6 +7,7 @@ import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppTypography from "@/components/ui/AppTypography";
+import HeaderActions from "@/components/ui/HeaderActions";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
@@ -86,28 +87,32 @@ const VMPage = ({ children }: VMPageProps) => {
   });
 
   const tabActions = (
-    <>
-      <AppActionIconButton
-        ariaLabel="Refresh"
-        disabled={listQuery.isFetching}
-        icon="mdi:refresh"
-        iconSize={20}
-        label="Refresh"
-        loading={listQuery.isFetching}
-        onClick={() => listQuery.refetch()}
-      />
-      <AppActionIconButton
-        ariaLabel="Create VM"
-        disabled={!preflightReady(preflightQuery.data)}
-        icon="mdi:plus"
-        iconSize={20}
-        label="Create VM"
-        onClick={() => {
-          setCreateProgress(null);
-          setCreateOpen(true);
-        }}
-      />
-    </>
+    <HeaderActions
+      create={
+        <AppActionIconButton
+          ariaLabel="Create VM"
+          disabled={!preflightReady(preflightQuery.data)}
+          icon="mdi:plus"
+          iconSize={20}
+          label="Create VM"
+          onClick={() => {
+            setCreateProgress(null);
+            setCreateOpen(true);
+          }}
+        />
+      }
+      refresh={
+        <AppActionIconButton
+          ariaLabel="Refresh"
+          disabled={listQuery.isFetching}
+          icon="mdi:refresh"
+          iconSize={20}
+          label="Refresh"
+          loading={listQuery.isFetching}
+          onClick={() => listQuery.refetch()}
+        />
+      }
+    />
   );
 
   if (libvirtStatus !== "available") {

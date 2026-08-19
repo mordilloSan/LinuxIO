@@ -1,6 +1,6 @@
 import { memo, type ChangeEvent, type RefObject } from "react";
 
-import type { TaskProgress } from "@/api";
+import type { CountProgress, TaskProgress } from "@/api";
 import CompressFormatDialog from "@/components/filebrowser/CompressFormatDialog";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import ContextMenu from "@/components/filebrowser/ContextMenu";
@@ -116,7 +116,7 @@ export interface FileBrowserDeleteDialogProps {
   open: boolean;
   pendingDeletePaths: string[];
   isPending?: boolean;
-  progress?: TaskProgress | null;
+  progress?: TaskProgress<CountProgress> | null;
 }
 
 export interface FileBrowserPermissionsDialogProps {
@@ -129,7 +129,7 @@ export interface FileBrowserPermissionsDialogProps {
     group?: string,
   ) => Promise<void> | void;
   isPending?: boolean;
-  progress?: TaskProgress | null;
+  progress?: TaskProgress<CountProgress> | null;
 }
 
 export interface FileBrowserUploadDialogProps {

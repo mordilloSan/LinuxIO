@@ -1,6 +1,6 @@
 import type { DiskPowerData } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -74,6 +74,7 @@ export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
         columns={powerStateColumns}
         data={power.states}
         density="compact"
+        fillAvailable={false}
         getRowId={(state) => String(state.state)}
         maxHeight={400}
         selectedRowId={String(power.currentState)}

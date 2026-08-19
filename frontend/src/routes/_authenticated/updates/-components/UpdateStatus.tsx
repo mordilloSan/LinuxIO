@@ -33,7 +33,17 @@ const UpdateStatus = ({
   canCancel = isUpdating,
 }: UpdateStatusProps) => {
   return (
-    <div>
+    // The progress panel keeps its natural height and the list takes the rest,
+    // so the list scrolls under it rather than pushing it off the top — and the
+    // section matches the History tab it toggles with.
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       {/*
         The progress panel follows the adopted transaction, not the recovery
         scan: `recoveryPending` is true on every entry into the section, and

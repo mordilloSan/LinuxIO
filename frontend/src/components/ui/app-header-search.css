@@ -1,0 +1,26 @@
+.app-header-search {
+  width: 100%;
+  max-width: 400px;
+}
+
+.app-header-search .app-text-field__wrapper {
+  border: none;
+  border-radius: 24px;
+  background-color: var(--app-header-search-bg);
+  transition:
+    background-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.app-header-search .app-text-field__outline {
+  display: none;
+}
+
+.app-header-search .app-text-field__wrapper:hover {
+  background-color: var(--app-header-search-bg-hover);
+}
+
+.app-header-search.app-text-field--focused .app-text-field__wrapper {
+  background-color: var(--app-header-search-bg-hover);
+  box-shadow: 0 0 0 1px var(--app-palette-primary-main);
+}

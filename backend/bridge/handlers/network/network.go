@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	stdnet "net"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,23 +16,9 @@ import (
 	"github.com/shirou/gopsutil/v4/net"
 	"github.com/vishvananda/netlink"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
 )
-
-type NetworkInterfaceInfo struct {
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	MAC          string   `json:"mac"`
-	Speed        string   `json:"speed"`
-	Duplex       string   `json:"duplex"`
-	State        uint32   `json:"state"`
-	IP4Addresses []string `json:"ipv4"`
-	RxSpeed      float64  `json:"rx_speed"`
-	TxSpeed      float64  `json:"tx_speed"`
-	DNS          []string `json:"dns"`
-	Gateway      string   `json:"gateway"`
-	IPv4Method   string   `json:"ipv4_method"`
-}
 
 var (
 	networkMu     sync.Mutex
@@ -40,7 +27,7 @@ var (
 	networkEnv    = networkbackend.DefaultEnvironment()
 )
 
-func GetNetworkInfo(ctx context.Context) ([]NetworkInterfaceInfo, error) {
+func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
 	networkMu.Lock()
 	defer networkMu.Unlock()
 
@@ -55,7 +42,7 @@ func GetNetworkInfo(ctx context.Context) ([]NetworkInterfaceInfo, error) {
 
 	dns := readSystemNameservers()
 	gateways := readDefaultGateways()
-	results := make([]NetworkInterfaceInfo, 0, len(ifaces))
+	results := make([]apischema.NetworkInterface, 0, len(ifaces))
 	for _, iface := range ifaces {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -66,6 +53,7 @@ func GetNetworkInfo(ctx context.Context) ([]NetworkInterfaceInfo, error) {
 		} else if err != nil {
 			slog.Debug("network config unavailable", "component", "dbus", "subsystem", "network", "interface", iface.Name, "error", err)
 		}
+		info.LogUnit = resolveNetworkLogUnit(info.ConfigBackend)
 		results = append(results, info)
 	}
 	return results, nil
@@ -187,28 +175,38 @@ func liveInterfaceInfo(
 	gateway string,
 	snapshotMap map[string]net.IOCountersStat,
 	interval int64,
-) NetworkInterfaceInfo {
+) apischema.NetworkInterface {
 	addrs, _ := iface.Addrs()
 	ip4s := collectIPv4Addresses(addrs)
 	rxSpeed, txSpeed := networkInterfaceSpeed(iface.Name, snapshotMap, interval)
-	return NetworkInterfaceInfo{
-		Name:         iface.Name,
-		Type:         interfaceType(iface.Name),
-		MAC:          iface.HardwareAddr.String(),
-		Speed:        networkInterfaceLinkSpeed(iface.Name),
-		Duplex:       networkInterfaceDuplex(iface.Name),
-		State:        interfaceState(iface),
-		IP4Addresses: ip4s,
-		RxSpeed:      rxSpeed,
-		TxSpeed:      txSpeed,
-		DNS:          append([]string(nil), defaultDNS...),
-		Gateway:      gateway,
-		IPv4Method:   "unknown",
+	// Stays "unknown" unless an on-disk backend claims the interface; the
+	// pointer is always set so the field is never silently absent.
+	ipv4Method := "unknown"
+	return apischema.NetworkInterface{
+		Name:       iface.Name,
+		Type:       interfaceType(iface.Name),
+		MAC:        iface.HardwareAddr.String(),
+		MTU:        iface.MTU,
+		Speed:      networkInterfaceLinkSpeed(iface.Name),
+		Duplex:     networkInterfaceDuplex(iface.Name),
+		Driver:     networkInterfaceDriver(iface.Name),
+		OperState:  networkInterfaceOperState(iface.Name),
+		Carrier:    networkInterfaceCarrier(iface.Name),
+		State:      int(interfaceState(iface)),
+		IPv4:       ip4s,
+		RXSpeed:    rxSpeed,
+		TXSpeed:    txSpeed,
+		Counters:   networkInterfaceCounters(iface.Name, snapshotMap),
+		DNS:        append(make([]string, 0, len(defaultDNS)), defaultDNS...),
+		Gateway:    gateway,
+		IPv4Method: &ipv4Method,
 	}
 }
 
+// Never nil: the wire contract types ipv4 as an array, and a disconnected
+// interface with no addresses must serialise as [] rather than null.
 func collectIPv4Addresses(addrs []stdnet.Addr) []string {
-	var ip4s []string
+	ip4s := []string{}
 	for _, addr := range addrs {
 		value := addr.String()
 		ip, _, err := stdnet.ParseCIDR(value)
@@ -319,6 +317,69 @@ func networkInterfaceDuplex(name string) string {
 	return "unknown"
 }
 
+// The driver link only exists for interfaces backed by a device, so bridges,
+// bonds, tunnels and veths report no driver rather than a placeholder.
+func networkInterfaceDriver(name string) string {
+	if name == "" {
+		return ""
+	}
+	target, err := os.Readlink(fmt.Sprintf("/sys/class/net/%s/device/driver", name))
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(target)
+}
+
+func networkInterfaceOperState(name string) string {
+	state, err := readOperState(name)
+	if err != nil || state == "" {
+		return "unknown"
+	}
+	return state
+}
+
+// Reading carrier fails on a down interface (EINVAL) and the attribute is
+// absent on virtual ones, so an unreadable value stays nil: "unknown", not
+// "no link".
+func networkInterfaceCarrier(name string) *bool {
+	if name == "" {
+		return nil
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/carrier", name))
+	if err != nil {
+		return nil
+	}
+	switch strings.TrimSpace(string(data)) {
+	case "1":
+		carrier := true
+		return &carrier
+	case "0":
+		carrier := false
+		return &carrier
+	}
+	return nil
+}
+
+// The same snapshot the rates are derived from, reported raw. An interface
+// with no snapshot yields zeros, which is what the kernel reports for a
+// freshly created device anyway.
+func networkInterfaceCounters(name string, snapshotMap map[string]net.IOCountersStat) apischema.NetworkInterfaceCounters {
+	snapshot, ok := snapshotMap[name]
+	if !ok {
+		return apischema.NetworkInterfaceCounters{}
+	}
+	return apischema.NetworkInterfaceCounters{
+		RXBytes:   snapshot.BytesRecv,
+		RXDropped: snapshot.Dropin,
+		RXErrors:  snapshot.Errin,
+		RXPackets: snapshot.PacketsRecv,
+		TXBytes:   snapshot.BytesSent,
+		TXDropped: snapshot.Dropout,
+		TXErrors:  snapshot.Errout,
+		TXPackets: snapshot.PacketsSent,
+	}
+}
+
 func networkInterfaceSpeed(name string, snapshotMap map[string]net.IOCountersStat, interval int64) (float64, float64) {
 	snapshot, ok := snapshotMap[name]
 	if !ok {
@@ -333,13 +394,17 @@ func networkInterfaceSpeed(name string, snapshotMap map[string]net.IOCountersSta
 	return rxSpeed, txSpeed
 }
 
-func mergeConfiguredState(info *NetworkInterfaceInfo, cfg networkbackend.InterfaceConfig) {
-	info.IPv4Method = cfg.IPv4Method
-	if cfg.IPv4Method == "manual" && len(cfg.IPv4Addresses) > 0 {
-		info.IP4Addresses = append([]string(nil), cfg.IPv4Addresses...)
+func mergeConfiguredState(info *apischema.NetworkInterface, cfg networkbackend.InterfaceConfig) {
+	info.ConfigBackend = cfg.Backend
+	if strings.TrimSpace(cfg.IPv4Method) != "" {
+		ipv4Method := cfg.IPv4Method
+		info.IPv4Method = &ipv4Method
 	}
-	if len(info.IP4Addresses) == 0 && len(cfg.IPv4Addresses) > 0 {
-		info.IP4Addresses = append([]string(nil), cfg.IPv4Addresses...)
+	if cfg.IPv4Method == "manual" && len(cfg.IPv4Addresses) > 0 {
+		info.IPv4 = append([]string(nil), cfg.IPv4Addresses...)
+	}
+	if len(info.IPv4) == 0 && len(cfg.IPv4Addresses) > 0 {
+		info.IPv4 = append([]string(nil), cfg.IPv4Addresses...)
 	}
 	if cfg.IPv4Method == "manual" && len(cfg.DNS) > 0 {
 		info.DNS = append([]string(nil), cfg.DNS...)

@@ -134,7 +134,10 @@ export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
             <Icon height={18} icon="mdi:close" width={18} />
           </AppIconButton>
         </div>
+        {/* `custom-scrollbar-nested` reaches the devtools' own scroll panes,
+            which are library-owned DOM we cannot put a class on. */}
         <div
+          className="custom-scrollbar custom-scrollbar-nested"
           data-testid="devtools-modal-content"
           style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "auto" }}
         >

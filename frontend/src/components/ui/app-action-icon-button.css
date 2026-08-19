@@ -7,3 +7,9 @@
 .app-action-icon-button:hover {
   color: var(--ab-hover-color);
 }
+
+/* The designed Tab-navigation ring, matching .app-btn / .app-icon-btn. */
+:root[data-tab-navigation] .app-action-icon-button:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}

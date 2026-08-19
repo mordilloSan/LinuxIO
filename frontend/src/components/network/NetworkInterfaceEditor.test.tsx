@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NetworkInterface } from "@/api";
 import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
+import { testNetworkInterface } from "@/test/networkInterface";
 import { render, screen } from "@/test/render";
 
 const mocks = vi.hoisted(() => ({
@@ -40,21 +41,14 @@ mocks.useCallMutation.mockImplementation((endpoint: { route: string }) => {
 
 const manualInterface = (
   overrides: Partial<NetworkInterface> = {},
-): NetworkInterface => ({
-  dns: ["1.1.1.1", "8.8.8.8"],
-  duplex: "full",
-  gateway: "192.168.1.1",
-  ipv4: ["192.168.1.25/24"],
-  ipv4_method: "manual",
-  mac: "00:11:22:33:44:55",
-  name: "eth0",
-  rx_speed: 0,
-  speed: "1000",
-  state: 100,
-  tx_speed: 0,
-  type: "ethernet",
-  ...overrides,
-});
+): NetworkInterface =>
+  testNetworkInterface({
+    dns: ["1.1.1.1", "8.8.8.8"],
+    gateway: "192.168.1.1",
+    ipv4: ["192.168.1.25/24"],
+    ipv4_method: "manual",
+    ...overrides,
+  });
 
 const addressInput = () => screen.getByPlaceholderText("192.168.1.10/24");
 const gatewayInput = () => screen.getByPlaceholderText("192.168.1.1");
@@ -77,6 +71,40 @@ describe("NetworkInterfaceEditor", () => {
     expect(addressInput()).toHaveValue("192.168.1.25/24");
     expect(gatewayInput()).toHaveValue("192.168.1.1");
     expect(dnsInput()).toHaveValue("1.1.1.1, 8.8.8.8");
+  });
+
+  it("reads back DHCP-assigned addresses instead of offering the form", () => {
+    render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({ ipv4_method: "auto" })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "The interface obtains its address, gateway, and DNS from DHCP.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("192.168.1.25/24")).toBeVisible();
+    expect(screen.getByText("192.168.1.1")).toBeVisible();
+    expect(screen.queryByLabelText("IPv4 Address (CIDR)")).toBeNull();
+  });
+
+  it("keeps the interface, its mode switch and its form in one card", () => {
+    const { container } = render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelectorAll(".app-grid-item")).toHaveLength(1);
+    expect(screen.getByText("eth0")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Manual" })).toBeVisible();
+    expect(addressInput()).toBeVisible();
   });
 
   it("accepts polling defaults until editing starts, then preserves the draft", async () => {

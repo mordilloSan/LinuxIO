@@ -83,7 +83,7 @@ vi.mock("@/theme", () => ({
   }),
 }));
 
-vi.mock("@/components/tables/AppVirtualDataTable", () => ({
+vi.mock("@/components/tables/AppDataTable", () => ({
   default: ({
     data,
     onScroll,

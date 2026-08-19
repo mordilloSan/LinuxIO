@@ -6,6 +6,10 @@ import { render } from "@/test/render";
 
 import UsersTab from "./UsersTab";
 
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
+
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
 
@@ -52,6 +56,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...actual,
     getRouteApi: () => ({
       useNavigate: () => vi.fn(),
+      useRouteContext: ({ select }: { select: (context: object) => unknown }) =>
+        select({}),
       useSearch: () => ({}),
     }),
   };

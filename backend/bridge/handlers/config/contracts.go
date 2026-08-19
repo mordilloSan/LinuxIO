@@ -16,7 +16,10 @@ func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
 		AppSettings: apischema.AppSettings{
 			Theme: apischema.Theme(value.AppSettings.Theme), PrimaryColor: value.AppSettings.PrimaryColor.String(),
 			ThemeColors: themeColorsToAPI(value.AppSettings.ThemeColors), SidebarCollapsed: value.AppSettings.SidebarCollapsed,
-			ShowHiddenFiles: value.AppSettings.ShowHiddenFiles, HiddenCards: value.AppSettings.HiddenCards,
+			NavigationMode:     apischema.NavigationMode(value.AppSettings.NavigationMode),
+			DockTileColors:     apischema.DockTileColors(value.AppSettings.DockTileColors),
+			DockAccentGradient: dockAccentGradientToAPI(value.AppSettings.DockAccentGradient),
+			ShowHiddenFiles:    value.AppSettings.ShowHiddenFiles, HiddenCards: value.AppSettings.HiddenCards,
 			DockerDashboardSections: dockerDashboardSectionsToAPI(value.AppSettings.DockerDashboardSections),
 			HardwareSections:        hardwareSectionsToAPI(value.AppSettings.HardwareSections), ViewModes: viewModes,
 			LayoutOrders: value.AppSettings.LayoutOrders,
@@ -35,10 +38,17 @@ func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
 	if value.AppSettings.ChunkSizeMB != 0 {
 		result.AppSettings.ChunkSizeMB = &value.AppSettings.ChunkSizeMB
 	}
+	if value.AppSettings.TerminalFontSize != 0 {
+		result.AppSettings.TerminalFontSize = &value.AppSettings.TerminalFontSize
+	}
 	if value.Dismissals != nil {
 		result.Dismissals = &apischema.Dismissals{UncleanShutdownBootID: optionalString(value.Dismissals.UncleanShutdownBootID), FailedLoginAlertID: optionalString(value.Dismissals.FailedLoginAlertID)}
 	}
 	return result
+}
+
+func dockAccentGradientToAPI(value bridgeconfig.DockAccentGradient) *apischema.ConfigDockAccentGradient {
+	return &apischema.ConfigDockAccentGradient{StartColor: optionalString(value.StartColor.String()), EndColor: optionalString(value.EndColor.String()), RangeStart: value.RangeStart, RangeEnd: value.RangeEnd}
 }
 
 func absolutePathsToStrings(values []bridgeconfig.AbsolutePath) []string {

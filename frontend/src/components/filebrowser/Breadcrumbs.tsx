@@ -3,6 +3,7 @@ import { useMemo, type CSSProperties } from "react";
 import AppButton from "@/components/ui/AppButton";
 import { HomeFilledIcon } from "@/icons/svg";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { getChromeSurfaceColor } from "@/theme/surfaces";
 import { isDirectoryPath } from "@/utils/path";
 
 export interface BreadcrumbItem {
@@ -29,9 +30,14 @@ const breadcrumbStyles = `
     align-items: center;
     gap: 1rem;
     flex-wrap: nowrap;
+    /* Stretch to the header column. Shrink-to-fit would make the list's
+       percentage max-width resolve against the trail's own width, so any
+       reservation subtracted from it clips the trail no matter how short. */
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 599.95px) {
     .linuxio-breadcrumb-container {
       gap: 0.75rem;
     }
@@ -113,9 +119,8 @@ const breadcrumbStyles = `
     max-width: 100%;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 599.95px) {
     .linuxio-breadcrumb-list {
-      max-width: calc(100% - 8rem);
       overflow: hidden;
     }
   }
@@ -161,15 +166,7 @@ const breadcrumbStyles = `
     padding: 0.35em 0.75em;
     max-width: 8.5em;
     border-radius: 0.75em;
-    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
-  }
-
-  [data-app-color-scheme="dark"] .linuxio-gallery-size {
-    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 67%);
-  }
-
-  [data-app-color-scheme="light"] .linuxio-gallery-size {
-    background: color-mix(in srgb, var(--linuxio-filebrowser-chrome), transparent 92%);
+    background: var(--linuxio-filebrowser-chrome-surface);
   }
 
   .linuxio-range-input {
@@ -177,6 +174,11 @@ const breadcrumbStyles = `
     width: 100%;
     max-width: 6.25em;
     accent-color: var(--app-palette-primary-main);
+  }
+
+  :root[data-tab-navigation] .linuxio-range-input:focus-visible {
+    outline: 2px solid var(--app-palette-primary-main);
+    outline-offset: 2px;
   }
 `;
 
@@ -262,7 +264,10 @@ const FilebrowserBreadcrumbs = ({
     "--linuxio-filebrowser-breadcrumb-bg":
       theme.fileBrowser.breadcrumbBackground,
     "--linuxio-filebrowser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
-    "--linuxio-filebrowser-chrome": theme.fileBrowser.chrome,
+    "--linuxio-filebrowser-chrome-surface": getChromeSurfaceColor(
+      theme,
+      theme.fileBrowser.chrome,
+    ),
   } as CSSProperties;
 
   return (

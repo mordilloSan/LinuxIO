@@ -1,14 +1,21 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from "react";
 
 import { type AccountUser, linuxio, useCallMutation } from "@/api";
 import type { UserLockAction } from "@/components/cards/UserCard";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
@@ -34,13 +41,44 @@ interface UsersTabProps {
 }
 const getAccountUserId = (user: AccountUser) => user.username;
 
+// Format last login for display
+const formatLastLogin = (
+  lastLogin: string,
+  username: string,
+  currentUserName?: string,
+): string => {
+  if (!lastLogin || lastLogin === "Never") {
+    return "Never logged in";
+  }
+  if (username === currentUserName) {
+    return "Logged in";
+  }
+  return lastLogin;
+};
+
+// Get all groups for a user (primary + secondary)
+const getAllGroups = (user: AccountUser): string[] => {
+  const allGroups: string[] = [user.primaryGroup];
+  if (user.groups) {
+    user.groups.forEach((g) => {
+      if (!allGroups.includes(g)) {
+        allGroups.push(g);
+      }
+    });
+  }
+  return allGroups;
+};
+
 const UsersTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: UsersTabProps) => {
   const { user: currentUser } = useAuth();
+  const listUsersQueryOptions = accountsRouteApi.useRouteContext({
+    select: (context) => context.listUsersQueryOptions,
+  });
   const { data: users } = useSuspenseQuery({
-    ...linuxio.accounts.list_users,
+    ...listUsersQueryOptions,
     refetchInterval: 10000,
   });
   const [search, setSearch] = useState("");
@@ -52,9 +90,10 @@ const UsersTab = ({
     Map<string, UserLockAction>
   >(() => new Map());
   const navigate = accountsRouteApi.useNavigate();
-  const routeSearch = accountsRouteApi.useSearch();
-  const selectedUsername =
-    typeof routeSearch.user === "string" ? routeSearch.user : undefined;
+  const selectedUsername = accountsRouteApi.useSearch({
+    select: (search) =>
+      typeof search.user === "string" ? search.user : undefined,
+  });
   const usersList = Array.isArray(users) ? users : [];
 
   const setSelectedUsername = useCallback(
@@ -68,6 +107,12 @@ const UsersTab = ({
       });
     },
     [navigate],
+  );
+
+  const handleRowClick = useCallback(
+    ({ original: user }: { original: AccountUser }) =>
+      setSelectedUsername(user.username),
+    [setSelectedUsername],
   );
 
   const effectiveViewMode = selectedUsername ? "card" : viewMode;
@@ -96,23 +141,27 @@ const UsersTab = ({
     handleAriaLabel: "Reorder user",
     surface,
   });
-  const filtered = surface.items.filter(
-    (user) =>
-      user.username.toLowerCase().includes(search.toLowerCase()) ||
-      user.gecos.toLowerCase().includes(search.toLowerCase()) ||
-      user.primaryGroup.toLowerCase().includes(search.toLowerCase()),
+  const filtered = useMemo(
+    () =>
+      surface.items.filter(
+        (user) =>
+          user.username.toLowerCase().includes(search.toLowerCase()) ||
+          user.gecos.toLowerCase().includes(search.toLowerCase()) ||
+          user.primaryGroup.toLowerCase().includes(search.toLowerCase()),
+      ),
+    [search, surface.items],
   );
   const detailUser = selectedUsername
     ? (filtered.find((user) => user.username === selectedUsername) ?? null)
     : null;
-  const handleEditUser = (user: AccountUser) => {
+  const handleEditUser = useCallback((user: AccountUser) => {
     setDialogUser(user);
     setEditDialogOpen(true);
-  };
-  const handleChangePassword = (user: AccountUser) => {
+  }, []);
+  const handleChangePassword = useCallback((user: AccountUser) => {
     setDialogUser(user);
     setPasswordDialogOpen(true);
-  };
+  }, []);
   const { mutateAsync: lockUser } = useCallMutation(
     linuxio.accounts.lock_user,
     {
@@ -130,272 +179,272 @@ const UsersTab = ({
     },
   );
 
-  const handleToggleLock = (user: AccountUser) => {
-    if (user.username === "root" || user.username === currentUser?.name) return;
-    if (pendingLockActions.has(user.username)) return;
+  const handleToggleLock = useCallback(
+    (user: AccountUser) => {
+      if (user.username === "root" || user.username === currentUser?.name) {
+        return;
+      }
+      if (pendingLockActions.has(user.username)) return;
 
-    const action: UserLockAction = user.isLocked ? "unlock" : "lock";
-    setPendingLockActions((current) => {
-      const next = new Map(current);
-      next.set(user.username, action);
-      return next;
-    });
-    const operation =
-      action === "unlock"
-        ? unlockUser({ username: user.username })
-        : lockUser({ username: user.username });
-    void operation
-      .finally(() => {
-        setPendingLockActions((current) => {
-          if (current.get(user.username) !== action) return current;
-          const next = new Map(current);
-          next.delete(user.username);
-          return next;
-        });
-      })
-      .catch(() => undefined);
-  };
-
-  // Format last login for display
-  const formatLastLogin = (lastLogin: string, username: string): string => {
-    if (!lastLogin || lastLogin === "Never") {
-      return "Never logged in";
-    }
-    if (username === currentUser?.name) {
-      return "Logged in";
-    }
-    return lastLogin;
-  };
-
-  // Get all groups for a user (primary + secondary)
-  const getAllGroups = (user: AccountUser): string[] => {
-    const allGroups: string[] = [user.primaryGroup];
-    if (user.groups) {
-      user.groups.forEach((g) => {
-        if (!allGroups.includes(g)) {
-          allGroups.push(g);
-        }
+      const action: UserLockAction = user.isLocked ? "unlock" : "lock";
+      setPendingLockActions((current) => {
+        const next = new Map(current);
+        next.set(user.username, action);
+        return next;
       });
-    }
-    return allGroups;
-  };
-  const columns: AppDataTableColumnDef<AccountUser>[] = [
-    {
-      accessorKey: "username",
-      header: "Username",
-      cell: ({ row }) => {
-        const user = row.original;
-        return (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              flexWrap: "wrap",
-            }}
-          >
+      const operation =
+        action === "unlock"
+          ? unlockUser({ username: user.username })
+          : lockUser({ username: user.username });
+      void operation
+        .finally(() => {
+          setPendingLockActions((current) => {
+            if (current.get(user.username) !== action) return current;
+            const next = new Map(current);
+            next.delete(user.username);
+            return next;
+          });
+        })
+        .catch(() => undefined);
+    },
+    [currentUser?.name, lockUser, pendingLockActions, unlockUser],
+  );
+
+  // Stable column defs: cells render through flexRender, so a rebuilt array
+  // remounts every cell subtree — including on the press that arms a
+  // reorder hold. See docs/table-row-gestures.md.
+  const columns = useMemo<AppDataTableColumnDef<AccountUser>[]>(
+    () => [
+      {
+        accessorKey: "username",
+        header: "Username",
+        cell: ({ row }) => {
+          const user = row.original;
+          return (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexWrap: "wrap",
+              }}
+            >
+              <AppTypography
+                fontWeight={500}
+                style={responsiveTextStyles}
+                variant="body2"
+              >
+                {user.username}
+              </AppTypography>
+              {user.username === currentUser?.name && (
+                <Chip
+                  color="primary"
+                  label="Your account"
+                  size="small"
+                  style={{
+                    fontSize: "0.65rem",
+                    height: 20,
+                  }}
+                  variant="soft"
+                />
+              )}
+              {user.isLocked && (
+                <Chip
+                  color="warning"
+                  label="locked"
+                  size="small"
+                  style={{
+                    fontSize: "0.65rem",
+                    height: 20,
+                  }}
+                  variant="soft"
+                />
+              )}
+            </div>
+          );
+        },
+        meta: { align: "left" },
+      },
+      {
+        accessorKey: "gecos",
+        header: "Full Name",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.gecos || "-"}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+        },
+      },
+      {
+        accessorKey: "uid",
+        header: "ID",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.uid}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+          width: "80px",
+        },
+      },
+      {
+        accessorKey: "lastLogin",
+        header: "Last Active",
+        cell: ({ row }) => {
+          const user = row.original;
+          return (
             <AppTypography
-              fontWeight={500}
+              color={
+                user.username === currentUser?.name
+                  ? "success"
+                  : "text.secondary"
+              }
               style={responsiveTextStyles}
               variant="body2"
             >
-              {user.username}
+              {formatLastLogin(
+                user.lastLogin,
+                user.username,
+                currentUser?.name,
+              )}
             </AppTypography>
-            {user.username === currentUser?.name && (
-              <Chip
-                color="primary"
-                label="Your account"
-                size="small"
-                style={{
-                  fontSize: "0.65rem",
-                  height: 20,
+          );
+        },
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+        },
+      },
+      {
+        accessorFn: (user) => getAllGroups(user).length,
+        id: "groups",
+        header: "Groups",
+        cell: ({ row }) => {
+          const user = row.original;
+          const groups = getAllGroups(user);
+          return (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 2,
+              }}
+            >
+              {groups.slice(0, 3).map((group, idx) => (
+                <Chip
+                  key={group}
+                  label={
+                    idx === 0
+                      ? `${group} (${user.primaryGroup === group ? "primary" : ""})`.replace(
+                          " ()",
+                          "",
+                        )
+                      : group
+                  }
+                  size="small"
+                  style={{
+                    fontSize: "0.65rem",
+                    height: 20,
+                  }}
+                  variant="soft"
+                />
+              ))}
+              {groups.length > 3 && (
+                <Chip
+                  label={`+${groups.length - 3}`}
+                  size="small"
+                  style={{
+                    fontSize: "0.65rem",
+                    height: 20,
+                  }}
+                  variant="soft"
+                />
+              )}
+            </div>
+          );
+        },
+        meta: {
+          align: "left",
+          hideBelow: "xl",
+        },
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const user = row.original;
+          const pendingLockAction = pendingLockActions.get(user.username);
+          const lockLabel = user.isLocked ? "Unlock" : "Lock";
+          return (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 2,
+              }}
+            >
+              <AppActionIconButton
+                disabled={user.username === "root"}
+                icon="mdi:pencil"
+                iconSize={20}
+                label="Edit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditUser(user);
                 }}
-                variant="soft"
               />
-            )}
-            {user.isLocked && (
-              <Chip
-                color="warning"
-                label="locked"
-                size="small"
-                style={{
-                  fontSize: "0.65rem",
-                  height: 20,
+              <AppActionIconButton
+                icon="mdi:form-textbox-password"
+                iconSize={20}
+                label="Change Password"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleChangePassword(user);
                 }}
-                variant="soft"
               />
-            )}
-          </div>
-        );
-      },
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "gecos",
-      header: "Full Name",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.gecos || "-"}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-      },
-    },
-    {
-      accessorKey: "uid",
-      header: "ID",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.uid}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "80px",
-      },
-    },
-    {
-      accessorKey: "lastLogin",
-      header: "Last Active",
-      cell: ({ row }) => {
-        const user = row.original;
-        return (
-          <AppTypography
-            color={
-              user.username === currentUser?.name ? "success" : "text.secondary"
-            }
-            style={responsiveTextStyles}
-            variant="body2"
-          >
-            {formatLastLogin(user.lastLogin, user.username)}
-          </AppTypography>
-        );
-      },
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-      },
-    },
-    {
-      accessorFn: (user) => getAllGroups(user).length,
-      id: "groups",
-      header: "Groups",
-      cell: ({ row }) => {
-        const user = row.original;
-        const groups = getAllGroups(user);
-        return (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 2,
-            }}
-          >
-            {groups.slice(0, 3).map((group, idx) => (
-              <Chip
-                key={group}
-                label={
-                  idx === 0
-                    ? `${group} (${user.primaryGroup === group ? "primary" : ""})`.replace(
-                        " ()",
-                        "",
-                      )
-                    : group
+              <AppActionIconButton
+                ariaLabel={
+                  pendingLockAction
+                    ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
+                    : `${lockLabel} ${user.username}`
                 }
-                size="small"
-                style={{
-                  fontSize: "0.65rem",
-                  height: 20,
+                disabled={
+                  user.username === "root" ||
+                  user.username === currentUser?.name ||
+                  Boolean(pendingLockAction)
+                }
+                icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
+                iconSize={20}
+                label={lockLabel}
+                loading={Boolean(pendingLockAction)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleLock(user);
                 }}
-                variant="soft"
               />
-            ))}
-            {groups.length > 3 && (
-              <Chip
-                label={`+${groups.length - 3}`}
-                size="small"
-                style={{
-                  fontSize: "0.65rem",
-                  height: 20,
-                }}
-                variant="soft"
-              />
-            )}
-          </div>
-        );
+            </div>
+          );
+        },
+        meta: {
+          align: "right",
+          width: "150px",
+        },
       },
-      meta: {
-        align: "left",
-        hideBelow: "xl",
-      },
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const user = row.original;
-        const pendingLockAction = pendingLockActions.get(user.username);
-        const lockLabel = user.isLocked ? "Unlock" : "Lock";
-        return (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 2,
-            }}
-          >
-            <AppActionIconButton
-              disabled={user.username === "root"}
-              icon="mdi:pencil"
-              iconSize={20}
-              label="Edit"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEditUser(user);
-              }}
-            />
-            <AppActionIconButton
-              icon="mdi:form-textbox-password"
-              iconSize={20}
-              label="Change Password"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleChangePassword(user);
-              }}
-            />
-            <AppActionIconButton
-              ariaLabel={
-                pendingLockAction
-                  ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
-                  : `${lockLabel} ${user.username}`
-              }
-              disabled={
-                user.username === "root" ||
-                user.username === currentUser?.name ||
-                Boolean(pendingLockAction)
-              }
-              icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
-              iconSize={20}
-              label={lockLabel}
-              loading={Boolean(pendingLockAction)}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleLock(user);
-              }}
-            />
-          </div>
-        );
-      },
-      meta: {
-        align: "right",
-        width: "150px",
-      },
-    },
-  ];
+    ],
+    [
+      currentUser?.name,
+      handleChangePassword,
+      handleEditUser,
+      handleToggleLock,
+      pendingLockActions,
+    ],
+  );
   return (
     <div
       style={{
@@ -406,30 +455,14 @@ const UsersTab = ({
       }}
     >
       {!detailUser && (
-        <div
-          style={{
-            display: "flex",
-            flexShrink: 0,
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 8,
-          }}
-        >
-          <AppSearchField
-            onChange={(e) => setSearch(e.target.value)}
+        <RoutedTabSearch active={search !== ""}>
+          <AppHeaderSearch
+            clearOnDocumentEscape
+            onChange={setSearch}
             placeholder="Search users…"
-            style={{ width: 320 }}
             value={search}
           />
-          <span
-            style={{
-              fontWeight: "bold",
-            }}
-          >
-            {filtered.length} shown
-          </span>
-        </div>
+        </RoutedTabSearch>
       )}
       {effectiveViewMode === "card" ? (
         <UserCardsView
@@ -451,47 +484,10 @@ const UsersTab = ({
           dnd={tableDnd}
           emptyMessage="No users found."
           fillAvailable
-          getRowId={(user) => user.username}
-          onRowClick={({ original: user }) =>
-            setSelectedUsername(user.username)
-          }
-          renderExpandedContent={({ original: user }) => (
-            <div className="expand-panel">
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Home Directory:</b>
-                </AppTypography>
-                <AppTypography className="expand-panel__mono" variant="body2">
-                  {user.homeDir}
-                </AppTypography>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Shell:</b>
-                </AppTypography>
-                <AppTypography className="expand-panel__mono" variant="body2">
-                  {user.shell}
-                </AppTypography>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>All Groups:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {getAllGroups(user).map((group, idx) => (
-                    <Chip
-                      key={group}
-                      label={idx === 0 ? `${group} (primary)` : group}
-                      size="small"
-                      variant="soft"
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          getRowId={getAccountUserId}
+          // A row's one action is opening the user's card, which already shows
+          // the home directory, shell and groups an inline panel would repeat.
+          onRowClick={handleRowClick}
           selectedRowId={selectedUsername}
         />
       )}

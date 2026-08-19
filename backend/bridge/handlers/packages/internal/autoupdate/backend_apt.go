@@ -3,132 +3,234 @@ package autoupdate
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
-
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-type aptBackend struct{}
+const (
+	aptPeriodicPath   = "/etc/apt/apt.conf.d/52linuxio-periodic"
+	aptUnattendedPath = "/etc/apt/apt.conf.d/52linuxio-unattended-upgrades"
+	aptVendorConfig   = "/etc/apt/apt.conf.d/50unattended-upgrades"
+)
 
-func newAptBackend() UpdateBackend { return &aptBackend{} }
-func (*aptBackend) Name() string   { return "apt-unattended" }
-func (*aptBackend) Detect(context.Context) bool {
-	return utils.FileExists("/usr/bin/apt")
+type aptFlavor uint8
+
+const (
+	aptUbuntu aptFlavor = iota
+	aptDebian
+)
+
+type aptBackend struct {
+	host   backendHost
+	flavor aptFlavor
 }
 
-func unattendedUpgradesInstalled() bool {
-	return utils.FileExists("/usr/bin/unattended-upgrades") || utils.FileExists("/usr/bin/unattended-upgrade")
+func newAptBackend(host backendHost, flavor aptFlavor) UpdateBackend {
+	return &aptBackend{host: host, flavor: flavor}
 }
 
-func (b *aptBackend) Read() (AutoUpdateState, error) {
-	if !unattendedUpgradesInstalled() {
-		return AutoUpdateState{
-			Backend: b.Name(),
-			Options: AutoUpdateOptions{
-				Enabled:         false,
-				Frequency:       "daily",
-				Scope:           "security",
-				RebootPolicy:    "never",
-				ExcludePackages: []string{},
-			},
-			Notes: []string{"Install unattended-upgrades to enable: sudo apt install unattended-upgrades"},
-		}, nil
+func (*aptBackend) Name() AutoUpdateBackend { return backendAPT }
+
+func aptSupport() AutoUpdateOptionSupport {
+	return AutoUpdateOptionSupport{
+		DownloadOnly:    true,
+		ExcludePackages: true,
+		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
+		RebootPolicies:  []AutoUpdateRebootPolicy{"never", "if_needed"},
+		Scopes:          []AutoUpdateScope{"security", "updates", "all"},
+	}
+}
+
+func (b *aptBackend) Read(ctx context.Context) (AutoUpdateState, error) {
+	if ctx == nil {
+		return AutoUpdateState{}, fmt.Errorf("nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return AutoUpdateState{}, err
 	}
 
-	st := AutoUpdateState{
-		Backend: b.Name(),
+	state := AutoUpdateState{
+		Backend:      b.Name(),
+		CanConfigure: b.installed(),
 		Options: AutoUpdateOptions{
-			Enabled:         timerEnabled("apt-daily-upgrade.timer") || timerEnabled("apt-daily.timer"),
-			Frequency:       AutoUpdateFrequency(readTimerFrequency("apt-daily.timer")),
-			Scope:           AutoUpdateScope(readScope()),
-			DownloadOnly:    !timerEnabled("apt-daily-upgrade.timer") && timerEnabled("apt-daily.timer"),
-			RebootPolicy:    AutoUpdateRebootPolicy(readRebootPolicy()),
-			ExcludePackages: readExcludePackages(),
+			Frequency:       AutoUpdateFrequency(readTimerFrequency(b.host, "apt-daily.timer")),
+			Scope:           "security",
+			RebootPolicy:    "never",
+			ExcludePackages: []string{},
 		},
+		Support: aptSupport(),
 	}
-	return st, nil
+	if !state.CanConfigure {
+		state.Notes = []string{"Install unattended-upgrades to configure automatic updates"}
+		return state, nil
+	}
+
+	periodic := readAptPeriodicConfiguration(b.host)
+	state.Options.Enabled, state.Options.DownloadOnly = readAptPeriodic(periodic)
+	unattended, err := b.host.readFile(aptUnattendedPath)
+	if err != nil {
+		unattended, err = b.host.readFile(aptVendorConfig)
+	}
+	if err == nil {
+		state.Options.Scope = readAptScope(unattended)
+		state.Options.RebootPolicy = readAptRebootPolicy(unattended)
+		state.Options.ExcludePackages = readAptExclusions(unattended)
+	}
+
+	dailyEnabled, err := timerEnabled(ctx, b.host, "apt-daily.timer")
+	if err != nil {
+		return AutoUpdateState{}, fmt.Errorf("read apt-daily.timer state: %w", err)
+	}
+	upgradeEnabled, err := timerEnabled(ctx, b.host, "apt-daily-upgrade.timer")
+	if err != nil {
+		return AutoUpdateState{}, fmt.Errorf("read apt-daily-upgrade.timer state: %w", err)
+	}
+	if state.Options.Enabled && (!dailyEnabled || (!state.Options.DownloadOnly && !upgradeEnabled)) {
+		state.Options.Enabled = false
+		state.Notes = append(state.Notes, "Automatic updates are configured, but a required APT timer is disabled")
+	}
+	return state, nil
 }
 
-func (b *aptBackend) Apply(ctx context.Context, o AutoUpdateOptions) error {
+func (b *aptBackend) Apply(ctx context.Context, options AutoUpdateOptions) error {
 	if ctx == nil {
 		return fmt.Errorf("nil context")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !unattendedUpgradesInstalled() {
-		return fmt.Errorf("unattended-upgrades is not installed; run: sudo apt install unattended-upgrades")
+	if err := validateOptions(options, aptSupport()); err != nil {
+		return err
 	}
-
-	if writeErr := writeAptAutoUpgradeConfig(o); writeErr != nil {
-		return fmt.Errorf("failed to write 20auto-upgrades: %w", writeErr)
+	if !b.installed() {
+		return fmt.Errorf("unattended-upgrades is not installed")
 	}
-
-	if writeErr := writeAptUnattendedConfig(o); writeErr != nil {
-		return fmt.Errorf("failed to write 50unattended-upgrades: %w", writeErr)
-	}
-
-	oncal, err := onCalendarFor(string(o.Frequency))
+	onCalendar, err := onCalendarFor(string(options.Frequency))
 	if err != nil {
-		return fmt.Errorf("invalid frequency: %w", err)
-	}
-	if err := writeTimerDropIn("apt-daily.timer", oncal); err != nil {
-		return fmt.Errorf("failed to write apt-daily.timer drop-in: %w", err)
-	}
-	if err := writeTimerDropIn("apt-daily-upgrade.timer", oncal); err != nil {
-		return fmt.Errorf("failed to write apt-daily-upgrade.timer drop-in: %w", err)
-	}
-
-	if err := systemd.DaemonReload(ctx); err != nil {
-		return fmt.Errorf("failed to reload systemd: %w", err)
-	}
-
-	if err := applyAptTimerState(ctx, o); err != nil {
 		return err
 	}
 
-	restartAptTimers(ctx, o)
+	if err := b.host.writeFileAtomic(aptPeriodicPath, renderAptPeriodic(options), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", aptPeriodicPath, err)
+	}
+	if err := b.host.writeFileAtomic(aptUnattendedPath, b.renderUnattended(options), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", aptUnattendedPath, err)
+	}
+	if err := writeTimerDropIn(b.host, "apt-daily.timer", onCalendar); err != nil {
+		return fmt.Errorf("write apt-daily.timer schedule: %w", err)
+	}
+	if err := writeTimerDropIn(b.host, "apt-daily-upgrade.timer", onCalendar); err != nil {
+		return fmt.Errorf("write apt-daily-upgrade.timer schedule: %w", err)
+	}
+	if err := b.host.daemonReload(ctx); err != nil {
+		return fmt.Errorf("reload systemd after configuring APT updates: %w", err)
+	}
+	if !options.Enabled {
+		return b.disableUpgradeTimer(ctx)
+	}
+	if err := b.enableTimer(ctx, "apt-daily.timer"); err != nil {
+		return err
+	}
+	if options.DownloadOnly {
+		return b.disableUpgradeTimer(ctx)
+	}
+	return b.enableTimer(ctx, "apt-daily-upgrade.timer")
+}
+
+func (b *aptBackend) installed() bool {
+	return b.host.fileExists("/usr/bin/unattended-upgrades") || b.host.fileExists("/usr/bin/unattended-upgrade")
+}
+
+func (b *aptBackend) enableTimer(ctx context.Context, timer string) error {
+	if err := b.host.enableUnit(ctx, timer); err != nil {
+		return fmt.Errorf("enable %s: %w", timer, err)
+	}
+	if err := b.host.startUnit(ctx, timer); err != nil {
+		return fmt.Errorf("start %s: %w", timer, err)
+	}
 	return nil
 }
 
-func writeAptAutoUpgradeConfig(o AutoUpdateOptions) error {
-	upd, dl, uu := aptPeriodicValues(o)
-	content := fmt.Sprintf(`APT::Periodic::Update-Package-Lists "%s";
+func (b *aptBackend) disableUpgradeTimer(ctx context.Context) error {
+	const timer = "apt-daily-upgrade.timer"
+	if err := b.host.stopUnit(ctx, timer); err != nil {
+		return fmt.Errorf("stop %s: %w", timer, err)
+	}
+	if err := b.host.disableUnit(ctx, timer); err != nil {
+		return fmt.Errorf("disable %s: %w", timer, err)
+	}
+	return nil
+}
+
+func (*aptBackend) ApplyOfflineNow(context.Context) error {
+	return fmt.Errorf("not implemented for apt; use packagekit backend")
+}
+
+func renderAptPeriodic(options AutoUpdateOptions) []byte {
+	update, download, unattended := aptPeriodicValues(options)
+	return []byte(fmt.Sprintf(`# Managed by LinuxIO.
+APT::Periodic::Update-Package-Lists "%s";
 APT::Periodic::Download-Upgradeable-Packages "%s";
 APT::Periodic::Unattended-Upgrade "%s";
-`, upd, dl, uu)
-	return utils.WriteFileAtomic("/etc/apt/apt.conf.d/20auto-upgrades", []byte(content), 0o644)
+`, update, download, unattended))
 }
 
-func aptPeriodicValues(o AutoUpdateOptions) (string, string, string) {
-	if !o.Enabled {
+func aptPeriodicValues(options AutoUpdateOptions) (string, string, string) {
+	if !options.Enabled {
 		return "0", "0", "0"
 	}
-	if o.DownloadOnly {
-		return "1", "1", "0"
+	interval := aptPeriodicInterval(options.Frequency)
+	if options.DownloadOnly {
+		return interval, interval, "0"
 	}
-	return "1", "1", "1"
+	return interval, interval, interval
 }
 
-func writeAptUnattendedConfig(o AutoUpdateOptions) error {
-	content := fmt.Sprintf(`Unattended-Upgrade::Allowed-Origins {
-%s};
-Unattended-Upgrade::Package-Blacklist {
-%s};
-Unattended-Upgrade::Automatic-Reboot "%s";
-Unattended-Upgrade::Automatic-Reboot-Time "03:30";
-`, formatOrigins(aptAllowedOrigins(o.Scope)), formatAptBlacklist(o.ExcludePackages), aptRebootSetting(o.RebootPolicy))
-	return utils.WriteFileAtomic("/etc/apt/apt.conf.d/50unattended-upgrades", []byte(content), 0o644)
+func aptPeriodicInterval(frequency AutoUpdateFrequency) string {
+	switch frequency {
+	case "hourly":
+		return "1h"
+	case "weekly":
+		return "7"
+	default:
+		return "1"
+	}
 }
 
-func aptAllowedOrigins(scope AutoUpdateScope) []string {
-	origins := []string{`${distro_id}:${distro_codename}-security`}
+func (b *aptBackend) renderUnattended(options AutoUpdateOptions) []byte {
+	var content strings.Builder
+	content.WriteString("# Managed by LinuxIO.\n")
+	content.WriteString("#clear Unattended-Upgrade::Allowed-Origins;\n")
+	content.WriteString("#clear Unattended-Upgrade::Origins-Pattern;\n")
+	content.WriteString("#clear Unattended-Upgrade::Package-Blacklist;\n")
+	if b.flavor == aptUbuntu {
+		content.WriteString("Unattended-Upgrade::Allowed-Origins {\n")
+	} else {
+		content.WriteString("Unattended-Upgrade::Origins-Pattern {\n")
+	}
+	content.WriteString(formatAptList(b.origins(options.Scope)))
+	content.WriteString("};\nUnattended-Upgrade::Package-Blacklist {\n")
+	content.WriteString(formatAptList(options.ExcludePackages))
+	content.WriteString("};\nUnattended-Upgrade::Automatic-Reboot \"")
+	content.WriteString(aptRebootSetting(options.RebootPolicy))
+	content.WriteString("\";\nUnattended-Upgrade::Automatic-Reboot-Time \"03:30\";\n")
+	return []byte(content.String())
+}
+
+func (b *aptBackend) origins(scope AutoUpdateScope) []string {
+	if b.flavor == aptUbuntu {
+		return ubuntuOrigins(scope)
+	}
+	return debianOrigins(scope)
+}
+
+func ubuntuOrigins(scope AutoUpdateScope) []string {
+	origins := []string{
+		`${distro_id}:${distro_codename}`,
+		`${distro_id}:${distro_codename}-security`,
+		`${distro_id}ESMApps:${distro_codename}-apps-security`,
+		`${distro_id}ESM:${distro_codename}-infra-security`,
+	}
 	if scope == "updates" || scope == "all" {
 		origins = append(origins, `${distro_id}:${distro_codename}-updates`)
 	}
@@ -138,222 +240,137 @@ func aptAllowedOrigins(scope AutoUpdateScope) []string {
 	return origins
 }
 
-func formatAptBlacklist(packages []string) string {
-	var blacklist strings.Builder
-	for _, pkg := range packages {
-		pkg = strings.TrimSpace(pkg)
-		if pkg == "" {
-			continue
-		}
-		blacklist.WriteString(`        "`)
-		blacklist.WriteString(pkg)
-		blacklist.WriteString(`";`)
-		blacklist.WriteString("\n")
+func debianOrigins(scope AutoUpdateScope) []string {
+	origins := []string{
+		`origin=Debian,codename=${distro_codename},label=Debian`,
+		`origin=Debian,codename=${distro_codename},label=Debian-Security`,
+		`origin=Debian,codename=${distro_codename}-security,label=Debian-Security`,
 	}
-	return blacklist.String()
+	if scope == "updates" || scope == "all" {
+		origins = append(origins, `origin=Debian,codename=${distro_codename}-updates`)
+	}
+	if scope == "all" {
+		origins = append(origins, `origin=Debian Backports,codename=${distro_codename}-backports,label=Debian Backports`)
+	}
+	return origins
+}
+
+func formatAptList(values []string) string {
+	var formatted strings.Builder
+	for _, value := range values {
+		formatted.WriteString(`        "`)
+		formatted.WriteString(value)
+		formatted.WriteString("\";\n")
+	}
+	return formatted.String()
 }
 
 func aptRebootSetting(policy AutoUpdateRebootPolicy) string {
-	if policy == "always" || policy == "if_needed" {
+	if policy == "if_needed" {
 		return "true"
 	}
 	return "false"
 }
 
-func applyAptTimerState(ctx context.Context, o AutoUpdateOptions) error {
-	if o.Enabled {
-		if err := enableAptDailyTimer(ctx); err != nil {
-			return err
+var aptPeriodicSetting = regexp.MustCompile(`(?m)^\s*APT::Periodic::([A-Za-z-]+)\s+"([^"]*)";`)
+
+func readAptPeriodic(data []byte) (enabled, downloadOnly bool) {
+	settings := make(map[string]string)
+	for _, match := range aptPeriodicSetting.FindAllSubmatch(data, -1) {
+		settings[string(match[1])] = string(match[2])
+	}
+	update := settings["Update-Package-Lists"]
+	download := settings["Download-Upgradeable-Packages"]
+	unattended := settings["Unattended-Upgrade"]
+	hasDownload := download != "" && download != "0"
+	hasUnattended := unattended != "" && unattended != "0"
+	enabled = update != "" && update != "0" && (hasDownload || hasUnattended)
+	downloadOnly = enabled && hasDownload && !hasUnattended
+	return enabled, downloadOnly
+}
+
+func readAptPeriodicConfiguration(host backendHost) []byte {
+	paths := []string{
+		"/etc/apt/apt.conf.d/10periodic",
+		"/etc/apt/apt.conf.d/20auto-upgrades",
+		aptPeriodicPath,
+	}
+	var configuration strings.Builder
+	for _, path := range paths {
+		data, err := host.readFile(path)
+		if err != nil {
+			continue
 		}
-		if o.DownloadOnly {
-			disableAptUpgradeTimer(ctx, "in download-only mode")
-			return nil
-		}
-		if err := enableAptUpgradeTimer(ctx); err != nil {
-			return err
-		}
-		return nil
+		configuration.Write(data)
+		configuration.WriteByte('\n')
 	}
-
-	disableAptDailyTimer(ctx, "while disabling auto-updates")
-	disableAptUpgradeTimer(ctx, "while disabling auto-updates")
-	return nil
+	return []byte(configuration.String())
 }
 
-func enableAptDailyTimer(ctx context.Context) error {
-	if err := systemd.EnableUnit(ctx, "apt-daily.timer"); err != nil {
-		return fmt.Errorf("failed to enable apt-daily.timer: %w", err)
-	}
-	if err := systemd.StartUnit(ctx, "apt-daily.timer"); err != nil {
-		return fmt.Errorf("failed to start apt-daily.timer: %w", err)
-	}
-	return nil
-}
-
-func enableAptUpgradeTimer(ctx context.Context) error {
-	if err := systemd.EnableUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
-		return fmt.Errorf("failed to enable apt-daily-upgrade.timer: %w", err)
-	}
-	if err := systemd.StartUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
-		return fmt.Errorf("failed to start apt-daily-upgrade.timer: %w", err)
-	}
-	return nil
-}
-
-func disableAptDailyTimer(ctx context.Context, reason string) {
-	if err := systemd.StopUnit(ctx, "apt-daily.timer"); err != nil {
-		slog.Debug("failed to stop apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "mode", reason, "error", err)
-	}
-	if err := systemd.DisableUnit(ctx, "apt-daily.timer"); err != nil {
-		slog.Debug("failed to disable apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "mode", reason, "error", err)
-	}
-}
-
-func disableAptUpgradeTimer(ctx context.Context, reason string) {
-	if err := systemd.StopUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
-		slog.Debug("failed to stop apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "mode", reason, "error", err)
-	}
-	if err := systemd.DisableUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
-		slog.Debug("failed to disable apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "mode", reason, "error", err)
-	}
-}
-
-func restartAptTimers(ctx context.Context, o AutoUpdateOptions) {
-	if !o.Enabled {
-		return
-	}
-	if err := systemd.RestartUnit(ctx, "apt-daily.timer"); err != nil {
-		slog.Debug("failed to restart apt-daily.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily.timer", "error", err)
-	}
-	if o.DownloadOnly {
-		return
-	}
-	if err := systemd.RestartUnit(ctx, "apt-daily-upgrade.timer"); err != nil {
-		slog.Debug("failed to restart apt-daily-upgrade.timer", "component", "dbus", "subsystem", "updates", "service", "apt-daily-upgrade.timer", "error", err)
-	}
-}
-
-func (b *aptBackend) ApplyOfflineNow(context.Context) error {
-	return fmt.Errorf("not implemented for apt; use packagekit backend")
-}
-
-/* ===== HELPER FUNCTIONS ===== */
-
-func timerEnabled(name string) bool {
-	wants := []string{
-		"/etc/systemd/system/timers.target.wants/" + name,
-		"/lib/systemd/system/timers.target.wants/" + name,
-	}
-	return slices.ContainsFunc(wants, utils.FileExists)
-}
-
-func writeTimerDropIn(timer, oncal string) error {
-	path := filepath.Join("/etc/systemd/system", timer+".d", "linuxio.conf")
-	body := "[Timer]\nOnCalendar=" + oncal + "\nRandomizedDelaySec=30m\n"
-	return utils.WriteFileAtomic(path, []byte(body), 0o644)
-}
-
-func formatOrigins(list []string) string {
-	var b strings.Builder
-	for _, s := range list {
-		b.WriteString(`        "`)
-		b.WriteString(s)
-		b.WriteString(`";`)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// readTimerFrequency reads the configured schedule from timer drop-in
-func readTimerFrequency(timer string) string {
-	path := filepath.Join("/etc/systemd/system", timer+".d", "linuxio.conf")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "daily" // default fallback
-	}
-
-	lines := strings.SplitSeq(string(data), "\n")
-	for line := range lines {
-		line = strings.TrimSpace(line)
-		if after, ok := strings.CutPrefix(line, "OnCalendar="); ok {
-			value := after
-			return strings.TrimSpace(value)
-		}
-	}
-
-	return "daily"
-}
-
-// readScope determines update scope from allowed origins
-func readScope() string {
-	data, err := os.ReadFile("/etc/apt/apt.conf.d/50unattended-upgrades")
-	if err != nil {
-		return "security" // default
-	}
-
-	content := string(data)
-	hasSecurity := strings.Contains(content, "-security")
-	hasUpdates := strings.Contains(content, "-updates")
-	hasBackports := strings.Contains(content, "-backports")
-
-	if hasSecurity && hasUpdates && hasBackports {
+func readAptScope(data []byte) AutoUpdateScope {
+	content := activeAptConfiguration(data)
+	if strings.Contains(content, "-backports") {
 		return "all"
 	}
-	if hasSecurity && hasUpdates {
+	if strings.Contains(content, "-updates") {
 		return "updates"
 	}
 	return "security"
 }
 
-// readRebootPolicy reads automatic reboot configuration
-func readRebootPolicy() string {
-	data, err := os.ReadFile("/etc/apt/apt.conf.d/50unattended-upgrades")
-	if err != nil {
-		return "never" // default
+func readAptRebootPolicy(data []byte) AutoUpdateRebootPolicy {
+	if regexp.MustCompile(`Unattended-Upgrade::Automatic-Reboot\s+"true"`).MatchString(activeAptConfiguration(data)) {
+		return "if_needed"
 	}
-
-	content := string(data)
-	re := regexp.MustCompile(`Unattended-Upgrade::Automatic-Reboot\s+"(true|false)"`)
-	matches := re.FindStringSubmatch(content)
-
-	if len(matches) > 1 {
-		if matches[1] == "true" {
-			return "if_needed"
-		}
-		return "never"
-	}
-
 	return "never"
 }
 
-// readExcludePackages reads package blacklist
-func readExcludePackages() []string {
-	data, err := os.ReadFile("/etc/apt/apt.conf.d/50unattended-upgrades")
-	if err != nil {
+func readAptExclusions(data []byte) []string {
+	block := regexp.MustCompile(`(?s)Unattended-Upgrade::Package-Blacklist\s*\{(.*?)\};`).FindStringSubmatch(activeAptConfiguration(data))
+	if len(block) < 2 {
 		return []string{}
 	}
-
-	content := string(data)
-	re := regexp.MustCompile(`Unattended-Upgrade::Package-Blacklist\s*\{([^}]*)\}`)
-	matches := re.FindStringSubmatch(content)
-
-	if len(matches) < 2 {
-		return []string{}
+	matches := regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(block[1], -1)
+	exclusions := make([]string, 0, len(matches))
+	for _, match := range matches {
+		exclusions = append(exclusions, match[1])
 	}
+	return exclusions
+}
 
-	blacklistContent := matches[1]
-	pkgRe := regexp.MustCompile(`"([^"]+)"`)
-	pkgMatches := pkgRe.FindAllStringSubmatch(blacklistContent, -1)
-
-	var packages []string
-	for _, m := range pkgMatches {
-		if len(m) > 1 {
-			pkg := strings.TrimSpace(m[1])
-			if pkg != "" {
-				packages = append(packages, pkg)
+func activeAptConfiguration(data []byte) string {
+	var active strings.Builder
+	inBlockComment := false
+	for line := range strings.SplitSeq(string(data), "\n") {
+		for {
+			if inBlockComment {
+				_, after, found := strings.Cut(line, "*/")
+				if !found {
+					line = ""
+					break
+				}
+				line = after
+				inBlockComment = false
 			}
+			before, after, found := strings.Cut(line, "/*")
+			if !found {
+				break
+			}
+			line = before
+			if _, remainder, closed := strings.Cut(after, "*/"); closed {
+				line += remainder
+				continue
+			}
+			inBlockComment = true
+			break
 		}
+		line, _, _ = strings.Cut(line, "//")
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		active.WriteString(line)
+		active.WriteByte('\n')
 	}
-
-	return packages
+	return active.String()
 }

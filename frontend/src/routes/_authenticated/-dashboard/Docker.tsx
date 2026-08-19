@@ -258,6 +258,15 @@ const DockerContainers = () => {
     select: selectContainerSummaries,
   });
 
+  // The menu is rendered outside the container map, so a poll that drops the
+  // container it was opened on would leave it floating over a row that no
+  // longer exists, still offering Start / Stop / Remove for it. Derive the open
+  // state from the list so it disappears with the row it belongs to.
+  const menuOpen =
+    menuAnchor !== null &&
+    menuContainer !== null &&
+    containers.some((c) => c.id === menuContainer.id);
+
   return (
     <>
       <div
@@ -371,7 +380,7 @@ const DockerContainers = () => {
           autoFocus={false}
           minWidth={140}
           onClose={handleMenuClose}
-          open={Boolean(menuAnchor)}
+          open={menuOpen}
         >
           {menuContainer?.state !== "running" && (
             <AppMenuItem

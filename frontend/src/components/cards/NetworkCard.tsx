@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
+
 import { type DockerNetwork } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppCheckbox from "@/components/ui/AppCheckbox";
+import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_SM } from "@/theme/constants";
 import {
   longTextStyles,
   wrappableChipStyle,
@@ -10,55 +12,28 @@ import {
 } from "@/theme/tableStyles";
 
 export interface NetworkCardProps {
+  actions?: ReactNode;
   network: DockerNetwork;
-  onSelect: (checked: boolean) => void;
-  selected: boolean;
+  onOpen?: () => void;
+  selected?: boolean;
 }
 
-const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
-
-const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
-  <FrostedCard style={{ padding: 8 }}>
-    {/* Header: checkbox + name + driver chip */}
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 8,
-        marginBottom: 8,
-      }}
-    >
-      <div
-        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
-      >
-        <AppCheckbox
-          checked={selected}
-          onChange={(e) => onSelect(e.target.checked)}
-          size="small"
-        />
-        <AppTypography
-          fontWeight={700}
-          noWrap
-          title={network.Name}
-          toastMeta={DOCKER_TOAST_META}
-          variant="body2"
-        >
-          {network.Name}
-        </AppTypography>
-      </div>
-      <Chip
-        color="primary"
-        label={network.Driver}
-        size="small"
-        style={{ fontSize: "0.75rem" }}
-        variant="soft"
-      />
-    </div>
-
-    {/* Network flags */}
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      <Chip label={`Scope: ${network.Scope}`} size="small" variant="soft" />
+const NetworkCard = ({
+  actions,
+  network,
+  selected,
+  onOpen,
+}: NetworkCardProps) => (
+  <DockerResourceCard
+    icon="mdi:lan"
+    actions={actions}
+    label={`network ${network.Name}`}
+    onOpen={onOpen}
+    selected={selected}
+    subtitle={`${network.Driver} · ${network.Scope}`}
+    title={network.Name}
+  >
+    <div style={{ display: "flex", flexWrap: "wrap", gap: GAP_SM }}>
       <Chip
         label={`Internal: ${network.Internal ? "Yes" : "No"}`}
         size="small"
@@ -98,13 +73,12 @@ const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
       )}
     </div>
 
-    {/* ID */}
     <AppTypography
+      color="text.secondary"
       style={{
-        marginTop: 4,
-        marginBottom: 4,
+        marginTop: GAP_SM,
+        marginBottom: GAP_SM,
         fontFamily: "var(--app-font-mono)",
-        fontSize: "0.78rem",
         ...longTextStyles,
       }}
       variant="body2"
@@ -112,8 +86,7 @@ const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
       ID: {network.Id}
     </AppTypography>
 
-    {/* IPAM subnets */}
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: GAP_SM }}>
       {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
         network.IPAM.Config.slice(0, 2).map((ipam, i) => (
           <Chip
@@ -131,7 +104,7 @@ const NetworkCard = ({ network, selected, onSelect }: NetworkCardProps) => (
         </AppTypography>
       )}
     </div>
-  </FrostedCard>
+  </DockerResourceCard>
 );
 
 export default NetworkCard;

@@ -1,9 +1,21 @@
-import { useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 
 import { useConfigValue } from "@/hooks/useConfig";
 import type { SortField, SortOrder, ViewMode } from "@/types/filebrowser";
+import {
+  readPersistedState,
+  writePersistedState,
+} from "@/utils/persistedState";
 
 const viewModes: ViewMode[] = ["card", "list"];
+
+// The filebrowser's card/list toggle is per-browser state, so it lives in
+// localStorage rather than the config the other pages' `useViewMode` uses —
+// and its "list" mode isn't a `TableCardViewMode` anyway.
+const VIEW_MODE_STORAGE_KEY = "linuxio.filebrowserViewMode";
+
+const isViewMode = (value: unknown): value is ViewMode =>
+  viewModes.includes(value as ViewMode);
 
 interface ContextMenuPosition {
   left: number;
@@ -42,7 +54,7 @@ function viewReducer(state: ViewState, event: ViewEvent): ViewState {
         ? { ...state, sortOrder: state.sortOrder === "asc" ? "desc" : "asc" }
         : { ...state, sortField: event.field, sortOrder: "asc" };
     case "clearSearch":
-      return { ...state, searchQuery: "" };
+      return state.searchQuery === "" ? state : { ...state, searchQuery: "" };
     case "closeContextMenu":
       return { ...state, contextMenuPosition: null };
     case "openContextMenu":
@@ -74,14 +86,26 @@ interface ViewSlice extends ViewState {
 /**
  * View slice: how the listing is presented (view mode, sorting, search,
  * hidden files, context-menu position) behind a stable semantic-action API.
- * `showHiddenFiles` writes through to the persisted config. `actions` keeps
- * a stable identity as long as the config setter does, so consumers can hold
- * it in callbacks without churn.
+ * `showHiddenFiles` writes through to the persisted config, `viewMode` to
+ * localStorage. `actions` keeps a stable identity as long as the config
+ * setter does, so consumers can hold it in callbacks without churn.
  */
 export const useFileViewState = (): ViewSlice => {
-  const [state, dispatch] = useReducer(viewReducer, initialViewState);
+  const [state, dispatch] = useReducer(
+    viewReducer,
+    initialViewState,
+    (base) => ({
+      ...base,
+      viewMode:
+        readPersistedState(VIEW_MODE_STORAGE_KEY, isViewMode) ?? base.viewMode,
+    }),
+  );
   const [showHiddenFiles, setShowHiddenFiles] =
     useConfigValue("showHiddenFiles");
+
+  useEffect(() => {
+    writePersistedState(VIEW_MODE_STORAGE_KEY, state.viewMode);
+  }, [state.viewMode]);
 
   const actions = useMemo<ViewActions>(
     () => ({

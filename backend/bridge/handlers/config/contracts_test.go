@@ -13,11 +13,12 @@ func TestAppConfigToAPIPreservesPersistedJSONShape(t *testing.T) {
 	dark := bridgeconfig.CSSColor("rgb(4, 5, 6)")
 	value := bridgeconfig.Settings{
 		AppSettings: bridgeconfig.PersistedAppSettings{
-			Theme:            bridgeconfig.ThemeDark,
-			PrimaryColor:     bridgeconfig.CSSColor("#abcdef"),
-			SidebarCollapsed: true,
-			ShowHiddenFiles:  true,
-			HiddenCards:      []string{"updates"},
+			Theme:              bridgeconfig.ThemeDark,
+			PrimaryColor:       bridgeconfig.CSSColor("#abcdef"),
+			DockAccentGradient: bridgeconfig.DockAccentGradient{StartColor: "#112233", EndColor: "#aabbcc", RangeStart: 15, RangeEnd: 85},
+			SidebarCollapsed:   true,
+			ShowHiddenFiles:    true,
+			HiddenCards:        []string{"updates"},
 			LayoutOrders: map[string][]string{
 				"dashboard":         {"system", "docker"},
 				"docker.containers": {"alpha", "beta"},
@@ -33,8 +34,9 @@ func TestAppConfigToAPIPreservesPersistedJSONShape(t *testing.T) {
 				Light: &bridgeconfig.ThemeColors{BackgroundDefault: &light},
 				Dark:  &bridgeconfig.ThemeColors{CodeText: &dark},
 			},
-			ViewModes:   map[string]string{"docker": "table", "storage": "card"},
-			ChunkSizeMB: 8,
+			ViewModes:        map[string]string{"docker": "table", "storage": "card"},
+			ChunkSizeMB:      8,
+			TerminalFontSize: 18,
 		},
 		Docker: bridgeconfig.Docker{
 			Folders:                 []bridgeconfig.AbsolutePath{"/srv/docker", "/mnt/apps"},

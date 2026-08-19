@@ -3,7 +3,7 @@ import { Icon } from "@iconify/react";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
-import { GAP_SM } from "@/theme/constants";
+import { CARD_PADDING_SM, GAP_SM } from "@/theme/constants";
 
 export interface LVMMetricCardProps {
   color: string;
@@ -20,7 +20,7 @@ const LVMMetricCard = ({
   icon,
   color,
 }: LVMMetricCardProps) => (
-  <FrostedCard style={{ padding: GAP_SM, minWidth: 0 }}>
+  <FrostedCard hoverLift style={{ padding: CARD_PADDING_SM, minWidth: 0 }}>
     <CardIconHeader
       icon={<Icon color={color} height={22} icon={icon} width={22} />}
       style={{ marginBottom: GAP_SM }}

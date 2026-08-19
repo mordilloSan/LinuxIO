@@ -276,8 +276,7 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 		var progress []int64
 
 		processed, err := DeleteFilesWithProgress(context.Background(), filePath, DeleteOptions{
-			Total: 1,
-			Progress: func(processed, _ int64, _ bool) {
+			Progress: func(processed int64) {
 				progress = append(progress, processed)
 			},
 		})
@@ -288,68 +287,24 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("directory_known_total_reports_all_entries", func(t *testing.T) {
+	t.Run("directory_reports_running_entry_count", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		dirPath := createTestDir(t, tmpDir, "tree")
 		subDir := createTestDir(t, dirPath, "subdir")
 		createTestFile(t, dirPath, "file1.txt", []byte("root"))
 		createTestFile(t, subDir, "file2.txt", []byte("nested"))
-		var lastProcessed, lastTotal int64
+		var progress []int64
 
 		processed, err := DeleteFilesWithProgress(context.Background(), dirPath, DeleteOptions{
-			Total: 4,
-			Progress: func(processed, total int64, indeterminate bool) {
-				lastProcessed = processed
-				lastTotal = total
-				assert.False(t, indeterminate)
+			Progress: func(processed int64) {
+				progress = append(progress, processed)
 			},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, int64(4), processed)
-		assert.Equal(t, int64(4), lastProcessed)
-		assert.Equal(t, int64(4), lastTotal)
+		assert.Equal(t, []int64{1, 2, 3, 4}, progress)
 		_, err = os.Lstat(dirPath)
 		require.Error(t, err)
-	})
-
-	t.Run("empty_directory_prescan_counts_directory_itself", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		dirPath := createTestDir(t, tmpDir, "empty")
-		var lastProcessed, lastTotal int64
-
-		processed, err := DeleteFilesWithProgress(context.Background(), dirPath, DeleteOptions{
-			Prescan: true,
-			Progress: func(processed, total int64, _ bool) {
-				lastProcessed = processed
-				lastTotal = total
-			},
-		})
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), processed)
-		assert.Equal(t, int64(1), lastProcessed)
-		assert.Equal(t, int64(1), lastTotal)
-	})
-
-	t.Run("directory_indeterminate_reports_item_count", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		dirPath := createTestDir(t, tmpDir, "unknown")
-		createTestFile(t, dirPath, "file.txt", []byte("data"))
-		var lastProcessed, lastTotal int64
-		var lastIndeterminate bool
-
-		processed, err := DeleteFilesWithProgress(context.Background(), dirPath, DeleteOptions{
-			Indeterminate: true,
-			Progress: func(processed, total int64, indeterminate bool) {
-				lastProcessed = processed
-				lastTotal = total
-				lastIndeterminate = indeterminate
-			},
-		})
-		require.NoError(t, err)
-		assert.Equal(t, int64(2), processed)
-		assert.Equal(t, int64(2), lastProcessed)
-		assert.Equal(t, int64(0), lastTotal)
-		assert.True(t, lastIndeterminate)
 	})
 
 	t.Run("symlink_delete_does_not_follow_target", func(t *testing.T) {
@@ -361,13 +316,46 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 			t.Skipf("symlink not supported: %v", err)
 		}
 
-		processed, err := DeleteFilesWithProgress(context.Background(), linkPath, DeleteOptions{Total: 1})
+		processed, err := DeleteFilesWithProgress(context.Background(), linkPath, DeleteOptions{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), processed)
 		_, err = os.Lstat(linkPath)
 		require.Error(t, err)
 		_, err = os.Lstat(targetFile)
 		require.NoError(t, err)
+	})
+}
+
+func TestCountEntries(t *testing.T) {
+	t.Run("empty_directory_counts_itself", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dirPath := createTestDir(t, tmpDir, "empty")
+
+		total, err := CountEntries(context.Background(), dirPath, true)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+	})
+
+	t.Run("tree_counts_files_and_directories", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dirPath := createTestDir(t, tmpDir, "tree")
+		subDir := createTestDir(t, dirPath, "subdir")
+		createTestFile(t, dirPath, "file1.txt", []byte("root"))
+		createTestFile(t, subDir, "file2.txt", []byte("nested"))
+
+		total, err := CountEntries(context.Background(), dirPath, true)
+		require.NoError(t, err)
+		assert.Equal(t, int64(4), total)
+	})
+
+	t.Run("non_recursive_counts_only_the_target", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		dirPath := createTestDir(t, tmpDir, "tree")
+		createTestFile(t, dirPath, "file1.txt", []byte("root"))
+
+		total, err := CountEntries(context.Background(), dirPath, false)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
 	})
 }
 

@@ -70,29 +70,36 @@ type ThemeColors struct {
 	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitempty" yaml:"fileBrowserBreadcrumbText,omitempty"`
 }
 
+// DockAccentGradient controls the generated accent palette used by dock tiles.
+// Empty colors derive their values from the active theme accent.
+type DockAccentGradient struct {
+	StartColor CSSColor `json:"startColor,omitempty" yaml:"startColor,omitempty"`
+	EndColor   CSSColor `json:"endColor,omitempty" yaml:"endColor,omitempty"`
+	RangeStart int      `json:"rangeStart" yaml:"rangeStart"`
+	RangeEnd   int      `json:"rangeEnd" yaml:"rangeEnd"`
+}
+
 // PersistedAppSettings holds UI-related settings.
 type PersistedAppSettings struct {
 	Theme                   PersistedTheme           `json:"theme" yaml:"theme"`
 	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
 	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
+	NavigationMode          string                   `json:"navigationMode,omitempty" yaml:"navigationMode,omitempty"`
+	DockTileColors          string                   `json:"dockTileColors,omitempty" yaml:"dockTileColors,omitempty"`
+	DockAccentGradient      DockAccentGradient       `json:"dockAccentGradient" yaml:"dockAccentGradient"`
 	ShowHiddenFiles         bool                     `json:"showHiddenFiles" yaml:"showHiddenFiles"`
 	HiddenCards             []string                 `json:"hiddenCards,omitempty" yaml:"hiddenCards,omitempty"`
 	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections,omitempty" yaml:"dockerDashboardSections,omitempty"`
 	HardwareSections        *HardwareSections        `json:"hardwareSections,omitempty" yaml:"hardwareSections,omitempty"`
 	ViewModes               map[string]string        `json:"viewModes,omitempty" yaml:"viewModes,omitempty"`
-	// LayoutOrders holds the user's drag-to-reorder result per surface, keyed by
-	// the same surface ids as ViewModes ("dashboard", "docker.containers", ...).
-	// A surface absent from the map renders in its natural order.
-	LayoutOrders map[string][]string `json:"layoutOrders,omitempty" yaml:"layoutOrders,omitempty"`
-	// DashboardOrder and ContainerOrder are the pre-LayoutOrders spellings of
-	// the two surfaces that had reordering first. They are read from existing
-	// config files and folded into LayoutOrders on load, then dropped on the
-	// next write; nothing else may use them.
-	DashboardOrder []string `json:"-" yaml:"dashboardOrder,omitempty"`
-	ContainerOrder []string `json:"-" yaml:"containerOrder,omitempty"`
+	LayoutOrders            map[string][]string      `json:"layoutOrders,omitempty" yaml:"layoutOrders,omitempty"`
+	DashboardOrder          []string                 `json:"-" yaml:"dashboardOrder,omitempty"`
+	ContainerOrder          []string                 `json:"-" yaml:"containerOrder,omitempty"`
 	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
 	ChunkSizeMB int `json:"chunkSizeMB,omitempty" yaml:"chunkSizeMB,omitempty"`
+	// TerminalFontSize is the terminal font size in px (10–28). 0 = use the frontend default.
+	TerminalFontSize int `json:"terminalFontSize,omitempty" yaml:"terminalFontSize,omitempty"`
 }
 
 // DockerProxy holds Caddy reverse proxy configuration
@@ -117,6 +124,66 @@ type PersistedJobSettings struct {
 	HeavyArchiveConcurrency   int `json:"heavyArchiveConcurrency" yaml:"heavyArchiveConcurrency"`
 	ArchiveCompressionWorkers int `json:"archiveCompressionWorkers" yaml:"archiveCompressionWorkers"`
 	ArchiveExtractWorkers     int `json:"archiveExtractWorkers" yaml:"archiveExtractWorkers"`
+}
+
+// Accepted PersistedAppSettings.NavigationMode values.
+const (
+	NavigationModeSidebar = "sidebar"
+	NavigationModeDock    = "dock"
+)
+
+// IsValidNavigationMode reports whether s is a valid stored navigation mode
+// ("" counts: it means the default).
+func IsValidNavigationMode(s string) bool {
+	return s == "" || s == NavigationModeSidebar || s == NavigationModeDock
+}
+
+// Accepted PersistedAppSettings.DockTileColors values. These pick how the dock
+// derives its tile colors; only the palette changes, never the tile geometry.
+const (
+	// DockTileColorsAccent fans the tiles across a narrow band of hues around
+	// the theme accent.
+	DockTileColorsAccent = "accent"
+	// DockTileColorsMono paints every tile the theme accent.
+	DockTileColorsMono = "mono"
+	// DockTileColorsNeutral paints the tiles a neutral surface tone and gives
+	// the accent to the active route alone.
+	DockTileColorsNeutral = "neutral"
+	// DockTileColorsVibrant keeps the fixed per-route palette, which owes
+	// nothing to the theme.
+	DockTileColorsVibrant = "vibrant"
+)
+
+// IsValidDockTileColors reports whether s is a valid stored dock palette
+// ("" counts: it means the default).
+func IsValidDockTileColors(s string) bool {
+	switch s {
+	case "", DockTileColorsAccent, DockTileColorsMono, DockTileColorsNeutral, DockTileColorsVibrant:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidateDockAccentGradient returns validation errors for a dock gradient.
+func ValidateDockAccentGradient(value DockAccentGradient) []string {
+	var errs []string
+	if value.StartColor != "" && !IsValidCSSColor(string(value.StartColor)) {
+		errs = append(errs, "appSettings.dockAccentGradient.startColor must be a valid CSS color or empty")
+	}
+	if value.EndColor != "" && !IsValidCSSColor(string(value.EndColor)) {
+		errs = append(errs, "appSettings.dockAccentGradient.endColor must be a valid CSS color or empty")
+	}
+	if value.RangeStart < 0 || value.RangeStart > 100 {
+		errs = append(errs, "appSettings.dockAccentGradient.rangeStart must be between 0 and 100")
+	}
+	if value.RangeEnd < 0 || value.RangeEnd > 100 {
+		errs = append(errs, "appSettings.dockAccentGradient.rangeEnd must be between 0 and 100")
+	}
+	if value.RangeStart > value.RangeEnd {
+		errs = append(errs, "appSettings.dockAccentGradient.rangeStart must not exceed rangeEnd")
+	}
+	return errs
 }
 
 // PersistedTheme represents a validated theme value (LIGHT or DARK).

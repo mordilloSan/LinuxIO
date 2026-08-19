@@ -3,6 +3,8 @@ import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useState } from "react";
 
+import "./devtools.css";
+
 import { DevtoolsModal } from "@/components/dev-tools/DevtoolsModal";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -160,9 +162,13 @@ export const DevToolsPanel = ({
 
       {isDevtoolsOpen && (
         <DevtoolsModal onClose={() => setIsDevtoolsOpen(false)}>
+          {/* The router devtools chrome is hardcoded dark, and the query
+              devtools default to `system` (the OS colour scheme). Pin them to
+              dark so both panels share one background inside the modal. */}
           <ReactQueryDevtoolsPanel
             onClose={() => setIsDevtoolsOpen(false)}
             style={{ height: "100%", width: "100%" }}
+            theme="dark"
           />
         </DevtoolsModal>
       )}
@@ -170,6 +176,7 @@ export const DevToolsPanel = ({
       {isRouterDevtoolsOpen && (
         <DevtoolsModal onClose={() => setIsRouterDevtoolsOpen(false)}>
           <TanStackRouterDevtoolsPanel
+            className="devtools-router-panel"
             isOpen={isRouterDevtoolsOpen}
             setIsOpen={setIsRouterDevtoolsOpen}
             style={{ height: "100%", width: "100%" }}

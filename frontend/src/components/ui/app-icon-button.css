@@ -39,7 +39,7 @@
   pointer-events: none;
 }
 
-.app-icon-btn:focus-visible {
+:root[data-tab-navigation] .app-icon-btn:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }
@@ -54,7 +54,7 @@
 }
 
 .app-icon-btn--error:hover {
-  background-color: color-mix(in srgb, var(--app-palette-error-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-error-main), transparent 96%);
 }
 
 .app-icon-btn--primary {
@@ -62,7 +62,17 @@
 }
 
 .app-icon-btn--primary:hover {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 96%);
+}
+
+/* The muted icon tone the app uses for standing action buttons, brightening on
+   hover — the same pair AppActionIconButton drives through --ab-color. */
+.app-icon-btn--secondary {
+  color: var(--app-palette-text-secondary);
+}
+
+.app-icon-btn--secondary:hover {
+  color: var(--app-palette-text-primary);
 }
 
 /* ── sizes ─────────────────────────────────────── */

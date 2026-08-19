@@ -1,6 +1,8 @@
 import {
   closestCenter,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragPendingEvent,
   type DragStartEvent,
   KeyboardSensor,
@@ -43,14 +45,38 @@ export interface ReorderableSurfaceOptions<TItem> {
    * order is in charge (an active column sort) or the list is read-only.
    */
   disabled?: boolean;
+  /**
+   * Maps a finished drag onto the next saved order, for surfaces whose layout
+   * renders composite sortables — a stack band whose drag id stands for a
+   * block of member ids. Called with the current ids and the raw active/over
+   * ids; return null to keep the default single-id move. Read through a ref,
+   * so it doesn't need a stable identity.
+   */
+  resolveDragEnd?: (
+    ids: readonly string[],
+    activeId: string,
+    overId: string,
+  ) => string[] | null;
 }
 
 /** Props for the `DndContext` that wraps a reorderable surface. */
 export interface ReorderableSurfaceDndProps {
-  collisionDetection: typeof closestCenter;
+  /**
+   * `closestCenter` from the hook. A caller may substitute its own — the
+   * stack-band grid wraps it to pin collisions to the drag-start rects, so its
+   * reflow preview can never feed back into the collision that drives it.
+   */
+  collisionDetection: CollisionDetection;
   onDragAbort: () => void;
   onDragCancel: () => void;
   onDragEnd: (event: DragEndEvent) => void;
+  /**
+   * The hook leaves this unset. A grid whose sortables vary in size (the
+   * stack-band grid) previews a drag by re-rendering with the provisional
+   * order instead of with strategy transforms — dnd-kit's supported pattern
+   * for variable sizes — and layers its own handler onto the returned props.
+   */
+  onDragOver?: (event: DragOverEvent) => void;
   onDragPending: (event: DragPendingEvent) => void;
   onDragStart: (event: DragStartEvent) => void;
   sensors: ReturnType<typeof useSensors>;
@@ -96,6 +122,12 @@ function applySavedOrder<TItem>(
   return [...ordered, ...remaining.values()];
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
 /**
  * Drag-to-reorder for one list, entered by holding a card or row rather than by
  * a toolbar button.
@@ -103,19 +135,24 @@ function applySavedOrder<TItem>(
  * The hold is dnd-kit's own delay constraint, so the gesture that opens layout
  * mode is the same gesture that picks the item up — by the time the mode turns
  * on at `onDragStart`, the held item is already moving. dnd-kit also swallows
- * the trailing click and clears the text selection on activation, so a 4s press
+ * the trailing click and clears the text selection on activation, so the hold
  * cannot double as a row click or smear a selection across the list.
  */
 export function useReorderableSurface<TItem>({
   disabled = false,
   getId,
   items,
+  resolveDragEnd,
   surface,
 }: ReorderableSurfaceOptions<TItem>): ReorderableSurface<TItem> {
   const [layoutOrders, setLayoutOrders] = useConfigValue("layoutOrders");
   const [editMode, setEditMode] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
+  const resolveDragEndRef = useRef(resolveDragEnd);
+  useEffect(() => {
+    resolveDragEndRef.current = resolveDragEnd;
+  }, [resolveDragEnd]);
   // Read inside the sensor callback so the sensor descriptors never change
   // identity: dnd-kit resolves them while a press is already in flight.
   const editModeRef = useRef(false);
@@ -129,10 +166,14 @@ export function useReorderableSurface<TItem>({
     () => applySavedOrder(items, savedOrder, getId),
     [getId, items, savedOrder],
   );
-  const ids = useMemo(
-    () => orderedItems.map((item) => getId(item)),
-    [getId, orderedItems],
-  );
+  // A data refresh can replace every item object without changing the sortable
+  // order. Keying the memo by the serialized ids keeps both DnD providers from
+  // broadcasting a new context value to every row in that case.
+  const idsKey = JSON.stringify(orderedItems.map((item) => getId(item)));
+  const ids = useMemo(() => {
+    const parsed: unknown = JSON.parse(idsKey);
+    return isStringArray(parsed) ? parsed : [];
+  }, [idsKey]);
 
   const sensorOptions = useMemo(
     () => ({
@@ -149,8 +190,9 @@ export function useReorderableSurface<TItem>({
   const sensors = useSensors(
     useSensor(MouseSensor, sensorOptions),
     useSensor(TouchSensor, sensorOptions),
-    // A 4s press is a mouse gesture with no keyboard equivalent. The keyboard
-    // sensor is the way in without one: focus a card, press Space, use arrows.
+    // The REORDER_HOLD_MS hold is a mouse gesture with no keyboard equivalent.
+    // The keyboard sensor is the way in without one: focus a card, press
+    // Space, use arrows.
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -185,8 +227,19 @@ export function useReorderableSurface<TItem>({
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
-      const oldIndex = ids.indexOf(String(active.id));
-      const newIndex = ids.indexOf(String(over.id));
+      const activeId = String(active.id);
+      const overId = String(over.id);
+      const resolvedOrder = resolveDragEndRef.current?.(ids, activeId, overId);
+      if (resolvedOrder) {
+        setLayoutOrders((previous) => ({
+          ...(previous ?? {}),
+          [surface]: resolvedOrder,
+        }));
+        return;
+      }
+
+      const oldIndex = ids.indexOf(activeId);
+      const newIndex = ids.indexOf(overId);
       if (oldIndex < 0 || newIndex < 0) return;
 
       const nextOrder = arrayMove(ids, oldIndex, newIndex);

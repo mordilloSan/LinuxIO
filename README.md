@@ -190,9 +190,14 @@ make lint              # Run ESLint + Oxfmt on frontend
 make tsc               # TypeScript type checking
 make test-frontend     # Run frontend unit tests
 make golint            # Run Go formatters + golangci-lint on backend
-make test              # Run all linters (lint + tsc + golint)
+make test              # Run the full quality suite with the fixed two-lane scheduler
+make test-adaptive     # Run the same suite with the CPU-adaptive scheduler
 make test-backend      # Run Go unit tests in backend (with race detector)
 ```
+
+`make test-adaptive` defaults its weighted task budget to Go's current
+`GOMAXPROCS`. Override it for comparisons with, for example,
+`LINUXIO_CHECK_CPU_BUDGET=4 make test-adaptive`.
 
 **Building:**
 

@@ -71,14 +71,15 @@ function LogIn() {
       return;
     }
 
-    try {
-      setLoading(true);
-      await signIn(username, password);
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
+    const submit = async () => {
+      try {
+        setLoading(true);
+        await signIn(username, password);
+      } catch (err: any) {
+        setError(err.message || "Something went wrong");
+      }
+    };
+    await submit().finally(() => setLoading(false));
   };
 
   return (

@@ -11,10 +11,10 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { getWireguardStatusColor } from "@/constants/statusColors";
-import { GAP_SM } from "@/theme/constants";
+import { CARD_PADDING_SM, GAP_SM } from "@/theme/constants";
 
 const CARD_STYLE: CSSProperties = {
-  padding: 8,
+  padding: CARD_PADDING_SM,
   display: "flex",
   flexDirection: "column",
   height: "100%",
@@ -224,7 +224,7 @@ const WireguardPeerCard = ({
   onViewQrCode,
   pendingAction,
 }: WireguardPeerCardProps) => (
-  <FrostedCard hoverLift style={CARD_STYLE}>
+  <FrostedCard accent hoverLift style={CARD_STYLE}>
     {/* Header: icon + name + live status chip */}
     <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
       <Icon

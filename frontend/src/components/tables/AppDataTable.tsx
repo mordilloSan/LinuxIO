@@ -1,67 +1,87 @@
-import { DndContext, type UniqueIdentifier } from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import type { UniqueIdentifier } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
-import { flexRender, useTable } from "@tanstack/react-table";
 import type {
   Cell,
-  Column,
-  ColumnVisibilityState,
-  ExpandedState,
-  HeaderGroup,
   OnChangeFn,
   Row,
   RowData,
   SortingState,
 } from "@tanstack/react-table";
+import { useVirtualizer, type Virtualizer } from "@tanstack/react-virtual";
 import {
-  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
   memo,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type HTMLAttributes,
   type MouseEvent,
   type ReactNode,
   type Ref,
+  type RefObject,
+  type UIEventHandler,
 } from "react";
 
-import { appTableFeatures } from "@/components/tables/AppDataTable.types";
 import type {
-  AppDataTableBreakpoint,
-  AppDataTableCellRenderKey,
   AppDataTableColumnDef,
   AppTableFeatures,
 } from "@/components/tables/AppDataTable.types";
-import AppCollapse from "@/components/ui/AppCollapse";
-import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
-import AppTypography from "@/components/ui/AppTypography";
-import { REORDER_HOLD_MS } from "@/constants/reorder";
-import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
 import {
-  EASING_STANDARD_CSS,
+  rowBodyDragListeners,
+  targetIsRowControl,
+} from "@/components/tables/rowInteraction";
+import {
+  AppTableHeader,
+  AppTableShell,
+  MemoizedAppTableCell,
+  TableDndBoundary,
+  TableEmptyState,
+  TableExpandCell,
+  columnTrack,
+  useAppTableInstance,
+  useRowClickGestures,
+  useTableGestureKeys,
+} from "@/components/tables/tableShared";
+import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
+import {
+  TABLE_ROW_MIN_HEIGHT,
   TRANSITION_DURATION_STANDARD_MS,
-  shadowSm,
 } from "@/theme/constants";
-import { alpha } from "@/utils/color";
-import { mergeRefs } from "@/utils/mergeRefs";
 
-import "./app-virtual-data-table.css";
+// The app-dt__* chrome; see the note at the top of the stylesheet.
+import "./app-data-table.css";
 import "../reorder/reorder.css";
 
-const DETAIL_ANIMATION_CSS = `${TRANSITION_DURATION_STANDARD_MS}ms ${EASING_STANDARD_CSS}`;
-
-export type {
-  AppDataTableBreakpoint,
-  AppDataTableColumnDef,
-  AppDataTableColumnMeta,
-} from "@/components/tables/AppDataTable.types";
+export interface AppDataTableDndOptions<TData extends RowData> {
+  contextProps: ReorderableSurfaceDndProps;
+  getItemId: (row: Row<AppTableFeatures, TData>) => UniqueIdentifier;
+  /**
+   * Groups adjacent rows under one sortable transform — and, here, under one
+   * virtualized entry, so the whole block is measured and translated together.
+   * The row whose `isRowSortable` result is true owns the drag gesture; the
+   * other rows stay inert but travel with it.
+   */
+  getSortableGroupId?: (
+    row: Row<AppTableFeatures, TData>,
+  ) => UniqueIdentifier | null | undefined;
+  itemIds: UniqueIdentifier[];
+  editing?: boolean;
+  enabled?: boolean;
+  handleAriaLabel?: string;
+  handleColumnWidth?: string | number;
+  /**
+   * Rows this returns false for render as plain rows: synthetic rows a caller
+   * interleaves with its data — group headers — that must not register with
+   * dnd-kit. Omitting it keeps every row sortable.
+   */
+  isRowSortable?: (row: Row<AppTableFeatures, TData>) => boolean;
+  pendingItemId?: UniqueIdentifier | null;
+}
 
 export type AppDataTableRowAttributes = HTMLAttributes<HTMLDivElement> & {
   ref?: Ref<HTMLDivElement>;
@@ -69,32 +89,11 @@ export type AppDataTableRowAttributes = HTMLAttributes<HTMLDivElement> & {
 
 export interface AppDataTableRowRenderProps<TData extends RowData> {
   cells: ReactNode;
+  dragHandle?: ReactNode;
   isSelected: boolean;
   row: Row<AppTableFeatures, TData>;
   rowIndex: number;
   rowProps: AppDataTableRowAttributes;
-}
-
-export interface AppDataTableDndOptions<TData extends RowData> {
-  /**
-   * `DndContext` props for the surface. The table mounts the context itself so a
-   * reorderable table stays a one-prop change at the call site.
-   */
-  contextProps: ReorderableSurfaceDndProps;
-  getItemId: (row: Row<AppTableFeatures, TData>) => UniqueIdentifier;
-  /** Every id in the surface, in saved order — the `SortableContext` items. */
-  itemIds: UniqueIdentifier[];
-  /**
-   * Layout mode is open: rows show a drag handle and stop reacting to clicks.
-   * Rows are draggable whenever `dnd` is supplied — this only controls the
-   * chrome, because the hold that opens layout mode must reach dnd-kit first.
-   */
-  editing?: boolean;
-  enabled?: boolean;
-  handleAriaLabel?: string;
-  handleColumnWidth?: string | number;
-  /** Row currently being held, before the hold completes. */
-  pendingItemId?: UniqueIdentifier | null;
 }
 
 export interface AppDataTableProps<TData extends RowData> {
@@ -103,15 +102,24 @@ export interface AppDataTableProps<TData extends RowData> {
   columns: AppDataTableColumnDef<TData>[];
   data: TData[];
   density?: "comfortable" | "compact";
+  /**
+   * Hold-to-reorder wiring from `useReorderableTableDnd`. Rows drag from the
+   * row body, and layout mode adds the visible handle column.
+   */
   dnd?: AppDataTableDndOptions<TData>;
   emptyMessage?: string;
+  estimateExpandedRowHeight?: number;
   enableSorting?: boolean;
-  expanded?: ExpandedState;
+  estimateRowHeight?: number;
+  /**
+   * Fill the parent height and make the body the scroll viewport.
+   * Defaults to true for app-page data tables; set false for compact embedded tables.
+   */
   fillAvailable?: boolean;
   getRowCanExpand?: (row: Row<AppTableFeatures, TData>) => boolean;
   getRowAttributes?: (
     row: Row<AppTableFeatures, TData>,
-  ) => AppDataTableRowAttributes;
+  ) => HTMLAttributes<HTMLDivElement>;
   getRowId: (
     row: TData,
     index: number,
@@ -120,7 +128,7 @@ export interface AppDataTableProps<TData extends RowData> {
   height?: CSSProperties["height"];
   manualSorting?: boolean;
   maxHeight?: CSSProperties["maxHeight"];
-  onExpandedChange?: OnChangeFn<ExpandedState>;
+  onScroll?: UIEventHandler<HTMLDivElement>;
   onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
   onRowContextMenu?: (
     row: Row<AppTableFeatures, TData>,
@@ -130,9 +138,24 @@ export interface AppDataTableProps<TData extends RowData> {
     row: Row<AppTableFeatures, TData>,
     event: MouseEvent,
   ) => void;
+  /**
+   * Clear whatever the table's rows have selected. Supplying it is what opts a
+   * table into the second stage of Escape — see `docs/table-row-gestures.md`.
+   */
+  onClearSelection?: () => void;
   onSortingChange?: OnChangeFn<SortingState>;
+  overscan?: number;
+  /**
+   * Persist which rows are expanded to localStorage under this app-unique
+   * key, so expansion survives navigation and reloads. Only for tables whose
+   * `getRowId` is stable across sessions (a name, an id) — an index or a
+   * per-session synthetic id would re-expand the wrong row next load.
+   */
+  persistExpandedKey?: string;
   renderExpandedContent?: (row: Row<AppTableFeatures, TData>) => ReactNode;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
+  scrollElementRef?: RefObject<HTMLDivElement | null>;
+  scrollToIndex?: number | null;
   selectedRowId?: string | null;
   showHeader?: boolean;
   sorting?: SortingState;
@@ -140,142 +163,117 @@ export interface AppDataTableProps<TData extends RowData> {
   variant?: "default" | "embedded";
 }
 
-function columnTrack<TData extends RowData>(
-  column: Column<AppTableFeatures, TData>,
-) {
-  const width = column.columnDef.meta?.width;
-  if (typeof width === "number") return `${width}px`;
-  if (typeof width === "string" && width.trim()) return width;
-  return "minmax(0, 1fr)";
+interface VirtualGroupMember<TData extends RowData> {
+  row: Row<AppTableFeatures, TData>;
+  rowIndex: number;
 }
 
-function alignToJustify(align?: "left" | "center" | "right") {
-  if (align === "center") return "center";
-  if (align === "right") return "flex-end";
-  return "flex-start";
-}
-
-function getColumnDefId<TData extends RowData>(
-  column: AppDataTableColumnDef<TData>,
-  index: number,
-) {
-  const candidate = column as {
-    accessorKey?: string | number;
-    id?: string;
-  };
-
-  if (candidate.id) return candidate.id;
-  if (candidate.accessorKey !== undefined) return String(candidate.accessorKey);
-  return `column-${index}`;
-}
-
-function getSortIcon(sortState: false | "asc" | "desc") {
-  if (sortState === "asc") return "mdi:chevron-up";
-  if (sortState === "desc") return "mdi:chevron-down";
-  return "mdi:unfold-more-horizontal";
-}
-
-function areCellRenderKeysEqual(
-  previous: AppDataTableCellRenderKey,
-  next: AppDataTableCellRenderKey,
-) {
-  if (Object.is(previous, next)) return true;
-  if (!Array.isArray(previous) || !Array.isArray(next)) return false;
-  if (previous.length !== next.length) return false;
-  return previous.every((value, index) => Object.is(value, next[index]));
-}
-
-function areVersionArraysEqual(
-  previous: readonly unknown[],
-  next: readonly unknown[],
-) {
-  if (previous.length !== next.length) return false;
-  return previous.every((value, index) => Object.is(value, next[index]));
-}
+type VirtualTableEntry<TData extends RowData> =
+  | {
+      kind: "row";
+      key: string;
+      row: Row<AppTableFeatures, TData>;
+      rowIndex: number;
+    }
+  | {
+      kind: "detail";
+      key: string;
+      row: Row<AppTableFeatures, TData>;
+      rowIndex: number;
+    }
+  // A sortable group is one virtual entry: the virtualizer measures and
+  // positions the whole block, so its rows share one dnd transform. Rows
+  // inside a group don't get detail entries — no table combines groups with
+  // `renderExpandedContent`.
+  | {
+      kind: "group";
+      key: string;
+      groupId: UniqueIdentifier;
+      members: VirtualGroupMember<TData>[];
+    };
 
 function getCellRenderKey<TData extends RowData>(
   cell: Cell<AppTableFeatures, TData>,
   rowIndex: number,
 ) {
-  return (
-    cell.column.columnDef.meta?.getCellRenderKey?.(
-      cell.row.original,
-      rowIndex,
-    ) ?? cell.row.original
-  );
+  const getExplicitRenderKey = cell.column.columnDef.meta?.getCellRenderKey;
+  return getExplicitRenderKey
+    ? getExplicitRenderKey(cell.row.original, rowIndex)
+    : [cell.row.original, rowIndex];
 }
 
-interface AppDataTableCellProps<TData extends RowData> {
-  cell: Cell<AppTableFeatures, TData>;
-  columnDef: AppDataTableColumnDef<TData>;
-  renderKey: AppDataTableCellRenderKey;
-  rowIndex: number;
-}
-
-type AppDataTableCellModel<TData extends RowData> =
-  AppDataTableCellProps<TData>;
-
-function areCellModelsEqual<TData extends RowData>(
-  previous: AppDataTableCellModel<TData>[],
-  next: AppDataTableCellModel<TData>[],
+/**
+ * Sortable wiring for one virtualized row. The virtualizer owns the outer
+ * wrapper's translateY, so the drag transform goes on the inner row instead of
+ * fighting it.
+ *
+ * Only mounted rows are drop targets — dnd-kit cannot see what virtualization
+ * has unmounted — so long lists are reordered by dragging in steps, scrolling
+ * as you go.
+ */
+function useVirtualRowReorder<TData extends RowData>(
+  dnd: AppDataTableDndOptions<TData> | undefined,
+  row: Row<AppTableFeatures, TData>,
 ) {
-  if (previous.length !== next.length) return false;
-  return previous.every((cell, index) => {
-    const nextCell = next[index];
-    return (
-      cell.cell.id === nextCell.cell.id &&
-      cell.columnDef === nextCell.columnDef &&
-      cell.rowIndex === nextCell.rowIndex &&
-      areCellRenderKeysEqual(cell.renderKey, nextCell.renderKey)
-    );
-  });
+  const isSortableRow = dnd?.isRowSortable?.(row) ?? true;
+  const isArmed = Boolean(dnd) && dnd?.enabled !== false && isSortableRow;
+  const itemId = dnd?.getItemId(row);
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: itemId ?? row.id, disabled: !isArmed });
+
+  if (!dnd || !isArmed) {
+    return {
+      handleAttributes: undefined,
+      handleListeners: undefined,
+      isReorderEditing: false,
+      isReorderPending: false,
+      reorderListeners: undefined,
+      reorderStyle: undefined,
+      setReorderNodeRef: undefined,
+    } as const;
+  }
+
+  return {
+    // The visible handle takes the raw activator; the row body keeps the
+    // guarded listeners below.
+    handleAttributes: attributes,
+    handleListeners: listeners,
+    isReorderEditing: dnd.editing ?? false,
+    isReorderPending: dnd.pendingItemId != null && dnd.pendingItemId === itemId,
+    // A press on one of the row's own controls is not a drag.
+    reorderListeners: rowBodyDragListeners(listeners),
+    reorderStyle: {
+      opacity: isDragging ? 0.45 : undefined,
+      transform: CSS.Transform.toString(transform) || undefined,
+      transition: transition || undefined,
+    } as CSSProperties,
+    setReorderNodeRef: setNodeRef,
+  } as const;
 }
-
-function AppDataTableCell<TData extends RowData>({
-  cell,
-  columnDef,
-}: AppDataTableCellProps<TData>) {
-  const meta = columnDef.meta;
-
-  return (
-    <div
-      className={["app-vdt__cell", meta?.className, meta?.cellClassName]
-        .filter(Boolean)
-        .join(" ")}
-      role="cell"
-      style={{
-        justifyContent: alignToJustify(meta?.align),
-        textAlign: meta?.align,
-        ...meta?.style,
-        ...meta?.cellStyle,
-      }}
-    >
-      {flexRender(columnDef.cell, cell.getContext())}
-    </div>
-  );
-}
-
-const MemoizedAppDataTableCell = memo(
-  AppDataTableCell,
-  (previous, next) =>
-    previous.cell.id === next.cell.id &&
-    previous.columnDef === next.columnDef &&
-    previous.rowIndex === next.rowIndex &&
-    areCellRenderKeysEqual(previous.renderKey, next.renderKey),
-) as typeof AppDataTableCell;
 
 interface AppDataTableBodyRowProps<TData extends RowData> {
   canExpand: boolean;
-  cells: AppDataTableCellModel<TData>[];
+  dnd?: AppDataTableDndOptions<TData>;
+  // Invalidate a memoized row when same-ID columns replace their renderer or
+  // metadata; the row reads the actual visible cells from TanStack Table.
+  columnVersion: AppDataTableColumnDef<TData>[];
+  /** A group leader's handle, when the group owns the sortable transform. */
   dragHandle?: ReactNode;
   getRowAttributes?: (
     row: Row<AppTableFeatures, TData>,
-  ) => AppDataTableRowAttributes;
+  ) => HTMLAttributes<HTMLDivElement>;
   hasDragColumn: boolean;
   hasExpandColumn: boolean;
   isExpanded: boolean;
   isInteractive: boolean;
   isSelected: boolean;
+  onExpand: (row: Row<AppTableFeatures, TData>) => void;
   onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
   onRowContextMenu?: (
     row: Row<AppTableFeatures, TData>,
@@ -287,13 +285,16 @@ interface AppDataTableBodyRowProps<TData extends RowData> {
   ) => void;
   renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
   row: Row<AppTableFeatures, TData>;
+  /** Group-supplied attributes; when present, `getRowAttributes` stands down. */
   rowAttributes?: AppDataTableRowAttributes;
   rowIndex: number;
+  /** Snapshot of the visible cells for this render, used by the row memo boundary. */
+  visibleCells: Cell<AppTableFeatures, TData>[];
 }
 
 function AppDataTableBodyRow<TData extends RowData>({
   canExpand,
-  cells,
+  dnd,
   dragHandle,
   getRowAttributes,
   hasDragColumn,
@@ -301,6 +302,7 @@ function AppDataTableBodyRow<TData extends RowData>({
   isExpanded,
   isInteractive,
   isSelected,
+  onExpand,
   onRowClick,
   onRowContextMenu,
   onRowDoubleClick,
@@ -308,88 +310,123 @@ function AppDataTableBodyRow<TData extends RowData>({
   row,
   rowAttributes: providedRowAttributes,
   rowIndex,
+  visibleCells,
 }: AppDataTableBodyRowProps<TData>) {
-  const rowAttributes =
-    providedRowAttributes ?? getRowAttributes?.(row) ?? undefined;
+  "use no memo";
+  const rowAttributes = providedRowAttributes ?? getRowAttributes?.(row);
+  const {
+    handleAttributes,
+    handleListeners,
+    isReorderEditing,
+    isReorderPending,
+    reorderListeners,
+    reorderStyle,
+    setReorderNodeRef,
+  } = useVirtualRowReorder(dnd, row);
   const rowAttributeOnClick = rowAttributes?.onClick;
   const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
   const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
+  // Both spreads can carry a mousedown — the reorder activator and the caller's
+  // own attributes — so the suppression below has to delegate
+  const rowAttributeOnMouseDown = rowAttributes?.onMouseDown;
+  const reorderOnMouseDown = reorderListeners?.onMouseDown as
+    | ((event: MouseEvent) => void)
+    | undefined;
+  const ownDragHandle = handleListeners ? (
+    <span
+      {...handleAttributes}
+      {...handleListeners}
+      aria-label={dnd?.handleAriaLabel ?? "Reorder row"}
+      className="app-dt__drag-handle"
+    >
+      <Icon height={20} icon="mdi:drag" width={20} />
+    </span>
+  ) : undefined;
+  const resolvedDragHandle =
+    dragHandle ?? (isReorderEditing ? ownDragHandle : undefined);
+
   const renderedCells = (
     <>
       {hasDragColumn && (
-        <div className="app-vdt__cell app-vdt__cell--drag" role="cell">
-          {dragHandle}
+        <div className="app-dt__cell app-dt__cell--drag" role="cell">
+          {resolvedDragHandle}
         </div>
       )}
-      {cells.map((cell) => (
-        <MemoizedAppDataTableCell
-          cell={cell.cell}
-          columnDef={cell.columnDef}
-          key={cell.cell.id}
-          renderKey={cell.renderKey}
-          rowIndex={cell.rowIndex}
+      {visibleCells.map((cell) => (
+        <MemoizedAppTableCell
+          cell={cell}
+          columnDef={cell.column.columnDef}
+          key={cell.id}
+          renderKey={getCellRenderKey(cell, rowIndex)}
         />
       ))}
       {hasExpandColumn && (
-        <div className="app-vdt__cell app-vdt__cell--expand" role="cell">
-          {canExpand && (
-            <AppTooltip title={isExpanded ? "Collapse row" : "Expand row"}>
-              <AppIconButton
-                aria-expanded={isExpanded}
-                aria-label={isExpanded ? "Collapse row" : "Expand row"}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  row.toggleExpanded();
-                }}
-                size="small"
-              >
-                <Icon
-                  height={22}
-                  icon="mdi:chevron-down"
-                  style={{
-                    transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: `transform ${DETAIL_ANIMATION_CSS}`,
-                  }}
-                  width={22}
-                />
-              </AppIconButton>
-            </AppTooltip>
-          )}
-        </div>
+        <TableExpandCell
+          canExpand={canExpand}
+          isExpanded={isExpanded}
+          onToggle={() => onExpand(row.table.getRow(row.id))}
+        />
       )}
     </>
   );
+
   const rowProps: AppDataTableRowAttributes = {
+    ...reorderListeners,
     ...rowAttributes,
+    "aria-expanded": canExpand ? isExpanded : undefined,
     className: [
-      "app-vdt__row",
-      "app-vdt__row--body",
-      isInteractive && "app-vdt__row--interactive",
-      isSelected && "app-vdt__row--selected",
-      rowIndex % 2 === 1 && "app-vdt__row--alt",
+      "app-dt__row",
+      "app-dt__row--body",
+      isInteractive && "app-dt__row--interactive",
+      isSelected && "app-dt__row--selected",
+      rowIndex % 2 === 1 && "app-dt__row--alt",
+      isReorderPending && "app-dt__row--reorder-pending",
+      isReorderEditing && "app-dt__row--reordering",
       rowAttributes?.className,
     ]
       .filter(Boolean)
       .join(" "),
     onClick: (event) => {
       rowAttributeOnClick?.(event);
-      if (!event.defaultPrevented) onRowClick?.(row, event);
+      if (!event.defaultPrevented) {
+        onRowClick?.(row.table.getRow(row.id), event);
+      }
     },
     onContextMenu: (event) => {
       rowAttributeOnContextMenu?.(event);
-      if (!event.defaultPrevented) onRowContextMenu?.(row, event);
+      if (!event.defaultPrevented) {
+        onRowContextMenu?.(row.table.getRow(row.id), event);
+      }
     },
     onDoubleClick: (event) => {
       rowAttributeOnDoubleClick?.(event);
-      if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
+      if (!event.defaultPrevented) {
+        onRowDoubleClick?.(row.table.getRow(row.id), event);
+      }
     },
+    // See AppDataTable: the second mousedown of a double click is what
+    // starts the browser's word selection, which is litter on a table that
+    // means something else by a double click.
+    onMouseDown: (event) => {
+      if (
+        onRowDoubleClick &&
+        event.detail > 1 &&
+        !targetIsRowControl(event.target)
+      ) {
+        event.preventDefault();
+      }
+      reorderOnMouseDown?.(event);
+      rowAttributeOnMouseDown?.(event);
+    },
+    ref: setReorderNodeRef,
     role: "row",
-    style: rowAttributes?.style,
+    style: { ...rowAttributes?.style, ...reorderStyle },
   };
 
   if (renderRow) {
     return renderRow({
       cells: renderedCells,
+      dragHandle: resolvedDragHandle,
       isSelected,
       row,
       rowIndex,
@@ -400,11 +437,51 @@ function AppDataTableBodyRow<TData extends RowData>({
   return <div {...rowProps}>{renderedCells}</div>;
 }
 
-const MemoizedAppDataTableBodyRow = memo(
-  AppDataTableBodyRow,
-  (previous, next) =>
+function haveSameVisibleCells<TData extends RowData>(
+  previous: Cell<AppTableFeatures, TData>[],
+  next: Cell<AppTableFeatures, TData>[],
+) {
+  return (
+    previous.length === next.length &&
+    previous.every((cell, index) => cell.id === next[index]?.id)
+  );
+}
+
+function haveSameRowDndState<TData extends RowData>(
+  previousDnd: AppDataTableDndOptions<TData> | undefined,
+  nextDnd: AppDataTableDndOptions<TData> | undefined,
+  previousRow: Row<AppTableFeatures, TData>,
+  nextRow: Row<AppTableFeatures, TData>,
+) {
+  if (previousDnd === nextDnd) return true;
+  if (!previousDnd || !nextDnd) return false;
+
+  const previousItemId = previousDnd.getItemId(previousRow);
+  const nextItemId = nextDnd.getItemId(nextRow);
+  const previousArmed =
+    previousDnd.enabled !== false &&
+    (previousDnd.isRowSortable?.(previousRow) ?? true);
+  const nextArmed =
+    nextDnd.enabled !== false && (nextDnd.isRowSortable?.(nextRow) ?? true);
+
+  return (
+    previousItemId === nextItemId &&
+    previousArmed === nextArmed &&
+    (!previousArmed ||
+      ((previousDnd.editing ?? false) === (nextDnd.editing ?? false) &&
+        (previousDnd.pendingItemId === previousItemId) ===
+          (nextDnd.pendingItemId === nextItemId) &&
+        previousDnd.handleAriaLabel === nextDnd.handleAriaLabel))
+  );
+}
+
+function areAppDataTableBodyRowPropsEqual<TData extends RowData>(
+  previous: AppDataTableBodyRowProps<TData>,
+  next: AppDataTableBodyRowProps<TData>,
+) {
+  return (
     previous.canExpand === next.canExpand &&
-    areCellModelsEqual(previous.cells, next.cells) &&
+    previous.columnVersion === next.columnVersion &&
     previous.dragHandle === next.dragHandle &&
     previous.getRowAttributes === next.getRowAttributes &&
     previous.hasDragColumn === next.hasDragColumn &&
@@ -412,38 +489,82 @@ const MemoizedAppDataTableBodyRow = memo(
     previous.isExpanded === next.isExpanded &&
     previous.isInteractive === next.isInteractive &&
     previous.isSelected === next.isSelected &&
+    previous.onExpand === next.onExpand &&
     previous.onRowClick === next.onRowClick &&
     previous.onRowContextMenu === next.onRowContextMenu &&
     previous.onRowDoubleClick === next.onRowDoubleClick &&
     previous.renderRow === next.renderRow &&
-    previous.row === next.row &&
     previous.rowAttributes === next.rowAttributes &&
-    previous.rowIndex === next.rowIndex,
-) as typeof AppDataTableBodyRow;
-
-interface AppDataTableSortableBodyRowProps<TData extends RowData> extends Omit<
-  AppDataTableBodyRowProps<TData>,
-  "dragHandle" | "hasDragColumn" | "rowAttributes"
-> {
-  dnd: AppDataTableDndOptions<TData>;
+    previous.rowIndex === next.rowIndex &&
+    previous.row.table === next.row.table &&
+    previous.row.id === next.row.id &&
+    previous.row.index === next.row.index &&
+    previous.row.depth === next.row.depth &&
+    previous.row.parentId === next.row.parentId &&
+    previous.row.original === next.row.original &&
+    haveSameVisibleCells(previous.visibleCells, next.visibleCells) &&
+    haveSameRowDndState(previous.dnd, next.dnd, previous.row, next.row)
+  );
 }
 
-function AppDataTableSortableBodyRow<TData extends RowData>({
-  canExpand,
-  cells,
+const MemoizedAppDataTableBodyRow = memo(
+  AppDataTableBodyRow,
+  areAppDataTableBodyRowPropsEqual,
+) as typeof AppDataTableBodyRow;
+
+interface AppDataTableSortableBodyGroupProps<TData extends RowData> {
+  columnVersion: AppDataTableColumnDef<TData>[];
+  dnd: AppDataTableDndOptions<TData>;
+  getRowAttributes?: (
+    row: Row<AppTableFeatures, TData>,
+  ) => HTMLAttributes<HTMLDivElement>;
+  groupId: UniqueIdentifier;
+  hasDragColumn: boolean;
+  hasExpandColumn: boolean;
+  isInteractive: boolean;
+  members: VirtualGroupMember<TData>[];
+  onExpand: (row: Row<AppTableFeatures, TData>) => void;
+  onRowClick?: (row: Row<AppTableFeatures, TData>, event: MouseEvent) => void;
+  onRowContextMenu?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
+  onRowDoubleClick?: (
+    row: Row<AppTableFeatures, TData>,
+    event: MouseEvent,
+  ) => void;
+  renderRow?: (props: AppDataTableRowRenderProps<TData>) => ReactNode;
+  rowClickExpands: boolean;
+  selectedRowId?: string | null;
+}
+
+/**
+ * One sortable node containing a leader row and its inert followers. The
+ * group is a single virtual entry, so the virtualizer measures the block
+ * while dnd-kit translates it; member rows render with their own indexes and
+ * surfaces.
+ */
+function AppDataTableSortableBodyGroup<TData extends RowData>({
+  columnVersion,
   dnd,
   getRowAttributes,
+  groupId,
+  hasDragColumn,
   hasExpandColumn,
-  isExpanded,
   isInteractive,
-  isSelected,
+  members,
+  onExpand,
   onRowClick,
   onRowContextMenu,
   onRowDoubleClick,
   renderRow,
-  row,
-  rowIndex,
-}: AppDataTableSortableBodyRowProps<TData>) {
+  rowClickExpands,
+  selectedRowId,
+}: AppDataTableSortableBodyGroupProps<TData>) {
+  "use no memo";
+  const leaderIndex = members.findIndex(
+    ({ row }) => dnd.isRowSortable?.(row) ?? true,
+  );
   const {
     attributes,
     isDragging,
@@ -452,229 +573,104 @@ function AppDataTableSortableBodyRow<TData extends RowData>({
     transform,
     transition,
   } = useSortable({
-    id: dnd.getItemId(row),
-    disabled: dnd.enabled === false,
+    id: groupId,
+    disabled: dnd.enabled === false || leaderIndex < 0,
   });
   const isArmed = dnd.enabled !== false;
   const isEditing = isArmed && (dnd.editing ?? false);
-  const isPending =
-    dnd.pendingItemId != null && dnd.pendingItemId === dnd.getItemId(row);
-  const transformValue = CSS.Transform.toString(transform);
-  const rowAttributes = getRowAttributes?.(row);
-  const rowTransition = [rowAttributes?.style?.transition, transition]
-    .filter(Boolean)
-    .join(", ");
+  const isPending = dnd.pendingItemId === groupId;
   const dragHandle = (
     <span
       {...attributes}
       {...listeners}
       aria-label={dnd.handleAriaLabel ?? "Reorder row"}
-      className="app-vdt__drag-handle"
+      className="app-dt__drag-handle"
     >
       <Icon height={20} icon="mdi:drag" width={20} />
     </span>
   );
 
   return (
-    <AppDataTableBodyRow
-      canExpand={canExpand}
-      cells={cells}
-      dragHandle={isEditing ? dragHandle : undefined}
-      hasDragColumn={isEditing}
-      hasExpandColumn={hasExpandColumn}
-      isExpanded={isExpanded}
-      isInteractive={isInteractive}
-      isSelected={isSelected}
-      onRowClick={onRowClick}
-      onRowContextMenu={onRowContextMenu}
-      onRowDoubleClick={onRowDoubleClick}
-      renderRow={renderRow}
-      row={row}
-      rowIndex={rowIndex}
-      rowAttributes={{
-        // The whole row carries the press listeners, not just the handle: the
-        // handle only exists once layout mode is open, and the hold is what
-        // opens it.
-        ...(isArmed ? listeners : undefined),
-        ...rowAttributes,
-        className: [
-          rowAttributes?.className,
-          isPending && "app-vdt__row--reorder-pending",
-          isEditing && "app-vdt__row--reordering",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        ref: mergeRefs(rowAttributes?.ref, setNodeRef),
-        style: {
-          ...rowAttributes?.style,
-          opacity: isDragging ? 0.45 : rowAttributes?.style?.opacity,
-          transform: transformValue || rowAttributes?.style?.transform,
-          transition: rowTransition || undefined,
-        },
+    <div
+      className="app-dt__sortable-group"
+      ref={setNodeRef}
+      role="presentation"
+      style={{
+        opacity: isDragging ? 0.45 : undefined,
+        // Keep the multi-row block at its measured dimensions while it crosses
+        // ordinary rows; only its position should change during the drag.
+        transform: CSS.Translate.toString(transform),
+        transition,
+        zIndex: isDragging ? 1 : undefined,
       }}
-    />
-  );
-}
+    >
+      {members.map((member, index) => {
+        const { row, rowIndex } = member;
+        const rowAttributes = getRowAttributes?.(row);
+        const isLeader = index === leaderIndex;
+        const sortableRowAttributes = isLeader
+          ? {
+              // The whole leader row carries the press listeners, not just the
+              // handle — the hold that opens layout mode must reach dnd-kit
+              // before the handle exists.
+              ...(isArmed ? rowBodyDragListeners(listeners) : undefined),
+              ...rowAttributes,
+              className: [
+                rowAttributes?.className,
+                isPending && "app-dt__row--reorder-pending",
+                isEditing && "app-dt__row--reordering",
+              ]
+                .filter(Boolean)
+                .join(" "),
+            }
+          : rowAttributes;
+        const canExpand = row.getCanExpand();
 
-interface AppDataTableHeaderProps<TData extends RowData> {
-  // These version props keep same-ID renderer and sorting changes visible to a
-  // memoized header even when TanStack can reuse its header-group objects.
-  columnVersion: AppDataTableColumnDef<TData>[];
-  hasDragColumn: boolean;
-  hasExpandColumn: boolean;
-  headerGroups: HeaderGroup<AppTableFeatures, TData>[];
-  sortingVersion: SortingState;
-}
-
-function AppDataTableHeader<TData extends RowData>({
-  hasDragColumn,
-  hasExpandColumn,
-  headerGroups,
-}: AppDataTableHeaderProps<TData>) {
-  return (
-    <div className="app-vdt__head" role="rowgroup">
-      {headerGroups.map((headerGroup) => (
-        <div
-          className="app-vdt__row app-vdt__row--head"
-          key={headerGroup.id}
-          role="row"
-        >
-          {hasDragColumn && (
-            <div
-              aria-hidden="true"
-              className="app-vdt__cell app-vdt__cell--head app-vdt__cell--drag"
-              role="columnheader"
-            />
-          )}
-          {headerGroup.headers.map((header) => {
-            const meta = header.column.columnDef.meta;
-            const sortState = header.column.getIsSorted();
-            const canSort = header.column.getCanSort();
-
-            return (
-              <div
-                className={[
-                  "app-vdt__cell",
-                  "app-vdt__cell--head",
-                  meta?.className,
-                  meta?.headerClassName,
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                key={header.id}
-                role="columnheader"
-                style={{
-                  justifyContent: alignToJustify(meta?.align),
-                  textAlign: meta?.align,
-                  ...meta?.style,
-                  ...meta?.headerStyle,
-                }}
-              >
-                {header.isPlaceholder ? null : canSort ? (
-                  <button
-                    className="app-vdt__sort-button"
-                    onClick={header.column.getToggleSortingHandler()}
-                    type="button"
-                  >
-                    <span className="app-vdt__sort-label">
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
-                      )}
-                    </span>
-                    <Icon
-                      height={16}
-                      icon={getSortIcon(sortState)}
-                      width={16}
-                    />
-                  </button>
-                ) : (
-                  flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
-                  )
-                )}
-              </div>
-            );
-          })}
-          {hasExpandColumn && (
-            <div
-              aria-hidden="true"
-              className="app-vdt__cell app-vdt__cell--head app-vdt__cell--expand"
-              role="columnheader"
-            />
-          )}
-        </div>
-      ))}
+        return (
+          <MemoizedAppDataTableBodyRow
+            canExpand={canExpand}
+            columnVersion={columnVersion}
+            dragHandle={isLeader && isEditing ? dragHandle : undefined}
+            hasDragColumn={hasDragColumn}
+            hasExpandColumn={hasExpandColumn}
+            isExpanded={row.getIsExpanded()}
+            isInteractive={isInteractive || (rowClickExpands && canExpand)}
+            isSelected={row.id === selectedRowId}
+            key={row.id}
+            onExpand={onExpand}
+            onRowClick={onRowClick}
+            onRowContextMenu={onRowContextMenu}
+            onRowDoubleClick={onRowDoubleClick}
+            renderRow={renderRow}
+            row={row}
+            rowAttributes={sortableRowAttributes}
+            rowIndex={rowIndex}
+            visibleCells={row.getVisibleCells()}
+          />
+        );
+      })}
     </div>
   );
 }
 
-const MemoizedAppDataTableHeader = memo(
-  AppDataTableHeader,
-  (previous, next) =>
-    areVersionArraysEqual(previous.columnVersion, next.columnVersion) &&
-    previous.hasDragColumn === next.hasDragColumn &&
-    previous.hasExpandColumn === next.hasExpandColumn &&
-    previous.headerGroups === next.headerGroups &&
-    previous.sortingVersion === next.sortingVersion,
-) as typeof AppDataTableHeader;
-
-interface AppDataTableExpandedContentProps<TData extends RowData> {
-  columnCount: number;
-  renderExpandedContent: (row: Row<AppTableFeatures, TData>) => ReactNode;
-  row: Row<AppTableFeatures, TData>;
+function easeStandard(progress: number) {
+  return progress < 0.5
+    ? 2 * progress * progress
+    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 }
 
-function AppDataTableExpandedContent<TData extends RowData>({
-  columnCount,
-  renderExpandedContent,
-  row,
-}: AppDataTableExpandedContentProps<TData>) {
-  return (
-    <div className="app-vdt__detail" role="row">
-      <div
-        aria-colspan={columnCount}
-        className="app-vdt__detail-cell"
-        role="cell"
-      >
-        {renderExpandedContent(row)}
-      </div>
-    </div>
-  );
+function observeDetailContent(
+  node: HTMLDivElement,
+  onResize: ResizeObserverCallback,
+) {
+  const observer = new ResizeObserver(onResize);
+  observer.observe(node);
+  return observer;
 }
 
-const MemoizedAppDataTableExpandedContent = memo(
-  AppDataTableExpandedContent,
-) as typeof AppDataTableExpandedContent;
-
-interface AppDataTableExpandedRowProps<
-  TData extends RowData,
-> extends AppDataTableExpandedContentProps<TData> {
-  isExpanded: boolean;
-}
-
-function AppDataTableExpandedRow<TData extends RowData>({
-  columnCount,
-  isExpanded,
-  renderExpandedContent,
-  row,
-}: AppDataTableExpandedRowProps<TData>) {
-  return (
-    <AppCollapse in={isExpanded} unmountOnExit>
-      <MemoizedAppDataTableExpandedContent
-        columnCount={columnCount}
-        renderExpandedContent={renderExpandedContent}
-        row={row}
-      />
-    </AppCollapse>
-  );
-}
-
-const MemoizedAppDataTableExpandedRow = memo(
-  AppDataTableExpandedRow,
-) as typeof AppDataTableExpandedRow;
-
+// React Compiler skips this component because of @tanstack/react-virtual
+// (no compiler-compatible release exists); Table itself is v9 and fine.
+// Manual memoization stays load-bearing here.
 function AppDataTable<TData extends RowData>({
   ariaLabel = "Data table",
   className,
@@ -683,122 +679,433 @@ function AppDataTable<TData extends RowData>({
   density = "comfortable",
   dnd,
   emptyMessage = "No data available.",
+  estimateExpandedRowHeight = 0,
   enableSorting = false,
-  expanded,
-  fillAvailable = false,
+  estimateRowHeight = TABLE_ROW_MIN_HEIGHT,
+  fillAvailable = true,
   getRowCanExpand,
   getRowAttributes,
   getRowId,
   height,
   manualSorting = false,
   maxHeight,
-  onExpandedChange,
+  onClearSelection,
+  onScroll,
   onRowClick,
   onRowContextMenu,
   onRowDoubleClick,
   onSortingChange,
+  overscan = 12,
+  persistExpandedKey,
   renderExpandedContent,
   renderRow,
+  scrollElementRef,
+  scrollToIndex,
   selectedRowId,
   showHeader = true,
   sorting,
   style,
   variant = "default",
 }: AppDataTableProps<TData>) {
-  const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
-  const belowSm = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const belowMd = useAppMediaQuery(theme.breakpoints.down("md"));
-  const belowLg = useAppMediaQuery(theme.breakpoints.down("lg"));
-  const belowXl = useAppMediaQuery(theme.breakpoints.down("xl"));
-  const [internalExpanded, setInternalExpanded] = useState<ExpandedState>({});
-  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+  "use no memo";
 
-  const columnVisibility = useMemo<ColumnVisibilityState>(() => {
-    const below: Record<AppDataTableBreakpoint, boolean> = {
-      sm: belowSm,
-      md: belowMd,
-      lg: belowLg,
-      xl: belowXl,
-    };
-    const next: ColumnVisibilityState = {};
+  const internalScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = scrollElementRef ?? internalScrollRef;
+  const expandedRowIdsRef = useRef<Set<string>>(new Set());
+  const detailAnimationFrameRefs = useRef<Map<string, number>>(new Map());
+  const detailContentHeightsRef = useRef<Map<string, number>>(new Map());
+  const detailContentObserverRefs = useRef<Map<string, ResizeObserver>>(
+    new Map(),
+  );
+  const detailNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const detailSizesRef = useRef<Map<string, number>>(new Map());
+  const latestDetailIndicesRef = useRef<Map<string, number>>(new Map());
+  const [mountedDetailRowIds, setMountedDetailRowIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
-    columns.forEach((column, index) => {
-      const hideBelow = column.meta?.hideBelow;
-      if (!hideBelow) return;
-      next[getColumnDefId(column, index)] = !below[hideBelow];
-    });
-
-    return next;
-  }, [belowLg, belowMd, belowSm, belowXl, columns]);
-
-  const resolvedExpanded = expanded ?? internalExpanded;
-  const resolvedSorting = sorting ?? internalSorting;
-  // A column sort already decides the row order, and a saved manual order would
-  // be invisible underneath it. Sorted tables therefore aren't reorderable at
-  // all, rather than accepting drags that appear to do nothing.
-  const dndOptions = resolvedSorting.length > 0 ? undefined : dnd;
-
-  const handleExpandedChange: OnChangeFn<ExpandedState> = (updater) => {
-    if (expanded === undefined) {
-      setInternalExpanded(updater);
-    }
-    onExpandedChange?.(updater);
-  };
-
-  const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
-    if (sorting === undefined) {
-      setInternalSorting(updater);
-    }
-    onSortingChange?.(updater);
-  };
-
-  const table = useTable({
-    features: appTableFeatures,
-    autoResetExpanded: false,
+  const { dndOptions, table } = useAppTableInstance({
     columns,
     data,
+    dnd,
     enableSorting,
-    enableSortingRemoval: false,
-    getRowCanExpand: (row) =>
-      Boolean(renderExpandedContent && (getRowCanExpand?.(row) ?? true)),
+    getRowCanExpand,
     getRowId,
     manualSorting,
-    onExpandedChange: handleExpandedChange,
-    onSortingChange: handleSortingChange,
-    state: {
-      columnVisibility,
-      expanded: resolvedExpanded,
-      sorting: resolvedSorting,
-    },
+    onSortingChange,
+    persistExpandedKey,
+    renderExpandedContent,
+    sorting,
   });
 
   const rows = table.getRowModel().rows;
-  const isEmbedded = variant === "embedded";
-  const headRowBg = isEmbedded
-    ? "transparent"
-    : alpha(theme.palette.text.primary, 0.08);
-  const selectedBg = alpha(theme.palette.primary.main, isDark ? 0.15 : 0.1);
-  const altBg = isEmbedded
-    ? "transparent"
-    : alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
-  const hoverBg = alpha(theme.palette.primary.main, 0.08);
+  const expandedRowIds = useMemo(() => {
+    const next = new Set<string>();
+    for (const row of rows) {
+      if (row.getIsExpanded()) {
+        next.add(row.id);
+      }
+    }
+    return next;
+  }, [rows]);
+  const expandedRowIdsKey = useMemo(
+    () => JSON.stringify([...expandedRowIds].sort()),
+    [expandedRowIds],
+  );
+
+  useTableGestureKeys({
+    hasExpandableRows: Boolean(renderExpandedContent),
+    onClearSelection,
+    table,
+  });
+
+  const hasExpandedContent = Boolean(renderExpandedContent);
+  const resolvedEstimateRowHeight = Math.max(
+    TABLE_ROW_MIN_HEIGHT,
+    estimateRowHeight,
+  );
+
+  const virtualEntries = useMemo<Array<VirtualTableEntry<TData>>>(() => {
+    const entries: Array<VirtualTableEntry<TData>> = [];
+    const getSortableGroupId = dndOptions?.getSortableGroupId;
+
+    rows.forEach((row, rowIndex) => {
+      const groupId = getSortableGroupId?.(row) ?? undefined;
+      if (groupId !== undefined) {
+        const previous = entries.at(-1);
+        if (previous?.kind === "group" && previous.groupId === groupId) {
+          previous.members.push({ row, rowIndex });
+        } else {
+          entries.push({
+            kind: "group",
+            key: `group:${String(groupId)}:${row.id}`,
+            groupId,
+            members: [{ row, rowIndex }],
+          });
+        }
+        return;
+      }
+
+      entries.push({
+        kind: "row",
+        key: `${row.id}:row`,
+        row,
+        rowIndex,
+      });
+
+      if (
+        hasExpandedContent &&
+        (row.getIsExpanded() || mountedDetailRowIds.has(row.id))
+      ) {
+        entries.push({
+          kind: "detail",
+          key: `${row.id}:detail`,
+          row,
+          rowIndex,
+        });
+      }
+    });
+
+    return entries;
+  }, [dndOptions, hasExpandedContent, mountedDetailRowIds, rows]);
+
+  const virtualMeasurementInputs = useMemo(
+    () => ({
+      estimateExpandedRowHeight,
+      estimateRowHeight: resolvedEstimateRowHeight,
+      virtualEntries,
+    }),
+    [estimateExpandedRowHeight, resolvedEstimateRowHeight, virtualEntries],
+  );
+
+  const estimateVirtualItemSize = useCallback(
+    (index: number) => {
+      const entry = virtualMeasurementInputs.virtualEntries[index];
+      if (entry?.kind === "detail") {
+        return (
+          detailSizesRef.current.get(entry.row.id) ??
+          virtualMeasurementInputs.estimateExpandedRowHeight
+        );
+      }
+      if (entry?.kind === "group") {
+        return (
+          entry.members.length * virtualMeasurementInputs.estimateRowHeight
+        );
+      }
+      return virtualMeasurementInputs.estimateRowHeight;
+    },
+    [virtualMeasurementInputs],
+  );
+
+  const getVirtualItemKey = useCallback(
+    (index: number) =>
+      virtualMeasurementInputs.virtualEntries[index]?.key ?? index,
+    // TanStack keys its offset calculation by this callback, but not by
+    // estimateSize. Both callbacks share one input snapshot so estimate changes
+    // recalculate unmeasured offsets without discarding measured row sizes.
+    [virtualMeasurementInputs],
+  );
+
+  const shouldAdjustScrollPositionOnItemSizeChange = useCallback<
+    NonNullable<
+      Virtualizer<
+        HTMLDivElement,
+        Element
+      >["shouldAdjustScrollPositionOnItemSizeChange"]
+    >
+  >((item, delta, instance) => {
+    const cachedSize = instance.itemSizeCache.get(item.key);
+    const scrollOffset =
+      (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+
+    // Preserve TanStack Virtual's default first-measure behavior.
+    if (cachedSize === undefined) return item.start < scrollOffset;
+
+    const entirelyAboveViewport = item.start + cachedSize <= scrollOffset;
+    const isCollapsingDetail =
+      delta < 0 &&
+      typeof item.key === "string" &&
+      item.key.endsWith(":detail") &&
+      !expandedRowIdsRef.current.has(item.key.slice(0, -":detail".length));
+
+    // A controlled detail collapse animates through several resizeItem calls.
+    // Preserve the visible anchor even when the virtualizer interprets its own
+    // compensating scroll writes as backward scrolling. Ordinary measurements
+    // retain the library's backward-scroll guard.
+    return (
+      entirelyAboveViewport &&
+      (isCollapsingDetail || instance.scrollDirection !== "backward")
+    );
+  }, []);
+
+  // oxlint-disable-next-line react/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: virtualEntries.length,
+    // The virtualizer owns the row wrappers' transform and the body height —
+    // scroll and remeasure updates (including the detail-row height animation,
+    // which calls resizeItem every frame) are written straight to the DOM
+    // instead of re-rendering. Rows must not set their own translateY.
+    directDomUpdates: true,
+    estimateSize: estimateVirtualItemSize,
+    getItemKey: getVirtualItemKey,
+    getScrollElement: () => scrollRef.current,
+    overscan,
+    useAnimationFrameWithResizeObserver: true,
+  });
+
+  useLayoutEffect(() => {
+    const previous = virtualizer.shouldAdjustScrollPositionOnItemSizeChange;
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange =
+      shouldAdjustScrollPositionOnItemSizeChange;
+
+    return () => {
+      if (
+        virtualizer.shouldAdjustScrollPositionOnItemSizeChange ===
+        shouldAdjustScrollPositionOnItemSizeChange
+      ) {
+        virtualizer.shouldAdjustScrollPositionOnItemSizeChange = previous;
+      }
+    };
+  }, [shouldAdjustScrollPositionOnItemSizeChange, virtualizer]);
+
+  useLayoutEffect(() => {
+    expandedRowIdsRef.current = expandedRowIds;
+  }, [expandedRowIds]);
+
+  useLayoutEffect(() => {
+    const detailIndices = latestDetailIndicesRef.current;
+    detailIndices.clear();
+    virtualEntries.forEach((entry, index) => {
+      if (entry.kind === "detail") {
+        detailIndices.set(entry.row.id, index);
+      }
+    });
+  }, [virtualEntries]);
+
+  const setDetailSize = useCallback(
+    (rowId: string, size: number) => {
+      const normalizedSize = Math.max(0, Math.round(size));
+      const node = detailNodeRefs.current.get(rowId);
+      if (detailSizesRef.current.get(rowId) === normalizedSize) {
+        if (node) node.style.height = `${normalizedSize}px`;
+        return;
+      }
+      detailSizesRef.current.set(rowId, normalizedSize);
+
+      if (node) {
+        node.style.height = `${normalizedSize}px`;
+      }
+
+      const detailIndex = latestDetailIndicesRef.current.get(rowId);
+      if (detailIndex !== undefined) {
+        virtualizer.resizeItem(detailIndex, normalizedSize);
+      }
+    },
+    [virtualizer],
+  );
+
+  const animateDetailSize = useCallback(
+    (rowId: string, targetSize: number, removeWhenComplete = false) => {
+      const existingFrame = detailAnimationFrameRefs.current.get(rowId);
+      if (existingFrame !== undefined) {
+        window.cancelAnimationFrame(existingFrame);
+        detailAnimationFrameRefs.current.delete(rowId);
+      }
+
+      const startSize =
+        detailSizesRef.current.get(rowId) ??
+        (expandedRowIdsRef.current.has(rowId) ? 0 : targetSize);
+      const normalizedTargetSize = Math.max(0, Math.round(targetSize));
+
+      if (startSize === normalizedTargetSize) {
+        setDetailSize(rowId, normalizedTargetSize);
+        if (removeWhenComplete && !expandedRowIdsRef.current.has(rowId)) {
+          setMountedDetailRowIds((current) => {
+            if (!current.has(rowId)) return current;
+            const next = new Set(current);
+            next.delete(rowId);
+            return next;
+          });
+          detailSizesRef.current.delete(rowId);
+          detailContentHeightsRef.current.delete(rowId);
+        }
+        return;
+      }
+
+      const startedAt = window.performance.now();
+
+      const step = (now: number) => {
+        const elapsed = now - startedAt;
+        const progress = Math.min(1, elapsed / TRANSITION_DURATION_STANDARD_MS);
+        const easedProgress = easeStandard(progress);
+        const nextSize =
+          startSize + (normalizedTargetSize - startSize) * easedProgress;
+
+        setDetailSize(rowId, nextSize);
+
+        if (progress < 1) {
+          const frame = window.requestAnimationFrame(step);
+          detailAnimationFrameRefs.current.set(rowId, frame);
+          return;
+        }
+
+        detailAnimationFrameRefs.current.delete(rowId);
+        setDetailSize(rowId, normalizedTargetSize);
+
+        if (removeWhenComplete && !expandedRowIdsRef.current.has(rowId)) {
+          setMountedDetailRowIds((current) => {
+            if (!current.has(rowId)) return current;
+            const next = new Set(current);
+            next.delete(rowId);
+            return next;
+          });
+          detailSizesRef.current.delete(rowId);
+          detailContentHeightsRef.current.delete(rowId);
+        }
+      };
+
+      const frame = window.requestAnimationFrame(step);
+      detailAnimationFrameRefs.current.set(rowId, frame);
+    },
+    [setDetailSize],
+  );
+
+  const measureDetailContent = useCallback(
+    (rowId: string, node: HTMLElement) => {
+      const measuredHeight = Math.ceil(node.getBoundingClientRect().height);
+      const previousHeight = detailContentHeightsRef.current.get(rowId);
+
+      if (previousHeight === measuredHeight) return;
+      detailContentHeightsRef.current.set(rowId, measuredHeight);
+
+      if (expandedRowIdsRef.current.has(rowId)) {
+        animateDetailSize(rowId, measuredHeight);
+      }
+    },
+    [animateDetailSize],
+  );
+
+  const setDetailContentRef = useCallback(
+    (rowId: string, node: HTMLDivElement | null) => {
+      const existingObserver = detailContentObserverRefs.current.get(rowId);
+      if (existingObserver) {
+        existingObserver.disconnect();
+        detailContentObserverRefs.current.delete(rowId);
+      }
+
+      if (!node) return;
+
+      if (expandedRowIdsRef.current.has(rowId)) {
+        setMountedDetailRowIds((current) => {
+          if (current.has(rowId)) return current;
+          const next = new Set(current);
+          next.add(rowId);
+          return next;
+        });
+      }
+
+      measureDetailContent(rowId, node);
+      if (typeof ResizeObserver === "undefined") return;
+
+      const observer = observeDetailContent(node, () => {
+        measureDetailContent(rowId, node);
+      });
+      detailContentObserverRefs.current.set(rowId, observer);
+
+      return () => {
+        observer.disconnect();
+        if (detailContentObserverRefs.current.get(rowId) === observer) {
+          detailContentObserverRefs.current.delete(rowId);
+        }
+      };
+    },
+    [measureDetailContent],
+  );
+
+  useLayoutEffect(() => {
+    if (!hasExpandedContent) return;
+
+    for (const rowId of mountedDetailRowIds) {
+      if (expandedRowIdsRef.current.has(rowId)) {
+        animateDetailSize(
+          rowId,
+          detailContentHeightsRef.current.get(rowId) ?? 0,
+        );
+      } else {
+        animateDetailSize(rowId, 0, true);
+      }
+    }
+  }, [
+    animateDetailSize,
+    expandedRowIdsKey,
+    hasExpandedContent,
+    mountedDetailRowIds,
+  ]);
+
+  useEffect(
+    () => () => {
+      for (const frame of detailAnimationFrameRefs.current.values()) {
+        window.cancelAnimationFrame(frame);
+      }
+      for (const observer of detailContentObserverRefs.current.values()) {
+        observer.disconnect();
+      }
+    },
+    [],
+  );
+
   const isInteractive = Boolean(onRowClick || onRowDoubleClick);
   const hasExpandColumn = Boolean(renderExpandedContent);
+  // See AppDataTable: the row itself is the disclosure control unless the table
+  // gives a row click another meaning, or layout mode has claimed the press.
+  const isReorderEditing =
+    Boolean(dndOptions?.editing) && dndOptions?.enabled !== false;
+  const rowClickExpands = hasExpandColumn && !onRowClick && !isReorderEditing;
+  const visibleColumns = table.getVisibleLeafColumns();
   // Only layout mode adds the handle column; an armed-but-idle table keeps its
   // normal column widths.
-  const hasDragColumn =
-    Boolean(dndOptions?.editing) && dndOptions?.enabled !== false;
-  const headerGroups = table.getHeaderGroups();
-  const visibleColumns = table.getVisibleLeafColumns();
-  // TanStack can preserve Column objects while swapping their definitions.
-  // Snapshot the definitions so memo comparators observe that version change
-  // without invalidating rows merely because this array itself is new.
-  const visibleColumnDefinitions = visibleColumns.map(
-    (column) => column.columnDef,
-  );
   const gridTemplate = [
-    ...(hasDragColumn
+    ...(isReorderEditing
       ? [
           typeof dndOptions?.handleColumnWidth === "number"
             ? `${dndOptions.handleColumnWidth}px`
@@ -808,135 +1115,179 @@ function AppDataTable<TData extends RowData>({
     ...visibleColumns.map((column) => columnTrack(column)),
     ...(hasExpandColumn ? ["40px"] : []),
   ].join(" ");
+  const virtualItems = virtualizer.getVirtualItems();
 
-  const content = (
-    <div
-      aria-label={ariaLabel}
-      className={[
-        "app-vdt",
-        "app-vdt--normal",
-        fillAvailable && "app-vdt--fill",
-        isEmbedded && "app-vdt--embedded",
-        density === "compact" && "app-vdt--compact",
-        className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      role="table"
-      style={
-        {
-          "--app-vdt-alt-bg": altBg,
-          "--app-vdt-grid": gridTemplate,
-          "--app-vdt-head-bg": headRowBg,
-          "--app-vdt-hover-bg": hoverBg,
-          "--app-vdt-selected-bg": selectedBg,
-          "--reorder-hold-color": theme.palette.primary.main,
-          "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
-          boxShadow: isEmbedded ? "none" : shadowSm,
-          height: height ?? (fillAvailable ? "100%" : undefined),
-          maxHeight,
-          minHeight: fillAvailable ? 0 : undefined,
-          ...style,
-        } as CSSProperties
-      }
-    >
-      {showHeader && (
-        <MemoizedAppDataTableHeader
-          columnVersion={visibleColumnDefinitions}
-          hasDragColumn={hasDragColumn}
-          hasExpandColumn={hasExpandColumn}
-          headerGroups={headerGroups}
-          sortingVersion={resolvedSorting}
-        />
-      )}
+  const handleExpandRow = useCallback((row: Row<AppTableFeatures, TData>) => {
+    setMountedDetailRowIds((current) => {
+      if (current.has(row.id)) return current;
+      const next = new Set(current);
+      next.add(row.id);
+      return next;
+    });
+    row.toggleExpanded();
+  }, []);
 
-      <div className="app-vdt__scroll custom-scrollbar" role="presentation">
-        <div className="app-vdt__body" role="rowgroup">
-          {rows.map((row, rowIndex) => {
-            const isExpanded = row.getIsExpanded();
-            const isSelected = row.id === selectedRowId;
-            const canExpand = row.getCanExpand();
-            const cells = row.getVisibleCells().map((cell) => ({
-              cell,
-              columnDef: cell.column.columnDef,
-              renderKey: getCellRenderKey(cell, rowIndex),
-              rowIndex,
-            }));
+  const { handleRowClick, handleRowDoubleClick } = useRowClickGestures({
+    onRowClick,
+    onRowDoubleClick,
+    rowClickExpands,
+    toggleExpanded: handleExpandRow,
+  });
 
-            return (
-              <Fragment key={row.id}>
-                {dndOptions ? (
-                  <AppDataTableSortableBodyRow
-                    canExpand={canExpand}
-                    cells={cells}
-                    dnd={dndOptions}
-                    getRowAttributes={getRowAttributes}
-                    hasExpandColumn={hasExpandColumn}
-                    isExpanded={isExpanded}
-                    isInteractive={isInteractive}
-                    isSelected={isSelected}
-                    onRowClick={onRowClick}
-                    onRowContextMenu={onRowContextMenu}
-                    onRowDoubleClick={onRowDoubleClick}
-                    renderRow={renderRow}
-                    row={row}
-                    rowIndex={rowIndex}
-                  />
-                ) : (
-                  <MemoizedAppDataTableBodyRow
-                    canExpand={canExpand}
-                    cells={cells}
-                    getRowAttributes={getRowAttributes}
-                    hasDragColumn={false}
-                    hasExpandColumn={hasExpandColumn}
-                    isExpanded={isExpanded}
-                    isInteractive={isInteractive}
-                    isSelected={isSelected}
-                    onRowClick={onRowClick}
-                    onRowContextMenu={onRowContextMenu}
-                    onRowDoubleClick={onRowDoubleClick}
-                    renderRow={renderRow}
-                    row={row}
-                    rowIndex={rowIndex}
-                  />
-                )}
-                {renderExpandedContent && (
-                  <MemoizedAppDataTableExpandedRow
-                    columnCount={
-                      visibleColumns.length + (hasExpandColumn ? 1 : 0)
-                    }
-                    isExpanded={isExpanded}
-                    renderExpandedContent={renderExpandedContent}
-                    row={row}
-                  />
-                )}
-              </Fragment>
-            );
-          })}
-        </div>
-
-        {rows.length === 0 && (
-          <div className="app-vdt__empty">
-            <AppTypography color="text.secondary" variant="body2">
-              {emptyMessage}
-            </AppTypography>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  if (!dndOptions) return content;
+  useEffect(() => {
+    if (scrollToIndex === null || scrollToIndex === undefined) return;
+    if (scrollToIndex < 0 || scrollToIndex >= rows.length) return;
+    virtualizer.scrollToIndex(scrollToIndex, { align: "auto" });
+  }, [rows.length, scrollToIndex, virtualizer]);
 
   return (
-    <DndContext {...dndOptions.contextProps}>
-      <SortableContext
-        items={dndOptions.itemIds}
-        strategy={verticalListSortingStrategy}
+    <TableDndBoundary dnd={dndOptions}>
+      <AppTableShell
+        ariaLabel={ariaLabel}
+        className={className}
+        density={density}
+        fillAvailable={fillAvailable}
+        gridTemplate={gridTemplate}
+        height={height}
+        maxHeight={maxHeight}
+        style={style}
+        variant={variant}
       >
-        {content}
-      </SortableContext>
-    </DndContext>
+        {showHeader && (
+          <AppTableHeader
+            hasDragColumn={isReorderEditing}
+            hasExpandColumn={hasExpandColumn}
+            headerGroups={table.getHeaderGroups()}
+          />
+        )}
+
+        <div
+          className="app-dt__scroll custom-scrollbar"
+          onScroll={onScroll}
+          ref={scrollRef}
+          role="presentation"
+        >
+          <div
+            className="app-dt__body"
+            ref={virtualizer.containerRef}
+            role="rowgroup"
+          >
+            {virtualItems.map((virtualRow) => {
+              const entry = virtualEntries[virtualRow.index];
+
+              if (entry.kind === "group") {
+                // Group entries only exist when dnd supplies
+                // getSortableGroupId, so dndOptions is present here.
+                if (!dndOptions) return null;
+                return (
+                  <div
+                    className="app-dt__virtual-row"
+                    data-index={virtualRow.index}
+                    key={entry.key}
+                    ref={virtualizer.measureElement}
+                  >
+                    <AppDataTableSortableBodyGroup
+                      columnVersion={columns}
+                      dnd={dndOptions}
+                      getRowAttributes={getRowAttributes}
+                      groupId={entry.groupId}
+                      hasDragColumn={isReorderEditing}
+                      hasExpandColumn={hasExpandColumn}
+                      isInteractive={isInteractive}
+                      members={entry.members}
+                      onExpand={handleExpandRow}
+                      onRowClick={handleRowClick}
+                      onRowContextMenu={onRowContextMenu}
+                      onRowDoubleClick={handleRowDoubleClick}
+                      renderRow={renderRow}
+                      rowClickExpands={rowClickExpands}
+                      selectedRowId={selectedRowId}
+                    />
+                  </div>
+                );
+              }
+
+              const row = entry.row;
+              const isExpanded = row.getIsExpanded();
+
+              if (entry.kind === "detail") {
+                return (
+                  <div
+                    className="app-dt__virtual-row app-dt__virtual-row--detail"
+                    data-index={virtualRow.index}
+                    key={entry.key}
+                    ref={virtualizer.measureElement}
+                  >
+                    <div
+                      className="app-dt__detail"
+                      ref={(node) => {
+                        if (node) {
+                          detailNodeRefs.current.set(row.id, node);
+                          node.style.height = `${
+                            detailSizesRef.current.get(row.id) ?? 0
+                          }px`;
+                        } else {
+                          detailNodeRefs.current.delete(row.id);
+                        }
+                      }}
+                      role="row"
+                    >
+                      <div
+                        aria-colspan={
+                          visibleColumns.length + (hasExpandColumn ? 1 : 0)
+                        }
+                        className="app-dt__detail-cell"
+                        ref={(node) => setDetailContentRef(row.id, node)}
+                        role="cell"
+                      >
+                        {renderExpandedContent?.(row)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const canExpand = row.getCanExpand();
+
+              // The measured wrapper lives out here so an index shift alone —
+              // a detail row mounting above — never re-renders the row beneath.
+              return (
+                <div
+                  className="app-dt__virtual-row"
+                  data-index={virtualRow.index}
+                  key={entry.key}
+                  ref={virtualizer.measureElement}
+                >
+                  <MemoizedAppDataTableBodyRow
+                    canExpand={canExpand}
+                    columnVersion={columns}
+                    dnd={dndOptions}
+                    getRowAttributes={getRowAttributes}
+                    hasDragColumn={isReorderEditing}
+                    hasExpandColumn={hasExpandColumn}
+                    isExpanded={isExpanded}
+                    isInteractive={
+                      isInteractive || (rowClickExpands && canExpand)
+                    }
+                    isSelected={row.id === selectedRowId}
+                    onExpand={handleExpandRow}
+                    onRowClick={handleRowClick}
+                    onRowContextMenu={onRowContextMenu}
+                    onRowDoubleClick={handleRowDoubleClick}
+                    renderRow={renderRow}
+                    row={row}
+                    rowIndex={entry.rowIndex}
+                    visibleCells={row.getVisibleCells()}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {rows.length === 0 && <TableEmptyState message={emptyMessage} />}
+        </div>
+      </AppTableShell>
+    </TableDndBoundary>
   );
 }
 

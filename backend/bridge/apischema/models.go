@@ -10,6 +10,7 @@ import (
 type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
+type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
 type IndexerIntegrityCheck string
@@ -18,12 +19,15 @@ type MonitoringHistoryResolution string
 type SensorReadingKind string
 type TableCardViewMode string
 type Theme string
+type NavigationMode string
+type DockTileColors string
 type ValidationIssueType string
 
 var StringEnums = map[string][]string{
 	"AutoUpdateFrequency":           {"hourly", "daily", "weekly"},
 	"AutoUpdateScope":               {"security", "updates", "all"},
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
+	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
 	"IndexerIntegrityCheck":         {"full", "quick", "off"},
@@ -32,6 +36,8 @@ var StringEnums = map[string][]string{
 	"SensorReadingKind":             {"number", "boolean"},
 	"TableCardViewMode":             {"card", "table"},
 	"Theme":                         {"LIGHT", "DARK"},
+	"NavigationMode":                {"sidebar", "dock"},
+	"DockTileColors":                {"accent", "mono", "neutral", "vibrant"},
 	"ValidationIssueType":           {"error", "warning"},
 	"VMImagePresetID":               {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
 	"VMSourceType":                  {"iso", "imagePreset"},
@@ -301,18 +307,49 @@ type DiskThroughputResponse struct {
 }
 
 type NetworkInterface struct {
-	DNS        []string `json:"dns"`
-	Duplex     string   `json:"duplex"`
-	Gateway    string   `json:"gateway"`
-	IPv4       []string `json:"ipv4"`
-	IPv4Method *string  `json:"ipv4_method,omitempty"`
-	MAC        string   `json:"mac"`
-	Name       string   `json:"name"`
-	RXSpeed    float64  `json:"rx_speed"`
-	Speed      string   `json:"speed"`
-	State      int      `json:"state"`
-	TXSpeed    float64  `json:"tx_speed"`
-	Type       string   `json:"type"`
+	// Carrier is nil when the kernel will not answer: virtual interfaces have
+	// no carrier attribute, and reading it on a down link fails. Nil means
+	// "unknown", never "no link".
+	Carrier *bool `json:"carrier,omitempty"`
+	// ConfigBackend names the on-disk configuration source the bridge detected
+	// for this interface (netplan, nmconnection, systemd-networkd, ifupdown,
+	// ifcfg). Empty when no backend claims it.
+	ConfigBackend string                   `json:"config_backend,omitempty"`
+	Counters      NetworkInterfaceCounters `json:"counters"`
+	DNS           []string                 `json:"dns"`
+	Driver        string                   `json:"driver,omitempty"`
+	Duplex        string                   `json:"duplex"`
+	Gateway       string                   `json:"gateway"`
+	IPv4          []string                 `json:"ipv4"`
+	IPv4Method    *string                  `json:"ipv4_method,omitempty"`
+	// LogUnit is the installed systemd unit whose journal covers this
+	// interface's stack, resolved from ConfigBackend. Empty when none of the
+	// candidate units exist, which is the signal to offer no log view.
+	LogUnit   string  `json:"log_unit,omitempty"`
+	MAC       string  `json:"mac"`
+	MTU       int     `json:"mtu"`
+	Name      string  `json:"name"`
+	OperState string  `json:"operstate"`
+	RXSpeed   float64 `json:"rx_speed"`
+	Speed     string  `json:"speed"`
+	State     int     `json:"state"`
+	TXSpeed   float64 `json:"tx_speed"`
+	Type      string  `json:"type"`
+}
+
+// NetworkInterfaceCounters carries the kernel's cumulative per-interface
+// counters. They count from boot but the kernel resets them with the device,
+// so a link that has been down and back up starts over. Rates live in
+// RXSpeed/TXSpeed; these are the totals the rates are derived from.
+type NetworkInterfaceCounters struct {
+	RXBytes   uint64 `json:"rx_bytes"`
+	RXDropped uint64 `json:"rx_dropped"`
+	RXErrors  uint64 `json:"rx_errors"`
+	RXPackets uint64 `json:"rx_packets"`
+	TXBytes   uint64 `json:"tx_bytes"`
+	TXDropped uint64 `json:"tx_dropped"`
+	TXErrors  uint64 `json:"tx_errors"`
+	TXPackets uint64 `json:"tx_packets"`
 }
 
 type FilesystemInfo struct {
@@ -410,8 +447,11 @@ type DockerContainerAutoUpdateOptions struct {
 	Cleanup        bool                          `json:"cleanup"`
 	ContainerNames []string                      `json:"container_names"`
 	Enabled        bool                          `json:"enabled"`
+	IncludeStopped bool                          `json:"include_stopped"`
 	Mode           DockerContainerAutoUpdateMode `json:"mode"`
+	ReviveStopped  bool                          `json:"revive_stopped"`
 	Time           string                        `json:"time"`
+	UpdateStopped  bool                          `json:"update_stopped"`
 }
 
 type DockerContainerAutoUpdateTarget struct {
@@ -577,10 +617,20 @@ type AutoUpdateOptions struct {
 	Scope           AutoUpdateScope        `json:"scope"`
 }
 
+type AutoUpdateOptionSupport struct {
+	DownloadOnly    bool                     `json:"download_only"`
+	ExcludePackages bool                     `json:"exclude_packages"`
+	Frequencies     []AutoUpdateFrequency    `json:"frequencies"`
+	RebootPolicies  []AutoUpdateRebootPolicy `json:"reboot_policies"`
+	Scopes          []AutoUpdateScope        `json:"scopes"`
+}
+
 type AutoUpdateState struct {
-	Backend string            `json:"backend"`
-	Notes   []string          `json:"notes,omitempty"`
-	Options AutoUpdateOptions `json:"options"`
+	Backend      AutoUpdateBackend       `json:"backend"`
+	CanConfigure bool                    `json:"can_configure"`
+	Notes        []string                `json:"notes,omitempty"`
+	Options      AutoUpdateOptions       `json:"options"`
+	Support      AutoUpdateOptionSupport `json:"support"`
 }
 
 type Service struct {
@@ -1060,8 +1110,8 @@ type MonitoringListener struct {
 
 type MonitoringConfig struct {
 	AllowRemoteCommands  bool                 `json:"allow_remote_commands"`
-	CacheTTL             map[string]string    `json:"cache_ttl"`
 	CollectorInterval    string               `json:"collector_interval"`
+	HistoryRetention     string               `json:"history_retention"`
 	SmartRefreshInterval string               `json:"smart_refresh_interval"`
 	History              string               `json:"history"`
 	Listeners            []MonitoringListener `json:"listeners"`
@@ -1077,6 +1127,7 @@ type MonitoringHistoryRequest struct {
 	Resolution MonitoringHistoryResolution `json:"resolution"`
 	FromMs     int64                       `json:"from_ms,omitempty"`
 	ToMs       int64                       `json:"to_ms,omitempty"`
+	WindowMs   int64                       `json:"window_ms,omitempty"`
 	Limit      int                         `json:"limit,omitempty"`
 }
 
@@ -1130,12 +1181,12 @@ type MonitoringListenerStatus struct {
 }
 
 type MonitoringConfigMeta struct {
-	CacheTTL          map[string]string `json:"cache_ttl"`
-	CollectorInterval string            `json:"collector_interval"`
-	HistoryPlugins    []string          `json:"history_plugins"`
-	Path              string            `json:"path"`
-	Source            string            `json:"source"`
-	Version           int               `json:"version"`
+	CollectorInterval string   `json:"collector_interval"`
+	HistoryRetention  string   `json:"history_retention"`
+	HistoryPlugins    []string `json:"history_plugins"`
+	Path              string   `json:"path"`
+	Source            string   `json:"source"`
+	Version           int      `json:"version"`
 }
 
 type MonitoringStatus struct {
@@ -1286,11 +1337,6 @@ type StoragePathResult struct {
 	Path       *string `json:"path,omitempty"`
 }
 
-type StorageCreateLVResult struct {
-	Success bool   `json:"success"`
-	Path    string `json:"path"`
-}
-
 type StorageMountResult struct {
 	Success    bool    `json:"success"`
 	Mountpoint *string `json:"mountpoint,omitempty"`
@@ -1398,13 +1444,17 @@ type AppConfig struct {
 
 type AppSettings struct {
 	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
+	DockTileColors          DockTileColors                  `json:"dockTileColors,omitempty"`
+	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
 	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
+	NavigationMode          NavigationMode                  `json:"navigationMode,omitempty"`
 	PrimaryColor            string                          `json:"primaryColor"`
 	ShowHiddenFiles         bool                            `json:"showHiddenFiles"`
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`
+	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
 	Theme                   Theme                           `json:"theme"`
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
 	ViewModes               map[string]TableCardViewMode    `json:"viewModes,omitempty"`

@@ -1,29 +1,33 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { type DockerVolume, linuxio, useCallMutation } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogContentText,
   AppDialogTitle,
+  OVERLAY_ROOT_SELECTOR,
 } from "@/components/ui/AppDialog";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
   responsiveTextStyles,
@@ -31,6 +35,8 @@ import {
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
 import { formatFileSize } from "@/utils/formaters";
+
+const dockerRouteApi = getRouteApi("/_authenticated/docker/volumes");
 
 const formatVolumeSize = (size?: number) => {
   if (size === undefined || size < 0) return "Unavailable";
@@ -54,6 +60,139 @@ const formatDockerValue = (value: unknown) => {
     return "Unavailable";
   }
 };
+
+const VolumeDetailsContent = ({ volume }: { volume: DockerVolume }) => (
+  <div className="expand-panel">
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Full Mountpoint:</b>
+      </AppTypography>
+      <AppTypography
+        className="expand-panel__mono"
+        style={longTextStyles}
+        variant="body2"
+      >
+        {volume.Mountpoint || "-"}
+      </AppTypography>
+    </div>
+    {volume.CreatedAt && (
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Created:</b>
+        </AppTypography>
+        <AppTypography className="expand-panel__mono" variant="body2">
+          {new Date(volume.CreatedAt).toLocaleString()}
+        </AppTypography>
+      </div>
+    )}
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Usage:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        <Chip
+          label={`Size: ${formatVolumeSize(volume.UsageData?.Size)}`}
+          size="small"
+          variant="soft"
+        />
+        <Chip
+          label={`References: ${formatReferenceCount(volume.UsageData?.RefCount)}`}
+          size="small"
+          variant="soft"
+        />
+      </div>
+    </div>
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Labels:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
+          Object.entries(volume.Labels).map(([key, val]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${val}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no labels)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Options:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {volume.Options && Object.keys(volume.Options).length > 0 ? (
+          Object.entries(volume.Options).map(([key, val]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${val}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no options)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Driver Status:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {volume.Status && Object.keys(volume.Status).length > 0 ? (
+          Object.entries(volume.Status).map(([key, value]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${formatDockerValue(value)}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no driver status)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+    {volume.ClusterVolume && (
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Cluster Volume:</b>
+        </AppTypography>
+        <div className="expand-panel__chips">
+          {Object.entries(volume.ClusterVolume).map(([key, value]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${formatDockerValue(value)}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+);
+
 interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
@@ -167,6 +306,9 @@ const VolumeList = ({
   viewMode = "table",
 }: VolumeListProps) => {
   const theme = useAppTheme();
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
+  const focusedVolumeName = searchParams.volume;
   const { data: rawVolumes } = useSuspenseQuery({
     ...linuxio.docker.list_volumes,
     ...{
@@ -174,11 +316,43 @@ const VolumeList = ({
     },
   });
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Ensure volumes is an array (handle null/undefined from API)
   const volumesList = rawVolumes;
+  const focusedVolume = useMemo(
+    () =>
+      volumesList.find((volume) => volume.Name === focusedVolumeName) ?? null,
+    [focusedVolumeName, volumesList],
+  );
+  const updateFocusedVolume = useCallback(
+    (name: string | null) => {
+      void navigate({
+        to: "/docker/volumes",
+        search: (previous) => ({ ...previous, volume: name ?? undefined }),
+      });
+    },
+    [navigate],
+  );
+  useEffect(() => {
+    if (focusedVolumeName && !focusedVolume) updateFocusedVolume(null);
+  }, [focusedVolume, focusedVolumeName, updateFocusedVolume]);
+  useEffect(() => {
+    if (!focusedVolume) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key !== "Escape" && event.key !== "Esc") ||
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      ) {
+        return;
+      }
+      updateFocusedVolume(null);
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusedVolume, updateFocusedVolume]);
 
   // Create volume handler
   const handleCreateVolume = useCallback(() => {
@@ -203,167 +377,115 @@ const VolumeList = ({
       vol.Mountpoint?.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // Compute effective selection - only include items that are in the filtered list
-  const effectiveSelected = useMemo(() => {
-    const filteredNames = new Set(filtered.map((v) => v.Name));
-    const result = new Set<string>();
-    selected.forEach((name) => {
-      if (filteredNames.has(name)) {
-        result.add(name);
-      }
-    });
-    return result;
-  }, [selected, filtered]);
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelected(new Set(filtered.map((v) => v.Name)));
-    } else {
-      setSelected(new Set());
-    }
-  };
-  const handleSelectOne = (name: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(name);
-      } else {
-        next.delete(name);
-      }
-      return next;
-    });
-  };
   const handleDeleteSuccess = () => {
-    setSelected(new Set());
+    updateFocusedVolume(null);
   };
-  const selectedVolumes = filtered.filter((v) => effectiveSelected.has(v.Name));
-  const allSelected =
-    filtered.length > 0 && effectiveSelected.size === filtered.length;
-  const someSelected =
-    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      id: "select",
-      header: () => (
-        <AppCheckbox
-          checked={allSelected}
-          indeterminate={someSelected}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          size="small"
-        />
-      ),
-      enableSorting: false,
-      cell: ({ row }) => (
-        <AppCheckbox
-          checked={effectiveSelected.has(row.original.Name)}
-          onChange={(e) => handleSelectOne(row.original.Name, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-          size="small"
-        />
-      ),
-      meta: {
-        align: "center",
-        className: "app-vdt__cell--select",
-        getCellRenderKey: (row) => {
-          const volume = row as (typeof filtered)[number];
-          return [volume.Name, effectiveSelected.has(volume.Name)];
+  const handleVolumeRowClick = useCallback(
+    ({ original: volume }: { original: { Name: string } }) =>
+      updateFocusedVolume(volume.Name),
+    [updateFocusedVolume],
+  );
+
+  // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
+  // remounts every cell subtree on the press that arms the reorder hold.
+  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
+    () => [
+      {
+        accessorKey: "Name",
+        header: "Volume Name",
+        cell: ({ row }) => (
+          <AppTypography
+            fontWeight={500}
+            style={responsiveTextStyles}
+            variant="body2"
+          >
+            {row.original.Name}
+          </AppTypography>
+        ),
+        meta: { align: "left" },
+      },
+      {
+        accessorKey: "Driver",
+        header: "Driver",
+        cell: ({ row }) => (
+          <Chip
+            label={row.original.Driver}
+            size="small"
+            style={{ fontSize: "0.75rem" }}
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+          width: "120px",
         },
-        width: "40px",
       },
-    },
-    {
-      accessorKey: "Name",
-      header: "Volume Name",
-      cell: ({ row }) => (
-        <AppTypography
-          fontWeight={500}
-          style={responsiveTextStyles}
-          variant="body2"
-        >
-          {row.original.Name}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "Driver",
-      header: "Driver",
-      cell: ({ row }) => (
-        <Chip
-          label={row.original.Driver}
-          size="small"
-          style={{ fontSize: "0.75rem" }}
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-        width: "120px",
+      {
+        accessorKey: "Mountpoint",
+        header: "Mountpoint",
+        cell: ({ row }) => (
+          <AppTypography
+            style={{
+              fontFamily: "var(--app-font-mono)",
+              ...longTextStyles,
+            }}
+            variant="body2"
+          >
+            {row.original.Mountpoint || "-"}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+        },
       },
-    },
-    {
-      accessorKey: "Mountpoint",
-      header: "Mountpoint",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontFamily: "var(--app-font-mono)",
-            ...longTextStyles,
-          }}
-          variant="body2"
-        >
-          {row.original.Mountpoint || "-"}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
+      {
+        accessorKey: "Scope",
+        header: "Scope",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.Scope || "local"}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "Scope",
-      header: "Scope",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.Scope || "local"}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-        width: "100px",
+      {
+        id: "size",
+        header: "Size",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {formatVolumeSize(row.original.UsageData?.Size)}
+          </AppTypography>
+        ),
+        meta: {
+          align: "right",
+          hideBelow: "lg",
+          width: "120px",
+        },
       },
-    },
-    {
-      id: "size",
-      header: "Size",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {formatVolumeSize(row.original.UsageData?.Size)}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "120px",
+      {
+        id: "references",
+        header: "References",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {formatReferenceCount(row.original.UsageData?.RefCount)}
+          </AppTypography>
+        ),
+        meta: {
+          align: "right",
+          hideBelow: "lg",
+          width: "120px",
+        },
       },
-    },
-    {
-      id: "references",
-      header: "References",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {formatReferenceCount(row.original.UsageData?.RefCount)}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "120px",
-      },
-    },
-  ];
+    ],
+    [],
+  );
+
   return (
     <div
       style={{
@@ -373,48 +495,58 @@ const VolumeList = ({
         minHeight: 0,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexShrink: 0,
-          alignItems: "center",
-          gap: theme.spacing(2),
-          flexWrap: "wrap",
-          marginBottom: theme.spacing(2),
-        }}
-      >
-        <AppSearchField
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search volumes…"
-          style={{ width: 320 }}
-          value={search}
-        />
-        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
-        {effectiveSelected.size > 0 && (
-          <AppButton
-            color="error"
-            onClick={() => setDeleteDialogOpen(true)}
-            size="small"
-            startIcon={<Icon height={20} icon="mdi:delete" width={20} />}
-            variant="contained"
-          >
-            Delete ({effectiveSelected.size})
-          </AppButton>
-        )}
-      </div>
-      {viewMode === "card" ? (
+      {!focusedVolume && (
+        <RoutedTabSearch active={search !== ""}>
+          <AppHeaderSearch
+            clearOnDocumentEscape
+            onChange={setSearch}
+            placeholder="Search volumes…"
+            value={search}
+          />
+        </RoutedTabSearch>
+      )}
+      {focusedVolume ? (
+        <DockerResourceDetailsLayout
+          onClose={() => updateFocusedVolume(null)}
+          resourceLabel="volume"
+          subtitle={`${focusedVolume.Driver} · ${focusedVolume.Scope || "local"}`}
+          summary={
+            <VolumeCard
+              actions={
+                <AppActionIconButton
+                  ariaLabel={`Delete volume ${focusedVolume.Name}`}
+                  color={theme.palette.error.main}
+                  icon="mdi:delete"
+                  iconSize={18}
+                  label="Delete volume"
+                  onClick={() => setDeleteDialogOpen(true)}
+                />
+              }
+              selected
+              volume={focusedVolume}
+            />
+          }
+          title={focusedVolume.Name}
+        >
+          <VolumeDetailsContent volume={focusedVolume} />
+        </DockerResourceDetailsLayout>
+      ) : viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getVolumeId}
             items={filtered}
             renderItem={(volume) => (
               <VolumeCard
-                onSelect={(checked) => handleSelectOne(volume.Name, checked)}
-                selected={effectiveSelected.has(volume.Name)}
+                onOpen={
+                  surface.editMode
+                    ? undefined
+                    : () => updateFocusedVolume(volume.Name)
+                }
                 volume={volume}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
         ) : (
@@ -438,146 +570,9 @@ const VolumeList = ({
           dnd={tableDnd}
           emptyMessage="No volumes found."
           fillAvailable
-          getRowId={(volume) => volume.Name}
-          renderExpandedContent={({ original: volume }) => (
-            <div className="expand-panel">
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Full Mountpoint:</b>
-                </AppTypography>
-                <AppTypography
-                  className="expand-panel__mono"
-                  style={longTextStyles}
-                  variant="body2"
-                >
-                  {volume.Mountpoint || "-"}
-                </AppTypography>
-              </div>
-
-              {volume.CreatedAt && (
-                <div>
-                  <AppTypography gutterBottom variant="subtitle2">
-                    <b>Created:</b>
-                  </AppTypography>
-                  <AppTypography className="expand-panel__mono" variant="body2">
-                    {new Date(volume.CreatedAt).toLocaleString()}
-                  </AppTypography>
-                </div>
-              )}
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Usage:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  <Chip
-                    label={`Size: ${formatVolumeSize(volume.UsageData?.Size)}`}
-                    size="small"
-                    variant="soft"
-                  />
-                  <Chip
-                    label={`References: ${formatReferenceCount(volume.UsageData?.RefCount)}`}
-                    size="small"
-                    variant="soft"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Labels:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {volume.Labels && Object.keys(volume.Labels).length > 0 ? (
-                    Object.entries(volume.Labels).map(([key, val]) => (
-                      <Chip
-                        key={key}
-                        label={`${key}: ${val}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no labels)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Options:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {volume.Options && Object.keys(volume.Options).length > 0 ? (
-                    Object.entries(volume.Options).map(([key, val]) => (
-                      <Chip
-                        key={key}
-                        label={`${key}: ${val}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no options)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Driver Status:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {volume.Status && Object.keys(volume.Status).length > 0 ? (
-                    Object.entries(volume.Status).map(([key, value]) => (
-                      <Chip
-                        key={key}
-                        label={`${key}: ${formatDockerValue(value)}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no driver status)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              {volume.ClusterVolume && (
-                <div>
-                  <AppTypography gutterBottom variant="subtitle2">
-                    <b>Cluster Volume:</b>
-                  </AppTypography>
-                  <div className="expand-panel__chips">
-                    {Object.entries(volume.ClusterVolume).map(
-                      ([key, value]) => (
-                        <Chip
-                          key={key}
-                          label={`${key}: ${formatDockerValue(value)}`}
-                          size="small"
-                          style={wrappableChipStyle}
-                          labelStyle={wrappableChipLabelStyle}
-                          variant="soft"
-                        />
-                      ),
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          getRowId={getVolumeId}
+          onRowClick={surface.editMode ? undefined : handleVolumeRowClick}
+          selectedRowId={focusedVolumeName}
         />
       )}
 
@@ -585,7 +580,7 @@ const VolumeList = ({
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
-        volumeNames={selectedVolumes.map((v) => v.Name)}
+        volumeNames={focusedVolume ? [focusedVolume.Name] : []}
       />
     </div>
   );

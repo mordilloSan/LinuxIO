@@ -12,7 +12,7 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic", apischema.RetrySafe()).Handle(handleGetUpdatesBasic),
 	apischema.Call[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail", apischema.RetrySafe()).Handle(handleGetUpdateDetail),
 	apischema.Call[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates", apischema.RetrySafe()).Handle(handleGetAutoUpdates),
-	apischema.Call[apischema.UpdatesSetAutoUpdatesRequest, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
+	apischema.Call[apischema.AutoUpdateOptions, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
 	apischema.Call[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
 	apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
 	apischema.Call[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history", apischema.RetrySafe()).Handle(handleGetUpdateHistory),
@@ -45,15 +45,8 @@ func handleGetAutoUpdates(ctx context.Context, _ apischema.NoRequest) (apischema
 	return getAutoUpdates(ctx)
 }
 
-func handleSetAutoUpdates(ctx context.Context, req apischema.UpdatesSetAutoUpdatesRequest) (apischema.AutoUpdateState, error) {
-	return setAutoUpdates(ctx, AutoUpdateOptions{
-		Enabled:         req.Enabled,
-		Frequency:       apischema.AutoUpdateFrequency(req.Frequency),
-		Scope:           apischema.AutoUpdateScope(req.Scope),
-		DownloadOnly:    req.DownloadOnly,
-		RebootPolicy:    apischema.AutoUpdateRebootPolicy(req.RebootPolicy),
-		ExcludePackages: req.ExcludePackages,
-	})
+func handleSetAutoUpdates(ctx context.Context, req apischema.AutoUpdateOptions) (apischema.AutoUpdateState, error) {
+	return setAutoUpdates(ctx, req)
 }
 
 func handleApplyOfflineUpdates(ctx context.Context, _ apischema.NoRequest) (apischema.OfflineUpdatesResponse, error) {

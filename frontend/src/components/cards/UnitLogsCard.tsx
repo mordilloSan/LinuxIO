@@ -9,6 +9,7 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useLogStream } from "@/hooks/useLogStream";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_LG } from "@/theme/constants";
 import { alpha } from "@/utils/color";
 
 interface UnitLogsCardProps {
@@ -119,7 +120,7 @@ const UnitLogsLiveContent = ({
 };
 
 const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => (
-  <FrostedCard style={{ padding: 12 }}>
+  <FrostedCard style={{ padding: CARD_PADDING_LG }}>
     <UnitLogsLiveContent
       createStream={
         createStream ??

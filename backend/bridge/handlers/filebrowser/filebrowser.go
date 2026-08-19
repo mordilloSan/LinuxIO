@@ -224,38 +224,48 @@ func deleteTargetIsDir(path string) (bool, error) {
 	return info.IsDir(), nil
 }
 
-func deleteOptionsForPath(ctx context.Context, path string, isDir bool) services.DeleteOptions {
+// deleteEntryTotalForPath resolves how many entries deleting path will remove,
+// so the batch task can aggregate a grand total before deletion starts. It
+// returns 0 when the total is unknown (indexer miss and the directory is too
+// large to prescan cheaply).
+func deleteEntryTotalForPath(ctx context.Context, path string, isDir bool) int64 {
 	if !isDir {
-		return services.DeleteOptions{Total: 1}
+		return 1
 	}
 
 	if total, err := fetchEntryCountFromIndexer(ctx, path); err == nil {
 		if total > 0 {
-			return services.DeleteOptions{Total: total}
+			return total
 		}
-		if shouldPrescanDeletePath(path) {
-			return services.DeleteOptions{Prescan: true}
-		}
-		return services.DeleteOptions{Indeterminate: true}
+		return prescanDeleteEntryTotal(ctx, path, shouldPrescanDeletePath(path))
 	} else {
 		slog.Debug("failed to get delete entry count from indexer", "path", path, "error", err)
 	}
 
 	if size, err := fetchDirSizeFromIndexer(ctx, path); err == nil {
 		if size > deleteLocalPrescanMaxBytes {
-			return services.DeleteOptions{Indeterminate: true}
+			return 0
 		}
-		if size > 0 || shouldPrescanDeletePath(path) {
-			return services.DeleteOptions{Prescan: true}
+		if size > 0 {
+			return prescanDeleteEntryTotal(ctx, path, true)
 		}
 	} else {
 		slog.Debug("failed to get delete directory size from indexer", "path", path, "error", err)
 	}
 
-	if shouldPrescanDeletePath(path) {
-		return services.DeleteOptions{Prescan: true}
+	return prescanDeleteEntryTotal(ctx, path, shouldPrescanDeletePath(path))
+}
+
+func prescanDeleteEntryTotal(ctx context.Context, path string, allowed bool) int64 {
+	if !allowed {
+		return 0
 	}
-	return services.DeleteOptions{Indeterminate: true}
+	total, err := services.CountEntries(ctx, path, true)
+	if err != nil {
+		slog.Debug("failed to prescan delete directory entries", "path", path, "error", err)
+		return 0
+	}
+	return total
 }
 
 func shouldPrescanDeletePath(path string) bool {
@@ -569,27 +579,27 @@ func resourcePost(ctx context.Context, req apischema.FileResourcePostRequest) (a
 }
 
 // resourcePatchWithProgress performs patch operations with progress feedback.
-func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task) (FileOperationResult, error) {
+func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task) (apischema.MessageResponse, error) {
 	patchReq, err := parseResourcePatchRequest(req)
 	if err != nil {
-		return FileOperationResult{}, err
+		return apischema.MessageResponse{}, err
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return FileOperationResult{}, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.MessageResponse{}, fmt.Errorf("bad_request:failed to access filesystem")
 	}
 	defer root.Close()
 
 	patchReq, err = prepareResourcePatch(root, patchReq)
 	if err != nil {
-		return FileOperationResult{}, err
+		return apischema.MessageResponse{}, err
 	}
 
 	srcInfo, err := root.Root.Lstat(fsroot.ToRel(patchReq.realSrc))
 	if err != nil {
 		slog.Debug("error getting source info", "path", patchReq.realSrc, "error", err)
-		return FileOperationResult{}, fmt.Errorf("bad_request:source not found")
+		return apischema.MessageResponse{}, fmt.Errorf("bad_request:source not found")
 	}
 	_, destStatErr := root.Root.Lstat(fsroot.ToRel(patchReq.realDest))
 	destExisted := destStatErr == nil
@@ -609,11 +619,11 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 	opts := newPatchTaskCallbacks(ctx, task, patchReq.action, size.total)
 	if err := executeResourcePatch(patchReq, opts, size); err != nil {
 		slog.Debug("error patching resource", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest, "error", err)
-		return FileOperationResult{}, fmt.Errorf("bad_request:%v", err)
+		return apischema.MessageResponse{}, fmt.Errorf("bad_request:%v", err)
 	}
 
 	notifyIndexerAfterPatch(ctx, root, patchReq, size, destExisted)
-	return FileOperationResult{Message: "operation completed"}, nil
+	return apischema.MessageResponse{Message: "operation completed"}, nil
 }
 
 func newPatchTaskCallbacks(ctx context.Context, task *bridgeipc.Task, action string, totalSize int64) *ipc.OperationCallbacks {

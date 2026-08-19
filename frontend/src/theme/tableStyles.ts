@@ -1,41 +1,5 @@
 import type { CSSProperties } from "react";
 
-import type { AppTheme } from "@/theme";
-
-export const getTableHeaderStyles = (theme: AppTheme) => ({
-  "& .MuiTableCell-root": { borderBottom: "none" },
-  backgroundColor:
-    theme.palette.mode === "dark"
-      ? "rgba(255,255,255,0.08)"
-      : "rgba(0,0,0,0.08)",
-  borderRadius: "6px",
-  boxShadow: "none",
-});
-
-export const getTableRowStyles = (theme: AppTheme, index: number) => {
-  const stripedColor =
-    theme.palette.mode === "dark"
-      ? "rgba(255,255,255,0.04)"
-      : "rgba(0,0,0,0.05)";
-  return {
-    "& .MuiTableCell-root": { borderBottom: "none" },
-    backgroundColor: index % 2 === 0 ? "transparent" : stripedColor,
-  };
-};
-
-export const tableContainerStyles = {
-  overflowX: "auto",
-  "@media (max-width: 600px)": {
-    "& .MuiTable-root": {
-      minWidth: "100%",
-    },
-    "& .MuiTableCell-root": {
-      fontSize: "0.75rem",
-      padding: "8px 4px",
-    },
-  },
-};
-
 export const responsiveTextStyles = {
   wordBreak: "break-word" as const,
   overflowWrap: "break-word" as const,

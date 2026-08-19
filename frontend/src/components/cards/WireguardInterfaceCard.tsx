@@ -12,7 +12,11 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { getWireguardStatusColor } from "@/constants/statusColors";
 import { useAppTheme } from "@/theme";
-import { GAP_SM, TRANSITION_SLOW_CSS } from "@/theme/constants";
+import {
+  CARD_PADDING_SM,
+  GAP_SM,
+  TRANSITION_SLOW_CSS,
+} from "@/theme/constants";
 
 export type WireguardInterfaceAction =
   | "add-peer"
@@ -35,13 +39,11 @@ interface InterfaceCardProps {
 }
 
 const cardStyle: CSSProperties = {
-  padding: 8,
+  padding: CARD_PADDING_SM,
   display: "flex",
   flexDirection: "column",
   height: "100%",
   position: "relative",
-  borderBottomWidth: 2,
-  borderBottomStyle: "solid",
 };
 
 const InterfaceCard = ({
@@ -73,14 +75,22 @@ const InterfaceCard = ({
       transition={{ duration: 0.3 }}
     >
       <FrostedCard
+        accent
         hoverLift={!isSelected}
         ref={isSelected ? selectedCardRef : null}
         style={{
           ...cardStyle,
-          borderBottomColor: isSelected
-            ? statusColor
-            : `color-mix(in srgb, ${statusColor}, transparent 70%)`,
-          transition: `transform 0.2s, box-shadow 0.2s, border ${TRANSITION_SLOW_CSS}`,
+          /*
+            The resting line comes from `accent` above, already the theme's
+            primary colour at a hint. Selecting takes it to full strength
+            rather than standing it down the way the user, unit, container and
+            interface cards do: this dashboard keeps every card in the grid
+            and opens the detail below it, so a selected interface is still
+            wrapped in a SortableCard and can still be held. The line stays
+            live because the affordance does.
+          */
+          ...(isSelected && { borderBottomColor: "var(--fc-accent)" }),
+          transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
         }}
       >
         {/* Status chip top-right */}

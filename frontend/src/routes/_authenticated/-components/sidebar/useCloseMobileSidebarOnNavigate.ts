@@ -15,5 +15,7 @@ export function useCloseMobileSidebarOnNavigate() {
 
   useEffect(() => {
     if (!isDesktop) setMobileOpen(false);
+    // The route key is intentionally trigger-only, including same-path navigations.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [location.state.key, isDesktop, setMobileOpen]);
 }

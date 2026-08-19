@@ -50,14 +50,8 @@ const nativeControlExceptions: ReviewedException[] = [
     protects: "tab semantics and selected state",
   },
   {
-    file: "components/tables/AppDataTable.tsx",
-    pattern: /<button\s+className="app-vdt__sort-button"/,
-    reason: "table-library sort control",
-    protects: "column sorting and table header semantics",
-  },
-  {
-    file: "components/tables/AppVirtualDataTable.tsx",
-    pattern: /<button\s+className="app-vdt__sort-button"/,
+    file: "components/tables/tableShared.tsx",
+    pattern: /<button\s+className="app-dt__sort-button"/,
     reason: "table-library sort control",
     protects: "column sorting and table header semantics",
   },
@@ -80,6 +74,21 @@ const nativeControlExceptions: ReviewedException[] = [
     pattern: /<input\s+aria-hidden="true"[\s\S]{0,500}?type="color"/,
     reason: "hidden native color picker input",
     protects: "native color-picker integration",
+  },
+  {
+    file: "routes/_authenticated/settings/-components/DockAccentGradientEditor.tsx",
+    pattern:
+      /<input\s+aria-label="(?:Start|End) color for the full dock gradient"[\s\S]{0,300}?type="color"/,
+    reason: "visible dock gradient endpoint picker",
+    protects: "native color selection with a direct visual swatch",
+  },
+  {
+    file: "routes/_authenticated/settings/-components/DockAccentGradientEditor.tsx",
+    pattern:
+      /<button\s+aria-label=\{`Palette stop \$\{tile\.percent\}%`\}\s+aria-pressed=\{tile\.included\}/,
+    reason: "dock palette range tile",
+    protects:
+      "each gradient stop is a pressable swatch whose entire face is the color being chosen, which no shared button offers",
   },
 ];
 

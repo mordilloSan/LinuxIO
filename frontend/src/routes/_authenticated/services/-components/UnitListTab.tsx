@@ -9,13 +9,12 @@ import {
 } from "react";
 
 import type { TableCardViewMode } from "@/api";
-import AppGrid from "@/components/ui/AppGrid";
-import AppSearchField from "@/components/ui/AppSearchField";
+import { RoutedTabSearch } from "@/components/tabbar";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import {
   useReorderableSurface,
   type ReorderableSurface,
 } from "@/hooks/useReorderableSurface";
-import { useAppTheme } from "@/theme";
 import {
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
@@ -25,9 +24,7 @@ import type { UnitListItem } from "./UnitViews";
 
 interface UnitTableViewRenderProps<T> {
   items: T[];
-  onDoubleClick: (name: string) => void;
   onSelect: (name: string | null) => void;
-  selected: string | null;
   surface: ReorderableSurface<T>;
 }
 
@@ -51,7 +48,6 @@ interface UnitListTabProps<T extends UnitListItem> {
   renderTableView: (props: UnitTableViewRenderProps<T>) => ReactNode;
   searchPlaceholder: string;
   selected?: string;
-  setViewMode: (next: TableCardViewMode) => void;
   /** Surface id the manual order is stored under, e.g. "services.list". */
   surfaceId: string;
   viewMode: TableCardViewMode;
@@ -59,7 +55,6 @@ interface UnitListTabProps<T extends UnitListItem> {
 
 function UnitListTab<T extends UnitListItem>({
   viewMode,
-  setViewMode,
   data,
   searchPlaceholder,
   compareItems,
@@ -71,7 +66,6 @@ function UnitListTab<T extends UnitListItem>({
   onSelectedChange,
   surfaceId,
 }: UnitListTabProps<T>) {
-  const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const [search, setSearch] = useState("");
   const expanded = selected;
@@ -79,18 +73,12 @@ function UnitListTab<T extends UnitListItem>({
     (name: string | null) => onSelectedChange(name),
     [onSelectedChange],
   );
-  const [returnToTable, setReturnToTable] = useState(false);
-
   const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
     if (event.key !== "Escape") {
       return;
     }
 
     setExpanded(null);
-    if (returnToTable) {
-      setViewMode("table");
-      setReturnToTable(false);
-    }
   });
 
   useEffect(() => {
@@ -116,50 +104,26 @@ function UnitListTab<T extends UnitListItem>({
     return orderedItems.filter((item) => matchesSearch(item, searchText));
   }, [matchesSearch, orderedItems, search]);
 
-  const handleCardExpand = useCallback(
-    (name: string | null) => {
-      setExpanded(name);
-      if (name === null && returnToTable) {
-        setViewMode("table");
-        setReturnToTable(false);
-      }
-    },
-    [returnToTable, setExpanded, setViewMode],
-  );
-
-  const handleOpenCardView = useCallback(
-    (name: string) => {
-      setViewMode("card");
-      setExpanded(name);
-      setReturnToTable(true);
-    },
-    [setExpanded, setViewMode],
-  );
-
   const selectedItem = expanded
     ? (filtered.find((item) => item.name === expanded) ?? null)
     : null;
 
-  const searchControls = (
-    <div
-      style={{
-        marginBottom: theme.spacing(2),
-        display: "flex",
-        alignItems: "center",
-        gap: theme.spacing(2),
-      }}
-    >
-      <AppSearchField
-        onChange={(event) => setSearch(event.target.value)}
+  const searchControl = (
+    <RoutedTabSearch active={search !== ""}>
+      <AppHeaderSearch
+        clearOnDocumentEscape
+        onChange={setSearch}
         placeholder={searchPlaceholder}
-        style={{ width: 320 }}
         value={search}
       />
-      <div style={{ fontWeight: "bold" }}>{filtered.length} shown</div>
-    </div>
+    </RoutedTabSearch>
   );
 
-  if (viewMode === "card") {
+  // Selecting a unit replaces whichever list you came from with the same detail
+  // layout, so the table gets the card view's detail for free — the same model
+  // as the Docker container list. `viewMode` is left alone, so clearing the
+  // selection drops you back into the list you were already in.
+  if (viewMode === "card" || selectedItem) {
     return (
       <div
         style={{
@@ -170,7 +134,7 @@ function UnitListTab<T extends UnitListItem>({
           minWidth: 0,
         }}
       >
-        {!selectedItem && searchControls}
+        {!selectedItem && searchControl}
         <div
           style={{
             display: "flex",
@@ -183,9 +147,9 @@ function UnitListTab<T extends UnitListItem>({
           {renderCardsView({
             items: filtered,
             expanded: expanded ?? null,
-            onExpand: handleCardExpand,
+            onExpand: setExpanded,
             renderDetailPanel: (item) =>
-              renderDetailPanel(item, () => handleCardExpand(null)),
+              renderDetailPanel(item, () => setExpanded(null)),
             surface,
           })}
         </div>
@@ -203,7 +167,7 @@ function UnitListTab<T extends UnitListItem>({
         minWidth: 0,
       }}
     >
-      {!selectedItem && searchControls}
+      {searchControl}
 
       <motion.div
         layout="position"
@@ -219,34 +183,11 @@ function UnitListTab<T extends UnitListItem>({
           ease: EASING_STANDARD,
         }}
       >
-        <AppGrid
-          alignItems="stretch"
-          container
-          spacing={3}
-          style={{ flex: "1 1 0", minHeight: 0 }}
-        >
-          <AppGrid
-            size={{ xs: 12, md: selectedItem ? 7 : 12 }}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
-            }}
-          >
-            {renderTableView({
-              items: filtered,
-              selected: expanded ?? null,
-              onSelect: setExpanded,
-              onDoubleClick: handleOpenCardView,
-              surface,
-            })}
-          </AppGrid>
-          {selectedItem && (
-            <AppGrid size={{ xs: 12, md: 5 }}>
-              {renderDetailPanel(selectedItem, () => setExpanded(null))}
-            </AppGrid>
-          )}
-        </AppGrid>
+        {renderTableView({
+          items: filtered,
+          onSelect: setExpanded,
+          surface,
+        })}
       </motion.div>
     </div>
   );

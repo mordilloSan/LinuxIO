@@ -6,6 +6,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
+import { CARD_PADDING_SM } from "@/theme/constants";
 
 export interface DockerResourceListCardProps {
   children: ReactNode;
@@ -37,7 +38,7 @@ const DockerResourceListCard = ({
           </span>
         </AppButton>
       }
-      style={{ padding: 8, paddingBottom: 6 }}
+      style={{ padding: CARD_PADDING_SM, paddingBottom: 6 }}
       subtitle={subtitle}
       title={title}
     />
@@ -45,7 +46,7 @@ const DockerResourceListCard = ({
     {children}
 
     <AppDivider />
-    <div style={{ paddingInline: 8, paddingBlock: 4 }}>
+    <div style={{ paddingInline: CARD_PADDING_SM, paddingBlock: 4 }}>
       <AppTypography color="text.secondary" variant="caption">
         {footerText}
       </AppTypography>

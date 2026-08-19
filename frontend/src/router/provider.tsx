@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -11,7 +10,6 @@ import { router } from "./router";
 function ActiveApplicationRouterProvider() {
   const auth = useAuth();
   const access = useAccessContext();
-  const queryClient = useQueryClient();
   const context = useMemo(
     () => ({
       access,
@@ -21,9 +19,8 @@ function ActiveApplicationRouterProvider() {
         user: auth.user,
       },
       isUpdateBlocked: isLiveUpdateBlocked,
-      queryClient,
     }),
-    [access, auth.isAuthenticated, auth.user, queryClient],
+    [access, auth.isAuthenticated, auth.user],
   );
   const previousContext = useRef(context);
 

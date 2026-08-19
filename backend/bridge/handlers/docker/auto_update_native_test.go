@@ -21,8 +21,11 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 		Cleanup:        true,
 		ContainerNames: []string{"app.service", "redis"},
 		Enabled:        true,
+		IncludeStopped: true,
 		Mode:           "check_only",
+		ReviveStopped:  true,
 		Time:           "06:15",
+		UpdateStopped:  true,
 	}
 
 	if err := applyContainerAutoUpdate(context.Background(), store, ops.ops(), opts); err != nil {
@@ -33,7 +36,7 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 	if err := json.Unmarshal([]byte(readTestFile(t, store.configPath)), &document); err != nil {
 		t.Fatalf("decode config: %v", err)
 	}
-	if document.Version != dockerUpdateConfigVersion || document.Mode != "check_only" || !document.Cleanup || !reflect.DeepEqual(document.ContainerNames, []string{"app.service", "redis"}) {
+	if document.Version != dockerUpdateConfigVersion || document.Mode != "check_only" || !document.Cleanup || !document.IncludeStopped || !document.UpdateStopped || !document.ReviveStopped || !reflect.DeepEqual(document.ContainerNames, []string{"app.service", "redis"}) {
 		t.Fatalf("config = %+v", document)
 	}
 	if timer := readTestFile(t, store.timerPath); !strings.Contains(timer, "OnCalendar=*-*-* 06:15:00") || !strings.Contains(timer, "Unit="+dockerUpdateUnitName) {
@@ -95,6 +98,9 @@ func TestNormalizeContainerAutoUpdateOptionsRejectsInvalidValues(t *testing.T) {
 	if _, err := normalizeContainerAutoUpdateOptions(apischema.DockerContainerAutoUpdateOptions{Mode: "update", Time: "99:00"}); err == nil {
 		t.Fatal("accepted invalid time")
 	}
+	if _, err := normalizeContainerAutoUpdateOptions(apischema.DockerContainerAutoUpdateOptions{Mode: "update", Time: "04:00", ReviveStopped: true}); err == nil {
+		t.Fatal("accepted revive-stopped without stopped-container updates")
+	}
 }
 
 func TestBuildContainerAutoUpdateTargetsPreservesMissingNames(t *testing.T) {
@@ -123,9 +129,13 @@ func TestBuildContainerAutoUpdateTargetsMarksMutationEligibility(t *testing.T) {
 		{ID: "replica-1", Names: []string{"/web-1"}, State: "running", Labels: composeLabels},
 		{ID: "replica-2", Names: []string{"/web-2"}, State: "running", Labels: composeLabels},
 		{ID: "stopped", Names: []string{"/stopped"}, State: "exited"},
+		{ID: "stopped-compose", Names: []string{"/stopped-compose"}, State: "exited", Labels: map[string]string{
+			"com.docker.compose.project": "stopped-project",
+			"com.docker.compose.service": "web",
+		}},
 		{ID: "standalone", Names: []string{"/standalone"}, State: "running"},
 	}, nil)
-	if len(targets) != 4 {
+	if len(targets) != 5 {
 		t.Fatalf("targets = %#v", targets)
 	}
 	byName := make(map[string]apischema.DockerContainerAutoUpdateTarget, len(targets))
@@ -141,8 +151,11 @@ func TestBuildContainerAutoUpdateTargetsMarksMutationEligibility(t *testing.T) {
 			t.Fatalf("Compose target %s eligibility = %+v", name, target)
 		}
 	}
-	if target := byName["stopped"]; target.MutationAllowed || target.MutationReason == nil || !strings.Contains(*target.MutationReason, "not running") {
+	if target := byName["stopped"]; !target.MutationAllowed || target.MutationReason != nil {
 		t.Fatalf("stopped target eligibility = %+v", target)
+	}
+	if target := byName["stopped-compose"]; target.MutationAllowed || target.MutationReason == nil || !strings.Contains(*target.MutationReason, "Stopped Compose") {
+		t.Fatalf("stopped Compose target eligibility = %+v", target)
 	}
 	if target := byName["standalone"]; !target.MutationAllowed || target.MutationReason != nil {
 		t.Fatalf("standalone target eligibility = %+v", target)

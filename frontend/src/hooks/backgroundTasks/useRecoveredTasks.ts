@@ -187,16 +187,6 @@ export function useRecoveredTasks(
               ? `Upload waiting: ${filesTotal} file${filesTotal === 1 ? "" : "s"}`
               : `Uploading ${data?.filesDone ?? 0}/${filesTotal} files${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           }
-          case TaskTypes.TASK_TYPE_FILE_DOWNLOAD: {
-            const name = getName(
-              requestString(metadata, "path") ??
-                requestString(metadata, "label"),
-              "file",
-            );
-            return phase === "waiting_for_client"
-              ? `Download waiting: ${name}`
-              : `Downloading ${name}${percentage !== undefined ? ` (${percentage}%)` : ""}`;
-          }
           case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
             return phase === "waiting_for_client"
               ? "Archive download waiting"
@@ -340,7 +330,6 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD_BATCH:
-        case TaskTypes.TASK_TYPE_FILE_DOWNLOAD:
         case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
         case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH:
         case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH: {
@@ -370,15 +359,26 @@ export function useRecoveredTasks(
           ]);
           watch({
             onProgress: (nextProgress) => {
+              // Progress normally only moves forward, but an archive swaps its
+              // denominator once the archive file exists (source bytes ->
+              // archive bytes), so the percentage legitimately restarts. Without
+              // this, the high-water mark froze archive downloads at whatever
+              // compression ended on and they sat there reading 99%.
+              const phase =
+                nextProgress.phase ?? progressDetail(nextProgress)?.phase;
+              const restartsProgress =
+                phase === "streaming" || phase === "waiting_for_client";
               setBackgroundTasks((prev) =>
                 prev.map((item) =>
                   item.id === task.id
                     ? {
                         ...item,
-                        progress: Math.max(
-                          item.progress,
-                          genericProgressPct(nextProgress),
-                        ),
+                        progress: restartsProgress
+                          ? genericProgressPct(nextProgress)
+                          : Math.max(
+                              item.progress,
+                              genericProgressPct(nextProgress),
+                            ),
                         label: genericLabel(nextProgress),
                         ...genericProgressMeta(nextProgress),
                       }

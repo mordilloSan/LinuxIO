@@ -157,7 +157,9 @@ export function useAnimatedIndexerStats(
     const from = current;
     let startedAt: number | undefined;
     const animate = (timestamp: number) => {
-      startedAt ??= timestamp;
+      if (startedAt === undefined) {
+        startedAt = timestamp;
+      }
       const progress = Math.min(
         (timestamp - startedAt) / INDEXER_COUNTER_ANIMATION_DURATION_MS,
         1,

@@ -61,9 +61,6 @@ const defaultVariant: VariantType = {
   header: {
     color: grey[500],
     background: "#F7F9FC",
-    search: {
-      color: grey[800],
-    },
     indicator: {
       background: customBlue[200],
     },
@@ -130,7 +127,6 @@ const darkVariant: VariantType = {
     ...defaultVariant.header,
     color: grey[300],
     background: "#1B2635",
-    search: { color: grey[200] },
     indicator: { background: customBlue[600] },
   },
   footer: {
@@ -186,9 +182,6 @@ export interface VariantType {
   };
   footer: ColorBgType;
   header: ColorBgType & {
-    search: {
-      color: string;
-    };
     indicator: {
       background: string;
     };

@@ -23,49 +23,49 @@ describe("useViewMode", () => {
     configMocks.setViewModes.mockReset();
   });
 
-  it("uses fallback mode when no config value exists", () => {
-    const { result } = renderHook(() => useViewMode("services"));
-
-    expect(result.current[0]).toBe("table");
-  });
-
-  it("returns configured mode for the key", () => {
-    configMocks.viewModes = { services: "card" };
-
+  it("defaults to card view when no config value exists", () => {
     const { result } = renderHook(() => useViewMode("services"));
 
     expect(result.current[0]).toBe("card");
   });
 
-  it("stores non-fallback modes", () => {
+  it("returns configured mode for the key", () => {
+    configMocks.viewModes = { services: "table" };
+
     const { result } = renderHook(() => useViewMode("services"));
 
-    act(() => result.current[1]("card"));
-    const updater = configMocks.setViewModes.mock.calls[0][0];
-
-    expect(updater(undefined)).toEqual({ services: "card" });
+    expect(result.current[0]).toBe("table");
   });
 
-  it("removes keys when resetting to fallback", () => {
+  it("stores non-default modes", () => {
     const { result } = renderHook(() => useViewMode("services"));
 
     act(() => result.current[1]("table"));
     const updater = configMocks.setViewModes.mock.calls[0][0];
 
-    expect(updater({ services: "card", docker: "card" })).toEqual({
-      docker: "card",
+    expect(updater(undefined)).toEqual({ services: "table" });
+  });
+
+  it("removes keys when resetting to the default", () => {
+    const { result } = renderHook(() => useViewMode("services"));
+
+    act(() => result.current[1]("card"));
+    const updater = configMocks.setViewModes.mock.calls[0][0];
+
+    expect(updater({ services: "table", docker: "table" })).toEqual({
+      docker: "table",
     });
-    expect(updater({ services: "card" })).toBeUndefined();
+    expect(updater({ services: "table" })).toBeUndefined();
   });
 
   it("supports functional updates", () => {
     const { result } = renderHook(() => useViewMode("services"));
 
     act(() =>
-      result.current[1]((prev) => (prev === "table" ? "card" : "table")),
+      result.current[1]((prev) => (prev === "card" ? "table" : "card")),
     );
     const updater = configMocks.setViewModes.mock.calls[0][0];
 
-    expect(updater(undefined)).toEqual({ services: "card" });
+    expect(updater(undefined)).toEqual({ services: "table" });
   });
 });

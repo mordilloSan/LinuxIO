@@ -169,6 +169,8 @@ export function useLogStream({
     if (open && logsBoxRef.current) {
       logsBoxRef.current.scrollTop = logsBoxRef.current.scrollHeight;
     }
+    // `logs` intentionally retriggers the DOM scroll after streamed content renders.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [logs, open]);
 
   const resetState = useCallback(() => {

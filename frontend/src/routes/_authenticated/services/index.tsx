@@ -15,12 +15,16 @@ export const Route = createFileRoute("/_authenticated/services/")({
     ...optionalString(search, "service"),
   }),
   loaderDeps: ({ search }) => ({ service: search.service }),
+  context: ({ deps }) => ({
+    listQueryOptions: linuxio.systemd.list_services,
+    selectedQueryOptions: deps.service
+      ? linuxio.systemd.get_unit_info({ unitName: deps.service })
+      : undefined,
+  }),
   loader: (loaderArgs) => {
-    const { deps } = loaderArgs;
-    const queries: LoaderQueryOptions[] = [linuxio.systemd.list_services];
-    if (deps.service) {
-      queries.push(linuxio.systemd.get_unit_info({ unitName: deps.service }));
-    }
+    const { listQueryOptions, selectedQueryOptions } = loaderArgs.context;
+    const queries: LoaderQueryOptions[] = [listQueryOptions];
+    if (selectedQueryOptions) queries.push(selectedQueryOptions);
     return loadRouteQueries(loaderArgs, queries);
   },
   component: ServicesRoute,
@@ -28,8 +32,14 @@ export const Route = createFileRoute("/_authenticated/services/")({
 
 function ServicesRoute() {
   const search = Route.useSearch();
+  const listQueryOptions = Route.useRouteContext({
+    select: (context) => context.listQueryOptions,
+  });
+  const selectedQueryOptions = Route.useRouteContext({
+    select: (context) => context.selectedQueryOptions,
+  });
   const navigate = Route.useNavigate();
-  const [viewMode, setViewMode] = useViewMode("services.list", "table");
+  const [viewMode, setViewMode] = useViewMode("services.list");
   const setSelected = useCallback(
     (service: string | null) =>
       navigate({
@@ -53,7 +63,8 @@ function ServicesRoute() {
       </RoutedTabActions>
       <ServicesTab
         onSelectedChange={setSelected}
-        onViewModeChange={setViewMode}
+        listQueryOptions={listQueryOptions}
+        selectedQueryOptions={selectedQueryOptions}
         selected={search.service}
         viewMode={viewMode}
       />

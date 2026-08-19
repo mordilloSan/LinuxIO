@@ -92,6 +92,7 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
   ) => {
     const [open, setOpen] = useState(false);
     const dropdownId = useId();
+    const labelId = useId();
     const containerRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLUListElement>(null);
     const [dropdownPos, setDropdownPos] = useState<{
@@ -121,6 +122,20 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
 
     useLayoutEffect(() => {
       if (open) updatePosition();
+    }, [open, updatePosition]);
+
+    // The portaled listbox is position:fixed, so its open-time coordinates stop
+    // describing the trigger the moment anything scrolls: the list stays parked
+    // over whatever content has slid under it. Capture phase is required —
+    // scrolling an element does not bubble. Mirrors AppPopover.
+    useEffect(() => {
+      if (!open) return undefined;
+      window.addEventListener("resize", updatePosition);
+      window.addEventListener("scroll", updatePosition, true);
+      return () => {
+        window.removeEventListener("resize", updatePosition);
+        window.removeEventListener("scroll", updatePosition, true);
+      };
     }, [open, updatePosition]);
 
     useEffect(() => {
@@ -196,12 +211,18 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
 
     return (
       <div className={wrapperClass} ref={ref} style={style}>
-        {label && <label className="app-select__label">{label}</label>}
+        {label && (
+          <label className="app-select__label" id={labelId}>
+            {label}
+          </label>
+        )}
         <div className="app-select__control" ref={containerRef}>
           <div
             aria-controls={open ? dropdownId : undefined}
+            aria-disabled={disabled || undefined}
             aria-expanded={open}
             aria-haspopup="listbox"
+            aria-labelledby={label ? labelId : undefined}
             className={triggerClass}
             onClick={toggle}
             onKeyDown={onKeyDown}

@@ -51,13 +51,14 @@ route is not showing up in autocomplete, run any test and re-check.
 
 ## Router Setup
 
-Three files in `frontend/src/router/`:
+Four files in `frontend/src/router/`:
 
 | File | Role |
 |------|------|
-| `router.tsx` | Creates the singleton router, sets every global default, declares the two type augmentations. |
-| `provider.tsx` | Injects live auth/capability/query context and keeps it fresh. |
-| `query-client.tsx` | Owns the browser QueryClient singleton that loaders and components share. |
+| `router.tsx` | Creates the singleton router, installs the Query provider through `Wrap`, sets every global default, declares the two type augmentations. |
+| `provider.tsx` | Injects live auth/capability context and keeps it fresh. |
+| `query-client-core.ts` | Creates QueryClient instances and owns the browser singleton. |
+| `query-client.tsx` | Exports the router-owned browser client and its `QueryClientProvider`. |
 
 ### Global defaults
 
@@ -72,7 +73,7 @@ export const router = createRouter({
     access: undefined!,
     auth: undefined!,
     isUpdateBlocked: undefined!,
-    queryClient: undefined!,
+    queryClient: appQueryClient,
   } satisfies LinuxIORouterContext,
   defaultErrorComponent: RouteError,
   defaultNotFoundComponent: NotFoundPage,
@@ -84,11 +85,13 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   routeTree,
   search: { strict: true },
+  Wrap: AppQueryClientProvider,
 });
 ```
 
-The `undefined!` context values are deliberate placeholders — they satisfy the
-type while the real values arrive per render from `RouterProvider`.
+The three `undefined!` context values are deliberate placeholders — they satisfy
+the type while live auth and capability values arrive per render from
+`RouterProvider`. The QueryClient is concrete from router creation onward.
 
 `defaultPreloadStaleTime: 0` hands freshness decisions to TanStack Query rather
 than the router cache.
@@ -146,15 +149,18 @@ auth, `RouterAuthSnapshot` can narrow `isInitialized: true`.
 `UpdateProvider`, so it cannot consume that context directly. That is why
 `-loader.ts` takes a getter rather than a boolean.
 
-Mount chain: `index.tsx` → `App.tsx` → `AuthProvider` > `AppQueryClientProvider`
-> `ApplicationRouterProvider`.
+Mount chain: `index.tsx` → `App.tsx` → `AuthProvider` >
+`ApplicationRouterProvider`. The router's `Wrap` option mounts
+`AppQueryClientProvider` around its context provider and route matches.
 
 ### The shared QueryClient
 
-`router/query-client.tsx` exports `getAppQueryClient()`, the browser singleton.
-This is *the* reason a route loader and a mounted `useSuspenseQuery` hit the same
-cache entry instead of firing two requests. `createQueryClient()` is the
-isolated variant for tests and SSR.
+`router/query-client-core.ts` owns `getAppQueryClient()`, while
+`router/query-client.tsx` resolves that singleton once as `appQueryClient` and
+provides it through the router's `Wrap`. The same object is placed directly in
+router context. This is *the* reason a route loader and a mounted
+`useSuspenseQuery` hit the same cache entry instead of firing two requests.
+`createQueryClient()` is the isolated variant for tests and server renders.
 
 It also owns the global error toast, and skips it for queries tagged `silent`:
 
@@ -218,8 +224,10 @@ Note the single `access` const feeding both `beforeLoad` and `staticData`. That
 co-location is what stops route access and sidebar visibility from drifting, and
 `router.test.tsx` asserts it.
 
-Execution order per navigation: `validateSearch` → `beforeLoad` (parents first)
-→ `loaderDeps` → `loader` → `component`.
+The data derivation order per navigation is validated params/search →
+`loaderDeps` → route `context` → `beforeLoad` → `loader` → `component`, with
+parents processed first. A `beforeLoad` guard may add inherited context for its
+descendants.
 
 Which options you actually need:
 
@@ -228,6 +236,7 @@ Which options you actually need:
 | `component` | Always | — |
 | `loader` | The page needs data before first paint | Inherits ancestors' data |
 | `loaderDeps` | The loader depends on search params | Path params are already deps |
+| `context` | Query options depend on path params or `loaderDeps` | Static generated descriptors need no wrapper |
 | `validateSearch` | The route owns search params | No search params accepted |
 | `beforeLoad` | Auth, capability, or privilege gating | Inherits `_authenticated` |
 | `staticData` | The route belongs in the sidebar, or is gated | Hidden from sidebar |
@@ -319,7 +328,7 @@ so invoking it while loading is blocked throws into the route. Once the work has
 started, individual prefetch failures are silent and do not fail the route; the
 mounted widget owns Suspense, retry, and error UI.
 
-### Four rules
+### Five rules
 
 - **Never call QueryClient loading methods from a route.** Use the shared
   helpers so readiness, update blocking, retry, error ownership, and
@@ -333,6 +342,13 @@ mounted widget owns Suspense, retry, and error UI.
   `useSuspenseQuery`. Keeping one read path means polling, invalidation, and
   optimistic updates all behave identically whether the data arrived from a
   loader or a refetch.
+- **Single-source route-derived query options.** When a critical query depends
+  on path params or `loaderDeps`, resolve its base options in the route's
+  `context` function. The loader consumes `loaderArgs.context`; the mounted
+  observer consumes the same descriptor with `Route.useRouteContext` or
+  `getRouteApi(...).useRouteContext`. Polling, `select`, and other observer-only
+  options remain local. Per-row, dialog, and other interaction-owned queries do
+  not belong in route context.
 - **`routeIntentPrefetch` is a diagnostic marker only.** Only `silent` has a
   consumer. Do not build behaviour on it.
 
@@ -362,6 +378,39 @@ const { data: interfaces } = useSuspenseQuery({
 A loader plus a mounted observer is not a hybrid architecture — they coordinate
 through one QueryClient entry. Use `useSuspenseQueries` when a component reads
 several.
+
+Static descriptors such as `linuxio.wireguard.list_interfaces` are already one
+source of truth. When params or validated search determine the query key, route
+context owns the resolved descriptor instead:
+
+```tsx
+export const Route = createFileRoute(
+  "/_authenticated/vm/machines/$name",
+)({
+  context: ({ params }) => ({
+    vmQueryOptions: linuxio.virt.get({ name: params.name }),
+  }),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [loaderArgs.context.vmQueryOptions]),
+  component: VMDetailRoute,
+});
+
+function VMDetailRoute() {
+  const vmQueryOptions = Route.useRouteContext({
+    select: (context) => context.vmQueryOptions,
+  });
+  const { data: vm } = useSuspenseQuery({
+    ...vmQueryOptions,
+    refetchInterval: 5000,
+  });
+
+  return <VMDetailsPanel vm={vm} />;
+}
+```
+
+The context function receives only the route params and selected `loaderDeps`
+needed to resolve these options. Unrelated validated search changes therefore do
+not replace the descriptor or wake its selector subscribers.
 
 When a parent route loads data that several children need, the children **each
 observe the same options directly**. Do not pass query data down through props or
@@ -435,16 +484,16 @@ Search-dependent, with a conditional detail query — `services/sockets.tsx`:
 ```ts
 validateSearch: (search) => ({ ...optionalString(search, "socket") }),
 loaderDeps: ({ search }) => ({ socket: search.socket }),
+context: ({ deps }) => ({
+  listQueryOptions: linuxio.systemd.list_sockets,
+  selectedQueryOptions: deps.socket
+    ? linuxio.systemd.get_unit_info({ unitName: deps.socket })
+    : undefined,
+}),
 loader: (loaderArgs) => {
-  const { deps } = loaderArgs;
-  const queries: LoaderQueryOptions[] = [
-    linuxio.systemd.list_sockets,
-  ];
-  if (deps.socket) {
-    queries.push(
-      linuxio.systemd.get_unit_info({ unitName: deps.socket }),
-    );
-  }
+  const { listQueryOptions, selectedQueryOptions } = loaderArgs.context;
+  const queries: LoaderQueryOptions[] = [listQueryOptions];
+  if (selectedQueryOptions) queries.push(selectedQueryOptions);
   return loadRouteQueries(loaderArgs, queries);
 },
 ```
@@ -456,36 +505,38 @@ loader re-runs. **Path params are already loader deps** — do not add
 Path param — `vm/machines/$name.tsx`:
 
 ```ts
+context: ({ params }) => ({
+  vmQueryOptions: linuxio.virt.get({ name: params.name }),
+}),
 loader: (loaderArgs) =>
-  loadRouteQueries(loaderArgs, [
-    linuxio.virt.get({ name: loaderArgs.params.name }),
-  ]),
+  loadRouteQueries(loaderArgs, [loaderArgs.context.vmQueryOptions]),
 ```
 
 Splat — `filebrowser/$.tsx`, the one loader that passes per-call query options:
 
 ```ts
-loader: (loaderArgs) => {
-  const { params } = loaderArgs;
+context: ({ params }) => {
   const path = params._splat ? `/${params._splat}` : "/";
+  return {
+    fileBrowserListingQueryOptions:
+      createFileBrowserListingQueryOptions(path),
+  };
+},
+loader: (loaderArgs) => {
   return loadRouteQueries(
     loaderArgs,
-    [
-      {
-        ...linuxio.filebrowser.resource_get({ path }),
-        ...fileBrowserListingQueryOptions,
-      },
-    ],
+    [loaderArgs.context.fileBrowserListingQueryOptions],
     LOADER_FRESHNESS.BACKGROUND,
   );
 },
 ```
 
-`fileBrowserListingQueryOptions` gives both loader and observer the same
-two-second `staleTime`. That short grace keeps the freshly loaded listing fresh
-while the observer mounts, eliminating the immediate duplicate request, while
-the `BACKGROUND` policy still revalidates stale or invalidated listings on a
-later navigation without hiding the cached directory.
+`createFileBrowserListingQueryOptions` gives the loader and observer the exact
+same path, query function, key, and two-second `staleTime`. That short grace
+keeps the freshly loaded listing fresh while the observer mounts, eliminating
+the immediate duplicate request, while the `BACKGROUND` policy still
+revalidates stale or invalidated listings on a later navigation without hiding
+the cached directory.
 
 Transport only — `logs/route.tsx` and `terminal/route.tsx`:
 
@@ -533,19 +584,20 @@ inherits its ancestor's.
 | `/accounts/groups` | `accounts/groups.tsx` | `loadRouteQueries` ×1 | — | — | — |
 | `/docker` | `docker/route.tsx` | — | — | — | `requireAccess` docker |
 | `/docker/` | `docker/index.tsx` | `loadRouteQueries` ×5 | — | — | — |
-| `/docker/compose` | `docker/compose.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker/compose` | `docker/compose.tsx` | `loadRouteQueries` ×1 | — | `stack` | — |
 | `/docker/containers` | `docker/containers.tsx` | `loadRouteQueries` ×2 | — | `container` | — |
-| `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | — | — |
-| `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | — | — |
-| `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | `image` | — |
+| `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | `network` | — |
+| `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | `volume` | — |
 | `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | — | — |
-| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `sort`, `tab` | — |
+| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `tab` | — |
 | `/services` | `services/route.tsx` | — | — | — | — |
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
+| `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/shares` | `shares/route.tsx` | — | — | — | — |
 | `/shares/` | `shares/index.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/shares/mounts` | `shares/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
@@ -565,7 +617,7 @@ inherits its ancestor's.
 | `/vm/machines/$name` | `vm/machines/$name.tsx` | `loadRouteQueries` ×1 | *params* | — | — |
 | `/wireguard` | `wireguard/route.tsx` | `loadRouteQueries` ×1 | — | — | `requireAccess` wireguard, privileged |
 
-Paths under `_authenticated/` are shown relative to it. The four `/vm*` rows with
+Paths under `_authenticated/` are shown relative to it. The five `/vm*` rows with
 no loader inherit `/vm`'s — that is the intended shape, not an omission.
 
 ### Who owns which data
@@ -641,7 +693,7 @@ external-redirect rejection.
 
 ## Search Parameters
 
-No schema library. Nine routes validate search using three generic helpers from
+No schema library. Thirteen routes validate search using three generic helpers from
 `routes/-search.ts`:
 
 ```ts
@@ -714,9 +766,9 @@ export function useSidebarItems(): SidebarItem[] {
 
 Current `position` ladder — pick a gap, and leave room:
 
-| 0 | 10 | 20 | 30 | 35 | 40 | 50 | 55 | 60 | 70 | 80 | 90 | 100 | 110 |
-|---|----|----|----|----|----|----|----|----|----|----|----|-----|-----|
-| Dashboard | Network | Updates | Services | Logs | Storage | Docker | VMs | Accounts | Shares | Wireguard | Hardware | Navigator | Terminal |
+| 0 | 10 | 20 | 30 | 35 | 40 | 50 | 55 | 60 | 70 | 80 | 90 | 100 | 110 | 120 |
+|---|----|----|----|----|----|----|----|----|----|----|----|-----|-----|-----|
+| Dashboard | Network | Updates | Services | Logs | Storage | Docker | VMs | Accounts | Shares | Wireguard | Hardware | Navigator | Terminal | Settings |
 
 ## Page Tabs Are Child Routes
 
@@ -945,7 +997,7 @@ traffic — the doc-level distinction matters when debugging:
    route work while the update is active and resume when it finishes. Router
    cancellation aborts a superseded wait.
 2. **Mounted queries pause.** `UpdateContext` flips the stream multiplexer's
-   updating flag; `isRequestAvailable()` goes false; `query-client.tsx` feeds that
+   updating flag; `isRequestAvailable()` goes false; `query-client-core.ts` feeds that
    into `onlineManager`, so React Query treats the app as offline. The
    multiplexer itself does not reject calls.
 
@@ -1029,33 +1081,52 @@ Docker (50).
 export const Route = createFileRoute("/_authenticated/backups/snapshots")({
   validateSearch: (search) => ({ ...optionalString(search, "tag") }),
   loaderDeps: ({ search }) => ({ tag: search.tag }),
+  context: ({ deps }) => ({
+    snapshotsQueryOptions: linuxio.backups.list_snapshots({
+      tag: deps.tag,
+    }),
+  }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.backups.list_snapshots({
-        tag: loaderArgs.deps.tag,
-      }),
+      loaderArgs.context.snapshotsQueryOptions,
     ]),
   component: SnapshotsLayout,
 });
+
+function SnapshotsLayout() {
+  const snapshotsQueryOptions = Route.useRouteContext({
+    select: (context) => context.snapshotsQueryOptions,
+  });
+  const { data: snapshots } = useSuspenseQuery(snapshotsQueryOptions);
+  return <SnapshotList snapshots={snapshots} />;
+}
 ```
+
+`loaderDeps` selects only the search value that changes the query key. The
+context resolves the descriptor once for that route match, so the loader and
+the mounted list cannot drift apart. The observer may add options such as
+polling or `select`, but it must not rebuild the query key.
 
 **5. Write the detail route** — `snapshots/$id.tsx`. No `loaderDeps`; path params
 are already deps:
 
 ```tsx
 export const Route = createFileRoute("/_authenticated/backups/snapshots/$id")({
+  context: ({ params }) => ({
+    snapshotQueryOptions: linuxio.backups.get_snapshot({ id: params.id }),
+  }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.backups.get_snapshot({ id: loaderArgs.params.id }),
+      loaderArgs.context.snapshotQueryOptions,
     ]),
   component: SnapshotDetail,
 });
 
 function SnapshotDetail() {
-  const { id } = Route.useParams();
-  const { data: snapshot } = useSuspenseQuery(
-    linuxio.backups.get_snapshot({ id }),
-  );
+  const snapshotQueryOptions = Route.useRouteContext({
+    select: (context) => context.snapshotQueryOptions,
+  });
+  const { data: snapshot } = useSuspenseQuery(snapshotQueryOptions);
   return <SnapshotPanel snapshot={snapshot} />;
 }
 ```
@@ -1068,6 +1139,8 @@ function SnapshotDetail() {
 - Do the layout routes that own no data have **no** loader?
 - Does every Query loader pass `loaderArgs` directly, leaving the default
   `PRESENCE` policy implicit and naming only intentional exceptions?
+- If a query depends on params or `loaderDeps`, does route context own its
+  options and do both the loader and observer consume that descriptor?
 - Did you avoid `errorComponent`, `pendingComponent`, and per-route `preload`?
 - Is the capability declared in both places
   ([Capabilities](./capabilities.md#adding-a-capability--checklist))?

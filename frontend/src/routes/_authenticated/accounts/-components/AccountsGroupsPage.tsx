@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -11,25 +12,29 @@ const AccountsGroupsPage = () => {
   const [createGroupHandler, setCreateGroupHandler] = useState<
     (() => void) | null
   >(null);
-  const [groupsView, setGroupsView] = useViewMode("accounts.groups", "table");
+  const [groupsView, setGroupsView] = useViewMode("accounts.groups");
 
   const actions = (
-    <>
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={setGroupsView}
-        viewMode={groupsView}
-      />
-      {createGroupHandler && (
-        <AppActionIconButton
-          ariaLabel="Add Group"
-          icon="mdi:plus"
-          iconSize={20}
-          label="Add Group"
-          onClick={createGroupHandler}
+    <HeaderActions
+      create={
+        createGroupHandler && (
+          <AppActionIconButton
+            ariaLabel="Add Group"
+            icon="mdi:plus"
+            iconSize={20}
+            label="Add Group"
+            onClick={createGroupHandler}
+          />
+        )
+      }
+      view={
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setGroupsView}
+          viewMode={groupsView}
         />
-      )}
-    </>
+      }
+    />
   );
 
   return (

@@ -102,7 +102,8 @@
 }
 
 .account-session-kill.app-icon-btn:hover,
-.account-session-kill.app-icon-btn:focus-visible {
+:root[data-tab-navigation]
+  .account-session-kill.app-icon-btn:focus-visible {
   color: var(--app-palette-error-main);
   background-color: color-mix(
     in srgb,
@@ -143,7 +144,10 @@
 
 @media (min-width: 770px) {
   .account-events-grid {
-    grid-template-columns: minmax(180px, 1.4fr) minmax(100px, 0.75fr) minmax(120px, 0.85fr) 82px;
+    grid-template-columns: minmax(180px, 1.4fr) minmax(100px, 0.75fr) minmax(
+        120px,
+        0.85fr
+      ) 82px;
   }
 
   .account-processes-grid {

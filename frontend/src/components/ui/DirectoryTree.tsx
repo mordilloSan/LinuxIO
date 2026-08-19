@@ -79,16 +79,19 @@ const TreeNode = ({
     if (!expanded) {
       loadingRef.current = true;
       setLoading(true);
-      try {
-        await onToggle(node);
-        setExpanded(true);
-      } catch {
-        // Keep the directory collapsed when loading fails. The next
-        // activation can retry the load.
-      } finally {
+      const loadDirectory = async () => {
+        try {
+          await onToggle(node);
+          setExpanded(true);
+        } catch {
+          // Keep the directory collapsed when loading fails. The next
+          // activation can retry the load.
+        }
+      };
+      await loadDirectory().finally(() => {
         loadingRef.current = false;
         setLoading(false);
-      }
+      });
     } else {
       setExpanded(false);
     }

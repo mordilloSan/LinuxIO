@@ -19,7 +19,12 @@ import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useAppTheme } from "@/theme";
-import { GAP_SM } from "@/theme/constants";
+import {
+  CARD_PADDING_LG,
+  CARD_PADDING_MD,
+  GAP_SM,
+  TRANSITION_SLOW_CSS,
+} from "@/theme/constants";
 
 function formatLastLogin(
   lastLogin: string,
@@ -87,6 +92,8 @@ const CompactGroupChips = ({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
+    // `groups` intentionally retriggers measurement after the chip DOM changes.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [groups]);
 
   const overflowing = firstRowCount < groups.length;
@@ -241,21 +248,23 @@ const UserCard = ({
 
   return (
     <FrostedCard
+      accent
       hoverLift={!isSelected}
       style={{
-        padding: isSelected ? 12 : 10,
+        padding: isSelected ? CARD_PADDING_LG : CARD_PADDING_MD,
         display: "flex",
         flexDirection: "column",
         height: "100%",
         position: "relative",
         width: isSelected ? "100%" : undefined,
-        transition:
-          "transform 0.2s, box-shadow 0.2s, border 0.3s ease-in-out, margin 0.3s ease-in-out",
-        borderBottomWidth: 2,
-        borderBottomStyle: "solid",
-        borderBottomColor: isSelected
-          ? "transparent"
-          : `color-mix(in srgb, ${accentColor}, transparent 70%)`,
+        // This card, UnitCard, and WireguardInterfaceCard all settle their
+        // border at TRANSITION_SLOW_CSS so the three expand-in-place cards
+        // read as one speed.
+        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
+        // The line itself comes from `accent` above. Opening a user isolates the
+        // card outside the grid, where it can no longer be held to reorder — so
+        // the line stands down with the lift.
+        ...(isSelected && { borderBottomColor: "transparent" }),
       }}
     >
       {/* Header */}

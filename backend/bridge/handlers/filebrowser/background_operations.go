@@ -110,6 +110,15 @@ func newCountProgressLimiter(taskSettings config.PersistedJobSettings) *countPro
 	}
 }
 
+// SetTotal installs the denominator once a late-arriving size estimate lands.
+// Until then the limiter throttles on bytes alone, since percentage-based
+// throttling needs a total to compare against.
+func (l *progressLimiter) SetTotal(total int64) {
+	l.mu.Lock()
+	l.total = total
+	l.mu.Unlock()
+}
+
 func (l *progressLimiter) Add(n int64) (int64, int, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -190,7 +199,6 @@ func archiveExtractWorkers(taskSettings config.PersistedJobSettings) int {
 
 const (
 	routeArchive     = "filebrowser.archive"
-	routeDownload    = "filebrowser.download"
 	routeUpload      = "filebrowser.upload"
 	routeUploadBatch = "filebrowser.upload_batch"
 )
@@ -248,10 +256,12 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.delete_batch", apischema.SessionTask(), apischema.WithTaskProgress[DeleteProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.delete_batch", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
-			runDeleteBatchTask,
+			func(ctx context.Context, task *bridgetasks.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
+				return runDeleteBatchTask(ctx, task, store, req)
+			},
 			bridgetasks.TaskDefault,
 		),
 		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
@@ -283,11 +293,6 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest) (FileUploadBatchResult, error) {
 			return transferResult[FileUploadBatchResult](runUploadBatchTask(ctx, task, req))
 		}, bridgetasks.TaskStreamDefault),
-		apischema.TaskRunner[apischema.PathRequest, FileDownloadResult](routeDownload, apischema.SessionTask(), apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.PathRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.Path}, Path: req.Path, Label: req.Path}
-		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.PathRequest) (FileDownloadResult, error) {
-			return transferResult[FileDownloadResult](runDownloadTask(ctx, task, req))
-		}, bridgetasks.TaskStreamDefault),
 		apischema.TaskRunner[apischema.FileArchiveRequest, FileArchiveResult](routeArchive, apischema.SessionTask(), apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileArchiveRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{req.Format}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
@@ -296,7 +301,7 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgetasks.TaskStreamDefault,
 		),
-		apischema.TaskRunner[apischema.FileChmodBatchRequest, FileBatchResult]("filebrowser.chmod_batch", apischema.SessionTask(), apischema.WithTaskProgress[ChmodProgress](), apischema.WithTaskMetadata(func(req apischema.FileChmodBatchRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.FileChmodBatchRequest, FileBatchResult]("filebrowser.chmod_batch", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.FileChmodBatchRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{req.Mode, req.Owner, req.Group}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})).Run(
 			func(ctx context.Context, task *bridgetasks.Task, req apischema.FileChmodBatchRequest) (FileBatchResult, error) {
@@ -322,12 +327,40 @@ func RegisterTaskRoutes(router *bridgetasks.Router, store *config.UserStore) {
 	fileTaskBindings(store).Register(router)
 	router.TaskService().RegisterTaskDataAttacher(routeUpload, attachFileTransferData)
 	router.TaskService().RegisterTaskDataAttacher(routeUploadBatch, attachFileTransferData)
-	router.TaskService().RegisterTaskDataAttacher(routeDownload, attachFileTransferData)
 	router.TaskService().RegisterTaskDataAttacher(routeArchive, attachFileTransferData)
 }
 
-func newTaskPhaseCallbacks(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, totalSize int64, phase string) *ipc.OperationCallbacks {
-	limiter := newProgressLimiter(taskSettingsForTask(ctx, task, store), totalSize)
+// sizeEstimate carries a progress denominator that need not be known when the
+// work starts. Archive size walks cost a stat per file, so compression runs
+// alongside its estimate rather than behind it; the callbacks re-read the total
+// on every report instead of capturing it once.
+type sizeEstimate struct {
+	mu    sync.Mutex
+	total int64
+	known bool
+}
+
+// knownSize wraps a total that was already computed, for callers whose
+// denominator is cheap enough to establish up front.
+func knownSize(total int64) *sizeEstimate {
+	return &sizeEstimate{total: total, known: true}
+}
+
+func (e *sizeEstimate) set(total int64) {
+	e.mu.Lock()
+	e.total = total
+	e.known = true
+	e.mu.Unlock()
+}
+
+func (e *sizeEstimate) get() (int64, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.total, e.known
+}
+
+func newTaskPhaseCallbacks(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, size *sizeEstimate, phase string) *ipc.OperationCallbacks {
+	limiter := newProgressLimiter(taskSettingsForTask(ctx, task, store), 0)
 	cancelFn := func() bool {
 		select {
 		case <-ctx.Done():
@@ -339,27 +372,37 @@ func newTaskPhaseCallbacks(ctx context.Context, task *bridgetasks.Task, store *c
 	return &ipc.OperationCallbacks{
 		Cancel: cancelFn,
 		Progress: func(n int64) {
-			if totalSize <= 0 {
+			total, known := size.get()
+			// A total that is known to be zero means there is nothing to report
+			// against; a total that is merely not known yet still gets reports,
+			// flagged indeterminate so the client shows a busy bar.
+			if known && total <= 0 {
 				return
 			}
+			limiter.SetTotal(total)
 			processed, pct, ok := limiter.Add(n)
 			if !ok {
 				return
 			}
 			task.ReportProgress(FileProgress{
-				Bytes: processed,
-				Total: totalSize,
-				Pct:   pct,
-				Phase: phase,
+				Bytes:         processed,
+				Total:         total,
+				Pct:           pct,
+				Phase:         phase,
+				Indeterminate: !known,
 			})
 		},
 	}
 }
 
+// writeTaskPhaseProgress announces a phase before any bytes have moved. A
+// zero total means the denominator is still being computed, which the client
+// renders as a busy bar rather than a stalled 0%.
 func writeTaskPhaseProgress(task *bridgetasks.Task, total int64, phase string) {
 	task.ReportProgress(FileProgress{
-		Total: total,
-		Phase: phase,
+		Total:         total,
+		Phase:         phase,
+		Indeterminate: total <= 0,
 	})
 }
 
@@ -511,9 +554,26 @@ func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.
 		return FileCompressResult{}, bridgetasks.NewError(message, status)
 	}
 
-	totalSize := computeArchiveSize(req.Paths)
-	writeTaskPhaseProgress(task, totalSize, "preparing")
-	opts := newTaskPhaseCallbacks(ctx, task, store, totalSize, "compressing")
+	// The size walk is only the progress denominator, and it costs a stat per
+	// file. Run it alongside the compression rather than ahead of it, so a
+	// large tree no longer stalls the task in "preparing" for its full cost;
+	// progress reports indeterminate until the estimate lands.
+	size := &sizeEstimate{}
+	sizeCtx, cancelSize := context.WithCancel(ctx)
+	sizeDone := make(chan struct{})
+	go func() {
+		defer close(sizeDone)
+		if total := computeArchiveSize(sizeCtx, req.Paths); total > 0 {
+			size.set(total)
+		}
+	}()
+	defer func() {
+		cancelSize()
+		<-sizeDone
+	}()
+
+	writeTaskPhaseProgress(task, 0, "preparing")
+	opts := newTaskPhaseCallbacks(ctx, task, store, size, "compressing")
 	err = createArchive(req.Format, tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
 	if err == ipc.ErrAborted {
 		slog.Info("compress aborted, cleaning up", "path", targetPath)
@@ -571,7 +631,7 @@ func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 
 	totalSize := computeExtractSize(archivePath, archiveStat.Size())
 	writeTaskPhaseProgress(task, totalSize, "preparing")
-	opts := newTaskPhaseCallbacks(ctx, task, store, totalSize, "extracting")
+	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(totalSize), "extracting")
 	err = services.ExtractArchive(archivePath, destination, opts, archiveExtractWorkers(settings))
 	if err == ipc.ErrAborted {
 		slog.Info("extract aborted, cleaning up", "path", destination)

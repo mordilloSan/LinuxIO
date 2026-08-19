@@ -10,11 +10,13 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import { render } from "@/test/render";
 
 import {
   RoutedTabActions,
   RoutedTabLayout,
+  RoutedTabSearch,
   type RoutedTab,
 } from "./RoutedTabContainer";
 import { makeTabLayout } from "./tabLayoutFactory";
@@ -129,6 +131,21 @@ const StatefulAction = () => {
   );
 };
 
+const StatefulSearch = () => {
+  const [search, setSearch] = useState("");
+
+  return (
+    <RoutedTabSearch active={search !== ""}>
+      <AppHeaderSearch
+        aria-label="Search users"
+        clearOnDocumentEscape
+        onChange={setSearch}
+        value={search}
+      />
+    </RoutedTabSearch>
+  );
+};
+
 describe("RoutedTabContainer", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -226,10 +243,8 @@ describe("RoutedTabContainer", () => {
     );
   });
 
-  it("creates a route layout with the supplied container style", async () => {
-    const AccountsLayout = makeTabLayout(tabs, {
-      paddingInline: 0,
-    });
+  it("creates a route layout that renders the tabs and the child route", async () => {
+    const AccountsLayout = makeTabLayout(tabs);
     const rootRoute = createRootRoute({ component: Outlet });
     const accountsRoute = createRoute({
       component: AccountsLayout,
@@ -248,12 +263,10 @@ describe("RoutedTabContainer", () => {
       ]),
     });
     await router.load();
-    const { container } = render(<RouterProvider router={router} />);
+    render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("Users route")).toBeInTheDocument();
-    expect(container.querySelector(".tab-container")).toHaveStyle({
-      paddingInline: "0",
-    });
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
   });
 
   it("does not register a mobile action slot for null children", async () => {
@@ -333,6 +346,178 @@ describe("RoutedTabContainer", () => {
 
     await screen.findByText("Boolean route content");
     expect(container.querySelector(".app-icon-btn")).not.toBeInTheDocument();
+  });
+
+  it("keeps child search controls visible in the desktop parent tab strip", async () => {
+    mockViewport(false);
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const usersRoute = createRoute({
+      component: () => (
+        <RoutedTabSearch>
+          <input aria-label="Search users" />
+        </RoutedTabSearch>
+      ),
+      getParentRoute: () => accountsRoute,
+      path: "/",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/accounts"] }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([usersRoute]),
+      ]),
+    });
+    await router.load();
+    const { container } = render(<RouterProvider router={router} />);
+
+    const search = await screen.findByRole("textbox", {
+      name: "Search users",
+    });
+    expect(container.querySelector(".tab-selector__search")).toContainElement(
+      search,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Actions" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("puts child search beside the other actions in the mobile menu", async () => {
+    mockViewport();
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const usersRoute = createRoute({
+      component: () => (
+        <>
+          <StatefulSearch />
+          <RoutedTabActions>
+            <button type="button">Refresh users</button>
+          </RoutedTabActions>
+        </>
+      ),
+      getParentRoute: () => accountsRoute,
+      path: "/",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/accounts"] }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([usersRoute]),
+      ]),
+    });
+    await router.load();
+    const { user } = render(<RouterProvider router={router} />);
+
+    const actionsTrigger = await screen.findByRole("button", {
+      name: "Actions",
+    });
+    expect(
+      screen.queryByRole("textbox", { name: "Search users" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(actionsTrigger);
+
+    const mobileActions = document.querySelector(".app-mobile-actions-menu");
+    const searchAction = screen.getByRole("button", { name: "Search" });
+    expect(mobileActions).toContainElement(searchAction);
+    expect(mobileActions).toContainElement(
+      screen.getByRole("button", { name: "Refresh users" }),
+    );
+
+    await user.click(searchAction);
+
+    const search = await screen.findByRole("textbox", {
+      name: "Search users",
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(actionsTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(search).toHaveFocus();
+    expect(
+      document.querySelector(".tab-selector__mobile-search"),
+    ).toContainElement(search);
+
+    await user.type(search, "apparmor");
+    await user.keyboard("{Escape}");
+
+    // First Escape clears the query and keeps the field: the popover stays.
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("textbox", { name: "Search users" }),
+    ).not.toBeInTheDocument();
+    expect(actionsTrigger).toHaveFocus();
+  });
+
+  it("tints the collapsed mobile icons while the search carries a query", async () => {
+    mockViewport();
+    const rootRoute = createRootRoute({ component: Outlet });
+    const accountsRoute = createRoute({
+      component: () => (
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
+      ),
+      getParentRoute: () => rootRoute,
+      path: "accounts",
+    });
+    const usersRoute = createRoute({
+      component: StatefulSearch,
+      getParentRoute: () => accountsRoute,
+      path: "/",
+    });
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/accounts"] }),
+      routeTree: rootRoute.addChildren([
+        accountsRoute.addChildren([usersRoute]),
+      ]),
+    });
+    await router.load();
+    const { user } = render(<RouterProvider router={router} />);
+
+    const actionsTrigger = await screen.findByRole("button", {
+      name: "Actions",
+    });
+    expect(actionsTrigger).not.toHaveClass("tab-selector__search-active");
+
+    await user.click(actionsTrigger);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(
+      await screen.findByRole("textbox", { name: "Search users" }),
+      "root",
+    );
+    // Close the popover without touching the query: clicking the trigger
+    // dismisses the search and opens the actions menu in one press.
+    await user.click(actionsTrigger);
+
+    expect(actionsTrigger).toHaveClass("tab-selector__search-active");
+    expect(screen.getByRole("button", { name: "Search" })).toHaveClass(
+      "tab-selector__search-active",
+    );
+
+    // Emptying the field hands the icons back their resting color.
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.clear(
+      await screen.findByRole("textbox", { name: "Search users" }),
+    );
+    await user.keyboard("{Escape}");
+    expect(actionsTrigger).not.toHaveClass("tab-selector__search-active");
   });
 
   it("preserves action-local state across breakpoint changes", async () => {

@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *configAppSettingsPayload) error {
+func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigAppSettingsPayload) error {
 	if err := applyThemeSetting(app, payload.Theme); err != nil {
 		return err
 	}
@@ -17,6 +18,15 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *con
 	if err := applyThemeColorOverrides(app, payload.ThemeColors); err != nil {
 		return err
 	}
+	if err := applyNavigationModeSetting(app, payload.NavigationMode); err != nil {
+		return err
+	}
+	if err := applyDockTileColorsSetting(app, payload.DockTileColors); err != nil {
+		return err
+	}
+	if err := applyDockAccentGradientSetting(app, payload.DockAccentGradient); err != nil {
+		return err
+	}
 	applyOptionalBool(&app.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalBool(&app.ShowHiddenFiles, payload.ShowHiddenFiles)
 	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
@@ -24,7 +34,34 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *con
 	applyOptionalHardwareSections(app, payload.HardwareSections)
 	applyViewModes(app, payload.ViewModes)
 	applyLayoutOrders(app, payload.LayoutOrders)
-	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
+	if err := applyChunkSizeSetting(app, payload.ChunkSizeMB); err != nil {
+		return err
+	}
+	return applyTerminalFontSizeSetting(app, payload.TerminalFontSize)
+}
+
+func applyDockAccentGradientSetting(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigDockAccentGradient) error {
+	if payload == nil {
+		return nil
+	}
+	gradient := bridgeconfig.DockAccentGradient{
+		StartColor: bridgeconfig.CSSColor(trimmedOptionalString(payload.StartColor)),
+		EndColor:   bridgeconfig.CSSColor(trimmedOptionalString(payload.EndColor)),
+		RangeStart: payload.RangeStart,
+		RangeEnd:   payload.RangeEnd,
+	}
+	if errs := bridgeconfig.ValidateDockAccentGradient(gradient); len(errs) > 0 {
+		return fmt.Errorf("invalid dockAccentGradient: %s", strings.Join(errs, "; "))
+	}
+	app.DockAccentGradient = gradient
+	return nil
+}
+
+func trimmedOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) error {
@@ -39,6 +76,30 @@ func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) er
 	return nil
 }
 
+func applyNavigationModeSetting(app *bridgeconfig.PersistedAppSettings, mode *string) error {
+	if mode == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(*mode))
+	if normalized != bridgeconfig.NavigationModeSidebar && normalized != bridgeconfig.NavigationModeDock {
+		return fmt.Errorf("invalid navigationMode value (sidebar|dock)")
+	}
+	app.NavigationMode = normalized
+	return nil
+}
+
+func applyDockTileColorsSetting(app *bridgeconfig.PersistedAppSettings, mode *string) error {
+	if mode == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(*mode))
+	if !bridgeconfig.IsValidDockTileColors(normalized) {
+		return fmt.Errorf("invalid dockTileColors value (accent|mono|neutral|vibrant)")
+	}
+	app.DockTileColors = normalized
+	return nil
+}
+
 func applyPrimaryColorSetting(app *bridgeconfig.PersistedAppSettings, primaryColor *string) error {
 	if primaryColor == nil {
 		return nil
@@ -50,7 +111,7 @@ func applyPrimaryColorSetting(app *bridgeconfig.PersistedAppSettings, primaryCol
 	return nil
 }
 
-func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *configThemeColorsByModePayload) error {
+func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
@@ -70,7 +131,7 @@ func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *c
 	return nil
 }
 
-func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*bridgeconfig.ThemeColors, error) {
+func buildThemeColors(payload *apischema.ConfigThemeColorsPayload, modePrefix string) (*bridgeconfig.ThemeColors, error) {
 	if payload == nil {
 		return nil, nil
 	}
@@ -117,15 +178,15 @@ func buildThemeColors(payload *configThemeColorsPayload, modePrefix string) (*br
 	return colors, nil
 }
 
-func applyOptionalDockerDashboardSections(app *bridgeconfig.PersistedAppSettings, sections *bridgeconfig.DockerDashboardSections) {
+func applyOptionalDockerDashboardSections(app *bridgeconfig.PersistedAppSettings, sections *apischema.ConfigDockerDashboardSections) {
 	if sections != nil {
-		app.DockerDashboardSections = sections
+		app.DockerDashboardSections = &bridgeconfig.DockerDashboardSections{Overview: sections.Overview, Daemon: sections.Daemon, Resources: sections.Resources}
 	}
 }
 
-func applyOptionalHardwareSections(app *bridgeconfig.PersistedAppSettings, sections *bridgeconfig.HardwareSections) {
+func applyOptionalHardwareSections(app *bridgeconfig.PersistedAppSettings, sections *apischema.ConfigHardwareSections) {
 	if sections != nil {
-		app.HardwareSections = sections
+		app.HardwareSections = &bridgeconfig.HardwareSections{Overview: sections.Overview, Hardware: sections.Hardware, Sensors: sections.Sensors, SystemInfo: sections.SystemInfo, GPU: sections.GPU, PCIDevices: sections.PCIDevices, MemoryModules: sections.MemoryModules}
 	}
 }
 
@@ -186,5 +247,17 @@ func applyChunkSizeSetting(app *bridgeconfig.PersistedAppSettings, chunkSize *in
 		return fmt.Errorf("chunkSizeMB must be 0 (default) or between 1 and 32")
 	}
 	app.ChunkSizeMB = value
+	return nil
+}
+
+func applyTerminalFontSizeSetting(app *bridgeconfig.PersistedAppSettings, fontSize *int) error {
+	if fontSize == nil {
+		return nil
+	}
+	value := *fontSize
+	if value != 0 && (value < 10 || value > 28) {
+		return fmt.Errorf("terminalFontSize must be 0 (default) or between 10 and 28")
+	}
+	app.TerminalFontSize = value
 	return nil
 }

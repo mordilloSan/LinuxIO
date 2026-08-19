@@ -3,10 +3,11 @@ package config
 import (
 	"fmt"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyConfigPayload(cfg *bridgeconfig.Settings, payload *configSetPayload) error {
+func applyConfigPayload(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload) error {
 	if payload.AppSettings != nil {
 		if err := applyAppSettingsUpdate(&cfg.AppSettings, payload.AppSettings); err != nil {
 			return err

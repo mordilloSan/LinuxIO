@@ -1,7 +1,9 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   memo,
+  useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
   type CSSProperties,
   type Key,
@@ -12,6 +14,7 @@ import {
 
 import AppTypography from "@/components/ui/AppTypography";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
+import { HOVER_LIFT_HEADROOM } from "@/theme/constants";
 
 export interface AppVirtualGridProps<TItem> {
   ariaLabel?: string;
@@ -58,7 +61,6 @@ const MemoizedAppVirtualGridItem = memo(
 
 // React Compiler skips this component: TanStack Virtual's API returns
 // unstable functions it cannot memoize. Manual memoization stays load-bearing.
-// oxlint-disable-next-line react/react-compiler
 function AppVirtualGrid<TItem>({
   ariaLabel = "Grid",
   className,
@@ -92,8 +94,30 @@ function AppVirtualGrid<TItem>({
   });
 
   const rowCount = Math.ceil(items.length / columnCount);
+  const estimateRowSize = useCallback(
+    () => estimateItemHeight + gap,
+    [estimateItemHeight, gap],
+  );
+  const virtualMeasurementInputs = useMemo(
+    () => ({ columnCount, estimateRowSize, getItemKey, items }),
+    [columnCount, estimateRowSize, getItemKey, items],
+  );
+  const getVirtualRowKey = useCallback(
+    (rowIndex: number) => {
+      const firstItemIndex = rowIndex * virtualMeasurementInputs.columnCount;
+      const item = virtualMeasurementInputs.items[firstItemIndex];
+      return item
+        ? virtualMeasurementInputs.getItemKey(item, firstItemIndex)
+        : rowIndex;
+    },
+    // TanStack does not track estimateSize as a measurement dependency. A new
+    // key callback shares the estimate callback's input snapshot, recalculating
+    // unmeasured offsets while keeping actual keyed row measurements.
+    [virtualMeasurementInputs],
+  );
   // TanStack Virtual exposes dynamic helper functions that React Compiler cannot memoize safely.
   // eslint-disable-next-line react-hooks/incompatible-library
+  // oxlint-disable-next-line react/incompatible-library
   const virtualizer = useVirtualizer({
     count: rowCount,
     // The virtualizer owns the row wrappers' transform and the rowgroup
@@ -101,23 +125,26 @@ function AppVirtualGrid<TItem>({
     // instead of re-rendering. The outer padding rides along as
     // paddingStart/paddingEnd so row starts already include it.
     directDomUpdates: true,
-    estimateSize: () => estimateItemHeight + gap,
-    getItemKey: (rowIndex) => {
-      const firstItemIndex = rowIndex * columnCount;
-      const item = items[firstItemIndex];
-      return item ? getItemKey(item, firstItemIndex) : rowIndex;
-    },
+    estimateSize: estimateRowSize,
+    getItemKey: getVirtualRowKey,
     getScrollElement: () => scrollRef.current,
     overscan,
     paddingEnd: padding,
-    paddingStart: padding,
+    // This scrollport is `overflow: auto`, so it clips a hover-lifted card in
+    // the first row against its own top edge. Reserve the lift headroom inside
+    // the scroll area, where the card has somewhere to rise into; the negative
+    // margin below gives the space back, so nothing moves on screen.
+    paddingStart: padding + HOVER_LIFT_HEADROOM,
     useAnimationFrameWithResizeObserver: true,
   });
   const virtualRows = virtualizer.getVirtualItems();
 
   useLayoutEffect(() => {
+    // Count/key changes already rebuild offsets while preserving keyed sizes.
+    // Column membership, the inter-row gap, and outer padding change row
+    // geometry, so those layout changes still require clearing measured heights.
     virtualizer.measure();
-  }, [columnCount, items.length, virtualizer]);
+  }, [columnCount, gap, padding, virtualizer]);
 
   useLayoutEffect(() => {
     if (scrollToIndex === null || scrollToIndex === undefined) return;
@@ -138,6 +165,11 @@ function AppVirtualGrid<TItem>({
       style={{
         flex: fillAvailable ? "1 1 0" : undefined,
         height: height ?? (fillAvailable ? "100%" : undefined),
+        // Cancels the paddingStart reserved above, so the first row lands where
+        // it always did and the grid only gains headroom the lift can use. The
+        // space pulled into is the gap the tab strip already leaves below
+        // itself (--tab-strip-headroom); both are HOVER_LIFT_HEADROOM.
+        marginTop: -HOVER_LIFT_HEADROOM,
         maxHeight,
         minHeight: fillAvailable ? 0 : undefined,
         minWidth: 0,

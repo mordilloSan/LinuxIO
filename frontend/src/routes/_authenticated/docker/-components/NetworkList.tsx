@@ -1,24 +1,27 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio, type DockerNetwork, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogContentText,
   AppDialogTitle,
+  OVERLAY_ROOT_SELECTOR,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
@@ -28,6 +31,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
   responsiveTextStyles,
@@ -355,11 +359,256 @@ const DeleteNetworkDialog = ({
 
 const getNetworkId = (network: { Id: string }) => network.Id;
 
+const dockerRouteApi = getRouteApi("/_authenticated/docker/networks");
+
+const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
+  const theme = useAppTheme();
+  return (
+    <div className="expand-panel">
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Full Network ID:</b>
+        </AppTypography>
+        <AppTypography
+          className="expand-panel__mono"
+          style={longTextStyles}
+          variant="body2"
+        >
+          {network.Id}
+        </AppTypography>
+      </div>
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Subnet(s):</b>
+        </AppTypography>
+        <div className="expand-panel__chips">
+          {network.IPAM?.Config?.length ? (
+            network.IPAM.Config.map((ipam, index) => (
+              <Chip
+                key={index}
+                label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
+                size="small"
+                style={wrappableChipStyle}
+                labelStyle={wrappableChipLabelStyle}
+                variant="soft"
+              />
+            ))
+          ) : (
+            <AppTypography color="text.secondary" variant="body2">
+              (no IPAM config)
+            </AppTypography>
+          )}
+        </div>
+      </div>
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Network Details:</b>
+        </AppTypography>
+        <div className="expand-panel__chips">
+          {network.Created && (
+            <Chip
+              label={`Created: ${new Date(network.Created).toLocaleString()}`}
+              size="small"
+              variant="soft"
+            />
+          )}
+          <Chip
+            label={`Driver: ${network.Driver}`}
+            size="small"
+            variant="soft"
+          />
+          <Chip label={`Scope: ${network.Scope}`} size="small" variant="soft" />
+          <Chip
+            label={`Internal: ${network.Internal ? "Yes" : "No"}`}
+            size="small"
+            variant="soft"
+          />
+          <Chip
+            label={`Attachable: ${network.Attachable ? "Yes" : "No"}`}
+            size="small"
+            variant="soft"
+          />
+          <Chip
+            label={`Ingress: ${network.Ingress ? "Yes" : "No"}`}
+            size="small"
+            variant="soft"
+          />
+          <Chip
+            label={`Config only: ${network.ConfigOnly ? "Yes" : "No"}`}
+            size="small"
+            variant="soft"
+          />
+          <Chip
+            label={`IPv4: ${network.EnableIPv4 !== false ? "Yes" : "No"}`}
+            size="small"
+            variant="soft"
+          />
+          <Chip
+            label={`IPv6: ${network.EnableIPv6 ? "Yes" : "No"}`}
+            size="small"
+            variant="soft"
+          />
+        </div>
+      </div>
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Options:</b>
+        </AppTypography>
+        <div className="expand-panel__chips">
+          {Object.entries(network.Options ?? {}).length ? (
+            Object.entries(network.Options ?? {}).map(([key, value]) => (
+              <Chip
+                key={key}
+                label={`${key}: ${value}`}
+                size="small"
+                style={wrappableChipStyle}
+                labelStyle={wrappableChipLabelStyle}
+                variant="soft"
+              />
+            ))
+          ) : (
+            <AppTypography color="text.secondary" variant="body2">
+              (no options)
+            </AppTypography>
+          )}
+        </div>
+      </div>
+      {(network.IPAM?.Driver ||
+        Object.keys(network.IPAM?.Options ?? {}).length > 0) && (
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>IPAM:</b>
+          </AppTypography>
+          <div className="expand-panel__chips">
+            {network.IPAM?.Driver && (
+              <Chip
+                label={`Driver: ${network.IPAM.Driver}`}
+                size="small"
+                variant="soft"
+              />
+            )}
+            {Object.entries(network.IPAM?.Options ?? {}).map(([key, value]) => (
+              <Chip
+                key={key}
+                label={`${key}: ${value}`}
+                size="small"
+                style={wrappableChipStyle}
+                labelStyle={wrappableChipLabelStyle}
+                variant="soft"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {network.IPAM?.Config?.some(
+        (config) =>
+          config.IPRange ||
+          Object.keys(config.AuxiliaryAddresses ?? {}).length > 0,
+      ) && (
+        <div>
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>IPAM Ranges:</b>
+          </AppTypography>
+          <div className="expand-panel__chips">
+            {network.IPAM.Config.flatMap((config, index) => [
+              ...(config.IPRange
+                ? [
+                    <Chip
+                      key={`${index}-range`}
+                      label={`Range: ${config.IPRange}`}
+                      size="small"
+                      variant="soft"
+                    />,
+                  ]
+                : []),
+              ...Object.entries(config.AuxiliaryAddresses ?? {}).map(
+                ([key, value]) => (
+                  <Chip
+                    key={`${index}-${key}`}
+                    label={`${key}: ${value}`}
+                    size="small"
+                    style={wrappableChipStyle}
+                    labelStyle={wrappableChipLabelStyle}
+                    variant="soft"
+                  />
+                ),
+              ),
+            ])}
+          </div>
+        </div>
+      )}
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Labels:</b>
+        </AppTypography>
+        <div className="expand-panel__chips">
+          {Object.entries(network.Labels ?? {}).length ? (
+            Object.entries(network.Labels ?? {}).map(([key, value]) => (
+              <Chip
+                key={key}
+                label={`${key}: ${value}`}
+                size="small"
+                style={wrappableChipStyle}
+                labelStyle={wrappableChipLabelStyle}
+                variant="soft"
+              />
+            ))
+          ) : (
+            <AppTypography color="text.secondary" variant="body2">
+              (no labels)
+            </AppTypography>
+          )}
+        </div>
+      </div>
+      <div>
+        <AppTypography gutterBottom variant="subtitle2">
+          <b>Connected Containers:</b>
+        </AppTypography>
+        {Object.entries(network.Containers ?? {}).length ? (
+          <AppDataTable
+            ariaLabel="Connected containers"
+            columns={connectedContainerColumns}
+            data={Object.entries(network.Containers ?? {}).map(
+              ([id, info]) => ({
+                endpointId: info.EndpointID || "",
+                id,
+                ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
+                ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
+                mac: info.MacAddress || "-",
+                name: info.Name || "-",
+              }),
+            )}
+            density="compact"
+            fillAvailable={false}
+            getRowId={(container) => container.id}
+            maxHeight={240}
+            style={{
+              backgroundColor: alpha(
+                theme.palette.text.primary,
+                theme.palette.mode === "dark" ? 0.2 : 0.08,
+              ),
+            }}
+            variant="embedded"
+          />
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no containers)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const NetworkList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: NetworkListProps) => {
   const theme = useAppTheme();
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
+  const focusedNetworkId =
+    typeof searchParams.network === "string" ? searchParams.network : undefined;
   const { data: rawNetworks } = useSuspenseQuery({
     ...linuxio.docker.list_networks,
     ...{
@@ -369,9 +618,21 @@ const NetworkList = ({
   const networks = rawNetworks;
 
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const updateFocusedNetwork = useCallback(
+    (networkId: string | null) => {
+      void navigate({
+        to: "/docker/networks",
+        search: (previous) => ({
+          ...previous,
+          network: networkId ?? undefined,
+        }),
+      });
+    },
+    [navigate],
+  );
 
   const surface = useReorderableSurface({
     getId: getNetworkId,
@@ -385,18 +646,32 @@ const NetworkList = ({
   const filtered = surface.items.filter((net) =>
     net.Name.toLowerCase().includes(search.toLowerCase()),
   );
+  const focusedNetwork = useMemo(
+    () =>
+      surface.items.find((network) => network.Id === focusedNetworkId) ?? null,
+    [focusedNetworkId, surface.items],
+  );
 
-  // Compute effective selection - only include items that are in the filtered list
-  const effectiveSelected = useMemo(() => {
-    const filteredIds = new Set(filtered.map((n) => n.Id));
-    const result = new Set<string>();
-    selected.forEach((id) => {
-      if (filteredIds.has(id)) {
-        result.add(id);
+  useEffect(() => {
+    if (focusedNetworkId && !focusedNetwork) updateFocusedNetwork(null);
+  }, [focusedNetwork, focusedNetworkId, updateFocusedNetwork]);
+
+  useEffect(() => {
+    if (!focusedNetwork) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key !== "Escape" && event.key !== "Esc") ||
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      ) {
+        return;
       }
-    });
-    return result;
-  }, [selected, filtered]);
+      updateFocusedNetwork(null);
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusedNetwork, updateFocusedNetwork]);
 
   // Create network handler
   const handleCreateNetwork = useCallback(() => {
@@ -405,219 +680,175 @@ const NetworkList = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelected(new Set(filtered.map((n) => n.Id)));
-    } else {
-      setSelected(new Set());
-    }
-  };
-
-  const handleSelectOne = (id: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-  };
-
   const handleDeleteSuccess = () => {
-    setSelected(new Set());
+    updateFocusedNetwork(null);
   };
 
-  const selectedNetworks = filtered.filter((n) => effectiveSelected.has(n.Id));
-  const allSelected =
-    filtered.length > 0 && effectiveSelected.size === filtered.length;
-  const someSelected =
-    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
+  const handleNetworkRowClick = useCallback(
+    ({ original: network }: { original: { Id: string } }) =>
+      updateFocusedNetwork(network.Id),
+    [updateFocusedNetwork],
+  );
 
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      id: "select",
-      header: () => (
-        <AppCheckbox
-          checked={allSelected}
-          indeterminate={someSelected}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          size="small"
-        />
-      ),
-      enableSorting: false,
-      cell: ({ row }) => (
-        <AppCheckbox
-          checked={effectiveSelected.has(row.original.Id)}
-          onChange={(e) => handleSelectOne(row.original.Id, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-          size="small"
-        />
-      ),
-      meta: {
-        align: "center",
-        className: "app-vdt__cell--select",
-        getCellRenderKey: (row) => {
-          const network = row as (typeof filtered)[number];
-          return [network.Id, effectiveSelected.has(network.Id)];
-        },
-        width: "40px",
-      },
-    },
-    {
-      accessorKey: "Name",
-      header: "Network Name",
-      cell: ({ row }) => (
-        <AppTypography
-          fontWeight={500}
-          style={responsiveTextStyles}
-          variant="body2"
-        >
-          {row.original.Name}
-        </AppTypography>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "Driver",
-      header: "Driver",
-      cell: ({ row }) => (
-        <Chip
-          label={row.original.Driver}
-          size="small"
-          style={{ fontSize: "0.75rem" }}
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        width: "120px",
-      },
-    },
-    {
-      accessorKey: "Scope",
-      header: "Scope",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.Scope}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "100px",
-      },
-    },
-    {
-      accessorKey: "Internal",
-      header: "Internal",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.Internal ? "warning" : "default"}
-          label={row.original.Internal ? "Yes" : "No"}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "100px",
-      },
-    },
-    {
-      id: "features",
-      header: "Features",
-      cell: ({ row }) => {
-        const features = [
-          row.original.Attachable && "Attachable",
-          row.original.Ingress && "Ingress",
-          row.original.ConfigOnly && "Config only",
-        ].filter(Boolean);
-        return (
-          <AppTypography style={responsiveTextStyles} variant="body2">
-            {features.length > 0 ? features.join(", ") : "-"}
+  // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
+  // remounts every cell subtree on the press that arms the reorder hold.
+  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
+    () => [
+      {
+        accessorKey: "Name",
+        header: "Network Name",
+        cell: ({ row }) => (
+          <AppTypography
+            fontWeight={500}
+            style={responsiveTextStyles}
+            variant="body2"
+          >
+            {row.original.Name}
           </AppTypography>
-        );
+        ),
+        meta: { align: "left" },
       },
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "150px",
+      {
+        accessorKey: "Driver",
+        header: "Driver",
+        cell: ({ row }) => (
+          <Chip
+            label={row.original.Driver}
+            size="small"
+            style={{ fontSize: "0.75rem" }}
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          width: "120px",
+        },
       },
-    },
-    {
-      accessorKey: "Created",
-      header: "Created",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.Created
-            ? new Date(row.original.Created).toLocaleDateString()
-            : "-"}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "120px",
+      {
+        accessorKey: "Scope",
+        header: "Scope",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.Scope}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "EnableIPv4",
-      header: "IPv4",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.EnableIPv4 !== false ? "success" : "default"}
-          label={row.original.EnableIPv4 !== false ? "Yes" : "No"}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "100px",
+      {
+        accessorKey: "Internal",
+        header: "Internal",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.Internal ? "warning" : "default"}
+            label={row.original.Internal ? "Yes" : "No"}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "EnableIPv6",
-      header: "IPv6",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.EnableIPv6 ? "success" : "default"}
-          label={row.original.EnableIPv6 ? "Yes" : "No"}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "lg",
-        width: "100px",
+      {
+        id: "features",
+        header: "Features",
+        cell: ({ row }) => {
+          const features = [
+            row.original.Attachable && "Attachable",
+            row.original.Ingress && "Ingress",
+            row.original.ConfigOnly && "Config only",
+          ].filter(Boolean);
+          return (
+            <AppTypography style={responsiveTextStyles} variant="body2">
+              {features.length > 0 ? features.join(", ") : "-"}
+            </AppTypography>
+          );
+        },
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "150px",
+        },
       },
-    },
-    {
-      accessorKey: "Id",
-      header: "Network ID",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontFamily: "var(--app-font-mono)",
-            ...responsiveTextStyles,
-          }}
-          variant="body2"
-        >
-          {row.original.Id?.slice(0, 12)}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "140px",
+      {
+        accessorKey: "Created",
+        header: "Created",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.Created
+              ? new Date(row.original.Created).toLocaleDateString()
+              : "-"}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "120px",
+        },
       },
-    },
-  ];
+      {
+        accessorKey: "EnableIPv4",
+        header: "IPv4",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.EnableIPv4 !== false ? "success" : "default"}
+            label={row.original.EnableIPv4 !== false ? "Yes" : "No"}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "100px",
+        },
+      },
+      {
+        accessorKey: "EnableIPv6",
+        header: "IPv6",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.EnableIPv6 ? "success" : "default"}
+            label={row.original.EnableIPv6 ? "Yes" : "No"}
+            size="small"
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "100px",
+        },
+      },
+      {
+        accessorKey: "Id",
+        header: "Network ID",
+        cell: ({ row }) => (
+          <AppTypography
+            style={{
+              fontFamily: "var(--app-font-mono)",
+              ...responsiveTextStyles,
+            }}
+            variant="body2"
+          >
+            {row.original.Id?.slice(0, 12)}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "md",
+          width: "140px",
+        },
+      },
+    ],
+    [],
+  );
 
   return (
     <div
@@ -628,48 +859,58 @@ const NetworkList = ({
         minHeight: 0,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexShrink: 0,
-          alignItems: "center",
-          gap: theme.spacing(2),
-          flexWrap: "wrap",
-          marginBottom: theme.spacing(2),
-        }}
-      >
-        <AppSearchField
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search networks…"
-          style={{ width: 320 }}
-          value={search}
-        />
-        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
-        {effectiveSelected.size > 0 && (
-          <AppButton
-            color="error"
-            onClick={() => setDeleteDialogOpen(true)}
-            size="small"
-            startIcon={<Icon height={20} icon="mdi:delete" width={20} />}
-            variant="contained"
-          >
-            Delete ({effectiveSelected.size})
-          </AppButton>
-        )}
-      </div>
-      {viewMode === "card" ? (
+      {!focusedNetwork && (
+        <RoutedTabSearch active={search !== ""}>
+          <AppHeaderSearch
+            clearOnDocumentEscape
+            onChange={setSearch}
+            placeholder="Search networks…"
+            value={search}
+          />
+        </RoutedTabSearch>
+      )}
+      {focusedNetwork ? (
+        <DockerResourceDetailsLayout
+          onClose={() => updateFocusedNetwork(null)}
+          resourceLabel="network"
+          subtitle={`${focusedNetwork.Driver} · ${focusedNetwork.Scope}`}
+          summary={
+            <NetworkCard
+              actions={
+                <AppActionIconButton
+                  ariaLabel={`Delete network ${focusedNetwork.Name}`}
+                  color={theme.palette.error.main}
+                  icon="mdi:delete"
+                  iconSize={18}
+                  label="Delete network"
+                  onClick={() => setDeleteDialogOpen(true)}
+                />
+              }
+              network={focusedNetwork}
+              selected
+            />
+          }
+          title={focusedNetwork.Name}
+        >
+          <NetworkDetailsContent network={focusedNetwork} />
+        </DockerResourceDetailsLayout>
+      ) : viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getNetworkId}
             items={filtered}
             renderItem={(network) => (
               <NetworkCard
                 network={network}
-                onSelect={(checked) => handleSelectOne(network.Id, checked)}
-                selected={effectiveSelected.has(network.Id)}
+                onOpen={
+                  surface.editMode
+                    ? undefined
+                    : () => updateFocusedNetwork(network.Id)
+                }
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
         ) : (
@@ -693,235 +934,9 @@ const NetworkList = ({
           dnd={tableDnd}
           emptyMessage="No networks found."
           fillAvailable
-          getRowId={(network) => network.Id}
-          renderExpandedContent={({ original: network }) => (
-            <div className="expand-panel">
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Full Network ID:</b>
-                </AppTypography>
-                <AppTypography
-                  className="expand-panel__mono"
-                  style={longTextStyles}
-                  variant="body2"
-                >
-                  {network.Id}
-                </AppTypography>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Subnet(s):</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {network.IPAM?.Config && network.IPAM.Config.length > 0 ? (
-                    network.IPAM.Config.map((ipam, i) => (
-                      <Chip
-                        key={i}
-                        label={`${ipam.Subnet} / Gateway: ${ipam.Gateway}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no IPAM config)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Network Details:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {network.Created && (
-                    <Chip
-                      label={`Created: ${new Date(network.Created).toLocaleString()}`}
-                      size="small"
-                      variant="soft"
-                    />
-                  )}
-                  <Chip
-                    label={`Attachable: ${network.Attachable ? "Yes" : "No"}`}
-                    size="small"
-                    variant="soft"
-                  />
-                  <Chip
-                    label={`Ingress: ${network.Ingress ? "Yes" : "No"}`}
-                    size="small"
-                    variant="soft"
-                  />
-                  <Chip
-                    label={`Config only: ${network.ConfigOnly ? "Yes" : "No"}`}
-                    size="small"
-                    variant="soft"
-                  />
-                </div>
-              </div>
-
-              {(network.IPAM?.Driver ||
-                (network.IPAM?.Options &&
-                  Object.keys(network.IPAM.Options).length > 0)) && (
-                <div>
-                  <AppTypography gutterBottom variant="subtitle2">
-                    <b>IPAM:</b>
-                  </AppTypography>
-                  <div className="expand-panel__chips">
-                    {network.IPAM?.Driver && (
-                      <Chip
-                        label={`Driver: ${network.IPAM.Driver}`}
-                        size="small"
-                        variant="soft"
-                      />
-                    )}
-                    {Object.entries(network.IPAM?.Options ?? {}).map(
-                      ([key, value]) => (
-                        <Chip
-                          key={key}
-                          label={`${key}: ${value}`}
-                          size="small"
-                          style={wrappableChipStyle}
-                          labelStyle={wrappableChipLabelStyle}
-                          variant="soft"
-                        />
-                      ),
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {network.IPAM?.Config?.some(
-                (config) =>
-                  config.IPRange ||
-                  (config.AuxiliaryAddresses &&
-                    Object.keys(config.AuxiliaryAddresses).length > 0),
-              ) && (
-                <div>
-                  <AppTypography gutterBottom variant="subtitle2">
-                    <b>IPAM Ranges:</b>
-                  </AppTypography>
-                  <div className="expand-panel__chips">
-                    {network.IPAM.Config.flatMap((config, index) => [
-                      ...(config.IPRange
-                        ? [
-                            <Chip
-                              key={`${index}-range`}
-                              label={`Range: ${config.IPRange}`}
-                              size="small"
-                              variant="soft"
-                            />,
-                          ]
-                        : []),
-                      ...Object.entries(config.AuxiliaryAddresses ?? {}).map(
-                        ([key, value]) => (
-                          <Chip
-                            key={`${index}-${key}`}
-                            label={`${key}: ${value}`}
-                            size="small"
-                            style={wrappableChipStyle}
-                            labelStyle={wrappableChipLabelStyle}
-                            variant="soft"
-                          />
-                        ),
-                      ),
-                    ])}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Options:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {network.Options &&
-                  Object.keys(network.Options).length > 0 ? (
-                    Object.entries(network.Options).map(([key, val]) => (
-                      <Chip
-                        key={key}
-                        label={`${key}: ${val}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no options)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Labels:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {network.Labels && Object.keys(network.Labels).length > 0 ? (
-                    Object.entries(network.Labels).map(([key, val]) => (
-                      <Chip
-                        key={key}
-                        label={`${key}: ${val}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no labels)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Connected Containers:</b>
-                </AppTypography>
-                <div>
-                  {network.Containers &&
-                  Object.keys(network.Containers).length > 0 ? (
-                    <AppDataTable
-                      ariaLabel="Connected containers"
-                      columns={connectedContainerColumns}
-                      data={Object.entries(network.Containers).map(
-                        ([id, info]) => ({
-                          endpointId: info.EndpointID || "",
-                          id,
-                          ipv4: info.IPv4Address?.replace(/\/.*/, "") || "-",
-                          ipv6: info.IPv6Address?.replace(/\/.*/, "") || "-",
-                          mac: info.MacAddress || "-",
-                          name: info.Name || "-",
-                        }),
-                      )}
-                      density="compact"
-                      getRowId={(container) => container.id}
-                      maxHeight={240}
-                      style={{
-                        backgroundColor: alpha(
-                          theme.palette.text.primary,
-                          theme.palette.mode === "dark" ? 0.2 : 0.08,
-                        ),
-                      }}
-                      variant="embedded"
-                    />
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no containers)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          getRowId={getNetworkId}
+          onRowClick={surface.editMode ? undefined : handleNetworkRowClick}
+          selectedRowId={focusedNetworkId}
         />
       )}
 
@@ -932,8 +947,8 @@ const NetworkList = ({
       />
 
       <DeleteNetworkDialog
-        networkIds={selectedNetworks.map((n) => n.Id)}
-        networkNames={selectedNetworks.map((n) => n.Name)}
+        networkIds={focusedNetwork ? [focusedNetwork.Id] : []}
+        networkNames={focusedNetwork ? [focusedNetwork.Name] : []}
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}

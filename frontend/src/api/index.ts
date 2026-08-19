@@ -15,6 +15,7 @@
 export { default as linuxio } from "./generated/client";
 export {
   CACHE_TTL_MS,
+  invalidateOperationQueries,
   useCallMutation,
   type ActionConfig,
   type CallDefinition,

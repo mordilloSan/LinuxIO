@@ -1,4 +1,5 @@
 import {
+  type QueryClient,
   type QueryFunction,
   type QueryKey,
   useMutation,
@@ -119,6 +120,17 @@ export interface ActionConfig<TRequest, TResult> {
   toast?: ToastMeta;
   /** Raw TanStack mutation options; callbacks run after the config callbacks. */
   options?: MutationOptions<TRequest, TResult>;
+}
+
+/** Apply the canonical cache invalidations declared for an operation route. */
+export async function invalidateOperationQueries(
+  queryClient: QueryClient,
+  route: string,
+): Promise<void> {
+  const keys = OPERATION_QUERY_INVALIDATIONS[route] ?? [];
+  await Promise.all(
+    keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+  );
 }
 
 interface CallTarget<R extends CallRoute> {

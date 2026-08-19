@@ -6,16 +6,15 @@ import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
+import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import MetricBar from "@/components/gauge/MetricBar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
-import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
+import { CARD_PADDING_LG } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 import AppCircularProgress from "../ui/AppCircularProgress";
@@ -53,13 +52,14 @@ const resolveColor = (palette: any, path: string): string => {
 
 interface ContainerCardProps {
   actionPending?: boolean;
-  autoUpdateDisabled?: boolean;
-  autoUpdatePending?: boolean;
-  autoUpdateReason?: string;
-  autoUpdateSelected?: boolean;
+  /**
+   * One "CPU - x% · MEM - y" caption line in place of the two metric bars.
+   * For cards inside a stack band, whose chrome would otherwise make their
+   * grid row taller than a row of loose cards.
+   */
+  compactMetrics?: boolean;
   containerId: string;
   onSelect?: () => void;
-  onToggleAutoUpdate?: (name: string) => void;
   selected?: boolean;
 }
 
@@ -95,24 +95,19 @@ type ContainerCardBodyProps = Omit<ContainerCardLiveProps, "containerId"> & {
 
 const ContainerCardBody = ({
   actionPending = false,
-  autoUpdateDisabled = false,
-  autoUpdatePending = false,
-  autoUpdateReason,
-  autoUpdateSelected = false,
+  compactMetrics = false,
   container,
   onSelect,
-  onToggleAutoUpdate,
   selected,
 }: ContainerCardBodyProps) => {
   const theme = useAppTheme();
-  const toast = useScopedToast(DOCKER_TOAST_META);
+  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
 
   // dialogs
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
   const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
-  const [autoTooltipKey, setAutoTooltipKey] = useState(0);
 
   // derived
   const name = useMemo(
@@ -153,18 +148,7 @@ const ContainerCardBody = ({
       toast: DOCKER_TOAST_META,
     });
 
-  const { mutate: updateContainer, isPending: isUpdatePending } =
-    linuxio.docker.update_container.useTaskAction({
-      success: (result) => {
-        toast.success(
-          result.updated
-            ? `Container ${name} updated successfully`
-            : `Container ${name} is already up to date`,
-        );
-      },
-      error: `Failed to update container ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
+  const isUpdatePending = isUpdating(container.Id);
 
   const isActionPending =
     actionPending ||
@@ -172,7 +156,7 @@ const ContainerCardBody = ({
     isStopPending ||
     isRestartPending ||
     isRemovePending ||
-    isUpdatePending;
+    updating;
 
   const handleAction = useCallback(
     (action: "start" | "stop" | "restart" | "remove") => {
@@ -212,13 +196,8 @@ const ContainerCardBody = ({
   };
 
   const handleUpdateClick = useCallback(() => {
-    updateContainer(createDockerContainerUpdateRequest(container.Id));
-  }, [container.Id, updateContainer]);
-
-  const handleAutoUpdateClick = useCallback(() => {
-    setAutoTooltipKey((key) => key + 1);
-    onToggleAutoUpdate?.(name);
-  }, [name, onToggleAutoUpdate]);
+    startUpdate(container.Id, name);
+  }, [container.Id, name, startUpdate]);
 
   // ---- metrics ----
   const cpuPercent = container.metrics?.cpu_percent ?? 0;
@@ -228,28 +207,16 @@ const ContainerCardBody = ({
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
   const statusColor = resolveColor(theme.palette, getStatusColor(container));
-  const autoUpdateTooltip = autoUpdateDisabled
-    ? (autoUpdateReason ?? "Scheduled auto-update unavailable")
-    : autoUpdatePending
-      ? "Saving auto-update setting"
-      : autoUpdateReason
-        ? autoUpdateSelected
-          ? `${autoUpdateReason} Disable this selection to stop automatic mutation attempts.`
-          : autoUpdateReason
-        : autoUpdateSelected
-          ? "Scheduled auto-update enabled"
-          : "Scheduled auto-update disabled";
-
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        flexWrap: "wrap",
+        flexWrap: "nowrap",
         gap: 6,
         marginTop: 12,
-        minWidth: 0,
+        width: "max-content",
       }}
     >
       {container.State === "running" ? (
@@ -296,30 +263,7 @@ const ContainerCardBody = ({
           </AppButton>
         </span>
       </AppTooltip>
-      {onToggleAutoUpdate && (
-        <AppTooltip
-          arrow
-          key={`selected-${autoTooltipKey}`}
-          placement="top"
-          title={autoUpdateTooltip}
-        >
-          <span>
-            <AppActionIconButton
-              color={
-                autoUpdateSelected ? theme.palette.primary.main : undefined
-              }
-              disabled={autoUpdateDisabled || autoUpdatePending}
-              icon="mdi:timer-cog-outline"
-              iconSize={16}
-              label={autoUpdateTooltip}
-              loading={autoUpdatePending}
-              onClick={handleAutoUpdateClick}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-      )}
-      {container.updateAvailable && (
+      {container.updateAvailable && container.State === "running" && (
         <AppTooltip arrow placement="top" title="Update Container">
           <span>
             <AppButton
@@ -327,10 +271,16 @@ const ContainerCardBody = ({
               disabled={isActionPending}
               onClick={handleUpdateClick}
               size="small"
-              startIcon={<Icon height={16} icon="mdi:update" width={16} />}
+              startIcon={
+                isUpdatePending ? (
+                  <AppCircularProgress color="inherit" size={14} />
+                ) : (
+                  <Icon height={16} icon="mdi:update" width={16} />
+                )
+              }
               variant="outlined"
             >
-              Update
+              {isUpdatePending ? "Updating" : "Update"}
             </AppButton>
           </span>
         </AppTooltip>
@@ -430,6 +380,7 @@ const ContainerCardBody = ({
             onClick={onSelect}
             style={{
               alignItems: "stretch",
+              contain: "inline-size",
               color: "inherit",
               flexDirection: "column",
               justifyContent: "flex-start",
@@ -486,22 +437,33 @@ const ContainerCardBody = ({
                   >
                     {container.Image}
                   </AppTypography>
-                  {container.updateAvailable && (
-                    <Chip
-                      color="warning"
-                      label="Update available"
-                      size="small"
-                      style={{ fontSize: "0.68rem", marginTop: 4 }}
-                      variant="soft"
-                    />
-                  )}
                 </div>
               </div>
-              <StatusDot
-                color={statusColor}
-                size={8}
-                style={{ marginTop: 4 }}
-              />
+              <div
+                style={{
+                  alignItems: "center",
+                  display: "flex",
+                  gap: 4,
+                  marginTop: 4,
+                }}
+              >
+                {container.updateAvailable && (
+                  <AppTooltip arrow title="Update available">
+                    <span
+                      aria-label="Update available"
+                      role="img"
+                      style={{
+                        alignItems: "center",
+                        color: theme.palette.warning.main,
+                        display: "flex",
+                      }}
+                    >
+                      <Icon aria-hidden icon="mdi:alert" width={16} />
+                    </span>
+                  </AppTooltip>
+                )}
+                <StatusDot color={statusColor} size={8} />
+              </div>
             </div>
           </AppButton>
 
@@ -514,6 +476,7 @@ const ContainerCardBody = ({
               flexDirection: "column",
               gap: theme.spacing(1.25),
               minWidth: 0,
+              contain: "inline-size",
             }}
           >
             <ContainerInfoSections
@@ -525,12 +488,36 @@ const ContainerCardBody = ({
         </>
       ) : (
         <>
-          {/* Status dot */}
-          <StatusDot
-            absolute
-            color={statusColor}
-            tooltip={getStatusTooltip(container)}
-          />
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: 4,
+              position: "absolute",
+              right: 8,
+              top: 14,
+            }}
+          >
+            {container.updateAvailable && (
+              <AppTooltip arrow title="Update available">
+                <span
+                  aria-label="Update available"
+                  role="img"
+                  style={{
+                    alignItems: "center",
+                    color: theme.palette.warning.main,
+                    display: "flex",
+                  }}
+                >
+                  <Icon aria-hidden icon="mdi:alert" width={16} />
+                </span>
+              </AppTooltip>
+            )}
+            <StatusDot
+              color={statusColor}
+              tooltip={getStatusTooltip(container)}
+            />
+          </div>
 
           {/* Top row: Icon + Name + action icons */}
           <div
@@ -623,37 +610,14 @@ const ContainerCardBody = ({
                     />
                   </span>
                 </AppTooltip>
-                {onToggleAutoUpdate && (
-                  <AppTooltip
-                    arrow
-                    key={`compact-${autoTooltipKey}`}
-                    title={autoUpdateTooltip}
-                  >
-                    <span>
-                      <AppActionIconButton
-                        color={
-                          autoUpdateSelected
-                            ? theme.palette.primary.main
-                            : undefined
-                        }
-                        disabled={autoUpdateDisabled || autoUpdatePending}
-                        icon="mdi:timer-cog-outline"
-                        iconSize={16}
-                        label={autoUpdateTooltip}
-                        loading={autoUpdatePending}
-                        onClick={handleAutoUpdateClick}
-                        tooltip={false}
-                      />
-                    </span>
-                  </AppTooltip>
-                )}
-                {container.updateAvailable && (
+                {container.updateAvailable && container.State === "running" && (
                   <AppTooltip arrow title="Update Container">
                     <span>
                       <AppActionIconButton
                         icon="mdi:update"
                         iconSize={16}
                         label="Update Container"
+                        loading={isUpdatePending}
                         onClick={handleUpdateClick}
                         tooltip={false}
                       />
@@ -712,22 +676,67 @@ const ContainerCardBody = ({
             </div>
           </div>
 
-          {/* Metrics area: full width */}
+          {/* Metrics area: full width. Compact trades the two bars for one
+              caption line, the tooltip keeping the memory limit detail. */}
           <div style={{ marginTop: 8, width: "100%" }}>
-            <MetricBar
-              color={theme.palette.primary.main}
-              label="CPU"
-              percent={cpuPercent}
-              rightLabel={`${cpuPercent.toFixed(1)}%`}
-              tooltip="CPU Usage"
-            />
-            <MetricBar
-              color={theme.palette.primary.main}
-              label="MEM"
-              percent={memPercent}
-              rightLabel={formatFileSize(memUsage)}
-              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-            />
+            {compactMetrics ? (
+              <AppTooltip
+                title={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    width: "100%",
+                  }}
+                >
+                  <AppTypography
+                    color="text.secondary"
+                    component="div"
+                    noWrap
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                    variant="caption"
+                  >
+                    <span style={{ color: theme.palette.text.primary }}>
+                      CPU
+                    </span>
+                    {" - "}
+                    {cpuPercent.toFixed(1)}%
+                  </AppTypography>
+                  <AppTypography
+                    color="text.secondary"
+                    component="div"
+                    noWrap
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                    variant="caption"
+                  >
+                    <span style={{ color: theme.palette.text.primary }}>
+                      MEM
+                    </span>
+                    {" - "}
+                    {formatFileSize(memUsage)}
+                  </AppTypography>
+                </div>
+              </AppTooltip>
+            ) : (
+              <>
+                <MetricBar
+                  color={theme.palette.primary.main}
+                  label="CPU"
+                  percent={cpuPercent}
+                  rightLabel={`${cpuPercent.toFixed(1)}%`}
+                  tooltip="CPU Usage"
+                />
+                <MetricBar
+                  color={theme.palette.primary.main}
+                  label="MEM"
+                  percent={memPercent}
+                  rightLabel={formatFileSize(memUsage)}
+                  tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+                />
+              </>
+            )}
           </div>
         </>
       )}
@@ -737,17 +746,19 @@ const ContainerCardBody = ({
 
 const ContainerCard = ({ selected = false, ...props }: ContainerCardProps) => (
   <FrostedCard
+    accent
     hoverLift={!selected}
     style={{
-      padding: 12,
+      padding: CARD_PADDING_LG,
       display: "flex",
       flexDirection: "column",
       height: "100%",
       width: "100%",
       minWidth: 0,
       position: "relative",
-      border: "none",
-      transition: "transform 0.2s, box-shadow 0.2s",
+      // Selecting a container isolates it outside the grid, where it can no
+      // longer be held to reorder — so the line stands down with the lift.
+      ...(selected && { borderBottomColor: "transparent" }),
     }}
   >
     <ContainerCardLive {...props} selected={selected} />

@@ -15,12 +15,16 @@ export const Route = createFileRoute("/_authenticated/services/timers")({
     ...optionalString(search, "timer"),
   }),
   loaderDeps: ({ search }) => ({ timer: search.timer }),
+  context: ({ deps }) => ({
+    listQueryOptions: linuxio.systemd.list_timers,
+    selectedQueryOptions: deps.timer
+      ? linuxio.systemd.get_unit_info({ unitName: deps.timer })
+      : undefined,
+  }),
   loader: (loaderArgs) => {
-    const { deps } = loaderArgs;
-    const queries: LoaderQueryOptions[] = [linuxio.systemd.list_timers];
-    if (deps.timer) {
-      queries.push(linuxio.systemd.get_unit_info({ unitName: deps.timer }));
-    }
+    const { listQueryOptions, selectedQueryOptions } = loaderArgs.context;
+    const queries: LoaderQueryOptions[] = [listQueryOptions];
+    if (selectedQueryOptions) queries.push(selectedQueryOptions);
     return loadRouteQueries(loaderArgs, queries);
   },
   component: TimersRoute,
@@ -28,8 +32,14 @@ export const Route = createFileRoute("/_authenticated/services/timers")({
 
 function TimersRoute() {
   const search = Route.useSearch();
+  const listQueryOptions = Route.useRouteContext({
+    select: (context) => context.listQueryOptions,
+  });
+  const selectedQueryOptions = Route.useRouteContext({
+    select: (context) => context.selectedQueryOptions,
+  });
   const navigate = Route.useNavigate();
-  const [viewMode, setViewMode] = useViewMode("timers.list", "table");
+  const [viewMode, setViewMode] = useViewMode("timers.list");
   const setSelected = useCallback(
     (timer: string | null) =>
       navigate({
@@ -53,7 +63,8 @@ function TimersRoute() {
       </RoutedTabActions>
       <TimersTab
         onSelectedChange={setSelected}
-        onViewModeChange={setViewMode}
+        listQueryOptions={listQueryOptions}
+        selectedQueryOptions={selectedQueryOptions}
         selected={search.timer}
         viewMode={viewMode}
       />

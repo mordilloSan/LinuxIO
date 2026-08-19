@@ -33,17 +33,17 @@
   }
 }
 
-.app-vdt__row--reordering {
+.app-dt__row--reordering {
   cursor: grab;
 }
 
-.app-vdt__row--reordering:active {
+.app-dt__row--reordering:active {
   cursor: grabbing;
 }
 
 /* Rows cannot host an absolutely positioned ring without breaking the grid
  * template, so a held row is marked with an inset outline instead. */
-.app-vdt__row--reorder-pending {
+.app-dt__row--reorder-pending {
   outline: 2px solid var(--reorder-hold-color);
   outline-offset: -2px;
   animation: reorder-hold-row var(--reorder-hold-ms) ease-out forwards;
@@ -59,7 +59,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-vdt__row--reorder-pending {
+  .app-dt__row--reorder-pending {
     animation: none;
   }
+}
+
+/* SortableCard: drag overlay hover */
+.sc-drag-overlay:hover {
+  background-color: var(--sc-hover-bg);
+}
+
+/* dnd-kit makes every sortable card a tab stop (tabIndex 0, role button);
+   the wrapper carries the card's border radius, so the ring follows it. */
+:root[data-tab-navigation] .sortable-card:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
 }

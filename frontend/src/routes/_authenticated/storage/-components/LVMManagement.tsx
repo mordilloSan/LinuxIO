@@ -13,7 +13,7 @@ import LVMMetricCard from "@/components/cards/LVMMetricCard";
 import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -29,7 +29,8 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { GAP_SM } from "@/theme/constants";
+import { DASHBOARD_CARD_GAP, GAP_MD } from "@/theme/constants";
+import { mixWithTransparency } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
 const STORAGE_TOAST_META = {
@@ -70,7 +71,7 @@ const PANEL_ACCENTS: Record<LVMSectionId, string> = {
 const dialogStackStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  gap: GAP_MD,
   marginTop: 4,
 };
 
@@ -156,8 +157,7 @@ const CreateLVDialog = ({
                 padding: 10,
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
-                border:
-                  "1px solid color-mix(in srgb, currentColor 12%, transparent)",
+                border: `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
               }}
             >
               <AppTypography color="text.secondary" variant="caption">
@@ -258,8 +258,7 @@ const ResizeLVDialog = ({
                 padding: 10,
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
-                border:
-                  "1px solid color-mix(in srgb, currentColor 12%, transparent)",
+                border: `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
                 display: "grid",
                 gap: 4,
               }}
@@ -397,11 +396,13 @@ const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
       accessorKey: "size",
       header: "Size",
       cell: ({ row }) => formatFileSize(row.original.size),
+      meta: { align: "right" },
     },
     {
       accessorKey: "free",
       header: "Free",
       cell: ({ row }) => formatFileSize(row.original.free),
+      meta: { align: "right" },
     },
     {
       accessorKey: "format",
@@ -419,6 +420,7 @@ const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
       data={data}
       density="compact"
       emptyMessage="No physical volumes found"
+      fillAvailable={false}
       getRowId={(pv) => pv.name}
       maxHeight={320}
       variant="embedded"
@@ -440,19 +442,23 @@ const VGTable = ({ data }: { data: VolumeGroup[] }) => {
       accessorKey: "size",
       header: "Size",
       cell: ({ row }) => formatFileSize(row.original.size),
+      meta: { align: "right" },
     },
     {
       accessorKey: "free",
       header: "Free",
       cell: ({ row }) => formatFileSize(row.original.free),
+      meta: { align: "right" },
     },
     {
       accessorKey: "pvCount",
       header: "PVs",
+      meta: { align: "right" },
     },
     {
       accessorKey: "lvCount",
       header: "LVs",
+      meta: { align: "right" },
     },
   ];
 
@@ -463,6 +469,7 @@ const VGTable = ({ data }: { data: VolumeGroup[] }) => {
       data={data}
       density="compact"
       emptyMessage="No volume groups found"
+      fillAvailable={false}
       getRowId={(vg) => vg.name}
       maxHeight={320}
       variant="embedded"
@@ -474,115 +481,121 @@ interface LVTableProps {
   onDelete: (lv: LogicalVolume) => void;
   onResize: (lv: LogicalVolume) => void;
 }
-const LVTable = ({ data, onResize, onDelete }: LVTableProps) => (
-  <AppDataTable
-    ariaLabel="LVM logical volumes"
-    columns={[
-      {
-        accessorKey: "name",
-        header: "Name",
-        cell: ({ row }) => (
-          <div>
-            <AppTypography fontWeight={600} variant="body2">
-              {row.original.name}
-            </AppTypography>
-            <AppTypography
-              color="text.secondary"
-              style={monospaceStyle}
-              variant="caption"
-            >
-              {row.original.path}
-            </AppTypography>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "vgName",
-        header: "Volume Group",
-      },
-      {
-        accessorKey: "size",
-        header: "Size",
-        cell: ({ row }) => formatFileSize(row.original.size),
-      },
-      {
-        accessorKey: "mountpoint",
-        header: "Mountpoint",
-        cell: ({ row }) =>
-          row.original.mountpoint ? (
-            <AppTypography style={monospaceStyle} variant="body2">
-              {row.original.mountpoint}
-            </AppTypography>
-          ) : (
-            <Chip label="Not mounted" size="small" variant="soft" />
-          ),
-      },
-      {
-        accessorKey: "usedPct",
-        header: "Usage",
-        cell: ({ row }) =>
-          row.original.mountpoint ? (
-            <div style={{ width: 100 }}>
-              <AppLinearProgress
-                color={getUsageColor(row.original.usedPct)}
-                style={{
-                  borderRadius: 3,
-                  height: 6,
-                  marginBottom: 2,
-                }}
-                value={row.original.usedPct}
-                variant="determinate"
-              />
-              <AppTypography variant="caption">
-                {row.original.usedPct.toFixed(1)}%
-              </AppTypography>
-            </div>
-          ) : (
-            "-"
-          ),
-      },
-      {
-        id: "actions",
-        header: "Actions",
-        cell: ({ row }) => (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              justifyContent: "flex-end",
-            }}
+const LVTable = ({ data, onResize, onDelete }: LVTableProps) => {
+  const columns: AppDataTableColumnDef<LogicalVolume>[] = [
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <div>
+          <AppTypography fontWeight={600} variant="body2">
+            {row.original.name}
+          </AppTypography>
+          <AppTypography
+            color="text.secondary"
+            style={monospaceStyle}
+            variant="caption"
           >
-            <AppButton
-              onClick={() => onResize(row.original)}
-              size="small"
-              startIcon={<Icon height={18} icon="mdi:pencil" width={18} />}
-              variant="outlined"
-            >
-              Resize
-            </AppButton>
-            <AppButton
-              color="error"
-              onClick={() => onDelete(row.original)}
-              size="small"
-              startIcon={<Icon height={18} icon="mdi:delete" width={18} />}
-              variant="outlined"
-            >
-              Delete
-            </AppButton>
-          </div>
+            {row.original.path}
+          </AppTypography>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "vgName",
+      header: "Volume Group",
+    },
+    {
+      accessorKey: "size",
+      header: "Size",
+      cell: ({ row }) => formatFileSize(row.original.size),
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "mountpoint",
+      header: "Mountpoint",
+      cell: ({ row }) =>
+        row.original.mountpoint ? (
+          <AppTypography style={monospaceStyle} variant="body2">
+            {row.original.mountpoint}
+          </AppTypography>
+        ) : (
+          <Chip label="Not mounted" size="small" variant="soft" />
         ),
-        meta: { align: "right", width: "minmax(180px, 220px)" },
-      },
-    ]}
-    data={data}
-    density="compact"
-    emptyMessage="No logical volumes found"
-    getRowId={(lv) => lv.path}
-    maxHeight={360}
-    variant="embedded"
-  />
-);
+    },
+    {
+      accessorKey: "usedPct",
+      header: "Usage",
+      cell: ({ row }) =>
+        row.original.mountpoint ? (
+          <div style={{ width: 100 }}>
+            <AppLinearProgress
+              color={getUsageColor(row.original.usedPct)}
+              style={{
+                borderRadius: 3,
+                height: 6,
+                marginBottom: 2,
+              }}
+              value={row.original.usedPct}
+              variant="determinate"
+            />
+            <AppTypography variant="caption">
+              {row.original.usedPct.toFixed(1)}%
+            </AppTypography>
+          </div>
+        ) : (
+          "-"
+        ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            justifyContent: "flex-end",
+          }}
+        >
+          <AppButton
+            onClick={() => onResize(row.original)}
+            size="small"
+            startIcon={<Icon height={18} icon="mdi:pencil" width={18} />}
+            variant="outlined"
+          >
+            Resize
+          </AppButton>
+          <AppButton
+            color="error"
+            onClick={() => onDelete(row.original)}
+            size="small"
+            startIcon={<Icon height={18} icon="mdi:delete" width={18} />}
+            variant="outlined"
+          >
+            Delete
+          </AppButton>
+        </div>
+      ),
+      meta: { align: "right", width: "minmax(180px, 220px)" },
+    },
+  ];
+
+  return (
+    <AppDataTable
+      ariaLabel="LVM logical volumes"
+      columns={columns}
+      data={data}
+      density="compact"
+      emptyMessage="No logical volumes found"
+      fillAvailable={false}
+      getRowId={(lv) => lv.path}
+      maxHeight={360}
+      variant="embedded"
+    />
+  );
+};
 const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
   const [expanded, setExpanded] = useState<LVMSectionId | false>("lvs");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -632,14 +645,14 @@ const LVMManagement = ({ onMountCreateHandler }: LVMManagementProps) => {
       <div
         style={{
           display: "grid",
-          gap: GAP_SM,
+          gap: DASHBOARD_CARD_GAP,
         }}
       >
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: GAP_SM,
+            gap: DASHBOARD_CARD_GAP,
           }}
         >
           <LVMMetricCard

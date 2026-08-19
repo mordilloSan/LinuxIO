@@ -38,33 +38,42 @@ const SortableCard = ({
     isDragging,
   } = useSortable({ id, disabled });
 
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+  const holding = pending && !editMode;
+
+  const style = {
+    // Translation only: the rect-sorting strategy reassigns whole rects, and in
+    // a grid with mixed-size sortables (a stack band among cards) the scale
+    // half of that transform would squash or blow up whatever it touches. In a
+    // uniform grid the scale is 1, so dropping it changes nothing there.
+    transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    // The dragged card rides above its neighbours instead of under them.
+    zIndex: isDragging ? 5 : undefined,
     position: "relative",
     borderRadius: cardBorderRadius,
     // This wrapper sits between a stretched grid cell and a card that sizes
     // itself with height:100%. Without its own height it collapses to the
     // card's content and every card in the row stops matching its neighbours.
     height: "100%",
-  };
+    // Declared on the wrapper rather than on the ring so that whatever the card
+    // chooses to animate for the hold — the ring, its own accent line — reads
+    // the same timing and colour by inheritance.
+    "--reorder-hold-color": theme.palette.primary.main,
+    "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
+  } as CSSProperties;
 
   return (
     // The listeners live on the card itself, not just on the edit-mode overlay:
     // holding anywhere on a card is what opens layout mode in the first place.
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {pending && !editMode && (
-        <div
-          className="reorder-hold-ring"
-          style={
-            {
-              "--reorder-hold-color": theme.palette.primary.main,
-              "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
-            } as CSSProperties
-          }
-        />
-      )}
+    <div
+      className={holding ? "sortable-card sc-hold" : "sortable-card"}
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
+      {holding && <div className="reorder-hold-ring" />}
       {editMode && (
         <div
           className="sc-drag-overlay"

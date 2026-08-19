@@ -1,9 +1,10 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { memo, useMemo } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type UpdateHistoryRow } from "@/api";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -13,6 +14,11 @@ interface PackageChunkRow {
   upgrades: Array<{ package: string }>;
 }
 
+interface PackageHistoryTableProps {
+  date: string;
+  upgrades: UpdateHistoryRow["upgrades"];
+}
+
 const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   const result: T[][] = [];
   for (let i = 0; i < array.length; i += chunkSize) {
@@ -20,6 +26,71 @@ const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
   }
   return result;
 };
+
+const getPackageChunkRowId = (row: PackageChunkRow) => row.id;
+
+const PackageHistoryTable = memo(function PackageHistoryTable({
+  date,
+  upgrades,
+}: PackageHistoryTableProps) {
+  const theme = useAppTheme();
+  const data = useMemo(
+    () =>
+      chunkArray(upgrades, 5).map((chunk, index) => ({
+        id: String(index),
+        upgrades: chunk,
+      })),
+    [upgrades],
+  );
+  const columns = useMemo<AppDataTableColumnDef<PackageChunkRow>[]>(
+    () =>
+      Array.from({ length: 5 }, (_, index) => ({
+        id: `package-${index}`,
+        header: "",
+        cell: ({ row }) => {
+          const pkg = row.original.upgrades[index];
+          if (!pkg) return null;
+
+          return (
+            <span
+              style={{
+                color: "var(--app-palette-text-secondary)",
+                fontFamily: theme.typography.fontFamily,
+                fontSize: "0.85rem",
+                overflowWrap: "break-word",
+                wordBreak: "break-word",
+              }}
+            >
+              {pkg.package}
+            </span>
+          );
+        },
+        meta: { width: "20%" },
+      })),
+    [theme.typography.fontFamily],
+  );
+
+  return (
+    <>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Packages Installed:</b>
+      </AppTypography>
+      <AppDataTable
+        ariaLabel={`Packages installed on ${date}`}
+        columns={columns}
+        data={data}
+        density="compact"
+        emptyMessage="No packages recorded."
+        fillAvailable={false}
+        getRowId={getPackageChunkRowId}
+        maxHeight={260}
+        showHeader={false}
+        variant="embedded"
+      />
+    </>
+  );
+});
+
 const UpdateHistory = () => {
   const theme = useAppTheme();
   const { data: rows } = useSuspenseQuery(linuxio.updates.get_update_history);
@@ -84,33 +155,6 @@ const UpdateHistory = () => {
       },
     },
   ];
-  const packageColumns: AppDataTableColumnDef<PackageChunkRow>[] = Array.from(
-    { length: 5 },
-    (_, index) => ({
-      id: `package-${index}`,
-      header: "",
-      cell: ({ row }) => {
-        const pkg = row.original.upgrades[index];
-        if (!pkg) return null;
-
-        return (
-          <span
-            style={{
-              color: "var(--app-palette-text-secondary)",
-              fontFamily: theme.typography.fontFamily,
-              fontSize: "0.85rem",
-              overflowWrap: "break-word",
-              wordBreak: "break-word",
-            }}
-          >
-            {pkg.package}
-          </span>
-        );
-      },
-      meta: { width: "20%" },
-    }),
-  );
-
   return (
     <AppDataTable
       ariaLabel="Update history"
@@ -118,27 +162,14 @@ const UpdateHistory = () => {
       data={rows}
       emptyMessage="No update history available."
       fillAvailable
-      getRowId={(_, index) => String(index)}
+      // `date` is the backend's history-map key, so it is unique per row and
+      // stable across reloads — unlike the array index, which shifts as new
+      // entries arrive and would re-expand the wrong row.
+      getRowId={(row) => row.date}
+      getRowCanExpand={(row) => row.original.upgrades.length > 0}
+      persistExpandedKey="update-history"
       renderExpandedContent={({ original: row }) => (
-        <>
-          <AppTypography gutterBottom variant="subtitle2">
-            <b>Packages Installed:</b>
-          </AppTypography>
-          <AppDataTable
-            ariaLabel={`Packages installed on ${row.date}`}
-            columns={packageColumns}
-            data={chunkArray(row.upgrades, 5).map((upgrades, index) => ({
-              id: String(index),
-              upgrades,
-            }))}
-            density="compact"
-            emptyMessage="No packages recorded."
-            getRowId={(packageRow) => packageRow.id}
-            maxHeight={260}
-            showHeader={false}
-            variant="embedded"
-          />
-        </>
+        <PackageHistoryTable date={row.date} upgrades={row.upgrades} />
       )}
     />
   );

@@ -9,37 +9,19 @@ import {
   type MouseEvent,
 } from "react";
 
+import "@/components/filebrowser/file-listing.css";
+
 import FileIcon from "@/components/filebrowser/FileIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_SM } from "@/theme/constants";
+import {
+  getFileEntryBackground,
+  getSubtleDividerColor,
+} from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
-
-const fileCardStyles = `
-  @keyframes sizeGlow {
-    0% { opacity: 0.5; }
-    25% { opacity: 0.7; }
-    50% { opacity: 1; }
-    75% { opacity: 0.7; }
-    100% { opacity: 0.5; }
-  }
-
-  .file-card-hover:not(.file-card-disable-hover):hover {
-    transform: translateY(-2px) scale(1.01);
-  }
-`;
-
-// Inject styles
-if (
-  typeof document !== "undefined" &&
-  !document.getElementById("fileCardStyles")
-) {
-  const style = document.createElement("style");
-  style.id = "fileCardStyles";
-  style.textContent = fileCardStyles;
-  document.head.appendChild(style);
-}
 
 export interface FileCardProps {
   directorySizeError?: Error | null;
@@ -60,6 +42,7 @@ export interface FileCardProps {
   onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
   path?: string;
+  renameProgressPct?: number;
   selected?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   size?: number;
@@ -79,6 +62,7 @@ const FileCard = memo<FileCardProps>(
     isCut = false,
     isRenaming = false,
     isRenamePending = false,
+    renameProgressPct,
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
@@ -169,21 +153,14 @@ const FileCard = memo<FileCardProps>(
       return date.toLocaleDateString("en-GB");
     }, [modTime]);
 
-    const baseBg = useMemo(() => {
-      if (selected) {
-        return `color-mix(in srgb, var(--app-palette-primary-main), transparent 60%)`;
-      }
-      if (hidden) {
-        return `color-mix(in srgb, ${theme.fileBrowser.surface}, transparent 50%)`;
-      }
-      return theme.fileBrowser.surface;
-    }, [hidden, selected, theme.fileBrowser.surface]);
-
-    const baseBorderAlpha = theme.palette.mode === "dark" ? 0.15 : 0.1;
+    const baseBg = useMemo(
+      () => getFileEntryBackground(theme, { hidden, selected }),
+      [hidden, selected, theme],
+    );
 
     const baseBorderColor = useMemo(
-      () => `rgba(var(--app-palette-dividerChannel) / ${baseBorderAlpha})`,
-      [baseBorderAlpha],
+      () => getSubtleDividerColor(theme),
+      [theme],
     );
 
     const borderColor = useMemo(() => {
@@ -217,8 +194,8 @@ const FileCard = memo<FileCardProps>(
       [onDoubleClick],
     );
 
-    // Use CSS class for hover - no React state updates during hover
-    const className = `file-card-hover${disableHover ? " file-card-disable-hover" : ""}`;
+    // Use CSS classes for hover - no React state updates during hover
+    const className = `file-card hover-lift${disableHover ? " hover-lift--disabled" : ""}`;
 
     return (
       <div
@@ -232,7 +209,7 @@ const FileCard = memo<FileCardProps>(
           display: "flex",
           alignItems: "center",
           gap: theme.spacing(1.5),
-          padding: theme.spacing(1.5),
+          padding: CARD_PADDING_SM,
           border: "3px solid",
           borderColor: borderColor,
           borderRadius: 20,
@@ -244,6 +221,7 @@ const FileCard = memo<FileCardProps>(
         }}
       >
         <FileIcon
+          className="hover-lift__icon"
           filename={name}
           hidden={hidden}
           isDirectory={isDirectory}
@@ -290,7 +268,15 @@ const FileCard = memo<FileCardProps>(
                 value={renameValue}
               />
               {isRenamePending && (
-                <AppCircularProgress aria-label="Renaming" size={16} />
+                <>
+                  <AppCircularProgress aria-label="Renaming" size={16} />
+                  {/* Only slow copy-fallback renames report a percentage. */}
+                  {renameProgressPct !== undefined && (
+                    <AppTypography color="text.secondary" variant="caption">
+                      {renameProgressPct}%
+                    </AppTypography>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -350,13 +336,7 @@ const FileCard = memo<FileCardProps>(
           >
             {effectiveSizeLoading &&
             (effectiveSize === undefined || effectiveSize === 0) ? (
-              <span
-                style={{
-                  animation: "sizeGlow 2.5s infinite",
-                }}
-              >
-                —
-              </span>
+              <span className="file-size-pending">—</span>
             ) : effectiveSize !== undefined && effectiveSize !== 0 ? (
               formatFileSize(effectiveSize, 1, "")
             ) : (

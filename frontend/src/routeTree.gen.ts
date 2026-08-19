@@ -18,6 +18,7 @@ import { Route as AuthenticatedHardwareRouteRouteImport } from './routes/_authen
 import { Route as AuthenticatedLogsRouteRouteImport } from './routes/_authenticated/logs/route'
 import { Route as AuthenticatedNetworkRouteRouteImport } from './routes/_authenticated/network/route'
 import { Route as AuthenticatedServicesRouteRouteImport } from './routes/_authenticated/services/route'
+import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedSharesRouteRouteImport } from './routes/_authenticated/shares/route'
 import { Route as AuthenticatedStorageRouteRouteImport } from './routes/_authenticated/storage/route'
 import { Route as AuthenticatedTerminalRouteRouteImport } from './routes/_authenticated/terminal/route'
@@ -96,6 +97,12 @@ const AuthenticatedServicesRouteRoute =
   AuthenticatedServicesRouteRouteImport.update({
     id: '/services',
     path: '/services',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsRouteRoute =
+  AuthenticatedSettingsRouteRouteImport.update({
+    id: '/settings',
+    path: '/settings',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedSharesRouteRoute =
@@ -283,6 +290,7 @@ export interface FileRoutesByFullPath {
   '/logs': typeof AuthenticatedLogsRouteRoute
   '/network': typeof AuthenticatedNetworkRouteRoute
   '/services': typeof AuthenticatedServicesRouteRouteWithChildren
+  '/settings': typeof AuthenticatedSettingsRouteRoute
   '/shares': typeof AuthenticatedSharesRouteRouteWithChildren
   '/storage': typeof AuthenticatedStorageRouteRouteWithChildren
   '/terminal': typeof AuthenticatedTerminalRouteRoute
@@ -319,6 +327,7 @@ export interface FileRoutesByTo {
   '/hardware': typeof AuthenticatedHardwareRouteRoute
   '/logs': typeof AuthenticatedLogsRouteRoute
   '/network': typeof AuthenticatedNetworkRouteRoute
+  '/settings': typeof AuthenticatedSettingsRouteRoute
   '/terminal': typeof AuthenticatedTerminalRouteRoute
   '/wireguard': typeof AuthenticatedWireguardRouteRoute
   '/': typeof AuthenticatedIndexRoute
@@ -356,6 +365,7 @@ export interface FileRoutesById {
   '/_authenticated/logs': typeof AuthenticatedLogsRouteRoute
   '/_authenticated/network': typeof AuthenticatedNetworkRouteRoute
   '/_authenticated/services': typeof AuthenticatedServicesRouteRouteWithChildren
+  '/_authenticated/settings': typeof AuthenticatedSettingsRouteRoute
   '/_authenticated/shares': typeof AuthenticatedSharesRouteRouteWithChildren
   '/_authenticated/storage': typeof AuthenticatedStorageRouteRouteWithChildren
   '/_authenticated/terminal': typeof AuthenticatedTerminalRouteRoute
@@ -399,6 +409,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/network'
     | '/services'
+    | '/settings'
     | '/shares'
     | '/storage'
     | '/terminal'
@@ -435,6 +446,7 @@ export interface FileRouteTypes {
     | '/hardware'
     | '/logs'
     | '/network'
+    | '/settings'
     | '/terminal'
     | '/wireguard'
     | '/'
@@ -471,6 +483,7 @@ export interface FileRouteTypes {
     | '/_authenticated/logs'
     | '/_authenticated/network'
     | '/_authenticated/services'
+    | '/_authenticated/settings'
     | '/_authenticated/shares'
     | '/_authenticated/storage'
     | '/_authenticated/terminal'
@@ -572,6 +585,13 @@ declare module '@tanstack/react-router' {
       path: '/services'
       fullPath: '/services'
       preLoaderRoute: typeof AuthenticatedServicesRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/shares': {
@@ -934,6 +954,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedLogsRouteRoute: typeof AuthenticatedLogsRouteRoute
   AuthenticatedNetworkRouteRoute: typeof AuthenticatedNetworkRouteRoute
   AuthenticatedServicesRouteRoute: typeof AuthenticatedServicesRouteRouteWithChildren
+  AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRoute
   AuthenticatedSharesRouteRoute: typeof AuthenticatedSharesRouteRouteWithChildren
   AuthenticatedStorageRouteRoute: typeof AuthenticatedStorageRouteRouteWithChildren
   AuthenticatedTerminalRouteRoute: typeof AuthenticatedTerminalRouteRoute
@@ -951,6 +972,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLogsRouteRoute: AuthenticatedLogsRouteRoute,
   AuthenticatedNetworkRouteRoute: AuthenticatedNetworkRouteRoute,
   AuthenticatedServicesRouteRoute: AuthenticatedServicesRouteRouteWithChildren,
+  AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRoute,
   AuthenticatedSharesRouteRoute: AuthenticatedSharesRouteRouteWithChildren,
   AuthenticatedStorageRouteRoute: AuthenticatedStorageRouteRouteWithChildren,
   AuthenticatedTerminalRouteRoute: AuthenticatedTerminalRouteRoute,

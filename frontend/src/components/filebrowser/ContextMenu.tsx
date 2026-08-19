@@ -72,24 +72,25 @@ const ContextMenu = ({
       onClose={onClose}
       open={Boolean(anchorPosition)}
     >
-      {/* Always available actions */}
+      {/* Always available actions. Glyph sizing is app-menu.css's, which
+          normalises it across every menu, so call sites only name the icon. */}
       <AppMenuItem
         onClick={onCreateFile}
-        startAdornment={<Icon height={20} icon="mdi:file-plus" width={20} />}
+        startAdornment={<Icon icon="mdi:file-plus" />}
       >
         Create File
       </AppMenuItem>
 
       <AppMenuItem
         onClick={onCreateFolder}
-        startAdornment={<Icon height={20} icon="mdi:folder-plus" width={20} />}
+        startAdornment={<Icon icon="mdi:folder-plus" />}
       >
         Create Folder
       </AppMenuItem>
 
       <AppMenuItem
         onClick={onUpload}
-        startAdornment={<Icon height={20} icon="mdi:upload" width={20} />}
+        startAdornment={<Icon icon="mdi:upload" />}
       >
         Upload
       </AppMenuItem>
@@ -100,9 +101,7 @@ const ContextMenu = ({
       {canOpenContainingFolder && (
         <AppMenuItem
           onClick={onOpenContainingFolder}
-          startAdornment={
-            <Icon height={20} icon="mdi:folder-open" width={20} />
-          }
+          startAdornment={<Icon icon="mdi:folder-open" />}
         >
           Open Containing Folder
         </AppMenuItem>
@@ -114,7 +113,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={!hasSelection}
         onClick={onChangePermissions}
-        startAdornment={<Icon height={20} icon="mdi:shield-lock" width={20} />}
+        startAdornment={<Icon icon="mdi:shield-lock" />}
       >
         Change Permissions
       </AppMenuItem>
@@ -122,7 +121,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={!hasSelection}
         onClick={onCopy}
-        startAdornment={<Icon height={20} icon="mdi:content-copy" width={20} />}
+        startAdornment={<Icon icon="mdi:content-copy" />}
       >
         Copy
       </AppMenuItem>
@@ -130,7 +129,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={!hasSelection}
         onClick={onCut}
-        startAdornment={<Icon height={20} icon="mdi:content-cut" width={20} />}
+        startAdornment={<Icon icon="mdi:content-cut" />}
       >
         Cut
       </AppMenuItem>
@@ -138,7 +137,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={renameDisabled}
         onClick={onRename}
-        startAdornment={<Icon height={20} icon="mdi:rename-box" width={20} />}
+        startAdornment={<Icon icon="mdi:rename-box" />}
       >
         Rename
       </AppMenuItem>
@@ -146,9 +145,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={!hasClipboard}
         onClick={onPaste}
-        startAdornment={
-          <Icon height={20} icon="mdi:content-paste" width={20} />
-        }
+        startAdornment={<Icon icon="mdi:content-paste" />}
       >
         Paste
       </AppMenuItem>
@@ -158,7 +155,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={!hasSelection}
         onClick={onDownload}
-        startAdornment={<Icon height={20} icon="mdi:download" width={20} />}
+        startAdornment={<Icon icon="mdi:download" />}
       >
         Download
       </AppMenuItem>
@@ -166,7 +163,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={detailsDisabled}
         onClick={onShowDetails}
-        startAdornment={<Icon height={20} icon="mdi:eye" width={20} />}
+        startAdornment={<Icon icon="mdi:eye" />}
       >
         Show Details
       </AppMenuItem>
@@ -174,7 +171,7 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={compressDisabled}
         onClick={onCompress}
-        startAdornment={<Icon height={20} icon="mdi:archive" width={20} />}
+        startAdornment={<Icon icon="mdi:archive" />}
       >
         Compress
       </AppMenuItem>
@@ -182,17 +179,18 @@ const ContextMenu = ({
       <AppMenuItem
         disabled={extractDisabled}
         onClick={onExtract}
-        startAdornment={
-          <Icon height={20} icon="mdi:archive-arrow-up" width={20} />
-        }
+        startAdornment={<Icon icon="mdi:archive-arrow-up" />}
       >
         Extract Here
       </AppMenuItem>
 
+      <AppDivider />
+
       <AppMenuItem
+        danger
         disabled={!hasSelection}
         onClick={onDelete}
-        startAdornment={<Icon height={20} icon="mdi:delete" width={20} />}
+        startAdornment={<Icon icon="mdi:delete" />}
       >
         Delete
       </AppMenuItem>

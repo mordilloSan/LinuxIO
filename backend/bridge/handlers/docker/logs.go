@@ -54,7 +54,11 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 
 	reader, err := cli.ContainerLogs(ctx, req.ContainerID, options)
 	if err != nil {
-		slog.Error("failed to get container logs", "component", "docker", "route", routeDockerLogsFollow, "container", req.ContainerID, "error", err)
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			slog.Debug("container log stream canceled", "component", "docker", "route", routeDockerLogsFollow, "container", req.ContainerID, "error", err)
+		} else {
+			slog.Error("failed to get container logs", "component", "docker", "route", routeDockerLogsFollow, "container", req.ContainerID, "error", err)
+		}
 		return writeDockerLogErrorUnlessCanceled(ctx, stream, err)
 	}
 	defer reader.Close()

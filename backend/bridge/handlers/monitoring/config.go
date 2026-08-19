@@ -44,7 +44,7 @@ func patchIsEmpty(patch apischema.MonitoringConfigPatch) bool {
 	return patch.CollectorInterval == nil &&
 		patch.SmartRefreshInterval == nil &&
 		patch.History == nil &&
-		len(patch.CacheTTL) == 0 &&
+		patch.HistoryRetention == nil &&
 		patch.AllowRemoteCommands == nil &&
 		len(patch.Listeners) == 0
 }

@@ -30,9 +30,6 @@ export const formatNumericSensorValue = (
   unit: string,
 ): string => {
   const normalizedUnit = unit.toLowerCase();
-  if (normalizedUnit === "rpm")
-    return value > 0 ? `${Math.round(value)} RPM` : "Off";
-
   let digits = 2;
   if (normalizedUnit === "c" || normalizedUnit === "°c") digits = 1;
   if (normalizedUnit === "%") digits = 1;
@@ -45,4 +42,28 @@ export const formatNumericSensorValue = (
 export const isPrimarySensorReading = (reading: SensorReading): boolean => {
   const { suffix } = getSensorLabelMeta(reading.label);
   return suffix === null || suffix === "input";
+};
+
+/* RPM channels that have read above 0 at least once this session, keyed by
+   adapter + label. Some drivers expose fan inputs that never report — hp_wmi
+   on the HP 15s reads a constant 0 — and a channel that has never moved is
+   "no data", not a stopped fan. Only a channel that has proven it can report
+   renders 0 as "Off"; the rest show "—". The latch is monotonic, so
+   re-renders and refetches only ever widen it. */
+const liveFanChannels = new Set<string>();
+
+export const observeFanChannel = (
+  adapter: string,
+  reading: SensorReading,
+): boolean => {
+  if (reading.value > 0) liveFanChannels.add(`${adapter}:${reading.label}`);
+  return liveFanChannels.has(`${adapter}:${reading.label}`);
+};
+
+export const formatFanSensorValue = (
+  value: number,
+  hasReported: boolean,
+): string => {
+  if (value > 0) return `${Math.round(value)} RPM`;
+  return hasReported ? "Off" : "—";
 };

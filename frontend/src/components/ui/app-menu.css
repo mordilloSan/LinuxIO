@@ -1,25 +1,50 @@
-.app-menu {
+/* A menu's paper is concentric with its rows: 5px of padding around a 7px
+   item corner wants 12px here, between the tooltip-scale 8px and the 16px a
+   full panel takes. */
+.app-popover__paper.app-menu {
   min-width: 160px;
-  padding: 6px;
-  border: none;
+  padding: 5px;
+  border-radius: 12px;
 }
 
 .app-menu__content {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
+.app-mobile-actions-menu {
+  display: flex;
+  flex-direction: row;
+}
+
+.app-mobile-actions-menu > div {
+  display: flex;
+}
+
+/* Group separators run the full width of the paper, back out through its
+   padding, and take their breathing room from their own margin rather than
+   from the row gap. */
+.app-menu__content .app-divider {
+  margin: 4px -5px;
+}
+
+/* Menus are dense by nature, so a row sizes its own text instead of
+   inheriting the 16px body size — a right-click menu of a dozen entries reads
+   as a page of buttons at that size. */
 .app-menu__item {
   display: flex;
   align-items: center;
   width: 100%;
   border: 0;
-  border-radius: 10px;
+  border-radius: 7px;
   background: transparent;
   color: inherit;
-  padding: 9px 12px;
-  font: inherit;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.45;
   text-align: left;
   cursor: pointer;
   transition:
@@ -34,12 +59,27 @@
 }
 
 .app-menu__item:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .app-menu__item--selected {
   background: var(--app-palette-action-selected);
+}
+
+/* Destructive entries read as destructive before they are pointed at, and
+   tint their hover surface instead of taking the neutral one. */
+.app-menu__item--danger {
+  color: var(--app-palette-error-main);
+}
+
+.app-menu__item--danger:hover,
+.app-menu__item--danger:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--app-palette-error-main) 14%,
+    transparent
+  );
 }
 
 .app-menu__item-start,
@@ -50,9 +90,26 @@
   flex-shrink: 0;
 }
 
+/* The glyph sits back from the label until the row is pointed at. Opacity
+   rather than color, so a danger row's icon stays red throughout. */
 .app-menu__item-start {
-  width: 20px;
+  width: 16px;
   margin-right: 10px;
+  opacity: 0.75;
+  transition: opacity 120ms ease;
+}
+
+.app-menu__item:hover .app-menu__item-start,
+.app-menu__item:focus-visible .app-menu__item-start {
+  opacity: 1;
+}
+
+/* Overrides the width/height attributes Iconify renders, so every menu's
+   glyphs come out one size whatever each call site passed. */
+.app-menu__item-start svg,
+.app-menu__item-end svg {
+  width: 16px;
+  height: 16px;
 }
 
 .app-menu__item-label {

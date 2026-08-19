@@ -1,0 +1,242 @@
+/* The app-dt__* classes and --app-dt-* custom properties: table chrome,
+   header, cells, and rows. Loaded by AppDataTable. */
+
+.app-dt {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  background-color: transparent;
+}
+
+.app-dt--fill {
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.app-dt__head {
+  display: grid;
+  flex: 0 0 auto;
+  min-width: 100%;
+}
+
+.app-dt__scroll {
+  flex: 1 1 auto;
+  min-width: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.app-dt__body {
+  position: relative;
+  min-width: 100%;
+}
+
+/* Adjacent rows may form one sortable entry (a Docker stack, for example).
+   The wrapper owns the DnD transform while each child remains an ordinary
+   grid row, so column tracks and row surfaces stay unchanged. */
+.app-dt__sortable-group {
+  position: relative;
+  width: 100%;
+  min-width: 100%;
+}
+
+.app-dt__row {
+  --app-dt-row-bg: transparent;
+  display: grid;
+  grid-template-columns: var(--app-dt-grid);
+  min-height: var(--app-dt-row-min-height);
+  min-width: 100%;
+  color: inherit;
+  background-color: var(--app-dt-row-bg);
+}
+
+.app-dt__row--head {
+  --app-dt-row-bg: var(--app-dt-head-bg);
+}
+
+.app-dt__row--body {
+  transition: background-color var(--hover-lift-duration) var(--hover-lift-ease);
+}
+
+.app-dt__row--alt {
+  --app-dt-row-bg: var(--app-dt-alt-bg);
+}
+
+.app-dt__row--selected {
+  --app-dt-row-bg: var(--app-dt-selected-bg);
+}
+
+.app-dt__row--interactive {
+  cursor: pointer;
+}
+
+/* Brightening the row's own surface keeps zebra striping and selection legible
+   underneath the hover, and keeps hovering from reading as selecting — a tinted
+   hover is hard to tell from the primary-tinted selected state. */
+.app-dt__row--interactive:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--app-dt-row-bg),
+    var(--app-palette-text-primary) 7%
+  );
+}
+
+.app-dt__virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  min-width: 100%;
+}
+
+.app-dt__cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px 16px;
+  font-size: 0.8125rem;
+  line-height: 1.43;
+  color: inherit;
+}
+
+.app-dt--compact .app-dt__cell {
+  padding: 4px 16px;
+}
+
+.app-dt__cell.app-dt__cell--select {
+  overflow: visible;
+  padding-inline: 3px;
+}
+
+.app-dt__cell > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-dt__cell--head {
+  font-weight: 500;
+  line-height: 1.5rem;
+}
+
+.app-dt__cell--expand {
+  justify-content: center;
+  padding-inline: 4px;
+}
+
+.app-dt__cell--drag {
+  justify-content: center;
+  padding-inline: 4px;
+}
+
+.app-dt__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-palette-text-disabled);
+  cursor: grab;
+  touch-action: none;
+}
+
+.app-dt__drag-handle:active {
+  cursor: grabbing;
+}
+
+/* dnd-kit puts the handle in the tab order (tabIndex 0). */
+:root[data-tab-navigation] .app-dt__drag-handle:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+.app-dt__sort-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: inherit;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+:root[data-tab-navigation] .app-dt__sort-button:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+.app-dt__sort-button svg {
+  color: var(--app-palette-text-secondary);
+  opacity: 0.72;
+}
+
+.app-dt__sort-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-dt__detail {
+  overflow: hidden;
+}
+
+.app-dt__detail-cell {
+  padding: 10px 16px;
+  overflow-x: auto;
+}
+
+.app-dt--compact .app-dt__detail-cell {
+  padding: 6px 16px;
+}
+
+/* Shared shape for the detail panels rendered into `renderExpandedContent`. */
+
+.expand-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.expand-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.expand-panel__mono {
+  font-family: var(--app-font-mono);
+  font-size: 0.85rem;
+}
+
+.app-dt__empty {
+  padding-block: 32px;
+  text-align: center;
+}
+
+.app-dt--compact .app-dt__empty {
+  padding-block: 16px;
+}
+
+@media (max-width: 599.95px) {
+  .app-dt__cell {
+    padding: 8px 4px;
+    font-size: 0.75rem;
+  }
+
+  .app-dt--compact .app-dt__cell {
+    padding: 6px 4px;
+  }
+
+  .app-dt__cell--expand {
+    padding-inline: 2px;
+  }
+}

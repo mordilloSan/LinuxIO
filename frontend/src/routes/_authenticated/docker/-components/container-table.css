@@ -45,7 +45,8 @@
 }
 
 .container-table__stack-toggle:hover,
-.container-table__stack-toggle:focus-visible {
+:root[data-tab-navigation]
+  .container-table__stack-toggle:focus-visible {
   color: var(--app-palette-text-primary);
 }
 
@@ -95,4 +96,127 @@
 /* Second tooltip line: the action, subordinate to the status above it. */
 .container-table__update-hint {
   opacity: 0.7;
+}
+
+/* The header remains a normal table row. Only its members form a quiet group:
+   clipping the painted rows at the card edge leaves their grid
+   boxes (and therefore every column/action alignment) completely unchanged. */
+.app-dt__row.container-table__stack-member-row {
+  --container-table-stack-card-gap: 8px;
+  --container-table-stack-border: var(--app-palette-divider);
+
+  position: relative;
+  clip-path: inset(0 0 0 var(--container-table-stack-card-gap));
+}
+
+.app-dt__row.container-table__stack-member-row::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 0 var(--container-table-stack-card-gap);
+  border-inline-start: 1px solid var(--container-table-stack-border);
+  content: "";
+  pointer-events: none;
+}
+
+.app-dt__row.container-table__stack-member-row--first {
+  clip-path: inset(
+    var(--container-table-stack-card-gap)
+      0 0 var(--container-table-stack-card-gap) round 16px 0 0 0
+  );
+}
+
+.app-dt__row.container-table__stack-member-row--first::before {
+  inset-block-start: var(--container-table-stack-card-gap);
+  border-block-start: 1px solid var(--container-table-stack-border);
+  border-radius: 16px 0 0 0;
+}
+
+.app-dt__row.container-table__stack-member-row--last {
+  clip-path: inset(
+    0 0 var(--container-table-stack-card-gap)
+      var(--container-table-stack-card-gap) round 0 0 0 16px
+  );
+}
+
+.app-dt__row.container-table__stack-member-row--last::before {
+  inset-block-end: var(--container-table-stack-card-gap);
+  border-block-end: 1px solid var(--container-table-stack-border);
+  border-radius: 0 0 0 16px;
+}
+
+.app-dt__row.container-table__stack-member-row > .app-dt__cell {
+  position: relative;
+  z-index: 1;
+}
+
+/* Only the member name cell moves inward: that makes the hierarchy readable
+   without disturbing the grid's other columns or the aligned action strip. */
+.container-table__stack-member-row > .app-dt__cell:first-child {
+  padding-inline-start: 32px;
+}
+
+/* The header's single cell spans every column of the row grid. Its minimum
+   matches the three-line port/volume reserve in ordinary rows, keeping the
+   group rhythm stable even though its own label is only one line. */
+.container-table__stack-group-cell {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 66px;
+  min-width: 0;
+  /* The action cell ends with 8px padding; the chevron button adds 2px around
+     its 18px glyph, so the group cell needs 10px here for glyph alignment. */
+  padding-inline-end: 10px;
+}
+
+.container-table__stack-group-drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  /* Reclaims the normal cell padding so this real handle occupies the same
+     leading grid slot as a regular reorderable row. */
+  margin-inline-start: -16px;
+  margin-inline-end: 8px;
+}
+
+.container-table__stack-group-icon {
+  flex-shrink: 0;
+  color: var(--app-palette-text-secondary);
+  /* Shift the marker left without moving the following project image off the
+     member-row icon line. */
+  margin-inline: -2px 0;
+}
+
+/* The whole row toggles the stack; this button is the keyboard's way in. */
+.container-table__stack-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--app-palette-text-secondary);
+  cursor: pointer;
+}
+
+.container-table__stack-group-toggle:hover,
+:root[data-tab-navigation]
+  .container-table__stack-group-toggle:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+:root[data-tab-navigation]
+  .container-table__stack-group-toggle:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 1px;
+}
+
+.container-table__stack-group-toggle[aria-expanded="true"]
+  .container-table__stack-chevron {
+  transform: rotate(180deg);
 }

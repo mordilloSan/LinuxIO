@@ -42,6 +42,13 @@ import { readConfigCache, writeConfigCache } from "@/utils/configCache";
 
 type AppViewModes = Record<string, TableCardViewMode>;
 
+const DEFAULT_DOCK_ACCENT_GRADIENT = {
+  startColor: "",
+  endColor: "",
+  rangeStart: 0,
+  rangeEnd: 100,
+} as const;
+
 const isTableCardViewMode = (mode: unknown): mode is TableCardViewMode =>
   mode === "card" || mode === "table";
 
@@ -108,6 +115,9 @@ const defaultConfig: AppConfig = {
     primaryColor: "#2196f3",
     themeColors: defaultThemeColors,
     sidebarCollapsed: false,
+    navigationMode: "sidebar",
+    dockTileColors: "accent",
+    dockAccentGradient: { ...DEFAULT_DOCK_ACCENT_GRADIENT },
     showHiddenFiles: true,
     hiddenCards: [],
     dockerDashboardSections: {
@@ -223,6 +233,14 @@ const applyDefaults = (
       ),
       sidebarCollapsed:
         app.sidebarCollapsed ?? defaultConfig.appSettings.sidebarCollapsed,
+      navigationMode:
+        app.navigationMode ?? defaultConfig.appSettings.navigationMode,
+      dockTileColors:
+        app.dockTileColors ?? defaultConfig.appSettings.dockTileColors,
+      dockAccentGradient: {
+        ...DEFAULT_DOCK_ACCENT_GRADIENT,
+        ...app.dockAccentGradient,
+      },
       showHiddenFiles:
         app.showHiddenFiles ?? defaultConfig.appSettings.showHiddenFiles,
       hiddenCards:
@@ -239,6 +257,8 @@ const applyDefaults = (
         cloneHardwareSections(defaultConfig.appSettings.hardwareSections),
       viewModes,
       chunkSizeMB: app.chunkSizeMB ?? defaultConfig.appSettings.chunkSizeMB,
+      // Absent means "frontend default"; the terminal owns that constant.
+      terminalFontSize: app.terminalFontSize,
     },
     docker: {
       folders:
@@ -289,6 +309,9 @@ const mergeConfig = (prev: AppConfig, patch: ConfigPatch): AppConfig => {
   // update; keep the previous object when the patch didn't touch it.
   if (!patch.appSettings || !("themeColors" in patch.appSettings)) {
     next.appSettings.themeColors = prev.appSettings.themeColors;
+  }
+  if (!patch.appSettings || !("dockAccentGradient" in patch.appSettings)) {
+    next.appSettings.dockAccentGradient = prev.appSettings.dockAccentGradient;
   }
   return next;
 };
@@ -358,54 +381,58 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       // disabled forever.
       if (!isMuxOpen) return;
 
-      try {
-        if (readConfigCache(username)) {
-          setCanSave(true);
-          setLoaded(true);
-          return;
-        }
+      const loadConfig = async () => {
+        try {
+          if (readConfigCache(username)) {
+            setCanSave(true);
+            setLoaded(true);
+            return;
+          }
 
-        const settings = await queryClient.fetchQuery({
-          ...linuxio.config.get,
-          staleTime: CACHE_TTL_MS.NONE,
-        });
+          const settings = await queryClient.fetchQuery({
+            ...linuxio.config.get,
+            staleTime: CACHE_TTL_MS.NONE,
+          });
 
-        if (!cancelled) {
-          const nextConfig = applyDefaults(settings);
-          setConfig(nextConfig);
-          writeConfigCache(username, nextConfig);
-          setCanSave(true); // Successfully loaded from backend, allow saves
-          setLoaded(true);
-        }
-      } catch (error: unknown) {
-        if (cancelled) return;
+          if (!cancelled) {
+            const nextConfig = applyDefaults(settings);
+            setConfig(nextConfig);
+            writeConfigCache(username, nextConfig);
+            setCanSave(true); // Successfully loaded from backend, allow saves
+            setLoaded(true);
+          }
+        } catch (error: unknown) {
+          if (cancelled) return;
 
-        // Don't treat stream errors as auth errors - just use defaults
-        if (error instanceof LinuxIOError && error.code === 503) {
-          console.warn("Stream API unavailable, using default config");
+          // Don't treat stream errors as auth errors - just use defaults
+          if (error instanceof LinuxIOError && error.code === 503) {
+            console.warn("Stream API unavailable, using default config");
+            setLoaded(true);
+            // canSave stays false
+            return;
+          }
+
+          // Only treat actual auth errors (401/403) as session expired
+          const code = error instanceof LinuxIOError ? error.code : 500;
+          if (code === 401 || code === 403) {
+            // Involuntary expiry during config load: preserve the path, notify,
+            // and sign out locally (same handling as a dropped auth socket).
+            sessionExpired();
+            return;
+          }
+
+          // For other errors, just log and use defaults
+          console.error("Failed to load config:", error);
           setLoaded(true);
           // canSave stays false
-          return;
         }
+      };
 
-        // Only treat actual auth errors (401/403) as session expired
-        const code = error instanceof LinuxIOError ? error.code : 500;
-        if (code === 401 || code === 403) {
-          // Involuntary expiry during config load: preserve the path, notify,
-          // and sign out locally (same handling as a dropped auth socket).
-          sessionExpired();
-          return;
-        }
-
-        // For other errors, just log and use defaults
-        console.error("Failed to load config:", error);
-        setLoaded(true);
-        // canSave stays false
-      } finally {
+      await loadConfig().finally(() => {
         // The load settled one way or another; the give-up fallback must not
         // fire later and warn about a mux that is actually up.
         clearTimeout(giveUp);
-      }
+      });
     };
 
     // Async config load (mux-gated, query-cache fetcher), not a synchronous

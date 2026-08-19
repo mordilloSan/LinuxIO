@@ -21,10 +21,8 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type {
-  AppDataTableColumnDef,
-  AppDataTableProps,
-} from "@/components/tables/AppDataTable";
+import type { AppDataTableProps } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -40,6 +38,7 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import HeaderActions from "@/components/ui/HeaderActions";
 import PathPickerField from "@/components/ui/PathPickerField";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -47,6 +46,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
+import { CARD_GRID_SIZE_DENSE, GAP_LG, GAP_XL } from "@/theme/constants";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import {
@@ -1060,7 +1060,7 @@ function renderExpandedContent(
   setDeletingNFS: (share: NFSExport | null) => void,
 ): ReactNode {
   return (
-    <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: GAP_XL, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 280 }}>
         <AppTypography gutterBottom variant="subtitle2">
           <strong>Share Details:</strong>
@@ -1158,7 +1158,7 @@ function renderExpandedContent(
 }
 
 const SharesPage = () => {
-  const [viewMode, setViewMode] = useViewMode("shares", "table");
+  const [viewMode, setViewMode] = useViewMode("shares");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
@@ -1204,20 +1204,24 @@ const SharesPage = () => {
   );
 
   const sharesActions = (
-    <>
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={setViewMode}
-        viewMode={viewMode}
-      />
-      <AppActionIconButton
-        ariaLabel="Add Share"
-        icon="mdi:plus"
-        iconSize={20}
-        label="Add Share"
-        onClick={() => setCreateDialogOpen(true)}
-      />
-    </>
+    <HeaderActions
+      create={
+        <AppActionIconButton
+          ariaLabel="Add Share"
+          icon="mdi:plus"
+          iconSize={20}
+          label="Add Share"
+          onClick={() => setCreateDialogOpen(true)}
+        />
+      }
+      view={
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setViewMode}
+          viewMode={viewMode}
+        />
+      }
+    />
   );
 
   const content = (
@@ -1225,7 +1229,7 @@ const SharesPage = () => {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 16,
+        gap: GAP_LG,
         height: "100%",
         minHeight: 0,
       }}
@@ -1233,6 +1237,7 @@ const SharesPage = () => {
       {viewMode === "card" ? (
         shareGroups.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getShareGroupId}
             renderItem={(group) => (
               <FolderShareCard
@@ -1250,7 +1255,7 @@ const SharesPage = () => {
                 protocolSummary={renderProtocolSummary(group)}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+            size={CARD_GRID_SIZE_DENSE}
             surface={sharesSurface}
           />
         ) : (
@@ -1269,6 +1274,7 @@ const SharesPage = () => {
           emptyMessage="No shares configured. Add a folder share to get started."
           fillAvailable
           getRowId={getShareGroupId}
+          persistExpandedKey="folder-shares"
           renderExpandedContent={renderShareExpandedContent}
         />
       )}
@@ -1280,7 +1286,7 @@ const SharesPage = () => {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 16,
+        gap: GAP_LG,
         height: "100%",
         minHeight: 0,
       }}

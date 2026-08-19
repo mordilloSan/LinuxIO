@@ -24,7 +24,7 @@
 .app-select__input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, currentColor 23%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor, transparent 77%);
   border-radius: 4px;
   background-color: transparent;
   color: inherit;
@@ -53,7 +53,7 @@
 }
 
 .app-select__input--open,
-.app-select__input:focus-visible {
+:root[data-tab-navigation] .app-select__input:focus-visible {
   border-color: var(--app-palette-primary-main);
   border-width: 2px;
   padding: 15.5px 35px 15.5px 13px;
@@ -73,7 +73,9 @@
 }
 
 .app-select--small .app-select__input--open,
-.app-select--small .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--small
+  .app-select__input:focus-visible {
   padding: 7.5px 35px 7.5px 13px;
 }
 
@@ -108,7 +110,7 @@
 
 .app-select--standard .app-select__input {
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 42%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, currentColor, transparent 58%);
   border-radius: 0;
   padding: 4px 24px 5px 0;
 }
@@ -118,7 +120,9 @@
   border-bottom-color: currentColor;
 }
 
-.app-select--standard .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--standard
+  .app-select__input:focus-visible {
   border: none;
   border-bottom: 2px solid var(--app-palette-primary-main);
   padding-left: 0;
@@ -126,7 +130,9 @@
   padding-bottom: 4px;
 }
 
-.app-select--standard.app-select--small .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--standard.app-select--small
+  .app-select__input:focus-visible {
   padding-bottom: 4px;
 }
 
@@ -140,12 +146,20 @@
   border-bottom: none !important;
 }
 
-.app-select--no-underline .app-select__input:focus-visible {
+/* No underline to repaint on focus, so this variant gets the standard ring —
+   without it keyboard focus on the inline sort selects is invisible. */
+:root[data-tab-navigation]
+  .app-select--no-underline
+  .app-select__input:focus-visible {
   border-bottom: none !important;
   padding-bottom: 5px;
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
 }
 
-.app-select--small.app-select--no-underline .app-select__input:focus-visible {
+:root[data-tab-navigation]
+  .app-select--small.app-select--no-underline
+  .app-select__input:focus-visible {
   padding-bottom: 5px;
 }
 
@@ -154,7 +168,8 @@
   padding: 0 1.5em 0 0;
 }
 
-.app-select--standard.app-select--no-underline
+:root[data-tab-navigation]
+  .app-select--standard.app-select--no-underline
   .app-select__input:focus-visible {
   padding: 0 1.5em 0 0;
 }
@@ -192,15 +207,12 @@
 .app-select__dropdown--portal {
   position: fixed;
   z-index: 1300;
-  background-color: color-mix(in srgb, var(--app-palette-background-paper) 78%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-background-paper), transparent 22%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor, transparent 88%);
   border-radius: 8px;
-  box-shadow:
-    0px 5px 5px -3px rgba(0, 0, 0, 0.2),
-    0px 8px 10px 1px rgba(0, 0, 0, 0.14),
-    0px 3px 14px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--app-elevation-8);
   padding: 8px 0;
   overflow-y: auto;
   max-height: 300px;
@@ -214,7 +226,7 @@
   gap: 8px;
   padding: 6px 16px;
   font-family: inherit;
-  font-size: var(--app-select-option-font-size, inherit);
+  font-size: inherit;
   color: var(--app-palette-text-primary);
   cursor: pointer;
   white-space: nowrap;
@@ -222,15 +234,15 @@
 }
 
 .app-select__option:hover:not(.app-select__option--disabled) {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main) 12%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 88%);
 }
 
 .app-select__option--selected {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main) 20%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 80%);
 }
 
 .app-select__option--selected:hover:not(.app-select__option--disabled) {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main) 28%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 72%);
 }
 
 .app-select__option--disabled {

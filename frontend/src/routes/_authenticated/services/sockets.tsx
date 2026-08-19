@@ -15,12 +15,16 @@ export const Route = createFileRoute("/_authenticated/services/sockets")({
     ...optionalString(search, "socket"),
   }),
   loaderDeps: ({ search }) => ({ socket: search.socket }),
+  context: ({ deps }) => ({
+    listQueryOptions: linuxio.systemd.list_sockets,
+    selectedQueryOptions: deps.socket
+      ? linuxio.systemd.get_unit_info({ unitName: deps.socket })
+      : undefined,
+  }),
   loader: (loaderArgs) => {
-    const { deps } = loaderArgs;
-    const queries: LoaderQueryOptions[] = [linuxio.systemd.list_sockets];
-    if (deps.socket) {
-      queries.push(linuxio.systemd.get_unit_info({ unitName: deps.socket }));
-    }
+    const { listQueryOptions, selectedQueryOptions } = loaderArgs.context;
+    const queries: LoaderQueryOptions[] = [listQueryOptions];
+    if (selectedQueryOptions) queries.push(selectedQueryOptions);
     return loadRouteQueries(loaderArgs, queries);
   },
   component: SocketsRoute,
@@ -28,8 +32,14 @@ export const Route = createFileRoute("/_authenticated/services/sockets")({
 
 function SocketsRoute() {
   const search = Route.useSearch();
+  const listQueryOptions = Route.useRouteContext({
+    select: (context) => context.listQueryOptions,
+  });
+  const selectedQueryOptions = Route.useRouteContext({
+    select: (context) => context.selectedQueryOptions,
+  });
   const navigate = Route.useNavigate();
-  const [viewMode, setViewMode] = useViewMode("sockets.list", "table");
+  const [viewMode, setViewMode] = useViewMode("sockets.list");
   const setSelected = useCallback(
     (socket: string | null) =>
       navigate({
@@ -53,7 +63,8 @@ function SocketsRoute() {
       </RoutedTabActions>
       <SocketsTab
         onSelectedChange={setSelected}
-        onViewModeChange={setViewMode}
+        listQueryOptions={listQueryOptions}
+        selectedQueryOptions={selectedQueryOptions}
         selected={search.socket}
         viewMode={viewMode}
       />

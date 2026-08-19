@@ -1,6 +1,10 @@
-import { memo, type DragEventHandler, type MouseEventHandler } from "react";
+import {
+  memo,
+  type DragEventHandler,
+  type MouseEventHandler,
+  type ReactNode,
+} from "react";
 
-import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
@@ -62,6 +66,7 @@ export interface FileBrowserListingProps {
   onStartRename: () => void;
   renamingPath: string | null;
   renamePendingPath?: string | null;
+  renameProgressPct?: number;
   selectedPaths: Set<string>;
   showHiddenFiles: boolean;
   sortField: SortField;
@@ -75,6 +80,7 @@ export interface FileBrowserFileProps {
 }
 
 export interface FileBrowserContentProps {
+  breadcrumbs: ReactNode;
   chrome: FileBrowserChromeProps;
   data: FileBrowserDataProps;
   file: FileBrowserFileProps;
@@ -83,6 +89,7 @@ export interface FileBrowserContentProps {
 }
 
 const FileBrowserContent = ({
+  breadcrumbs,
   chrome,
   data,
   file,
@@ -110,6 +117,7 @@ const FileBrowserContent = ({
     >
       {!chrome.editingPath && (
         <FileBrowserHeader
+          breadcrumbs={breadcrumbs}
           isSaving={chrome.isSavingFile}
           onSearchChange={chrome.onSearchChange}
           onSwitchView={chrome.onSwitchView}
@@ -134,21 +142,12 @@ const FileBrowserContent = ({
           flexDirection: "column",
         }}
       >
-        {!chrome.editingPath && (
-          <>
-            <BreadcrumbsNav
-              onNavigate={chrome.onOpenDirectory}
-              path={chrome.normalizedPath}
-            />
-
-            {data.resource?.type === "directory" && (
-              <SortBar
-                onSortChange={chrome.onSortChange}
-                sortField={listing.sortField}
-                sortOrder={chrome.sortOrder}
-              />
-            )}
-          </>
+        {!chrome.editingPath && data.resource?.type === "directory" && (
+          <SortBar
+            onSortChange={chrome.onSortChange}
+            sortField={listing.sortField}
+            sortOrder={chrome.sortOrder}
+          />
         )}
         <div
           style={{
@@ -168,6 +167,8 @@ const FileBrowserContent = ({
             data.filteredResource &&
             data.filteredResource.type === "directory" && (
               <DirectoryListing
+                // A directory is a lifecycle boundary: reset scroll, focus and
+                // range-selection anchors, marquee state, and measured rows.
                 cutPaths={listing.cutPaths}
                 isContextMenuOpen={listing.contextMenuOpen}
                 key={chrome.normalizedPath}
@@ -180,6 +181,7 @@ const FileBrowserContent = ({
                 onStartRename={listing.onStartRename}
                 renamingPath={listing.renamingPath}
                 renamePendingPath={listing.renamePendingPath}
+                renameProgressPct={listing.renameProgressPct}
                 resource={data.filteredResource}
                 selectedPaths={listing.selectedPaths}
                 showHiddenFiles={listing.showHiddenFiles}

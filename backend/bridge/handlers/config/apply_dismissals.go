@@ -3,10 +3,11 @@ package config
 import (
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func applyDismissalsUpdate(dismissals **bridgeconfig.PersistedDismissals, payload *configDismissalsPayload) {
+func applyDismissalsUpdate(dismissals **bridgeconfig.PersistedDismissals, payload *apischema.ConfigDismissalsPayload) {
 	if *dismissals == nil {
 		*dismissals = &bridgeconfig.PersistedDismissals{}
 	}

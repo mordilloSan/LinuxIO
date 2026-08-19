@@ -38,7 +38,7 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.ProjectNameRequest, apischema.ComposeActionResult]("docker.compose_restart").Handle(handlers.handleComposeRestart),
 		apischema.Call[apischema.DeleteStackRequest, apischema.DeleteStackResult]("docker.delete_stack").Handle(handlers.handleDeleteStack),
 		apischema.Call[apischema.NoRequest, apischema.DockerFoldersResponse]("docker.get_docker_folders", apischema.RetrySafe()).Handle(handlers.handleGetDockerFolders),
-		apischema.Call[apischema.ContentRequest, apischema.ValidateComposeResponse]("docker.validate_compose", apischema.RetrySafe()).Handle(handlers.handleValidateCompose),
+		apischema.Call[apischema.ValidateComposeRequest, apischema.ValidateComposeResponse]("docker.validate_compose", apischema.RetrySafe()).Handle(handlers.handleValidateCompose),
 		apischema.Call[apischema.ContentRequest, apischema.NoResponse]("docker.normalize_compose", apischema.NoEndpoint()).HandleVoid(handlers.handleNormalizeCompose),
 		apischema.Call[apischema.StackNameRequest, apischema.ComposeFilePathResponse]("docker.get_compose_file_path", apischema.RetrySafe()).Handle(handlers.handleGetComposeFilePath),
 		apischema.Call[apischema.DirPathRequest, apischema.DirectoryValidationResult]("docker.validate_stack_directory", apischema.RetrySafe()).Handle(handlers.handleValidateStackDirectory),

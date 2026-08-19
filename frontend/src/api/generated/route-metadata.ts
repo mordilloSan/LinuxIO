@@ -85,7 +85,7 @@ export const ROUTE_MODES = {
   "filebrowser.copy_batch": "task",
   "filebrowser.delete_batch": "task",
   "filebrowser.dir_size": "call",
-  "filebrowser.download": "task",
+  "filebrowser.download_stream": "duplex",
   "filebrowser.exists_batch": "call",
   "filebrowser.extract": "task",
   "filebrowser.index": "task",

@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
 
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
+
 const apiMocks = vi.hoisted(() => ({
   usersGroupsQueryOptions: vi.fn(),
 }));

@@ -1,0 +1,9 @@
+/* The router devtools derive every font-size and line-height from
+   `--tsrd-font-size`, but only their floating variant ever sets it — the
+   standalone panel we mount leaves it undefined, so every
+   `calc(var(--tsrd-font-size) * n)` is invalid and the whole panel falls back
+   to the app's inherited type. 16px is what the query devtools hardcode on
+   their own panel wrapper, so the two end up on the same scale. */
+.devtools-router-panel {
+  --tsrd-font-size: 16px;
+}

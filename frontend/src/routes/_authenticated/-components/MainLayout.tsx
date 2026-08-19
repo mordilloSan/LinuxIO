@@ -1,7 +1,9 @@
 import { Outlet, useLocation } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
 
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
 import "@/icons/icons";
+import { useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
 
 import Footer from "./footer/Footer";
@@ -17,26 +19,43 @@ const MainLayout = () => {
   const location = useLocation();
   const theme = useAppTheme();
   const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const [navigationMode] = useConfigValue("navigationMode");
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
+  const dockMode = isDesktop && navigationMode === "dock";
   const { updateInfo, dismissUpdate } = useUpdateInfo();
   const sidebarItems = useSidebarItems();
 
   useCloseMobileSidebarOnNavigate();
 
+  /*
+   * The gap between the header and the first thing on the page. A routed tab
+   * strip reclaims it — and the inline padding, handed down as
+   * --page-inset-inline — to sit flush under the header as a full-bleed bar
+   * with the same geometry as the file browser header; see
+   * components/tabbar/tab-container.css. Routes without that strip just get
+   * the padding.
+   */
+  const pageInsetBlockStart =
+    location.pathname === "/" || location.pathname.includes("/filebrowser")
+      ? theme.spacing(0)
+      : theme.spacing(5);
+
+  const pageInsetInline = isSmallUp ? theme.spacing(5) : theme.spacing(4);
+
   const contentSpacing =
     location.pathname === "/"
       ? {
-          paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-          paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+          paddingLeft: pageInsetInline,
+          paddingRight: pageInsetInline,
           paddingTop: 0,
           paddingBottom: 0,
         }
       : location.pathname.includes("/filebrowser")
         ? { padding: 0 }
         : {
-            paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-            paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-            paddingTop: theme.spacing(5),
+            paddingLeft: pageInsetInline,
+            paddingRight: pageInsetInline,
+            paddingTop: pageInsetBlockStart,
             paddingBottom: theme.spacing(5),
           };
 
@@ -59,7 +78,7 @@ const MainLayout = () => {
           overflow: "hidden",
         }}
       >
-        <Sidebar items={sidebarItems} />
+        {!dockMode && <Sidebar items={sidebarItems} />}
         <div
           style={{
             flex: 1,
@@ -71,17 +90,24 @@ const MainLayout = () => {
               easing: theme.transitions.easing.easeInOut,
               duration: theme.transitions.duration.leavingScreen,
             }),
-            marginLeft: isDesktop ? `${sidebarWidth}px` : undefined,
-            width: isDesktop ? `calc(100% - ${sidebarWidth}px)` : "100%",
+            marginLeft:
+              !dockMode && isDesktop ? `${sidebarWidth}px` : undefined,
+            width:
+              !dockMode && isDesktop
+                ? `calc(100% - ${sidebarWidth}px)`
+                : "100%",
           }}
         >
-          <Navbar onDrawerToggle={toggleMobileOpen} />
+          <Navbar
+            dockMode={dockMode}
+            onDrawerToggle={dockMode ? undefined : toggleMobileOpen}
+          />
 
           {updateInfo?.available && (
             <div
               style={{
-                paddingLeft: isSmallUp ? theme.spacing(5) : theme.spacing(4),
-                paddingRight: isSmallUp ? theme.spacing(5) : theme.spacing(4),
+                paddingLeft: pageInsetInline,
+                paddingRight: pageInsetInline,
                 paddingTop: 0,
                 paddingBottom: theme.spacing(1),
               }}
@@ -99,11 +125,32 @@ const MainLayout = () => {
               overflow: "auto",
               background: theme.palette.background.default,
               position: "relative",
-              ...contentSpacing,
             }}
           >
-            <Outlet />
-            <BootstrapLoaderReady />
+            {/*
+             * Keep page spacing inside the scrollport. A sticky routed-tab
+             * header is then pinned to the scrollport edge instead of the
+             * scrollport's padded content edge, so page content cannot appear
+             * in a gap above the header while it is stuck.
+             */}
+            <div
+              style={
+                {
+                  width: "100%",
+                  height: "100%",
+                  minHeight: "100%",
+                  ...contentSpacing,
+                  "--page-inset-block-start": pageInsetBlockStart,
+                  "--page-inset-inline": pageInsetInline,
+                } as CSSProperties & {
+                  "--page-inset-block-start": string;
+                  "--page-inset-inline": string;
+                }
+              }
+            >
+              <Outlet />
+              <BootstrapLoaderReady />
+            </div>
           </div>
         </div>
       </div>

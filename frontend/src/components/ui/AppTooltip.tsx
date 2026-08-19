@@ -4,15 +4,18 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import type { ToastMeta } from "@/types/navigation";
+import { isTabNavigationActive } from "@/utils/tabNavigation";
 import "./app-tooltip.css";
 
 type TooltipPlacement =
@@ -50,13 +53,14 @@ export const useIsInsideAppTooltip = () => useContext(AppTooltipTriggerContext);
 // Distance (px) from the trigger edge to the tooltip bubble — matches MUI default.
 const OFFSET = 8;
 const OFFSET_BOTTOM = 12;
+const VIEWPORT_MARGIN = 8;
 
 function calcStyle(placement: TooltipPlacement, rect: DOMRect): CSSProperties {
   const midX = rect.left + rect.width / 2;
   const midY = rect.top + rect.height / 2;
 
   // Uses the CSS `translate` property (not `transform`) so that it doesn't
-  // conflict with the scale animation applied via `transform` in the CSS.
+  // conflict with the entrance slide applied via `transform` in the CSS.
   switch (placement) {
     case "bottom":
       return {
@@ -132,6 +136,7 @@ const AppTooltip = ({
   const [canCopy, setCanCopy] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<CSSProperties>({});
   const wrapperRef = useRef<HTMLSpanElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getTarget = useCallback(() => {
@@ -167,7 +172,14 @@ const AppTooltip = ({
 
   const show = useCallback(() => {
     refreshCopyAvailability();
+    // Re-arming has to cancel first. A trigger can be entered and focused
+    // within the same 100ms, and overwriting the handle orphaned the earlier
+    // timer: hide() only ever holds the newest one, so the orphan fired after
+    // the pointer had already left and put the bubble back on a page with
+    // nothing left to dismiss it.
+    if (enterTimer.current) clearTimeout(enterTimer.current);
     enterTimer.current = setTimeout(() => {
+      enterTimer.current = null;
       if (!shouldShowTooltip()) {
         setVisible(false);
         return;
@@ -180,8 +192,24 @@ const AppTooltip = ({
 
   const hide = useCallback(() => {
     if (enterTimer.current) clearTimeout(enterTimer.current);
+    enterTimer.current = null;
     setVisible(false);
   }, []);
+
+  const handleFocus = useCallback(
+    (event: FocusEvent<HTMLSpanElement>) => {
+      // Focus tooltips follow the same policy as focus rings: only explicit Tab
+      // navigation opts in. Pointer focus, Escape, and programmatic restoration
+      // leave the bubble hidden. Text-entry controls remain excluded.
+      if (
+        isTabNavigationActive() &&
+        event.target.matches(":not(input, textarea, select, [contenteditable])")
+      ) {
+        show();
+      }
+    },
+    [show],
+  );
 
   const handleClick = useCallback(async () => {
     if (!copyText || !refreshCopyAvailability()) return;
@@ -257,6 +285,42 @@ const AppTooltip = ({
     };
   }, [visible]);
 
+  // The initial style anchors the bubble to its trigger. Once it is in the
+  // portal we can measure its rendered dimensions and nudge that anchor back
+  // into the viewport when it would otherwise overflow an edge.
+  useLayoutEffect(() => {
+    if (!visible) return;
+
+    const tooltip = tooltipRef.current;
+    if (!tooltip) return;
+
+    const rect = tooltip.getBoundingClientRect();
+    // jsdom and hidden elements have no layout box to clamp. Waiting for a
+    // measurable box also avoids repeatedly applying an offset to (0, 0).
+    if (rect.width === 0 && rect.height === 0) return;
+
+    const horizontalOffset =
+      rect.left < VIEWPORT_MARGIN
+        ? VIEWPORT_MARGIN - rect.left
+        : rect.right > window.innerWidth - VIEWPORT_MARGIN
+          ? window.innerWidth - VIEWPORT_MARGIN - rect.right
+          : 0;
+    const verticalOffset =
+      rect.top < VIEWPORT_MARGIN
+        ? VIEWPORT_MARGIN - rect.top
+        : rect.bottom > window.innerHeight - VIEWPORT_MARGIN
+          ? window.innerHeight - VIEWPORT_MARGIN - rect.bottom
+          : 0;
+
+    if (horizontalOffset === 0 && verticalOffset === 0) return;
+
+    setTooltipStyle({
+      ...tooltipStyle,
+      left: (Number(tooltipStyle.left) || 0) + horizontalOffset,
+      top: (Number(tooltipStyle.top) || 0) + verticalOffset,
+    });
+  }, [tooltipStyle, visible]);
+
   if (!title) return <>{children}</>;
 
   return (
@@ -269,7 +333,7 @@ const AppTooltip = ({
           .filter(Boolean)
           .join(" ")}
         onBlur={hide}
-        onFocus={show}
+        onFocus={handleFocus}
         onClick={handleClick}
         onMouseEnter={show}
         onMouseLeave={hide}
@@ -292,6 +356,7 @@ const AppTooltip = ({
               .filter(Boolean)
               .join(" ")}
             role="tooltip"
+            ref={tooltipRef}
             style={tooltipStyle}
           >
             {title}

@@ -7,10 +7,13 @@ interface AppQueryClientProviderProps {
   children: ReactNode;
 }
 
+export const appQueryClient = getAppQueryClient();
+
 const AppQueryClientProvider = ({ children }: AppQueryClientProviderProps) => {
-  const queryClient = getAppQueryClient();
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={appQueryClient}>
+      {children}
+    </QueryClientProvider>
   );
 };
 

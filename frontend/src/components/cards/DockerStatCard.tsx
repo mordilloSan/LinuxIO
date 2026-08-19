@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { CARD_PADDING_MD, CARD_PADDING_SM } from "@/theme/constants";
 
 export interface DockerStatCardProps {
   detail: ReactNode;
@@ -18,7 +19,7 @@ const DockerStatCard = ({
   onClick,
 }: DockerStatCardProps) => (
   <FrostedCard
-    className="fc-opacity-hover"
+    hoverLift
     style={{
       padding: 0,
     }}
@@ -34,7 +35,7 @@ const DockerStatCard = ({
         cursor: "pointer",
         display: "block",
         font: "inherit",
-        padding: "8px 10px",
+        padding: `${CARD_PADDING_SM}px ${CARD_PADDING_MD}px`,
         textAlign: "left",
         width: "100%",
       }}

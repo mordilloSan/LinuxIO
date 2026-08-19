@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -28,6 +28,7 @@ const defaultOptions: PruneOptions = {
   volumes: false,
 };
 interface PruneDialogProps {
+  initialOptions?: Partial<PruneOptions>;
   isLoading?: boolean;
   onClose: () => void;
   onConfirm: (opts: PruneOptions) => void;
@@ -38,8 +39,18 @@ const PruneDialog = ({
   onClose,
   onConfirm,
   isLoading = false,
+  initialOptions,
 }: PruneDialogProps) => {
-  const [opts, setOpts] = useState<PruneOptions>(defaultOptions);
+  const getInitialOptions = useCallback(
+    () => ({ ...defaultOptions, ...initialOptions }),
+    [initialOptions],
+  );
+  const [opts, setOpts] = useState<PruneOptions>(getInitialOptions);
+  const [previousOpen, setPreviousOpen] = useState(open);
+  if (open !== previousOpen) {
+    setPreviousOpen(open);
+    if (open) setOpts(getInitialOptions());
+  }
   const toggle = (key: keyof PruneOptions) =>
     setOpts((prev) => ({
       ...prev,
@@ -48,7 +59,7 @@ const PruneDialog = ({
   const selectedCount = Object.values(opts).filter(Boolean).length;
   const handleClose = () => {
     if (!isLoading) {
-      setOpts(defaultOptions);
+      setOpts(getInitialOptions());
       onClose();
     }
   };

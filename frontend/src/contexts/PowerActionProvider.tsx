@@ -8,6 +8,7 @@ import {
 
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_MD } from "@/theme/constants";
 import { redirectToSignIn } from "@/utils/navigation";
 
 import { PowerActionContext } from "./PowerActionContext";
@@ -89,7 +90,7 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 12,
+              gap: GAP_MD,
               textAlign: "center",
               paddingLeft: "12px",
               paddingRight: "12px",

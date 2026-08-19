@@ -1,17 +1,14 @@
 import { useCallback } from "react";
 
 import type { Service } from "@/api";
-import { AppTableCell } from "@/components/ui/AppTable";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useVirtualReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import UnitStatusDot from "./UnitStatusDot";
-import { MobileExpandedDetails, UnitTableView } from "./UnitViews";
+import { UnitTableView } from "./UnitViews";
 
 interface ServiceTableViewProps {
-  onDoubleClick?: (name: string) => void;
   onSelect?: (name: string | null) => void;
-  selected?: string | null;
   services: Service[];
   surface: ReorderableSurface<Service>;
 }
@@ -53,55 +50,32 @@ const mobileColumns = [
 
 const getServiceRowKey = (service: Service) => service.name;
 
-const renderServiceMainRow = (service: Service, isMobile: boolean) => (
+const renderServiceMainRow = (service: Service, isMobile: boolean) => [
   <>
-    <AppTableCell style={{ paddingLeft: 8 }}>
-      <UnitStatusDot activeState={service.active_state} />
-      {service.active_state}
-    </AppTableCell>
-    <AppTableCell>{service.name}</AppTableCell>
-    {!isMobile && (
-      <>
-        <AppTableCell>{service.load_state}</AppTableCell>
-        <AppTableCell>{service.sub_state}</AppTableCell>
-        <AppTableCell>{service.description || "-"}</AppTableCell>
-      </>
-    )}
-  </>
-);
-
-const renderServiceMobileExpandedContent = (service: Service) => (
-  <MobileExpandedDetails
-    rows={[
-      { label: "Load", value: service.load_state },
-      { label: "Sub", value: service.sub_state },
-      { label: "Description", value: service.description || "—" },
-    ]}
-  />
-);
+    <UnitStatusDot activeState={service.active_state} />
+    {service.active_state}
+  </>,
+  service.name,
+  ...(isMobile
+    ? []
+    : [service.load_state, service.sub_state, service.description || "-"]),
+];
 
 const ServiceTableView = ({
   surface,
   services,
-  selected,
   onSelect,
-  onDoubleClick,
 }: ServiceTableViewProps) => {
-  const handleDoubleClick = useCallback(
-    (key: string | number) => {
-      if (typeof key === "string") {
-        onDoubleClick?.(key);
-      }
-    },
-    [onDoubleClick],
-  );
   const handleSelect = useCallback(
     (key: string | number | null) =>
       onSelect?.(typeof key === "string" ? key : null),
     [onSelect],
   );
 
-  const dnd = useVirtualReorderableTableDnd<Service, Service>({ surface });
+  const dnd = useReorderableTableDnd<Service, Service>({
+    handleAriaLabel: "Reorder service",
+    surface,
+  });
 
   return (
     <UnitTableView
@@ -111,11 +85,8 @@ const ServiceTableView = ({
       emptyMessage="No services found."
       getRowKey={getServiceRowKey}
       mobileColumns={mobileColumns}
-      onDoubleClick={handleDoubleClick}
       onSelect={handleSelect}
       renderMainRow={renderServiceMainRow}
-      renderMobileExpandedContent={renderServiceMobileExpandedContent}
-      selected={selected}
     />
   );
 };

@@ -80,8 +80,18 @@ const UpdateList = ({
     return null; // Hide list while updating; only the progress bar should show
   }
   return (
-    <div ref={containerRef} style={{ paddingBottom: 16 }}>
+    <div
+      ref={containerRef}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: "1 1 auto",
+        minHeight: 0,
+      }}
+    >
       <ReorderableCardGrid
+        columns={{ xs: 1, sm: 2, md: 3, lg: 4, xl: 5 }}
+        fillAvailable
         getId={getUpdateId}
         renderItem={(update) => (
           <UpdateCard
@@ -100,7 +110,6 @@ const UpdateList = ({
             update={update}
           />
         )}
-        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
         surface={surface}
       />
     </div>

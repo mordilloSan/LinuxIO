@@ -1,18 +1,20 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { responsiveTextStyles } from "@/theme/tableStyles";
 
 import CreateGroupDialog from "./components/CreateGroupDialog";
@@ -25,6 +27,31 @@ interface GroupsTabProps {
 }
 
 const getAccountGroupId = (group: AccountGroup) => group.name;
+
+// The inline panel reads only the row's group, so one module-level renderer
+// keeps the table's props stable across re-renders.
+const renderGroupExpandedContent = ({
+  original: group,
+}: {
+  original: AccountGroup;
+}) => (
+  <div className="expand-panel">
+    <AppTypography gutterBottom variant="subtitle2">
+      <b>All Members ({group.members.length}):</b>
+    </AppTypography>
+    <div className="expand-panel__chips">
+      {group.members.length > 0 ? (
+        group.members.map((member) => (
+          <Chip key={member} label={member} size="small" variant="soft" />
+        ))
+      ) : (
+        <AppTypography color="text.secondary" variant="body2">
+          (no members)
+        </AppTypography>
+      )}
+    </div>
+  </div>
+);
 
 const GroupsTab = ({
   onMountCreateHandler,
@@ -60,145 +87,157 @@ const GroupsTab = ({
     surface,
   });
 
-  const filtered = surface.items.filter(
-    (group) =>
-      group.name.toLowerCase().includes(search.toLowerCase()) ||
-      group.members.some((m) => m.toLowerCase().includes(search.toLowerCase())),
+  const filtered = useMemo(
+    () =>
+      surface.items.filter(
+        (group) =>
+          group.name.toLowerCase().includes(search.toLowerCase()) ||
+          group.members.some((m) =>
+            m.toLowerCase().includes(search.toLowerCase()),
+          ),
+      ),
+    [search, surface.items],
   );
 
-  const handleEditMembers = (group: AccountGroup) => {
+  const handleEditMembers = useCallback((group: AccountGroup) => {
     setSelectedGroup(group);
     setEditMembersDialogOpen(true);
-  };
+  }, []);
 
-  const handleDelete = (group: AccountGroup) => {
+  const handleDelete = useCallback((group: AccountGroup) => {
     setGroupToDelete(group);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
-  const columns: AppDataTableColumnDef<AccountGroup>[] = [
-    {
-      accessorKey: "name",
-      header: "Group Name",
-      cell: ({ row }) => {
-        const group = row.original;
-        return (
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <AppTypography
-              fontWeight={500}
-              style={responsiveTextStyles}
-              variant="body2"
-            >
-              {group.name}
-            </AppTypography>
-            {group.isSystem && (
-              <Chip
-                label="system"
-                size="small"
-                style={{ fontSize: "0.65rem", height: 20 }}
-                variant="soft"
-              />
-            )}
-          </div>
-        );
-      },
-      meta: { align: "left" },
-    },
-    {
-      accessorKey: "gid",
-      header: "GID",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.gid}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
-        width: "80px",
-      },
-    },
-    {
-      accessorFn: (group) => group.members.length,
-      id: "members",
-      header: "Members",
-      cell: ({ row }) => {
-        const group = row.original;
-        return (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-            {group.members.length > 0 ? (
-              group.members
-                .slice(0, 3)
-                .map((member) => (
-                  <Chip
-                    key={member}
-                    label={member}
-                    size="small"
-                    style={{ fontSize: "0.7rem" }}
-                    variant="soft"
-                  />
-                ))
-            ) : (
-              <AppTypography color="text.secondary" variant="body2">
-                (no members)
+  // Stable column defs: cells render through flexRender, so a rebuilt array
+  // remounts every cell subtree — including on the press that arms a
+  // reorder hold. See docs/table-row-gestures.md.
+  const columns = useMemo<AppDataTableColumnDef<AccountGroup>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Group Name",
+        cell: ({ row }) => {
+          const group = row.original;
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <AppTypography
+                fontWeight={500}
+                style={responsiveTextStyles}
+                variant="body2"
+              >
+                {group.name}
               </AppTypography>
-            )}
-            {group.members.length > 3 && (
-              <Chip
-                label={`+${group.members.length - 3}`}
-                size="small"
-                style={{ fontSize: "0.7rem" }}
-                variant="soft"
+              {group.isSystem && (
+                <Chip
+                  label="system"
+                  size="small"
+                  style={{ fontSize: "0.65rem", height: 20 }}
+                  variant="soft"
+                />
+              )}
+            </div>
+          );
+        },
+        meta: { align: "left" },
+      },
+      {
+        accessorKey: "gid",
+        header: "GID",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.gid}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+          width: "80px",
+        },
+      },
+      {
+        accessorFn: (group) => group.members.length,
+        id: "members",
+        header: "Members",
+        cell: ({ row }) => {
+          const group = row.original;
+          return (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+              {group.members.length > 0 ? (
+                group.members
+                  .slice(0, 3)
+                  .map((member) => (
+                    <Chip
+                      key={member}
+                      label={member}
+                      size="small"
+                      style={{ fontSize: "0.7rem" }}
+                      variant="soft"
+                    />
+                  ))
+              ) : (
+                <AppTypography color="text.secondary" variant="body2">
+                  (no members)
+                </AppTypography>
+              )}
+              {group.members.length > 3 && (
+                <Chip
+                  label={`+${group.members.length - 3}`}
+                  size="small"
+                  style={{ fontSize: "0.7rem" }}
+                  variant="soft"
+                />
+              )}
+            </div>
+          );
+        },
+        meta: { align: "left" },
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const group = row.original;
+          return (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 2,
+              }}
+            >
+              <AppActionIconButton
+                disabled={group.name === "root"}
+                icon="mdi:pencil"
+                iconSize={20}
+                label="Edit Members"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditMembers(group);
+                }}
               />
-            )}
-          </div>
-        );
+              <AppActionIconButton
+                disabled={group.name === "root" || group.isSystem}
+                icon="mdi:delete"
+                iconSize={20}
+                label="Delete Group"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(group);
+                }}
+              />
+            </div>
+          );
+        },
+        meta: {
+          align: "right",
+          width: "100px",
+        },
       },
-      meta: { align: "left" },
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      enableSorting: false,
-      cell: ({ row }) => {
-        const group = row.original;
-        return (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 2,
-            }}
-          >
-            <AppActionIconButton
-              disabled={group.name === "root"}
-              icon="mdi:pencil"
-              iconSize={20}
-              label="Edit Members"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEditMembers(group);
-              }}
-            />
-            <AppActionIconButton
-              disabled={group.name === "root" || group.isSystem}
-              icon="mdi:delete"
-              iconSize={20}
-              label="Delete Group"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(group);
-              }}
-            />
-          </div>
-        );
-      },
-      meta: {
-        align: "right",
-        width: "100px",
-      },
-    },
-  ];
+    ],
+    [handleDelete, handleEditMembers],
+  );
 
   return (
     <div
@@ -209,27 +248,18 @@ const GroupsTab = ({
         minHeight: 0,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexShrink: 0,
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 8,
-        }}
-      >
-        <AppSearchField
-          onChange={(e) => setSearch(e.target.value)}
+      <RoutedTabSearch active={search !== ""}>
+        <AppHeaderSearch
+          clearOnDocumentEscape
+          onChange={setSearch}
           placeholder="Search groups…"
-          style={{ width: 320 }}
           value={search}
         />
-        <span style={{ fontWeight: "bold" }}>{filtered.length} shown</span>
-      </div>
+      </RoutedTabSearch>
       {viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getAccountGroupId}
             items={filtered}
             renderItem={(group) => (
@@ -239,7 +269,7 @@ const GroupsTab = ({
                 onEditMembers={() => handleEditMembers(group)}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
         ) : (
@@ -257,30 +287,9 @@ const GroupsTab = ({
           dnd={tableDnd}
           emptyMessage="No groups found."
           fillAvailable
-          getRowId={(group) => group.name}
-          renderExpandedContent={({ original: group }) => (
-            <div className="expand-panel">
-              <AppTypography gutterBottom variant="subtitle2">
-                <b>All Members ({group.members.length}):</b>
-              </AppTypography>
-              <div className="expand-panel__chips">
-                {group.members.length > 0 ? (
-                  group.members.map((member) => (
-                    <Chip
-                      key={member}
-                      label={member}
-                      size="small"
-                      variant="soft"
-                    />
-                  ))
-                ) : (
-                  <AppTypography color="text.secondary" variant="body2">
-                    (no members)
-                  </AppTypography>
-                )}
-              </div>
-            </div>
-          )}
+          getRowId={getAccountGroupId}
+          persistExpandedKey="account-groups"
+          renderExpandedContent={renderGroupExpandedContent}
         />
       )}
 

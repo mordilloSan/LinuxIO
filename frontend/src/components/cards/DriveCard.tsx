@@ -7,6 +7,7 @@ import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 interface DriveSmartData {
@@ -122,7 +123,7 @@ const DriveCard = ({
           cursor: "pointer",
           display: "block",
           font: "inherit",
-          padding: 8,
+          padding: CARD_PADDING_SM,
           textAlign: "left",
           width: "100%",
         }}
@@ -174,7 +175,11 @@ const DriveCard = ({
 
       <div
         id={detailsId}
-        style={expanded ? { padding: "0 8px 8px" } : undefined}
+        style={
+          expanded
+            ? { padding: `0 ${CARD_PADDING_SM}px ${CARD_PADDING_SM}px` }
+            : undefined
+        }
       >
         {children}
       </div>

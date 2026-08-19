@@ -1,5 +1,5 @@
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
@@ -228,6 +228,7 @@ export const SelfTestsTab = ({
           data={standardRows}
           density="compact"
           emptyMessage="No self-test history available."
+          fillAvailable={false}
           getRowId={(entry, index) =>
             String(getSmartNumber(entry.num) ?? index)
           }
@@ -241,6 +242,7 @@ export const SelfTestsTab = ({
           data={nvmeRows}
           density="compact"
           emptyMessage="No self-test history available."
+          fillAvailable={false}
           getRowId={(_, index) => String(index)}
           maxHeight={400}
           variant="embedded"

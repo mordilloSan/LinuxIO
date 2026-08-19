@@ -14,7 +14,7 @@
   }
 }
 
-@media (max-width: 719.95px) {
+@media (max-width: 769.95px) {
   .indexer-toggle-grid {
     grid-template-columns: 1fr;
   }

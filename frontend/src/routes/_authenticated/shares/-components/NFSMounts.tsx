@@ -6,7 +6,7 @@ import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -32,6 +32,7 @@ import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 const STORAGE_TOAST_META = {
@@ -911,11 +912,12 @@ const NFSMountCardGrid = ({
 
   return (
     <ReorderableCardGrid
+      fillAvailable={false}
       getId={identity}
       renderItem={(mountpoint) => (
         <NFSMountCard actions={renderActions} mountpoint={mountpoint} />
       )}
-      size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+      size={CARD_GRID_SIZE_STANDARD}
       surface={surface}
     />
   );
@@ -1071,7 +1073,7 @@ const NFSMountTable = ({
       },
       {
         id: "actions",
-        header: "",
+        header: "Actions",
         enableSorting: false,
         cell: ({ row }) => (
           <MountEntryActions
@@ -1120,7 +1122,10 @@ const NFSMountTable = ({
       columns={columns}
       data={filtered}
       emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
+      fillAvailable={false}
       getRowId={(mount) => mount.mountpoint}
+      maxHeight={400}
+      persistExpandedKey="nfs-mounts"
       renderExpandedContent={({ original: mount }) => (
         <div className="expand-panel">
           <AppTypography gutterBottom variant="subtitle2">

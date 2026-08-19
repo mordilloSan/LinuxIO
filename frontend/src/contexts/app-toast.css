@@ -1,0 +1,138 @@
+/* ── Sonner toasts ──
+   Toasts join the floating-surface family (app-tooltip.css, the dock's hover
+   label, AppPopover): paper face, divider hairline, --app-floating-surface
+   radius and shadow, app font.
+
+   Sonner paints its own chrome out of custom properties, so wherever it has a
+   property for something the app tokens are assigned to *that* rather than the
+   rule being restated. The pieces we never mention by name — close button,
+   cancel button, promise spinner — then land on app colors for free.
+
+   Every selector carries .app-toaster (the Toaster's className) so these rules
+   outbid sonner's own two-attribute rules on specificity alone. Sonner's
+   `[data-sonner-toaster][data-sonner-theme='light']` block is (0,2,0) and sets
+   --normal-bg to #fff, so a bare [data-sonner-toaster] override would only tie
+   with it and leave the winner to stylesheet order — a bundler detail, and not
+   one worth depending on. */
+.app-toaster[data-sonner-toaster][data-sonner-theme] {
+  --width: 340px;
+  --border-radius: var(--app-floating-surface-radius);
+  --normal-bg: var(--app-palette-background-paper);
+  --normal-bg-hover: var(--app-palette-action-hover);
+  --normal-border: var(--app-palette-divider);
+  --normal-border-hover: var(--app-palette-divider);
+  --normal-text: var(--app-palette-text-primary);
+  /* Sonner's grey ramp, reached only by the close button's hover state
+     (--gray2 background, --gray5 border) and the promise spinner's bars
+     (--gray11). The rest of the ramp is unused once --normal-* is ours. */
+  --gray2: var(--app-palette-action-hover);
+  --gray5: var(--app-palette-divider);
+  --gray11: var(--app-palette-text-secondary);
+  font-family: var(--app-font-family);
+}
+
+/* ── Severity ──
+   One accent color per type, consumed by the shared surface rule below. A type
+   with no accent (default, loading) falls through to the neutral token in each
+   var() fallback, so the untyped toast needs no rules of its own. */
+.app-toaster [data-sonner-toast][data-type="success"] {
+  --app-toast-accent: var(--app-palette-success-main);
+}
+
+.app-toaster [data-sonner-toast][data-type="error"] {
+  --app-toast-accent: var(--app-palette-error-main);
+}
+
+.app-toaster [data-sonner-toast][data-type="warning"] {
+  --app-toast-accent: var(--app-palette-warning-main);
+}
+
+.app-toaster [data-sonner-toast][data-type="info"] {
+  --app-toast-accent: var(--app-palette-info-main);
+}
+
+/* ── Surface ──
+   The tooltip bubble's chrome at notification scale: the same paper/divider/
+   shadow trio, wider padding and a 13px title because a toast is read from the
+   corner of the eye rather than under the cursor.
+
+   Severity stays in the icon, a tinted hairline and a whisper of tint in the
+   face — enough to tell an error from a success at a glance, far short of the
+   filled panels `richColors` used to paint (which owned the toast's color
+   scheme outright and read as a foreign control). Both mixes collapse to the
+   neutral token when --app-toast-accent is unset. */
+.app-toaster [data-sonner-toast][data-styled="true"] {
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--app-toast-accent, var(--app-palette-divider)) 0%,
+      var(--app-palette-divider)
+    );
+  border-radius: var(--app-floating-surface-radius);
+  background: color-mix(
+    in srgb,
+    var(--app-toast-accent, var(--app-palette-background-paper)) 0%,
+    var(--app-palette-background-paper)
+  );
+  box-shadow: var(--app-floating-surface-shadow);
+  color: var(--app-palette-text-primary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.app-toaster [data-sonner-toast][data-styled="true"] [data-title] {
+  font-weight: 500;
+}
+
+.app-toaster [data-sonner-toast][data-styled="true"] [data-description] {
+  color: var(--app-palette-text-secondary);
+  font-size: 0.75rem;
+}
+
+/* Sonner's own icons are `fill: currentColor` SVGs sized 20px by attribute
+   inside a 16px box; the app's icon scale is 18 (iconSize.sm), so box and
+   glyph are set together to keep the two agreeing. */
+.app-toaster [data-sonner-toast][data-styled="true"] [data-icon] {
+  width: 18px;
+  height: 18px;
+  color: var(--app-toast-accent, var(--app-palette-text-secondary));
+}
+
+.app-toaster [data-sonner-toast][data-styled="true"] [data-icon] svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Buttons ──
+   Sonner's defaults invert the surface (text-colored fill, paper text), which
+   on a dark paper face reads as a near-white slab. Actions take the primary
+   button's colors; cancel takes the hover wash the app uses for quiet
+   controls. */
+.app-toaster [data-sonner-toast][data-styled="true"] [data-button] {
+  border-radius: 4px;
+  background: var(--app-palette-primary-main);
+  color: var(--app-palette-primary-contrast-text);
+  font-size: 0.75rem;
+}
+
+.app-toaster [data-sonner-toast][data-styled="true"] [data-cancel] {
+  background: var(--app-palette-action-hover);
+  color: var(--app-palette-text-primary);
+}
+
+/* Sonner rings focus with a black glow that vanishes on dark paper. Keyboard
+   focus uses the app's ring, gated on tab navigation like every other control. */
+:root[data-tab-navigation]
+  .app-toaster
+  [data-sonner-toast][data-styled="true"]
+  [data-button]:focus-visible,
+:root[data-tab-navigation]
+  .app-toaster
+  [data-sonner-toast][data-styled="true"]
+  [data-close-button]:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+  box-shadow: none;
+}

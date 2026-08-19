@@ -1,18 +1,19 @@
+import type { ReactNode } from "react";
+
 import { type DockerVolume } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppCheckbox from "@/components/ui/AppCheckbox";
+import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
+import { GAP_SM } from "@/theme/constants";
 import { longTextStyles } from "@/theme/tableStyles";
 import { formatFileSize } from "@/utils/formaters";
 
 export interface VolumeCardProps {
-  onSelect: (checked: boolean) => void;
-  selected: boolean;
+  actions?: ReactNode;
+  onOpen?: () => void;
+  selected?: boolean;
   volume: DockerVolume;
 }
-
-const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const formatVolumeSize = (size?: number) => {
   if (size === undefined || size < 0) return "Size unavailable";
@@ -24,50 +25,21 @@ const formatReferenceCount = (count?: number) => {
   return `References: ${count}`;
 };
 
-const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
-  <FrostedCard style={{ padding: 8 }}>
-    {/* Header: checkbox + name + driver chip */}
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 8,
-        marginBottom: 8,
-      }}
-    >
-      <div
-        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
-      >
-        <AppCheckbox
-          checked={selected}
-          onChange={(e) => onSelect(e.target.checked)}
-          size="small"
-        />
-        <AppTypography
-          fontWeight={700}
-          noWrap
-          title={volume.Name}
-          toastMeta={DOCKER_TOAST_META}
-          variant="body2"
-        >
-          {volume.Name}
-        </AppTypography>
-      </div>
-      <Chip
-        label={volume.Driver}
-        size="small"
-        style={{ fontSize: "0.75rem" }}
-        variant="soft"
-      />
-    </div>
-
-    {/* Mountpoint */}
+const VolumeCard = ({ actions, volume, selected, onOpen }: VolumeCardProps) => (
+  <DockerResourceCard
+    icon="mdi:database-outline"
+    actions={actions}
+    label={`volume ${volume.Name}`}
+    onOpen={onOpen}
+    selected={selected}
+    subtitle={`${volume.Driver} · ${volume.Scope || "local"}`}
+    title={volume.Name}
+  >
     <AppTypography
+      color="text.secondary"
       style={{
-        marginBottom: 4,
+        marginBottom: GAP_SM,
         fontFamily: "var(--app-font-mono)",
-        fontSize: "0.8rem",
         ...longTextStyles,
       }}
       variant="body2"
@@ -75,13 +47,7 @@ const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
       {volume.Mountpoint || "-"}
     </AppTypography>
 
-    {/* Meta chips */}
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      <Chip
-        label={`Scope: ${volume.Scope || "local"}`}
-        size="small"
-        variant="soft"
-      />
+    <div style={{ display: "flex", flexWrap: "wrap", gap: GAP_SM }}>
       {volume.CreatedAt && (
         <Chip
           label={new Date(volume.CreatedAt).toLocaleDateString()}
@@ -104,7 +70,7 @@ const VolumeCard = ({ volume, selected, onSelect }: VolumeCardProps) => (
         </>
       )}
     </div>
-  </FrostedCard>
+  </DockerResourceCard>
 );
 
 export default VolumeCard;

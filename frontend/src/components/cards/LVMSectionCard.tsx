@@ -6,7 +6,11 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
-import { TRANSITION_SLOW_CSS, GAP_SM } from "@/theme/constants";
+import {
+  CARD_PADDING_SM,
+  TRANSITION_SLOW_CSS,
+  GAP_SM,
+} from "@/theme/constants";
 
 export interface LVMSectionCardProps {
   accent: string;
@@ -32,7 +36,7 @@ const LVMSectionCard = ({
   const panelId = useId();
 
   return (
-    <FrostedCard style={{ padding: GAP_SM }}>
+    <FrostedCard style={{ padding: CARD_PADDING_SM }}>
       <AppButton
         aria-controls={panelId}
         aria-expanded={expanded}

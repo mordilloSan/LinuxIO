@@ -1,29 +1,33 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { type DockerImage, linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import AppCheckbox from "@/components/ui/AppCheckbox";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogContentText,
   AppDialogTitle,
+  OVERLAY_ROOT_SELECTOR,
 } from "@/components/ui/AppDialog";
-import AppSearchField from "@/components/ui/AppSearchField";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppTheme } from "@/theme";
+import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
   responsiveTextStyles,
@@ -45,6 +49,75 @@ const splitImageRef = (ref: string) => {
   }
   return { repo: ref || "<none>", tag: "<none>" };
 };
+
+const ImageDetailsContent = ({
+  image,
+}: {
+  image: { id: string; raw: DockerImage };
+}) => (
+  <div className="expand-panel">
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Full Image ID:</b>
+      </AppTypography>
+      <AppTypography
+        className="expand-panel__mono"
+        style={longTextStyles}
+        variant="body2"
+      >
+        {image.id}
+      </AppTypography>
+    </div>
+
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Labels:</b>
+      </AppTypography>
+      <div className="expand-panel__chips">
+        {image.raw.Labels && Object.keys(image.raw.Labels).length > 0 ? (
+          Object.entries(image.raw.Labels).map(([key, val]) => (
+            <Chip
+              key={key}
+              label={`${key}: ${val}`}
+              size="small"
+              style={wrappableChipStyle}
+              labelStyle={wrappableChipLabelStyle}
+              variant="soft"
+            />
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no labels)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+
+    <div>
+      <AppTypography gutterBottom variant="subtitle2">
+        <b>Image Digests:</b>
+      </AppTypography>
+      <div>
+        {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
+          image.raw.RepoDigests.map((digest) => (
+            <AppTypography
+              key={digest}
+              className="expand-panel__mono"
+              style={longTextStyles}
+              variant="body2"
+            >
+              {digest}
+            </AppTypography>
+          ))
+        ) : (
+          <AppTypography color="text.secondary" variant="body2">
+            (no digests)
+          </AppTypography>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -165,11 +238,17 @@ const DeleteImageDialog = ({
 };
 const getImageRowId = (image: { id: string }) => image.id;
 
+const dockerRouteApi = getRouteApi("/_authenticated/docker/images");
+
 const ImageList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: ImageListProps) => {
   const theme = useAppTheme();
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
+  const focusedImageId =
+    typeof searchParams.image === "string" ? searchParams.image : undefined;
   const { data: rawImages } = useSuspenseQuery({
     ...linuxio.docker.list_images,
     ...{
@@ -178,7 +257,6 @@ const ImageList = ({
   });
   const images = rawImages;
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Create image handler
@@ -216,9 +294,6 @@ const ImageList = ({
           size: (img.Size / (1024 * 1024)).toFixed(2),
           created: new Date(img.Created * 1000).toLocaleString(),
           containers: img.Containers || 0,
-          updateAvailable: img.updateAvailable,
-          updateCheckReason: img.updateCheckReason,
-          updateCheckState: img.updateCheckState,
           raw: img,
         };
       }),
@@ -248,212 +323,190 @@ const ImageList = ({
     );
   }, [orderedRows, search]);
 
-  // Compute effective selection - only include items that are in the filtered list
-  const effectiveSelected = useMemo(() => {
-    const filteredIds = new Set(filtered.map((img) => img.id));
-    const result = new Set<string>();
-    selected.forEach((id) => {
-      if (filteredIds.has(id)) {
-        result.add(id);
-      }
+  const clearFocusedImage = useCallback(() => {
+    void navigate({
+      to: "/docker/images",
+      search: (previous) => ({ ...previous, image: undefined }),
     });
-    return result;
-  }, [selected, filtered]);
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelected(new Set(filtered.map((img) => img.id)));
-    } else {
-      setSelected(new Set());
-    }
-  };
-  const handleSelectOne = (id: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-  };
-  const handleDeleteSuccess = () => {
-    setSelected(new Set());
-  };
-  const selectedImages = filtered.filter((img) =>
-    effectiveSelected.has(img.id),
-  );
-  const allSelected =
-    filtered.length > 0 && effectiveSelected.size === filtered.length;
-  const someSelected =
-    effectiveSelected.size > 0 && effectiveSelected.size < filtered.length;
-  const columns: AppDataTableColumnDef<(typeof filtered)[number]>[] = [
-    {
-      id: "select",
-      header: () => (
-        <AppCheckbox
-          checked={allSelected}
-          indeterminate={someSelected}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          size="small"
-        />
-      ),
-      enableSorting: false,
-      cell: ({ row }) => (
-        <AppCheckbox
-          checked={effectiveSelected.has(row.original.id)}
-          onChange={(e) => handleSelectOne(row.original.id, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-          size="small"
-        />
-      ),
-      meta: {
-        align: "center",
-        className: "app-vdt__cell--select",
-        getCellRenderKey: (row) => {
-          const image = row as (typeof filtered)[number];
-          return [image.id, effectiveSelected.has(image.id)];
-        },
-        width: "40px",
-      },
+  }, [navigate]);
+  const handleOpenImage = useCallback(
+    (id: string) => {
+      if (surface.editMode) return;
+      void navigate({
+        to: "/docker/images",
+        search: (previous) => ({ ...previous, image: id }),
+      });
     },
-    {
-      accessorKey: "repo",
-      header: "Repository",
-      cell: ({ row }) => (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    [navigate, surface.editMode],
+  );
+  const handleDeleteSuccess = () => {
+    clearFocusedImage();
+  };
+  const focusedImage = useMemo(
+    () => orderedRows.find((image) => image.id === focusedImageId) ?? null,
+    [focusedImageId, orderedRows],
+  );
+
+  useEffect(() => {
+    if (focusedImageId && !focusedImage) clearFocusedImage();
+  }, [clearFocusedImage, focusedImage, focusedImageId]);
+
+  useEffect(() => {
+    if (!focusedImage) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key !== "Escape" && event.key !== "Esc") ||
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      ) {
+        return;
+      }
+      clearFocusedImage();
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [clearFocusedImage, focusedImage]);
+  const handleImageRowClick = useCallback(
+    ({ original: image }: { original: { id: string } }) =>
+      handleOpenImage(image.id),
+    [handleOpenImage],
+  );
+
+  // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
+  // remounts every cell subtree on the press that arms the reorder hold.
+  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
+    () => [
+      {
+        accessorKey: "repo",
+        header: "Repository",
+        cell: ({ row }) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <AppTypography
+              fontWeight={500}
+              style={responsiveTextStyles}
+              variant="body2"
+            >
+              {row.original.repo}
+            </AppTypography>
+            {row.original.repos.length > 1 && (
+              <Chip
+                label={`+${row.original.repos.length - 1}`}
+                size="small"
+                style={{ fontSize: "0.68rem" }}
+                title={row.original.repos.slice(1).join(", ")}
+                variant="soft"
+              />
+            )}
+          </div>
+        ),
+        meta: { align: "left" },
+      },
+      {
+        id: "tags",
+        accessorFn: (image) => image.tags.join(", "),
+        header: "Tags",
+        cell: ({ row }) => (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {row.original.tags.map((tag) => (
+              <Chip
+                key={tag}
+                label={tag}
+                size="small"
+                style={{ fontSize: "0.75rem" }}
+                variant="soft"
+              />
+            ))}
+          </div>
+        ),
+        meta: {
+          align: "left",
+          width: "180px",
+        },
+      },
+      {
+        accessorKey: "id",
+        header: "Full ID",
+        cell: ({ row }) => (
           <AppTypography
-            fontWeight={500}
-            style={responsiveTextStyles}
+            copyText={row.original.id}
+            noWrap
+            style={{
+              ...responsiveTextStyles,
+            }}
+            title={row.original.id}
             variant="body2"
           >
-            {row.original.repo}
+            <span style={{ fontWeight: 700 }}>Full ID: </span>
+            <span
+              style={{
+                color: "var(--app-palette-text-secondary)",
+                fontFamily: "var(--app-font-mono)",
+                fontSize: "0.75rem",
+              }}
+            >
+              {row.original.id}
+            </span>
           </AppTypography>
-          {row.original.repos.length > 1 && (
-            <Chip
-              label={`+${row.original.repos.length - 1}`}
-              size="small"
-              style={{ fontSize: "0.68rem" }}
-              title={row.original.repos.slice(1).join(", ")}
-              variant="soft"
-            />
-          )}
-          {row.original.updateAvailable && (
-            <Chip
-              color="warning"
-              label="Update"
-              size="small"
-              style={{ fontSize: "0.68rem" }}
-              variant="soft"
-            />
-          )}
-          {row.original.updateCheckState === "uncheckable" && (
-            <Chip
-              color="info"
-              label="Cannot check"
-              size="small"
-              style={{ fontSize: "0.68rem" }}
-              title={row.original.updateCheckReason}
-              variant="soft"
-            />
-          )}
-        </div>
-      ),
-      meta: { align: "left" },
-    },
-    {
-      id: "tags",
-      accessorFn: (image) => image.tags.join(", "),
-      header: "Tags",
-      cell: ({ row }) => (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {row.original.tags.map((tag) => (
-            <Chip
-              key={tag}
-              label={tag}
-              size="small"
-              style={{ fontSize: "0.75rem" }}
-              variant="soft"
-            />
-          ))}
-        </div>
-      ),
-      meta: {
-        align: "left",
-        width: "180px",
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "lg",
+          width: "260px",
+        },
       },
-    },
-    {
-      accessorKey: "shortId",
-      header: "Image ID",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontFamily: "var(--app-font-mono)",
-            ...responsiveTextStyles,
-          }}
-          variant="body2"
-        >
-          {row.original.shortId}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "md",
-        width: "140px",
+      {
+        accessorKey: "size",
+        header: "Size",
+        cell: ({ row }) => (
+          <AppTypography style={responsiveTextStyles} variant="body2">
+            {row.original.size} MB
+          </AppTypography>
+        ),
+        meta: {
+          align: "right",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "size",
-      header: "Size",
-      cell: ({ row }) => (
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          {row.original.size} MB
-        </AppTypography>
-      ),
-      meta: {
-        align: "right",
-        width: "100px",
+      {
+        accessorKey: "created",
+        header: "Created",
+        cell: ({ row }) => (
+          <AppTypography
+            style={{
+              fontSize: "0.85rem",
+              ...responsiveTextStyles,
+            }}
+            variant="body2"
+          >
+            {row.original.created}
+          </AppTypography>
+        ),
+        meta: {
+          align: "left",
+          hideBelow: "sm",
+        },
       },
-    },
-    {
-      accessorKey: "created",
-      header: "Created",
-      cell: ({ row }) => (
-        <AppTypography
-          style={{
-            fontSize: "0.85rem",
-            ...responsiveTextStyles,
-          }}
-          variant="body2"
-        >
-          {row.original.created}
-        </AppTypography>
-      ),
-      meta: {
-        align: "left",
-        hideBelow: "sm",
+      {
+        accessorKey: "containers",
+        header: "Used By",
+        cell: ({ row }) => (
+          <Chip
+            color={row.original.containers > 0 ? "success" : "default"}
+            label={row.original.containers}
+            size="small"
+            style={{ minWidth: 40 }}
+            variant="soft"
+          />
+        ),
+        meta: {
+          align: "center",
+          width: "100px",
+        },
       },
-    },
-    {
-      accessorKey: "containers",
-      header: "Used By",
-      cell: ({ row }) => (
-        <Chip
-          color={row.original.containers > 0 ? "success" : "default"}
-          label={row.original.containers}
-          size="small"
-          style={{ minWidth: 40 }}
-          variant="soft"
-        />
-      ),
-      meta: {
-        align: "center",
-        width: "100px",
-      },
-    },
-  ];
+    ],
+    [],
+  );
   return (
     <div
       style={{
@@ -463,48 +516,56 @@ const ImageList = ({
         minHeight: 0,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexShrink: 0,
-          alignItems: "center",
-          gap: theme.spacing(2),
-          flexWrap: "wrap",
-          marginBottom: theme.spacing(2),
-        }}
-      >
-        <AppSearchField
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search images…"
-          style={{ width: 320 }}
-          value={search}
-        />
-        <AppTypography fontWeight={700}>{filtered.length} shown</AppTypography>
-        {effectiveSelected.size > 0 && (
-          <AppButton
-            color="error"
-            onClick={() => setDeleteDialogOpen(true)}
-            size="small"
-            startIcon={<Icon height={20} icon="mdi:delete" width={20} />}
-            variant="contained"
-          >
-            Delete ({effectiveSelected.size})
-          </AppButton>
-        )}
-      </div>
-      {viewMode === "card" ? (
+      {!focusedImage && (
+        <RoutedTabSearch active={search !== ""}>
+          <AppHeaderSearch
+            clearOnDocumentEscape
+            onChange={setSearch}
+            placeholder="Search images…"
+            value={search}
+          />
+        </RoutedTabSearch>
+      )}
+      {focusedImage ? (
+        <DockerResourceDetailsLayout
+          onClose={clearFocusedImage}
+          resourceLabel="image"
+          subtitle={`${focusedImage.size} MB · ${focusedImage.created}`}
+          summary={
+            <DockerImageCard
+              image={focusedImage}
+              actions={
+                <AppActionIconButton
+                  ariaLabel={`Delete image ${focusedImage.repo}`}
+                  color={theme.palette.error.main}
+                  icon="mdi:delete"
+                  iconSize={18}
+                  label="Delete image"
+                  onClick={() => setDeleteDialogOpen(true)}
+                />
+              }
+              selected
+            />
+          }
+          title={focusedImage.repo}
+        >
+          <ImageDetailsContent image={focusedImage} />
+        </DockerResourceDetailsLayout>
+      ) : viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid
+            fillAvailable
             getId={getImageRowId}
             items={filtered}
             renderItem={(image) => (
               <DockerImageCard
                 image={image}
-                onSelect={(checked) => handleSelectOne(image.id, checked)}
-                selected={effectiveSelected.has(image.id)}
+                onOpen={
+                  surface.editMode ? undefined : () => handleOpenImage(image.id)
+                }
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+            size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
         ) : (
@@ -528,81 +589,24 @@ const ImageList = ({
           dnd={tableDnd}
           emptyMessage="No images found."
           fillAvailable
-          getRowId={(image) => image.id}
-          renderExpandedContent={({ original: image }) => (
-            <div className="expand-panel">
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Full Image ID:</b>
-                </AppTypography>
-                <AppTypography
-                  className="expand-panel__mono"
-                  style={longTextStyles}
-                  variant="body2"
-                >
-                  {image.id}
-                </AppTypography>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Labels:</b>
-                </AppTypography>
-                <div className="expand-panel__chips">
-                  {image.raw.Labels &&
-                  Object.keys(image.raw.Labels).length > 0 ? (
-                    Object.entries(image.raw.Labels).map(([key, val]) => (
-                      <Chip
-                        key={key}
-                        label={`${key}: ${val}`}
-                        size="small"
-                        style={wrappableChipStyle}
-                        labelStyle={wrappableChipLabelStyle}
-                        variant="soft"
-                      />
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no labels)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <AppTypography gutterBottom variant="subtitle2">
-                  <b>Image Digests:</b>
-                </AppTypography>
-                <div>
-                  {image.raw.RepoDigests && image.raw.RepoDigests.length > 0 ? (
-                    image.raw.RepoDigests.map((digest) => (
-                      <AppTypography
-                        key={digest}
-                        className="expand-panel__mono"
-                        style={longTextStyles}
-                        variant="body2"
-                      >
-                        {digest}
-                      </AppTypography>
-                    ))
-                  ) : (
-                    <AppTypography color="text.secondary" variant="body2">
-                      (no digests)
-                    </AppTypography>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          getRowId={getImageRowId}
+          onRowClick={surface.editMode ? undefined : handleImageRowClick}
+          selectedRowId={focusedImageId ?? null}
         />
       )}
 
       <DeleteImageDialog
-        images={selectedImages.map((img) => ({
-          id: img.id,
-          label: img.refs[0] ?? img.shortId,
-          refs: img.refs,
-        }))}
+        images={
+          focusedImage
+            ? [
+                {
+                  id: focusedImage.id,
+                  label: focusedImage.refs[0] ?? focusedImage.shortId,
+                  refs: focusedImage.refs,
+                },
+              ]
+            : []
+        }
         onClose={() => setDeleteDialogOpen(false)}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}

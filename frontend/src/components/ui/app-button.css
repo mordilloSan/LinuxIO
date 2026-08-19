@@ -64,10 +64,10 @@
 
 /* text (default) */
 .app-btn:hover {
-  background-color: color-mix(in srgb, var(--_btn-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--_btn-main), transparent 96%);
 }
 
-.app-btn:focus-visible {
+:root[data-tab-navigation] .app-btn:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
 }
@@ -82,23 +82,20 @@
 
 .app-btn--contained:hover {
   background-color: var(--_btn-dark);
-  box-shadow:
-    0px 2px 4px -1px rgba(0, 0, 0, 0.2),
-    0px 4px 5px 0px rgba(0, 0, 0, 0.14),
-    0px 1px 10px 0px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--app-elevation-4);
 }
 
 /* outlined */
 .app-btn--outlined {
   padding: 5px 15px;
-  border: 1px solid color-mix(in srgb, var(--_btn-main) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--_btn-main), transparent 50%);
   color: var(--_btn-main);
   background-color: transparent;
 }
 
 .app-btn--outlined:hover {
   border-color: var(--_btn-main);
-  background-color: color-mix(in srgb, var(--_btn-main) 4%, transparent);
+  background-color: color-mix(in srgb, var(--_btn-main), transparent 96%);
 }
 
 /* ── sizes ─────────────────────────────────────── */
@@ -143,8 +140,8 @@
 }
 
 .app-btn--dialog-action:hover {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main) 13%, transparent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--app-palette-primary-main) 27%, transparent);
+  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 87%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--app-palette-primary-main), transparent 73%);
 }
 
 .app-btn--dialog-action:disabled {

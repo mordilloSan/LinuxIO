@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useRef,
   type ButtonHTMLAttributes,
@@ -33,6 +34,8 @@ export interface AppMenuItemProps extends Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "color"
 > {
+  /** Marks a destructive entry (delete, remove) so it reads as one at rest. */
+  danger?: boolean;
   endAdornment?: ReactNode;
   selected?: boolean;
   startAdornment?: ReactNode;
@@ -67,6 +70,18 @@ const AppMenu = ({
       menuRef.current?.querySelector<HTMLButtonElement>(focusableSelector);
     firstItem?.focus();
   }, [autoFocus, open]);
+
+  const handleClose = useCallback(() => {
+    const focusedElement = document.activeElement;
+    if (
+      anchorEl?.isConnected &&
+      focusedElement instanceof Node &&
+      menuRef.current?.contains(focusedElement)
+    ) {
+      anchorEl.focus();
+    }
+    onClose();
+  }, [anchorEl, onClose]);
 
   const focusRelativeItem = (direction: 1 | -1) => {
     const items = Array.from(
@@ -116,7 +131,7 @@ const AppMenu = ({
         break;
       }
       case "Tab":
-        onClose();
+        handleClose();
         break;
       default:
         break;
@@ -129,7 +144,7 @@ const AppMenu = ({
       anchorOrigin={anchorOrigin}
       anchorPosition={anchorPosition}
       keepMounted={keepMounted}
-      onClose={onClose}
+      onClose={handleClose}
       open={open}
       paperClassName={`app-menu ${className || ""}`.trim()}
       paperStyle={{
@@ -156,6 +171,7 @@ export const AppMenuItem = forwardRef<HTMLButtonElement, AppMenuItemProps>(
   (
     {
       selected = false,
+      danger = false,
       startAdornment,
       endAdornment,
       disabled,
@@ -169,6 +185,7 @@ export const AppMenuItem = forwardRef<HTMLButtonElement, AppMenuItemProps>(
       className={[
         "app-menu__item",
         selected && "app-menu__item--selected",
+        danger && "app-menu__item--danger",
         className,
       ]
         .filter(Boolean)

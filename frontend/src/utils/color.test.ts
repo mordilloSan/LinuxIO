@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { alpha, darken, lighten } from "@/utils/color";
+import {
+  alpha,
+  darken,
+  fromHsl,
+  interpolateHsl,
+  lighten,
+  toHexColor,
+  toHsl,
+} from "@/utils/color";
 
 describe("color utilities", () => {
   it("applies alpha to supported CSS color formats", () => {
@@ -14,6 +22,48 @@ describe("color utilities", () => {
   it("lightens and darkens parsed colors", () => {
     expect(lighten("#000000", 0.5)).toBe("rgb(128, 128, 128)");
     expect(darken("rgb(100, 150, 200)", 0.5)).toBe("rgb(50, 75, 100)");
+  });
+
+  it("reads colors as HSL", () => {
+    expect(toHsl("#ffffff")).toEqual({ h: 0, s: 0, l: 1 });
+    expect(toHsl("#808080")).toEqual({ h: 0, s: 0, l: 128 / 255 });
+
+    const accent = toHsl("#2196f3");
+    expect(accent?.h).toBeCloseTo(207, 0);
+    expect(accent?.s).toBeCloseTo(0.9, 1);
+    expect(accent?.l).toBeCloseTo(0.54, 2);
+  });
+
+  it("round-trips a color through HSL", () => {
+    const hsl = toHsl("#2196f3");
+    expect(hsl).not.toBeNull();
+    expect(fromHsl(hsl!.h, hsl!.s, hsl!.l)).toBe("rgb(33, 150, 243)");
+  });
+
+  it("formats picker-compatible hex colors", () => {
+    expect(toHexColor("#abc")).toBe("#aabbcc");
+    expect(toHexColor("rgb(33, 150, 243)")).toBe("#2196f3");
+    expect(toHexColor("var(--brand)")).toBeNull();
+  });
+
+  it("interpolates colors along the shortest HSL path", () => {
+    expect(interpolateHsl("#ff0000", "#0000ff", 0)).toBe("rgb(255, 0, 0)");
+    expect(interpolateHsl("#ff0000", "#0000ff", 0.5)).toBe("rgb(255, 0, 255)");
+    expect(interpolateHsl("#ff0000", "#0000ff", 1)).toBe("rgb(0, 0, 255)");
+  });
+
+  it("wraps and clamps HSL components", () => {
+    // The dock adds a signed hue offset to an accent, so both ends of the
+    // circle have to land on the same color as the unrotated value.
+    expect(fromHsl(390, 0.5, 0.5)).toBe(fromHsl(30, 0.5, 0.5));
+    expect(fromHsl(-30, 0.5, 0.5)).toBe(fromHsl(330, 0.5, 0.5));
+    expect(fromHsl(0, 2, 2)).toBe("rgb(255, 255, 255)");
+    expect(fromHsl(0, -1, -1)).toBe("rgb(0, 0, 0)");
+  });
+
+  it("returns null for colors it cannot parse as HSL", () => {
+    expect(toHsl("var(--brand)")).toBeNull();
+    expect(toHsl("currentColor")).toBeNull();
   });
 
   it("falls back to color-mix for unparsed colors", () => {

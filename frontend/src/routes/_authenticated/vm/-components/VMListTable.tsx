@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { CSSProperties } from "react";
 
 import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
@@ -115,13 +115,13 @@ export default function VMListTable({
         accessorKey: "vcpus",
         header: "CPU",
         cell: ({ row }) => row.original.vcpus,
-        meta: { width: "80px" },
+        meta: { align: "right", width: "80px" },
       },
       {
         accessorKey: "memoryMB",
         header: "Memory",
         cell: ({ row }) => formatMemory(row.original.memoryMB),
-        meta: { width: "120px" },
+        meta: { align: "right", width: "120px" },
       },
       {
         id: "actions",
@@ -210,6 +210,11 @@ export default function VMListTable({
     surface,
   });
 
+  const handleRowClick = useCallback(
+    ({ original: vm }: { original: VirtualMachine }) => onSelect(vm.name),
+    [onSelect],
+  );
+
   return (
     <FrostedCard style={listPanelStyle}>
       <AppDataTable
@@ -219,8 +224,10 @@ export default function VMListTable({
         dnd={tableDnd}
         emptyMessage="No virtual machines."
         enableSorting={false}
-        getRowId={(vm) => vm.name}
-        onRowClick={(row) => onSelect(row.original.name)}
+        fillAvailable={false}
+        getRowId={getVirtualMachineId}
+        maxHeight={400}
+        onRowClick={handleRowClick}
         selectedRowId={effectiveSelectedName}
         variant="embedded"
       />

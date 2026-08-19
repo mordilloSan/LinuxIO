@@ -67,7 +67,6 @@ vi.mock("./PackageUpdateController", () => ({
 }));
 
 vi.mock("./UpdateStatus", () => ({ default: () => null }));
-vi.mock("./UpdateSettingsDialog", () => ({ default: () => null }));
 
 const { default: UpdatesPage } = await import("./UpdatesPage");
 const { render, screen } = await import("@/test/render");
@@ -102,6 +101,15 @@ describe("UpdatesPage", () => {
 
     expect(
       screen.queryByRole("button", { name: /Update All/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps automatic update settings in global Settings", () => {
+    mocks.updates = [];
+    render(<UpdatesPage />);
+
+    expect(
+      screen.queryByRole("button", { name: "Open update settings" }),
     ).not.toBeInTheDocument();
   });
 });

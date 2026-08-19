@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
+import { GAP_MD } from "@/theme/constants";
 export type DeleteOption = "containers" | "file" | "directory";
 interface DeleteStackDialogProps {
   configFiles: string[];
@@ -138,7 +139,7 @@ const DeleteStackDialog = ({
                   display: "flex",
                   alignItems: "flex-start",
                   justifyContent: "space-between",
-                  gap: 12,
+                  gap: GAP_MD,
                   padding: "12px 14px",
                   borderRadius: 10,
                   border: `1px solid ${

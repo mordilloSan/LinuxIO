@@ -18,16 +18,23 @@ import type { ValidationResult } from "./ComposeValidationFeedback";
 import ComposeValidationFeedback from "./ComposeValidationFeedback";
 
 interface ComposeEditorDialogProps {
+  envFilePath?: string;
   filePath?: string;
   initialContent?: string;
+  // null = no env file exists yet; it is created on save if content is added.
+  initialEnvContent?: string | null;
   mode: "create" | "edit";
   onClose: () => void;
   onSave: (
     content: string,
     stackName: string,
     filePath: string,
+    envContent?: string,
   ) => Promise<boolean>;
-  onValidate?: (content: string) => Promise<ValidationResult>;
+  onValidate?: (
+    content: string,
+    envContent: string,
+  ) => Promise<ValidationResult>;
   open: boolean;
   readOnly?: boolean;
   stackName?: string;
@@ -40,18 +47,23 @@ const ComposeEditorDialog = ({
   stackName: initialStackName = "",
   filePath = "",
   initialContent = "",
+  envFilePath = "",
+  initialEnvContent = null,
   onClose,
   onSave,
   onValidate,
 }: ComposeEditorDialogProps) => {
   const theme = useAppTheme();
   const editorRef = useRef<FileEditorHandle>(null);
+  const envEditorRef = useRef<FileEditorHandle>(null);
   const [stackName, setStackName] = useState(initialStackName);
   const [isEditorDirty, setIsEditorDirty] = useState(false);
+  const [isEnvDirty, setIsEnvDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const envFileExists = initialEnvContent !== null;
 
   const [editorSource, setEditorSource] = useState({
     filePath: "",
@@ -64,12 +76,13 @@ const ComposeEditorDialog = ({
     if (open) {
       setStackName(initialStackName);
       setIsEditorDirty(false);
+      setIsEnvDirty(false);
       setIsSaving(false);
       setValidation(null);
     }
   }
   const handleClose = () => {
-    if (!readOnly && isEditorDirty) {
+    if (!readOnly && (isEditorDirty || isEnvDirty)) {
       setShowUnsavedDialog(true);
     } else {
       onClose();
@@ -85,17 +98,20 @@ const ComposeEditorDialog = ({
     setShowUnsavedDialog(false);
   };
   const handleValidate = async () => {
-    if (!onValidate || !editorRef.current) return;
+    const editor = editorRef.current;
+    if (!onValidate || !editor) return;
     setIsValidating(true);
-    try {
-      const content = editorRef.current.getContent();
-      const result = await onValidate(content);
-      setValidation(result);
-    } catch (error) {
-      console.error("Validation error:", error);
-    } finally {
-      setIsValidating(false);
-    }
+    const validate = async () => {
+      try {
+        const content = editor.getContent();
+        const envContent = envEditorRef.current?.getContent() ?? "";
+        const result = await onValidate(content, envContent);
+        setValidation(result);
+      } catch (error) {
+        console.error("Validation error:", error);
+      }
+    };
+    await validate().finally(() => setIsValidating(false));
   };
   const handleSave = async (content: string): Promise<boolean> => {
     // Validate stack name for create mode
@@ -113,44 +129,62 @@ const ComposeEditorDialog = ({
     }
     setIsSaving(true);
     setIsValidating(true);
-    try {
-      let contentToSave = content;
+    const save = async (): Promise<boolean> => {
+      try {
+        let contentToSave = content;
+        const envEditor = envEditorRef.current;
+        const envContent = envEditor?.getContent() ?? "";
+        const envDirty = envEditor?.isDirty() ?? false;
 
-      // Run validation before save
-      if (onValidate) {
-        const validationResult = await onValidate(content);
-        setValidation(validationResult);
-        if (!validationResult.valid) {
-          setIsSaving(false);
-          setIsValidating(false);
-          return false;
+        // Run validation before save
+        if (onValidate) {
+          const validationResult = await onValidate(content, envContent);
+          setValidation(validationResult);
+          if (!validationResult.valid) {
+            setIsSaving(false);
+            setIsValidating(false);
+            return false;
+          }
+
+          // Use normalized content if available (auto-adds container_name)
+          if (validationResult.normalized_content) {
+            contentToSave = validationResult.normalized_content;
+          }
         }
 
-        // Use normalized content if available (auto-adds container_name)
-        if (validationResult.normalized_content) {
-          contentToSave = validationResult.normalized_content;
+        // Save the file (with normalized content); the env file only travels
+        // along when its buffer actually changed.
+        const saved = await onSave(
+          contentToSave,
+          stackName.trim(),
+          filePath,
+          envDirty ? envContent : undefined,
+        );
+        if (saved) {
+          // The env pane's onSave is a no-op; this only resets its dirty state
+          // now that the page has persisted both files.
+          await envEditor?.save();
         }
+        return saved;
+      } catch (error) {
+        console.error("Save error:", error);
+        setValidation({
+          valid: false,
+          errors: [
+            {
+              message:
+                error instanceof Error ? error.message : "Failed to save file",
+              type: "error",
+            },
+          ],
+        });
+        return false;
       }
-
-      // Save the file (with normalized content)
-      return await onSave(contentToSave, stackName.trim(), filePath);
-    } catch (error) {
-      console.error("Save error:", error);
-      setValidation({
-        valid: false,
-        errors: [
-          {
-            message:
-              error instanceof Error ? error.message : "Failed to save file",
-            type: "error",
-          },
-        ],
-      });
-      return false;
-    } finally {
+    };
+    return save().finally(() => {
       setIsSaving(false);
       setIsValidating(false);
-    }
+    });
   };
 
   const requestSave = () => {
@@ -238,6 +272,7 @@ const ComposeEditorDialog = ({
             style={{
               flex: 1,
               overflow: "hidden",
+              display: "flex",
             }}
           >
             <Suspense
@@ -255,16 +290,84 @@ const ComposeEditorDialog = ({
                 </div>
               }
             >
-              <FileEditor
-                fileName="docker-compose.yml"
-                filePath={filePath || "docker-compose.yml"}
-                initialContent={initialContent}
-                isSaving={isSaving || isValidating}
-                onDirtyChange={readOnly ? undefined : setIsEditorDirty}
-                onSave={handleSave}
-                readOnly={readOnly}
-                ref={editorRef}
+              <div
+                style={{
+                  flex: 3,
+                  minWidth: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "4px 12px",
+                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    flexShrink: 0,
+                  }}
+                >
+                  <AppTypography color="text.secondary" variant="caption">
+                    docker-compose.yml
+                  </AppTypography>
+                </div>
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <FileEditor
+                    fileName="docker-compose.yml"
+                    filePath={filePath || "docker-compose.yml"}
+                    initialContent={initialContent}
+                    isSaving={isSaving || isValidating}
+                    onDirtyChange={readOnly ? undefined : setIsEditorDirty}
+                    onSave={handleSave}
+                    readOnly={readOnly}
+                    ref={editorRef}
+                  />
+                </div>
+              </div>
+              <div
+                style={{
+                  width: 1,
+                  backgroundColor: theme.palette.divider,
+                  flexShrink: 0,
+                }}
               />
+              <div
+                style={{
+                  flex: 2,
+                  minWidth: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "4px 12px",
+                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    flexShrink: 0,
+                  }}
+                >
+                  <AppTypography color="text.secondary" variant="caption">
+                    .env
+                    {!envFileExists && !readOnly
+                      ? " — will be created on save"
+                      : ""}
+                  </AppTypography>
+                </div>
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <FileEditor
+                    editorName="env-file-editor"
+                    enableSaveShortcut={false}
+                    fileName=".env"
+                    filePath={envFilePath || ".env"}
+                    initialContent={initialEnvContent ?? ""}
+                    isSaving={isSaving || isValidating}
+                    onDirtyChange={readOnly ? undefined : setIsEnvDirty}
+                    // Persistence happens in the compose save flow; this only
+                    // acknowledges the save so the editor resets its dirty state.
+                    onSave={async () => true}
+                    readOnly={readOnly}
+                    ref={envEditorRef}
+                  />
+                </div>
+              </div>
             </Suspense>
           </div>
         </AppDialogContent>

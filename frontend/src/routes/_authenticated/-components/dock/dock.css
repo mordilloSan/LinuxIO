@@ -1,0 +1,205 @@
+.app-dock {
+  /* Lives inside the navbar: centered in the header row, magnified tiles
+     spill out below the header (nothing above clips overflow). */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: flex-start;
+}
+
+.app-dock__list {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  /* Fixed height so magnified tiles pop out below the header row instead of
+     stretching it (48px content = dot row + 40px resting tile). */
+  height: 60px;
+}
+
+.app-dock__item {
+  display: flex;
+  align-items: flex-start;
+}
+
+.app-dock-link {
+  position: relative;
+  display: block;
+  width: 40px;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-dock-link--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.app-dock__tile {
+  position: relative;
+  display: flex;
+  /* Rasterize at the 64px magnification peak and animate from 0.625 to 1.
+     The visible tile still spans 40–64px, but its SVG is never enlarged from
+     a smaller composited layer. */
+  width: 64px;
+  height: 64px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 64px;
+  border-radius: var(--app-tile-radius);
+  transform-origin: 50% 0;
+  will-change: transform;
+  color: #fff;
+  /* Pair supplied per tile by DockTile; assembled here so the active-route rule
+     below can swap it wholesale. */
+  background: linear-gradient(
+    180deg,
+    var(--dock-tile-top),
+    var(--dock-tile-bottom)
+  );
+  /* These lengths are the original shadow geometry multiplied by 1.6. The
+     layer's 0.625 resting scale brings them back to the same rendered values. */
+  box-shadow:
+    inset 0 1.6px 1.6px rgba(255, 255, 255, 0.4),
+    inset 0 -3.2px 6.4px rgba(0, 0, 0, 0.15),
+    0 9.6px 22.4px -9.6px rgba(0, 0, 0, 0.5);
+}
+
+.app-dock__slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 40px;
+  height: 48px;
+}
+
+/* Also overrides fixed width/height attributes on Iconify icons inside
+   relocated action buttons, so icons scale with the magnifying tile. */
+.app-dock__tile svg {
+  width: 56%;
+  height: 56%;
+}
+
+/* The anchor follows the visual tile without scaling the label itself. */
+.app-dock__label-anchor {
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  z-index: 1;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.app-dock__label {
+  display: block;
+  transform: translate(-50%, -4px);
+  padding: 3px 10px;
+  border-radius: var(--app-floating-surface-radius);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--app-palette-text-primary);
+  background: var(--app-palette-background-paper);
+  border: 1px solid var(--app-palette-divider);
+  box-shadow: var(--app-floating-surface-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+/* Chromium's default link outline traces both the transformed tile and the
+   absolutely positioned label, producing a large stepped contour around
+   unrelated boxes. The tile ring below is the designed replacement. */
+.app-dock-link:focus-visible {
+  outline: none;
+}
+
+/* Keyboard-focus indicator: a two-colour ring on the tile itself. Tile
+   gradients are user-configurable, so a light ring with a dark separator keeps
+   contrast whatever the tile and the surface behind it look like. Lengths are
+   authored ×1.6 like the tile shadows above — the layer's 0.625 resting scale
+   renders them at 2px/1px — and the ring magnifies with its tile. The light
+   half is an outline rather than a shadow so forced-colors mode keeps it. */
+:root[data-tab-navigation]
+  .app-dock-link:focus-visible
+  .app-dock__tile {
+  outline: 3.2px solid #fff;
+  outline-offset: 1.6px;
+  box-shadow:
+    0 0 0 6.4px rgba(0, 0, 0, 0.6),
+    inset 0 1.6px 1.6px rgba(255, 255, 255, 0.4),
+    inset 0 -3.2px 6.4px rgba(0, 0, 0, 0.15),
+    0 9.6px 22.4px -9.6px rgba(0, 0, 0, 0.5);
+}
+
+/* Hover labels need evidence of live pointer movement over the dock in this
+   window activation: Chromium restores :hover when the window comes back
+   without firing the pointermove that drives magnification, and a label under
+   a resting tile reads as a glitch. The dock owns the attribute together with
+   the magnification pointer (useDockPointerLiveness), so both always reset
+   together. Keyboard focus also shows the label, captioning the tile ring. */
+.app-dock[data-dock-pointer] .app-dock-link:hover .app-dock__label,
+:root[data-tab-navigation]
+  .app-dock-link:focus-visible
+  .app-dock__label {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Running-app style indicator for the active route, sitting above the tile
+   near the panel edge. Always laid out so the tile row keeps a constant
+   baseline; only its visibility changes. */
+.app-dock__dot {
+  width: 4px;
+  height: 4px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--app-palette-text-primary);
+  opacity: 0;
+  flex: 0 0 auto;
+}
+
+.app-dock-link--active .app-dock__dot {
+  opacity: 0.9;
+}
+
+/* The neutral palette publishes an accent pair on the dock and lets the route
+   you are on wear it, so the header has exactly one lit tile. Every other
+   palette leaves these unset and each tile keeps its own pair. */
+.app-dock-link--active .app-dock__tile {
+  background: linear-gradient(
+    180deg,
+    var(--dock-tile-active-top, var(--dock-tile-top)),
+    var(--dock-tile-active-bottom, var(--dock-tile-bottom))
+  );
+}
+
+/* When the header row gets tight, drop out of absolute centering and share
+   the row with the search field and actions. Content-tuned threshold, not a
+   theme breakpoint. */
+@media (max-width: 1280px) {
+  .app-dock {
+    position: static;
+    transform: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0 auto;
+  }
+}
+
+/* Production switches back to the sidebar before this width. Keep the resting
+   row scrollable for narrow standalone fixtures and defensive reuse. */
+@media (max-width: 769.95px) {
+  .app-dock__list {
+    gap: 4px;
+    overflow-x: auto;
+  }
+}

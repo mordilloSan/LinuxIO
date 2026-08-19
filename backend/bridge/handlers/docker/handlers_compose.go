@@ -43,8 +43,8 @@ func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, _ apischema.
 	return GetDockerFolders(ctx, h.rt.Username(), h.rt.Store)
 }
 
-func (h dockerHandlers) handleValidateCompose(ctx context.Context, req apischema.ContentRequest) (apischema.ValidateComposeResponse, error) {
-	return ValidateComposeFile(ctx, req.Content)
+func (h dockerHandlers) handleValidateCompose(ctx context.Context, req apischema.ValidateComposeRequest) (apischema.ValidateComposeResponse, error) {
+	return ValidateComposeFile(ctx, req.Content, req.EnvContent, req.WorkingDir)
 }
 
 func (h dockerHandlers) handleNormalizeCompose(ctx context.Context, req apischema.ContentRequest) error {

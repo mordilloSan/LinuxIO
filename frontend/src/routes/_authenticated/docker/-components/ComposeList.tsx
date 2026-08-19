@@ -1,5 +1,14 @@
 import { Icon } from "@iconify/react";
-import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   linuxio,
@@ -10,12 +19,16 @@ import {
 } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
 import DockerIcon from "@/components/docker/DockerIcon";
+import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
+import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { RoutedTabSearch } from "@/components/tabbar";
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import AppSearchField from "@/components/ui/AppSearchField";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import {
@@ -24,9 +37,8 @@ import {
 } from "@/constants/statusColors";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery, useAppTheme } from "@/theme";
-import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
+import { CARD_GRID_SIZE_DENSE } from "@/theme/constants";
 
 import "./compose-list.css";
 
@@ -34,6 +46,8 @@ const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
+const dockerRouteApi = getRouteApi("/_authenticated/docker/compose");
+
 interface ComposeListProps {
   isLoading?: boolean;
   onDelete: (project: ComposeProject) => void;
@@ -106,7 +120,7 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
   onOpenTerminal,
 }: ComposeContainerActionsProps) {
   const name = getContainerName(container);
-  const toast = useScopedToast(DOCKER_TOAST_META);
+  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
   const { mutate: startContainer, isPending: isStarting } = useCallMutation(
     linuxio.docker.start_container,
     {
@@ -131,18 +145,7 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
       toast: DOCKER_TOAST_META,
     },
   );
-  const { mutate: updateContainer, isPending: isUpdating } =
-    linuxio.docker.update_container.useTaskAction({
-      success: (result) => {
-        toast.success(
-          result.updated
-            ? `Container ${name} updated`
-            : `Container ${name} is already up to date`,
-        );
-      },
-      error: `Failed to update ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
+  const updatePending = isUpdating(container.Id);
   const { mutate: removeContainer, isPending: isRemoving } = useCallMutation(
     linuxio.docker.remove_container,
     {
@@ -152,8 +155,8 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
     },
   );
   const actionPending =
-    isStarting || isStopping || isRestarting || isUpdating || isRemoving;
-  const controlsDisabled = disabled || actionPending;
+    isStarting || isStopping || isRestarting || updatePending || isRemoving;
+  const controlsDisabled = disabled || actionPending || updating;
   const request = { containerId: container.Id };
 
   return (
@@ -191,16 +194,14 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
         loading={isRestarting}
         onClick={() => restartContainer(request)}
       />
-      {container.updateAvailable && (
+      {container.updateAvailable && container.State === "running" && (
         <AppActionIconButton
           disabled={controlsDisabled}
           icon="mdi:update"
           iconSize={18}
           label="Update container"
-          loading={isUpdating}
-          onClick={() =>
-            updateContainer(createDockerContainerUpdateRequest(container.Id))
-          }
+          loading={updatePending}
+          onClick={() => startUpdate(container.Id, name)}
         />
       )}
       <AppActionIconButton
@@ -250,6 +251,10 @@ const ComposeList = ({
   isLoading = false,
   viewMode = "table",
 }: ComposeListProps) => {
+  const navigate = dockerRouteApi.useNavigate();
+  const searchParams = dockerRouteApi.useSearch();
+  const focusedProjectName =
+    typeof searchParams.stack === "string" ? searchParams.stack : undefined;
   const [search, setSearch] = useState("");
   const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(
     null,
@@ -263,11 +268,50 @@ const ComposeList = ({
     items: projects,
     surface: "docker.stacks",
   });
+  const updateFocusedProject = useCallback(
+    (projectName: string | null) => {
+      void navigate({
+        to: "/docker/compose",
+        search: (previous) => ({
+          ...previous,
+          stack: projectName ?? undefined,
+        }),
+      });
+    },
+    [navigate],
+  );
   const tableDnd = useReorderableTableDnd<ComposeProject, ComposeProject>({
     handleAriaLabel: "Reorder stack",
     surface,
   });
   const orderedProjects = surface.items;
+  const focusedProject = useMemo(
+    () =>
+      orderedProjects.find((project) => project.name === focusedProjectName) ??
+      null,
+    [focusedProjectName, orderedProjects],
+  );
+
+  useEffect(() => {
+    if (focusedProjectName && !focusedProject) updateFocusedProject(null);
+  }, [focusedProject, focusedProjectName, updateFocusedProject]);
+
+  useEffect(() => {
+    if (!focusedProject) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key !== "Escape" && event.key !== "Esc") ||
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      ) {
+        return;
+      }
+      updateFocusedProject(null);
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusedProject, updateFocusedProject]);
   const filtered = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     if (!normalizedSearch) return orderedProjects;
@@ -505,7 +549,7 @@ const ComposeList = ({
                   />
                   <AppActionIconButton
                     disabled={isLoading}
-                    icon="mdi:stop-circle"
+                    icon="mdi:stop"
                     iconSize={20}
                     label="Stop"
                     onClick={() => onStop(project.name)}
@@ -754,7 +798,7 @@ const ComposeList = ({
     [isLoading],
   );
 
-  const renderExpandedContent = useCallback(
+  const renderStackContainers = useCallback(
     (project: ComposeProject) => {
       const containers = containersByProject.get(project.name) ?? [];
 
@@ -767,6 +811,7 @@ const ComposeList = ({
           density="compact"
           emptyMessage="No containers found for this stack."
           enableSorting={false}
+          fillAvailable={false}
           getRowAttributes={() => ({ className: "compose-container-row" })}
           getRowId={(container) => container.Id}
           maxHeight={260}
@@ -776,36 +821,15 @@ const ComposeList = ({
     },
     [containersByProject, expandedContainerColumns],
   );
-  const searchBar = (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        flexWrap: "nowrap",
-        gap: isSmallUp ? theme.spacing(2) : theme.spacing(1),
-        marginBottom: theme.spacing(2),
-      }}
-    >
-      <AppSearchField
-        onChange={(e) => setSearch(e.target.value)}
+  const searchControl = (
+    <RoutedTabSearch active={search !== ""}>
+      <AppHeaderSearch
+        clearOnDocumentEscape
+        onChange={setSearch}
         placeholder="Search stacks…"
-        style={{
-          flex: isSmallUp ? "0 0 320px" : "1 1 auto",
-          minWidth: 0,
-          width: isSmallUp ? 320 : undefined,
-        }}
         value={search}
       />
-      <AppTypography
-        fontWeight={700}
-        style={{
-          flexShrink: 0,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {filtered.length} shown
-      </AppTypography>
-    </div>
+    </RoutedTabSearch>
   );
   const containerDialogs = (
     <Suspense fallback={null}>
@@ -827,10 +851,51 @@ const ComposeList = ({
       )}
     </Suspense>
   );
+  if (focusedProject) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
+        <DockerResourceDetailsLayout
+          onClose={() => updateFocusedProject(null)}
+          resourceLabel="stack"
+          subtitle={`${focusedProject.status} · ${getTotalContainers(focusedProject)} containers`}
+          summary={
+            <ComposeStackCard
+              isLoading={isLoading}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onRestart={onRestart}
+              onStart={onStart}
+              onStop={onStop}
+              project={focusedProject}
+              selected
+            />
+          }
+          title={focusedProject.name}
+        >
+          {renderStackContainers(focusedProject)}
+        </DockerResourceDetailsLayout>
+        {containerDialogs}
+      </div>
+    );
+  }
   if (viewMode === "card") {
     return (
-      <div>
-        {searchBar}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
+        {searchControl}
         {filtered.length === 0 ? (
           <div
             style={{
@@ -846,6 +911,7 @@ const ComposeList = ({
           </div>
         ) : (
           <ReorderableCardGrid
+            fillAvailable
             getId={getComposeProjectId}
             items={filtered}
             renderItem={(project) => (
@@ -856,10 +922,15 @@ const ComposeList = ({
                 onRestart={onRestart}
                 onStart={onStart}
                 onStop={onStop}
+                onOpen={
+                  surface.editMode
+                    ? undefined
+                    : () => updateFocusedProject(project.name)
+                }
                 project={project}
               />
             )}
-            size={{ xs: 12, sm: 6, md: 4, lg: 2 }}
+            size={CARD_GRID_SIZE_DENSE}
             surface={surface}
           />
         )}
@@ -876,21 +947,27 @@ const ComposeList = ({
         minHeight: 0,
       }}
     >
-      {searchBar}
+      {searchControl}
       <AppDataTable
         ariaLabel="Docker compose stacks"
         columns={columns}
         data={filtered}
         dnd={tableDnd}
         emptyMessage="No compose stacks found. Start containers with docker compose to see them here."
+        fillAvailable
         getRowId={(project) => project.name}
-        renderExpandedContent={({ original: project }) =>
-          renderExpandedContent(project)
+        getRowCanExpand={(row) =>
+          (containersByProject.get(row.original.name)?.length ?? 0) > 0
         }
-        style={{
-          flex: "1 1 0",
-          minHeight: 0,
-        }}
+        onRowClick={
+          surface.editMode
+            ? undefined
+            : ({ original: project }) => updateFocusedProject(project.name)
+        }
+        persistExpandedKey="compose-stacks"
+        renderExpandedContent={({ original: project }) =>
+          renderStackContainers(project)
+        }
       />
       {containerDialogs}
     </div>

@@ -226,6 +226,12 @@ func fetchHistoryEnvelope(ctx context.Context, plugin string, req apischema.Moni
 	if req.Limit < 0 || req.Limit > maxHistoryLimit {
 		return historyEnvelope{}, fmt.Errorf("%w: limit must be between 1 and %d", bridgeipc.ErrInvalidArgs, maxHistoryLimit)
 	}
+	if req.WindowMs < 0 {
+		return historyEnvelope{}, fmt.Errorf("%w: window_ms must be greater than zero", bridgeipc.ErrInvalidArgs)
+	}
+	if req.WindowMs > 0 && req.FromMs > 0 {
+		return historyEnvelope{}, fmt.Errorf("%w: from_ms and window_ms are mutually exclusive", bridgeipc.ErrInvalidArgs)
+	}
 	limit := req.Limit
 	if limit == 0 {
 		limit = defaultHistoryLimit
@@ -239,8 +245,12 @@ func fetchHistoryEnvelope(ctx context.Context, plugin string, req apischema.Moni
 	query := url.Values{}
 	query.Set("resolution", string(req.Resolution))
 	query.Set("limit", strconv.Itoa(limit))
-	if req.FromMs > 0 {
-		query.Set("from", strconv.FormatInt(req.FromMs, 10))
+	fromMs := req.FromMs
+	if req.WindowMs > 0 {
+		fromMs = time.Now().UnixMilli() - req.WindowMs
+	}
+	if fromMs > 0 {
+		query.Set("from", strconv.FormatInt(fromMs, 10))
 	}
 	if req.ToMs > 0 {
 		query.Set("to", strconv.FormatInt(req.ToMs, 10))

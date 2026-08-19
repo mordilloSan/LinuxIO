@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable";
+import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
 
 import type { DriveInfo } from "../types";
 import { getSmartNumber, getSmartString } from "../utils";
@@ -111,6 +111,7 @@ export const DriveInfoTab = ({
       columns={driveInfoColumns}
       data={rows}
       density="compact"
+      fillAvailable={false}
       getRowId={(row) => row.property}
       maxHeight={400}
       variant="embedded"

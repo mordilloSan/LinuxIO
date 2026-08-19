@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -30,10 +31,14 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	project := fmt.Sprintf("linuxio-it-%d", time.Now().UnixNano())
 	dir := t.TempDir()
 	composePath := filepath.Join(dir, "compose.yaml")
+	projectEnvPath := filepath.Join(dir, ".env")
+	serviceEnvPath := filepath.Join(dir, "service.env")
 	const service = "app"
 	const firstImage = "alpine:3.20"
 	const secondImage = "alpine:3.21"
-	writeDockerUpdateComposeFile(t, composePath, service, firstImage)
+	writeDockerUpdateComposeEnvironmentFile(t, projectEnvPath, "LINUXIO_IT_IMAGE", firstImage)
+	writeDockerUpdateComposeEnvironmentFile(t, serviceEnvPath, "LINUXIO_SERVICE_VALUE", "from-service-env-file")
+	writeDockerUpdateComposeFileWithEnvironment(t, composePath, service, "${LINUXIO_IT_IMAGE}", "./service.env")
 	registerDockerUpdateComposeCleanup(t, project, composePath, dir)
 
 	if err := composeUp(ctx, project, composePath, dir, true, nil); err != nil {
@@ -54,12 +59,12 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 		t.Fatalf("resolved target = %#v, service=%q, managed=%v; want project/config/working dir from labels", resolved, resolvedService, managed)
 	}
 
-	writeDockerUpdateComposeFile(t, composePath, service, secondImage)
+	writeDockerUpdateComposeEnvironmentFile(t, projectEnvPath, "LINUXIO_IT_IMAGE", secondImage)
 	updateResult, _, err := newContainerUpdateResult(initial)
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	updatedResult, err := updateComposeContainer(ctx, cli, initial, resolved, service, updateResult)
+	updatedResult, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, updateResult, nil)
 	if err != nil {
 		t.Fatalf("production Compose update to %s: %v", secondImage, err)
 	}
@@ -68,12 +73,74 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	}
 	updated := mustInspectComposeService(t, ctx, cli, project, service)
 	assertUpdatedComposeContainer(t, initial, updated, secondImage)
+	if updated.Config == nil || !slices.Contains(updated.Config.Env, "LINUXIO_SERVICE_VALUE=from-service-env-file") {
+		t.Fatalf("updated container environment = %#v, want value from service env_file", updated.Config)
+	}
 }
 
-// TestDockerUpdateComposeInterpolationRefusesMutation verifies that a Compose
-// file whose image reference depends on environment interpolation is rejected
-// before Compose is invoked. The running container must remain untouched.
-func TestDockerUpdateComposeInterpolationRefusesMutation(t *testing.T) {
+func TestDockerUpdateComposeExplicitEnvironmentFileIntegration(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
+	}
+	requireDockerComposeIntegration(t)
+	withTempUpdateStatusPath(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	project := fmt.Sprintf("linuxio-it-env-file-%d", time.Now().UnixNano())
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	environmentPath := filepath.Join(dir, "project.env")
+	const service = "app"
+	const firstImage = "alpine:3.20"
+	const secondImage = "alpine:3.21"
+	writeDockerUpdateComposeFile(t, composePath, service, "${LINUXIO_IT_IMAGE}")
+	writeDockerUpdateComposeEnvironmentFile(t, environmentPath, "LINUXIO_IT_IMAGE", firstImage)
+	target := composeProjectTarget{
+		Name:               project,
+		ConfigFiles:        []string{composePath},
+		EnvironmentFiles:   []string{environmentPath},
+		IsolateEnvironment: true,
+		WorkingDir:         dir,
+	}
+	registerDockerUpdateComposeTargetCleanup(t, target)
+	if err := runComposeProject(ctx, target, nil, "up", "-d"); err != nil {
+		t.Fatalf("compose up with explicit environment file: %v", err)
+	}
+
+	cli, err := getClient()
+	if err != nil {
+		t.Fatalf("create Docker client: %v", err)
+	}
+	defer releaseClient(cli)
+	initial := mustInspectComposeService(t, ctx, cli, project, service)
+	resolved, resolvedService, managed, err := composeTargetForContainer(ctx, cli, initial)
+	if err != nil {
+		t.Fatalf("resolve Compose target: %v", err)
+	}
+	if !managed || resolvedService != service || !slices.Equal(resolved.EnvironmentFiles, []string{environmentPath}) {
+		t.Fatalf("resolved target = %#v, service=%q, managed=%v; want explicit environment file", resolved, resolvedService, managed)
+	}
+
+	writeDockerUpdateComposeEnvironmentFile(t, environmentPath, "LINUXIO_IT_IMAGE", secondImage)
+	result, _, err := newContainerUpdateResult(initial)
+	if err != nil {
+		t.Fatalf("build update result: %v", err)
+	}
+	updatedResult, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, result, nil)
+	if err != nil {
+		t.Fatalf("update Compose service with explicit environment file: %v", err)
+	}
+	if !updatedResult.Updated {
+		t.Fatalf("update result = %#v, want replacement", updatedResult)
+	}
+	updated := mustInspectComposeService(t, ctx, cli, project, service)
+	assertUpdatedComposeContainer(t, initial, updated, secondImage)
+}
+
+// TestDockerUpdateComposeShellOnlyInterpolationRefusesMutation verifies that
+// update execution does not inherit unrelated worker environment variables.
+func TestDockerUpdateComposeShellOnlyInterpolationRefusesMutation(t *testing.T) {
 	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
 		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
 	}
@@ -86,12 +153,12 @@ func TestDockerUpdateComposeInterpolationRefusesMutation(t *testing.T) {
 	composePath := filepath.Join(dir, "compose.yaml")
 	const service = "app"
 	const image = "alpine:3.20"
-	t.Setenv("LINUXIO_IT_IMAGE", image)
-	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: ${LINUXIO_IT_IMAGE}\n    command: [\"sleep\", \"infinity\"]\n"), 0o600); err != nil {
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: ${LINUXIO_IT_IMAGE:?required}\n    command: [\"sleep\", \"infinity\"]\n"), 0o600); err != nil {
 		t.Fatalf("write interpolated Compose file: %v", err)
 	}
-	registerDockerUpdateComposeCleanup(t, project, composePath, dir)
-	if err := composeUp(ctx, project, composePath, dir, true, nil); err != nil {
+	target := composeProjectTarget{Name: project, ConfigFiles: []string{composePath}, WorkingDir: dir}
+	registerDockerUpdateComposeEnvironmentCleanup(t, target, "LINUXIO_IT_IMAGE", image)
+	if err := runComposeProjectWithEnvironment(ctx, target, "LINUXIO_IT_IMAGE", image, "up", "-d"); err != nil {
 		t.Fatalf("compose up with interpolated image: %v", err)
 	}
 
@@ -112,8 +179,8 @@ func TestDockerUpdateComposeInterpolationRefusesMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainer(ctx, cli, initial, resolved, service, result); err == nil || !strings.Contains(err.Error(), "cannot reconstruct safely") {
-		t.Fatalf("interpolated Compose update error = %v, want reconstruction refusal", err)
+	if _, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, result, nil); err == nil || !strings.Contains(err.Error(), "validate Compose project") {
+		t.Fatalf("shell-only interpolation update error = %v, want validation refusal", err)
 	}
 
 	after := mustInspectComposeService(t, ctx, cli, project, service)
@@ -140,7 +207,7 @@ func TestDockerUpdateComposeScaledServiceRefusesMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainer(fixture.ctx, fixture.cli, selected, fixture.target, service, result); err == nil || !strings.Contains(err.Error(), "replicas") {
+	if _, err := updateComposeContainerWithProgress(fixture.ctx, fixture.cli, selected, fixture.target, service, result, nil); err == nil || !strings.Contains(err.Error(), "replicas") {
 		t.Fatalf("scaled Compose update error = %v, want replica-safety refusal", err)
 	}
 
@@ -230,6 +297,26 @@ func writeDockerUpdateComposeFile(t *testing.T, composePath, service, image stri
 	}
 }
 
+func writeDockerUpdateComposeFileWithEnvironment(t *testing.T, composePath, service, image, environmentFile string) {
+	t.Helper()
+	content := fmt.Sprintf(
+		"services:\n  %s:\n    image: %s\n    env_file:\n      - %s\n    command: [\"sleep\", \"infinity\"]\n",
+		service,
+		image,
+		environmentFile,
+	)
+	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write Compose file with environment: %v", err)
+	}
+}
+
+func writeDockerUpdateComposeEnvironmentFile(t *testing.T, path, name, value string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(name+"="+value+"\n"), 0o600); err != nil {
+		t.Fatalf("write Compose environment file: %v", err)
+	}
+}
+
 func registerDockerUpdateComposeCleanup(t *testing.T, project, composePath, dir string) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -239,6 +326,42 @@ func registerDockerUpdateComposeCleanup(t *testing.T, project, composePath, dir 
 			t.Logf("best-effort Compose cleanup failed: %v", err)
 		}
 	})
+}
+
+func registerDockerUpdateComposeTargetCleanup(t *testing.T, target composeProjectTarget) {
+	t.Helper()
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := runComposeProject(cleanupCtx, target, nil, "down", "--remove-orphans", "--volumes"); err != nil {
+			t.Logf("best-effort Compose cleanup failed: %v", err)
+		}
+	})
+}
+
+func registerDockerUpdateComposeEnvironmentCleanup(t *testing.T, target composeProjectTarget, name, value string) {
+	t.Helper()
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := runComposeProjectWithEnvironment(cleanupCtx, target, name, value, "down", "--remove-orphans", "--volumes"); err != nil {
+			t.Logf("best-effort Compose cleanup failed: %v", err)
+		}
+	})
+}
+
+func runComposeProjectWithEnvironment(ctx context.Context, target composeProjectTarget, name, value string, args ...string) error {
+	commandArgs, err := composeCommandArgs(target, args...)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "docker", commandArgs...)
+	cmd.Dir = target.WorkingDir
+	cmd.Env = append(composeCommandEnvironment(), name+"="+value)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("run docker compose with test environment: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 func mustInspectComposeService(t *testing.T, ctx context.Context, cli *client.Client, project, service string) container.InspectResponse {

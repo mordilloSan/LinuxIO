@@ -1,50 +1,69 @@
+/* Geometry and timing come from .hover-lift; these cards are large enough that
+   scaling them reads as a wobble, so they lift only. The shadow needs
+   !important to beat the frosted base style, which is applied inline. */
+.fc-hover-lift {
+  --hover-lift-y: -4px;
+  --hover-lift-scale: 1;
+  --hover-lift-press-scale: 0.995;
+}
+
 .fc-hover-lift:hover {
-  transform: translateY(-4px);
   box-shadow: var(--fc-lift-shadow) !important;
 }
 
-.fc-opacity-hover:hover {
-  opacity: 0.8;
+/* Accent cards that do not lift get the same easing on the line — .hover-lift
+   already transitions border-color, and cards that set their own inline
+   transition override this anyway, so this only reaches the ones that would
+   otherwise snap back when a hold is cancelled. */
+.accent-card:not(.hover-lift) {
+  transition: border-bottom-color var(--hover-lift-duration)
+    var(--hover-lift-ease);
 }
 
-/* UnitViews: hide bottom border on last detail row inside a card */
-.fc-svc-card .svc-rows-wrapper > .svc-detail-row:last-of-type {
-  border-bottom: none;
+/* Hold-to-reorder feedback, for every card wearing an accent line. The hold
+   shows in that line and in nothing else: the hold must not touch the card
+   body, since an overlay bright enough to read as a glow also tints the
+   content under it, which is a worse trade than a quieter line. So the generic
+   ring stands down and only the line moves. Cards with no accent line — none
+   in a sortable grid today — still get the ring.
+   Intensity is --fc-hold-glow, how far past the plain accent the lit line goes.
+   No !important needed: animations outrank inline styles. */
+.sc-hold:has(.accent-card) {
+  --fc-hold-glow: 30%;
 }
 
-/* SortableCard: drag overlay hover */
-.sc-drag-overlay:hover {
-  background-color: var(--sc-hover-bg);
+.sc-hold:has(.accent-card) .reorder-hold-ring {
+  display: none;
 }
 
-/* ContainerTable: drag handle active state */
-.drag-handle:active {
-  cursor: grabbing;
+.sc-hold .accent-card {
+  animation: fc-accent-hold-fill var(--reorder-hold-ms) ease-out forwards;
 }
 
-/* DevToolsButton: hover border and shadow */
-.devtools-btn:hover {
-  border-color: var(--devtools-hover-border) !important;
-  box-shadow: var(--devtools-hover-shadow);
+@keyframes fc-accent-hold-fill {
+  to {
+    border-bottom-color: color-mix(
+      in srgb,
+      white var(--fc-hold-glow),
+      var(--fc-accent)
+    );
+  }
 }
 
-/* DashboardCard: hover accent — lift shadow + stronger bottom border.
-   !important beats the inline frosted/accent base styles. */
-.dc-accent-card:hover {
-  box-shadow: var(--dc-hover-shadow) !important;
-  border-bottom-width: 3px !important;
-  border-bottom-color: var(--dc-accent) !important;
-  margin-block-end: -1px;
+@media (prefers-reduced-motion: reduce) {
+  .sc-hold .accent-card {
+    animation: none;
+    border-bottom-color: color-mix(
+      in srgb,
+      white var(--fc-hold-glow),
+      var(--fc-accent)
+    ) !important;
+  }
 }
 
-/* DashboardCard: truncate typography in stats columns */
-.dc-stats-col > * {
-  min-width: 0;
-  margin-top: 16px;
-}
-
-.dc-stats-truncate .app-typo {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* A card whose body forwards clicks to the single control it carries (see
+   cardBodyToggle.ts). The cursor is the only visual difference — the lift the
+   card already has is what says it responds to a pointer. */
+.card-body-toggle {
+  cursor: pointer;
 }

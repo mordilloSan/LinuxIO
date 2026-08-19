@@ -24,32 +24,54 @@
   cursor: pointer;
 }
 
-/* ── Base tooltip bubble ── */
+/* ── Base tooltip bubble ──
+   Same design as the dock's hover label (dock.css .app-dock__label): paper
+   surface, divider border, 8px radius, fade + short slide toward rest. */
 .app-tooltip {
   position: fixed;
   z-index: 1500;
+  box-sizing: border-box;
   /* max-content keeps a short tooltip hugging its text — the reason this rule
      used to say nowrap — while max-width still caps a long one. nowrap plus a
      max-width cannot both hold: the text simply overflowed the painted box. */
   width: max-content;
-  max-width: 300px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  /* matches MUI's default: rgba(97,97,97,0.92) */
-  background-color: var(--app-tooltip-bg, rgba(97, 97, 97, 0.92));
-  color: var(--app-tooltip-color, #fff);
+  max-width: min(300px, calc(100vw - 16px));
+  padding: 3px 10px;
+  border-radius: var(--app-floating-surface-radius);
+  background-color: var(--app-palette-background-paper);
+  border: 1px solid var(--app-palette-divider);
+  box-shadow: var(--app-floating-surface-shadow);
+  color: var(--app-palette-text-primary);
   font-family: inherit;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: 0.01071em;
+  font-size: 0.75rem;
+  line-height: 1.5;
   /* anywhere, so an unbroken value (a long path, a container id) breaks rather
      than spilling past the background. */
   overflow-wrap: anywhere;
   pointer-events: none;
-  /* Grow-like entrance: fade + subtle scale, matching MUI's Grow transition */
-  animation: app-tooltip-in var(--app-transition-duration-medium)
-    var(--app-easing-standard) forwards;
+  /* Entrance slide starts 4px toward the trigger and settles at rest; the
+     direction flips per placement below. Safe to animate transform: the
+     positioning offsets use the separate `translate` property. */
+  --app-tooltip-slide-from: translateY(-4px);
+  animation: app-tooltip-in 140ms ease forwards;
+}
+
+.app-tooltip--top,
+.app-tooltip--top-start,
+.app-tooltip--top-end {
+  --app-tooltip-slide-from: translateY(4px);
+}
+
+.app-tooltip--left,
+.app-tooltip--left-start,
+.app-tooltip--left-end {
+  --app-tooltip-slide-from: translateX(4px);
+}
+
+.app-tooltip--right,
+.app-tooltip--right-start,
+.app-tooltip--right-end {
+  --app-tooltip-slide-from: translateX(-4px);
 }
 
 .app-tooltip--content-width {
@@ -62,34 +84,42 @@
 @keyframes app-tooltip-in {
   from {
     opacity: 0;
-    transform: scale(0.75) var(--app-tooltip-transform-offset, translateX(0));
+    transform: var(--app-tooltip-slide-from);
   }
   to {
     opacity: 1;
-    transform: scale(1) var(--app-tooltip-transform-offset, translateX(0));
+    transform: none;
   }
 }
 
-/* ── Arrow ── */
+/* ── Arrow ──
+   A paper square rotated 45°, straddling the bubble edge. Only the two
+   outward-facing edges are stroked; the unstroked inner half sits on top of
+   the bubble and paints over its border line, so arrow and bubble read as one
+   outlined shape. */
 .app-tooltip--arrow::before {
   content: "";
   position: absolute;
-  width: 0;
-  height: 0;
-  border: 6px solid transparent;
+  width: 8px;
+  height: 8px;
+  background: var(--app-palette-background-paper);
+  transform: rotate(45deg);
 }
 
-/* bottom placements → arrow points up (sits above the bubble) */
+/* bottom placements → arrow points up (sits above the bubble).
+   rotate(45deg) maps the square's top/left edges to the diamond's two upper
+   edges — the outward pair for an up arrow. Same reasoning per side below. */
 .app-tooltip--bottom.app-tooltip--arrow::before,
 .app-tooltip--bottom-start.app-tooltip--arrow::before,
 .app-tooltip--bottom-end.app-tooltip--arrow::before {
-  bottom: 100%;
-  border-bottom-color: var(--app-tooltip-bg, rgba(97, 97, 97, 0.92));
+  top: -4.5px;
+  border-top: 1px solid var(--app-palette-divider);
+  border-left: 1px solid var(--app-palette-divider);
 }
 
 .app-tooltip--bottom.app-tooltip--arrow::before {
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) rotate(45deg);
 }
 .app-tooltip--bottom-start.app-tooltip--arrow::before {
   left: 10px;
@@ -102,13 +132,14 @@
 .app-tooltip--top.app-tooltip--arrow::before,
 .app-tooltip--top-start.app-tooltip--arrow::before,
 .app-tooltip--top-end.app-tooltip--arrow::before {
-  top: 100%;
-  border-top-color: var(--app-tooltip-bg, rgba(97, 97, 97, 0.92));
+  bottom: -4.5px;
+  border-right: 1px solid var(--app-palette-divider);
+  border-bottom: 1px solid var(--app-palette-divider);
 }
 
 .app-tooltip--top.app-tooltip--arrow::before {
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) rotate(45deg);
 }
 .app-tooltip--top-start.app-tooltip--arrow::before {
   left: 10px;
@@ -121,13 +152,14 @@
 .app-tooltip--left.app-tooltip--arrow::before,
 .app-tooltip--left-start.app-tooltip--arrow::before,
 .app-tooltip--left-end.app-tooltip--arrow::before {
-  left: 100%;
-  border-left-color: var(--app-tooltip-bg, rgba(97, 97, 97, 0.92));
+  right: -4.5px;
+  border-top: 1px solid var(--app-palette-divider);
+  border-right: 1px solid var(--app-palette-divider);
 }
 
 .app-tooltip--left.app-tooltip--arrow::before {
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateY(-50%) rotate(45deg);
 }
 .app-tooltip--left-start.app-tooltip--arrow::before {
   top: 8px;
@@ -140,13 +172,14 @@
 .app-tooltip--right.app-tooltip--arrow::before,
 .app-tooltip--right-start.app-tooltip--arrow::before,
 .app-tooltip--right-end.app-tooltip--arrow::before {
-  right: 100%;
-  border-right-color: var(--app-tooltip-bg, rgba(97, 97, 97, 0.92));
+  left: -4.5px;
+  border-bottom: 1px solid var(--app-palette-divider);
+  border-left: 1px solid var(--app-palette-divider);
 }
 
 .app-tooltip--right.app-tooltip--arrow::before {
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateY(-50%) rotate(45deg);
 }
 .app-tooltip--right-start.app-tooltip--arrow::before {
   top: 8px;

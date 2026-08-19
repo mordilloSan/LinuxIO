@@ -19,8 +19,8 @@ const (
 )
 
 // ListGroups returns all system groups
-func ListGroups(ctx context.Context) ([]Group, error) {
-	groups := []Group{}
+func ListGroups(ctx context.Context) ([]apischema.AccountGroup, error) {
+	groups := []apischema.AccountGroup{}
 
 	file, err := os.Open(groupFile)
 	if err != nil {
@@ -52,18 +52,18 @@ func ListGroups(ctx context.Context) ([]Group, error) {
 	return groups, nil
 }
 
-func parseGroupLine(line string) (Group, bool) {
+func parseGroupLine(line string) (apischema.AccountGroup, bool) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 4 {
-		return Group{}, false
+		return apischema.AccountGroup{}, false
 	}
 
 	gid, err := strconv.Atoi(parts[2])
 	if err != nil {
-		return Group{}, false
+		return apischema.AccountGroup{}, false
 	}
 
-	return Group{
+	return apischema.AccountGroup{
 		Name:     parts[0],
 		GID:      gid,
 		Members:  parseGroupMembers(parts[3]),
@@ -83,7 +83,7 @@ func parseGroupMembers(raw string) []string {
 }
 
 // GetGroup returns a single group by name
-func GetGroup(ctx context.Context, name string) (*Group, error) {
+func GetGroup(ctx context.Context, name string) (*apischema.AccountGroup, error) {
 	groups, err := ListGroups(ctx)
 	if err != nil {
 		return nil, err

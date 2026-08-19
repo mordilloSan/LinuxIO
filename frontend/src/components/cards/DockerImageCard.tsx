@@ -1,175 +1,99 @@
-import type { DockerUpdateCheckState } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppCheckbox from "@/components/ui/AppCheckbox";
+import type { ReactNode } from "react";
+
+import DockerResourceCard from "@/components/cards/DockerResourceCard";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
-import { longTextStyles, responsiveTextStyles } from "@/theme/tableStyles";
+import { GAP_MD, GAP_XS } from "@/theme/constants";
 
 export interface DockerImageRow {
   containers: number;
   created: string;
   id: string;
   repo: string;
-  shortId: string;
   size: string;
   tags: string[];
-  updateAvailable?: boolean;
-  updateCheckReason?: string;
-  updateCheckState?: DockerUpdateCheckState;
 }
 
 export interface DockerImageCardProps {
+  actions?: ReactNode;
   image: DockerImageRow;
-  onSelect: (checked: boolean) => void;
-  selected: boolean;
+  onOpen?: () => void;
+  selected?: boolean;
 }
-
-const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const DockerImageCard = ({
   image,
+  actions,
+  onOpen,
   selected,
-  onSelect,
 }: DockerImageCardProps) => {
-  const theme = useAppTheme();
+  const usageTooltip = `Used by ${image.containers} ${
+    image.containers === 1 ? "container" : "containers"
+  }`;
 
   return (
-    <FrostedCard style={{ padding: 8 }}>
+    <DockerResourceCard
+      headerRight={
+        <AppTooltip title={usageTooltip}>
+          <Chip
+            color={image.containers > 0 ? "success" : "default"}
+            label={image.containers}
+            size="small"
+            variant="soft"
+          />
+        </AppTooltip>
+      }
+      actions={actions}
+      icon="mdi:layers"
+      label={`image ${image.repo}`}
+      onOpen={onOpen}
+      selected={selected}
+      subtitle={`${image.size} MB · ${image.created}`}
+      title={image.repo}
+    >
       <div
         style={{
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: theme.spacing(1),
-          marginBottom: theme.spacing(1),
+          flexWrap: "wrap",
+          gap: GAP_XS,
+          marginBottom: GAP_MD,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: theme.spacing(1),
-          }}
-        >
-          <AppCheckbox
-            checked={selected}
-            onChange={(e) => onSelect(e.target.checked)}
-            size="small"
-          />
-          <AppTypography
-            fontWeight={700}
-            noWrap
-            title={image.repo}
-            toastMeta={DOCKER_TOAST_META}
-            variant="body2"
+        {image.tags.map((tag) => (
+          <AppTooltip
+            contentWidth
+            copyText={tag}
+            key={tag}
+            onlyWhenTruncated
+            title={tag}
           >
-            {image.repo}
-          </AppTypography>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-            gap: theme.spacing(0.5),
-          }}
-        >
-          {image.tags.map((tag) => (
-            <AppTooltip
-              contentWidth
-              copyText={tag}
-              key={tag}
-              onlyWhenTruncated
-              title={tag}
-              toastMeta={DOCKER_TOAST_META}
-            >
-              <Chip
-                label={tag}
-                size="small"
-                style={{ fontSize: "0.75rem" }}
-                variant="soft"
-              />
-            </AppTooltip>
-          ))}
-        </div>
+            <Chip label={tag} size="small" variant="soft" />
+          </AppTooltip>
+        ))}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: theme.spacing(0.5),
-          marginBottom: theme.spacing(1.5),
-        }}
-      >
-        <AppTypography style={responsiveTextStyles} variant="body2">
-          Size: {image.size} MB
-        </AppTypography>
-        <AppTypography
-          style={{
-            fontFamily: "var(--app-font-mono)",
-            ...responsiveTextStyles,
-          }}
-          variant="body2"
-        >
-          ID: {image.shortId}
-        </AppTypography>
-        <AppTypography
-          style={{ fontSize: "0.82rem", ...responsiveTextStyles }}
-          variant="body2"
-        >
-          Created: {image.created}
-        </AppTypography>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          gap: theme.spacing(1),
-          marginBottom: theme.spacing(1.5),
-        }}
-      >
-        <Chip
-          color={image.containers > 0 ? "success" : "default"}
-          label={`Used by ${image.containers}`}
-          size="small"
-          variant="soft"
-        />
-        {image.updateAvailable && (
-          <Chip
-            color="warning"
-            label="Update available"
-            size="small"
-            variant="soft"
-          />
-        )}
-        {image.updateCheckState === "uncheckable" && (
-          <Chip
-            color="info"
-            label="Cannot check"
-            size="small"
-            title={image.updateCheckReason}
-            variant="soft"
-          />
-        )}
-      </div>
-
-      <AppTypography color="text.secondary" variant="caption">
-        Full ID
-      </AppTypography>
       <AppTypography
+        copyText={image.id}
+        noWrap
         style={{
-          fontFamily: "var(--app-font-mono)",
-          fontSize: "0.75rem",
-          marginBottom: 4,
-          ...longTextStyles,
+          marginBottom: GAP_XS,
         }}
+        title={image.id}
         variant="body2"
       >
-        {image.id}
+        <span style={{ fontWeight: 700 }}>Full ID: </span>
+        <span
+          style={{
+            color: "var(--app-palette-text-secondary)",
+            fontFamily: "var(--app-font-mono)",
+            fontSize: "0.75rem",
+          }}
+        >
+          {image.id}
+        </span>
       </AppTypography>
-    </FrostedCard>
+    </DockerResourceCard>
   );
 };
 

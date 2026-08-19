@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 
-import { linuxio } from "@/api";
+import type { linuxio } from "@/api";
 import type { TableCardViewMode, Timer, UnitInfo } from "@/api";
 
 import TimerCardsView from "./TimerCardsView";
@@ -24,9 +24,12 @@ function matchesTimerSearch(timer: Timer, search: string): boolean {
   );
 }
 
-function useTimersQuery(viewMode: TableCardViewMode) {
+function useTimersQuery(
+  listQueryOptions: typeof linuxio.systemd.list_timers,
+  viewMode: TableCardViewMode,
+) {
   return useSuspenseQuery({
-    ...linuxio.systemd.list_timers,
+    ...listQueryOptions,
     refetchInterval: viewMode === "card" ? false : 5000,
   });
 }
@@ -50,19 +53,23 @@ function buildTimerInfoRows(timer: Timer, info: UnitInfo | undefined) {
 }
 
 interface TimersTabProps {
+  listQueryOptions: typeof linuxio.systemd.list_timers;
   onSelectedChange: (name: string | null) => void;
-  onViewModeChange: (next: TableCardViewMode) => void;
   selected?: string;
+  selectedQueryOptions:
+    | ReturnType<typeof linuxio.systemd.get_unit_info>
+    | undefined;
   viewMode: TableCardViewMode;
 }
 
 const TimersTab = ({
+  listQueryOptions,
   onSelectedChange,
-  onViewModeChange,
   selected,
+  selectedQueryOptions,
   viewMode,
 }: TimersTabProps) => {
-  const { data } = useTimersQuery(viewMode);
+  const { data } = useTimersQuery(listQueryOptions, viewMode);
 
   return (
     <UnitListTab
@@ -88,28 +95,18 @@ const TimersTab = ({
       renderDetailPanel={(timer, onClose) => (
         <UnitInfoPanel
           onClose={onClose}
+          queryOptions={
+            selected === timer.name ? selectedQueryOptions : undefined
+          }
           renderInfoRows={(info) => buildTimerInfoRows(timer, info)}
           unitName={timer.name}
         />
       )}
-      renderTableView={({
-        items,
-        selected,
-        onSelect,
-        onDoubleClick,
-        surface,
-      }) => (
-        <TimerTableView
-          onDoubleClick={onDoubleClick}
-          onSelect={onSelect}
-          selected={selected}
-          timers={items}
-          surface={surface}
-        />
+      renderTableView={({ items, onSelect, surface }) => (
+        <TimerTableView onSelect={onSelect} timers={items} surface={surface} />
       )}
       searchPlaceholder="Search timers…"
       selected={selected}
-      setViewMode={onViewModeChange}
       surfaceId="timers.list"
       viewMode={viewMode}
     />

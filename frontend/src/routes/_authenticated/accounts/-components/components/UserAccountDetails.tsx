@@ -23,6 +23,7 @@ import {
   linuxio,
   useCallMutation,
 } from "@/api";
+import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -41,6 +42,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
+import { GAP_MD } from "@/theme/constants";
 
 import "./user-account-details.css";
 const accountsRouteApi = getRouteApi("/_authenticated/accounts/");
@@ -52,8 +54,18 @@ interface UserDetailsPanelProps {
 }
 
 function useAccountDetails(username: string) {
+  const { selectedUserDetailsQueryOptions, selectedUsername } =
+    accountsRouteApi.useRouteContext({
+      select: (context) => ({
+        selectedUserDetailsQueryOptions:
+          context.selectedUserDetailsQueryOptions,
+        selectedUsername: context.selectedUsername,
+      }),
+    });
   return useSuspenseQuery({
-    ...linuxio.accounts.get_user_details({ username }),
+    ...(selectedUsername === username && selectedUserDetailsQueryOptions
+      ? selectedUserDetailsQueryOptions
+      : linuxio.accounts.get_user_details({ username })),
     refetchInterval: 10000,
   });
 }
@@ -196,66 +208,6 @@ const topCardHeaderStyle: CSSProperties = {
   minHeight: 40,
   marginBottom: 12,
 };
-
-const TopCardHeader = ({
-  icon,
-  iconColor,
-  title,
-  subtitle,
-  right,
-}: {
-  icon: string;
-  iconColor: string;
-  title: string;
-  subtitle: string;
-  right?: ReactNode;
-}) => (
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-      gap: 8,
-      ...topCardHeaderStyle,
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        minWidth: 0,
-        flex: 1,
-      }}
-    >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Icon color={iconColor} height={30} icon={icon} width={30} />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <AppTypography fontWeight={700} noWrap variant="subtitle2">
-          {title}
-        </AppTypography>
-        <AppTypography
-          color="text.secondary"
-          style={{ display: "block", marginTop: 2 }}
-          variant="caption"
-        >
-          {subtitle}
-        </AppTypography>
-      </div>
-    </div>
-    {right && <div style={{ flexShrink: 0 }}>{right}</div>}
-  </div>
-);
 
 const DetailText = ({
   children,
@@ -410,9 +362,17 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
         flexDirection: "column",
       }}
     >
-      <TopCardHeader
-        icon="mdi:shield-account"
-        iconColor={securityIconColor}
+      <CardIconHeader
+        align="flex-start"
+        headingVariant="compact"
+        icon={
+          <Icon
+            color={securityIconColor}
+            height={30}
+            icon="mdi:shield-account"
+            width={30}
+          />
+        }
         right={
           <AppActionIconButton
             icon="mdi:close"
@@ -421,6 +381,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
             onClick={onClose}
           />
         }
+        style={topCardHeaderStyle}
         subtitle="Admin privileges, password status, and elevated groups"
         title="Access & security"
       />
@@ -509,15 +470,37 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 
 export const UserActivityCard = ({ username }: { username: string }) => {
   const theme = useAppTheme();
-  const search = accountsRouteApi.useSearch();
+  const {
+    selectedUserDetailsQueryOptions,
+    selectedUserLoginsQueryOptions,
+    selectedUsername,
+  } = accountsRouteApi.useRouteContext({
+    select: (context) => ({
+      selectedUserDetailsQueryOptions: context.selectedUserDetailsQueryOptions,
+      selectedUserLoginsQueryOptions: context.selectedUserLoginsQueryOptions,
+      selectedUsername: context.selectedUsername,
+    }),
+  });
+  const { autoDismissFailedLoginAlert, failedLoginAlertId, focusLoginEventId } =
+    accountsRouteApi.useSearch({
+      select: (search) => ({
+        autoDismissFailedLoginAlert: search.autoDismissFailedLoginAlert,
+        failedLoginAlertId: search.failedLoginAlertId,
+        focusLoginEventId: search.focusLoginEventId,
+      }),
+    });
   const [{ data: details }, { data: logins }] = useSuspenseQueries({
     queries: [
       {
-        ...linuxio.accounts.get_user_details({ username }),
+        ...(selectedUsername === username && selectedUserDetailsQueryOptions
+          ? selectedUserDetailsQueryOptions
+          : linuxio.accounts.get_user_details({ username })),
         refetchInterval: 10000,
       },
       {
-        ...linuxio.accounts.list_user_logins({ username }),
+        ...(selectedUsername === username && selectedUserLoginsQueryOptions
+          ? selectedUserLoginsQueryOptions
+          : linuxio.accounts.list_user_logins({ username })),
         refetchInterval: 30000,
       },
     ],
@@ -526,16 +509,6 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");
   const [flashingLoginKey, setFlashingLoginKey] = useState("");
-  const focusLoginEventId =
-    typeof search.focusLoginEventId === "string"
-      ? search.focusLoginEventId
-      : undefined;
-  const failedLoginAlertId =
-    typeof search.failedLoginAlertId === "string"
-      ? search.failedLoginAlertId
-      : undefined;
-  const autoDismissFailedLoginAlert =
-    search.autoDismissFailedLoginAlert === true;
   const { mutate: dismissFailedLoginAlert } = useCallMutation(
     linuxio.system.dismiss_failed_login_alert,
   );
@@ -873,9 +846,18 @@ const HomeAndSSHCard = ({ details }: { details: AccountUserDetails }) => {
 
   return (
     <FrostedCard style={{ padding: 12, height: "100%", width: "100%" }}>
-      <TopCardHeader
-        icon="mdi:home-lock"
-        iconColor={theme.palette.primary.main}
+      <CardIconHeader
+        align="flex-start"
+        headingVariant="compact"
+        icon={
+          <Icon
+            color={theme.palette.primary.main}
+            height={30}
+            icon="mdi:home-lock"
+            width={30}
+          />
+        }
+        style={topCardHeaderStyle}
         subtitle="Directory ownership, permissions, and authorized keys"
         title="Home & SSH access"
       />
@@ -1054,7 +1036,7 @@ export const UserSupplementalCards = ({ username }: { username: string }) => {
 };
 
 export const UserDetailsStack = (props: UserDetailsPanelProps) => (
-  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+  <div style={{ display: "flex", flexDirection: "column", gap: GAP_MD }}>
     <UserDetailsPanel {...props} />
     <UserSupplementalCards username={props.user.username} />
   </div>

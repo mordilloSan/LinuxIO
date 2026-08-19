@@ -19,14 +19,44 @@ import (
 type composeLineEmitter func(msgType, message string, progress *ComposeProgress)
 
 type composeProjectTarget struct {
-	Name        string
-	ConfigFiles []string
-	WorkingDir  string
+	Name               string
+	ConfigFiles        []string
+	EnvironmentFiles   []string
+	IsolateEnvironment bool
+	WorkingDir         string
 }
 
 type composeMessageCollector struct {
 	mu    sync.Mutex
 	lines []string
+}
+
+func composeCommandEnvironment() []string {
+	return filterComposeCommandEnvironment(os.Environ())
+}
+
+func filterComposeCommandEnvironment(environment []string) []string {
+	filtered := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok || !composeEnvironmentVariableAllowed(name) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func composeEnvironmentVariableAllowed(name string) bool {
+	if strings.HasPrefix(name, "DOCKER_") || strings.HasPrefix(name, "LC_") {
+		return true
+	}
+	switch name {
+	case "HOME", "HTTP_PROXY", "HTTPS_PROXY", "LANG", "LANGUAGE", "LOGNAME", "NO_PROXY", "PATH", "SSL_CERT_DIR", "SSL_CERT_FILE", "TMPDIR", "USER", "XDG_CONFIG_HOME":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *composeMessageCollector) Emit(_ string, message string, _ *ComposeProgress) {
@@ -83,6 +113,15 @@ func composeCommandArgs(target composeProjectTarget, args ...string) ([]string, 
 	}
 
 	baseArgs := []string{"compose", "--progress=json", "--project-name", target.Name}
+	if target.WorkingDir != "" {
+		baseArgs = append(baseArgs, "--project-directory", target.WorkingDir)
+	}
+	for _, environmentFile := range target.EnvironmentFiles {
+		if strings.TrimSpace(environmentFile) == "" {
+			return nil, fmt.Errorf("compose project %q has an empty environment file path", target.Name)
+		}
+		baseArgs = append(baseArgs, "--env-file", environmentFile)
+	}
 	for _, configFile := range target.ConfigFiles {
 		if strings.TrimSpace(configFile) == "" {
 			return nil, fmt.Errorf("compose project %q has an empty config file path", target.Name)
@@ -106,6 +145,9 @@ func runComposeProject(ctx context.Context, target composeProjectTarget, emitter
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", baseArgs...)
+	if target.IsolateEnvironment {
+		cmd.Env = composeCommandEnvironment()
+	}
 	if target.WorkingDir != "" {
 		cmd.Dir = target.WorkingDir
 	}
@@ -165,14 +207,14 @@ func runCompose(ctx context.Context, projectName, configFile, workingDir string,
 	}, emitter, args...)
 }
 
-func composePullAndUp(ctx context.Context, target composeProjectTarget, service string, emitter composeLineEmitter) error {
-	return composePullAndUpServices(ctx, target, []string{service}, emitter)
-}
-
 func composePullAndUpServices(ctx context.Context, target composeProjectTarget, services []string, emitter composeLineEmitter) error {
-	if err := validateComposeUpdateInputs(target); err != nil {
+	if err := validateComposeUpdateInputs(ctx, target, emitter); err != nil {
 		return err
 	}
+	return composePullAndUpServicesValidated(ctx, target, services, emitter)
+}
+
+func composePullAndUpServicesValidated(ctx context.Context, target composeProjectTarget, services []string, emitter composeLineEmitter) error {
 	seen := make(map[string]struct{}, len(services))
 	normalized := make([]string, 0, len(services))
 	for _, service := range services {
@@ -200,34 +242,11 @@ func composePullAndUpServices(ctx context.Context, target composeProjectTarget, 
 	return nil
 }
 
-func validateComposeUpdateInputs(target composeProjectTarget) error {
-	for _, configFile := range target.ConfigFiles {
-		data, err := os.ReadFile(configFile)
-		if err != nil {
-			return fmt.Errorf("read Compose config %q: %w", configFile, err)
-		}
-		if containsComposeInterpolation(data) {
-			return fmt.Errorf("Compose project %q uses environment interpolation that LinuxIO cannot reconstruct safely", target.Name)
-		}
+func validateComposeUpdateInputs(ctx context.Context, target composeProjectTarget, emitter composeLineEmitter) error {
+	if err := runComposeProject(ctx, target, emitter, "config", "--quiet"); err != nil {
+		return fmt.Errorf("validate Compose project %q configuration: %w", target.Name, err)
 	}
 	return nil
-}
-
-func containsComposeInterpolation(data []byte) bool {
-	for i := 0; i < len(data); i++ {
-		if data[i] != '$' || i+1 >= len(data) {
-			continue
-		}
-		next := data[i+1]
-		if next == '$' {
-			i++
-			continue
-		}
-		if next == '{' || next == '_' || next >= 'A' && next <= 'Z' || next >= 'a' && next <= 'z' {
-			return true
-		}
-	}
-	return false
 }
 
 func composeUp(
@@ -273,21 +292,37 @@ func composeStop(
 	return runCompose(ctx, projectName, configFile, workingDir, emitter, "stop")
 }
 
-func composeValidateContent(ctx context.Context, content string) error {
-	f, err := os.CreateTemp("", "linuxio-compose-*.yml")
+func composeValidateContent(ctx context.Context, content, envContent, workingDir string) error {
+	dir, err := os.MkdirTemp("", "linuxio-compose-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer os.Remove(f.Name())
-	if _, err := f.WriteString(content); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to write temp file: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
+	defer os.RemoveAll(dir)
+	composeFile := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(composeFile, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("failed to write temp compose file: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", f.Name(), "config")
+	args := []string{"compose"}
+	// Anchor interpolation and relative paths to the stack's real directory so
+	// its .env and env_file references resolve; without this every ${VAR}
+	// defaults to "" and specs like "${DIR}:/data" fail as ":/data".
+	if workingDir != "" {
+		if info, statErr := os.Stat(workingDir); statErr == nil && info.IsDir() {
+			args = append(args, "--project-directory", workingDir)
+		}
+	}
+	// The editor's env buffer takes precedence over the on-disk .env.
+	if envContent != "" {
+		envFile := filepath.Join(dir, ".env")
+		if err := os.WriteFile(envFile, []byte(envContent), 0o600); err != nil {
+			return fmt.Errorf("failed to write temp env file: %w", err)
+		}
+		args = append(args, "--env-file", envFile)
+	}
+	args = append(args, "-f", composeFile, "config")
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdout = nil
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

@@ -89,6 +89,54 @@ func TestWriteRelayFrameUsesSingleWrite(t *testing.T) {
 	}
 }
 
+func TestReadRelayFrameHeaderLeavesPayloadForStreaming(t *testing.T) {
+	payload := []byte("payload")
+	var wire bytes.Buffer
+	if err := WriteRelayFrame(&wire, &StreamFrame{
+		Opcode:   OpStreamData,
+		StreamID: 7,
+		Payload:  payload,
+	}); err != nil {
+		t.Fatalf("WriteRelayFrame() error = %v", err)
+	}
+
+	header, err := ReadRelayFrameHeader(&wire)
+	if err != nil {
+		t.Fatalf("ReadRelayFrameHeader() error = %v", err)
+	}
+	if header.Opcode != OpStreamData || header.StreamID != 7 || header.PayloadLength != uint32(len(payload)) {
+		t.Fatalf("header = %+v, want data stream 7 with %d-byte payload", header, len(payload))
+	}
+	if wire.Len() != len(payload) {
+		t.Fatalf("unread bytes = %d, want %d", wire.Len(), len(payload))
+	}
+
+	frame, err := ReadRelayFramePayload(&wire, header)
+	if err != nil {
+		t.Fatalf("ReadRelayFramePayload() error = %v", err)
+	}
+	if !bytes.Equal(frame.Payload, payload) {
+		t.Fatalf("payload = %q, want %q", frame.Payload, payload)
+	}
+}
+
+func TestReadRelayFrameHeaderRejectsOversizePayload(t *testing.T) {
+	var raw [relayFrameHeaderSize]byte
+	raw[0] = OpStreamData
+	binary.BigEndian.PutUint32(raw[5:9], maxRelayPayloadSize+1)
+
+	if _, err := ReadRelayFrameHeader(bytes.NewReader(raw[:])); err == nil {
+		t.Fatal("ReadRelayFrameHeader() error = nil, want oversize payload error")
+	}
+}
+
+func TestReadRelayFramePayloadRejectsOversizeHeader(t *testing.T) {
+	header := StreamFrameHeader{Opcode: OpStreamData, PayloadLength: maxRelayPayloadSize + 1}
+	if _, err := ReadRelayFramePayload(bytes.NewReader(nil), header); err == nil {
+		t.Fatal("ReadRelayFramePayload() error = nil, want oversize payload error")
+	}
+}
+
 func TestWriteRelayFrameShortWrite(t *testing.T) {
 	err := WriteRelayFrame(shortWriter{}, &StreamFrame{
 		Opcode:   OpStreamClose,

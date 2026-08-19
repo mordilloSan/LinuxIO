@@ -113,6 +113,9 @@ function Probe() {
     <div>
       <div data-testid="loaded">{String(isLoaded)}</div>
       <div data-testid="theme">{config.appSettings.theme}</div>
+      <div data-testid="dock-accent-gradient">
+        {JSON.stringify(config.appSettings.dockAccentGradient)}
+      </div>
       <div data-testid="docker-folders">{config.docker.folders.join(",")}</div>
       <button onClick={() => setKey("theme", "DARK")}>set theme</button>
       <button
@@ -232,6 +235,9 @@ describe("ConfigProvider", () => {
     expect(screen.getByTestId("theme")).toHaveTextContent("LIGHT");
     expect(screen.getByTestId("docker-folders")).toHaveTextContent(
       "/srv/docker",
+    );
+    expect(screen.getByTestId("dock-accent-gradient")).toHaveTextContent(
+      '{"startColor":"","endColor":"","rangeStart":0,"rangeEnd":100}',
     );
 
     expect(apiMocks.configGetCall).toHaveBeenCalledWith(
