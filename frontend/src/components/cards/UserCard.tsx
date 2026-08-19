@@ -92,6 +92,8 @@ const CompactGroupChips = ({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
+    // `groups` intentionally retriggers measurement after the chip DOM changes.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [groups]);
 
   const overflowing = firstRowCount < groups.length;

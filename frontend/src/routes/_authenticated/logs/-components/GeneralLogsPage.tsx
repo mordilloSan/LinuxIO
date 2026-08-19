@@ -590,6 +590,8 @@ const GeneralLogsPage = () => {
     if (el && el.scrollTop <= 2) {
       el.scrollTop = 0;
     }
+    // `logs` intentionally retriggers the DOM scroll after a buffered flush renders.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [logs, liveMode]);
 
   // Flush queued log entries on the next animation frame. Coalesces bursts so
@@ -736,7 +738,10 @@ const GeneralLogsPage = () => {
     }
   });
 
-  // Open stream on mount, on filter changes, and on reconnect epochs.
+  // Open stream on mount, on filter changes, and on reconnect epochs. The
+  // filter values are read by the Effect Event; here they intentionally own
+  // the stream restart lifecycle rather than the event callback's identity.
+  // oxlint-disable react/exhaustive-effect-dependencies
   useEffect(() => {
     if (!muxIsOpen || streamRef.current) {
       return;
@@ -763,6 +768,7 @@ const GeneralLogsPage = () => {
     identifierIsExact,
     fieldFilters,
   ]);
+  // oxlint-enable react/exhaustive-effect-dependencies
 
   const handleLiveModeChange = (
     _: ChangeEvent<HTMLInputElement>,

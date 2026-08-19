@@ -590,7 +590,6 @@ function observeDetailContent(
 // React Compiler skips this component because of @tanstack/react-virtual
 // (no compiler-compatible release exists); Table itself is v9 and fine.
 // Manual memoization stays load-bearing here.
-// oxlint-disable-next-line react/react-compiler
 function AppDataTable<TData extends RowData>({
   ariaLabel = "Data table",
   className,
@@ -798,6 +797,7 @@ function AppDataTable<TData extends RowData>({
     );
   }, []);
 
+  // oxlint-disable-next-line react/incompatible-library
   const virtualizer = useVirtualizer({
     count: virtualEntries.length,
     // The virtualizer owns the row wrappers' transform and the body height —

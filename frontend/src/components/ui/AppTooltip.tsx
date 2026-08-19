@@ -314,11 +314,11 @@ const AppTooltip = ({
 
     if (horizontalOffset === 0 && verticalOffset === 0) return;
 
-    setTooltipStyle((current) => ({
-      ...current,
-      left: (Number(current.left) || 0) + horizontalOffset,
-      top: (Number(current.top) || 0) + verticalOffset,
-    }));
+    setTooltipStyle({
+      ...tooltipStyle,
+      left: (Number(tooltipStyle.left) || 0) + horizontalOffset,
+      top: (Number(tooltipStyle.top) || 0) + verticalOffset,
+    });
   }, [tooltipStyle, visible]);
 
   if (!title) return <>{children}</>;

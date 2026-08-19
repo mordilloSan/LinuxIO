@@ -129,6 +129,8 @@ function DockerUpdateOperationDialog({
     if (showDetails && outputBoxRef.current) {
       outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
     }
+    // `events` intentionally retriggers scrolling as operation output renders.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [events, showDetails]);
 
   return (

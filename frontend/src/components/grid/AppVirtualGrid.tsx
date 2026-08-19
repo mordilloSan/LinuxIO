@@ -61,7 +61,6 @@ const MemoizedAppVirtualGridItem = memo(
 
 // React Compiler skips this component: TanStack Virtual's API returns
 // unstable functions it cannot memoize. Manual memoization stays load-bearing.
-// oxlint-disable-next-line react/react-compiler
 function AppVirtualGrid<TItem>({
   ariaLabel = "Grid",
   className,
@@ -118,6 +117,7 @@ function AppVirtualGrid<TItem>({
   );
   // TanStack Virtual exposes dynamic helper functions that React Compiler cannot memoize safely.
   // eslint-disable-next-line react-hooks/incompatible-library
+  // oxlint-disable-next-line react/incompatible-library
   const virtualizer = useVirtualizer({
     count: rowCount,
     // The virtualizer owns the row wrappers' transform and the rowgroup

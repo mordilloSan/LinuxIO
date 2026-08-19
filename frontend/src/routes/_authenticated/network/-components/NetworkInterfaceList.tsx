@@ -110,7 +110,7 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
       appendLatestTraffic();
     }, SAMPLE_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [rxId, txId]);
+  }, []);
 
   if (!iface) return null;
 

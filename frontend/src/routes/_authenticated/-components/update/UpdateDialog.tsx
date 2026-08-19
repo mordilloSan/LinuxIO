@@ -49,6 +49,8 @@ const UpdateDialog = ({
     outputEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
+    // `output` intentionally retriggers scrolling as update lines render.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [output, outputExpanded]);
   return (
     <GeneralDialog

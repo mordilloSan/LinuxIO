@@ -82,6 +82,8 @@ const ComposeOperationDialog = ({
     if (open && outputBoxRef.current) {
       outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
     }
+    // Output and disclosure changes intentionally retrigger the DOM scroll.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [output, open, showLog]);
 
   // Detach from the stream when the dialog closes or unmounts; the compose

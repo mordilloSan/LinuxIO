@@ -243,6 +243,9 @@ export function useXtermStreamTerminal({
         fitAddonRef.current = null;
       }
     };
+    // `sessionKey` is intentionally trigger-only: callers use it to tear down
+    // and recreate the terminal when the backing shell/session changes.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [enabled, fitAndResize, focusDelayMs, readyMode, sessionKey]);
 
   return {
