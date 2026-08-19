@@ -213,10 +213,10 @@ const ContainerCardBody = ({
       style={{
         display: "flex",
         alignItems: "center",
-        flexWrap: "wrap",
+        flexWrap: "nowrap",
         gap: 6,
         marginTop: 12,
-        minWidth: 0,
+        width: "max-content",
       }}
     >
       {container.State === "running" ? (
@@ -380,6 +380,7 @@ const ContainerCardBody = ({
             onClick={onSelect}
             style={{
               alignItems: "stretch",
+              contain: "inline-size",
               color: "inherit",
               flexDirection: "column",
               justifyContent: "flex-start",
@@ -475,6 +476,7 @@ const ContainerCardBody = ({
               flexDirection: "column",
               gap: theme.spacing(1.25),
               minWidth: 0,
+              contain: "inline-size",
             }}
           >
             <ContainerInfoSections

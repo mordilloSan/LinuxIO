@@ -522,8 +522,10 @@ const ContainerList = ({
               animate={{ opacity: 1, y: 0 }}
               initial={{ opacity: 0, y: 14 }}
               style={{
-                display: "flex",
-                flexDirection: isCompactLayout ? "column" : "row",
+                display: "grid",
+                gridTemplateColumns: isCompactLayout
+                  ? "minmax(0, 1fr)"
+                  : "minmax(max-content, min(25vw, 480px)) minmax(0, 1fr) minmax(0, 1fr)",
                 alignItems: "stretch",
                 gap: DETAIL_PANEL_GAP,
               }}
@@ -537,8 +539,6 @@ const ContainerList = ({
                 animate={{ opacity: 1, y: 0 }}
                 initial={{ opacity: 0, y: 12 }}
                 style={{
-                  flex: isCompactLayout ? "0 0 auto" : 1,
-                  width: isCompactLayout ? "100%" : undefined,
                   minWidth: 0,
                   display: "flex",
                 }}
@@ -559,8 +559,6 @@ const ContainerList = ({
                 animate={{ opacity: 1, y: 0 }}
                 initial={{ opacity: 0, y: 16 }}
                 style={{
-                  flex: isCompactLayout ? "0 0 auto" : 1,
-                  width: isCompactLayout ? "100%" : undefined,
                   minWidth: 0,
                   display: "flex",
                 }}
@@ -586,8 +584,6 @@ const ContainerList = ({
                   y: isCompactLayout ? 20 : 0,
                 }}
                 style={{
-                  flex: isCompactLayout ? "0 0 auto" : 1,
-                  width: isCompactLayout ? "100%" : undefined,
                   minWidth: 0,
                   display: "flex",
                 }}
