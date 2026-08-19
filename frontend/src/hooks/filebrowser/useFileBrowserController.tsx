@@ -27,7 +27,7 @@ import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidati
 import { useCapability } from "@/hooks/useCapabilities";
 
 export interface FileBrowserController {
-  contentProps: FileBrowserContentProps;
+  contentProps: Omit<FileBrowserContentProps, "breadcrumbs">;
   dialogsProps: FileBrowserDialogsProps;
 }
 

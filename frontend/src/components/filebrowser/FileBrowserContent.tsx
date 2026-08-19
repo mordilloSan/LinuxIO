@@ -1,11 +1,10 @@
 import {
   memo,
-  useMemo,
   type DragEventHandler,
   type MouseEventHandler,
+  type ReactNode,
 } from "react";
 
-import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
 import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
@@ -81,6 +80,7 @@ export interface FileBrowserFileProps {
 }
 
 export interface FileBrowserContentProps {
+  breadcrumbs: ReactNode;
   chrome: FileBrowserChromeProps;
   data: FileBrowserDataProps;
   file: FileBrowserFileProps;
@@ -89,6 +89,7 @@ export interface FileBrowserContentProps {
 }
 
 const FileBrowserContent = ({
+  breadcrumbs,
   chrome,
   data,
   file,
@@ -96,15 +97,6 @@ const FileBrowserContent = ({
   surface,
 }: FileBrowserContentProps) => {
   const theme = useAppTheme();
-  const breadcrumbs = useMemo(
-    () => (
-      <BreadcrumbsNav
-        onNavigate={chrome.onOpenDirectory}
-        path={chrome.normalizedPath}
-      />
-    ),
-    [chrome.normalizedPath, chrome.onOpenDirectory],
-  );
 
   return (
     <div

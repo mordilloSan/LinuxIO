@@ -1,11 +1,25 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { HeaderActionsProps } from "@/components/ui/HeaderActions";
 import { render, screen } from "@/test/render";
 
 import FileBrowserHeader from "./FileBrowserHeader";
 
+const headerActionsRender = vi.hoisted(() => vi.fn());
+
 vi.mock("./IndexerDialog", () => ({ default: () => null }));
+vi.mock("@/components/ui/HeaderActions", () => ({
+  default: (slots: HeaderActionsProps) => {
+    headerActionsRender();
+    return (
+      <>
+        {slots.options}
+        {slots.view}
+      </>
+    );
+  },
+}));
 vi.mock("@/hooks/useCapabilities", () => ({
   useCapability: () => ({ isEnabled: false, reason: "Unavailable" }),
 }));
@@ -107,6 +121,68 @@ describe("FileBrowserHeader", () => {
 
     await user.click(button);
     expect(onSwitchView).toHaveBeenCalledOnce();
+  });
+
+  it("keeps browsing actions stable for breadcrumb-only renders", () => {
+    headerActionsRender.mockClear();
+    const browsingProps = {
+      ...defaultProps,
+      showQuickSave: false,
+    };
+    const { rerender } = render(
+      <FileBrowserHeader {...browsingProps} breadcrumbs={<div>Root</div>} />,
+    );
+
+    expect(headerActionsRender).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <FileBrowserHeader
+        {...browsingProps}
+        breadcrumbs={<div>Next directory</div>}
+        searchQuery="notes"
+      />,
+    );
+
+    expect(headerActionsRender).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("textbox", { name: "Search files and folders..." }),
+    ).toHaveValue("notes");
+
+    rerender(
+      <FileBrowserHeader
+        {...browsingProps}
+        breadcrumbs={<div>Next directory</div>}
+      />,
+    );
+
+    expect(headerActionsRender).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <FileBrowserHeader
+        {...browsingProps}
+        breadcrumbs={<div>Next directory</div>}
+        viewMode="card"
+      />,
+    );
+
+    expect(headerActionsRender).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByRole("button", { name: "Switch to list view" }),
+    ).toBeVisible();
+
+    rerender(
+      <FileBrowserHeader
+        {...browsingProps}
+        breadcrumbs={<div>Next directory</div>}
+        showHiddenFiles
+        viewMode="card"
+      />,
+    );
+
+    expect(headerActionsRender).toHaveBeenCalledTimes(3);
+    expect(
+      screen.getByRole("button", { name: "Hide hidden files" }),
+    ).toBeVisible();
   });
 
   it("centers the search with the tab strip's columns on desktop", () => {

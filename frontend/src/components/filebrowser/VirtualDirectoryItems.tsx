@@ -380,7 +380,9 @@ const VirtualDirectoryItems = ({
                       <DirectoryItem
                         disableHover={isMarqueeSelecting}
                         isCut={cutPaths.has(item.path)}
-                        isLoadingSubfolders={isLoadingSubfolders}
+                        isLoadingSubfolders={
+                          row.itemKind === "folder" && isLoadingSubfolders
+                        }
                         isRenaming={renamingPath === item.path}
                         isRenamePending={renamePendingPath === item.path}
                         item={item}

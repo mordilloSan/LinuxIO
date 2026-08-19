@@ -7,6 +7,7 @@ import {
   linuxio,
 } from "@/api";
 import { isEditableFile } from "@/components/filebrowser/utils";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
@@ -80,6 +81,7 @@ export const useFileBrowserItemActions = ({
   const { actions: editorActions } = editor;
   const { clearSearch, closeContextMenu } = view.actions;
   const { joinPath, getParentPath } = useFilePathUtilities();
+  const resourceItemsRef = useLatestRef(resource?.items);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [unsupportedEditPath, setUnsupportedEditPath] = useState<string | null>(
     null,
@@ -217,7 +219,9 @@ export const useFileBrowserItemActions = ({
         setRenamingPath(null);
         return;
       }
-      const target = resource?.items?.find((item) => item.path === path);
+      const target = resourceItemsRef.current?.find(
+        (item) => item.path === path,
+      );
       const isDirectory = target?.type === "directory" || isDirectoryPath(path);
       const parent = getParentPath(path);
       let destination = joinPath(parent, trimmed);
@@ -234,7 +238,7 @@ export const useFileBrowserItemActions = ({
         // Keep the inline editor mounted so the user can correct and retry.
       }
     },
-    [getParentPath, joinPath, renameItem, renamePending, resource?.items],
+    [getParentPath, joinPath, renameItem, renamePending, resourceItemsRef],
   );
 
   const handleCancelInlineRename = useCallback(() => {

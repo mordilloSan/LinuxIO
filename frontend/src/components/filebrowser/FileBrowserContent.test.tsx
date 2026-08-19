@@ -28,6 +28,7 @@ vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({
 }));
 
 const contentProps: FileBrowserContentProps = {
+  breadcrumbs: <div>Root</div>,
   chrome: {
     editingPath: null,
     indexerEnabled: true,
@@ -79,7 +80,7 @@ const contentProps: FileBrowserContentProps = {
 };
 
 describe("FileBrowserContent render boundaries", () => {
-  it("keeps the header stable for data-only renders and updates it for path navigation", () => {
+  it("keeps the header stable for data-only renders and path navigation", () => {
     headerSearchRender.mockClear();
     const { rerender } = render(<FileBrowserContent {...contentProps} />);
 
@@ -98,6 +99,6 @@ describe("FileBrowserContent render boundaries", () => {
       />,
     );
 
-    expect(headerSearchRender).toHaveBeenCalledTimes(2);
+    expect(headerSearchRender).toHaveBeenCalledTimes(1);
   });
 });

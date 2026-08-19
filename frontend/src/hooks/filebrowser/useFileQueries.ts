@@ -1,5 +1,4 @@
 import { useQueries, useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";
 import { normalizeResource } from "@/components/filebrowser/utils";
@@ -21,14 +20,13 @@ export const useFileQueries = ({
   hasMultipleDetailTargets,
   listingQueryOptions,
 }: useFileQueriesParams) => {
-  const { data: resourceData } = useSuspenseQuery({
+  const { data: resource } = useSuspenseQuery({
     ...listingQueryOptions,
+    // Normalize inside the Query observer so its structural-sharing pass can
+    // retain unchanged FileItem objects when one directory entry changes.
+    // Normalizing afterwards recreated every card's item prop on each refresh.
+    select: normalizeResource,
   });
-
-  const resource = useMemo(
-    () => (resourceData ? normalizeResource(resourceData) : undefined),
-    [resourceData],
-  );
 
   // Detail resource query with content flag
   const {

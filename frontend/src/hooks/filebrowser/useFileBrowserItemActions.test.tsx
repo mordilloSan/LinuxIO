@@ -413,6 +413,43 @@ describe("useFileBrowserItemActions", () => {
       });
     });
 
+    it("keeps the rename handler stable while reading refreshed items", async () => {
+      const { result, params, rerender } = setup({
+        resource: {
+          items: [fileItem("old", "file")],
+          name: "projects",
+          path: "/srv/projects",
+          type: "directory",
+        },
+      });
+      const handleConfirmInlineRename =
+        result.current.handleConfirmInlineRename;
+
+      params.resource = {
+        items: [fileItem("old", "directory")],
+        name: "projects",
+        path: "/srv/projects",
+        type: "directory",
+      };
+      rerender();
+
+      expect(result.current.handleConfirmInlineRename).toBe(
+        handleConfirmInlineRename,
+      );
+
+      await act(async () => {
+        await result.current.handleConfirmInlineRename(
+          "/srv/projects/old",
+          "new",
+        );
+      });
+
+      expect(params.renameItem).toHaveBeenCalledWith({
+        destination: "/srv/projects/new/",
+        from: "/srv/projects/old",
+      });
+    });
+
     it("retains the inline editor when rename fails", async () => {
       const { result } = setup({
         renameItem: vi.fn().mockRejectedValue(new Error("rename failed")),
