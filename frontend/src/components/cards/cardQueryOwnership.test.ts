@@ -228,7 +228,7 @@ const hookContracts: HookContract[] = [
   {
     file: dashboardRoute("MotherBoard"),
     name: "MotherboardTempBadge",
-    hooks: { useSuspenseQuery: 1 },
+    hooks: { useQuery: 1 },
   },
   {
     file: dashboardRoute("Processor"),
@@ -414,7 +414,7 @@ const selectContracts: SelectContract[] = [
   {
     file: dashboardRoute("MotherBoard"),
     name: "MotherboardTempBadge",
-    hook: "useSuspenseQuery",
+    hook: "useQuery",
     memoized: true,
     select: "selectBadge",
   },
