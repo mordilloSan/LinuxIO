@@ -288,6 +288,8 @@ interface AppDataTableBodyRowProps<TData extends RowData> {
   /** Group-supplied attributes; when present, `getRowAttributes` stands down. */
   rowAttributes?: AppDataTableRowAttributes;
   rowIndex: number;
+  /** Snapshot of the visible cells for this render, used by the row memo boundary. */
+  visibleCells: Cell<AppTableFeatures, TData>[];
 }
 
 function AppDataTableBodyRow<TData extends RowData>({
@@ -308,6 +310,7 @@ function AppDataTableBodyRow<TData extends RowData>({
   row,
   rowAttributes: providedRowAttributes,
   rowIndex,
+  visibleCells,
 }: AppDataTableBodyRowProps<TData>) {
   "use no memo";
   const rowAttributes = providedRowAttributes ?? getRowAttributes?.(row);
@@ -349,7 +352,7 @@ function AppDataTableBodyRow<TData extends RowData>({
           {resolvedDragHandle}
         </div>
       )}
-      {row.getVisibleCells().map((cell) => (
+      {visibleCells.map((cell) => (
         <MemoizedAppTableCell
           cell={cell}
           columnDef={cell.column.columnDef}
@@ -361,7 +364,7 @@ function AppDataTableBodyRow<TData extends RowData>({
         <TableExpandCell
           canExpand={canExpand}
           isExpanded={isExpanded}
-          onToggle={() => onExpand(row)}
+          onToggle={() => onExpand(row.table.getRow(row.id))}
         />
       )}
     </>
@@ -385,15 +388,21 @@ function AppDataTableBodyRow<TData extends RowData>({
       .join(" "),
     onClick: (event) => {
       rowAttributeOnClick?.(event);
-      if (!event.defaultPrevented) onRowClick?.(row, event);
+      if (!event.defaultPrevented) {
+        onRowClick?.(row.table.getRow(row.id), event);
+      }
     },
     onContextMenu: (event) => {
       rowAttributeOnContextMenu?.(event);
-      if (!event.defaultPrevented) onRowContextMenu?.(row, event);
+      if (!event.defaultPrevented) {
+        onRowContextMenu?.(row.table.getRow(row.id), event);
+      }
     },
     onDoubleClick: (event) => {
       rowAttributeOnDoubleClick?.(event);
-      if (!event.defaultPrevented) onRowDoubleClick?.(row, event);
+      if (!event.defaultPrevented) {
+        onRowDoubleClick?.(row.table.getRow(row.id), event);
+      }
     },
     // See AppDataTable: the second mousedown of a double click is what
     // starts the browser's word selection, which is litter on a table that
@@ -428,8 +437,79 @@ function AppDataTableBodyRow<TData extends RowData>({
   return <div {...rowProps}>{renderedCells}</div>;
 }
 
+function haveSameVisibleCells<TData extends RowData>(
+  previous: Cell<AppTableFeatures, TData>[],
+  next: Cell<AppTableFeatures, TData>[],
+) {
+  return (
+    previous.length === next.length &&
+    previous.every((cell, index) => cell.id === next[index]?.id)
+  );
+}
+
+function haveSameRowDndState<TData extends RowData>(
+  previousDnd: AppDataTableDndOptions<TData> | undefined,
+  nextDnd: AppDataTableDndOptions<TData> | undefined,
+  previousRow: Row<AppTableFeatures, TData>,
+  nextRow: Row<AppTableFeatures, TData>,
+) {
+  if (previousDnd === nextDnd) return true;
+  if (!previousDnd || !nextDnd) return false;
+
+  const previousItemId = previousDnd.getItemId(previousRow);
+  const nextItemId = nextDnd.getItemId(nextRow);
+  const previousArmed =
+    previousDnd.enabled !== false &&
+    (previousDnd.isRowSortable?.(previousRow) ?? true);
+  const nextArmed =
+    nextDnd.enabled !== false && (nextDnd.isRowSortable?.(nextRow) ?? true);
+
+  return (
+    previousItemId === nextItemId &&
+    previousArmed === nextArmed &&
+    (!previousArmed ||
+      ((previousDnd.editing ?? false) === (nextDnd.editing ?? false) &&
+        (previousDnd.pendingItemId === previousItemId) ===
+          (nextDnd.pendingItemId === nextItemId) &&
+        previousDnd.handleAriaLabel === nextDnd.handleAriaLabel))
+  );
+}
+
+function areAppDataTableBodyRowPropsEqual<TData extends RowData>(
+  previous: AppDataTableBodyRowProps<TData>,
+  next: AppDataTableBodyRowProps<TData>,
+) {
+  return (
+    previous.canExpand === next.canExpand &&
+    previous.columnVersion === next.columnVersion &&
+    previous.dragHandle === next.dragHandle &&
+    previous.getRowAttributes === next.getRowAttributes &&
+    previous.hasDragColumn === next.hasDragColumn &&
+    previous.hasExpandColumn === next.hasExpandColumn &&
+    previous.isExpanded === next.isExpanded &&
+    previous.isInteractive === next.isInteractive &&
+    previous.isSelected === next.isSelected &&
+    previous.onExpand === next.onExpand &&
+    previous.onRowClick === next.onRowClick &&
+    previous.onRowContextMenu === next.onRowContextMenu &&
+    previous.onRowDoubleClick === next.onRowDoubleClick &&
+    previous.renderRow === next.renderRow &&
+    previous.rowAttributes === next.rowAttributes &&
+    previous.rowIndex === next.rowIndex &&
+    previous.row.table === next.row.table &&
+    previous.row.id === next.row.id &&
+    previous.row.index === next.row.index &&
+    previous.row.depth === next.row.depth &&
+    previous.row.parentId === next.row.parentId &&
+    previous.row.original === next.row.original &&
+    haveSameVisibleCells(previous.visibleCells, next.visibleCells) &&
+    haveSameRowDndState(previous.dnd, next.dnd, previous.row, next.row)
+  );
+}
+
 const MemoizedAppDataTableBodyRow = memo(
   AppDataTableBodyRow,
+  areAppDataTableBodyRowPropsEqual,
 ) as typeof AppDataTableBodyRow;
 
 interface AppDataTableSortableBodyGroupProps<TData extends RowData> {
@@ -565,6 +645,7 @@ function AppDataTableSortableBodyGroup<TData extends RowData>({
             row={row}
             rowAttributes={sortableRowAttributes}
             rowIndex={rowIndex}
+            visibleCells={row.getVisibleCells()}
           />
         );
       })}
@@ -1196,6 +1277,7 @@ function AppDataTable<TData extends RowData>({
                     renderRow={renderRow}
                     row={row}
                     rowIndex={entry.rowIndex}
+                    visibleCells={row.getVisibleCells()}
                   />
                 </div>
               );

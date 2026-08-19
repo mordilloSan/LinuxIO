@@ -122,6 +122,12 @@ function applySavedOrder<TItem>(
   return [...ordered, ...remaining.values()];
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
 /**
  * Drag-to-reorder for one list, entered by holding a card or row rather than by
  * a toolbar button.
@@ -160,10 +166,14 @@ export function useReorderableSurface<TItem>({
     () => applySavedOrder(items, savedOrder, getId),
     [getId, items, savedOrder],
   );
-  const ids = useMemo(
-    () => orderedItems.map((item) => getId(item)),
-    [getId, orderedItems],
-  );
+  // A data refresh can replace every item object without changing the sortable
+  // order. Keying the memo by the serialized ids keeps both DnD providers from
+  // broadcasting a new context value to every row in that case.
+  const idsKey = JSON.stringify(orderedItems.map((item) => getId(item)));
+  const ids = useMemo(() => {
+    const parsed: unknown = JSON.parse(idsKey);
+    return isStringArray(parsed) ? parsed : [];
+  }, [idsKey]);
 
   const sensorOptions = useMemo(
     () => ({

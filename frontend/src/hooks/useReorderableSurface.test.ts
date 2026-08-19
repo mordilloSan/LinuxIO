@@ -72,6 +72,26 @@ describe("useReorderableSurface", () => {
     expect(result.current.ids).toEqual(["a", "b", "c"]);
   });
 
+  it("keeps DnD identities stable when refreshed items keep the same order", () => {
+    const { result, rerender } = renderHook(
+      ({ surfaceItems }: { surfaceItems: Item[] }) =>
+        useReorderableSurface({
+          getId,
+          items: surfaceItems,
+          surface: "test",
+        }),
+      { initialProps: { surfaceItems: items } },
+    );
+    const initialIds = result.current.ids;
+    const initialContextProps = result.current.dndContextProps;
+
+    rerender({ surfaceItems: items.map((item) => ({ ...item })) });
+
+    expect(result.current.items).not.toBe(items);
+    expect(result.current.ids).toBe(initialIds);
+    expect(result.current.dndContextProps).toBe(initialContextProps);
+  });
+
   it("persists the moved order under its own surface key", () => {
     configMocks.layoutOrders = { other: ["x"] };
 
