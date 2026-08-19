@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { memo, useState, type CSSProperties } from "react";
+import { memo, useEffect, useState, type CSSProperties } from "react";
 
 import { DevToolsPanel } from "@/components/dev-tools/DevToolsPanel";
 import { WebVitalsFooterStats } from "@/components/dev-tools/WebVitalsFooterStats";
@@ -8,11 +8,28 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
+import {
+  readPersistedState,
+  writePersistedState,
+} from "@/utils/persistedState";
+
+// The footer Web Vitals readout is a per-browser preference, so it survives a
+// reload through localStorage rather than a config round-trip.
+const WEB_VITALS_STORAGE_KEY = "linuxio.devtoolsWebVitals";
+
+const isBoolean = (value: unknown): value is boolean =>
+  typeof value === "boolean";
 
 const DevToolsButton = () => {
   const theme = useAppTheme();
   const [isOpen, setIsOpen] = useState(false);
-  const [isWebVitalsVisible, setIsWebVitalsVisible] = useState(false);
+  const [isWebVitalsVisible, setIsWebVitalsVisible] = useState(
+    () => readPersistedState(WEB_VITALS_STORAGE_KEY, isBoolean) ?? false,
+  );
+
+  useEffect(() => {
+    writePersistedState(WEB_VITALS_STORAGE_KEY, isWebVitalsVisible);
+  }, [isWebVitalsVisible]);
 
   // Only show in development mode
   if (!import.meta.env.DEV) {
