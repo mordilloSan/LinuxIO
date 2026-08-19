@@ -319,7 +319,6 @@ func assertBacklogLines(t *testing.T, lines []string, maxLines int) {
 		t.Fatalf("got %d lines, want 1-%d", len(lines), maxLines)
 	}
 
-	var lastTimestamp int64
 	for _, line := range lines {
 		var fields map[string]any
 		if err := json.Unmarshal([]byte(line), &fields); err != nil {
@@ -331,12 +330,38 @@ func assertBacklogLines(t *testing.T, lines []string, maxLines int) {
 		if _, ok := fields["_CMDLINE"]; ok {
 			t.Error("line still carries _CMDLINE — trimming not applied")
 		}
-		timestamp, _ := fields["__REALTIME_TIMESTAMP"].(string)
-		timestampNumber, _ := json.Number(timestamp).Int64()
-		if timestampNumber < lastTimestamp {
-			t.Error("lines are not in chronological order")
+		if timestamp, ok := fields["__REALTIME_TIMESTAMP"].(string); !ok || timestamp == "" {
+			t.Error("line missing __REALTIME_TIMESTAMP")
 		}
-		lastTimestamp = timestampNumber
+	}
+}
+
+func TestEmitGeneralLogsBacklogReversesJournalOrder(t *testing.T) {
+	server, client := net.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		done <- emitGeneralLogsBacklog(server, []string{
+			`{"__CURSOR":"newest"}`,
+			`{"__CURSOR":"middle"}`,
+			`{"__CURSOR":"oldest"}`,
+		})
+		_ = server.Close()
+	}()
+	defer func() { _ = client.Close() }()
+
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("read backlog frame: %v", err)
+	}
+	if frame.Opcode != relay.OpStreamData {
+		t.Fatalf("frame opcode = %d, want stream data", frame.Opcode)
+	}
+	want := "{\"__CURSOR\":\"oldest\"}\n{\"__CURSOR\":\"middle\"}\n{\"__CURSOR\":\"newest\"}\n"
+	if got := string(frame.Payload); got != want {
+		t.Errorf("backlog payload = %q, want %q", got, want)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("emit backlog: %v", err)
 	}
 }
 
@@ -355,8 +380,9 @@ func assertBacklogComplete(t *testing.T, progress []map[string]any, wantTruncate
 }
 
 // TestGeneralLogsChannelBacklogOnly runs the real journalctl backlog phase
-// end-to-end: chronological order, field trimming, cap respected, and the
-// backlog_complete marker present.
+// end-to-end: field trimming, cap respected, and the backlog_complete marker
+// present. Reversal from journalctl's newest-first order is tested separately
+// because realtime timestamps can jump when the host clock is corrected.
 func TestGeneralLogsChannelBacklogOnly(t *testing.T) {
 	requireReadableJournal(t)
 	frames, done, closeClient := openGeneralLogsChannel(context.Background(), apischema.GeneralLogsFollowRequest{
@@ -454,9 +480,9 @@ func TestGeneralLogsChannelFollowReceivesNewEntries(t *testing.T) {
 	}
 }
 
-// TestGetGeneralLogsPage pages backwards from the 1st-newest cursor and
-// checks the boundary entry is excluded, order is newest-first, entries are
-// strictly older, and HasMore reflects the remaining history.
+// TestGetGeneralLogsPage pages backwards from the 1st-newest cursor and checks
+// the boundary entry is excluded, journal order is preserved, and HasMore
+// reflects the remaining history.
 func TestGetGeneralLogsPage(t *testing.T) {
 	if _, err := exec.LookPath("journalctl"); err != nil {
 		t.Skip("journalctl not available")
@@ -471,10 +497,19 @@ func TestGetGeneralLogsPage(t *testing.T) {
 	}
 	var boundary struct {
 		Cursor string `json:"__CURSOR"`
-		TS     string `json:"__REALTIME_TIMESTAMP"`
 	}
 	if err = json.Unmarshal([]byte(newest[0]), &boundary); err != nil {
 		t.Fatalf("parse boundary: %v", err)
+	}
+	expectedCursors := make([]string, 3)
+	for i, entry := range newest[1:4] {
+		var fields struct {
+			Cursor string `json:"__CURSOR"`
+		}
+		if err = json.Unmarshal([]byte(entry), &fields); err != nil {
+			t.Fatalf("parse expected page entry %d: %v", i, err)
+		}
+		expectedCursors[i] = fields.Cursor
 	}
 
 	if _, err = GetGeneralLogsPage(context.Background(), apischema.GeneralLogsPageRequest{
@@ -498,11 +533,9 @@ func TestGetGeneralLogsPage(t *testing.T) {
 	if !resp.HasMore {
 		t.Error("HasMore = false, want true (journal has >4 entries)")
 	}
-	prevTS := boundary.TS
-	for _, entry := range resp.Entries {
+	for i, entry := range resp.Entries {
 		var fields struct {
 			Cursor string `json:"__CURSOR"`
-			TS     string `json:"__REALTIME_TIMESTAMP"`
 		}
 		if err := json.Unmarshal([]byte(entry), &fields); err != nil {
 			t.Fatalf("entry not valid JSON: %v", err)
@@ -510,10 +543,9 @@ func TestGetGeneralLogsPage(t *testing.T) {
 		if fields.Cursor == boundary.Cursor {
 			t.Error("boundary entry leaked into the page")
 		}
-		if fields.TS > prevTS {
-			t.Errorf("entries not newest-first: %s after %s", fields.TS, prevTS)
+		if fields.Cursor != expectedCursors[i] {
+			t.Errorf("entry %d cursor = %q, want %q", i, fields.Cursor, expectedCursors[i])
 		}
-		prevTS = fields.TS
 	}
 }
 
