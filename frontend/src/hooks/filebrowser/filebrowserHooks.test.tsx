@@ -408,6 +408,17 @@ describe("useFileViewState", () => {
     expect(result.current.searchQuery).toBe("");
   });
 
+  it("keeps state identity when clearing an already empty search", () => {
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    const initialState = result.current;
+
+    act(() => result.current.actions.clearSearch());
+
+    expect(result.current).toBe(initialState);
+  });
+
   it("opens and closes the context menu at a position", () => {
     const { result } = renderHook(() => useFileViewState(), {
       wrapper: configWrapper(),

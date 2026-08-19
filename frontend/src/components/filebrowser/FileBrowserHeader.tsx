@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
+  memo,
   useCallback,
   useLayoutEffect,
   useRef,
@@ -368,4 +369,4 @@ const FileBrowserHeader = ({
     </>
   );
 };
-export default FileBrowserHeader;
+export default memo(FileBrowserHeader);

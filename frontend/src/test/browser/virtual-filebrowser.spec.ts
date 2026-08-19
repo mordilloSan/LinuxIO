@@ -92,4 +92,26 @@ test.describe("virtual file browser geometry", () => {
     expect(cardRows).toBeLessThan(listRows);
     await expect(page.getByText("fixture-0.txt")).toBeVisible();
   });
+
+  test("preserves folder and file sections in the lazy row layout", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Show folders" }).click();
+    await expect(page.getByTestId("virtual-filebrowser-status")).toContainText(
+      "folders: 5",
+    );
+    await expect(page.getByRole("heading", { name: "Folders" })).toBeVisible();
+    await expect(page.getByText("folder-0", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Files" })).toBeVisible();
+    await expect(
+      page.getByText("fixture-0.txt", { exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Card view" }).click();
+    await settle(page);
+    await expect(page.getByText("folder-4", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("fixture-0.txt", { exact: true }),
+    ).toBeVisible();
+  });
 });

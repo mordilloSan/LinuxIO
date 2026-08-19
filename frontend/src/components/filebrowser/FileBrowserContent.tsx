@@ -1,4 +1,9 @@
-import { memo, type DragEventHandler, type MouseEventHandler } from "react";
+import {
+  memo,
+  useMemo,
+  type DragEventHandler,
+  type MouseEventHandler,
+} from "react";
 
 import BreadcrumbsNav from "@/components/filebrowser/Breadcrumbs";
 import DirectoryListing from "@/components/filebrowser/DirectoryListing";
@@ -91,6 +96,15 @@ const FileBrowserContent = ({
   surface,
 }: FileBrowserContentProps) => {
   const theme = useAppTheme();
+  const breadcrumbs = useMemo(
+    () => (
+      <BreadcrumbsNav
+        onNavigate={chrome.onOpenDirectory}
+        path={chrome.normalizedPath}
+      />
+    ),
+    [chrome.normalizedPath, chrome.onOpenDirectory],
+  );
 
   return (
     <div
@@ -111,12 +125,7 @@ const FileBrowserContent = ({
     >
       {!chrome.editingPath && (
         <FileBrowserHeader
-          breadcrumbs={
-            <BreadcrumbsNav
-              onNavigate={chrome.onOpenDirectory}
-              path={chrome.normalizedPath}
-            />
-          }
+          breadcrumbs={breadcrumbs}
           isSaving={chrome.isSavingFile}
           onSearchChange={chrome.onSearchChange}
           onSwitchView={chrome.onSwitchView}

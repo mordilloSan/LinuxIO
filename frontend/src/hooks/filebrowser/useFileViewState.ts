@@ -54,7 +54,7 @@ function viewReducer(state: ViewState, event: ViewEvent): ViewState {
         ? { ...state, sortOrder: state.sortOrder === "asc" ? "desc" : "asc" }
         : { ...state, sortField: event.field, sortOrder: "asc" };
     case "clearSearch":
-      return { ...state, searchQuery: "" };
+      return state.searchQuery === "" ? state : { ...state, searchQuery: "" };
     case "closeContextMenu":
       return { ...state, contextMenuPosition: null };
     case "openContextMenu":

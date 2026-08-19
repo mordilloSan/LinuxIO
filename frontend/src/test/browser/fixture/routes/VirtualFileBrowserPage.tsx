@@ -17,6 +17,12 @@ const makeItems = (count: number, offset = 0): FileItem[] =>
     type: "file",
   }));
 
+const folders: FileItem[] = Array.from({ length: 5 }, (_, index) => ({
+  name: `folder-${index}`,
+  path: `/fixture/folder-${index}`,
+  type: "directory",
+}));
+
 const callbacks = {
   onCancelRename: () => {},
   onConfirmRename: () => {},
@@ -52,6 +58,7 @@ export default function VirtualFileBrowserPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [count, setCount] = useState(240);
+  const [showFolders, setShowFolders] = useState(false);
   const files = useMemo(() => makeItems(count), [count]);
 
   return (
@@ -73,9 +80,13 @@ export default function VirtualFileBrowserPage() {
             >
               Remove items
             </AppButton>
+            <AppButton onClick={() => setShowFolders((current) => !current)}>
+              {showFolders ? "Hide folders" : "Show folders"}
+            </AppButton>
           </div>
           <div data-testid="virtual-filebrowser-status">
-            items: {files.length}; view: {viewMode}
+            items: {files.length}; folders: {showFolders ? folders.length : 0};
+            view: {viewMode}
           </div>
           <div
             data-testid="virtual-filebrowser-scrollport"
@@ -89,7 +100,7 @@ export default function VirtualFileBrowserPage() {
               containerRef={containerRef}
               cutPaths={new Set()}
               files={files}
-              folders={[]}
+              folders={showFolders ? folders : []}
               isLoadingSubfolders={false}
               isMarqueeSelecting={false}
               onCancelRename={callbacks.onCancelRename}

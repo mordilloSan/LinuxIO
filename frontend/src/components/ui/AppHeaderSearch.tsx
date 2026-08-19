@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import {
+  memo,
   useCallback,
   useEffect,
   useState,
@@ -132,4 +133,4 @@ const AppHeaderSearch = ({
   );
 };
 
-export default AppHeaderSearch;
+export default memo(AppHeaderSearch);
