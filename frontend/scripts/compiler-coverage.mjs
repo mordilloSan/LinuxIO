@@ -383,7 +383,6 @@ async function main() {
       const transformResult = await transform(file, sourceText, {
         reactCompiler: {
           target: "19",
-          environment: { enableFunctionOutlining: false },
         },
         jsx: { runtime: "automatic" },
         sourcemap: false,

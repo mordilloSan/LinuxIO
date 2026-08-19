@@ -32,10 +32,7 @@ Follow the phased
 
 ### React Compiler upstream follow-ups
 
-1. Remove the temporary `enableFunctionOutlining: false` safeguard once a
-   published release includes `oxc-project/oxc#25548`, then rerun the frontend,
-   compiler-coverage, and browser gates.
-2. Replace the custom Vite plugin only when `@vitejs/plugin-react` publishes its
+1. Replace the custom Vite plugin only when `@vitejs/plugin-react` publishes its
    native `oxc-transform-react` integration (`vitejs/vite-plugin-react#1419` or its successor).
 
 ### Router policy settings
@@ -75,6 +72,10 @@ Playwright.
   replaced the frozen general-transformer binding with the official dedicated
   `oxc-transform-react` package and added separate reporting for recoverable
   function bailouts and explicit compiler opt-outs (2026-08-16).
+- [x] Upgraded `oxc-transform-react` to 0.145.0, removed the temporary function-
+  outlining safeguard after `oxc-project/oxc#25548` shipped, aligned compiler
+  coverage with production, and passed the frontend, coverage, and browser gates
+  (2026-08-19).
 - [x] Replaced the ESLint stack with Oxlint, tsgolint, and JS plugins.
 - [x] Completed the post-migration frontend UI architecture cleanup.
 - [x] Fixed file-browser progress updates rerendering the entire browser.

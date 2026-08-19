@@ -56,7 +56,35 @@
     // --- react ---
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
-    "react/react-compiler": "warn",
+    // Oxlint 1.79 replaced the combined react/react-compiler rule with these
+    // 24 category-specific rules. Keep every replacement explicit so category
+    // changes cannot silently reduce coverage: recommended checks are errors,
+    // while actionable upstream opt-in categories remain visible warnings.
+    "react/error-boundaries": "error",
+    "react/globals": "error",
+    "react/immutability": "error",
+    "react/incompatible-library": "error",
+    "react/preserve-manual-memoization": "error",
+    "react/purity": "error",
+    "react/refs": "error",
+    "react/set-state-in-effect": "error",
+    "react/set-state-in-render": "error",
+    "react/static-components": "error",
+    "react/unsupported-syntax": "error",
+    "react/use-memo": "error",
+    "react/void-use-memo": "error",
+    "react/no-deriving-state-in-effects": "warn",
+    "react/invariant": "warn",
+    "react/rule-suppression": "warn",
+    "react/syntax": "warn",
+    // Compiler implementation gaps (for example valid try/finally syntax) are
+    // recoverable bailouts, not application defects. compiler-coverage owns
+    // their classification, matching the former umbrella rule's default.
+    "react/todo": "off",
+    "react/capitalized-calls": "warn",
+    "react/exhaustive-effect-dependencies": "warn",
+    "react/hooks": "warn",
+    "react/memo-dependencies": "warn",
     "react/no-unescaped-entities": "warn",
     "react/react-in-jsx-scope": "off",
     "react/no-children-prop": "off",

@@ -46,12 +46,10 @@ export function oxcReactCompiler({
         const result = await oxcTransform(filename, code, {
           // Defaults mirror reactCompilerPreset(): compilationMode "infer",
           // panicThreshold "none" — components the compiler cannot memoize are
-          // skipped, not failed (oxlint's react/react-compiler rule lists them).
+          // skipped, not failed (Oxlint's category-specific React Compiler rules
+          // surface the corresponding diagnostics).
           reactCompiler: {
             target: "19",
-            // 0.144.0 predates the nested-closure correctness fix. Remove this
-            // once the pinned release includes oxc-project/oxc#25548.
-            environment: { enableFunctionOutlining: false },
           },
           jsx: { runtime: "automatic" },
           // The production build emits no sourcemaps (build.sourcemap defaults
@@ -72,7 +70,7 @@ export function oxcReactCompiler({
         // On fatal React Compiler errors the transform emits no usable code.
         // Fall back to Vite's normal pipeline so the file ships unmemoized —
         // the same skip semantics the Babel plugin had. Oxlint's
-        // react/react-compiler rule surfaces these at lint time.
+        // Oxlint's category-specific React Compiler rules surface these at lint time.
         if (result.fatal || result.code.length === 0) {
           return null;
         }
