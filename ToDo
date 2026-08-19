@@ -32,8 +32,12 @@ Follow the phased
 
 ### React Compiler upstream follow-ups
 
-1. Replace the custom Vite plugin only when `@vitejs/plugin-react` publishes its
-   native `oxc-transform-react` integration (`vitejs/vite-plugin-react#1419` or its successor).
+1. Revisit the React Compiler integration when
+   [`@vitejs/plugin-react`](https://npmx.dev/package/@vitejs/plugin-react)
+   publishes native support. At that point, compare it with and replace the
+   custom `oxc-transform-react` Vite plugin only if it preserves the current
+   production, Vitest, source-map, and compiler-coverage behavior
+   (`vitejs/vite-plugin-react#1419` or its successor).
 
 ### Router policy settings
 
