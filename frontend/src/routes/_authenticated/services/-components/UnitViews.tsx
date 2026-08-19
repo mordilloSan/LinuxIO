@@ -534,8 +534,9 @@ export function UnitCardsView<T extends UnitListItem>({
       >
         <div
           style={{
-            flex: isCompactLayout ? "0 0 auto" : 1,
-            width: isCompactLayout ? "100%" : undefined,
+            flex: isCompactLayout ? "0 0 auto" : "0 0 max-content",
+            width: isCompactLayout ? "100%" : "max-content",
+            minWidth: 0,
             display: "flex",
           }}
         >
@@ -556,8 +557,9 @@ export function UnitCardsView<T extends UnitListItem>({
             y: isCompactLayout ? 20 : 0,
           }}
           style={{
-            width: isCompactLayout ? "100%" : "33.33%",
-            flexShrink: 0,
+            flex: isCompactLayout ? "0 0 auto" : 3,
+            width: isCompactLayout ? "100%" : undefined,
+            minWidth: 0,
             display: "flex",
           }}
           transition={{
