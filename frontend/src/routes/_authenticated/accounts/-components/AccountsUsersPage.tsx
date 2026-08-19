@@ -16,8 +16,10 @@ const AccountsUsersPage = () => {
     (() => void) | null
   >(null);
   const [usersView, setUsersView] = useViewMode("accounts.users");
-  const search = accountsUsersRouteApi.useSearch();
-  const isUserDetailOpen = typeof search.user === "string";
+  const isUserDetailOpen =
+    typeof accountsUsersRouteApi.useSearch({
+      select: (search) => search.user,
+    }) === "string";
 
   const actions = isUserDetailOpen ? null : (
     <HeaderActions

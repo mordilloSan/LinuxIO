@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 
-import { linuxio } from "@/api";
+import type { linuxio } from "@/api";
 import type { Service, TableCardViewMode } from "@/api";
 
 import ServiceCardsView from "./ServiceCardsView";
@@ -22,25 +22,34 @@ function matchesServiceSearch(service: Service, search: string): boolean {
   );
 }
 
-function useServicesQuery(viewMode: TableCardViewMode) {
+function useServicesQuery(
+  listQueryOptions: typeof linuxio.systemd.list_services,
+  viewMode: TableCardViewMode,
+) {
   return useSuspenseQuery({
-    ...linuxio.systemd.list_services,
+    ...listQueryOptions,
     refetchInterval: viewMode === "card" ? false : 2000,
   });
 }
 
 interface ServicesTabProps {
+  listQueryOptions: typeof linuxio.systemd.list_services;
   onSelectedChange: (name: string | null) => void;
   selected?: string;
+  selectedQueryOptions:
+    | ReturnType<typeof linuxio.systemd.get_unit_info>
+    | undefined;
   viewMode: TableCardViewMode;
 }
 
 const ServicesTab = ({
+  listQueryOptions,
   onSelectedChange,
   selected,
+  selectedQueryOptions,
   viewMode,
 }: ServicesTabProps) => {
-  const { data } = useServicesQuery(viewMode);
+  const { data } = useServicesQuery(listQueryOptions, viewMode);
 
   return (
     <UnitListTab
@@ -64,7 +73,13 @@ const ServicesTab = ({
         />
       )}
       renderDetailPanel={(service, onClose) => (
-        <UnitInfoPanel onClose={onClose} unitName={service.name} />
+        <UnitInfoPanel
+          onClose={onClose}
+          queryOptions={
+            selected === service.name ? selectedQueryOptions : undefined
+          }
+          unitName={service.name}
+        />
       )}
       renderTableView={({ items, onSelect, surface }) => (
         <ServiceTableView

@@ -21,6 +21,7 @@ interface UnitInfoPanelProps {
   renderInfoRows?: (info: UnitInfo | undefined) => UnitInfoRow[];
   title?: string;
   unitName: string;
+  queryOptions?: ReturnType<typeof linuxio.systemd.get_unit_info>;
 }
 
 const labelStyle: CSSProperties = {
@@ -76,6 +77,7 @@ export function UnitInfoPanel({
   onClose,
   title = "Unit file & dependencies",
   renderInfoRows,
+  queryOptions,
 }: UnitInfoPanelProps) {
   return (
     <FrostedCard
@@ -128,7 +130,11 @@ export function UnitInfoPanel({
         </AppIconButton>
       </div>
 
-      <UnitInfoPanelLive renderInfoRows={renderInfoRows} unitName={unitName} />
+      <UnitInfoPanelLive
+        queryOptions={queryOptions}
+        renderInfoRows={renderInfoRows}
+        unitName={unitName}
+      />
     </FrostedCard>
   );
 }
@@ -136,9 +142,13 @@ export function UnitInfoPanel({
 const UnitInfoPanelLive = ({
   unitName,
   renderInfoRows,
-}: Pick<UnitInfoPanelProps, "unitName" | "renderInfoRows">) => {
+  queryOptions,
+}: Pick<
+  UnitInfoPanelProps,
+  "unitName" | "renderInfoRows" | "queryOptions"
+>) => {
   const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName }),
+    ...(queryOptions ?? linuxio.systemd.get_unit_info({ unitName })),
     refetchInterval: 2000,
   });
 

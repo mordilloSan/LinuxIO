@@ -224,8 +224,10 @@ Note the single `access` const feeding both `beforeLoad` and `staticData`. That
 co-location is what stops route access and sidebar visibility from drifting, and
 `router.test.tsx` asserts it.
 
-Execution order per navigation: `validateSearch` → `beforeLoad` (parents first)
-→ `loaderDeps` → `loader` → `component`.
+The data derivation order per navigation is validated params/search →
+`loaderDeps` → route `context` → `beforeLoad` → `loader` → `component`, with
+parents processed first. A `beforeLoad` guard may add inherited context for its
+descendants.
 
 Which options you actually need:
 
@@ -234,6 +236,7 @@ Which options you actually need:
 | `component` | Always | — |
 | `loader` | The page needs data before first paint | Inherits ancestors' data |
 | `loaderDeps` | The loader depends on search params | Path params are already deps |
+| `context` | Query options depend on path params or `loaderDeps` | Static generated descriptors need no wrapper |
 | `validateSearch` | The route owns search params | No search params accepted |
 | `beforeLoad` | Auth, capability, or privilege gating | Inherits `_authenticated` |
 | `staticData` | The route belongs in the sidebar, or is gated | Hidden from sidebar |
@@ -325,7 +328,7 @@ so invoking it while loading is blocked throws into the route. Once the work has
 started, individual prefetch failures are silent and do not fail the route; the
 mounted widget owns Suspense, retry, and error UI.
 
-### Four rules
+### Five rules
 
 - **Never call QueryClient loading methods from a route.** Use the shared
   helpers so readiness, update blocking, retry, error ownership, and
@@ -339,6 +342,13 @@ mounted widget owns Suspense, retry, and error UI.
   `useSuspenseQuery`. Keeping one read path means polling, invalidation, and
   optimistic updates all behave identically whether the data arrived from a
   loader or a refetch.
+- **Single-source route-derived query options.** When a critical query depends
+  on path params or `loaderDeps`, resolve its base options in the route's
+  `context` function. The loader consumes `loaderArgs.context`; the mounted
+  observer consumes the same descriptor with `Route.useRouteContext` or
+  `getRouteApi(...).useRouteContext`. Polling, `select`, and other observer-only
+  options remain local. Per-row, dialog, and other interaction-owned queries do
+  not belong in route context.
 - **`routeIntentPrefetch` is a diagnostic marker only.** Only `silent` has a
   consumer. Do not build behaviour on it.
 
@@ -368,6 +378,39 @@ const { data: interfaces } = useSuspenseQuery({
 A loader plus a mounted observer is not a hybrid architecture — they coordinate
 through one QueryClient entry. Use `useSuspenseQueries` when a component reads
 several.
+
+Static descriptors such as `linuxio.wireguard.list_interfaces` are already one
+source of truth. When params or validated search determine the query key, route
+context owns the resolved descriptor instead:
+
+```tsx
+export const Route = createFileRoute(
+  "/_authenticated/vm/machines/$name",
+)({
+  context: ({ params }) => ({
+    vmQueryOptions: linuxio.virt.get({ name: params.name }),
+  }),
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, [loaderArgs.context.vmQueryOptions]),
+  component: VMDetailRoute,
+});
+
+function VMDetailRoute() {
+  const vmQueryOptions = Route.useRouteContext({
+    select: (context) => context.vmQueryOptions,
+  });
+  const { data: vm } = useSuspenseQuery({
+    ...vmQueryOptions,
+    refetchInterval: 5000,
+  });
+
+  return <VMDetailsPanel vm={vm} />;
+}
+```
+
+The context function receives only the route params and selected `loaderDeps`
+needed to resolve these options. Unrelated validated search changes therefore do
+not replace the descriptor or wake its selector subscribers.
 
 When a parent route loads data that several children need, the children **each
 observe the same options directly**. Do not pass query data down through props or
@@ -441,16 +484,16 @@ Search-dependent, with a conditional detail query — `services/sockets.tsx`:
 ```ts
 validateSearch: (search) => ({ ...optionalString(search, "socket") }),
 loaderDeps: ({ search }) => ({ socket: search.socket }),
+context: ({ deps }) => ({
+  listQueryOptions: linuxio.systemd.list_sockets,
+  selectedQueryOptions: deps.socket
+    ? linuxio.systemd.get_unit_info({ unitName: deps.socket })
+    : undefined,
+}),
 loader: (loaderArgs) => {
-  const { deps } = loaderArgs;
-  const queries: LoaderQueryOptions[] = [
-    linuxio.systemd.list_sockets,
-  ];
-  if (deps.socket) {
-    queries.push(
-      linuxio.systemd.get_unit_info({ unitName: deps.socket }),
-    );
-  }
+  const { listQueryOptions, selectedQueryOptions } = loaderArgs.context;
+  const queries: LoaderQueryOptions[] = [listQueryOptions];
+  if (selectedQueryOptions) queries.push(selectedQueryOptions);
   return loadRouteQueries(loaderArgs, queries);
 },
 ```
@@ -462,36 +505,38 @@ loader re-runs. **Path params are already loader deps** — do not add
 Path param — `vm/machines/$name.tsx`:
 
 ```ts
+context: ({ params }) => ({
+  vmQueryOptions: linuxio.virt.get({ name: params.name }),
+}),
 loader: (loaderArgs) =>
-  loadRouteQueries(loaderArgs, [
-    linuxio.virt.get({ name: loaderArgs.params.name }),
-  ]),
+  loadRouteQueries(loaderArgs, [loaderArgs.context.vmQueryOptions]),
 ```
 
 Splat — `filebrowser/$.tsx`, the one loader that passes per-call query options:
 
 ```ts
-loader: (loaderArgs) => {
-  const { params } = loaderArgs;
+context: ({ params }) => {
   const path = params._splat ? `/${params._splat}` : "/";
+  return {
+    fileBrowserListingQueryOptions:
+      createFileBrowserListingQueryOptions(path),
+  };
+},
+loader: (loaderArgs) => {
   return loadRouteQueries(
     loaderArgs,
-    [
-      {
-        ...linuxio.filebrowser.resource_get({ path }),
-        ...fileBrowserListingQueryOptions,
-      },
-    ],
+    [loaderArgs.context.fileBrowserListingQueryOptions],
     LOADER_FRESHNESS.BACKGROUND,
   );
 },
 ```
 
-`fileBrowserListingQueryOptions` gives both loader and observer the same
-two-second `staleTime`. That short grace keeps the freshly loaded listing fresh
-while the observer mounts, eliminating the immediate duplicate request, while
-the `BACKGROUND` policy still revalidates stale or invalidated listings on a
-later navigation without hiding the cached directory.
+`createFileBrowserListingQueryOptions` gives the loader and observer the exact
+same path, query function, key, and two-second `staleTime`. That short grace
+keeps the freshly loaded listing fresh while the observer mounts, eliminating
+the immediate duplicate request, while the `BACKGROUND` policy still
+revalidates stale or invalidated listings on a later navigation without hiding
+the cached directory.
 
 Transport only — `logs/route.tsx` and `terminal/route.tsx`:
 

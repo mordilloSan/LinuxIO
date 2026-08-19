@@ -56,6 +56,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...actual,
     getRouteApi: () => ({
       useNavigate: () => vi.fn(),
+      useRouteContext: ({ select }: { select: (context: object) => unknown }) =>
+        select({}),
       useSearch: () => ({}),
     }),
   };

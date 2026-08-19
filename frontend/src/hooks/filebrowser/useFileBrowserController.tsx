@@ -3,6 +3,7 @@ import { useCallback, useMemo, type MouseEvent } from "react";
 import type { FileBrowserContentProps } from "@/components/filebrowser/FileBrowserContent";
 import type { FileBrowserDialogsProps } from "@/components/filebrowser/FileBrowserDialogs";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
+import type { FileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { useFileBrowserArchiveActions } from "@/hooks/filebrowser/useFileBrowserArchiveActions";
 import { useFileBrowserClipboardShortcuts } from "@/hooks/filebrowser/useFileBrowserClipboardShortcuts";
 import { useFileBrowserEditorActions } from "@/hooks/filebrowser/useFileBrowserEditorActions";
@@ -30,7 +31,9 @@ export interface FileBrowserController {
   dialogsProps: FileBrowserDialogsProps;
 }
 
-export function useFileBrowserController(): FileBrowserController {
+export function useFileBrowserController(
+  listingQueryOptions: FileBrowserListingQueryOptions,
+): FileBrowserController {
   // View slice: state plus a stable semantic-action API
   const view = useFileViewState();
   const {
@@ -137,11 +140,11 @@ export function useFileBrowserController(): FileBrowserController {
     isEditingFileLoading,
     shouldShowDetailLoader,
   } = useFileQueries({
-    normalizedPath,
     detailTarget,
     editingPath,
     hasSingleDetailTarget,
     hasMultipleDetailTargets,
+    listingQueryOptions,
   });
   const { filteredResource, isSearchLoading } = useFileBrowserFilteredResource({
     resource,

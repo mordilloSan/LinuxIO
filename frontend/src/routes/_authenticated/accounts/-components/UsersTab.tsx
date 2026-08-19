@@ -74,8 +74,11 @@ const UsersTab = ({
   viewMode = "table",
 }: UsersTabProps) => {
   const { user: currentUser } = useAuth();
+  const listUsersQueryOptions = accountsRouteApi.useRouteContext({
+    select: (context) => context.listUsersQueryOptions,
+  });
   const { data: users } = useSuspenseQuery({
-    ...linuxio.accounts.list_users,
+    ...listUsersQueryOptions,
     refetchInterval: 10000,
   });
   const [search, setSearch] = useState("");
@@ -87,9 +90,10 @@ const UsersTab = ({
     Map<string, UserLockAction>
   >(() => new Map());
   const navigate = accountsRouteApi.useNavigate();
-  const routeSearch = accountsRouteApi.useSearch();
-  const selectedUsername =
-    typeof routeSearch.user === "string" ? routeSearch.user : undefined;
+  const selectedUsername = accountsRouteApi.useSearch({
+    select: (search) =>
+      typeof search.user === "string" ? search.user : undefined,
+  });
   const usersList = Array.isArray(users) ? users : [];
 
   const setSelectedUsername = useCallback(

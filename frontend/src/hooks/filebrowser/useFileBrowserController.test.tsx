@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileItem, FileResource } from "@/types/filebrowser";
 
+import { createFileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
 import { useFileBrowserController } from "./useFileBrowserController";
 
 const mocks = vi.hoisted(() => ({
@@ -222,11 +223,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/api", () => ({
+  CACHE_TTL_MS: { TWO_SECONDS: 2000 },
   linuxio: {
     filebrowser: {
       exists_batch: {
         useFetcher: () => () => Promise.resolve({ existing: [] }),
       },
+      resource_get: ({ path }: { path: string }) => ({
+        queryFn: vi.fn(),
+        queryKey: ["filebrowser", "resource_get", path],
+      }),
     },
   },
 }));
@@ -353,7 +359,13 @@ function setup() {
     );
   }
 
-  const hook = renderHook(() => useFileBrowserController(), { wrapper });
+  const hook = renderHook(
+    () =>
+      useFileBrowserController(
+        createFileBrowserListingQueryOptions("/srv/projects"),
+      ),
+    { wrapper },
+  );
   return { ...hook, queryClient };
 }
 

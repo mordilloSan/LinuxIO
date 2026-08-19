@@ -3,7 +3,7 @@ import { useMemo } from "react";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";
 import { normalizeResource } from "@/components/filebrowser/utils";
-import { fileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
+import type { FileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
 
 interface useFileQueriesParams {
@@ -11,19 +11,18 @@ interface useFileQueriesParams {
   editingPath: string | null;
   hasMultipleDetailTargets: boolean;
   hasSingleDetailTarget: boolean;
-  normalizedPath: string;
+  listingQueryOptions: FileBrowserListingQueryOptions;
 }
 
 export const useFileQueries = ({
-  normalizedPath,
   detailTarget,
   editingPath,
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
+  listingQueryOptions,
 }: useFileQueriesParams) => {
   const { data: resourceData } = useSuspenseQuery({
-    ...linuxio.filebrowser.resource_get({ path: normalizedPath }),
-    ...fileBrowserListingQueryOptions,
+    ...listingQueryOptions,
   });
 
   const resource = useMemo(

@@ -54,8 +54,18 @@ interface UserDetailsPanelProps {
 }
 
 function useAccountDetails(username: string) {
+  const { selectedUserDetailsQueryOptions, selectedUsername } =
+    accountsRouteApi.useRouteContext({
+      select: (context) => ({
+        selectedUserDetailsQueryOptions:
+          context.selectedUserDetailsQueryOptions,
+        selectedUsername: context.selectedUsername,
+      }),
+    });
   return useSuspenseQuery({
-    ...linuxio.accounts.get_user_details({ username }),
+    ...(selectedUsername === username && selectedUserDetailsQueryOptions
+      ? selectedUserDetailsQueryOptions
+      : linuxio.accounts.get_user_details({ username })),
     refetchInterval: 10000,
   });
 }
@@ -460,15 +470,37 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 
 export const UserActivityCard = ({ username }: { username: string }) => {
   const theme = useAppTheme();
-  const search = accountsRouteApi.useSearch();
+  const {
+    selectedUserDetailsQueryOptions,
+    selectedUserLoginsQueryOptions,
+    selectedUsername,
+  } = accountsRouteApi.useRouteContext({
+    select: (context) => ({
+      selectedUserDetailsQueryOptions: context.selectedUserDetailsQueryOptions,
+      selectedUserLoginsQueryOptions: context.selectedUserLoginsQueryOptions,
+      selectedUsername: context.selectedUsername,
+    }),
+  });
+  const { autoDismissFailedLoginAlert, failedLoginAlertId, focusLoginEventId } =
+    accountsRouteApi.useSearch({
+      select: (search) => ({
+        autoDismissFailedLoginAlert: search.autoDismissFailedLoginAlert,
+        failedLoginAlertId: search.failedLoginAlertId,
+        focusLoginEventId: search.focusLoginEventId,
+      }),
+    });
   const [{ data: details }, { data: logins }] = useSuspenseQueries({
     queries: [
       {
-        ...linuxio.accounts.get_user_details({ username }),
+        ...(selectedUsername === username && selectedUserDetailsQueryOptions
+          ? selectedUserDetailsQueryOptions
+          : linuxio.accounts.get_user_details({ username })),
         refetchInterval: 10000,
       },
       {
-        ...linuxio.accounts.list_user_logins({ username }),
+        ...(selectedUsername === username && selectedUserLoginsQueryOptions
+          ? selectedUserLoginsQueryOptions
+          : linuxio.accounts.list_user_logins({ username })),
         refetchInterval: 30000,
       },
     ],
@@ -477,16 +509,6 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");
   const [flashingLoginKey, setFlashingLoginKey] = useState("");
-  const focusLoginEventId =
-    typeof search.focusLoginEventId === "string"
-      ? search.focusLoginEventId
-      : undefined;
-  const failedLoginAlertId =
-    typeof search.failedLoginAlertId === "string"
-      ? search.failedLoginAlertId
-      : undefined;
-  const autoDismissFailedLoginAlert =
-    search.autoDismissFailedLoginAlert === true;
   const { mutate: dismissFailedLoginAlert } = useCallMutation(
     linuxio.system.dismiss_failed_login_alert,
   );
