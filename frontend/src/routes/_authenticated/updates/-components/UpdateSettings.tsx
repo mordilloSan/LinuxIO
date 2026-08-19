@@ -12,6 +12,7 @@ import {
   linuxio,
   useCallMutation,
 } from "@/api";
+import { cardBodyToggleProps } from "@/components/cards/cardBodyToggle";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -513,6 +514,10 @@ const AutomaticUpdatesControl = ({
   return (
     <FrostedCard
       aria-label="Automatic updates master control"
+      // Label plus one switch: the settings-row shape, so it lifts. Flat while
+      // a save is in flight, matching the toggle rows in the other sections.
+      hoverLift={!disabled}
+      {...cardBodyToggleProps({ checked, disabled, onChange })}
       style={{
         alignItems: "center",
         display: "flex",

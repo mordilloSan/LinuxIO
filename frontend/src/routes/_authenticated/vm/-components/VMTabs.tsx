@@ -35,7 +35,9 @@ const cardGridStyle = (theme: AppTheme): CSSProperties => ({
 });
 
 // Shared by the status-metric tiles and the image-path tiles — both are
-// non-interactive "label + value" cards laid out identically.
+// "label + value" cards laid out identically. They lift like the dashboard's
+// tiles do: the tier is about being one thing in a grid, not about being
+// clickable, and none of the dashboard tiles are clickable either.
 const gridTileStyle = (theme: AppTheme): CSSProperties => ({
   display: "flex",
   flexDirection: "column",
@@ -116,7 +118,7 @@ export function VMDashboardTab({
   return (
     <div style={tabPanelStyle(theme)}>
       <div style={cardGridStyle(theme)}>
-        <FrostedCard style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle(theme)}>
           <StatusMetric
             detail={`${running} running, ${paused} paused`}
             icon="mdi:server"
@@ -125,7 +127,7 @@ export function VMDashboardTab({
             variant="stat"
           />
         </FrostedCard>
-        <FrostedCard style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle(theme)}>
           <StatusMetric
             detail={
               preflight?.defaultNetworkActive ? "default active" : "check"
@@ -136,7 +138,7 @@ export function VMDashboardTab({
             variant="stat"
           />
         </FrostedCard>
-        <FrostedCard style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle(theme)}>
           <StatusMetric
             detail={preflight?.defaultPoolActive ? "default active" : "check"}
             icon="mdi:database"
@@ -145,7 +147,7 @@ export function VMDashboardTab({
             variant="stat"
           />
         </FrostedCard>
-        <FrostedCard style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle(theme)}>
           <StatusMetric
             detail={`${totalDiskGB} GB provisioned`}
             icon="mdi:memory"
@@ -261,26 +263,26 @@ export function VMImagesTab({ preflight }: { preflight?: VMPreflight }) {
   return (
     <div style={tabPanelStyle(theme)}>
       <div style={cardGridStyle(theme)}>
-        <FrostedCard style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle(theme)}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             ISO folder
           </AppTypography>
           <code style={wrappingCodeStyle}>{isoPath}</code>
         </FrostedCard>
-        <FrostedCard style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle(theme)}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             Cloud image folder
           </AppTypography>
           <code style={wrappingCodeStyle}>{cloudPath}</code>
         </FrostedCard>
-        <FrostedCard style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle(theme)}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             Custom installers
           </AppTypography>
           <span style={secondarySmallTextStyle(theme)}>ISO installer</span>
         </FrostedCard>
         {IMAGE_PRESETS.map((preset) => (
-          <FrostedCard key={preset.id} style={gridTileStyle(theme)}>
+          <FrostedCard hoverLift key={preset.id} style={gridTileStyle(theme)}>
             <div>
               <AppTypography component="div" fontWeight={700} variant="body2">
                 {preset.label}

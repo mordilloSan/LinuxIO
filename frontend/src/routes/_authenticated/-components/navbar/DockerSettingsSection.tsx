@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 
 import { linuxio, useCallMutation } from "@/api";
+import { cardBodyToggleProps } from "@/components/cards/cardBodyToggle";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -329,6 +330,11 @@ const DockerSettingsSection = () => {
 
         <FrostedCard
           hoverLift
+          {...cardBodyToggleProps({
+            checked: requireMountsForFolders,
+            disabled: !privileged,
+            onChange: setRequireMountsForFolders,
+          })}
           style={{
             display: "flex",
             alignItems: "center",

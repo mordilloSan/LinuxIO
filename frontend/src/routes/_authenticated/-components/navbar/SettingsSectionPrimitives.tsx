@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useId, useState, type ReactNode } from "react";
 
+import { cardBodyToggleProps } from "@/components/cards/cardBodyToggle";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -250,6 +251,11 @@ export const ToggleCard = ({
   const theme = useAppTheme();
   return (
     <FrostedCard
+      // A single label paired with a single control is the settings-row shape,
+      // which lifts wherever else it appears. It stops lifting while the
+      // section is mid-save, so the card never invites a press it would refuse.
+      hoverLift={!disabled}
+      {...cardBodyToggleProps({ checked, disabled, onChange })}
       style={{
         display: "flex",
         alignItems: "center",

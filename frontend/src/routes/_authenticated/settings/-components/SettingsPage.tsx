@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import type { DockTileColors, Theme } from "@/api";
+import type { DockTileColors, NavigationMode, Theme } from "@/api";
+import { cardBodyCycleProps } from "@/components/cards/cardBodyToggle";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import TabSelector from "@/components/tabbar/TabSelector";
@@ -42,6 +43,16 @@ const THEME_MODE_OPTIONS: readonly { label: string; value: Theme }[] = [
   { label: "Dark", value: "DARK" },
 ];
 
+const THEME_MODE_VALUES = THEME_MODE_OPTIONS.map((option) => option.value);
+
+const NAVIGATION_MODE_OPTIONS: readonly {
+  label: string;
+  value: NavigationMode;
+}[] = [
+  { label: "Sidebar", value: "sidebar" },
+  { label: "Dock", value: "dock" },
+];
+
 const SettingsPage = () => {
   const theme = useAppTheme();
   const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
@@ -49,6 +60,15 @@ const SettingsPage = () => {
   const [themeMode, setThemeMode] = useConfigValue("theme");
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
+  const dockColorMode = dockTileColors ?? "accent";
+  // The dock needs the header width only a desktop viewport gives it, so on a
+  // phone the sidebar is the only choice — and the one choice is not a toggle.
+  const navigationOptions = isDesktop
+    ? NAVIGATION_MODE_OPTIONS
+    : NAVIGATION_MODE_OPTIONS.filter((option) => option.value === "sidebar");
+  const navigationValue: NavigationMode = isDesktop
+    ? (navigationMode ?? "sidebar")
+    : "sidebar";
   const [dockAccentGradient, setDockAccentGradient] =
     useConfigValue("dockAccentGradient");
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
@@ -144,6 +164,11 @@ const SettingsPage = () => {
 
                 <FrostedCard
                   hoverLift
+                  {...cardBodyCycleProps({
+                    onChange: (value) => setThemeMode(value),
+                    value: themeMode,
+                    values: THEME_MODE_VALUES,
+                  })}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -175,6 +200,11 @@ const SettingsPage = () => {
 
                 <FrostedCard
                   hoverLift
+                  {...cardBodyCycleProps({
+                    onChange: (value) => setNavigationMode(value),
+                    value: navigationValue,
+                    values: navigationOptions.map((option) => option.value),
+                  })}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -192,12 +222,7 @@ const SettingsPage = () => {
                   </div>
                   <TabSelector
                     onChange={(value) => setNavigationMode(value)}
-                    options={[
-                      { label: "Sidebar", value: "sidebar" },
-                      ...(isDesktop
-                        ? [{ label: "Dock", value: "dock" } as const]
-                        : []),
-                    ]}
+                    options={navigationOptions}
                     style={{
                       flexShrink: 0,
                       gridTemplateColumns: "max-content",
@@ -205,14 +230,17 @@ const SettingsPage = () => {
                       marginLeft: theme.spacing(1.5),
                       width: "max-content",
                     }}
-                    value={
-                      isDesktop ? (navigationMode ?? "sidebar") : "sidebar"
-                    }
+                    value={navigationValue}
                   />
                 </FrostedCard>
 
                 <FrostedCard
                   className="settings-page__dock-colors-card"
+                  // A row like the three above it, until the accent palette
+                  // grows a gradient editor inside it — a card that rises out
+                  // from under a drag in progress is worse than one that sits
+                  // still, so the lift goes away while that editor is open.
+                  hoverLift={dockColorMode !== "accent"}
                   style={{ padding: theme.spacing(1.5) }}
                 >
                   <div className="settings-page__dock-colors-header">
@@ -231,7 +259,7 @@ const SettingsPage = () => {
                         setDockTileColors(event.target.value as DockTileColors)
                       }
                       size="small"
-                      value={dockTileColors ?? "accent"}
+                      value={dockColorMode}
                     >
                       <option value="accent">Accent family</option>
                       <option value="mono">Single accent</option>
@@ -240,7 +268,7 @@ const SettingsPage = () => {
                     </AppSelect>
                   </div>
 
-                  {(dockTileColors ?? "accent") === "accent" ? (
+                  {dockColorMode === "accent" ? (
                     <DockAccentGradientEditor
                       accent={theme.palette.primary.main}
                       onChange={setDockAccentGradient}

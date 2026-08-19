@@ -60,3 +60,10 @@
     ) !important;
   }
 }
+
+/* A card whose body forwards clicks to the single control it carries (see
+   cardBodyToggle.ts). The cursor is the only visual difference — the lift the
+   card already has is what says it responds to a pointer. */
+.card-body-toggle {
+  cursor: pointer;
+}

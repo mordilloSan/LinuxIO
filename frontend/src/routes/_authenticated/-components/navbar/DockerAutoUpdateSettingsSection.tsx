@@ -5,6 +5,7 @@ import {
   type DockerContainerAutoUpdateMode,
   type DockerContainerAutoUpdateOptions,
 } from "@/api";
+import { cardBodyToggleProps } from "@/components/cards/cardBodyToggle";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -203,6 +204,12 @@ const DockerAutoUpdateSettingsSection = ({
 
       <FrostedCard
         aria-label="Scheduled update checks control"
+        hoverLift={!controlsDisabled}
+        {...cardBodyToggleProps({
+          checked: currentOptions.enabled,
+          disabled: controlsDisabled,
+          onChange: (checked) => updateDraft("enabled", checked),
+        })}
         style={{
           alignItems: "center",
           display: loading ? "none" : "flex",
@@ -473,6 +480,12 @@ const DockerAutoUpdateSettingsSection = ({
 
       <FrostedCard
         aria-label="Cleanup old images setting"
+        hoverLift={!controlsDisabled}
+        {...cardBodyToggleProps({
+          checked: currentOptions.cleanup,
+          disabled: controlsDisabled,
+          onChange: (checked) => updateDraft("cleanup", checked),
+        })}
         style={{
           alignItems: "center",
           display: loading ? "none" : "flex",
