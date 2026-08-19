@@ -79,6 +79,21 @@ describe("NetworkInterfaceEditor", () => {
     expect(dnsInput()).toHaveValue("1.1.1.1, 8.8.8.8");
   });
 
+  it("shows DHCP-assigned address details outside the mode selector", () => {
+    render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({ ipv4_method: "auto" })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Automatic configuration")).toBeVisible();
+    expect(screen.getByText("192.168.1.25/24")).toBeVisible();
+    expect(screen.getByText("192.168.1.1")).toBeVisible();
+    expect(screen.queryByLabelText("IPv4 Address (CIDR)")).toBeNull();
+  });
+
   it("accepts polling defaults until editing starts, then preserves the draft", async () => {
     const onClose = vi.fn();
     const { rerender, user } = render(

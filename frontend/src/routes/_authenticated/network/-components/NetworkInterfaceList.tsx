@@ -8,18 +8,21 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useEffectEvent } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NetworkInterface } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import { appendLiveSample } from "@/components/charts/liveSeriesStore";
 import {
   type LiveSeriesPoint,
   useLiveSeries,
 } from "@/components/charts/useLiveSeries";
+import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppTheme } from "@/theme";
 import {
+  CARD_PADDING_LG,
   DETAIL_PANEL_GAP,
   TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
@@ -115,72 +118,107 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
   if (!iface) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div>
-        <div style={{ height: 120, width: "100%", minWidth: 0 }}>
-          <NetworkTrafficGraph
+    <>
+      <AppGrid size={{ xs: 12, md: 6 }}>
+        <FrostedCard style={{ padding: CARD_PADDING_LG, height: "100%" }}>
+          <AppTypography fontWeight={600} variant="subtitle1">
+            Receive traffic
+          </AppTypography>
+          <div style={{ height: 160, width: "100%", minWidth: 0 }}>
+            <NetworkTrafficGraph
+              color={theme.chart.rx}
+              key={rxId}
+              label="RX"
+              series={rxSeries}
+            />
+          </div>
+          <TrafficLegend
             color={theme.chart.rx}
-            key={rxId}
             label="RX"
-            series={rxSeries}
+            value={formatThroughput(iface.rx_speed)}
           />
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-            marginLeft: 4,
-            marginTop: 2,
-          }}
-        >
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              backgroundColor: theme.chart.rx,
-              borderRadius: "50%",
-              display: "inline-block",
-            }}
-          />
-          <AppTypography style={{ opacity: 0.7 }} variant="caption">
-            RX: {formatThroughput(iface.rx_speed)}
+        </FrostedCard>
+      </AppGrid>
+      <AppGrid size={{ xs: 12, md: 6 }}>
+        <FrostedCard style={{ padding: CARD_PADDING_LG, height: "100%" }}>
+          <AppTypography fontWeight={600} variant="subtitle1">
+            Send traffic
           </AppTypography>
-        </div>
-      </div>
-      <div>
-        <div style={{ height: 120, width: "100%", minWidth: 0 }}>
-          <NetworkTrafficGraph
+          <div style={{ height: 160, width: "100%", minWidth: 0 }}>
+            <NetworkTrafficGraph
+              color={theme.chart.tx}
+              key={txId}
+              label="TX"
+              series={txSeries}
+            />
+          </div>
+          <TrafficLegend
             color={theme.chart.tx}
-            key={txId}
             label="TX"
-            series={txSeries}
+            value={formatThroughput(iface.tx_speed)}
           />
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-            marginLeft: 4,
-            marginTop: 2,
-          }}
-        >
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              backgroundColor: theme.chart.tx,
-              borderRadius: "50%",
-              display: "inline-block",
-            }}
-          />
-          <AppTypography style={{ opacity: 0.7 }} variant="caption">
-            TX: {formatThroughput(iface.tx_speed)}
-          </AppTypography>
-        </div>
-      </div>
-    </div>
+        </FrostedCard>
+      </AppGrid>
+    </>
+  );
+};
+
+const TrafficLegend = ({
+  color,
+  label,
+  value,
+}: {
+  color: string;
+  label: string;
+  value: string;
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 2,
+      marginLeft: 4,
+      marginTop: 2,
+    }}
+  >
+    <span
+      style={{
+        width: 7,
+        height: 7,
+        backgroundColor: color,
+        borderRadius: "50%",
+        display: "inline-block",
+      }}
+    />
+    <AppTypography style={{ opacity: 0.7 }} variant="caption">
+      {label}: {value}
+    </AppTypography>
+  </div>
+);
+
+const NetworkInterfaceConfigurationCards = ({
+  name,
+  onClose,
+  type,
+}: {
+  name: string;
+  onClose: () => void;
+  type: string;
+}) => {
+  const { data: rawInterface } = useQuery({
+    ...linuxio.network.get_network_info,
+    refetchOnMount: false,
+    select: selectNetworkInterface(name),
+  });
+
+  if (!rawInterface) return null;
+
+  return (
+    <NetworkInterfaceEditor
+      expanded
+      iface={{ ...rawInterface, type }}
+      onClose={onClose}
+    />
   );
 };
 
@@ -240,11 +278,7 @@ const NetworkInterfaceList = () => {
     [expanded, navigate],
   );
 
-  const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
-  // Matches UnitCardsView: below md the side panel wraps under the card, so it
-  // has to arrive from below rather than from the right.
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
   const selectedIface = interfaces.find((iface) => iface.name === expanded);
   const surface = useReorderableSurface({
     getId: getNetworkInterfaceId,
@@ -253,15 +287,6 @@ const NetworkInterfaceList = () => {
   });
 
   if (selectedIface) {
-    /*
-      The isolated view settles in two beats, the same ones UnitCardsView uses:
-      the whole layout rises and fades at 0.04s, then the side panel arrives at
-      0.08s — from the right on a wide screen, from below once it has wrapped
-      under the card. Durations and easing come from the shared slow transition,
-      so services and network read as one gesture rather than two. The gap
-      between card and panel is DETAIL_PANEL_GAP, the same 10px UnitViews uses
-      for its own isolated view.
-    */
     return (
       <AppGrid
         animate={{ opacity: 1, y: 0 }}
@@ -275,32 +300,12 @@ const NetworkInterfaceList = () => {
           ease: EASING_STANDARD,
         }}
       >
-        <AppGrid size={{ xs: 12, md: 4, lg: 3 }}>
-          <NetworkInterfaceCard
-            expanded
-            name={selectedIface.name}
-            onClose={handleClose}
-            onToggle={handleToggle}
-            type={selectedIface.type}
-          />
-        </AppGrid>
-        <AppGrid
-          animate={{ opacity: 1, x: 0, y: 0 }}
-          component={motion.div}
-          initial={{
-            opacity: 0,
-            x: isCompactLayout ? 0 : 40,
-            y: isCompactLayout ? 20 : 0,
-          }}
-          size={{ xs: 12, md: 8, lg: 9 }}
-          transition={{
-            duration: slowTransitionDurationSeconds,
-            delay: 0.08,
-            ease: EASING_STANDARD,
-          }}
-        >
-          <NetworkInterfaceTrafficGraphs name={selectedIface.name} />
-        </AppGrid>
+        <NetworkInterfaceConfigurationCards
+          name={selectedIface.name}
+          onClose={handleClose}
+          type={selectedIface.type}
+        />
+        <NetworkInterfaceTrafficGraphs name={selectedIface.name} />
       </AppGrid>
     );
   }
@@ -311,9 +316,7 @@ const NetworkInterfaceList = () => {
       getId={getNetworkInterfaceId}
       renderItem={(iface) => (
         <NetworkInterfaceCard
-          expanded={false}
           name={iface.name}
-          onClose={handleClose}
           onToggle={surface.editMode ? noopToggle : handleToggle}
           type={iface.type}
         />

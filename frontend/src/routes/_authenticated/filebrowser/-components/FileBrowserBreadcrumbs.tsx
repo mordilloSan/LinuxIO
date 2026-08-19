@@ -23,10 +23,7 @@ const FileBrowserBreadcrumbs = () => {
   );
 
   return (
-    <Breadcrumbs
-      onNavigate={handleNavigate}
-      path={splat ? `/${splat}` : "/"}
-    />
+    <Breadcrumbs onNavigate={handleNavigate} path={splat ? `/${splat}` : "/"} />
   );
 };
 

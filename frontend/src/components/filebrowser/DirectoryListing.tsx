@@ -207,9 +207,7 @@ const DirectoryListing = ({
 
   const focusItemByPath = useCallback(
     (path: string) => {
-      const index = allItemsRef.current.findIndex(
-        (item) => item.path === path,
-      );
+      const index = allItemsRef.current.findIndex((item) => item.path === path);
       if (index === -1) return;
       focusIndexFromPointer(index);
     },
@@ -219,9 +217,7 @@ const DirectoryListing = ({
   const handleItemSelection = useCallback(
     (event: MouseEvent, path: string) => {
       const currentItems = allItemsRef.current;
-      const currentIndex = currentItems.findIndex(
-        (item) => item.path === path,
-      );
+      const currentIndex = currentItems.findIndex((item) => item.path === path);
       if (currentIndex === -1) return;
 
       focusItemByPath(path);

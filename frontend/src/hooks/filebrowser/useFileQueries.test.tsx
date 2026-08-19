@@ -45,9 +45,7 @@ describe("useFileQueries", () => {
       staleTime: Infinity,
     } as unknown as FileBrowserListingQueryOptions;
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const { result } = renderHook(
       () =>
@@ -69,9 +67,9 @@ describe("useFileQueries", () => {
       queryClient.setQueryData(queryKey, {
         ...initial,
         files: [
-          initial.files![0],
+          initial.files[0],
           {
-            ...initial.files![1],
+            ...initial.files[1],
             modified: "2026-08-19T11:00:00Z",
           },
         ],

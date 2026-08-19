@@ -277,6 +277,11 @@ const hookContracts: HookContract[] = [
     hooks: { useQuery: 1 },
   },
   {
+    file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
+    name: "NetworkInterfaceConfigurationCards",
+    hooks: { useQuery: 1 },
+  },
+  {
     file: "components/cards/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceCard",
   },
@@ -478,6 +483,12 @@ const selectContracts: SelectContract[] = [
     select: "selectNetworkInterface",
   },
   {
+    file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
+    name: "NetworkInterfaceConfigurationCards",
+    hook: "useQuery",
+    select: "selectNetworkInterface",
+  },
+  {
     file: "components/cards/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceCardContent",
     hook: "useQuery",
@@ -557,7 +568,11 @@ const edgeContracts: EdgeContract[] = [
   {
     file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
     name: "NetworkInterfaceList",
-    renders: ["NetworkInterfaceCard", "NetworkInterfaceTrafficGraphs"],
+    renders: [
+      "NetworkInterfaceCard",
+      "NetworkInterfaceConfigurationCards",
+      "NetworkInterfaceTrafficGraphs",
+    ],
   },
   {
     file: "components/cards/NetworkInterfaceCard.tsx",
@@ -696,6 +711,10 @@ describe("card query ownership", () => {
       {
         file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
         name: "NetworkInterfaceTrafficGraphs",
+      },
+      {
+        file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
+        name: "NetworkInterfaceConfigurationCards",
       },
       {
         file: "components/cards/NetworkInterfaceCard.tsx",

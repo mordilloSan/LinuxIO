@@ -115,9 +115,7 @@ describe("interactive cards", () => {
     const onToggle = vi.fn();
     const { user } = render(
       <NetworkInterfaceCard
-        expanded={false}
         name={networkInterface.name}
-        onClose={vi.fn()}
         onToggle={onToggle}
         type={networkInterface.type}
       />,

@@ -5,16 +5,16 @@ import {
   type NetworkInterface as BaseNI,
   useCallMutation,
 } from "@/api";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
-import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppCollapse from "@/components/ui/AppCollapse";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppGrid from "@/components/ui/AppGrid";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
+import { CARD_PADDING_LG, GAP_MD, GAP_SM } from "@/theme/constants";
 
 const NETWORK_TOAST_META = {
   label: "Open network",
@@ -125,7 +125,6 @@ const isCurrentSession = (
   session.sourceIpv4Method === iface.ipv4_method;
 
 const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(NETWORK_TOAST_META);
 
   // Compute sane defaults from iface — stabilised on the actual values,
@@ -317,168 +316,220 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       });
     }
   };
+  if (!expanded) return null;
+
+  const interfaceDetails = [
+    ["IPv4", iface.ipv4.join(", ") || "Not assigned"],
+    ["Gateway", defaultGateway || "Not assigned"],
+    ["DNS", defaultDns || "Not assigned"],
+    [
+      "Link",
+      iface.speed === "unknown" || iface.speed.startsWith("-1")
+        ? "No carrier"
+        : `${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`,
+    ],
+  ];
+
   return (
-    <AppCollapse in={expanded} unmountOnExit>
-      <div
-        style={{
-          marginTop: theme.spacing(2),
-          padding: theme.spacing(2),
-          borderRadius: String(theme.shape.borderRadius),
-        }}
-      >
-        <div
+    <>
+      <AppGrid size={{ xs: 12, md: 6 }}>
+        <FrostedCard
+          accent
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: theme.spacing(2),
+            padding: CARD_PADDING_LG,
+            height: "100%",
           }}
         >
-          <div aria-busy={toggling || undefined}>
-            <AppFormControlLabel
-              control={
-                <AppSwitch
-                  checked={isConnected || isConnecting}
-                  disabled={toggling}
-                  onChange={handleConnectionToggle}
-                />
-              }
-              label={
-                toggling
-                  ? "Toggling..."
-                  : isConnected
-                    ? "Enabled"
-                    : isConnecting
-                      ? "Connecting..."
-                      : "Disabled"
-              }
-            />
-            {toggling ? (
-              <AppCircularProgress
-                aria-label={
-                  isEnabling ? "Enabling connection" : "Disabling connection"
+          <AppTypography fontWeight={600} variant="subtitle1">
+            {iface.name}
+          </AppTypography>
+          <AppTypography color="text.secondary" variant="body2">
+            MAC: {iface.mac}
+          </AppTypography>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: GAP_MD,
+              marginTop: GAP_MD,
+            }}
+          >
+            <div aria-busy={toggling || undefined}>
+              <AppFormControlLabel
+                control={
+                  <AppSwitch
+                    checked={isConnected || isConnecting}
+                    disabled={toggling}
+                    onChange={handleConnectionToggle}
+                  />
                 }
-                size={16}
-                style={{
-                  marginLeft: theme.spacing(1),
-                  verticalAlign: "middle",
-                }}
+                label={
+                  toggling
+                    ? "Toggling..."
+                    : isConnected
+                      ? "Enabled"
+                      : isConnecting
+                        ? "Connecting..."
+                        : "Disabled"
+                }
               />
-            ) : null}
-          </div>
-          <Chip
-            color="primary"
-            label={
-              iface.ipv4_method === "manual"
-                ? "static IP"
+              {toggling ? (
+                <AppCircularProgress
+                  aria-label={
+                    isEnabling ? "Enabling connection" : "Disabling connection"
+                  }
+                  size={16}
+                  style={{
+                    marginLeft: GAP_SM,
+                    verticalAlign: "middle",
+                  }}
+                />
+              ) : null}
+            </div>
+            <AppTypography color="text.secondary" variant="body2">
+              {iface.ipv4_method === "manual"
+                ? "Static IP"
                 : iface.ipv4_method === "auto"
                   ? "DHCP"
                   : iface.ipv4_method === "disabled"
                     ? "IPv4 disabled"
-                    : "IPv4: unknown"
-            }
-            size="small"
-            variant="soft"
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-          <AppButton
-            fullWidth
-            onClick={() => handleModeChange("auto")}
-            variant={mode === "auto" ? "contained" : "outlined"}
-          >
-            Automatic
-          </AppButton>
-          <AppButton
-            fullWidth
-            onClick={() => handleModeChange("manual")}
-            variant={mode === "manual" ? "contained" : "outlined"}
-          >
-            Manual
-          </AppButton>
-        </div>
-
-        {mode === "auto" ? (
-          <div>
-            <AppTypography
-              color="text.secondary"
-              style={{
-                marginBottom: 8,
-              }}
-              variant="body2"
-            >
-              The interface will automatically obtain IP address, gateway, and
-              DNS from a DHCP server.
+                    : "IPv4 unknown"}
             </AppTypography>
           </div>
-        ) : (
-          <div>
-            <AppTypography
-              color="text.secondary"
-              style={{
-                marginBottom: 8,
-              }}
-              variant="body2"
+
+          <div style={{ display: "flex", gap: GAP_SM, marginTop: GAP_MD }}>
+            <AppButton
+              fullWidth
+              onClick={() => handleModeChange("auto")}
+              variant={mode === "auto" ? "contained" : "outlined"}
             >
-              Configure static network settings. All fields are required.
-            </AppTypography>
-
-            <AppTextField
+              Automatic
+            </AppButton>
+            <AppButton
               fullWidth
-              helperText="Format: IP/prefix (e.g., 192.168.1.10/24)"
-              label="IPv4 Address (CIDR)"
-              onChange={(e) => handleChange("ipv4", e.target.value)}
-              placeholder="192.168.1.10/24"
-              required
-              size="small"
-              style={{ marginBottom: 8 }}
-              value={editForm.ipv4 ?? ""}
-            />
-
-            <AppTextField
-              fullWidth
-              helperText="The IP address of your network gateway/router"
-              label="Gateway"
-              onChange={(e) => handleChange("gateway", e.target.value)}
-              placeholder="192.168.1.1"
-              required
-              size="small"
-              style={{ marginBottom: 8 }}
-              value={editForm.gateway ?? ""}
-            />
-
-            <AppTextField
-              fullWidth
-              helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
-              label="DNS Servers"
-              onChange={(e) => handleDNSChange(e.target.value)}
-              placeholder="8.8.8.8, 8.8.4.4"
-              required
-              size="small"
-              style={{ marginBottom: 8 }}
-              value={editForm.dns ?? ""}
-            />
+              onClick={() => handleModeChange("manual")}
+              variant={mode === "manual" ? "contained" : "outlined"}
+            >
+              Manual
+            </AppButton>
           </div>
-        )}
+        </FrostedCard>
+      </AppGrid>
 
-        <div
+      <AppGrid size={{ xs: 12, md: 6 }}>
+        <FrostedCard
           style={{
-            display: "flex",
-            justifyContent: "flex-end",
-
-            marginTop: theme.spacing(2),
+            padding: CARD_PADDING_LG,
+            height: "100%",
           }}
         >
-          <AppButton disabled={saving} onClick={onClose}>
-            Cancel
-          </AppButton>
-          <AppButton disabled={saving} onClick={handleSave} variant="contained">
-            {saving ? "Saving…" : "Apply Configuration"}
-          </AppButton>
-        </div>
-      </div>
-    </AppCollapse>
+          <AppTypography fontWeight={600} variant="subtitle1">
+            {mode === "auto"
+              ? "Automatic configuration"
+              : "Manual configuration"}
+          </AppTypography>
+
+          {mode === "auto" ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: GAP_SM,
+                marginTop: GAP_MD,
+              }}
+            >
+              <AppTypography color="text.secondary" variant="body2">
+                The interface obtains its address, gateway, and DNS from DHCP.
+              </AppTypography>
+              {interfaceDetails.map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    gap: GAP_SM,
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <AppTypography color="text.secondary" variant="body2">
+                    {label}
+                  </AppTypography>
+                  <AppTypography noWrap variant="body2">
+                    {value}
+                  </AppTypography>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ marginTop: GAP_MD }}>
+              <AppTypography
+                color="text.secondary"
+                style={{ marginBottom: GAP_SM }}
+                variant="body2"
+              >
+                Configure static network settings. All fields are required.
+              </AppTypography>
+
+              <AppTextField
+                fullWidth
+                helperText="Format: IP/prefix (e.g., 192.168.1.10/24)"
+                label="IPv4 Address (CIDR)"
+                onChange={(e) => handleChange("ipv4", e.target.value)}
+                placeholder="192.168.1.10/24"
+                required
+                size="small"
+                style={{ marginBottom: GAP_SM }}
+                value={editForm.ipv4 ?? ""}
+              />
+
+              <AppTextField
+                fullWidth
+                helperText="The IP address of your network gateway/router"
+                label="Gateway"
+                onChange={(e) => handleChange("gateway", e.target.value)}
+                placeholder="192.168.1.1"
+                required
+                size="small"
+                style={{ marginBottom: GAP_SM }}
+                value={editForm.gateway ?? ""}
+              />
+
+              <AppTextField
+                fullWidth
+                helperText="Comma or space separated (e.g., 8.8.8.8, 1.1.1.1)"
+                label="DNS Servers"
+                onChange={(e) => handleDNSChange(e.target.value)}
+                placeholder="8.8.8.8, 8.8.4.4"
+                required
+                size="small"
+                value={editForm.dns ?? ""}
+              />
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: GAP_SM,
+              marginTop: GAP_MD,
+            }}
+          >
+            <AppButton disabled={saving} onClick={onClose}>
+              Cancel
+            </AppButton>
+            <AppButton
+              disabled={saving}
+              onClick={handleSave}
+              variant="contained"
+            >
+              {saving ? "Saving…" : "Apply Configuration"}
+            </AppButton>
+          </div>
+        </FrostedCard>
+      </AppGrid>
+    </>
   );
 };
 export default NetworkInterfaceEditor;

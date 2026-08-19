@@ -1,10 +1,9 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import { memo, useCallback, useId } from "react";
+import { memo, useCallback } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -33,9 +32,7 @@ const formatBps = (bps?: number) =>
   typeof bps === "number" ? `${(bps / 1024).toFixed(1)} kB/s` : "N/A";
 
 export interface NetworkInterfaceCardProps {
-  expanded: boolean;
   name: string;
-  onClose: () => void;
   onToggle: (name: string) => void;
   type: string;
 }
@@ -84,18 +81,11 @@ const NetworkInterfaceTitle = memo(function NetworkInterfaceTitle({
   );
 });
 
-interface NetworkInterfaceCardContentProps extends NetworkInterfaceCardProps {
-  editorId: string;
-}
-
 const NetworkInterfaceCardContent = ({
-  editorId,
-  expanded,
   name,
-  onClose,
   onToggle,
   type,
-}: NetworkInterfaceCardContentProps) => {
+}: NetworkInterfaceCardProps) => {
   const theme = useAppTheme();
   const handleToggle = useCallback(() => onToggle(name), [name, onToggle]);
   const { data: rawInterface } = useQuery({
@@ -128,8 +118,6 @@ const NetworkInterfaceCardContent = ({
       />
 
       <AppButton
-        aria-controls={editorId}
-        aria-expanded={expanded}
         color="inherit"
         onClick={handleToggle}
         style={{
@@ -166,43 +154,26 @@ const NetworkInterfaceCardContent = ({
           </AppTypography>
         </div>
       </AppButton>
-      <div id={editorId}>
-        <NetworkInterfaceEditor
-          expanded={expanded}
-          iface={iface}
-          onClose={onClose}
-        />
-      </div>
     </>
   );
 };
 
 const NetworkInterfaceCard = ({
-  expanded,
   name,
   onToggle,
-  onClose,
   type,
 }: NetworkInterfaceCardProps) => {
-  const editorId = useId();
-
   return (
     <FrostedCard
       accent
-      hoverLift={!expanded}
+      hoverLift
       style={{
         padding: CARD_PADDING_SM,
         position: "relative",
-        // Expanding pulls the interface out of the grid, where it can no longer
-        // be held to reorder — so the line stands down with the lift.
-        ...(expanded && { borderBottomColor: "transparent" }),
       }}
     >
       <NetworkInterfaceCardContent
-        editorId={editorId}
-        expanded={expanded}
         name={name}
-        onClose={onClose}
         onToggle={onToggle}
         type={type}
       />
