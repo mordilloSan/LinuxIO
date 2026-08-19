@@ -26,6 +26,12 @@ export default defineConfig({
   test: {
     exclude: ["src/test/browser/**", "node_modules/**"],
     pool: "vmThreads",
+    // vmThreads is the fastest pool but retains memory per VM context and
+    // defaults to one worker per core. Left unbounded a full run peaked at
+    // ~7GB RSS across 16 workers, starving the Go tooling `make test` runs
+    // alongside it. Recycle workers past the limit and cap the worker count.
+    vmMemoryLimit: "512MB",
+    maxWorkers: 8,
     clearMocks: true,
     // Silence intercepted console output from passing tests; failing tests
     // still print their logs for debugging. Keeps `make test` output readable.
