@@ -1,9 +1,34 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { createConfigContextValue, render, screen } from "@/test/render";
 
 import SettingsPage from "./SettingsPage";
+import type { SettingsTab } from "./settingsTabs";
+
+// The open tab lives in the route's search params, so the page is rendered
+// against a stubbed route api rather than a whole router.
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  search: {} as { tab?: string },
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    getRouteApi: () => ({
+      useNavigate: () => mocks.navigate,
+      useSearch: () => mocks.search,
+    }),
+  };
+});
+
+beforeEach(() => {
+  mocks.navigate.mockClear();
+  mocks.search = {};
+});
 
 // The shared render helper hands every tree an inert setKey; an inner provider
 // overrides it so a write can be observed without reaching for the real one.
@@ -102,5 +127,50 @@ describe("SettingsPage theme mode", () => {
     );
 
     unmount();
+  });
+});
+
+describe("SettingsPage tab param", () => {
+  it("opens the tab named by the URL", () => {
+    mocks.search = { tab: "capabilities" };
+
+    render(<SettingsPage />);
+
+    expect(screen.getByRole("tab", { name: "Capabilities" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("falls back to General for a privileged tab an unprivileged session opens", () => {
+    mocks.search = { tab: "power" };
+
+    render(<SettingsPage />);
+
+    expect(
+      screen.queryByRole("tab", { name: "Power" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("writes the selected tab to the URL, and drops the param for General", async () => {
+    mocks.search = { tab: "theme" };
+
+    const { user } = render(<SettingsPage />);
+
+    await user.click(screen.getByRole("tab", { name: "Updates" }));
+    const toUpdates = mocks.navigate.mock.calls[0]?.[0] as {
+      search: (previous: { tab?: SettingsTab }) => { tab?: SettingsTab };
+    };
+    expect(toUpdates.search({ tab: "theme" })).toEqual({ tab: "updates" });
+
+    await user.click(screen.getByRole("tab", { name: "General" }));
+    const toGeneral = mocks.navigate.mock.calls[1]?.[0] as {
+      search: (previous: { tab?: SettingsTab }) => { tab?: SettingsTab };
+    };
+    expect(toGeneral.search({ tab: "theme" })).toEqual({ tab: undefined });
   });
 });

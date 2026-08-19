@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
 
 import type { DockTileColors, NavigationMode, Theme } from "@/api";
 import { cardBodyCycleProps } from "@/components/cards/cardBodyToggle";
@@ -24,17 +24,14 @@ import { useAppMediaQuery, useAppTheme } from "@/theme";
 import { getDialogSurfaceStyles } from "@/theme/surfaces";
 
 import DockAccentGradientEditor from "./DockAccentGradientEditor";
+import {
+  DEFAULT_SETTINGS_TAB,
+  PRIVILEGED_SETTINGS_TABS,
+  SETTINGS_TABS,
+} from "./settingsTabs";
 import "./settings-page.css";
 
-type SettingsTab =
-  | "general"
-  | "updates"
-  | "theme"
-  | "capabilities"
-  | "docker"
-  | "indexer"
-  | "monitoring"
-  | "power";
+const settingsRouteApi = getRouteApi("/_authenticated/settings");
 
 // Typed as Theme rather than inferred, so the pills stay in step with the
 // backend's validated enum instead of widening to string.
@@ -71,29 +68,25 @@ const SettingsPage = () => {
     : "sidebar";
   const [dockAccentGradient, setDockAccentGradient] =
     useConfigValue("dockAccentGradient");
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const navigate = settingsRouteApi.useNavigate();
+  const { tab } = settingsRouteApi.useSearch();
+  const activeTab = tab ?? DEFAULT_SETTINGS_TAB;
+  // A link into a privileged tab still opens for a session that cannot read it,
+  // so the fall back stays here rather than in the route's validator.
   const effectiveTab =
-    !privileged &&
-    (activeTab === "power" ||
-      activeTab === "indexer" ||
-      activeTab === "monitoring")
-      ? "general"
+    !privileged && PRIVILEGED_SETTINGS_TABS.includes(activeTab)
+      ? DEFAULT_SETTINGS_TAB
       : activeTab;
   /* Polls list_timers every 5s while it is on, so it stays off until its own
      tab is the one being looked at. */
   const updateSettingsState = useUpdateSettingsState(
     effectiveTab === "updates",
   );
-  const tabs = [
-    { value: "general", label: "General" },
-    { value: "updates", label: "Updates" },
-    { value: "theme", label: "Theme" },
-    { value: "capabilities", label: "Capabilities" },
-    { value: "docker", label: "Docker" },
-    ...(privileged ? [{ value: "indexer", label: "Indexer" }] : []),
-    ...(privileged ? [{ value: "monitoring", label: "Monitoring" }] : []),
-    ...(privileged ? [{ value: "power", label: "Power" }] : []),
-  ];
+  const tabs = privileged
+    ? SETTINGS_TABS
+    : SETTINGS_TABS.filter(
+        (option) => !PRIVILEGED_SETTINGS_TABS.includes(option.value),
+      );
 
   const sectionErrorFallback = (
     <div style={{ padding: theme.spacing(1) }}>
@@ -115,7 +108,17 @@ const SettingsPage = () => {
 
         <div className="settings-page__tabs">
           <TabSelector
-            onChange={(nextValue) => setActiveTab(nextValue as SettingsTab)}
+            onChange={(nextValue) => {
+              void navigate({
+                search: (previous) => ({
+                  ...previous,
+                  // General is what /settings already means, so it is the one
+                  // tab that leaves no parameter behind.
+                  tab:
+                    nextValue === DEFAULT_SETTINGS_TAB ? undefined : nextValue,
+                }),
+              });
+            }}
             options={tabs}
             style={{ marginBottom: 0 }}
             value={effectiveTab}
