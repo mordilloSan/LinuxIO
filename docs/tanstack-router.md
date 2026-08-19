@@ -584,19 +584,20 @@ inherits its ancestor's.
 | `/accounts/groups` | `accounts/groups.tsx` | `loadRouteQueries` ×1 | — | — | — |
 | `/docker` | `docker/route.tsx` | — | — | — | `requireAccess` docker |
 | `/docker/` | `docker/index.tsx` | `loadRouteQueries` ×5 | — | — | — |
-| `/docker/compose` | `docker/compose.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker/compose` | `docker/compose.tsx` | `loadRouteQueries` ×1 | — | `stack` | — |
 | `/docker/containers` | `docker/containers.tsx` | `loadRouteQueries` ×2 | — | `container` | — |
-| `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | — | — |
-| `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | — | — |
-| `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | — | — |
+| `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | `image` | — |
+| `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | `network` | — |
+| `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | `volume` | — |
 | `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | — | — |
-| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `sort`, `tab` | — |
+| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `tab` | — |
 | `/services` | `services/route.tsx` | — | — | — | — |
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
+| `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/shares` | `shares/route.tsx` | — | — | — | — |
 | `/shares/` | `shares/index.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/shares/mounts` | `shares/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
@@ -616,7 +617,7 @@ inherits its ancestor's.
 | `/vm/machines/$name` | `vm/machines/$name.tsx` | `loadRouteQueries` ×1 | *params* | — | — |
 | `/wireguard` | `wireguard/route.tsx` | `loadRouteQueries` ×1 | — | — | `requireAccess` wireguard, privileged |
 
-Paths under `_authenticated/` are shown relative to it. The four `/vm*` rows with
+Paths under `_authenticated/` are shown relative to it. The five `/vm*` rows with
 no loader inherit `/vm`'s — that is the intended shape, not an omission.
 
 ### Who owns which data
@@ -692,7 +693,7 @@ external-redirect rejection.
 
 ## Search Parameters
 
-No schema library. Nine routes validate search using three generic helpers from
+No schema library. Thirteen routes validate search using three generic helpers from
 `routes/-search.ts`:
 
 ```ts
@@ -765,9 +766,9 @@ export function useSidebarItems(): SidebarItem[] {
 
 Current `position` ladder — pick a gap, and leave room:
 
-| 0 | 10 | 20 | 30 | 35 | 40 | 50 | 55 | 60 | 70 | 80 | 90 | 100 | 110 |
-|---|----|----|----|----|----|----|----|----|----|----|----|-----|-----|
-| Dashboard | Network | Updates | Services | Logs | Storage | Docker | VMs | Accounts | Shares | Wireguard | Hardware | Navigator | Terminal |
+| 0 | 10 | 20 | 30 | 35 | 40 | 50 | 55 | 60 | 70 | 80 | 90 | 100 | 110 | 120 |
+|---|----|----|----|----|----|----|----|----|----|----|----|-----|-----|-----|
+| Dashboard | Network | Updates | Services | Logs | Storage | Docker | VMs | Accounts | Shares | Wireguard | Hardware | Navigator | Terminal | Settings |
 
 ## Page Tabs Are Child Routes
 
@@ -1080,33 +1081,52 @@ Docker (50).
 export const Route = createFileRoute("/_authenticated/backups/snapshots")({
   validateSearch: (search) => ({ ...optionalString(search, "tag") }),
   loaderDeps: ({ search }) => ({ tag: search.tag }),
+  context: ({ deps }) => ({
+    snapshotsQueryOptions: linuxio.backups.list_snapshots({
+      tag: deps.tag,
+    }),
+  }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.backups.list_snapshots({
-        tag: loaderArgs.deps.tag,
-      }),
+      loaderArgs.context.snapshotsQueryOptions,
     ]),
   component: SnapshotsLayout,
 });
+
+function SnapshotsLayout() {
+  const snapshotsQueryOptions = Route.useRouteContext({
+    select: (context) => context.snapshotsQueryOptions,
+  });
+  const { data: snapshots } = useSuspenseQuery(snapshotsQueryOptions);
+  return <SnapshotList snapshots={snapshots} />;
+}
 ```
+
+`loaderDeps` selects only the search value that changes the query key. The
+context resolves the descriptor once for that route match, so the loader and
+the mounted list cannot drift apart. The observer may add options such as
+polling or `select`, but it must not rebuild the query key.
 
 **5. Write the detail route** — `snapshots/$id.tsx`. No `loaderDeps`; path params
 are already deps:
 
 ```tsx
 export const Route = createFileRoute("/_authenticated/backups/snapshots/$id")({
+  context: ({ params }) => ({
+    snapshotQueryOptions: linuxio.backups.get_snapshot({ id: params.id }),
+  }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.backups.get_snapshot({ id: loaderArgs.params.id }),
+      loaderArgs.context.snapshotQueryOptions,
     ]),
   component: SnapshotDetail,
 });
 
 function SnapshotDetail() {
-  const { id } = Route.useParams();
-  const { data: snapshot } = useSuspenseQuery(
-    linuxio.backups.get_snapshot({ id }),
-  );
+  const snapshotQueryOptions = Route.useRouteContext({
+    select: (context) => context.snapshotQueryOptions,
+  });
+  const { data: snapshot } = useSuspenseQuery(snapshotQueryOptions);
   return <SnapshotPanel snapshot={snapshot} />;
 }
 ```
@@ -1119,6 +1139,8 @@ function SnapshotDetail() {
 - Do the layout routes that own no data have **no** loader?
 - Does every Query loader pass `loaderArgs` directly, leaving the default
   `PRESENCE` policy implicit and naming only intentional exceptions?
+- If a query depends on params or `loaderDeps`, does route context own its
+  options and do both the loader and observer consume that descriptor?
 - Did you avoid `errorComponent`, `pendingComponent`, and per-route `preload`?
 - Is the capability declared in both places
   ([Capabilities](./capabilities.md#adding-a-capability--checklist))?

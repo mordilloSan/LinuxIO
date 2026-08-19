@@ -189,9 +189,11 @@ const noopToggle = () => {};
 const getNetworkInterfaceId = (iface: { name: string }) => iface.name;
 
 const NetworkInterfaceList = () => {
-  const search = networkRouteApi.useSearch();
+  const expanded = networkRouteApi.useSearch({
+    select: (search) =>
+      typeof search.iface === "string" ? search.iface : undefined,
+  });
   const navigate = networkRouteApi.useNavigate();
-  const expanded = typeof search.iface === "string" ? search.iface : undefined;
 
   const { data: interfaces } = useSuspenseQuery({
     ...linuxio.network.get_network_info,
