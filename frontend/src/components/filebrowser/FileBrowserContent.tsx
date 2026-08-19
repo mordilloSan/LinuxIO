@@ -175,6 +175,8 @@ const FileBrowserContent = ({
             data.filteredResource &&
             data.filteredResource.type === "directory" && (
               <DirectoryListing
+                // A directory is a lifecycle boundary: reset scroll, focus and
+                // range-selection anchors, marquee state, and measured rows.
                 cutPaths={listing.cutPaths}
                 isContextMenuOpen={listing.contextMenuOpen}
                 key={chrome.normalizedPath}

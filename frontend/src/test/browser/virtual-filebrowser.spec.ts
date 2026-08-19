@@ -91,6 +91,18 @@ test.describe("virtual file browser geometry", () => {
     const cardRows = await page.locator(`${scrollport} [data-index]`).count();
     expect(cardRows).toBeLessThan(listRows);
     await expect(page.getByText("fixture-0.txt")).toBeVisible();
+
+    const geometry = await page
+      .locator(`${scrollport} [data-index="1"]`)
+      .evaluate((row) => ({
+        cardHeight:
+          row
+            .querySelector<HTMLElement>('[data-file-card="true"]')
+            ?.getBoundingClientRect().height ?? 0,
+        rowHeight: row.getBoundingClientRect().height,
+      }));
+    expect(geometry.cardHeight).toBeCloseTo(92, 0);
+    expect(geometry.rowHeight).toBeCloseTo(104, 0);
   });
 
   test("preserves folder and file sections in the lazy row layout", async ({

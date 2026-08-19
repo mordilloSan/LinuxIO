@@ -14,7 +14,11 @@ const virtualizerState = vi.hoisted(() => ({
       }
     | undefined,
   options: undefined as
-    | { count: number; getItemKey: (index: number) => string | number }
+    | {
+        count: number;
+        estimateSize: (index: number) => number;
+        getItemKey: (index: number) => string | number;
+      }
     | undefined,
 }));
 
@@ -119,6 +123,19 @@ describe("VirtualDirectoryItems virtualizer invalidation", () => {
     );
 
     expect(virtualizerState.measure).toHaveBeenCalledTimes(2);
+  });
+
+  it("estimates card rows from their resting rendered geometry", () => {
+    render(
+      <VirtualDirectoryItems
+        {...baseProps}
+        files={[item(0), item(1)]}
+        viewMode="card"
+      />,
+    );
+
+    expect(virtualizerState.options?.estimateSize(0)).toBe(40);
+    expect(virtualizerState.options?.estimateSize(1)).toBe(104);
   });
 
   it("scrolls a revealed file directly to its virtual row", () => {

@@ -268,6 +268,11 @@ export const useFileMutations = ({
       },
     },
   );
+  // TanStack Query mutation result objects are recreated on renders. Keep the
+  // callback dependency scoped to the stable mutation function so unrelated
+  // parent updates (for example, selection changes) do not invalidate every
+  // directory item's rename handler.
+  const { mutateAsync: renameAsync } = renameMutation;
 
   const renameItem = useCallback(
     async ({ from, destination }: RenamePayload) => {
@@ -282,11 +287,9 @@ export const useFileMutations = ({
       if (renamePending) return;
       setRenamePending(true);
       setRenameProgress(null);
-      await renameMutation
-        .mutateAsync(request)
-        .finally(() => setRenamePending(false));
+      await renameAsync(request).finally(() => setRenamePending(false));
     },
-    [renameMutation, renamePending],
+    [renameAsync, renamePending],
   );
 
   // Transfers never overwrite silently: pre-check the landing paths and ask

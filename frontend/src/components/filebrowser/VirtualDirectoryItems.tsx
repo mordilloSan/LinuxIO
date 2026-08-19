@@ -23,7 +23,7 @@ import { stripTrailingSlash } from "@/utils/path";
 const CARD_MIN_WIDTH = 260;
 const CARD_GAP = 12;
 const CARD_PADDING = 4;
-const CARD_ROW_ESTIMATE = 88;
+const CARD_ROW_ESTIMATE = 92;
 const LIST_GAP = 2;
 const LIST_ROW_ESTIMATE = 48;
 const SECTION_HEADER_ESTIMATE = 28;
