@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { DockTileColors } from "@/api";
+import type { DockTileColors, Theme } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import TabSelector from "@/components/tabbar/TabSelector";
@@ -35,10 +35,18 @@ type SettingsTab =
   | "monitoring"
   | "power";
 
+// Typed as Theme rather than inferred, so the pills stay in step with the
+// backend's validated enum instead of widening to string.
+const THEME_MODE_OPTIONS: readonly { label: string; value: Theme }[] = [
+  { label: "Light", value: "LIGHT" },
+  { label: "Dark", value: "DARK" },
+];
+
 const SettingsPage = () => {
   const theme = useAppTheme();
   const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
   const { privileged } = useAuth();
+  const [themeMode, setThemeMode] = useConfigValue("theme");
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
   const [dockAccentGradient, setDockAccentGradient] =
@@ -132,6 +140,37 @@ const SettingsPage = () => {
                     </AppTypography>
                   </div>
                   <NavbarCustomizer />
+                </FrostedCard>
+
+                <FrostedCard
+                  hoverLift
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: theme.spacing(1.5),
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <AppTypography fontWeight={600} variant="body2">
+                      Theme mode
+                    </AppTypography>
+                    <AppTypography color="text.secondary" variant="caption">
+                      Each mode keeps its own palette, editable under Theme.
+                    </AppTypography>
+                  </div>
+                  <TabSelector
+                    onChange={(value) => setThemeMode(value)}
+                    options={THEME_MODE_OPTIONS}
+                    style={{
+                      flexShrink: 0,
+                      gridTemplateColumns: "max-content",
+                      marginBottom: 0,
+                      marginLeft: theme.spacing(1.5),
+                      width: "max-content",
+                    }}
+                    value={themeMode}
+                  />
                 </FrostedCard>
 
                 <FrostedCard

@@ -217,13 +217,20 @@ function ThemeColorsSection() {
             Colors
           </AppTypography>
           <AppTypography color="text.secondary" variant="caption">
-            Customize light and dark theme colors.
+            Each mode carries its own palette. These swatches edit the mode
+            selected here, which is not necessarily the one on screen — switch
+            that under General.
           </AppTypography>
         </div>
+
+        <AppTypography color="text.secondary" variant="caption">
+          Editing
+        </AppTypography>
 
         <div style={{ display: "flex", gap: 2 }}>
           {(["light", "dark"] as const).map((m) => (
             <AppButton
+              aria-label={`Edit ${m} theme colors`}
               color={editMode === m ? "primary" : "inherit"}
               key={m}
               onClick={() => setEditMode(m)}
