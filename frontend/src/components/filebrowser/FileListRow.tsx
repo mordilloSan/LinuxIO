@@ -53,6 +53,10 @@ export interface FileListRowProps {
 
 const COLUMN_TEMPLATE =
   "minmax(0, 1fr) clamp(80px, 16vw, 140px) clamp(120px, 22vw, 200px)";
+// The name cell contains a 24px icon whose SVG may mount after the row first
+// renders. Reserve the resting row height so centered text does not move when
+// that icon becomes available.
+const FILE_LIST_ROW_MIN_HEIGHT = 40;
 
 const FileListRow = memo<FileListRowProps>(
   ({
@@ -223,6 +227,7 @@ const FileListRow = memo<FileListRowProps>(
             display: "grid",
             gridTemplateColumns: COLUMN_TEMPLATE,
             alignItems: "center",
+            minHeight: FILE_LIST_ROW_MIN_HEIGHT,
             "--file-row-bg": baseBg,
             "--file-row-bg-hover": hoverBg,
             cursor: "pointer",
@@ -245,6 +250,7 @@ const FileListRow = memo<FileListRowProps>(
             color: theme.palette.text.primary,
             opacity: hidden ? 0.5 : undefined,
             minWidth: 0,
+            minHeight: FILE_LIST_ROW_MIN_HEIGHT,
           }}
         >
           <div style={{ flexShrink: 0 }}>

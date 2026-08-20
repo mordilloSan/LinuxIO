@@ -5,7 +5,9 @@ on:
   pull_request:
     branches: ["**"]
   push:
-    branches: [dev, feature/**]
+    # Pull requests cover development/release branches. Keep direct-push CI
+    # for the protected release target only to avoid duplicate PR runs.
+    branches: [main]
 
 permissions:
   contents: read
@@ -86,7 +88,7 @@ jobs:
           node-version-file: frontend/package.json
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: make lint
+      - run: make lint-ci
   typescript-checks:
     runs-on: ubuntu-latest
     steps:
@@ -96,7 +98,7 @@ jobs:
           node-version-file: frontend/package.json
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: make tsc
+      - run: make tsc-ci
 
   frontend-tests:
     runs-on: ubuntu-latest
@@ -107,12 +109,8 @@ jobs:
           node-version-file: frontend/package.json
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend deps
-        working-directory: frontend
-        run: npm ci
-      - name: Run frontend tests
-        working-directory: frontend
-        run: npm run test
+      - name: Install dependencies and run frontend tests
+        run: make test-frontend-ci
 
   backend-tests:
     runs-on: ubuntu-latest

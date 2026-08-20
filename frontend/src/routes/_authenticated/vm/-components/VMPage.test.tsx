@@ -605,39 +605,36 @@ describe("Virtual Machines page", () => {
         }),
     );
     const { user } = await renderVMPage();
-    const alphaRow = screen
-      .getByRole("button", { name: "alpha" })
-      .closest<HTMLElement>('[role="row"]');
-    const betaRow = screen
-      .getByRole("button", { name: "beta" })
-      .closest<HTMLElement>('[role="row"]');
+    const getVMRow = (name: string) => {
+      const row = screen
+        .getByRole("button", { name })
+        .closest<HTMLElement>('[role="row"]');
+      if (!row) throw new Error(`Missing row for VM ${name}`);
+      return row;
+    };
+    const getVMAction = (name: string, action: string) =>
+      within(getVMRow(name)).getByRole("button", { name: action });
 
-    expect(alphaRow).not.toBeNull();
-    expect(betaRow).not.toBeNull();
+    expect(getVMRow("alpha")).toBeInTheDocument();
+    expect(getVMRow("beta")).toBeInTheDocument();
 
-    await user.click(
-      within(alphaRow!).getByRole("button", { name: "Shutdown" }),
-    );
+    await user.click(getVMAction("alpha", "Shutdown"));
 
-    expect(
-      within(
-        within(alphaRow!).getByRole("button", { name: "Shutdown" }),
-      ).getByRole("progressbar"),
-    ).toBeInTheDocument();
-    expect(
-      within(alphaRow!).getByRole("button", { name: "Reboot" }),
-    ).toBeDisabled();
-    expect(
-      within(betaRow!).getByRole("button", { name: "Start" }),
-    ).toBeEnabled();
+    await waitFor(() => {
+      expect(
+        within(getVMAction("alpha", "Shutdown")).getByRole("progressbar"),
+      ).toBeInTheDocument();
+    });
+    expect(getVMAction("alpha", "Reboot")).toBeDisabled();
+    expect(getVMAction("beta", "Start")).toBeEnabled();
 
-    await user.click(within(betaRow!).getByRole("button", { name: "Start" }));
+    await user.click(getVMAction("beta", "Start"));
 
-    expect(
-      within(within(betaRow!).getByRole("button", { name: "Start" })).getByRole(
-        "progressbar",
-      ),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(getVMAction("beta", "Start")).getByRole("progressbar"),
+      ).toBeInTheDocument();
+    });
 
     await act(async () => {
       resolveShutdown();
@@ -645,10 +642,12 @@ describe("Virtual Machines page", () => {
 
     await waitFor(() => {
       expect(
-        within(alphaRow!).queryByRole("progressbar"),
+        within(getVMRow("alpha")).queryByRole("progressbar"),
       ).not.toBeInTheDocument();
+      expect(
+        within(getVMAction("beta", "Start")).getByRole("progressbar"),
+      ).toBeInTheDocument();
     });
-    expect(within(betaRow!).getByRole("progressbar")).toBeInTheDocument();
 
     await act(async () => {
       resolveStart();
@@ -656,7 +655,7 @@ describe("Virtual Machines page", () => {
 
     await waitFor(() => {
       expect(
-        within(betaRow!).queryByRole("progressbar"),
+        within(getVMRow("beta")).queryByRole("progressbar"),
       ).not.toBeInTheDocument();
     });
   });
@@ -1088,12 +1087,20 @@ describe("Virtual Machines page", () => {
     const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: "Console" }));
+    await waitFor(() =>
+      expect(mocks.openVMConsoleStream).toHaveBeenCalledWith("alpha"),
+    );
     const stream = mocks.openVMConsoleStream.mock.results[0]?.value;
+    if (!stream) throw new Error("Console stream was not opened");
 
-    stream.onResult?.({
-      code: 500,
-      error: 'wait for VNC socket: VM "alpha" has no VNC unix socket',
-      status: "error",
+    await waitFor(() => expect(stream.onResult).toEqual(expect.any(Function)));
+
+    act(() => {
+      stream.onResult?.({
+        code: 500,
+        error: 'wait for VNC socket: VM "alpha" has no VNC unix socket',
+        status: "error",
+      });
     });
 
     expect(await screen.findByText(/has no VNC unix socket/i)).toBeVisible();

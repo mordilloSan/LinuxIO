@@ -100,6 +100,7 @@ an intentional user-local tool directory.
 | `GO_BIN` | Managed Go binary | Go executable; useful for CodeQL or system-Go integration. |
 | `CC` | `cc` | C compiler for the authentication helper. |
 | `sha256_cmd` | `sha256sum` | SHA-256 command; use `shasum -a 256` where required by a host. |
+| `setsid_cmd` | `setsid` | Session launcher used to terminate complete validation process groups. |
 | `GOLANGCI_LINT` | `$(GO_TOOLS_DIR)/bin/golangci-lint` | golangci-lint executable. |
 | `GOLANGCI_LINT_VERSION` | `latest` | golangci-lint version installed by Make. |
 | `MODERNIZE` | `$(GO_TOOLS_DIR)/bin/modernize` | modernize executable. |
@@ -119,6 +120,8 @@ system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 | --- | --- | --- |
 | `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. |
 | `VITEST_MAX_WORKERS` | `8` | Maximum Vitest workers; lower this on memory-constrained hosts. |
+| `VITEST_FILE` | empty | Frontend-relative test/spec file for a focused Vitest run. |
+| `VITEST_TEST_NAME` | empty | Vitest test-name regex, optionally combined with `VITEST_FILE`. |
 | `GO_BUILD_EXTRA_ENV` | empty | Extra environment assignments for Go builds. |
 | `GO_BUILD_TAGS` | empty | Additional Go build tags. |
 | `DEADCODE_PARALLEL` | `auto` | Deadcode scheduling: `auto`, `0` (serial), or `1` (parallel). |
@@ -170,8 +173,8 @@ follows:
 - setup: `ensure-node`, `ensure-go`, `ensure-golint`, `ensure-modernize`,
   `ensure-deadcode`, `ensure-govulncheck`, `setup`, `update-deps`
 - frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
-  `test-frontend-only`, `check-frontend`, `setup-frontend-browser`,
-  `test-frontend-browser`
+  `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
+  `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`
 - backend checks: `golint`, `golint-only`, `test-backend`, `deadcode`,
   `deadcode-only`, `check-backend`, `test-auth`, `test-auth-protocol`,
   `test-auth-pam`, `test-updater`, `test-docker-update-integration`,
@@ -183,6 +186,8 @@ follows:
   `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
 - documentation: `help-overrides`
+
+For release-helper smoke coverage, run `make test-release-automation`.
 
 `_build-binaries` is an internal implementation target. It remains callable
 for diagnostics but is not part of the normal user workflow.

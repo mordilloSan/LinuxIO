@@ -49,6 +49,7 @@ start-dev:
 	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
+	  set -euo pipefail; \
 	  $(call _read_and_validate_version); \
 	  git fetch origin; \
 	  git checkout $(DEFAULT_BASE_BRANCH); \
@@ -74,6 +75,40 @@ open-pr:
 	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
+	  OPEN_PR_STATUS=0; \
+	  PUSH_REMOTE="$$(git config --get "branch.$$BRANCH.remote" 2>/dev/null || echo origin)"; \
+	  REMOTE_REF="refs/remotes/$$PUSH_REMOTE/$$BRANCH"; \
+	  if ! REMOTE_INFO="$$(git ls-remote --heads "$$PUSH_REMOTE" "refs/heads/$$BRANCH")"; then \
+	    echo " Unable to query $$PUSH_REMOTE/$$BRANCH; refusing to use a stale tracking ref."; \
+	    exit 1; \
+	  fi; \
+	  if [ -z "$$REMOTE_INFO" ]; then \
+	    echo " $$PUSH_REMOTE/$$BRANCH does not exist yet - publishing…"; \
+	    git push -u "$$PUSH_REMOTE" "HEAD:refs/heads/$$BRANCH"; \
+	  else \
+	    if ! git fetch --quiet "$$PUSH_REMOTE" "+refs/heads/$$BRANCH:$$REMOTE_REF"; then \
+	      echo " Unable to fetch $$PUSH_REMOTE/$$BRANCH; refusing to use a stale tracking ref."; \
+	      exit 1; \
+	    fi; \
+	    BEHIND="$$(git rev-list --count "HEAD..$$REMOTE_REF")"; \
+	    AHEAD="$$(git rev-list --count "$$REMOTE_REF..HEAD")"; \
+	    if [ "$$BEHIND" -gt 0 ] && [ "$$AHEAD" -gt 0 ]; then \
+	      echo " $$BRANCH has diverged from $$PUSH_REMOTE/$$BRANCH ($$BEHIND behind, $$AHEAD ahead)."; \
+	      echo " Reconcile deliberately (rebase, then git push --force-with-lease), then re-run."; \
+	      exit 1; \
+	    fi; \
+	    if [ "$$BEHIND" -gt 0 ]; then \
+	      echo " $$BRANCH is $$BEHIND commit(s) behind $$PUSH_REMOTE/$$BRANCH."; \
+	      echo " Reconcile first (e.g. git pull --rebase), then re-run."; \
+	      exit 1; \
+	    fi; \
+	    if [ "$$AHEAD" -gt 0 ]; then \
+	      echo " Publishing $$AHEAD local commit(s) to $$PUSH_REMOTE/$$BRANCH…"; \
+	      git push "$$PUSH_REMOTE" "HEAD:refs/heads/$$BRANCH"; \
+	    else \
+	      echo " $$BRANCH already in sync with $$PUSH_REMOTE/$$BRANCH - nothing to push."; \
+	    fi; \
+	  fi; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
 	  CREATED=0; \
@@ -81,7 +116,7 @@ open-pr:
 	    echo "  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
 	  else \
 	    echo " Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
-	    REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
+	    REPO_NAME="$(if $(REPO),$(REPO),$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')})"; \
 	    PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
 	    if [ -n "$$PREV_TAG" ]; then \
 	      COMMIT_RANGE="$${PREV_TAG}..HEAD"; \
@@ -92,11 +127,8 @@ open-pr:
 	    { \
 	      echo "## $$VERSION — $$(date -u +%Y-%m-%d)"; \
 	      echo ""; \
-	      ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO"; \
+	      ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO_NAME"; \
 	    } > "$$PR_BODY_FILE"; \
-	    if [ ! -s "$$PR_BODY_FILE" ]; then \
-	      echo " Generated PR body is empty - aborting."; rm -f "$$PR_BODY_FILE"; exit 1; \
-	    fi; \
 	    gh pr create $(call _repo_flag) \
 	      --base "$$BASE_BRANCH" \
 	      --head "$$BRANCH" \
@@ -127,8 +159,11 @@ open-pr:
 	    echo "   (Press Ctrl+C to cancel)"; \
 	    echo ""; \
 	    START_TIME=$$(date +%s); \
-	    gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; \
-	    CHECK_STATUS=$$?; \
+	    if gh pr checks $(call _repo_flag) "$$PRNUM" --watch --interval 5; then \
+	      CHECK_STATUS=0; \
+	    else \
+	      CHECK_STATUS=$$?; \
+	    fi; \
 	    TOTAL_TIME=$$(( $$(date +%s) - $$START_TIME )); \
 	    echo ""; \
 	    if [ $$CHECK_STATUS -eq 0 ]; then \
@@ -139,6 +174,7 @@ open-pr:
 	      gh pr checks $(call _repo_flag) "$$PRNUM" || true; \
 	      echo ""; \
 	      echo " Checks failed or monitoring was interrupted"; \
+	      OPEN_PR_STATUS=1; \
 	    fi; \
 	  fi; \
 	  echo ""; \
@@ -151,9 +187,11 @@ open-pr:
 	  else \
 	    echo " Couldn't open a browser. View it with: gh pr view $$PRNUM --web"; \
 	  fi; \
+	  exit "$$OPEN_PR_STATUS"; \
 	}
 
 merge-release:
+	@$(call _require_clean)
 	@$(call _require_gh)
 	@{ \
 	  set -euo pipefail; \
@@ -162,24 +200,54 @@ merge-release:
 	    echo " Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
-	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base main --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
+	  PRNUM="$${PR:-$$(gh pr list $(call _repo_flag) --base "$(DEFAULT_BASE_BRANCH)" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)}"; \
 	  if [ -z "$$PRNUM" ] || [ "$$PRNUM" = "null" ]; then echo " No open PR from $$BRANCH to main."; exit 1; fi; \
 	  echo " Checking status of PR #$$PRNUM…"; \
 	  CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
 	  if echo "$$CHECK_OUTPUT" | grep -q "no checks reported"; then \
-	    echo "  No CI checks configured. Proceeding with merge."; \
-	    echo " Consider setting up GitHub Actions for automated testing."; \
+	    echo " No CI checks are reported for PR #$$PRNUM; refusing to merge."; \
+	    echo " Wait for checks to register or inspect the PR, then re-run."; \
+	    exit 1; \
 	  elif ! gh pr checks $(call _repo_flag) "$$PRNUM" > /dev/null 2>&1; then \
 	    echo " Checks have not passed. Run 'make open-pr' to wait for checks."; \
 	    exit 1; \
 	  else \
 	    echo " All checks passed."; \
 	  fi; \
+	  PUSH_REMOTE="$$(git config --get "branch.$$BRANCH.remote" 2>/dev/null || echo origin)"; \
+	  if ! REMOTE_INFO="$$(git ls-remote --heads "$$PUSH_REMOTE" "refs/heads/$$BRANCH")"; then \
+	    echo " Unable to query $$PUSH_REMOTE/$$BRANCH; refusing to merge an unsynchronized PR."; \
+	    exit 1; \
+	  fi; \
+	  if [ -z "$$REMOTE_INFO" ]; then \
+	    echo " $$PUSH_REMOTE/$$BRANCH does not exist; refusing to merge."; \
+	    exit 1; \
+	  fi; \
+	  LOCAL_HEAD="$$(git rev-parse HEAD)"; \
+	  REMOTE_HEAD="$$(printf '%s\n' "$$REMOTE_INFO" | cut -f1)"; \
+	  if [ "$$LOCAL_HEAD" != "$$REMOTE_HEAD" ]; then \
+	    echo " Local HEAD ($$LOCAL_HEAD) is not synchronized with $$PUSH_REMOTE/$$BRANCH ($$REMOTE_HEAD)."; \
+	    echo " Push or reconcile the release branch, then re-run."; \
+	    exit 1; \
+	  fi; \
+	  PR_HEAD_INFO="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json baseRefName,headRefName,headRefOid --jq '[.baseRefName, .headRefName, .headRefOid] | @tsv')"; \
+	  IFS=$$'\t' read -r PR_BASE_BRANCH PR_HEAD_BRANCH PR_HEAD_OID <<< "$$PR_HEAD_INFO"; \
+	  if [ "$$PR_BASE_BRANCH" != "$(DEFAULT_BASE_BRANCH)" ] || [ "$$PR_HEAD_BRANCH" != "$$BRANCH" ] || [ "$$PR_HEAD_OID" != "$$LOCAL_HEAD" ]; then \
+	    echo " PR #$$PRNUM is not synchronized with local $$BRANCH ($$LOCAL_HEAD)."; \
+	    echo "   PR: $$PR_HEAD_BRANCH -> $$PR_BASE_BRANCH ($$PR_HEAD_OID)"; \
+	    echo " Push or reconcile the release branch, then re-run."; \
+	    exit 1; \
+	  fi; \
 	  TRIGGER_MARK=$$(( $$(date -u +%s) - 30 )); \
 	  echo ""; \
 	  echo " Merging PR #$$PRNUM…"; \
 	  MERGE_SUCCESS=0; \
-	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge && MERGE_SUCCESS=1; \
+	  if ! gh pr merge --help 2>&1 | grep -q -- '--match-head-commit'; then \
+	    echo " gh must support --match-head-commit for race-safe release merges."; \
+	    echo " Update GitHub CLI, then re-run."; \
+	    exit 1; \
+	  fi; \
+	  gh pr merge $(call _repo_flag) "$$PRNUM" --merge --match-head-commit "$$LOCAL_HEAD" && MERGE_SUCCESS=1; \
 	  if [ $$MERGE_SUCCESS -eq 0 ]; then \
 	    echo " Merge failed! Branch NOT deleted."; \
 	    exit 1; \
@@ -222,13 +290,14 @@ merge-release:
 	      echo " Watching release workflow..."; \
 	      echo "   (Press Ctrl+C to cancel)"; \
 	      echo ""; \
+	      SAVED_STTY=""; \
 	      if [ -t 1 ]; then SAVED_STTY=$$(stty -g); stty -echo -icanon min 0 time 0; fi; \
 	      cleanup_workflow() { \
 	        [ -n "$$TIMER_PID" ] && kill $$TIMER_PID 2>/dev/null || true; \
 	        [ -n "$$TIMER_PID" ] && wait $$TIMER_PID 2>/dev/null || true; \
 	        [ -n "$$WATCH_PID" ] && kill $$WATCH_PID 2>/dev/null || true; \
 	        [ -n "$$WATCH_PID" ] && wait $$WATCH_PID 2>/dev/null || true; \
-	        stty "$$SAVED_STTY" 2>/dev/null || true; \
+	        if [ -n "$$SAVED_STTY" ]; then stty "$$SAVED_STTY" 2>/dev/null || true; fi; \
 	        printf "\r\033[K"; \
 	      }; \
 	      trap 'cleanup_workflow; exit 130' INT TERM; \
@@ -249,8 +318,11 @@ merge-release:
 	      TIMER_PID=$$!; \
 	      ( gh run watch $(call _repo_flag) "$$RUN_ID" ) & \
 	      WATCH_PID=$$!; \
-	      wait $$WATCH_PID; \
-	      WATCH_STATUS=$$?; \
+	      if wait $$WATCH_PID; then \
+	        WATCH_STATUS=0; \
+	      else \
+	        WATCH_STATUS=$$?; \
+	      fi; \
 	      cleanup_workflow; \
 	      trap - INT TERM; \
 	      TOTAL_TIME=$$(($$(date +%s) - START_TIME)); \
@@ -280,10 +352,30 @@ merge-release:
 	  echo ""; \
 	  if [ "$${WORKFLOW_SUCCESS:-0}" -eq 1 ]; then \
 	    echo "  Cleaning up: deleting branch $$BRANCH..."; \
-	    git checkout $(DEFAULT_BASE_BRANCH) 2>/dev/null || git checkout main; \
+	    git checkout $(DEFAULT_BASE_BRANCH); \
 	    git pull --ff-only; \
-	    git branch -d "$$BRANCH" 2>/dev/null || true; \
-	    git push origin --delete "$$BRANCH" 2>/dev/null || echo "   (remote branch already deleted)"; \
+	    if ! git merge-base --is-ancestor "$$LOCAL_HEAD" "$(DEFAULT_BASE_BRANCH)"; then \
+	      echo " $$BRANCH is not contained in $(DEFAULT_BASE_BRANCH); leaving both branch refs intact."; \
+	      exit 1; \
+	    fi; \
+	    if ! REMOTE_CLEANUP_INFO="$$(git ls-remote --heads "$$PUSH_REMOTE" "refs/heads/$$BRANCH")"; then \
+	      echo " Unable to query $$PUSH_REMOTE/$$BRANCH for safe cleanup."; \
+	      exit 1; \
+	    fi; \
+	    if [ -n "$$REMOTE_CLEANUP_INFO" ] && [ "$$(printf '%s\n' "$$REMOTE_CLEANUP_INFO" | cut -f1)" != "$$LOCAL_HEAD" ]; then \
+	      echo " $$PUSH_REMOTE/$$BRANCH advanced after merge; leaving both branch refs intact."; \
+	      exit 1; \
+	    fi; \
+	    if ! git branch -d "$$BRANCH"; then \
+	      echo " Unable to delete local branch $$BRANCH; remote branch was left intact."; \
+	      exit 1; \
+	    fi; \
+	    if [ -n "$$REMOTE_CLEANUP_INFO" ] && ! git push \
+	      --force-with-lease="refs/heads/$$BRANCH:$$LOCAL_HEAD" \
+	      "$$PUSH_REMOTE" ":refs/heads/$$BRANCH"; then \
+	      echo " Unable to delete remote branch $$PUSH_REMOTE/$$BRANCH."; \
+	      exit 1; \
+	    fi; \
 	    echo " Branch cleanup complete"; \
 	  else \
 	    echo "  Workflow did not succeed - keeping branch $$BRANCH for debugging"; \
@@ -294,4 +386,8 @@ merge-release:
 	  fi; \
 	}
 
-.PHONY: start-dev open-pr merge-release
+.PHONY: start-dev open-pr merge-release test-release-automation
+
+# Exercise release automation in isolated temporary Git repositories.
+test-release-automation:
+	@"$(packaging_scripts_dir)/test-release-automation.sh"
