@@ -64,6 +64,12 @@ const UnitLogsLiveContent = ({
       <div
         style={{
           position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          // Fills whatever height the card is given, and falls back to the
+          // viewport's own bounds when the card is content-sized.
+          flex: 1,
+          minHeight: 0,
           backgroundColor: theme.codeBlock.background,
           color: theme.codeBlock.color,
           borderRadius: 4,
@@ -91,6 +97,7 @@ const UnitLogsLiveContent = ({
           className="custom-scrollbar"
           ref={logsBoxRef}
           style={{
+            flex: 1,
             padding: 16,
             overflow: "auto",
             fontFamily: "Fira Mono, monospace",
@@ -120,7 +127,17 @@ const UnitLogsLiveContent = ({
 };
 
 const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => (
-  <FrostedCard style={{ padding: CARD_PADDING_LG }}>
+  <FrostedCard
+    style={{
+      boxSizing: "border-box",
+      display: "flex",
+      flexDirection: "column",
+      // Stretches to a grid row that sizes the card; a no-op where the card is
+      // a full-width bottom panel with no height to inherit.
+      height: "100%",
+      padding: CARD_PADDING_LG,
+    }}
+  >
     <UnitLogsLiveContent
       createStream={
         createStream ??
