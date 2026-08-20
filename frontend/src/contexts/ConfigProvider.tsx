@@ -122,6 +122,7 @@ const defaultConfig: AppConfig = {
     hiddenCards: [],
     dockerDashboardSections: {
       overview: true,
+      monitoring: true,
       daemon: true,
       resources: true,
     },

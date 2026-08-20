@@ -26,9 +26,10 @@ type PersistedDismissals struct {
 
 // DockerDashboardSections holds the collapsed state of each Docker dashboard section
 type DockerDashboardSections struct {
-	Overview  bool `json:"overview" yaml:"overview"`
-	Daemon    bool `json:"daemon" yaml:"daemon"`
-	Resources bool `json:"resources" yaml:"resources"`
+	Overview   bool `json:"overview" yaml:"overview"`
+	Monitoring bool `json:"monitoring" yaml:"monitoring"`
+	Daemon     bool `json:"daemon" yaml:"daemon"`
+	Resources  bool `json:"resources" yaml:"resources"`
 }
 
 // HardwareSections holds the visibility state of each hardware dashboard section

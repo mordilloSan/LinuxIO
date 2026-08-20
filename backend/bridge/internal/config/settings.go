@@ -11,9 +11,10 @@ func DefaultAppSettings() PersistedAppSettings {
 		ShowHiddenFiles:    true,
 		HiddenCards:        []string{},
 		DockerDashboardSections: &DockerDashboardSections{
-			Overview:  true,
-			Daemon:    true,
-			Resources: true,
+			Overview:   true,
+			Monitoring: true,
+			Daemon:     true,
+			Resources:  true,
 		},
 		HardwareSections: &HardwareSections{
 			Overview:      true,

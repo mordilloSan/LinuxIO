@@ -18,6 +18,12 @@ export interface HistoryChartSeries {
   label: string;
   color: string;
   points: HistoryChartPoint[];
+  /**
+   * Draw this series faintly and leave it out of the crosshair dots and
+   * tooltip. Used to focus a filtered subset of a large stack without
+   * removing the rest, so the top of the stack stays the true total.
+   */
+  dimmed?: boolean;
 }
 
 interface HistoryAreaChartProps {
@@ -342,7 +348,9 @@ const HistoryAreaChart = ({
       : null;
   // Tooltip rows follow the visual order: top band first when stacked.
   const tooltipRows = hover
-    ? hover.values.map((point, i) => ({ point, seriesIndex: i }))
+    ? hover.values
+        .map((point, i) => ({ point, seriesIndex: i }))
+        .filter(({ seriesIndex }) => !visibleSeries[seriesIndex].dimmed)
     : [];
   if (stacked) tooltipRows.reverse();
   const tooltipOnLeft = hover !== null && hover.x > plotLeft + plotWidth / 2;
@@ -417,7 +425,7 @@ const HistoryAreaChart = ({
             <g key={s.label}>
               <path
                 d={paths[i]?.area ?? ""}
-                fill={alpha(s.color, stacked ? 0.4 : 0.1)}
+                fill={alpha(s.color, s.dimmed ? 0.05 : stacked ? 0.4 : 0.1)}
               />
               <path
                 d={paths[i]?.line ?? ""}
@@ -425,6 +433,7 @@ const HistoryAreaChart = ({
                 stroke={s.color}
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                strokeOpacity={s.dimmed ? 0.15 : 1}
                 strokeWidth={stacked ? 1.25 : 2}
               />
             </g>
@@ -440,7 +449,7 @@ const HistoryAreaChart = ({
                 y2={plotTop + plotHeight}
               />
               {hover.values.map((point, i) =>
-                point ? (
+                point && !visibleSeries[i].dimmed ? (
                   <circle
                     cx={hover.x}
                     cy={yFor(plotValues[i][hover.index])}

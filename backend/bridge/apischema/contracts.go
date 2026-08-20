@@ -517,9 +517,10 @@ type ConfigThemeColorsPayload struct {
 }
 
 type ConfigDockerDashboardSections struct {
-	Overview  bool `json:"overview"`
-	Daemon    bool `json:"daemon"`
-	Resources bool `json:"resources"`
+	Overview   bool `json:"overview"`
+	Monitoring bool `json:"monitoring"`
+	Daemon     bool `json:"daemon"`
+	Resources  bool `json:"resources"`
 }
 
 type ConfigHardwareSections struct {

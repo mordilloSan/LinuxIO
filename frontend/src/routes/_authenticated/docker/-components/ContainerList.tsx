@@ -44,6 +44,7 @@ import {
 } from "@/theme/constants";
 
 import ContainerDetailsPanel from "./ContainerDetailsPanel";
+import { ContainerHistoryCards } from "./ContainerHistoryCards";
 import {
   ContainerStackBand,
   ContainerStackSummaryCard,
@@ -58,6 +59,11 @@ import {
   type ContainerTableRow,
 } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
+
+// The name go-monitoring records for a container, so history samples can be
+// matched to the Docker inventory row they belong to.
+const getContainerDisplayName = (container: ContainerInfo): string =>
+  container.Names?.[0]?.replace("/", "") ?? "";
 
 // Card mode only needs identity/display fields in this parent.  Keeping the
 // volatile metrics out of the selected result means a metrics-only poll can
@@ -601,10 +607,25 @@ const ContainerList = ({
             </motion.div>
             <motion.div
               animate={{ opacity: 1, y: 0 }}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 18 }}
               transition={{
                 duration: slowTransitionDurationSeconds,
                 delay: 0.16,
+                ease: EASING_STANDARD,
+              }}
+            >
+              <ContainerHistoryCards
+                containerId={selectedContainer.Id}
+                key={selectedContainer.Id}
+                name={getContainerDisplayName(selectedContainer)}
+              />
+            </motion.div>
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 20 }}
+              transition={{
+                duration: slowTransitionDurationSeconds,
+                delay: 0.2,
                 ease: EASING_STANDARD,
               }}
             >

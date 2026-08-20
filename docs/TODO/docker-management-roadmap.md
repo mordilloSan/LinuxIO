@@ -185,6 +185,41 @@ Frontend
 This phase is the foundation for every later health, attention, and automation
 feature.
 
+### Landed so far
+
+The read path exists; the correctness work below does not.
+
+- `monitoring.get_container_history` returns one bulk, bounded history response
+  covering every container in the window. It reads the agent's `containers`
+  plugin (short container ID, name, CPU percent, memory, and sent/received
+  bytes per second) and annotates each sample with block read/write throughput
+  from the agent's `container_telemetry` plugin, matched to the nearest
+  container sample within one resolution step. Block I/O stays nil rather than
+  zero when that plugin is disabled or the agent predates it.
+- The Docker dashboard has a Monitoring section with stacked per-container CPU
+  and memory charts, one band per container ordered and coloured by usage over
+  the window, plus a filter that fades the containers you are not looking at so
+  the top of the stack keeps reading as the true total.
+- A selected container shows CPU, memory, network, and block I/O history in the
+  existing focused-detail layout, on the shared 1h/12h/24h/7d/30d ranges with a
+  synchronized crosshair.
+
+Two roadmap assumptions turned out to be wrong about agent v1.7:
+
+- Persisted `containers` rows already carry the short container ID (plus image,
+  status, and health). Only the *full* ID is missing, so LinuxIO matches by
+  short-ID prefix. Recreated containers reusing a short ID prefix are still
+  unguarded.
+- Per-container block I/O does not need to be added to the agent. The
+  `container_telemetry` plugin already sums `/proc/<pid>/io` block counters per
+  container. It is process-attributed rather than cgroup blkio, so it needs a
+  documented tolerance before any claim of parity with `docker stats`.
+
+Still open from the lists below: CPU interval semantics, sample status and
+schema versioning, rollups that do not count a missing container as zero,
+counter-reset and recreation boundaries, the point-in-time snapshot Call, and
+removing the sequential `ContainerStats` fan-out from `ListContainers`.
+
 ### Backend
 
 1. Extend `go-monitoring` container samples with block read/write counters and

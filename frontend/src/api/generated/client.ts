@@ -148,6 +148,9 @@ const linuxio = {
   },
   monitoring: {
     get_config: defineCall("monitoring.get_config"),
+    get_container_history: defineCallWithRequest(
+      "monitoring.get_container_history",
+    ),
     get_cpu_history: defineCallWithRequest("monitoring.get_cpu_history"),
     get_diskio_history: defineCallWithRequest("monitoring.get_diskio_history"),
     get_memory_history: defineCallWithRequest("monitoring.get_memory_history"),

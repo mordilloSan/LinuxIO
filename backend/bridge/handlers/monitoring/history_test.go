@@ -219,6 +219,125 @@ func TestFetchMemoryHistoryToleratesMissingContainersHistory(t *testing.T) {
 	}
 }
 
+func TestFetchContainerHistoryMergesBlockIO(t *testing.T) {
+	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+		decodeCommandRequest(t, req)
+		return jsonResponse(http.StatusOK, statusResponseWithListeners(
+			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
+		)), nil
+	})
+	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/v1/containers/history":
+			return jsonResponse(http.StatusOK, `{
+				"resolution": "1m",
+				"items": [{"captured_at": 1700000060000, "stats": [
+					{"id": "abc123", "name": "web", "cpu_percent": 4.5, "memory_mb": 512, "bandwidth_bytes": [1024, 2048]},
+					{"id": "def456", "name": "db", "cpu_percent": 1.25, "memory_mb": 1024}
+				]}]
+			}`), nil
+		case "/api/v1/container_telemetry/history":
+			// A few seconds off the containers bucket, and only one of the two
+			// containers has processes the agent could attribute.
+			return jsonResponse(http.StatusOK, `{
+				"resolution": "1m",
+				"items": [{"captured_at": 1700000058000, "stats": [
+					{"id": "abc123", "name": "web", "disk_read_bytes_per_second": 4096, "disk_write_bytes_per_second": 8192}
+				]}]
+			}`), nil
+		default:
+			t.Fatalf("path = %s, want containers or container_telemetry history", req.URL.Path)
+			return nil, nil
+		}
+	})
+
+	points, err := FetchContainerHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
+	if err != nil {
+		t.Fatalf("FetchContainerHistory: %v", err)
+	}
+	if len(points) != 1 || len(points[0].Containers) != 2 {
+		t.Fatalf("points = %#v", points)
+	}
+	web := points[0].Containers[0]
+	if web.ID != "abc123" || web.Name != "web" || web.CPUPercent != 4.5 || web.MemoryMB != 512 {
+		t.Fatalf("web = %#v", web)
+	}
+	if web.SentBytesPerSec != 1024 || web.RecvBytesPerSec != 2048 {
+		t.Fatalf("web bandwidth = %#v", web)
+	}
+	if web.ReadBytesPerSec == nil || *web.ReadBytesPerSec != 4096 {
+		t.Fatalf("web read = %#v", web.ReadBytesPerSec)
+	}
+	if web.WriteBytesPerSec == nil || *web.WriteBytesPerSec != 8192 {
+		t.Fatalf("web write = %#v", web.WriteBytesPerSec)
+	}
+	db := points[0].Containers[1]
+	if db.ReadBytesPerSec != nil || db.WriteBytesPerSec != nil {
+		t.Fatalf("db block I/O = %#v, want nil for a container telemetry never saw", db)
+	}
+}
+
+func TestFetchContainerHistoryToleratesMissingTelemetry(t *testing.T) {
+	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+		decodeCommandRequest(t, req)
+		return jsonResponse(http.StatusOK, statusResponseWithListeners(
+			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
+		)), nil
+	})
+	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/api/v1/container_telemetry/history" {
+			return jsonResponse(http.StatusNotFound, `{"error": "unknown plugin"}`), nil
+		}
+		return jsonResponse(http.StatusOK, `{
+			"resolution": "1m",
+			"items": [{"captured_at": 1700000060000, "stats": [{"id": "abc123", "name": "web", "cpu_percent": 4.5, "memory_mb": 512}]}]
+		}`), nil
+	})
+
+	points, err := FetchContainerHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
+	if err != nil {
+		t.Fatalf("FetchContainerHistory: %v", err)
+	}
+	if len(points) != 1 || len(points[0].Containers) != 1 {
+		t.Fatalf("points = %#v", points)
+	}
+	if points[0].Containers[0].ReadBytesPerSec != nil {
+		t.Fatalf("read = %#v, want nil when the plugin is unavailable", points[0].Containers[0].ReadBytesPerSec)
+	}
+}
+
+func TestFetchContainerHistoryDropsBlockIOBeyondTolerance(t *testing.T) {
+	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+		decodeCommandRequest(t, req)
+		return jsonResponse(http.StatusOK, statusResponseWithListeners(
+			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
+		)), nil
+	})
+	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/api/v1/container_telemetry/history" {
+			// Two resolution steps away: too far to describe this bucket.
+			return jsonResponse(http.StatusOK, `{
+				"resolution": "1m",
+				"items": [{"captured_at": 1700000180000, "stats": [
+					{"id": "abc123", "name": "web", "disk_read_bytes_per_second": 4096, "disk_write_bytes_per_second": 8192}
+				]}]
+			}`), nil
+		}
+		return jsonResponse(http.StatusOK, `{
+			"resolution": "1m",
+			"items": [{"captured_at": 1700000060000, "stats": [{"id": "abc123", "name": "web", "cpu_percent": 4.5, "memory_mb": 512}]}]
+		}`), nil
+	})
+
+	points, err := FetchContainerHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
+	if err != nil {
+		t.Fatalf("FetchContainerHistory: %v", err)
+	}
+	if points[0].Containers[0].ReadBytesPerSec != nil {
+		t.Fatalf("read = %#v, want nil for a sample outside one resolution step", points[0].Containers[0].ReadBytesPerSec)
+	}
+}
+
 func TestFetchHistoryPrefersUnixMetricsListener(t *testing.T) {
 	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
 		decodeCommandRequest(t, req)

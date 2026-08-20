@@ -63,7 +63,7 @@ func dockerDashboardSectionsToAPI(value *bridgeconfig.DockerDashboardSections) *
 	if value == nil {
 		return nil
 	}
-	return &apischema.ConfigDockerDashboardSections{Overview: value.Overview, Daemon: value.Daemon, Resources: value.Resources}
+	return &apischema.ConfigDockerDashboardSections{Overview: value.Overview, Monitoring: value.Monitoring, Daemon: value.Daemon, Resources: value.Resources}
 }
 
 func hardwareSectionsToAPI(value *bridgeconfig.HardwareSections) *apischema.ConfigHardwareSections {

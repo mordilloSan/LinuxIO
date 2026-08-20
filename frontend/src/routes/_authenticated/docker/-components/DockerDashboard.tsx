@@ -24,6 +24,8 @@ import { useAppTheme } from "@/theme";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
+import { DockerMonitoringSection } from "./ContainerHistoryCards";
+
 // ─── small helpers ────────────────────────────────────────────────────────────
 const StateChip = ({
   state,
@@ -135,14 +137,16 @@ const DockerDashboard = ({
   );
   const sections = dockerDashboardSections ?? {
     overview: true,
+    monitoring: true,
     daemon: true,
     resources: true,
   };
   const setSection = useCallback(
-    (key: "overview" | "daemon" | "resources") =>
+    (key: "overview" | "monitoring" | "daemon" | "resources") =>
       setDockerDashboardSections((prev) => {
         const cur = prev ?? {
           overview: true,
+          monitoring: true,
           daemon: true,
           resources: true,
         };
@@ -526,6 +530,19 @@ const DockerDashboard = ({
               </AppGrid>
             ))}
           </AppGrid>
+        </AppCollapse>
+      </div>
+
+      {/* ── Container Monitoring ────────────────────────────────────────── */}
+      <SectionHeader
+        controlsId="docker-monitoring-panel"
+        expanded={sections.monitoring}
+        onToggle={() => setSection("monitoring")}
+        title="Monitoring"
+      />
+      <div id="docker-monitoring-panel">
+        <AppCollapse in={sections.monitoring} unmountOnExit>
+          <DockerMonitoringSection />
         </AppCollapse>
       </div>
 

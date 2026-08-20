@@ -180,7 +180,7 @@ func buildThemeColors(payload *apischema.ConfigThemeColorsPayload, modePrefix st
 
 func applyOptionalDockerDashboardSections(app *bridgeconfig.PersistedAppSettings, sections *apischema.ConfigDockerDashboardSections) {
 	if sections != nil {
-		app.DockerDashboardSections = &bridgeconfig.DockerDashboardSections{Overview: sections.Overview, Daemon: sections.Daemon, Resources: sections.Resources}
+		app.DockerDashboardSections = &bridgeconfig.DockerDashboardSections{Overview: sections.Overview, Monitoring: sections.Monitoring, Daemon: sections.Daemon, Resources: sections.Resources}
 	}
 }
 

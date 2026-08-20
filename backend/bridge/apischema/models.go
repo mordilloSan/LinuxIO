@@ -1172,6 +1172,29 @@ type MonitoringNetworkHistoryPoint struct {
 	Interfaces      map[string]MonitoringNetworkRates `json:"interfaces,omitempty"`
 }
 
+// MonitoringContainerSample is one container's slice of a container history
+// point. ID is the agent's short container ID, which prefixes the full ID
+// Docker inventory reports.
+type MonitoringContainerSample struct {
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	CPUPercent      float64 `json:"cpu_percent"`
+	MemoryMB        float64 `json:"memory_mb"`
+	SentBytesPerSec float64 `json:"sent_bytes_per_sec"`
+	RecvBytesPerSec float64 `json:"recv_bytes_per_sec"`
+	// ReadBytesPerSec and WriteBytesPerSec are block I/O summed over the
+	// container's processes by the agent's container_telemetry plugin. Nil when
+	// that plugin has no sample near this point, so the UI can say
+	// "unavailable" instead of drawing a zero line.
+	ReadBytesPerSec  *float64 `json:"read_bytes_per_sec,omitempty"`
+	WriteBytesPerSec *float64 `json:"write_bytes_per_sec,omitempty"`
+}
+
+type MonitoringContainerHistoryPoint struct {
+	CapturedAtMs int64                       `json:"captured_at_ms"`
+	Containers   []MonitoringContainerSample `json:"containers"`
+}
+
 type MonitoringListenerStatus struct {
 	Active           bool     `json:"active"`
 	Address          string   `json:"address"`

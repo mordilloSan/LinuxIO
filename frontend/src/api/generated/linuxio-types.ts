@@ -413,6 +413,7 @@ export interface ConfigDockAccentGradient {
 
 export interface ConfigDockerDashboardSections {
   overview: boolean;
+  monitoring: boolean;
   daemon: boolean;
   resources: boolean;
 }
@@ -1453,6 +1454,22 @@ export interface MonitoringConfigPatch {
 export interface MonitoringConfigSetResult {
   config: MonitoringConfig;
   restart_required: boolean;
+}
+
+export interface MonitoringContainerHistoryPoint {
+  captured_at_ms: number;
+  containers: MonitoringContainerSample[];
+}
+
+export interface MonitoringContainerSample {
+  id: string;
+  name: string;
+  cpu_percent: number;
+  memory_mb: number;
+  sent_bytes_per_sec: number;
+  recv_bytes_per_sec: number;
+  read_bytes_per_sec?: number;
+  write_bytes_per_sec?: number;
 }
 
 export interface MonitoringDiskIOHistoryPoint {
@@ -2757,6 +2774,11 @@ export interface LinuxIOSchema {
 
   monitoring: {
     get_config: { input: []; request: void; result: MonitoringConfig };
+    get_container_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringContainerHistoryPoint[];
+    };
     get_cpu_history: {
       input: [request: MonitoringHistoryRequest];
       request: MonitoringHistoryRequest;
@@ -3392,6 +3414,10 @@ export interface LinuxIOCallSchema {
     result: GeneralLogsPageResponse;
   };
   "monitoring.get_config": { request: void; result: MonitoringConfig };
+  "monitoring.get_container_history": {
+    request: MonitoringHistoryRequest;
+    result: MonitoringContainerHistoryPoint[];
+  };
   "monitoring.get_cpu_history": {
     request: MonitoringHistoryRequest;
     result: MonitoringCPUHistoryPoint[];

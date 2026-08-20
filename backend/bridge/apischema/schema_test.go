@@ -76,7 +76,7 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 202; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 203; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeTask], 18; got != want {
@@ -187,8 +187,8 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
 	}
-	if count != 86 {
-		t.Fatalf("retry-safe Call count = %d, want 86", count)
+	if count != 87 {
+		t.Fatalf("retry-safe Call count = %d, want 87", count)
 	}
 	for _, route := range []string{"config.get", "system.get_cpu_info", "tasks.get", "virt.preflight"} {
 		if !mustRoute(t, route).RetrySafe {
