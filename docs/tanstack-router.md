@@ -1,7 +1,6 @@
 # TanStack Router
 
-This is the canonical guide for LinuxIO's **frontend routing** — how URLs map to
-files, where loaders and guards go, and what to do when you add a page.
+This is the canonical guide for LinuxIO's **frontend routing** — how URLs map to files, where loaders and guards go, and what to do when you add a page.
 
 ## Summary
 
