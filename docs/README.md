@@ -2,6 +2,9 @@
 
 Start with [API Contract](./api-contract.md) for bridge/frontend API work.
 
+For repository setup, checks, builds, and configurable Make inputs, see
+[Development targets and overrides](./development.md).
+
 ## API And Bridge
 
 | Doc | Use |
