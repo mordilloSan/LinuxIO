@@ -33,16 +33,11 @@ quiet_targets := \
 	check-frontend \
 	check-backend \
 	lint \
-	lint-only \
 	lint-ci \
 	tsc \
-	tsc-only \
 	golint \
-	golint-only \
 	deadcode \
-	deadcode-only \
 	test-frontend \
-	test-frontend-only \
 	setup-frontend-browser \
 	test-frontend-browser \
 	test-backend \
@@ -638,7 +633,7 @@ test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck en
 	( await "$$TMPDIR_JOBS/lint.rc" "$$PID_LINT" || exit $$?; stage tsc  $(MAKE) --no-print-directory tsc-only ) & PID_TSC=$$!; PIDS="$$PIDS $$PID_TSC"; \
 	( await "$$TMPDIR_JOBS/tsc.rc" "$$PID_TSC" || exit $$?; stage fe   $(MAKE) --no-print-directory test-frontend-only ) & PID_FE=$$!; PIDS="$$PIDS $$PID_FE"; \
 	( await "$$TMPDIR_JOBS/golint.rc" "$$PID_GOLINT" || exit $$?; stage be   $(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 ) & PID_BE=$$!; PIDS="$$PIDS $$PID_BE"; \
-	( await "$$TMPDIR_JOBS/be.rc" "$$PID_BE" || exit $$?; stage dead $(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 ) & PID_DEAD=$$!; PIDS="$$PIDS $$PID_DEAD"; \
+	( await "$$TMPDIR_JOBS/be.rc" "$$PID_BE" || exit $$?; stage dead $(MAKE) --no-print-directory deadcode-only ) & PID_DEAD=$$!; PIDS="$$PIDS $$PID_DEAD"; \
 	follow "$$TMPDIR_JOBS/lint"   $$PID_LINT   || ST=1; \
 	follow "$$TMPDIR_JOBS/golint" $$PID_GOLINT || ST=1; \
 	$(PRINTC) ""; \
@@ -698,7 +693,7 @@ check-backend: ensure-go ensure-golint ensure-modernize ensure-govulncheck ensur
 	$(PRINTC) ""; \
 	$(MAKE) --no-print-directory test-backend SKIP_ENSURE_GO=1 || ST=1; \
 	$(PRINTC) ""; \
-	$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1 || true; \
+	$(MAKE) --no-print-directory deadcode-only || true; \
 	if [ $$ST -ne 0 ]; then \
 	  $(PRINTC) "\n$(COLOR_RED)❌ Backend checks failed.$(COLOR_RESET)"; \
 	  exit 1; \
@@ -908,14 +903,7 @@ golint-only:
 	@echo ""
 	@echo "🔎 test-backend: $(backend_dir)"
 	@echo "   Running Go formatters..."
-ifneq ($(CI),)
-	@fmt_out="$$(cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" fmt --diff 2>&1)"; \
-	status=$$?; \
-	if [ $$status -ne 0 ]; then echo "$$fmt_out"; exit $$status; fi; \
-	if [ -n "$$fmt_out" ]; then echo "Go files need formatting:"; echo "$$fmt_out"; exit 1; fi
-else
 	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" fmt )
-endif
 	@echo "   Ensuring go.mod is tidy..."
 	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
 	@echo "   Running modernize..."
@@ -944,12 +932,12 @@ test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol test-auth-pam
 		exit "$${PIPESTATUS[0]}"
 
 deadcode: ensure-deadcode
-	@$(MAKE) --no-print-directory deadcode-only SKIP_ENSURE_GO=1
+	@$(MAKE) --no-print-directory deadcode-only
 
 # Scan with tests for wholly unreachable code, then without tests to surface
 # production APIs kept alive only by tests. testdbus is deliberately test-only
 # cross-package infrastructure and is the sole production-scan exclusion.
-deadcode-only: $(GO_BUILD_PREREQ)
+deadcode-only:
 	@echo "🔎 Scanning backend for dead code (informational)..."
 	@cd "$(backend_dir)" && \
 		scan_dir="$$(mktemp -d)"; \

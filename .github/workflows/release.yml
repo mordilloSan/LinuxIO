@@ -140,14 +140,14 @@ jobs:
 
       - name: Build Go bridge
         env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-bridge
+        run: make build-bridge SKIP_ENSURE_GO=1
 
       - name: Build Go backend (with bridge hash)
         env: { GOOS: linux, GOARCH: amd64 }
         run: |
           BRIDGE_HASH=$(sha256sum linuxio-bridge | awk '{ print $1 }')
           echo "Bridge SHA256: $BRIDGE_HASH"
-          make build-backend BRIDGE_SHA256=$BRIDGE_HASH
+          make build-backend BRIDGE_SHA256=$BRIDGE_HASH SKIP_ENSURE_GO=1
 
       - name: Build Go auth helper
         env: { GOOS: linux, GOARCH: amd64 }
@@ -155,11 +155,11 @@ jobs:
 
       - name: Build CLI
         env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-cli
+        run: make build-cli SKIP_ENSURE_GO=1
 
       - name: Build Docker update worker
         env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-docker-update
+        run: make build-docker-update SKIP_ENSURE_GO=1
 
       - name: Make artifacts executable
         run: chmod +x linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update

@@ -130,4 +130,4 @@ jobs:
       - name: Create Frontend Files
         run: |
           make dev-prep
-      - run: make test-backend
+      - run: make test-backend SKIP_ENSURE_GO=1

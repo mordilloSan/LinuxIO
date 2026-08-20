@@ -9,8 +9,8 @@ make check-backend
 make test-frontend-browser
 ```
 
-Every validation target also has a `-quiet` form. It prints a short summary and
-saves the complete output under `quiet_log_dir` (default:
+Primary user-facing validation targets have a `-quiet` form. It prints a short
+summary and saves the complete output under `quiet_log_dir` (default:
 `.cache/test-logs`):
 
 ```sh
