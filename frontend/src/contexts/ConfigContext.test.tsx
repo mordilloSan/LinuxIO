@@ -117,6 +117,9 @@ function Probe() {
         {JSON.stringify(config.appSettings.dockAccentGradient)}
       </div>
       <div data-testid="docker-folders">{config.docker.folders.join(",")}</div>
+      <div data-testid="docker-dashboard-sections">
+        {JSON.stringify(config.appSettings.dockerDashboardSections)}
+      </div>
       <button onClick={() => setKey("theme", "DARK")}>set theme</button>
       <button
         onClick={() =>
@@ -263,6 +266,73 @@ describe("ConfigProvider", () => {
       "/cached",
     );
     expect(apiMocks.configGetCall).not.toHaveBeenCalled();
+  });
+
+  it("fills missing cached Docker dashboard section defaults", async () => {
+    const cached = remoteConfig({
+      appSettings: {
+        ...remoteConfig().appSettings,
+        dockerDashboardSections: {
+          overview: false,
+          daemon: false,
+          resources: true,
+        } as AppConfig["appSettings"]["dockerDashboardSections"],
+      },
+    });
+    writeConfigCache("miguel", cached);
+
+    renderProvider();
+
+    expect(
+      await screen.findByTestId("docker-dashboard-sections"),
+    ).toHaveTextContent(
+      '{"overview":false,"monitoring":true,"daemon":false,"resources":true}',
+    );
+    expect(apiMocks.configGetCall).not.toHaveBeenCalled();
+  });
+
+  it("preserves an explicit cached Docker monitoring section value", async () => {
+    const cached = remoteConfig({
+      appSettings: {
+        ...remoteConfig().appSettings,
+        dockerDashboardSections: {
+          overview: true,
+          monitoring: false,
+          daemon: true,
+          resources: false,
+        },
+      },
+    });
+    writeConfigCache("miguel", cached);
+
+    renderProvider();
+
+    expect(
+      await screen.findByTestId("docker-dashboard-sections"),
+    ).toHaveTextContent(
+      '{"overview":true,"monitoring":false,"daemon":true,"resources":false}',
+    );
+  });
+
+  it("fills missing Docker dashboard section defaults from the backend config", async () => {
+    const backend = remoteConfig({
+      appSettings: {
+        ...remoteConfig().appSettings,
+        dockerDashboardSections: {
+          overview: false,
+          daemon: true,
+          resources: false,
+        } as AppConfig["appSettings"]["dockerDashboardSections"],
+      },
+    });
+
+    renderProvider({ configQueryFn: async () => backend });
+
+    expect(
+      await screen.findByTestId("docker-dashboard-sections"),
+    ).toHaveTextContent(
+      '{"overview":false,"monitoring":true,"daemon":true,"resources":false}',
+    );
   });
 
   it("saves user changes only after a successful backend load", async () => {

@@ -27,8 +27,7 @@ export const containerSeriesKey = (
 export const sampleMatchesContainer = (
   sample: MonitoringContainerSample,
   fullId: string,
-  name: string,
-): boolean => (sample.id ? fullId.startsWith(sample.id) : sample.name === name);
+): boolean => sample.id.length > 0 && fullId.startsWith(sample.id);
 
 const metricValue = (
   sample: MonitoringContainerSample,
@@ -90,8 +89,17 @@ export const containerStackSeries = (
   );
 
   const terms = filterTerms(filter);
+  const names = new Map<string, number>();
+  for (const [, { name }] of ranked) {
+    names.set(name, (names.get(name) ?? 0) + 1);
+  }
+
   return ranked.map(([key, { name }], index) => ({
-    label: name,
+    id: key,
+    label:
+      (names.get(name) ?? 0) > 1 && key.startsWith("id:")
+        ? `${name} (${key.slice(3, 11)})`
+        : name,
     color: containerBandColor(index, ranked.length),
     dimmed:
       terms.length > 0 &&
@@ -109,21 +117,20 @@ export const containerStackSeries = (
 };
 
 /**
- * The samples belonging to one container, dropping the points taken while it
- * was not running so its detail charts leave those stretches empty instead of
- * drawing an idle line it never had.
+ * The samples belonging to one container. Keep every collector timestamp so
+ * the chart can render periods when the container was not running as gaps
+ * rather than connecting the samples on either side.
  */
 export const containerSamples = (
   points: MonitoringContainerHistoryPoint[] | undefined,
   fullId: string,
-  name: string,
-): { t: number; sample: MonitoringContainerSample }[] =>
-  (points ?? []).flatMap((point) => {
-    const sample = point.containers.find((candidate) =>
-      sampleMatchesContainer(candidate, fullId, name),
-    );
-    return sample ? [{ t: point.captured_at_ms, sample }] : [];
-  });
+): { t: number; sample?: MonitoringContainerSample }[] =>
+  (points ?? []).map((point) => ({
+    t: point.captured_at_ms,
+    sample: point.containers.find((candidate) =>
+      sampleMatchesContainer(candidate, fullId),
+    ),
+  }));
 
 /**
  * Block I/O is reported by a separate agent plugin an operator can disable and
@@ -131,6 +138,6 @@ export const containerSamples = (
  * drawing a flat zero line when no sample carries it.
  */
 export const hasBlockIO = (
-  samples: { sample: MonitoringContainerSample }[],
+  samples: { sample?: MonitoringContainerSample }[],
 ): boolean =>
-  samples.some(({ sample }) => sample.read_bytes_per_sec !== undefined);
+  samples.some(({ sample }) => sample?.read_bytes_per_sec !== undefined);

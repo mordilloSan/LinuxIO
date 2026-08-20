@@ -106,32 +106,47 @@ describe("containerSamples", () => {
     const samples = containerSamples(
       [point(1_000, [sample("aaa111", "web", { cpu_percent: 2 })])],
       fullId,
-      "web",
     );
     expect(samples).toEqual([
       { t: 1_000, sample: expect.objectContaining({ cpu_percent: 2 }) },
     ]);
   });
 
-  it("falls back to the name when a rollup dropped the id", () => {
+  it("does not assign an id-less sample by display name", () => {
     const samples = containerSamples(
       [point(1_000, [sample("", "web", { cpu_percent: 2 })])],
       fullId,
-      "web",
     );
-    expect(samples).toHaveLength(1);
+    expect(samples).toEqual([{ t: 1_000, sample: undefined }]);
   });
 
-  it("drops the points taken while the container was not running", () => {
+  it("keeps timestamps taken while the container was not running as gaps", () => {
     const samples = containerSamples(
       [
         point(1_000, [sample("aaa111", "web")]),
         point(2_000, [sample("bbb222", "db")]),
       ],
       fullId,
-      "web",
     );
-    expect(samples.map(({ t }) => t)).toEqual([1_000]);
+    expect(samples).toEqual([
+      { t: 1_000, sample: expect.objectContaining({ id: "aaa111" }) },
+      { t: 2_000, sample: undefined },
+    ]);
+  });
+
+  it("keeps separate recreated containers distinct when they reuse a name", () => {
+    const series = containerStackSeries(
+      [
+        point(1_000, [sample("aaa111", "web", { cpu_percent: 1 })]),
+        point(2_000, [sample("bbb222", "web", { cpu_percent: 2 })]),
+      ],
+      "cpu",
+      "",
+    );
+    expect(series.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: "id:bbb222", label: "web (bbb222)" },
+      { id: "id:aaa111", label: "web (aaa111)" },
+    ]);
   });
 });
 

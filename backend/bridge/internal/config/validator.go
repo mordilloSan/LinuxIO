@@ -184,6 +184,11 @@ func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, default
 			cfg.AppSettings.DockerDashboardSections = &sections
 		}
 		changed = true
+	} else if sections, ok := childMap(appSettings, "dockerDashboardSections"); ok &&
+		defaults.AppSettings.DockerDashboardSections != nil &&
+		!hasMapKey(sections, "monitoring") && cfg.AppSettings.DockerDashboardSections != nil {
+		cfg.AppSettings.DockerDashboardSections.Monitoring = defaults.AppSettings.DockerDashboardSections.Monitoring
+		changed = true
 	}
 	if !hasMapKey(appSettings, "hardwareSections") {
 		if defaults.AppSettings.HardwareSections != nil {

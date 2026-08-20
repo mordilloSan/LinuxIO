@@ -29,6 +29,7 @@ func TestDefaultSettingsIncludeCompleteAppDefaults(t *testing.T) {
 
 	require.NotNil(t, app.DockerDashboardSections)
 	require.True(t, app.DockerDashboardSections.Overview)
+	require.True(t, app.DockerDashboardSections.Monitoring)
 	require.True(t, app.DockerDashboardSections.Daemon)
 	require.True(t, app.DockerDashboardSections.Resources)
 
@@ -73,6 +74,7 @@ jobs:
 	require.Equal(t, DockAccentGradient{RangeStart: 0, RangeEnd: 100}, cfg.AppSettings.DockAccentGradient)
 	require.Empty(t, cfg.AppSettings.LayoutOrders)
 	require.NotNil(t, cfg.AppSettings.DockerDashboardSections)
+	require.True(t, cfg.AppSettings.DockerDashboardSections.Monitoring)
 	require.NotNil(t, cfg.AppSettings.HardwareSections)
 	require.Equal(t, defaultViewModes(), cfg.AppSettings.ViewModes)
 	require.Equal(t, 1, cfg.AppSettings.ChunkSizeMB)
@@ -93,6 +95,50 @@ func TestValidateDockAccentGradient(t *testing.T) {
 	require.Len(t, errs, 2)
 	require.Contains(t, errs[0], "startColor")
 	require.Contains(t, errs[1], "must not exceed")
+}
+
+func TestRepairConfigBackfillsDockerDashboardMonitoringWithoutOverwritingSections(t *testing.T) {
+	tests := []struct {
+		name           string
+		monitoringLine string
+		wantMonitoring bool
+	}{
+		{name: "missing", wantMonitoring: true},
+		{name: "explicit false", monitoringLine: "    monitoring: false\n", wantMonitoring: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := t.TempDir()
+			cfgPath := filepath.Join(base, cfgFileName)
+			raw := `appSettings:
+  theme: DARK
+  primaryColor: "#2196f3"
+  sidebarCollapsed: false
+  showHiddenFiles: true
+  dockerDashboardSections:
+    overview: false
+` + tt.monitoringLine + `    daemon: false
+    resources: true
+docker:
+  folders:
+  - ` + filepath.Join(base, "docker") + `
+jobs:
+  progressMinIntervalMs: 250
+`
+			require.NoError(t, os.WriteFile(cfgPath, []byte(raw), filePerm))
+
+			require.NoError(t, repairConfig(cfgPath, base))
+
+			cfg, err := readConfigStrict(cfgPath)
+			require.NoError(t, err)
+			require.NotNil(t, cfg.AppSettings.DockerDashboardSections)
+			require.Equal(t, tt.wantMonitoring, cfg.AppSettings.DockerDashboardSections.Monitoring)
+			require.False(t, cfg.AppSettings.DockerDashboardSections.Overview)
+			require.False(t, cfg.AppSettings.DockerDashboardSections.Daemon)
+			require.True(t, cfg.AppSettings.DockerDashboardSections.Resources)
+		})
+	}
 }
 
 func TestRepairConfigFoldsLegacyOrdersIntoLayoutOrders(t *testing.T) {

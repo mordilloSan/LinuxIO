@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shirou/gopsutil/v4/cpu"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -26,6 +28,11 @@ const (
 var historyResolutions = map[apischema.MonitoringHistoryResolution]struct{}{
 	"1m": {}, "10m": {}, "20m": {}, "120m": {}, "480m": {},
 }
+
+// logicalCPUCount is injectable so history conversion tests can use a
+// deterministic CPU count while production requests retain gopsutil's
+// context-aware host query.
+var logicalCPUCount = cpu.CountsWithContext
 
 // newMetricsClient builds the HTTP client used to reach the agent's metrics
 // listener. Overridable in tests.
@@ -195,13 +202,22 @@ func nearestTimeMatcher(times []int64, tolerance int64) func(int64) int {
 // from the agent's containers plugin, annotated with block I/O from its
 // container_telemetry plugin where that plugin has a nearby sample.
 func FetchContainerHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringContainerHistoryPoint, error) {
+	logicalCPUs, err := logicalCPUCount(ctx, true)
+	if err != nil {
+		return nil, fmt.Errorf("count logical CPUs for container history: %w", err)
+	}
+	if logicalCPUs <= 0 {
+		return nil, fmt.Errorf("count logical CPUs for container history: got %d", logicalCPUs)
+	}
+	cpuMultiplier := float64(logicalCPUs)
+
 	points, err := fetchHistory(ctx, "containers", req, func(item historyItem, records []containerHistoryRecord) apischema.MonitoringContainerHistoryPoint {
 		samples := make([]apischema.MonitoringContainerSample, 0, len(records))
 		for _, record := range records {
 			samples = append(samples, apischema.MonitoringContainerSample{
 				ID:              record.ID,
 				Name:            record.Name,
-				CPUPercent:      record.CPUPct,
+				CPUPercent:      record.CPUPct * cpuMultiplier,
 				MemoryMB:        record.MemMB,
 				SentBytesPerSec: float64(record.Bandwidth[0]),
 				RecvBytesPerSec: float64(record.Bandwidth[1]),

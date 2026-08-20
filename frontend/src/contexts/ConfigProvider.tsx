@@ -209,7 +209,12 @@ const cloneLayoutOrders = (
 const cloneDockerDashboardSections = (
   sections?: DockerDashboardSections,
 ): DockerDashboardSections | undefined =>
-  sections ? { ...sections } : undefined;
+  sections
+    ? {
+        ...defaultConfig.appSettings.dockerDashboardSections,
+        ...sections,
+      }
+    : undefined;
 
 const cloneHardwareSections = (
   sections?: HardwareSections,

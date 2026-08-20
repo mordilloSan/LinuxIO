@@ -187,7 +187,8 @@ feature.
 
 ### Landed so far
 
-The read path exists; the correctness work below does not.
+The first bounded read path and LinuxIO-side presentation safeguards exist;
+the deeper agent and history-schema work below does not.
 
 - `monitoring.get_container_history` returns one bulk, bounded history response
   covering every container in the window. It reads the agent's `containers`
@@ -202,7 +203,15 @@ The read path exists; the correctness work below does not.
   the top of the stack keeps reading as the true total.
 - A selected container shows CPU, memory, network, and block I/O history in the
   existing focused-detail layout, on the shared 1h/12h/24h/7d/30d ranges with a
-  synchronized crosshair.
+  synchronized crosshair. Selection matches only the recorded short-ID prefix,
+  so an ID-less legacy row cannot be silently assigned by a reused display
+  name. Missing container samples and unavailable block I/O render as gaps,
+  while a measured zero remains zero.
+- LinuxIO converts the agent v1.7 host-normalized container CPU value to the
+  documented Docker multi-core scale using the host's logical CPU count. The
+  charts auto-scale above 100% rather than clipping multi-core use.
+- All-container series use the recorded container identity for rendering keys
+  and add a short-ID suffix when multiple generations reuse a display name.
 
 Two roadmap assumptions turned out to be wrong about agent v1.7:
 
@@ -215,10 +224,11 @@ Two roadmap assumptions turned out to be wrong about agent v1.7:
   container. It is process-attributed rather than cgroup blkio, so it needs a
   documented tolerance before any claim of parity with `docker stats`.
 
-Still open from the lists below: CPU interval semantics, sample status and
-schema versioning, rollups that do not count a missing container as zero,
-counter-reset and recreation boundaries, the point-in-time snapshot Call, and
-removing the sequential `ContainerStats` fan-out from `ListContainers`.
+Still open from the lists below: moving the CPU convention into the agent,
+sample status and schema versioning, rollups that do not count a missing
+container as zero, explicit counter-reset and recreation events, preserving
+full IDs, the point-in-time snapshot Call, and removing the sequential
+`ContainerStats` fan-out from `ListContainers`.
 
 ### Backend
 

@@ -9,12 +9,15 @@ import "@/components/charts/chart-tooltip.css";
 export interface HistoryChartPoint {
   /** Epoch milliseconds. */
   t: number;
-  v: number;
+  /** A null value is an unavailable sample and renders as a chart gap. */
+  v: number | null;
   /** Optional extra text shown after the value in the tooltip. */
   detail?: string;
 }
 
 export interface HistoryChartSeries {
+  /** Stable identity used for React keys and tooltip rows. */
+  id?: string;
   label: string;
   color: string;
   points: HistoryChartPoint[];
@@ -59,34 +62,56 @@ const MARGIN = { top: 6, right: 44, bottom: 18, left: 4 };
 const Y_DIVISIONS = 4;
 
 /**
- * Average consecutive samples into at most `budget` buckets. At full sample
+ * Average consecutive samples within each measured run. At full sample
  * density a segment spans ~1px and no curve is visible; fewer, averaged
  * points are what make the line read as smooth (same aggregation the agent's
- * own rollups use).
+ * own rollups use). Gap markers remain explicit even when that makes the
+ * result larger than the nominal budget.
  */
-const downsamplePoints = (
+export const downsamplePoints = (
   points: HistoryChartPoint[],
   budget: number,
 ): HistoryChartPoint[] => {
   if (points.length <= budget) return points;
-  const bucketSize = Math.ceil(points.length / budget);
   const out: HistoryChartPoint[] = [];
-  for (let i = 0; i < points.length; i += bucketSize) {
-    const bucket = points.slice(i, i + bucketSize);
-    let tSum = 0;
-    let vSum = 0;
-    for (const point of bucket) {
-      tSum += point.t;
-      vSum += point.v;
+  let run: HistoryChartPoint[] = [];
+
+  const flushRun = () => {
+    if (run.length === 0) return;
+    const bucketSize = Math.ceil(run.length / budget);
+    for (let i = 0; i < run.length; i += bucketSize) {
+      const bucket = run.slice(i, i + bucketSize);
+      let tSum = 0;
+      let vSum = 0;
+      for (const point of bucket) {
+        tSum += point.t;
+        vSum += point.v ?? 0;
+      }
+      out.push({
+        t: tSum / bucket.length,
+        v: vSum / bucket.length,
+        detail: bucket[Math.floor(bucket.length / 2)].detail,
+      });
     }
-    out.push({
-      t: tSum / bucket.length,
-      v: vSum / bucket.length,
-      detail: bucket[Math.floor(bucket.length / 2)].detail,
-    });
+    run = [];
+  };
+
+  // Downsample each continuous run independently. Never average across an
+  // unavailable sample, or the resulting path would reconnect the two sides.
+  for (const point of points) {
+    if (point.v === null) {
+      flushRun();
+      out.push(point);
+    } else {
+      run.push(point);
+    }
   }
+  flushRun();
   return out;
 };
+
+const seriesKey = (series: HistoryChartSeries, index: number): string =>
+  series.id ?? `${series.label}-${index}`;
 
 /**
  * Build a smooth cubic path through the points using monotone (Fritsch–
@@ -221,14 +246,19 @@ const HistoryAreaChart = ({
 
     // Values actually plotted: raw per series, or running totals when stacked
     // so band i is drawn between the cumulative curves i-1 and i.
-    const plotValues = visibleSeries.map((s) =>
+    const plotValues: (number | null)[][] = visibleSeries.map((s) =>
       s.points.map((point) => point.v),
     );
     if (stacked) {
       for (let i = 1; i < plotValues.length; i++) {
         const below = plotValues[i - 1];
         for (let k = 0; k < plotValues[i].length; k++) {
-          plotValues[i][k] += below[k] ?? 0;
+          const value = plotValues[i][k];
+          const belowValue = below[k];
+          plotValues[i][k] =
+            value === null || belowValue === null
+              ? null
+              : value + (belowValue ?? 0);
         }
       }
     }
@@ -238,7 +268,7 @@ const HistoryAreaChart = ({
       let max = 0;
       for (const values of plotValues) {
         for (const value of values) {
-          if (value > max) max = value;
+          if (value !== null && value > max) max = value;
         }
       }
       axisMax = niceMax(max);
@@ -259,26 +289,45 @@ const HistoryAreaChart = ({
       if (plotWidth <= 0 || plotHeight <= 0 || s.points.length === 0) {
         return { line: "", area: "" };
       }
-      const coords = s.points.map((point, k) => ({
-        x: xFor(point.t),
-        y: yFor(plotValues[i][k]),
-      }));
-      const line = smoothPath(coords);
-      if (stacked && i > 0) {
-        // Close the band against the curve below instead of the baseline.
-        const below = s.points
-          .map((point, k) => ({
-            x: xFor(point.t),
-            y: yFor(plotValues[i - 1][k]),
-          }))
-          .reverse();
-        return { line, area: `${line}L${smoothPath(below).slice(1)}Z` };
-      }
+
+      const lineParts: string[] = [];
+      const areaParts: string[] = [];
+      let coords: { x: number; y: number }[] = [];
+      let belowCoords: { x: number; y: number }[] = [];
       const baseline = (MARGIN.top + plotHeight).toFixed(1);
-      const area =
-        `${line}L${coords[coords.length - 1].x.toFixed(1)},${baseline}` +
-        `L${coords[0].x.toFixed(1)},${baseline}Z`;
-      return { line, area };
+
+      const flushSegment = () => {
+        if (coords.length === 0) return;
+        const line = smoothPath(coords);
+        lineParts.push(line);
+        if (stacked && i > 0) {
+          const below = smoothPath(belowCoords.slice().reverse());
+          areaParts.push(`${line}L${below.slice(1)}Z`);
+        } else {
+          areaParts.push(
+            `${line}L${coords[coords.length - 1].x.toFixed(1)},${baseline}` +
+              `L${coords[0].x.toFixed(1)},${baseline}Z`,
+          );
+        }
+        coords = [];
+        belowCoords = [];
+      };
+
+      for (let k = 0; k < s.points.length; k++) {
+        const value = plotValues[i][k];
+        const belowValue = stacked && i > 0 ? plotValues[i - 1][k] : null;
+        if (value === null || (stacked && i > 0 && belowValue === null)) {
+          flushSegment();
+          continue;
+        }
+        const point = s.points[k];
+        coords.push({ x: xFor(point.t), y: yFor(value) });
+        if (stacked && i > 0) {
+          belowCoords.push({ x: xFor(point.t), y: yFor(belowValue ?? 0) });
+        }
+      }
+      flushSegment();
+      return { line: lineParts.join(""), area: areaParts.join("") };
     });
 
     return {
@@ -422,7 +471,7 @@ const HistoryAreaChart = ({
             </g>
           ))}
           {visibleSeries.map((s, i) => (
-            <g key={s.label}>
+            <g key={seriesKey(s, i)}>
               <path
                 d={paths[i]?.area ?? ""}
                 fill={alpha(s.color, s.dimmed ? 0.05 : stacked ? 0.4 : 0.1)}
@@ -449,12 +498,12 @@ const HistoryAreaChart = ({
                 y2={plotTop + plotHeight}
               />
               {hover.values.map((point, i) =>
-                point && !visibleSeries[i].dimmed ? (
+                point && point.v !== null && !visibleSeries[i].dimmed ? (
                   <circle
                     cx={hover.x}
-                    cy={yFor(plotValues[i][hover.index])}
+                    cy={yFor(plotValues[i][hover.index] ?? 0)}
                     fill={visibleSeries[i].color}
-                    key={visibleSeries[i].label}
+                    key={seriesKey(visibleSeries[i], i)}
                     r={stacked ? 3 : 4}
                     stroke={theme.palette.background.paper}
                     strokeWidth={stacked ? 1 : 2}
@@ -509,10 +558,10 @@ const HistoryAreaChart = ({
             }}
           >
             {tooltipRows.map(({ point, seriesIndex }) =>
-              point ? (
+              point && point.v !== null ? (
                 <div
                   className="chart-tooltip-row"
-                  key={visibleSeries[seriesIndex].label}
+                  key={seriesKey(visibleSeries[seriesIndex], seriesIndex)}
                 >
                   <span
                     className="chart-tooltip-chip"

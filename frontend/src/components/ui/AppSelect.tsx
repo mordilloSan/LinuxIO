@@ -87,6 +87,7 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
       value,
       onChange,
       disabled,
+      "aria-label": ariaLabel,
     },
     ref,
   ) => {
@@ -222,6 +223,7 @@ const AppSelect = forwardRef<HTMLDivElement, AppSelectProps>(
             aria-disabled={disabled || undefined}
             aria-expanded={open}
             aria-haspopup="listbox"
+            aria-label={ariaLabel}
             aria-labelledby={label ? labelId : undefined}
             className={triggerClass}
             onClick={toggle}

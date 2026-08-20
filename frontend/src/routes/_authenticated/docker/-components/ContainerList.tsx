@@ -60,11 +60,6 @@ import {
 } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
 
-// The name go-monitoring records for a container, so history samples can be
-// matched to the Docker inventory row they belong to.
-const getContainerDisplayName = (container: ContainerInfo): string =>
-  container.Names?.[0]?.replace("/", "") ?? "";
-
 // Card mode only needs identity/display fields in this parent.  Keeping the
 // volatile metrics out of the selected result means a metrics-only poll can
 // update the per-card observers without rebuilding the grid shells.
@@ -617,7 +612,6 @@ const ContainerList = ({
               <ContainerHistoryCards
                 containerId={selectedContainer.Id}
                 key={selectedContainer.Id}
-                name={getContainerDisplayName(selectedContainer)}
               />
             </motion.div>
             <motion.div

@@ -40,6 +40,18 @@ func withTestMetricsClient(t *testing.T, fn func(network, address string, req *h
 	t.Cleanup(func() { newMetricsClient = orig })
 }
 
+func withTestLogicalCPUCount(t *testing.T, fn func(context.Context, bool) (int, error)) {
+	t.Helper()
+	orig := logicalCPUCount
+	logicalCPUCount = fn
+	t.Cleanup(func() { logicalCPUCount = orig })
+}
+
+func withTestSingleLogicalCPU(t *testing.T) {
+	t.Helper()
+	withTestLogicalCPUCount(t, func(context.Context, bool) (int, error) { return 1, nil })
+}
+
 func TestFetchCPUHistoryFlattensPoints(t *testing.T) {
 	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
 		cmd := decodeCommandRequest(t, req)
@@ -220,6 +232,7 @@ func TestFetchMemoryHistoryToleratesMissingContainersHistory(t *testing.T) {
 }
 
 func TestFetchContainerHistoryMergesBlockIO(t *testing.T) {
+	withTestSingleLogicalCPU(t)
 	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
 		decodeCommandRequest(t, req)
 		return jsonResponse(http.StatusOK, statusResponseWithListeners(
@@ -277,7 +290,63 @@ func TestFetchContainerHistoryMergesBlockIO(t *testing.T) {
 	}
 }
 
+func TestFetchContainerHistoryScalesCPUByLogicalCPUCount(t *testing.T) {
+	withTestLogicalCPUCount(t, func(ctx context.Context, logical bool) (int, error) {
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("CPU count context = %v", err)
+		}
+		if !logical {
+			t.Fatal("CPU count query did not request logical CPUs")
+		}
+		return 4, nil
+	})
+	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+		decodeCommandRequest(t, req)
+		return jsonResponse(http.StatusOK, statusResponseWithListeners(
+			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
+		)), nil
+	})
+	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/v1/containers/history":
+			return jsonResponse(http.StatusOK, `{
+				"resolution": "1m",
+				"items": [{"captured_at": 1700000060000, "stats": [{"id": "abc123", "name": "web", "cpu_percent": 12.5}]}]
+			}`), nil
+		case "/api/v1/container_telemetry/history":
+			return jsonResponse(http.StatusOK, `{"resolution":"1m","items":[]}`), nil
+		default:
+			t.Fatalf("path = %s, want containers or container_telemetry history", req.URL.Path)
+			return nil, nil
+		}
+	})
+
+	points, err := FetchContainerHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
+	if err != nil {
+		t.Fatalf("FetchContainerHistory: %v", err)
+	}
+	if len(points) != 1 || len(points[0].Containers) != 1 {
+		t.Fatalf("points = %#v", points)
+	}
+	if got := points[0].Containers[0].CPUPercent; got != 50 {
+		t.Fatalf("CPUPercent = %v, want 50", got)
+	}
+}
+
+func TestFetchContainerHistoryReturnsLogicalCPUCountError(t *testing.T) {
+	wantErr := errors.New("cpu count unavailable")
+	withTestLogicalCPUCount(t, func(ctx context.Context, logical bool) (int, error) {
+		return 0, wantErr
+	})
+
+	_, err := FetchContainerHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want wrapped CPU count error", err)
+	}
+}
+
 func TestFetchContainerHistoryToleratesMissingTelemetry(t *testing.T) {
+	withTestSingleLogicalCPU(t)
 	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
 		decodeCommandRequest(t, req)
 		return jsonResponse(http.StatusOK, statusResponseWithListeners(
@@ -307,6 +376,7 @@ func TestFetchContainerHistoryToleratesMissingTelemetry(t *testing.T) {
 }
 
 func TestFetchContainerHistoryDropsBlockIOBeyondTolerance(t *testing.T) {
+	withTestSingleLogicalCPU(t)
 	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
 		decodeCommandRequest(t, req)
 		return jsonResponse(http.StatusOK, statusResponseWithListeners(

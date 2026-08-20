@@ -16,7 +16,7 @@ import {
 import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import AppGrid from "@/components/ui/AppGrid";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
-import { useCapability } from "@/hooks/useCapabilities";
+import { useAccessContext, useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize, formatThroughput } from "@/utils/formaters";
@@ -40,13 +40,24 @@ const formatBytes = (value: number): string => formatFileSize(value, 1);
 const useContainerHistory = (rangeId: HistoryRangeId) => {
   const range = rangeById(rangeId);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { privileged } = useAccessContext();
+  const accessEnabled = isEnabled && privileged;
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_container_history(historyRequest(range)),
-    enabled: isEnabled,
+    enabled: accessEnabled,
     refetchInterval: range.refetchMs,
     placeholderData: (previous) => previous,
   });
-  return { data, isLoading, error, isEnabled, range, reason };
+  return {
+    data,
+    isLoading,
+    error,
+    isEnabled: accessEnabled,
+    range,
+    reason: privileged
+      ? reason
+      : "Historical container monitoring requires a privileged session.",
+  };
 };
 
 // ─── Stacked dashboard charts ────────────────────────────────────────────────
@@ -86,9 +97,6 @@ const ContainerStackLive = ({
         series={series}
         stacked
         windowMs={range.windowMs}
-        // The agent reports container CPU as a share of the whole host, so the
-        // stack tops out at one fully busy machine.
-        yMax={metric === "cpu" ? 100 : undefined}
       />
     </HistoryCardBody>
   );
@@ -130,7 +138,13 @@ export const DockerMonitoringSection = () => {
         <AppGrid size={{ xs: 12, lg: 6 }}>
           <HistoryCardShell
             avatarIcon="ph:cpu"
-            headerRight={<RangeSelect onChange={setRangeId} value={rangeId} />}
+            headerRight={
+              <RangeSelect
+                ariaLabel="All containers CPU history range"
+                onChange={setRangeId}
+                value={rangeId}
+              />
+            }
             title="Container CPU"
           >
             <ContainerStackLive
@@ -143,7 +157,13 @@ export const DockerMonitoringSection = () => {
         <AppGrid size={{ xs: 12, lg: 6 }}>
           <HistoryCardShell
             avatarIcon="la:memory"
-            headerRight={<RangeSelect onChange={setRangeId} value={rangeId} />}
+            headerRight={
+              <RangeSelect
+                ariaLabel="All containers memory history range"
+                onChange={setRangeId}
+                value={rangeId}
+              />
+            }
             title="Container Memory"
           >
             <ContainerStackLive
@@ -162,26 +182,33 @@ export const DockerMonitoringSection = () => {
 
 interface ContainerDetailLiveProps {
   containerId: string;
-  name: string;
   rangeId: HistoryRangeId;
 }
 
 /** Shared plumbing for the four charts of one selected container. */
 const useContainerDetailHistory = ({
   containerId,
-  name,
   rangeId,
 }: ContainerDetailLiveProps) => {
   const { data, isLoading, error, isEnabled, range, reason } =
     useContainerHistory(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const samples = useMemo(
-    () => containerSamples(data, containerId, name),
-    [containerId, data, name],
+    () => containerSamples(data, containerId),
+    [containerId, data],
+  );
+  const hasContainerSamples = samples.some(
+    ({ sample }) => sample !== undefined,
   );
   return {
     formatTimestamp,
-    message: historyCardMessage(samples, isLoading, error, isEnabled, reason),
+    message: historyCardMessage(
+      hasContainerSamples ? samples : [],
+      isLoading,
+      error,
+      isEnabled,
+      reason,
+    ),
     range,
     samples,
   };
@@ -197,7 +224,10 @@ const ContainerCPULive = (props: ContainerDetailLiveProps) => {
       {
         label: "CPU",
         color: cpuColor,
-        points: samples.map(({ sample, t }) => ({ t, v: sample.cpu_percent })),
+        points: samples.map(({ sample, t }) => ({
+          t,
+          v: sample?.cpu_percent ?? null,
+        })),
       },
     ],
     [cpuColor, samples],
@@ -228,7 +258,7 @@ const ContainerMemoryLive = (props: ContainerDetailLiveProps) => {
         color: memoryColor,
         points: samples.map(({ sample, t }) => ({
           t,
-          v: sample.memory_mb * 1024 * 1024,
+          v: sample ? sample.memory_mb * 1024 * 1024 : null,
         })),
       },
     ],
@@ -260,7 +290,7 @@ const ContainerNetworkLive = (props: ContainerDetailLiveProps) => {
         color: txColor,
         points: samples.map(({ sample, t }) => ({
           t,
-          v: sample.sent_bytes_per_sec,
+          v: sample?.sent_bytes_per_sec ?? null,
         })),
       },
       {
@@ -268,7 +298,7 @@ const ContainerNetworkLive = (props: ContainerDetailLiveProps) => {
         color: rxColor,
         points: samples.map(({ sample, t }) => ({
           t,
-          v: sample.recv_bytes_per_sec,
+          v: sample?.recv_bytes_per_sec ?? null,
         })),
       },
     ],
@@ -300,7 +330,7 @@ const ContainerBlockIOLive = (props: ContainerDetailLiveProps) => {
         color: readColor,
         points: samples.map(({ sample, t }) => ({
           t,
-          v: sample.read_bytes_per_sec ?? 0,
+          v: sample?.read_bytes_per_sec ?? null,
         })),
       },
       {
@@ -308,7 +338,7 @@ const ContainerBlockIOLive = (props: ContainerDetailLiveProps) => {
         color: writeColor,
         points: samples.map(({ sample, t }) => ({
           t,
-          v: sample.write_bytes_per_sec ?? 0,
+          v: sample?.write_bytes_per_sec ?? null,
         })),
       },
     ],
@@ -341,13 +371,11 @@ const ContainerBlockIOLive = (props: ContainerDetailLiveProps) => {
  */
 export const ContainerHistoryCards = ({
   containerId,
-  name,
 }: {
   containerId: string;
-  name: string;
 }) => {
   const [rangeId, setRangeId] = useState<HistoryRangeId>("1h");
-  const live = { containerId, name, rangeId };
+  const live = { containerId, rangeId };
 
   return (
     <HistoryHoverProvider>
@@ -355,7 +383,13 @@ export const ContainerHistoryCards = ({
         <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
           <HistoryCardShell
             avatarIcon="ph:cpu"
-            headerRight={<RangeSelect onChange={setRangeId} value={rangeId} />}
+            headerRight={
+              <RangeSelect
+                ariaLabel="Selected container CPU history range"
+                onChange={setRangeId}
+                value={rangeId}
+              />
+            }
             title="CPU"
           >
             <ContainerCPULive {...live} />
@@ -364,7 +398,13 @@ export const ContainerHistoryCards = ({
         <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
           <HistoryCardShell
             avatarIcon="la:memory"
-            headerRight={<RangeSelect onChange={setRangeId} value={rangeId} />}
+            headerRight={
+              <RangeSelect
+                ariaLabel="Selected container memory history range"
+                onChange={setRangeId}
+                value={rangeId}
+              />
+            }
             title="Memory"
           >
             <ContainerMemoryLive {...live} />
@@ -373,7 +413,13 @@ export const ContainerHistoryCards = ({
         <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
           <HistoryCardShell
             avatarIcon="mdi:ethernet"
-            headerRight={<RangeSelect onChange={setRangeId} value={rangeId} />}
+            headerRight={
+              <RangeSelect
+                ariaLabel="Selected container network history range"
+                onChange={setRangeId}
+                value={rangeId}
+              />
+            }
             title="Network"
           >
             <ContainerNetworkLive {...live} />
@@ -382,7 +428,13 @@ export const ContainerHistoryCards = ({
         <AppGrid size={{ xs: 12, md: 6, xl: 3 }}>
           <HistoryCardShell
             avatarIcon="mdi:harddisk"
-            headerRight={<RangeSelect onChange={setRangeId} value={rangeId} />}
+            headerRight={
+              <RangeSelect
+                ariaLabel="Selected container block I/O history range"
+                onChange={setRangeId}
+                value={rangeId}
+              />
+            }
             title="Block I/O"
           >
             <ContainerBlockIOLive {...live} />
