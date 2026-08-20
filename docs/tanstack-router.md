@@ -1221,7 +1221,7 @@ protects router *mechanics* and production chunk boundaries.
 
 It deliberately does **not** cover real authentication, the WebSocket bridge, or
 backend data. Those belong to Tiers 2 and 3 of the
-[three-tier test plan](./e2e-testing.md), which are **not yet implemented**:
+[three-tier test plan](./TODO/e2e-testing.md), which are **not yet implemented**:
 Tier 2 (local Playwright against a real session, non-privileged queries) and
 Tier 3 (VM Playwright for privileged queries and safe mutations) still have open
 done-criteria. Until they land, an authenticated end-to-end regression is a

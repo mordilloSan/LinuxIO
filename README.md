@@ -99,7 +99,8 @@ certificate is reused across restarts, reboots, and updates until it enters its
 ## Development
 
 See the [development guide](docs/development.md) for setup requirements,
-supported targets, and configurable overrides.
+supported targets, and configurable overrides. The [docs index](docs/README.md)
+lists the architecture, API-contract, and frontend guides.
 
 ---
 
@@ -143,6 +144,7 @@ See [SECURITY.md](SECURITY.md) for details.
 LinuxIO/
 |- backend/          # Go backend (HTTP + WebSocket)
 |- frontend/         # React frontend (Vite + TypeScript)
+|- docs/             # Architecture and development docs (plans in docs/TODO)
 |- packaging/        # Installation scripts and helpers
 |- .github/          # CI/CD workflows
 |- Makefile          # Build automation
