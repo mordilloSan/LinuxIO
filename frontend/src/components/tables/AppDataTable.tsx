@@ -100,7 +100,8 @@ export interface AppDataTableProps<TData extends RowData> {
   ariaLabel?: string;
   className?: string;
   columns: AppDataTableColumnDef<TData>[];
-  data: TData[];
+  /** Nullish renders `emptyMessage`; see EMPTY_TABLE_ROWS in tableShared. */
+  data: TData[] | null | undefined;
   density?: "comfortable" | "compact";
   /**
    * Hold-to-reorder wiring from `useReorderableTableDnd`. Rows drag from the

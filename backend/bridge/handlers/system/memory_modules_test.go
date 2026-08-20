@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -114,6 +115,42 @@ func TestFetchMemoryModulesReturnsEmptyWhenInventoryUnavailable(t *testing.T) {
 	}
 	if len(modules) != 0 {
 		t.Fatalf("FetchMemoryModules() returned %+v, want empty", modules)
+	}
+}
+
+func TestFetchMemoryModulesReturnsEmptySliceWithoutSMBIOSMemoryRecords(t *testing.T) {
+	// WSL and some VMs expose no DMI memory records: udev reports none and
+	// dmidecode succeeds without emitting a "Memory Device" section. The
+	// result must still marshal as [] rather than null.
+	restore := stubMemoryModuleCommands(t,
+		func(_ context.Context, name string, _ ...string) ([]byte, error) {
+			switch name {
+			case "udevadm":
+				return []byte("P: /devices/virtual/mem/null\nE: SUBSYSTEM=mem\n"), nil
+			case "dmidecode":
+				return []byte("# dmidecode 3.5\nPhysical Memory Array\n\tLocation: System Board Or Motherboard\n"), nil
+			default:
+				t.Fatalf("unexpected command %q", name)
+				return nil, nil
+			}
+		},
+		nil,
+	)
+	defer restore()
+
+	modules, err := FetchMemoryModules(context.Background())
+	if err != nil {
+		t.Fatalf("FetchMemoryModules() error = %v", err)
+	}
+	if modules == nil {
+		t.Fatal("FetchMemoryModules() returned a nil slice, want an empty slice")
+	}
+	encoded, err := json.Marshal(modules)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if string(encoded) != "[]" {
+		t.Fatalf("json.Marshal() = %s, want []", encoded)
 	}
 }
 
