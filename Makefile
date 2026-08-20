@@ -6,6 +6,40 @@ default: help
 
 REPO_ROOT := $(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
 
+# Quiet aliases capture complete target output in .cache/test-logs while
+# printing only a compact success/failure summary. Keep this list limited to
+# user-facing validation and analysis targets; implementation targets inherit
+# quiet behavior when invoked through one of these aliases.
+quiet_targets := \
+	test \
+	check-frontend \
+	check-backend \
+	lint \
+	lint-only \
+	tsc \
+	tsc-only \
+	golint \
+	golint-only \
+	deadcode \
+	deadcode-only \
+	test-frontend \
+	test-frontend-only \
+	setup-frontend-browser \
+	test-frontend-browser \
+	test-backend \
+	test-auth \
+	test-auth-protocol \
+	test-auth-pam \
+	test-updater \
+	test-docker-update-integration \
+	analyze \
+	bundle-metrics \
+	compiler-coverage \
+	analyze-auth
+quiet_aliases := $(addsuffix -quiet,$(quiet_targets))
+quiet_log_dir ?= $(REPO_ROOT)/.cache/test-logs
+quiet_failure_lines ?= 40
+
 # Main flags
 VITE_DEV_PORT = 3000
 DEV_LOG_LINES ?= 25
@@ -886,7 +920,41 @@ analyze-auth:
 	bear --output "$$CC_DB" -- $(MAKE) --no-print-directory build-auth; \
 	clang-tidy $$CLANG_TIDY_OPTS -p "$$CC_DB_DIR" "$$FILE"; \
 	echo "✅ C analysis complete."
-	
+
+# Run any public validation target with bounded output. The underlying target
+# is unchanged, and its complete output remains available for diagnosis.
+$(quiet_aliases):
+	@set -euo pipefail; \
+	target="$(patsubst %-quiet,%,$@)"; \
+	case "$(quiet_failure_lines)" in \
+		''|*[!0-9]*) echo "quiet_failure_lines must be a non-negative integer" >&2; exit 2 ;; \
+	esac; \
+	mkdir -p "$(quiet_log_dir)"; \
+	run_id="$$(date -u +%Y%m%dT%H%M%S)-$$PPID-$$RANDOM"; \
+	log="$(quiet_log_dir)/$$target-$$run_id.log"; \
+	start_ns="$$(date +%s%N)"; \
+	if $(MAKE) --no-print-directory "$$target" >"$$log" 2>&1; then \
+		elapsed="$$(awk -v ns=$$(( $$(date +%s%N) - start_ns )) 'BEGIN { printf "%.1f", ns / 1e9 }')"; \
+		printf '✓ %-32s %ss\n' "$$target" "$$elapsed"; \
+		summaries="$$(grep -E 'Found[[:space:]]+[0-9]+[[:space:]]+warnings?[[:space:]]+and[[:space:]]+[0-9]+[[:space:]]+errors?' "$$log" | tail -n 5 || true)"; \
+		if [ -n "$$summaries" ]; then \
+			printf '%s\n' "$$summaries"; \
+		fi; \
+		warnings="$$(grep -E '⚠️|warning|warnings' "$$log" | grep -Eiv 'Found[[:space:]]+[0-9]+[[:space:]]+warnings?[[:space:]]+and[[:space:]]+[0-9]+[[:space:]]+errors?' | tail -n 10 || true)"; \
+		if [ -n "$$warnings" ]; then \
+			printf '  warnings:\n%s\n' "$$warnings"; \
+		fi; \
+	else \
+		rc=$$?; \
+		elapsed="$$(awk -v ns=$$(( $$(date +%s%N) - start_ns )) 'BEGIN { printf "%.1f", ns / 1e9 }')"; \
+		printf '✗ %-32s %ss\n' "$$target" "$$elapsed" >&2; \
+		if [ "$(quiet_failure_lines)" -gt 0 ]; then \
+			printf '  last %s lines:\n' "$(quiet_failure_lines)" >&2; \
+			tail -n "$(quiet_failure_lines)" "$$log" >&2; \
+		fi; \
+		printf '  full log: %s\n' "$$log" >&2; \
+		exit "$$rc"; \
+	fi
 
 build-vite:
 	@echo ""
@@ -1203,6 +1271,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-docker-update-integration$(COLOR_RESET) Run the opt-in real Docker/Compose update test"
+	@$(PRINTC) "$(COLOR_GREEN)    make <target>-quiet   $(COLOR_RESET) Run a validation target with compact output and a saved full log"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-metrics   $(COLOR_RESET) Report frontend bundle sizes after a Vite build (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
@@ -1246,3 +1315,5 @@ cloc:
   ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode \
   generate localinstall reinstall uninstall \
   cloc
+
+.PHONY: $(quiet_aliases)
