@@ -180,9 +180,6 @@ formatters:
   settings:
     gofmt:
       simplify: true
-    goimports:
-      local-prefixes:
-        - github.com/mordilloSan/LinuxIO/backend
     gci:
       custom-order: true
       sections:
@@ -193,5 +190,4 @@ formatters:
         - prefix(github.com/mordilloSan/LinuxIO/backend)
   enable:
     - gofmt
-    - goimports
     - gci
