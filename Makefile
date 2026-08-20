@@ -940,7 +940,7 @@ $(quiet_aliases):
 		if [ -n "$$summaries" ]; then \
 			printf '%s\n' "$$summaries"; \
 		fi; \
-		warnings="$$(grep -E '⚠️|warning|warnings' "$$log" | grep -Eiv 'Found[[:space:]]+[0-9]+[[:space:]]+warnings?[[:space:]]+and[[:space:]]+[0-9]+[[:space:]]+errors?' | tail -n 10 || true)"; \
+		warnings="$$(grep -E '⚠️|(^|[[:space:]])warning:' "$$log" | grep -Eiv 'Found[[:space:]]+[0-9]+[[:space:]]+warnings?[[:space:]]+and[[:space:]]+[0-9]+[[:space:]]+errors?' | tail -n 10 || true)"; \
 		if [ -n "$$warnings" ]; then \
 			printf '  warnings:\n%s\n' "$$warnings"; \
 		fi; \
