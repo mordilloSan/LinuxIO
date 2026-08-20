@@ -64,119 +64,6 @@ start-dev:
 	  echo " Ready on branch $$REL_BRANCH"; \
 	}
 
-changelog:
-	@$(call _require_clean)
-	@{ \
-	  set -euo pipefail; \
-	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
-	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
-	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; \
-	    echo " Run 'make start-dev VERSION=v1.2.3' first."; \
-	    exit 1; \
-	  fi; \
-	  VERSION="$${BRANCH#dev/}"; \
-	  DATE="$$(date -u +%Y-%m-%d)"; \
-	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
-	  echo " Generating changelog for $$VERSION ($$DATE)..."; \
-	  echo " Repository: $$REPO"; \
-	  echo ""; \
-	  PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
-	  if [ -n "$$PREV_TAG" ]; then \
-	    echo " Changes since $$PREV_TAG"; \
-	    COMMIT_RANGE="$${PREV_TAG}..HEAD"; \
-	  else \
-	    echo " All commits (no previous tag found)"; \
-	    COMMIT_RANGE=""; \
-	  fi; \
-	  BODY_FILE="$$(mktemp)"; \
-	  ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO" > "$$BODY_FILE"; \
-	  { \
-	    echo ""; \
-	    echo "## $$VERSION — $$DATE"; \
-	    echo ""; \
-	    cat "$$BODY_FILE"; \
-	    echo ""; \
-	  } > new_entry.md; \
-	  if [ -f CHANGELOG.md ]; then \
-	    if grep -q "^## $$VERSION —" CHANGELOG.md; then \
-	      echo "  Version $$VERSION already exists in CHANGELOG.md, updating..."; \
-	      awk -v ver="$$VERSION" ' \
-	        /^## / { \
-	          if ($$2 == ver) { in_section=1; next } \
-	          else if (in_section) { in_section=0 } \
-	        } \
-	        !in_section { print } \
-	      ' CHANGELOG.md > CHANGELOG.tmp; \
-	      cat new_entry.md CHANGELOG.tmp > CHANGELOG.md; \
-	      rm CHANGELOG.tmp; \
-	    else \
-	      cat new_entry.md CHANGELOG.md > CHANGELOG.tmp; \
-	      mv CHANGELOG.tmp CHANGELOG.md; \
-	    fi; \
-	  else \
-	    echo "# Changelog" > CHANGELOG.md; \
-	    echo "" >> CHANGELOG.md; \
-	    cat new_entry.md >> CHANGELOG.md; \
-	  fi; \
-	  rm -f new_entry.md "$$BODY_FILE"; \
-	  echo ""; \
-	  echo " CHANGELOG.md updated for $$VERSION"; \
-	  echo ""; \
-	  echo " Preview:"; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  head -n 30 CHANGELOG.md; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  echo ""; \
-	  echo " Committing changes..."; \
-	  git add CHANGELOG.md; \
-	  git commit -m "changelog"; \
-	  git push; \
-	  echo " Changes committed"; \
-	  echo ""; \
-	}
-
-rebuild-changelog:
-	@echo "  WARNING: This will OVERWRITE your entire CHANGELOG.md file!"
-	@echo "   Press Ctrl+C to cancel, or Enter to continue..."
-	@read -r _
-	@{ \
-	  set -euo pipefail; \
-	  REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
-	  echo " Rebuilding entire changelog history..."; \
-	  echo " Repository: $$REPO"; \
-	  echo ""; \
-	  TAGS="$$(git tag --list 'v*' --sort=-v:refname)"; \
-	  if [ -z "$$TAGS" ]; then \
-	    echo " No version tags found."; exit 1; \
-	  fi; \
-	  echo "# Changelog" > CHANGELOG.md; \
-	  echo "" >> CHANGELOG.md; \
-	  echo "$$TAGS" | while IFS= read -r VERSION; do \
-	    [ -z "$$VERSION" ] && continue; \
-	    echo "Processing $$VERSION..."; \
-	    DATE="$$(git log -1 --format=%ai "$$VERSION" | cut -d' ' -f1)"; \
-	    PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -A1 "^$$VERSION$$" | tail -n1)"; \
-	    if [ "$$PREV_TAG" = "$$VERSION" ]; then PREV_TAG=""; fi; \
-	    if [ -n "$$PREV_TAG" ]; then \
-	      COMMIT_RANGE="$${PREV_TAG}..$$VERSION"; \
-	    else \
-	      COMMIT_RANGE="$$VERSION"; \
-	    fi; \
-	    echo "" >> CHANGELOG.md; \
-	    echo "## $$VERSION — $$DATE" >> CHANGELOG.md; \
-	    echo "" >> CHANGELOG.md; \
-	    ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO" >> CHANGELOG.md; \
-	  done; \
-	  echo ""; \
-	  echo " Changelog rebuilt for all versions!"; \
-	  echo ""; \
-	  echo " Preview:"; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  head -n 50 CHANGELOG.md; \
-	  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
-	  echo ""; \
-	}
-
 open-pr:
 	@$(call _require_clean)
 	@$(call _require_gh)
@@ -187,9 +74,6 @@ open-pr:
 	    echo " Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
-	  if [ -n "$(strip $(RELEASE_PRE_PR_TARGETS))" ]; then \
-	    $(MAKE) --no-print-directory $(RELEASE_PRE_PR_TARGETS); \
-	  fi; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
 	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
 	  CREATED=0; \
@@ -197,14 +81,22 @@ open-pr:
 	    echo "  An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
 	  else \
 	    echo " Opening PR: $$BRANCH -> $$BASE_BRANCH…"; \
+	    REPO="$${GITHUB_REPOSITORY:-$$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s#\.git$$##')}"; \
+	    PREV_TAG="$$(git tag --list 'v*' --sort=-v:refname | grep -v "^$$VERSION$$" | head -n1 || echo "")"; \
+	    if [ -n "$$PREV_TAG" ]; then \
+	      COMMIT_RANGE="$${PREV_TAG}..HEAD"; \
+	    else \
+	      COMMIT_RANGE=""; \
+	    fi; \
 	    PR_BODY_FILE="$$(mktemp)"; \
-	    awk -v ver="$$VERSION" ' \
-	      /^## / { \
-	        if ($$2 == ver) { in_section=1; print; next } \
-	        else if (in_section) { exit } \
-	      } \
-	      in_section { print } \
-	    ' CHANGELOG.md > "$$PR_BODY_FILE"; \
+	    { \
+	      echo "## $$VERSION — $$(date -u +%Y-%m-%d)"; \
+	      echo ""; \
+	      ./packaging/scripts/changelog-entry.sh "$$VERSION" "$$PREV_TAG" "$$COMMIT_RANGE" "$$REPO"; \
+	    } > "$$PR_BODY_FILE"; \
+	    if [ ! -s "$$PR_BODY_FILE" ]; then \
+	      echo " Generated PR body is empty - aborting."; rm -f "$$PR_BODY_FILE"; exit 1; \
+	    fi; \
 	    gh pr create $(call _repo_flag) \
 	      --base "$$BASE_BRANCH" \
 	      --head "$$BRANCH" \
@@ -402,4 +294,4 @@ merge-release:
 	  fi; \
 	}
 
-.PHONY: start-dev changelog rebuild-changelog open-pr merge-release
+.PHONY: start-dev open-pr merge-release
