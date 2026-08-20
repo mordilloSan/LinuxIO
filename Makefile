@@ -50,6 +50,12 @@ COLOR_RED    := \033[1;31m
 
 PRINTC := printf '%b\n'
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
+# Two deadcode processes need about 3 GiB combined; auto keeps small hosts serial.
+# Override with DEADCODE_PARALLEL=0 or 1 when resource limits are known.
+DEADCODE_PARALLEL ?= auto
+# Successful deadcode results are content-addressed under the ignored .cache tree.
+# Set DEADCODE_CACHE=0 to force a fresh scan.
+DEADCODE_CACHE ?= 1
 # Go's test cache re-runs only packages whose inputs changed. Pass
 # GO_TEST_FLAGS=-count=1 to force a full fresh run (or: go clean -testcache).
 GO_TEST_FLAGS ?= 
@@ -490,14 +496,6 @@ test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck en
 	fi; \
 	$(PRINTC) "\n$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET) $(COLOR_CYAN)(⏱️  $${ELAPSED}s)$(COLOR_RESET)"
 
-# Experimental CPU-adaptive scheduler. Keep `test` above as the fixed-lane
-# baseline so both implementations can be measured independently.
-test-adaptive: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep
-	@cd "$(BACKEND_DIR)" && \
-		LINUXIO_CHECK_START_NS="$(TEST_TIMER_START)" \
-		LINUXIO_CHECK_MAKE="$(MAKE)" \
-		$(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-check
-
 check-frontend: ensure-node setup
 	@set -uo pipefail; \
 	ST=0; \
@@ -748,10 +746,76 @@ deadcode: ensure-deadcode
 deadcode-only: $(GO_BUILD_PREREQ)
 	@echo "🔎 Scanning backend for dead code (informational)..."
 	@cd "$(BACKEND_DIR)" && \
-		test_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" -test ./... 2>&1 )"; \
-		test_status=$$?; \
-		production_out="$$( $(GO_CMD_ENV) "$(DEADCODE)" ./... 2>&1 )"; \
-		production_status=$$?; \
+		scan_dir="$$(mktemp -d)"; \
+		trap 'rm -rf "$$scan_dir"' EXIT; \
+		cache_root="$(REPO_ROOT)/.cache/deadcode"; \
+		cache_hit=0; \
+		if [ "$(DEADCODE_CACHE)" = "1" ]; then \
+			mkdir -p "$$cache_root"; \
+			exec 9> "$$cache_root/lock"; \
+			flock 9; \
+			cache_key="$$( \
+				{ \
+					printf '%s\n' 'linuxio-deadcode-cache-v1' '-test ./...' './...' \
+						'exclude bridge/internal/dbusclient/testdbus/'; \
+					sha256sum < "$(REPO_ROOT)/Makefile"; \
+					sha256sum < "$(DEADCODE)"; \
+					sha256sum < "$(GO_BIN)"; \
+					$(GO_CMD_ENV) "$(GO_BIN)" version; \
+					$(GO_CMD_ENV) "$(GO_BIN)" env -json \
+						GOOS GOARCH GOAMD64 GOARM GOARM64 GO386 GOMIPS GOMIPS64 GOWASM \
+						CGO_ENABLED CGO_CFLAGS CGO_CPPFLAGS CGO_CXXFLAGS CGO_FFLAGS CGO_LDFLAGS \
+						CC CXX GCCGO PKG_CONFIG GOEXPERIMENT GOFIPS140 GOFLAGS GOTOOLCHAIN \
+						GO_EXTLINK_ENABLED GOWORK GOPACKAGESDRIVER GOPROXY GONOPROXY GOPRIVATE GONOSUMDB; \
+					find . -type f -print0 | sort -z | xargs -0 sha256sum; \
+				} | sha256sum | awk '{ print $$1 }' \
+			)"; \
+			cache_entry="$$cache_root/$$cache_key"; \
+			if [ -f "$$cache_entry/test.out" ] && [ -f "$$cache_entry/production.out" ]; then \
+				cp "$$cache_entry/test.out" "$$scan_dir/test.out"; \
+				cp "$$cache_entry/production.out" "$$scan_dir/production.out"; \
+				printf '0\n' > "$$scan_dir/test.status"; \
+				printf '0\n' > "$$scan_dir/production.status"; \
+				cache_hit=1; \
+				echo "   Reusing unchanged dead-code results..."; \
+			fi; \
+		fi; \
+		run_scan() { \
+			name="$$1"; shift; \
+			$(GO_CMD_ENV) "$(DEADCODE)" "$$@" > "$$scan_dir/$$name.out" 2>&1; \
+			printf '%s\n' "$$?" > "$$scan_dir/$$name.status"; \
+		}; \
+		if [ $$cache_hit -eq 0 ]; then \
+			cores="$$(nproc)"; \
+			available_kb="$$(awk '/^MemAvailable:/ { print $$2; exit }' /proc/meminfo 2>/dev/null || true)"; \
+			parallel=0; \
+			if [ "$(DEADCODE_PARALLEL)" = "1" ] || \
+			   { [ "$(DEADCODE_PARALLEL)" = "auto" ] && [ "$$cores" -ge 8 ] && [ "$${available_kb:-0}" -ge 6291456 ]; }; then \
+				parallel=1; \
+			fi; \
+			if [ $$parallel -eq 1 ]; then \
+				echo "   Running test and production scans concurrently..."; \
+				run_scan test -test ./... & test_pid=$$!; \
+				run_scan production ./... & production_pid=$$!; \
+				wait "$$test_pid"; wait "$$production_pid"; \
+			else \
+				run_scan test -test ./...; \
+				run_scan production ./...; \
+			fi; \
+			if [ "$(DEADCODE_CACHE)" = "1" ] && \
+			   [ "$$(cat "$$scan_dir/test.status")" -eq 0 ] && \
+			   [ "$$(cat "$$scan_dir/production.status")" -eq 0 ]; then \
+				publish_dir="$$scan_dir/cache-entry"; \
+				mkdir "$$publish_dir"; \
+				cp "$$scan_dir/test.out" "$$publish_dir/test.out"; \
+				cp "$$scan_dir/production.out" "$$publish_dir/production.out"; \
+				mv -T "$$publish_dir" "$$cache_entry"; \
+			fi; \
+		fi; \
+		test_out="$$(cat "$$scan_dir/test.out")"; \
+		test_status="$$(cat "$$scan_dir/test.status")"; \
+		production_out="$$(cat "$$scan_dir/production.out")"; \
+		production_status="$$(cat "$$scan_dir/production.status")"; \
 		if [ $$production_status -eq 0 ]; then \
 			production_out="$$(printf '%s\n' "$$production_out" | grep -v '^bridge/internal/dbusclient/testdbus/' || true)"; \
 		fi; \
@@ -1128,7 +1192,6 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make golint           $(COLOR_RESET) Run Go formatters + modernize + govulncheck + golangci-lint (backend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests + deadcode scan"
-	@$(PRINTC) "$(COLOR_GREEN)    make test-adaptive    $(COLOR_RESET) Run the CPU-adaptive scheduler (compare with 'make test')"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-backend    $(COLOR_RESET) Run backend lint + unit tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
@@ -1179,7 +1242,7 @@ cloc:
 .PHONY: \
   default help clean run \
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli build-docker-update check-c-build-deps \
-  dev dev-prep setup update-deps test test-adaptive check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater test-docker-update-integration analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
+  dev dev-prep setup update-deps test check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater test-docker-update-integration analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode \
   generate localinstall reinstall uninstall \
   cloc
