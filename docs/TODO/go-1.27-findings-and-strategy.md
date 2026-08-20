@@ -67,8 +67,10 @@ declarations and validation timing.
   supported product boundary.
 - Staticcheck is enabled in `backend/.golangci.yml` after the Go 1.27 tooling
   compatibility issue was resolved.
-- `gci` still has a temporary section for Go 1.27's root-level `uuid` package;
-  remove it once `gci` classifies that package correctly.
+- `gci` classifies Go 1.27's root-level `uuid` package as standard as of
+  golangci-lint 2.13.0, so the temporary `prefix(uuid)` section was removed
+  from `backend/.golangci.yml` and `uuid` now sorts inside the standard import
+  group.
 
 ### Go 1.27 features already adopted
 
@@ -425,9 +427,9 @@ There is no external UUID dependency to remove.
 Session tokens must remain cryptographically random opaque credentials rather
 than being converted to UUIDs merely because the package exists.
 
-Decision: current adoption is complete. Remove the temporary `gci` package
-classification workaround when the formatter understands the standard
-package.
+Decision: current adoption is complete. The temporary `gci` package
+classification workaround has been removed now that the formatter understands
+the standard package.
 
 ### Post-quantum cryptography
 
@@ -557,11 +559,15 @@ Exit criteria:
 - [x] Resolve the resulting Go 1.27 Staticcheck findings, including the
   app-update failure contract, error-string casing, and reverse-proxy
   `Director` deprecation.
-- [ ] Remove the temporary `gci` `prefix(uuid)` workaround once upstream
+- [x] Remove the temporary `gci` `prefix(uuid)` workaround now that upstream
   recognizes the Go 1.27 standard package.
-- [ ] Change `README.md` from "Go 1.27 RC2" to "Go 1.27".
-- [ ] Keep the Go 1.27 upgrade in the normal dependency-update and security
-  patch cadence.
+- [x] Change `README.md` from "Go 1.27 RC2" to "Go 1.27".
+- [x] Keep the Go 1.27 upgrade in the normal dependency-update and security
+  patch cadence: `backend/go.mod` is the only Go version pin, Make and all
+  three GitHub Actions workflows derive the toolchain from it, and
+  `govulncheck` already runs inside the standard backend lint target. Go 1.27
+  patch releases therefore land as ordinary `go.mod` bumps with no
+  release-specific exemption.
 
 Exit criteria:
 

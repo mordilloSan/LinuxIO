@@ -114,7 +114,7 @@ supported targets, and configurable overrides.
 
 ### Backend
 
-- **Go 1.27 RC2**
+- **Go 1.27**
 - **Gorilla WebSocket**
 - **PAM** authentication
 
