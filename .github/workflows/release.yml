@@ -233,17 +233,17 @@ jobs:
             if [[ -n "$PREV_TAG" ]]; then
               echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG"
             fi
-          } > CHANGELOG.md
+          } > RELEASE_NOTES.md
 
           if [[ -f "$RUNNER_TEMP/frontend-bundle-metrics.md" ]]; then
             {
               echo ""
               cat "$RUNNER_TEMP/frontend-bundle-metrics.md"
-            } >> CHANGELOG.md
+            } >> RELEASE_NOTES.md
           fi
 
           echo "--- Generated Changelog ---"
-          cat CHANGELOG.md
+          cat RELEASE_NOTES.md
 
       - name: Create draft release
         id: create_release
@@ -251,7 +251,7 @@ jobs:
         with:
           tag: ${{ steps.tag.outputs.tag }}
           draft: true
-          bodyFile: CHANGELOG.md
+          bodyFile: RELEASE_NOTES.md
           artifacts: |
             ${{ steps.create_tarball.outputs.tarball }}
             linuxio
