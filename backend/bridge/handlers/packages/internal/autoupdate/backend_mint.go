@@ -87,7 +87,7 @@ func (b *mintBackend) Apply(ctx context.Context, options AutoUpdateOptions) erro
 		return err
 	}
 	if !b.installed() {
-		return fmt.Errorf("Linux Mint Update Manager automation is not installed")
+		return fmt.Errorf("linux mint update manager automation is not installed")
 	}
 	onCalendar, err := onCalendarFor(string(options.Frequency))
 	if err != nil {

@@ -53,8 +53,8 @@ type dockerUpdateLaunch struct {
 }
 
 var errDockerUpdateUnitNotFound = transientunit.ErrNotFound
-var errDockerUpdateAlreadyLaunching = errors.New("Docker update executor launch already claimed")
-var errDockerUpdateCancellationRequested = errors.New("Docker update cancellation was requested before mutation")
+var errDockerUpdateAlreadyLaunching = errors.New("docker update executor launch already claimed")
+var errDockerUpdateCancellationRequested = errors.New("docker update cancellation was requested before mutation")
 
 func dockerUpdateTaskIdentity(payload apischema.DockerContainerUpdateRequest) (bridgeipc.TaskIdentity, error) {
 	req, err := parseDockerUpdateRequest(payload)
