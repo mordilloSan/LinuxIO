@@ -79,7 +79,7 @@ func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost 
 	if attachErr := attachBridgeSession(sess, result.Conn); attachErr != nil {
 		if delErr := sm.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
 			slog.Warn("failed to cleanup session after bridge setup failure",
-				"session_id", sess.SessionID,
+				"session_ref", session.DiagnosticRef(sess.SessionID),
 				"error", delErr)
 		}
 		return nil, attachErr
@@ -130,13 +130,13 @@ func registerYamuxSession(sess *session.Session, yamuxSession *relay.YamuxSessio
 		if !present || current != yamuxSession {
 			return
 		}
-		slog.Debug("yamux session closed and removed", "session_id", sess.SessionID)
+		slog.Debug("yamux session closed and removed", "session_ref", session.DiagnosticRef(sess.SessionID))
 
 		// Terminate the session when bridge dies. This triggers session
 		// deletion which closes the WebSocket.
 		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
 			slog.Warn("failed to terminate session after bridge closure",
-				"session_id", sess.SessionID,
+				"session_ref", session.DiagnosticRef(sess.SessionID),
 				"error", err)
 		}
 	})
@@ -158,7 +158,7 @@ func GetYamuxSession(sessionID string) (*relay.YamuxSession, error) {
 	yamuxSessions.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("no yamux session for session %s", sessionID)
+		return nil, fmt.Errorf("no yamux session")
 	}
 
 	if yamuxSession.IsClosed() {
@@ -168,7 +168,7 @@ func GetYamuxSession(sessionID string) (*relay.YamuxSession, error) {
 			delete(yamuxSessions.sessions, sessionID)
 		}
 		yamuxSessions.Unlock()
-		return nil, fmt.Errorf("yamux session for %s is closed", sessionID)
+		return nil, fmt.Errorf("yamux session is closed")
 	}
 
 	return yamuxSession, nil
@@ -179,14 +179,14 @@ func CloseYamuxSession(sessionID string) {
 	// Remove from map first, then close OUTSIDE the lock.
 	// This prevents deadlock: Close() triggers OnClose callback which tries to Lock().
 	yamuxSessions.Lock()
-	session, exists := yamuxSessions.sessions[sessionID]
+	yamuxSession, exists := yamuxSessions.sessions[sessionID]
 	if exists {
 		delete(yamuxSessions.sessions, sessionID)
 	}
 	yamuxSessions.Unlock()
 
 	if exists {
-		session.Close()
-		slog.Debug("yamux session closed", "session_id", sessionID)
+		yamuxSession.Close()
+		slog.Debug("yamux session closed", "session_ref", session.DiagnosticRef(sessionID))
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/goroutinelabel"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const streamOpenReadTimeout = 5 * time.Second
@@ -23,32 +24,32 @@ const streamOpenReadTimeout = 5 * time.Second
 // is what cancels the session context, and stream handlers may need that
 // cancellation to unblock (e.g. a terminal PTY read that outlives the client).
 func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, conn net.Conn, notifyDisconnect func(), onReady func() bool) {
+	sessionRef := session.DiagnosticRef(rt.Session.SessionID)
 	// Do not create the yamux server until the launcher has fully written the
 	// auth response. A yamux server may emit control traffic as soon as it is
 	// created, and both processes share the client socket during handoff.
 	if onReady != nil && !onReady() {
-		slog.Warn("bridge startup handoff failed", "session_id", rt.Session.SessionID)
+		slog.Warn("bridge startup handoff failed", "session_ref", sessionRef)
 		notifyDisconnect()
 		return
 	}
 
 	// Label before the session exists: NewYamuxServer starts its close watchdog
 	// on this goroutine, so that watchdog inherits the session identity too.
-	ctx = goroutinelabel.With(ctx,
-		"session_id", rt.Session.SessionID,
-		"user", rt.Session.User.Username,
+	ctx = goroutinelabel.WithSession(ctx, rt.Session.SessionID, rt.Session.User.UID,
+		"component", "bridge",
 	)
 
 	ymuxSession, err := relay.NewYamuxServer(conn)
 	if err != nil {
-		slog.Error("failed to create yamux session", "session_id", rt.Session.SessionID, "error", err)
+		slog.Error("failed to create yamux session", "session_ref", sessionRef, "error", err)
 		// Without this the bridge would idle in runBridge waiting for a
 		// shutdown reason while the launcher waits for a ready byte.
 		notifyDisconnect()
 		return
 	}
 	defer ymuxSession.Close()
-	slog.Info("yamux session started", "session_id", rt.Session.SessionID)
+	slog.Info("yamux session started", "session_ref", sessionRef)
 
 	// Track active streams for graceful shutdown.
 	var streamWg sync.WaitGroup
@@ -61,9 +62,9 @@ func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgei
 		stream, err := ymuxSession.Accept()
 		if err != nil {
 			if ymuxSession.IsClosed() {
-				slog.Debug("yamux session closed", "session_id", rt.Session.SessionID)
+				slog.Debug("yamux session closed", "session_ref", sessionRef)
 			} else {
-				slog.Warn("yamux accept error", "session_id", rt.Session.SessionID, "error", err)
+				slog.Warn("yamux accept error", "session_ref", sessionRef, "error", err)
 			}
 			break
 		}
@@ -81,13 +82,14 @@ func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgei
 
 	// Wait for all streams to complete.
 	streamWg.Wait()
-	slog.Info("yamux session ended", "session_id", rt.Session.SessionID)
+	slog.Info("yamux session ended", "session_ref", sessionRef)
 }
 
 // handleYamuxStream handles a single stream within a yamux session.
 // Reads the OpStreamOpen frame, looks up the registered handler, and executes it.
 func handleYamuxStream(ctx context.Context, rt runtime.Runtime, router *bridgeipc.Router, stream net.Conn, streamID string) {
 	sess := rt.Session
+	sessionRef := session.DiagnosticRef(sess.SessionID)
 	// Session identity is inherited from the accept loop; add the stream so the
 	// per-stream monitors spawned under Dispatch can be told apart.
 	ctx = goroutinelabel.With(ctx, "stream_id", streamID)
@@ -99,26 +101,22 @@ func handleYamuxStream(ctx context.Context, rt runtime.Runtime, router *bridgeip
 	// for much longer and control subsequent stream I/O themselves.
 	_ = stream.SetReadDeadline(time.Time{})
 	if err != nil {
-		slog.Warn("failed to read stream open frame", "session_id", sess.SessionID, "stream_id", streamID, "error", err)
+		slog.Warn("failed to read stream open frame", "session_ref", sessionRef, "stream_id", streamID, "error", err)
 		return
 	}
 
 	if frame.Opcode != relay.OpStreamOpen {
-		slog.Warn("expected OpStreamOpen frame", "session_id", sess.SessionID, "stream_id", streamID, "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
+		slog.Warn("expected OpStreamOpen frame", "session_ref", sessionRef, "stream_id", streamID, "opcode", fmt.Sprintf("0x%02x", frame.Opcode))
 		_ = relay.WriteResultErrorAndClose(stream, 0, "expected stream open frame", 400)
 		return
 	}
 
 	envelope, err := relay.ParseStreamOpenPayload(frame.Payload)
 	if err != nil {
-		slog.Warn("failed to parse stream open payload", "session_id", sess.SessionID, "stream_id", streamID, "error", err)
+		slog.Warn("failed to parse stream open payload", "session_ref", sessionRef, "stream_id", streamID, "error", err)
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
 		return
 	}
-
-	// The route is only known once the open frame is parsed. Adding it here
-	// means a goroutine blocked in a handler names the call it is serving.
-	ctx = goroutinelabel.With(ctx, "route", envelope.Route)
 
 	if err := router.Dispatch(ctx, stream, bridgeipc.Request{
 		Route:      envelope.Route,

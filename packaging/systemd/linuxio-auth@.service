@@ -20,5 +20,6 @@ Restart=no
 LimitNOFILE=2048
 LimitNPROC=infinity
 LimitAS=infinity
+LimitCORE=0
 TasksMax=1024
 MemoryMax=2G

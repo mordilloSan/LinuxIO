@@ -1,20 +1,23 @@
 // Package goroutinelabel attaches runtime/pprof labels to long-lived goroutines.
 //
 // Go 1.27 prints pprof labels in the traceback header of every goroutine, so a
-// panic dump, a SIGQUIT stack, or any pprof profile now names the session,
-// route, or task each goroutine belongs to. That identity is what stacks alone
-// cannot supply: a stalled bridge prints dozens of byte-identical
-// monitorReadOwnedStream frames, and without labels there is no way to tell
-// which client each one is waiting on.
+// panic dump, a SIGQUIT stack, or any pprof profile can name the component,
+// non-secret session reference, route, stream, or task each goroutine belongs
+// to. That identity is what stacks alone cannot supply: a stalled bridge prints
+// dozens of byte-identical monitorReadOwnedStream frames, and without labels
+// there is no way to tell which client each one is waiting on.
 //
-// Labels carry identity, not role. The frame names in a traceback already say
-// what a goroutine does, so labeling duplicates nothing by naming who it does
-// it for.
+// Labels carry coarse component and ownership identity, never credentials or
+// arbitrary request values. The frame names in a traceback already explain
+// the detailed operation.
 package goroutinelabel
 
 import (
 	"context"
 	"runtime/pprof"
+	"strconv"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // With attaches kv to the calling goroutine and returns a context carrying the
@@ -39,4 +42,23 @@ func With(ctx context.Context, kv ...string) context.Context {
 	ctx = pprof.WithLabels(ctx, pprof.Labels(kv...))
 	pprof.SetGoroutineLabels(ctx)
 	return ctx
+}
+
+// WithSession attaches a one-way session correlation reference, numeric UID,
+// and the safe labels in kv. Callers must never pass the raw session credential
+// to With; this helper is the only supported way to identify session ownership
+// in a goroutine label.
+func WithSession(ctx context.Context, sessionID string, uid uint32, kv ...string) context.Context {
+	ref := session.DiagnosticRef(sessionID)
+	if ref == "" {
+		return With(ctx, kv...)
+	}
+
+	labels := make([]string, 0, len(kv)+4)
+	labels = append(labels, kv...)
+	labels = append(labels,
+		"session_ref", ref,
+		"uid", strconv.FormatUint(uint64(uid), 10),
+	)
+	return With(ctx, labels...)
 }

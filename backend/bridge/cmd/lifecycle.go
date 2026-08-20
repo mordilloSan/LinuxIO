@@ -13,6 +13,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const clientConnFD = 3
@@ -44,7 +45,7 @@ func runBridge(clientConn net.Conn, rt runtime.Runtime, onReady func() bool) {
 	done := startMainRequestLoop(sessionCtx, rt, router, clientConn, shutdownCh, onReady)
 	reason := <-shutdownCh
 	shutdownBridge(clientConn, router.TaskService(), rt.Session.SessionID, sessionCancel, done)
-	slog.Debug("shutdown initiated", "reason", reason, "user", rt.Session.User.Username, "session_id", rt.Session.SessionID)
+	slog.Debug("shutdown initiated", "reason", reason, "user", rt.Session.User.Username, "session_ref", session.DiagnosticRef(rt.Session.SessionID))
 }
 
 // shutdownBridge cancels owned work before closing the transport that releases

@@ -2,12 +2,42 @@ package bridge
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
+
+func TestGetYamuxSessionErrorsDoNotExposeSessionID(t *testing.T) {
+	const sessionID = "0123456789abcdef0123456789abcdef"
+
+	if _, err := GetYamuxSession(sessionID); err == nil {
+		t.Fatal("GetYamuxSession returned nil error for missing session")
+	} else if strings.Contains(err.Error(), sessionID) {
+		t.Fatalf("missing session error contains session credential: %q", err)
+	}
+
+	yamuxSession, _ := newYamuxPair(t)
+	if err := yamuxSession.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	yamuxSessions.Lock()
+	yamuxSessions.sessions[sessionID] = yamuxSession
+	yamuxSessions.Unlock()
+	t.Cleanup(func() {
+		yamuxSessions.Lock()
+		delete(yamuxSessions.sessions, sessionID)
+		yamuxSessions.Unlock()
+	})
+
+	if _, err := GetYamuxSession(sessionID); err == nil {
+		t.Fatal("GetYamuxSession returned nil error for closed session")
+	} else if strings.Contains(err.Error(), sessionID) {
+		t.Fatalf("closed session error contains session credential: %q", err)
+	}
+}
 
 func newYamuxPair(t *testing.T) (*relay.YamuxSession, *relay.YamuxSession) {
 	t.Helper()

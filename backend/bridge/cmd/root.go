@@ -10,6 +10,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/debugserver"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Run validates invocation mode, builds the authenticated bridge session, and
@@ -63,7 +64,7 @@ func runBridgeProcess() error {
 	slog.Info("bridge boot",
 		"effective_uid", os.Geteuid(),
 		"user", sess.User.Username,
-		"session_id", sess.SessionID,
+		"session_ref", session.DiagnosticRef(sess.SessionID),
 		"privileged", sess.Privileged,
 		"uid", sess.User.UID,
 		"gid", sess.User.GID,

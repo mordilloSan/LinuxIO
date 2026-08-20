@@ -749,11 +749,10 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 	// promoted by whichever goroutine finished the task ahead of it, so an
 	// inherited label set would name the wrong session. The routeRunner timeout
 	// goroutine picks these up from here.
-	ctx = goroutinelabel.With(ctx,
+	ctx = goroutinelabel.WithSession(ctx, j.owner.SessionID, j.owner.UID,
+		"component", "task",
 		"task_id", j.id,
 		"task_type", j.typ,
-		"session_id", j.owner.SessionID,
-		"user", j.owner.Username,
 	)
 
 	result, err := runner(ctx, j, request)

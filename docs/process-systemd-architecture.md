@@ -149,6 +149,9 @@ linuxio version [--self]    # versions of CLI + each installed component
 
 `restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/main.go`). `--full` restarts the whole `linuxio.target`.
 
+Journald, panic and `SIGQUIT` tracebacks, profiling builds, and core-dump limits
+follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
+
 ## File Locations
 
 | Component | Path |
@@ -167,3 +170,4 @@ linuxio version [--self]    # versions of CLI + each installed component
 - [Server Yamux Protocol](./server-yamux-protocol.md) — what flows over the webserver↔bridge connection (byte relay + mux framing).
 - [Privilege Pattern](./privilege_pattern.md) — declaring privileged routes inside the bridge.
 - [API Contract](./api-contract.md) — Go-owned API contract and generated frontend client.
+- [Production Diagnostic Data Policy](./production-diagnostics.md) — credentials and safe correlation data across diagnostic sinks.

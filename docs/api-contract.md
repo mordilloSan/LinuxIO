@@ -366,8 +366,10 @@ authenticated numeric UID, so a later session for that UID can observe the
 same operation.
 
 `TaskOwner.SessionID` is an internal authorization value and is never emitted
-in public Task snapshots or serialized API models. Public owner fields are
-limited to non-secret identity data.
+in public Task snapshots, serialized API models, client-visible errors, or
+diagnostic output. Public owner fields are limited to non-secret identity data;
+diagnostics use the one-way `session_ref` defined by the
+[Production Diagnostic Data Policy](./production-diagnostics.md).
 
 WebSocket keepalive, passive relay frames, Task progress, and Channel traffic
 only validate session expiry. The outer relay `FlagActivity` bit is the sole
