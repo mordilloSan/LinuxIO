@@ -1,3 +1,29 @@
+
+## v0.22.0 — 2026-08-20
+
+###  Features
+
+* feat: fix missing motherboard info for the UI, backend fetching and update related tests ([e51764f](https://github.com/mordilloSan/LinuxIO/commit/e51764f3)) by @Miguel Mariz
+* feat: enhance FsStats component with custom scrollbar and accessibility attributes; add tests for scroll behavior ([50cca8f](https://github.com/mordilloSan/LinuxIO/commit/50cca8f8)) by @Miguel Mariz
+
+###  Bug Fixes
+
+* fix(tests): improve backlog line assertions and add test for journal order reversal ([2956db6](https://github.com/mordilloSan/LinuxIO/commit/2956db6f)) by @Miguel Mariz
+* fix(tests): adjust vmMemoryLimit and maxWorkers for improved test performance ([e61e11f](https://github.com/mordilloSan/LinuxIO/commit/e61e11f0)) by @Miguel Mariz
+* fix: update Go and Node.js version handling in workflows; remove toolchain version printing ([f6cd353](https://github.com/mordilloSan/LinuxIO/commit/f6cd353a)) by @Miguel Mariz
+* fix: remove goimports configuration from golangci-lint settings ([56057b2](https://github.com/mordilloSan/LinuxIO/commit/56057b27)) by @Miguel Mariz
+
+###  Performance
+
+* perf(test): cache deadcode scans and remove adaptive scheduler ([299202a](https://github.com/mordilloSan/LinuxIO/commit/299202a8)) by @Miguel Mariz
+
+###  Contributors
+
+* @Miguel Mariz
+
+
+**Full Changelog**: https://github.com/mordilloSan/LinuxIO/compare/v0.21.0...v0.22.0
+
 # Changelog
 
 
