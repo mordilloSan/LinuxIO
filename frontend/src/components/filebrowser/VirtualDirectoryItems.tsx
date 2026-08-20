@@ -25,7 +25,9 @@ const CARD_GAP = 12;
 const CARD_PADDING = 4;
 const CARD_ROW_ESTIMATE = 92;
 const LIST_GAP = 2;
-const LIST_ROW_ESTIMATE = 48;
+// FileListRow's resting layout is 40px; include the wrapper's 2px row gap in
+// estimateSize below so an unmeasured list row starts at the same 42px stride.
+const LIST_ROW_ESTIMATE = 40;
 const SECTION_HEADER_ESTIMATE = 28;
 
 interface SelectionBoxState {
@@ -351,6 +353,10 @@ const VirtualDirectoryItems = ({
               style={{
                 boxSizing: "border-box",
                 left: horizontalPadding,
+                minHeight:
+                  row.type === "items"
+                    ? estimateSize(virtualRow.index)
+                    : undefined,
                 paddingBottom: rowGap,
                 position: "absolute",
                 right: horizontalPadding,
@@ -369,6 +375,8 @@ const VirtualDirectoryItems = ({
                       viewMode === "card"
                         ? `repeat(${columnCount}, minmax(0, 1fr))`
                         : undefined,
+                    minHeight:
+                      viewMode === "card" ? CARD_ROW_ESTIMATE : undefined,
                     minWidth: 0,
                   }}
                 >

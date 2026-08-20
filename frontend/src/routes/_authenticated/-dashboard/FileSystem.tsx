@@ -57,7 +57,22 @@ const FsStats = () => {
       });
   };
 
-  return <div style={{ width: "100%" }}>{renderFsProgressBars()}</div>;
+  return (
+    <div
+      aria-label="File systems"
+      className="custom-scrollbar"
+      role="region"
+      style={{
+        maxHeight: 110,
+        overflowX: "hidden",
+        overflowY: "auto",
+        paddingRight: theme.spacing(0.5),
+        width: "100%",
+      }}
+    >
+      {renderFsProgressBars()}
+    </div>
+  );
 };
 
 const FsInfoCard = () => (

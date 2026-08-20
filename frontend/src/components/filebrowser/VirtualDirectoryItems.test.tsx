@@ -138,6 +138,18 @@ describe("VirtualDirectoryItems virtualizer invalidation", () => {
     expect(virtualizerState.options?.estimateSize(1)).toBe(104);
   });
 
+  it("estimates list rows from their resting rendered geometry", () => {
+    render(
+      <VirtualDirectoryItems
+        {...baseProps}
+        files={[item(0), item(1)]}
+        viewMode="list"
+      />,
+    );
+
+    expect(virtualizerState.options?.estimateSize(1)).toBe(42);
+  });
+
   it("scrolls a revealed file directly to its virtual row", () => {
     const folders = [item(0), item(1)];
     const files = [item(2), item(3), item(4), item(5)];

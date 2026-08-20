@@ -200,12 +200,16 @@ function diagnosticReason(diagnostic) {
     .replace(/^\[ReactCompiler\]\s*/, "")
     .trim();
   const detail = diagnostic.labels?.find((label) => label.message)?.message;
-  return detail && !summary.includes(detail) ? `${summary} — ${detail}` : summary;
+  return detail && !summary.includes(detail)
+    ? `${summary} — ${detail}`
+    : summary;
 }
 
 function collectRecoverableBailouts(sourceFile, boundaries, diagnostics) {
   const grouped = new Map();
-  for (const diagnostic of diagnostics.filter(isRecoverableCompilerDiagnostic)) {
+  for (const diagnostic of diagnostics.filter(
+    isRecoverableCompilerDiagnostic,
+  )) {
     const label = diagnostic.labels?.find(
       ({ start }) => Number.isInteger(start) && start >= 0,
     );
@@ -236,7 +240,9 @@ function collectRecoverableBailouts(sourceFile, boundaries, diagnostics) {
   return [...grouped.values()]
     .map((bailout) => ({
       ...bailout,
-      reasons: [...bailout.reasons].sort(),
+      reasons: [...bailout.reasons].sort((left, right) =>
+        left.localeCompare(right),
+      ),
     }))
     .sort(
       (left, right) =>
@@ -289,7 +295,10 @@ function normalizedRelativePath(filename) {
   return filename.split(path.sep).join("/");
 }
 
-export function formatCompilerCoverageReport(results, { verbose = false } = {}) {
+export function formatCompilerCoverageReport(
+  results,
+  { verbose = false } = {},
+) {
   const ordered = [...results].sort((left, right) =>
     left.rel.localeCompare(right.rel),
   );
@@ -323,7 +332,9 @@ export function formatCompilerCoverageReport(results, { verbose = false } = {}) 
   ];
   for (const { rel } of fatal) lines.push(`    - ${rel}`);
 
-  lines.push(`  actionable recoverable function bailouts: ${actionable.length}`);
+  lines.push(
+    `  actionable recoverable function bailouts: ${actionable.length}`,
+  );
   for (const bailout of actionable) {
     lines.push(
       `    - ${bailout.rel}:${bailout.line}:${bailout.column} ` +
@@ -376,7 +387,7 @@ export function isVerboseCompilerCoverageRequested({
 async function main() {
   const files = collectSources(srcDir)
     .filter((file) => !file.startsWith(path.join(srcDir, "test") + path.sep))
-    .sort();
+    .sort((left, right) => left.localeCompare(right));
   const results = await Promise.all(
     files.map(async (file) => {
       const sourceText = readFileSync(file, "utf8");

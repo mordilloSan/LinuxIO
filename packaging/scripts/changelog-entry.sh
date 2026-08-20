@@ -10,18 +10,23 @@ PREV_TAG="${2:-}"
 COMMIT_RANGE="$3"
 REPO="$4"
 
-# Get commits
-if [ -n "$COMMIT_RANGE" ]; then
-  COMMITS="$(git log $COMMIT_RANGE --pretty=format:'%s|%h|%an' --reverse)"
-else
-  COMMITS="$(git log --pretty=format:'%s|%h|%an' --reverse)"
-fi
-
 # Categorize commits
 FEATURES="" FIXES="" DOCS="" STYLE="" REFACTOR="" PERF=""
 TEST="" BUILD="" CI="" CHORE="" OTHER=""
 
-while IFS='|' read -r message hash author; do
+# NUL-delimited fields preserve pipes and backslashes without interpreting
+# commit text as shell or printf syntax. `%s` is Git's single-line subject.
+LOG_ARGS=(--reverse --pretty=format:'%s%x00%h%x00%an%x00')
+if [ -n "$COMMIT_RANGE" ]; then
+  LOG_ARGS+=("$COMMIT_RANGE")
+fi
+
+while IFS= read -r -d '' message \
+  && IFS= read -r -d '' hash \
+  && IFS= read -r -d '' author; do
+  # `format:` separates commits with one newline; the fields themselves are
+  # NUL-delimited, so discard only that known record separator.
+  message="${message#$'\n'}"
   [ -z "$message" ] && continue
   [[ "$author" == "github-actions[bot]" ]] && continue
   [[ "$message" =~ ^[Cc]hangelog$ ]] && continue
@@ -40,25 +45,25 @@ while IFS='|' read -r message hash author; do
   elif [[ "$message" =~ ^chore(\(.*\))?: ]]; then CHORE="$CHORE$ENTRY"$'\n'
   else OTHER="$OTHER$ENTRY"$'\n'
   fi
-done <<< "$COMMITS"
+done < <(git log "${LOG_ARGS[@]}")
 
 # Output sections
-[ -n "$FEATURES" ] && printf "###  Features\n\n%b\n" "$FEATURES"
-[ -n "$FIXES" ] && printf "###  Bug Fixes\n\n%b\n" "$FIXES"
-[ -n "$PERF" ] && printf "###  Performance\n\n%b\n" "$PERF"
-[ -n "$REFACTOR" ] && printf "###  Refactoring\n\n%b\n" "$REFACTOR"
-[ -n "$DOCS" ] && printf "###  Documentation\n\n%b\n" "$DOCS"
-[ -n "$STYLE" ] && printf "###  Style\n\n%b\n" "$STYLE"
-[ -n "$TEST" ] && printf "###  Tests\n\n%b\n" "$TEST"
-[ -n "$BUILD" ] && printf "###  Build\n\n%b\n" "$BUILD"
-[ -n "$CI" ] && printf "###  CI/CD\n\n%b\n" "$CI"
-[ -n "$CHORE" ] && printf "###  Chores\n\n%b\n" "$CHORE"
-[ -n "$OTHER" ] && printf "###  Other Changes\n\n%b\n" "$OTHER"
+[ -n "$FEATURES" ] && printf "###  Features\n\n%s\n" "$FEATURES"
+[ -n "$FIXES" ] && printf "###  Bug Fixes\n\n%s\n" "$FIXES"
+[ -n "$PERF" ] && printf "###  Performance\n\n%s\n" "$PERF"
+[ -n "$REFACTOR" ] && printf "###  Refactoring\n\n%s\n" "$REFACTOR"
+[ -n "$DOCS" ] && printf "###  Documentation\n\n%s\n" "$DOCS"
+[ -n "$STYLE" ] && printf "###  Style\n\n%s\n" "$STYLE"
+[ -n "$TEST" ] && printf "###  Tests\n\n%s\n" "$TEST"
+[ -n "$BUILD" ] && printf "###  Build\n\n%s\n" "$BUILD"
+[ -n "$CI" ] && printf "###  CI/CD\n\n%s\n" "$CI"
+[ -n "$CHORE" ] && printf "###  Chores\n\n%s\n" "$CHORE"
+[ -n "$OTHER" ] && printf "###  Other Changes\n\n%s\n" "$OTHER"
 
 # Contributors
 printf "###  Contributors\n\n"
 if [ -n "$COMMIT_RANGE" ]; then
-  git log $COMMIT_RANGE --pretty=format:'* @%an' | sort -u
+  git log "$COMMIT_RANGE" --pretty=format:'* @%an' | sort -u
 else
   git log --pretty=format:'* @%an' | sort -u
 fi

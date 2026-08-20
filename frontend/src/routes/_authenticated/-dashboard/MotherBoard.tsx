@@ -1,9 +1,8 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { linuxio, type MotherboardInfo } from "@/api";
 import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
-import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 
 import DashboardStatRows from "./DashboardStatRows";
@@ -41,13 +40,13 @@ const MotherboardTempBadge = () => {
     [selectedSensor],
   );
 
-  const { data: badge } = useSuspenseQuery({
+  const { data: badge } = useQuery({
     ...linuxio.system.get_motherboard_info,
     refetchInterval: REFETCH_INTERVAL_MS,
     select: selectBadge,
   });
 
-  if (!lmSensorsAvailable) {
+  if (!lmSensorsAvailable || !badge || badge.sensorKeys.length === 0) {
     return <CardBadge icon="mdi:thermometer" text="N/A" />;
   }
 
@@ -66,18 +65,25 @@ const MotherboardTempBadge = () => {
 };
 
 const MotherboardStats = () => {
-  const { data: motherboardInfo } = useSuspenseQuery({
+  const { data: motherboardInfo } = useQuery({
     ...linuxio.system.get_motherboard_info,
     refetchInterval: REFETCH_INTERVAL_MS,
   });
 
-  if (!motherboardInfo) {
-    return (
-      <AppTypography variant="body2">
-        No system information available.
-      </AppTypography>
-    );
-  }
+  const board = [
+    motherboardInfo?.baseboard.manufacturer,
+    motherboardInfo?.baseboard.model,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+  const bios = [
+    motherboardInfo?.bios.vendor,
+    motherboardInfo?.bios.version
+      ? `V.${motherboardInfo.bios.version}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <DashboardStatRows
@@ -85,11 +91,11 @@ const MotherboardStats = () => {
       rows={[
         {
           label: "Board",
-          value: `${motherboardInfo.baseboard.manufacturer} - ${motherboardInfo.baseboard.model}`,
+          value: board || "N/A",
         },
         {
           label: "BIOS",
-          value: `${motherboardInfo.bios.vendor}, V.${motherboardInfo.bios.version}`,
+          value: bios || "N/A",
         },
       ].map((row) => ({
         ...row,

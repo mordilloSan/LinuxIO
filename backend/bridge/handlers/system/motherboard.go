@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,11 +12,17 @@ import (
 // ==== Logic ====
 
 func FetchBaseboardInfo(ctx context.Context) (apischema.MotherboardInfo, error) {
+	return fetchBaseboardInfo(ctx, "/sys/class/dmi/id", getTemperatureMap)
+}
+
+func fetchBaseboardInfo(
+	ctx context.Context,
+	basePath string,
+	fetchTemperatures func(context.Context) map[string]float64,
+) (apischema.MotherboardInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.MotherboardInfo{}, err
 	}
-
-	basePath := "/sys/class/dmi/id"
 
 	read := func(name string) string {
 		b, err := os.ReadFile(filepath.Join(basePath, name))
@@ -39,7 +44,10 @@ func FetchBaseboardInfo(ctx context.Context) (apischema.MotherboardInfo, error) 
 	}
 
 	// Include all temperature sensors except CPU-specific ones
-	tempMap := getTemperatureMap(ctx)
+	tempMap := fetchTemperatures(ctx)
+	if err := ctx.Err(); err != nil {
+		return apischema.MotherboardInfo{}, err
+	}
 	mbTemps := make(map[string]float64)
 	for key, value := range tempMap {
 		if !strings.HasPrefix(key, "core") && key != "package" {
@@ -47,15 +55,6 @@ func FetchBaseboardInfo(ctx context.Context) (apischema.MotherboardInfo, error) 
 		}
 	}
 	info.Temperatures = &apischema.MotherboardTemperatures{Sensors: mbTemps}
-
-	// If everything is empty, signal an error
-	if info.Baseboard.Manufacturer == "" &&
-		info.Baseboard.Model == "" &&
-		info.BIOS.Vendor == "" &&
-		info.BIOS.Version == "" &&
-		len(info.Temperatures.Sensors) == 0 {
-		return apischema.MotherboardInfo{}, fmt.Errorf("unable to read motherboard info")
-	}
 
 	return info, nil
 }
