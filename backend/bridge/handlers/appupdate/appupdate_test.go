@@ -329,6 +329,71 @@ func TestLaunchingRecoveryNeverRestartsMissingExecutor(t *testing.T) {
 	}
 }
 
+func TestStoppedUpdaterFailurePersistsErrorAndCollectsExecutor(t *testing.T) {
+	executor := &fakeUpdaterExecutor{}
+	restore := configureAppUpdateTest(t, executor)
+	defer restore()
+	store := durabletask.NewStore(appUpdateStoreRoot)
+	record, _, err := store.Claim(context.Background(), durabletask.Claim{
+		ID:                 testOperationID,
+		Route:              routeAppUpdate,
+		UID:                1000,
+		RequestFingerprint: durabletask.Fingerprint(routeAppUpdate, "version=v2.3.4"),
+		Target:             "v2.3.4",
+	})
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	record, err = store.Update(context.Background(), record.ID, record.UID, func(current *durabletask.Record) error {
+		current.State = durabletask.StateRunning
+		current.Executor = durabletask.Executor{Kind: appUpdateExecutorKind, Handle: appUpdateUnitName(record.ID), Identity: appUpdateExecutorIdentity}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	task := newDurableUpdateTask(t, "v2.3.4")
+	events, unsubscribe := task.Subscribe(1)
+	defer unsubscribe()
+
+	_, gotErr := reconcileStoppedUpdater(context.Background(), task, store, executor, record, updaterUnitState{
+		ServiceResult: "exit-code",
+		ExitCode:      17,
+	})
+	if gotErr == nil {
+		t.Fatal("reconcileStoppedUpdater returned nil error")
+	}
+	var taskErr *bridgeipc.Error
+	if !errors.As(gotErr, &taskErr) {
+		t.Fatalf("reconcileStoppedUpdater error = %T %v, want bridge error", gotErr, gotErr)
+	}
+	if taskErr.Code != 17 || !strings.HasPrefix(taskErr.Message, "updater stopped without a typed result") {
+		t.Fatalf("task error = %+v", taskErr)
+	}
+	terminal, err := store.Get(context.Background(), record.ID, record.UID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if terminal.State != durabletask.StateFailed || terminal.Error == nil || terminal.Error.Code != 17 {
+		t.Fatalf("terminal record = %+v, want failed error", terminal)
+	}
+	select {
+	case event := <-events:
+		data, ok := event.Progress.(map[string]any)
+		if !ok || data["type"] != "data" || data["data"] != "ERROR: "+taskErr.Message+"\n" {
+			t.Fatalf("failure data event = %#v", event.Progress)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for failure data event")
+	}
+	executor.mu.Lock()
+	collected := executor.collected
+	executor.mu.Unlock()
+	if collected != 1 {
+		t.Fatalf("collected executors = %d, want 1", collected)
+	}
+}
+
 func TestRunningRecoveryMarksMissingExecutorUnknownAfterHostRestart(t *testing.T) {
 	executor := &fakeUpdaterExecutor{inspectErr: errUpdaterUnitNotFound}
 	restore := configureAppUpdateTest(t, executor)

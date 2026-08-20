@@ -54,16 +54,13 @@ func ContainerProxyHandler(w http.ResponseWriter, r *http.Request) {
 	r2 := r.Clone(r.Context())
 	r2.URL.Path = restPath
 	r2.URL.RawPath = ""
-	r2.URL.Scheme = target.Scheme
-	r2.URL.Host = target.Host
-	// Let the target host header pass through so apps that check Host work correctly
-	r2.Host = target.Host
 
 	proxy := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = target.Scheme
-			req.URL.Host = target.Host
-			req.Host = target.Host
+		Rewrite: func(proxyReq *httputil.ProxyRequest) {
+			proxyReq.Out.URL.Scheme = target.Scheme
+			proxyReq.Out.URL.Host = target.Host
+			proxyReq.Out.Host = target.Host
+			proxyReq.SetXForwarded()
 		},
 		// -1 enables streaming/flushing for SSE and WebSocket upgrades
 		FlushInterval: -1,
