@@ -10,7 +10,6 @@ For repository setup, checks, builds, and configurable Make inputs, see
 | Doc | Use |
 |-----|-----|
 | [API Contract](./api-contract.md) | Canonical implemented contract for Go-owned routes, generated frontend types, JSON request envelopes, Calls, Channels, Tasks, and adding endpoints. |
-| [API Reliability Roadmap](./api-reliability-roadmap.md) | Active sequencing for remaining reliability, durable-operation follow-up, notifications, and scheduled execution work. |
 | [Handler Patterns](./bridge_handler_patterns.md) | Handler package style: `handlers.go` layout, context propagation, logging, naming, validation. |
 | [Privilege Pattern](./privilege_pattern.md) | How to decide and declare privileged routes. |
 | [Capabilities](./capabilities.md) | Detecting optional host tooling, gating features/routes on it, and the UI install flow. |

@@ -118,6 +118,7 @@ system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. |
+| `VITEST_MAX_WORKERS` | `8` | Maximum Vitest workers; lower this on memory-constrained hosts. |
 | `GO_BUILD_EXTRA_ENV` | empty | Extra environment assignments for Go builds. |
 | `GO_BUILD_TAGS` | empty | Additional Go build tags. |
 | `DEADCODE_PARALLEL` | `auto` | Deadcode scheduling: `auto`, `0` (serial), or `1` (parallel). |
