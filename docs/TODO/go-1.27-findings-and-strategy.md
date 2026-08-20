@@ -98,7 +98,7 @@ LinuxIO already uses generic functions and generic types where the types are
 known at compile time. Important examples include:
 
 - `apischema.Route[Request, Result]` and its typed handler wrappers;
-- `dbusclient.GetProperty[T]`;
+- `dbusclient.GetProperty[T](SystemSession, ...)`;
 - `JSONRequestDecoder[T]`;
 - `fetchHistory[S, P]`;
 - `hwSnapshotCache[T]`;
@@ -135,20 +135,21 @@ See the accepted
 
 #### Candidate 1: typed D-Bus session methods
 
-`backend/bridge/internal/dbusclient/properties.go` currently declares:
+`backend/bridge/internal/dbusclient/properties.go` currently keeps the generic
+operation at package scope while requiring the owning session:
 
 ```go
 func GetProperty[T any](
-    ctx context.Context,
-    obj godbus.BusObject,
-    iface string,
-    property string,
+	session SystemSession,
+	obj godbus.BusObject,
+	iface string,
+	property string,
 ) (T, error)
 ```
 
-Approximately fourteen production callers pass `session.Context()` and a
-D-Bus object explicitly. `SystemSession` already owns the context, connection,
-and object access, making it a natural receiver:
+Production callers pass a `SystemSession` and D-Bus object. The helper selects
+the session context internally, so callers cannot pair a session operation with
+an unrelated context. `SystemSession` remains the natural eventual receiver:
 
 ```go
 func (s SystemSession) GetProperty[T any](
@@ -158,13 +159,16 @@ func (s SystemSession) GetProperty[T any](
 ) (T, error)
 ```
 
-Expected benefit:
+The package helper already:
 
 - removes repeated context plumbing;
 - prevents using an unrelated context for a session operation;
-- keeps typed D-Bus conversion in the D-Bus client's namespace; and
-- permits incremental call-site migration without changing heterogeneous
-  registry boundaries.
+- preserves D-Bus error identity while adding property context; and
+- permits call-site migration without changing heterogeneous registry
+  boundaries.
+
+The receiver form would additionally place typed D-Bus conversion in the
+session's namespace and make call sites slightly shorter.
 
 A related method could handle single-result calls:
 
@@ -175,10 +179,14 @@ func (s SystemSession) CallResult[T any](method string, args ...any) (T, error)
 Keep `CallStore` for calls with multiple results. Arbitrary result tuples are
 not a good generics target.
 
-Decision: adopt `SystemSession.GetProperty[T]` only when the D-Bus client is
-next being changed. Consider `CallResult[T]` separately after inventorying
-which `CallStore` sites truly have one result. Do not turn this into a broad
-D-Bus abstraction project.
+Compatibility result on 2026-08-20: the Go compiler, formatters, tests, and
+golangci-lint accepted `SystemSession.GetProperty[T]`, but the current
+`golang.org/x/tools/cmd/deadcode` v0.49.0 panicked in RTA analysis when the
+generic method was present. The session-taking package helper is the interim
+API. Defer the receiver form until the complete `make check-backend-quiet`
+toolchain, including the dead-code scan, supports it. Consider `CallResult[T]`
+separately after inventorying which `CallStore` sites truly have one result.
+Do not turn this into a broad D-Bus abstraction project.
 
 #### Candidate 2: route-bound fluent schema methods
 
@@ -509,7 +517,7 @@ port with real systemd, D-Bus, PAM, Docker, libvirt, and packaging validation.
 | Risk | Likelihood/impact | Mitigation |
 |------|-------------------|------------|
 | Raw session credentials in Go 1.27 tracebacks | High impact; currently source-verified | Replace credential labels with non-secret correlation IDs; test dumps; use `tracebacklabels=0` until safe. |
-| Tooling lag behind new syntax/packages | Medium; already occurred with Staticcheck and `gci` | Keep language adoption incremental, run the complete Make lint target, remove workarounds when upstream support lands. |
+| Tooling lag behind new syntax/packages | Medium; already occurred with Staticcheck, `gci`, and deadcode RTA analysis of generic methods | Keep language adoption incremental, run the complete Make lint target, and retain the session-taking package helper until upstream analyzer support lands. |
 | JSON v2 wire-semantic drift after blanket migration | Medium if migration is indiscriminate | Keep strict v2 at owned boundaries; review each external contract and migration difference. |
 | Exact JSON error-text drift in v1-backed implementation | Low | Assert structured types/codes or stable substrings, not complete standard-library messages. |
 | Compressed output bytes differ | Low | Test decoded content; use byte goldens only where exact encoding is intentional. |
@@ -583,21 +591,25 @@ Exit criteria:
 - timing assertions are deterministic under repeated execution; and
 - `make check-backend-quiet` passes.
 
-### Phase 3: Pilot one generic method at a natural ownership boundary
+### Phase 3: Pilot one generic method at a natural ownership boundary (deferred)
 
-When the D-Bus client is next modified:
+The 2026-08-20 pilot established the ownership boundary but exposed a tooling
+blocker. Completed interim work:
 
-1. Add `SystemSession.GetProperty[T]` with the session's context propagated
-   internally.
-2. Preserve useful operation context and error identity.
-3. Test successful conversion, D-Bus failure, wrong variant type, and canceled
-   session context.
-4. Migrate a small cohesive caller group first, preferably the repeated
-   systemd unit-property wrappers.
-5. Inspect the full diff before migrating other packages. Stop if the method
-   only moves syntax without simplifying ownership.
-6. Retain the package-level helper temporarily only if a real non-session
-   caller still needs it; otherwise remove it after all callers migrate.
+1. `GetProperty[T]` now accepts `SystemSession` and propagates its context
+   internally instead of accepting a separate context.
+2. D-Bus failures include property context and preserve error identity.
+3. Tests cover successful conversion, D-Bus failure, wrong variant type, and
+   canceled session context.
+4. All production callers use the session-taking helper.
+
+Deferred work after upstream dead-code analyzer support lands:
+
+1. Replace the package helper with `SystemSession.GetProperty[T]`.
+2. Preserve the same error behavior, tests, interface boundaries, and call-site
+   ownership.
+3. Verify that `make check-backend-quiet` completes its dead-code scan rather
+   than merely returning success with the scan's informational warning.
 
 Do not combine this pilot with the route-schema redesign.
 
@@ -606,7 +618,8 @@ Exit criteria:
 - the receiver owns every implicit dependency used by the method;
 - call sites are materially simpler;
 - interface and reflection boundaries are unchanged; and
-- `make check-backend-quiet` passes with the complete lint toolchain.
+- `make check-backend-quiet` passes with the complete lint toolchain, including
+  the dead-code scan.
 
 ### Phase 4: Make policy and performance explicit only where useful
 

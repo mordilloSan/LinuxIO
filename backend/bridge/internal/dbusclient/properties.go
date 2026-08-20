@@ -22,12 +22,12 @@ func GetVariantProperty(ctx context.Context, obj godbus.BusObject, iface, proper
 	return variant, nil
 }
 
-func GetProperty[T any](ctx context.Context, obj godbus.BusObject, iface, property string) (T, error) {
+func GetProperty[T any](session SystemSession, obj godbus.BusObject, iface, property string) (T, error) {
 	var zero T
 
-	variant, err := GetVariantProperty(ctx, obj, iface, property)
+	variant, err := GetVariantProperty(session.ctx, obj, iface, property)
 	if err != nil {
-		return zero, err
+		return zero, fmt.Errorf("get D-Bus property %s.%s: %w", iface, property, err)
 	}
 
 	value, ok := variant.Value().(T)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -334,7 +335,9 @@ func TestSystemSessionRequireAvailableUsesSessionConnection(t *testing.T) {
 	}
 }
 
-func TestGetPropertyViaInterface(t *testing.T) {
+func newPropertiesTestObject(t *testing.T) SystemObject {
+	t.Helper()
+
 	bus := testdbus.Start(t)
 	bus.SetSystemBus(t)
 
@@ -342,22 +345,27 @@ func TestGetPropertyViaInterface(t *testing.T) {
 	props := propertiesService{
 		values: map[string]godbus.Variant{
 			"org.example.Test.Title": godbus.MakeVariant("hello"),
+			"org.example.Test.Count": godbus.MakeVariant(uint32(42)),
 		},
 	}
 	if err := owner.Export(props, godbus.ObjectPath("/org/example/Test"), PropertiesIface); err != nil {
 		t.Fatalf("export properties: %v", err)
 	}
 
-	iface := SystemObject{
+	return SystemObject{
 		Subsystem: "test",
 		BusName:   "org.example.Test",
 		Path:      godbus.ObjectPath("/org/example/Test"),
-	}.Interface("org.example.Test")
+	}
+}
+
+func TestGetPropertyUsesSystemSession(t *testing.T) {
+	obj := newPropertiesTestObject(t)
 
 	var got string
-	err := iface.Use(context.Background(), func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
+	err := obj.UseSession(context.Background(), func(session SystemSession) error {
 		var getErr error
-		got, getErr = GetProperty[string](ctx, obj, iface.Name, "Title")
+		got, getErr = GetProperty[string](session, session.Object(), "org.example.Test", "Title")
 		return getErr
 	})
 	if err != nil {
@@ -365,6 +373,74 @@ func TestGetPropertyViaInterface(t *testing.T) {
 	}
 	if got != "hello" {
 		t.Fatalf("got %q, want hello", got)
+	}
+}
+
+func TestGetPropertyPreservesDBusError(t *testing.T) {
+	obj := newPropertiesTestObject(t)
+
+	var got string
+	err := obj.UseSession(context.Background(), func(session SystemSession) error {
+		var getErr error
+		got, getErr = GetProperty[string](session, session.Object(), "org.example.Test", "Missing")
+		return getErr
+	})
+	if err == nil {
+		t.Fatal("GetProperty succeeded, want D-Bus error")
+	}
+	if got != "" {
+		t.Fatalf("got %q, want zero value", got)
+	}
+	if !strings.Contains(err.Error(), "get D-Bus property org.example.Test.Missing") {
+		t.Fatalf("err = %q, want property context", err)
+	}
+	var dbusErr godbus.Error
+	if !errors.As(err, &dbusErr) {
+		t.Fatalf("err = %v, want D-Bus error identity", err)
+	}
+	if dbusErr.Name != "org.freedesktop.DBus.Error.Failed" {
+		t.Fatalf("D-Bus error name = %q, want org.freedesktop.DBus.Error.Failed", dbusErr.Name)
+	}
+}
+
+func TestGetPropertyRejectsWrongVariantType(t *testing.T) {
+	obj := newPropertiesTestObject(t)
+
+	var got string
+	err := obj.UseSession(context.Background(), func(session SystemSession) error {
+		var getErr error
+		got, getErr = GetProperty[string](session, session.Object(), "org.example.Test", "Count")
+		return getErr
+	})
+	if err == nil {
+		t.Fatal("GetProperty succeeded, want type error")
+	}
+	if got != "" {
+		t.Fatalf("got %q, want zero value", got)
+	}
+	const want = "org.example.Test.Count has type uint32, want string"
+	if err.Error() != want {
+		t.Fatalf("err = %q, want %q", err, want)
+	}
+}
+
+func TestGetPropertyUsesCanceledSessionContext(t *testing.T) {
+	obj := newPropertiesTestObject(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var got string
+	err := obj.UseSession(ctx, func(session SystemSession) error {
+		cancel()
+		var getErr error
+		got, getErr = GetProperty[string](session, session.Object(), "org.example.Test", "Title")
+		return getErr
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if got != "" {
+		t.Fatalf("got %q, want zero value", got)
 	}
 }
 

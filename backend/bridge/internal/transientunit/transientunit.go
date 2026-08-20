@@ -120,15 +120,15 @@ func inspect(session dbusclient.SystemSession, unitName, expectedDescription str
 	}
 
 	unit := session.ObjectAt(path)
-	id, err := dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "Id")
+	id, err := dbusclient.GetProperty[string](session, unit, dbusclient.SystemdUnitIface, "Id")
 	if err != nil {
 		return State{}, err
 	}
-	description, err := dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "Description")
+	description, err := dbusclient.GetProperty[string](session, unit, dbusclient.SystemdUnitIface, "Description")
 	if err != nil {
 		return State{}, err
 	}
-	transient, err := dbusclient.GetProperty[bool](session.Context(), unit, dbusclient.SystemdUnitIface, "Transient")
+	transient, err := dbusclient.GetProperty[bool](session, unit, dbusclient.SystemdUnitIface, "Transient")
 	if err != nil {
 		return State{}, err
 	}
@@ -141,13 +141,13 @@ func inspect(session dbusclient.SystemSession, unitName, expectedDescription str
 func readState(session dbusclient.SystemSession, unit godbus.BusObject) (State, error) {
 	var state State
 	var err error
-	state.ActiveState, err = dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "ActiveState")
+	state.ActiveState, err = dbusclient.GetProperty[string](session, unit, dbusclient.SystemdUnitIface, "ActiveState")
 	if err != nil {
 		return State{}, err
 	}
-	state.SubState, _ = dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "SubState")
-	state.ServiceResult, _ = dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdServiceIface, "Result")
-	if exitCode, getErr := dbusclient.GetProperty[int32](session.Context(), unit, dbusclient.SystemdServiceIface, "ExecMainStatus"); getErr == nil {
+	state.SubState, _ = dbusclient.GetProperty[string](session, unit, dbusclient.SystemdUnitIface, "SubState")
+	state.ServiceResult, _ = dbusclient.GetProperty[string](session, unit, dbusclient.SystemdServiceIface, "Result")
+	if exitCode, getErr := dbusclient.GetProperty[int32](session, unit, dbusclient.SystemdServiceIface, "ExecMainStatus"); getErr == nil {
 		state.ExitCode = int(exitCode)
 	}
 	return state, nil

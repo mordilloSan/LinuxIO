@@ -56,7 +56,7 @@ func readTimedateProperty(ctx context.Context, prop string) (string, error) {
 	var result string
 	err := withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
-		result, err = dbusclient.GetProperty[string](session.Context(), session.Object(), dbusclient.TimedateIface, prop)
+		result, err = dbusclient.GetProperty[string](session, session.Object(), dbusclient.TimedateIface, prop)
 		return err
 	})
 	return result, err
@@ -66,7 +66,7 @@ func readTimedateBoolProperty(ctx context.Context, prop string) (bool, error) {
 	var result bool
 	err := withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
-		result, err = dbusclient.GetProperty[bool](session.Context(), session.Object(), dbusclient.TimedateIface, prop)
+		result, err = dbusclient.GetProperty[bool](session, session.Object(), dbusclient.TimedateIface, prop)
 		return err
 	})
 	return result, err
