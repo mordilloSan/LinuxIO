@@ -215,19 +215,6 @@ LDFLAGS := $(HARDEN_LDFLAGS) $(SIZELDFLAGS) $(LTOFLAGS)
 .ONESHELL:
 SHELL := /bin/bash
 
-print-toolchain-versions:
-	@set -euo pipefail; \
-	if [ -z "$(GO_VERSION)" ]; then \
-	  echo "ERROR: GO_VERSION is empty; check $(BACKEND_DIR)/go.mod" >&2; \
-	  exit 1; \
-	fi; \
-	if [ -z "$(NODE_VERSION)" ]; then \
-	  echo "ERROR: NODE_VERSION is empty; check frontend/package.json engines.node" >&2; \
-	  exit 1; \
-	fi; \
-	echo "go=$(GO_VERSION)"; \
-	echo "node=$(NODE_VERSION)"
-
 ensure-node:
 	@echo ""
 	@echo "🔍 Ensuring Node.js $(NODE_VERSION) is available..."
@@ -1194,5 +1181,5 @@ cloc:
   build build-nocheck fastbuild _build-binaries build-vite bundle-metrics compiler-coverage analyze build-backend build-bridge build-leak-profile build-auth build-cli build-docker-update check-c-build-deps \
   dev dev-prep setup update-deps test test-adaptive check-frontend check-backend test-frontend setup-frontend-browser test-frontend-browser test-backend test-auth test-auth-protocol test-auth-pam test-updater test-docker-update-integration analyze-auth lint tsc golint lint-only tsc-only golint-only deadcode deadcode-only \
   ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode \
-  generate localinstall reinstall uninstall print-toolchain-versions \
+  generate localinstall reinstall uninstall \
   cloc
