@@ -31,6 +31,24 @@ Follow the phased
    NICs, then the single-NIC IP hand-off protected by snapshot, transient
    revert timer, and reconnect check-in.
 
+### Bridge per-user config package
+
+Follow the phased
+[`Bridge Per-User Config Simplification`](docs/TODO/bridge-config-simplification.md):
+
+1. Fix the startup repair defects and add the test floor that pins what repair
+   must preserve. These land together.
+2. Prefill defaults before decode and delete the hand-maintained missing-key
+   probing.
+3. Delete the validation that the typed decoders make unreachable, and make
+   `ValidateConfig` a real superset of the decoder.
+4. Remove the unused `config_generated.yaml` generator apparatus.
+5. Reduce the type and exported surface.
+
+The format question is settled in that document: keep YAML for now, because
+dropping it removes no dependency and no complexity. A JSON migration is
+optional, last, and its own commit.
+
 ### React Compiler upstream follow-ups
 
 1. Revisit the React Compiler integration when
