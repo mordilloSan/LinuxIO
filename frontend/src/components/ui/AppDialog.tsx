@@ -1,6 +1,5 @@
 import type { HTMLAttributes } from "react";
 import {
-  forwardRef,
   useEffect,
   useEffectEvent,
   useRef,
@@ -8,6 +7,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -231,16 +231,19 @@ export const AppDialog = ({
 
 interface AppDialogTitleProps extends HTMLAttributes<HTMLDivElement> {
   children?: ReactNode;
+  ref?: Ref<HTMLDivElement>;
 }
 
-export const AppDialogTitle = forwardRef<HTMLDivElement, AppDialogTitleProps>(
-  ({ className, ...props }, ref) => (
-    <div
-      className={`app-dialog-title ${className || ""}`.trim()}
-      ref={ref}
-      {...props}
-    />
-  ),
+export const AppDialogTitle = ({
+  ref,
+  className,
+  ...props
+}: AppDialogTitleProps) => (
+  <div
+    className={`app-dialog-title ${className || ""}`.trim()}
+    ref={ref}
+    {...props}
+  />
 );
 AppDialogTitle.displayName = "AppDialogTitle";
 
@@ -248,52 +251,58 @@ AppDialogTitle.displayName = "AppDialogTitle";
 
 interface AppDialogContentProps extends HTMLAttributes<HTMLDivElement> {
   children?: ReactNode;
+  ref?: Ref<HTMLDivElement>;
 }
 
-export const AppDialogContent = forwardRef<
-  HTMLDivElement,
-  AppDialogContentProps
->(({ className, ...props }, ref) => (
+export const AppDialogContent = ({
+  ref,
+  className,
+  ...props
+}: AppDialogContentProps) => (
   <div
     className={`app-dialog-content custom-scrollbar ${className || ""}`.trim()}
     ref={ref}
     {...props}
   />
-));
+);
 AppDialogContent.displayName = "AppDialogContent";
 
 /* ── DialogContentText ──────────────────────── */
 
 interface AppDialogContentTextProps extends HTMLAttributes<HTMLParagraphElement> {
   children?: ReactNode;
+  ref?: Ref<HTMLParagraphElement>;
 }
 
-export const AppDialogContentText = forwardRef<
-  HTMLParagraphElement,
-  AppDialogContentTextProps
->(({ className, ...props }, ref) => (
+export const AppDialogContentText = ({
+  ref,
+  className,
+  ...props
+}: AppDialogContentTextProps) => (
   <p
     className={`app-dialog-content-text ${className || ""}`.trim()}
     ref={ref}
     {...props}
   />
-));
+);
 AppDialogContentText.displayName = "AppDialogContentText";
 
 /* ── DialogActions ──────────────────────────── */
 
 interface AppDialogActionsProps extends HTMLAttributes<HTMLDivElement> {
   children?: ReactNode;
+  ref?: Ref<HTMLDivElement>;
 }
 
-export const AppDialogActions = forwardRef<
-  HTMLDivElement,
-  AppDialogActionsProps
->(({ className, ...props }, ref) => (
+export const AppDialogActions = ({
+  ref,
+  className,
+  ...props
+}: AppDialogActionsProps) => (
   <div
     className={`app-dialog-actions ${className || ""}`.trim()}
     ref={ref}
     {...props}
   />
-));
+);
 AppDialogActions.displayName = "AppDialogActions";

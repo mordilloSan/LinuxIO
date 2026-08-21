@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
 import {
-  forwardRef,
   type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 
 import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
@@ -42,6 +42,7 @@ export interface AppChipProps extends NativeChipProps {
   onDelete?: (
     event: MouseEvent<HTMLButtonElement> | KeyboardEvent<HTMLSpanElement>,
   ) => void;
+  ref?: Ref<HTMLSpanElement>;
   size?: AppChipSize;
   style?: CSSProperties;
   title?: string;
@@ -81,159 +82,153 @@ const getPaletteColor = (theme: AppTheme, color: AppChipColor) => {
   }
 };
 
-const AppChip = forwardRef<HTMLSpanElement, AppChipProps>(
-  (
-    {
-      label,
-      labelStyle,
-      color = "default",
-      size = "medium",
-      variant = "filled",
-      className,
-      style,
-      title,
-      disabled = false,
-      onDelete,
-      onClick,
-      onKeyDown,
-      tabIndex,
-      ...nativeProps
-    },
-    ref,
-  ) => {
-    const theme = useAppTheme();
-    const isInsideTooltip = useIsInsideAppTooltip();
-    const chipColor = getPaletteColor(theme, color);
-    const isDefaultColor = color === "default";
-    const isOutlined = variant === "outlined";
-    const isSoft = variant === "soft";
-    const isInteractive = Boolean(onClick || onDelete);
-    const chipClassName = [
-      "app-chip",
-      `app-chip--${size}`,
-      `app-chip--${variant}`,
-      disabled && "app-chip--disabled",
-      isInteractive && "app-chip--interactive",
-      className,
-    ]
-      .filter(Boolean)
-      .join(" ");
+const AppChip = ({
+  ref,
+  label,
+  labelStyle,
+  color = "default",
+  size = "medium",
+  variant = "filled",
+  className,
+  style,
+  title,
+  disabled = false,
+  onDelete,
+  onClick,
+  onKeyDown,
+  tabIndex,
+  ...nativeProps
+}: AppChipProps) => {
+  const theme = useAppTheme();
+  const isInsideTooltip = useIsInsideAppTooltip();
+  const chipColor = getPaletteColor(theme, color);
+  const isDefaultColor = color === "default";
+  const isOutlined = variant === "outlined";
+  const isSoft = variant === "soft";
+  const isInteractive = Boolean(onClick || onDelete);
+  const chipClassName = [
+    "app-chip",
+    `app-chip--${size}`,
+    `app-chip--${variant}`,
+    disabled && "app-chip--disabled",
+    isInteractive && "app-chip--interactive",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-    const handleDeleteClick = (event: MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      onDelete?.(event);
-    };
+  const handleDeleteClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onDelete?.(event);
+  };
 
-    const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
-      onKeyDown?.(event);
-      if (event.defaultPrevented || disabled) return;
+  const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    onKeyDown?.(event);
+    if (event.defaultPrevented || disabled) return;
 
-      if (onDelete && (event.key === "Backspace" || event.key === "Delete")) {
-        event.preventDefault();
-        onDelete(event);
-        return;
-      }
-
-      if (onClick && (event.key === "Enter" || event.key === " ")) {
-        event.preventDefault();
-        event.currentTarget.click();
-      }
-    };
-
-    const tooltipText =
-      typeof title === "string" && title.trim()
-        ? title.trim()
-        : getPlainText(label);
-    const showTruncatedTooltip = Boolean(tooltipText && !isInsideTooltip);
-
-    const chip = (
-      <span
-        {...nativeProps}
-        aria-disabled={disabled || undefined}
-        className={chipClassName}
-        onClick={disabled ? undefined : onClick}
-        onKeyDown={handleKeyDown}
-        ref={ref}
-        role={isInteractive ? "button" : nativeProps.role}
-        style={
-          {
-            "--app-chip-color": chipColor,
-            "--app-chip-background": isOutlined
-              ? "transparent"
-              : isSoft
-                ? alpha(chipColor, isDefaultColor ? 0.06 : 0.13)
-                : alpha(
-                    chipColor,
-                    isDefaultColor
-                      ? theme.palette.mode === "dark"
-                        ? 0.06
-                        : 0.03
-                      : theme.palette.mode === "dark"
-                        ? 0.2
-                        : 0.14,
-                  ),
-            "--app-chip-border": isOutlined
-              ? alpha(
-                  chipColor,
-                  color === "default"
-                    ? theme.palette.mode === "dark"
-                      ? 0.5
-                      : 0.32
-                    : 0.7,
-                )
-              : isSoft
-                ? alpha(chipColor, isDefaultColor ? 0.18 : 0.33)
-                : alpha(
-                    chipColor,
-                    isDefaultColor
-                      ? 1
-                      : theme.palette.mode === "dark"
-                        ? 0.42
-                        : 0.28,
-                  ),
-            "--app-chip-font-family": theme.typography.fontFamily,
-            "--app-chip-font-size": "0.8125rem",
-            "--app-chip-font-weight": isSoft
-              ? 600
-              : theme.typography.fontWeightRegular,
-            "--app-chip-line-height": 1.5,
-            ...style,
-          } as CSSProperties
-        }
-        tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
-        title={showTruncatedTooltip ? undefined : title}
-      >
-        <span className="app-chip__label" style={labelStyle}>
-          {label}
-        </span>
-        {onDelete && (
-          <button
-            aria-label={
-              typeof label === "string" ? `Remove ${label}` : "Remove"
-            }
-            className="app-chip__delete"
-            disabled={disabled}
-            onClick={handleDeleteClick}
-            tabIndex={-1}
-            type="button"
-          >
-            <Icon height={16} icon="mdi:close-circle" width={16} />
-          </button>
-        )}
-      </span>
-    );
-
-    if (!showTruncatedTooltip) {
-      return chip;
+    if (onDelete && (event.key === "Backspace" || event.key === "Delete")) {
+      event.preventDefault();
+      onDelete(event);
+      return;
     }
 
-    return (
-      <AppTooltip contentWidth onlyWhenTruncated title={tooltipText}>
-        {chip}
-      </AppTooltip>
-    );
-  },
-);
+    if (onClick && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      event.currentTarget.click();
+    }
+  };
+
+  const tooltipText =
+    typeof title === "string" && title.trim()
+      ? title.trim()
+      : getPlainText(label);
+  const showTruncatedTooltip = Boolean(tooltipText && !isInsideTooltip);
+
+  const chip = (
+    <span
+      {...nativeProps}
+      aria-disabled={disabled || undefined}
+      className={chipClassName}
+      onClick={disabled ? undefined : onClick}
+      onKeyDown={handleKeyDown}
+      ref={ref}
+      role={isInteractive ? "button" : nativeProps.role}
+      style={
+        {
+          "--app-chip-color": chipColor,
+          "--app-chip-background": isOutlined
+            ? "transparent"
+            : isSoft
+              ? alpha(chipColor, isDefaultColor ? 0.06 : 0.13)
+              : alpha(
+                  chipColor,
+                  isDefaultColor
+                    ? theme.palette.mode === "dark"
+                      ? 0.06
+                      : 0.03
+                    : theme.palette.mode === "dark"
+                      ? 0.2
+                      : 0.14,
+                ),
+          "--app-chip-border": isOutlined
+            ? alpha(
+                chipColor,
+                color === "default"
+                  ? theme.palette.mode === "dark"
+                    ? 0.5
+                    : 0.32
+                  : 0.7,
+              )
+            : isSoft
+              ? alpha(chipColor, isDefaultColor ? 0.18 : 0.33)
+              : alpha(
+                  chipColor,
+                  isDefaultColor
+                    ? 1
+                    : theme.palette.mode === "dark"
+                      ? 0.42
+                      : 0.28,
+                ),
+          "--app-chip-font-family": theme.typography.fontFamily,
+          "--app-chip-font-size": "0.8125rem",
+          "--app-chip-font-weight": isSoft
+            ? 600
+            : theme.typography.fontWeightRegular,
+          "--app-chip-line-height": 1.5,
+          ...style,
+        } as CSSProperties
+      }
+      tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
+      title={showTruncatedTooltip ? undefined : title}
+    >
+      <span className="app-chip__label" style={labelStyle}>
+        {label}
+      </span>
+      {onDelete && (
+        <button
+          aria-label={typeof label === "string" ? `Remove ${label}` : "Remove"}
+          className="app-chip__delete"
+          disabled={disabled}
+          onClick={handleDeleteClick}
+          tabIndex={-1}
+          type="button"
+        >
+          <Icon height={16} icon="mdi:close-circle" width={16} />
+        </button>
+      )}
+    </span>
+  );
+
+  if (!showTruncatedTooltip) {
+    return chip;
+  }
+
+  return (
+    <AppTooltip contentWidth onlyWhenTruncated title={tooltipText}>
+      {chip}
+    </AppTooltip>
+  );
+};
 
 AppChip.displayName = "AppChip";
 

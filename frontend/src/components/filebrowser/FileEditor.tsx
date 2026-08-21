@@ -32,9 +32,6 @@ interface FileEditorProps {
   onDirtyChange?: (isDirty: boolean) => void;
   onSave: (content: string) => Promise<boolean | void>;
   readOnly?: boolean;
-  // Taken as a plain prop rather than through forwardRef: useEffectEvent does
-  // not track props inside a forwardRef render function, which silently froze
-  // the Ctrl+S handler on the content this editor mounted with.
   ref?: Ref<FileEditorHandle>;
 }
 

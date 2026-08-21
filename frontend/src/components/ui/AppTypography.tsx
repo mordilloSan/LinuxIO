@@ -1,10 +1,10 @@
 import {
-  forwardRef,
   isValidElement,
   type CSSProperties,
   type ElementType,
   type HTMLAttributes,
   type JSX,
+  type Ref,
   type ReactNode,
 } from "react";
 
@@ -93,99 +93,96 @@ export interface AppTypographyProps extends Omit<
   fontWeight?: number | string;
   gutterBottom?: boolean;
   noWrap?: boolean;
+  ref?: Ref<HTMLElement>;
   toastMeta?: ToastMeta;
   tooltipOnlyWhenTruncated?: boolean;
   variant?: Variant;
 }
 
-const AppTypography = forwardRef<HTMLElement, AppTypographyProps>(
-  (
-    {
-      variant = "body1",
-      color,
-      fontWeight,
-      fontSize,
-      noWrap,
-      align,
-      gutterBottom,
-      component,
-      copyErrorMessage,
-      copySuccessMessage,
-      copyText,
-      className,
-      style,
-      toastMeta,
-      tooltipOnlyWhenTruncated = true,
-      children,
-      title,
-      ...rest
-    },
-    ref,
-  ) => {
-    const Tag = (component ?? VARIANT_ELEMENT[variant]) as ElementType;
-    const isInsideTooltip = useIsInsideAppTooltip();
+const AppTypography = ({
+  ref,
+  variant = "body1",
+  color,
+  fontWeight,
+  fontSize,
+  noWrap,
+  align,
+  gutterBottom,
+  component,
+  copyErrorMessage,
+  copySuccessMessage,
+  copyText,
+  className,
+  style,
+  toastMeta,
+  tooltipOnlyWhenTruncated = true,
+  children,
+  title,
+  ...rest
+}: AppTypographyProps) => {
+  const Tag = (component ?? VARIANT_ELEMENT[variant]) as ElementType;
+  const isInsideTooltip = useIsInsideAppTooltip();
 
-    const resolvedColor = color
-      ? (COLOR_MAP[color as SemanticColor] ?? color)
-      : undefined;
+  const resolvedColor = color
+    ? (COLOR_MAP[color as SemanticColor] ?? color)
+    : undefined;
 
-    const cls = [
-      "app-typo",
-      `app-typo--${variant}`,
-      noWrap && "app-typo--nowrap",
-      gutterBottom && "app-typo--gutter",
-      className,
-    ]
-      .filter(Boolean)
-      .join(" ");
+  const cls = [
+    "app-typo",
+    `app-typo--${variant}`,
+    noWrap && "app-typo--nowrap",
+    gutterBottom && "app-typo--gutter",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-    const merged: CSSProperties = {
-      ...(resolvedColor && { color: resolvedColor }),
-      ...(fontWeight != null && { fontWeight: fontWeight }),
-      ...(fontSize != null && { fontSize }),
-      ...(align && { textAlign: align }),
-      ...style,
-    };
+  const merged: CSSProperties = {
+    ...(resolvedColor && { color: resolvedColor }),
+    ...(fontWeight != null && { fontWeight: fontWeight }),
+    ...(fontSize != null && { fontSize }),
+    ...(align && { textAlign: align }),
+    ...style,
+  };
 
-    const tooltipText =
-      typeof title === "string" && title.trim()
-        ? title.trim()
-        : getPlainText(children);
-    const showTruncatedTooltip = Boolean(
-      noWrap && tooltipText && !isInsideTooltip,
-    );
-    const resolvedCopyText =
-      copyText === false
-        ? undefined
-        : typeof copyText === "string"
-          ? copyText
-          : tooltipText;
-    const tagProps = showTruncatedTooltip ? rest : { ...rest, title };
-    const element = (
-      <Tag className={cls} ref={ref} style={merged} {...tagProps}>
-        {children}
-      </Tag>
-    );
+  const tooltipText =
+    typeof title === "string" && title.trim()
+      ? title.trim()
+      : getPlainText(children);
+  const showTruncatedTooltip = Boolean(
+    noWrap && tooltipText && !isInsideTooltip,
+  );
+  const resolvedCopyText =
+    copyText === false
+      ? undefined
+      : typeof copyText === "string"
+        ? copyText
+        : tooltipText;
+  const tagProps = showTruncatedTooltip ? rest : { ...rest, title };
+  const element = (
+    <Tag className={cls} ref={ref} style={merged} {...tagProps}>
+      {children}
+    </Tag>
+  );
 
-    if (!showTruncatedTooltip) {
-      return element;
-    }
+  if (!showTruncatedTooltip) {
+    return element;
+  }
 
-    return (
-      <AppTooltip
-        contentWidth
-        copyErrorMessage={copyErrorMessage}
-        copySuccessMessage={copySuccessMessage}
-        copyText={resolvedCopyText}
-        onlyWhenTruncated={tooltipOnlyWhenTruncated}
-        title={tooltipText}
-        toastMeta={toastMeta}
-      >
-        {element}
-      </AppTooltip>
-    );
-  },
-);
+  return (
+    <AppTooltip
+      contentWidth
+      copyErrorMessage={copyErrorMessage}
+      copySuccessMessage={copySuccessMessage}
+      copyText={resolvedCopyText}
+      onlyWhenTruncated={tooltipOnlyWhenTruncated}
+      title={tooltipText}
+      toastMeta={toastMeta}
+    >
+      {element}
+    </AppTooltip>
+  );
+};
 
 AppTypography.displayName = "AppTypography";
 

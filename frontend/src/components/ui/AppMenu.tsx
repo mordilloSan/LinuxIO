@@ -1,5 +1,4 @@
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useRef,
@@ -7,6 +6,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 
 import type { AppPopoverOrigin } from "./AppPopover";
@@ -37,6 +37,7 @@ export interface AppMenuItemProps extends Omit<
   /** Marks a destructive entry (delete, remove) so it reads as one at rest. */
   danger?: boolean;
   endAdornment?: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
   selected?: boolean;
   startAdornment?: ReactNode;
 }
@@ -167,44 +168,40 @@ const AppMenu = ({
   );
 };
 
-export const AppMenuItem = forwardRef<HTMLButtonElement, AppMenuItemProps>(
-  (
-    {
-      selected = false,
-      danger = false,
-      startAdornment,
-      endAdornment,
-      disabled,
+export const AppMenuItem = ({
+  ref,
+  selected = false,
+  danger = false,
+  startAdornment,
+  endAdornment,
+  disabled,
+  className,
+  children,
+  ...rest
+}: AppMenuItemProps) => (
+  <button
+    className={[
+      "app-menu__item",
+      selected && "app-menu__item--selected",
+      danger && "app-menu__item--danger",
       className,
-      children,
-      ...rest
-    },
-    ref,
-  ) => (
-    <button
-      className={[
-        "app-menu__item",
-        selected && "app-menu__item--selected",
-        danger && "app-menu__item--danger",
-        className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      disabled={disabled}
-      ref={ref}
-      role="menuitem"
-      type="button"
-      {...rest}
-    >
-      {startAdornment ? (
-        <span className="app-menu__item-start">{startAdornment}</span>
-      ) : null}
-      <span className="app-menu__item-label">{children}</span>
-      {endAdornment ? (
-        <span className="app-menu__item-end">{endAdornment}</span>
-      ) : null}
-    </button>
-  ),
+    ]
+      .filter(Boolean)
+      .join(" ")}
+    disabled={disabled}
+    ref={ref}
+    role="menuitem"
+    type="button"
+    {...rest}
+  >
+    {startAdornment ? (
+      <span className="app-menu__item-start">{startAdornment}</span>
+    ) : null}
+    <span className="app-menu__item-label">{children}</span>
+    {endAdornment ? (
+      <span className="app-menu__item-end">{endAdornment}</span>
+    ) : null}
+  </button>
 );
 
 AppMenu.displayName = "AppMenu";

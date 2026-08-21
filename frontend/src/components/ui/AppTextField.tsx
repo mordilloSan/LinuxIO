@@ -1,5 +1,4 @@
 import {
-  forwardRef,
   useRef,
   useState,
   type ChangeEvent,
@@ -41,6 +40,7 @@ export interface AppTextFieldProps {
   readOnly?: boolean;
   required?: boolean;
   role?: string;
+  ref?: Ref<HTMLInputElement | HTMLTextAreaElement>;
   rows?: number;
   shrinkLabel?: boolean;
   size?: "small" | "medium";
@@ -51,10 +51,7 @@ export interface AppTextFieldProps {
   variant?: "outlined" | "standard";
 }
 
-const AppTextField = forwardRef<
-  HTMLInputElement | HTMLTextAreaElement,
-  AppTextFieldProps
->((props, ref) => {
+const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
   const {
     label,
     value,
@@ -222,7 +219,7 @@ const AppTextField = forwardRef<
       {helperText && <p className="app-text-field__helper">{helperText}</p>}
     </div>
   );
-});
+};
 
 AppTextField.displayName = "AppTextField";
 

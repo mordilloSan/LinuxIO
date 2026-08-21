@@ -1,8 +1,7 @@
-import type { HTMLAttributes } from "react";
 import {
-  forwardRef,
   type CSSProperties,
   type ElementType,
+  type HTMLAttributes,
   type Ref,
 } from "react";
 
@@ -28,25 +27,24 @@ export interface AppGridProps extends HTMLAttributes<HTMLElement> {
   /** Number of equal-width columns at each breakpoint when used as a container. */
   columns?: GridSize;
   container?: boolean;
+  ref?: Ref<HTMLElement>;
   size?: GridSize;
   spacing?: number;
 }
 
-function AppGrid(
-  {
-    container,
-    columns,
-    spacing,
-    size,
-    alignItems,
-    component: Component = "div",
-    children,
-    className,
-    style,
-    ...rest
-  }: AppGridProps,
-  ref: Ref<HTMLElement>,
-) {
+function AppGrid({
+  ref,
+  container,
+  columns,
+  spacing,
+  size,
+  alignItems,
+  component: Component = "div",
+  children,
+  className,
+  style,
+  ...rest
+}: AppGridProps) {
   if (container) {
     const cls = ["app-grid", className].filter(Boolean).join(" ");
     const columnVars =
@@ -132,7 +130,6 @@ function AppGrid(
   );
 }
 
-const ForwardedAppGrid = forwardRef(AppGrid);
-ForwardedAppGrid.displayName = "AppGrid";
+AppGrid.displayName = "AppGrid";
 
-export default ForwardedAppGrid;
+export default AppGrid;
