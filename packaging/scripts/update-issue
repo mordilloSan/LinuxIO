@@ -71,8 +71,9 @@ OUTPUT_FILE="${OUTPUT_FILE:-/run/linuxio/issue}"
 if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" != "-" ]]; then
     # Ensure directory exists
     mkdir -p "$(dirname "${OUTPUT_FILE}")" 2>/dev/null || true
-    # Write to file
-    echo "${OUTPUT}" > "${OUTPUT_FILE}"
+    # Write to file, padded with blank lines so every MOTD consumer
+    # (update-motd.d wrapper, /etc/motd.d symlink) renders it with spacing
+    printf '\n%s\n\n' "${OUTPUT}" > "${OUTPUT_FILE}"
 else
     # Print to stdout for manual testing
     echo "${OUTPUT}"
