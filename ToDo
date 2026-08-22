@@ -58,18 +58,16 @@ optional, last, and its own commit.
    production, Vitest, source-map, and compiler-coverage behavior
    (`vitejs/vite-plugin-react#1419` or its successor).
 
-### Router policy settings
-
-Decide whether the fixed values in `router.go` belong in the global settings
-file.
-
 ### Frontend test coverage
 
-Define and complete the intended division of coverage between Vitest and
-Playwright.
+Define and complete the intended division of coverage between Vitest and Playwright.
 
 ## Completed or closed
 
+- [x] Closed the router policy settings question: the bridge `TaskPolicy`
+  values stay compile-time constants. They are cross-user admission limits, so
+  the per-user config file is the wrong scope, and no system-wide settings
+  store exists; revisit only if a real deployment hits a limit.
 - [x] Completed the phased native Docker update engine work: native registry
   digest checks replaced Watchtower-based checks,
   Compose-managed containers update through their Compose project, opted-in
