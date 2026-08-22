@@ -379,11 +379,21 @@ install_systemd_files() {
         Show 3 "Failed to download issue script (non-critical)"
     else
         chmod 0755 /usr/share/linuxio/issue/update-issue
-        if [[ -d /etc/motd.d ]]; then
+        # Wire the banner into the distro's MOTD mechanism:
+        # - Debian/Ubuntu/Mint render /etc/update-motd.d/* into /run/motd.dynamic
+        # - Fedora/RHEL-style pam_motd reads /etc/motd.d directly
+        if [[ -d /etc/update-motd.d ]]; then
+            if curl -fsSL "${RAW_BASE}/etc/update-motd.d/60-linuxio" -o /etc/update-motd.d/60-linuxio; then
+                chmod 0755 /etc/update-motd.d/60-linuxio
+                Show 0 "SSH login banner configured (update-motd.d)"
+            else
+                Show 3 "Failed to download motd script (non-critical)"
+            fi
+        elif [[ -d /etc/motd.d ]]; then
             ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
-            Show 0 "SSH login banner configured"
+            Show 0 "SSH login banner configured (motd.d)"
         else
-            Show 2 "No /etc/motd.d found, skipping login banner setup"
+            Show 2 "No update-motd.d or motd.d directory found, skipping login banner setup"
         fi
     fi
 

@@ -1,19 +1,19 @@
 #!/bin/bash
 # LinuxIO issue banner generator - shows access URLs at SSH login
-# Called by linuxio.socket via ExecStartPost
+# Run by linuxio-issue.service (pulled in by linuxio-webserver.socket)
 
 set -euo pipefail
 
-# Extract port from linuxio.socket unit file
+# Extract port from linuxio-webserver.socket unit file
 # Check in order: env var, /etc, /usr/lib, /lib
 if [[ -n "${SOCKET_FILE:-}" && -f "$SOCKET_FILE" ]]; then
     : # Use env var if set
-elif [[ -f "/etc/systemd/system/linuxio.socket" ]]; then
-    SOCKET_FILE="/etc/systemd/system/linuxio.socket"
-elif [[ -f "/usr/lib/systemd/system/linuxio.socket" ]]; then
-    SOCKET_FILE="/usr/lib/systemd/system/linuxio.socket"
-elif [[ -f "/lib/systemd/system/linuxio.socket" ]]; then
-    SOCKET_FILE="/lib/systemd/system/linuxio.socket"
+elif [[ -f "/etc/systemd/system/linuxio-webserver.socket" ]]; then
+    SOCKET_FILE="/etc/systemd/system/linuxio-webserver.socket"
+elif [[ -f "/usr/lib/systemd/system/linuxio-webserver.socket" ]]; then
+    SOCKET_FILE="/usr/lib/systemd/system/linuxio-webserver.socket"
+elif [[ -f "/lib/systemd/system/linuxio-webserver.socket" ]]; then
+    SOCKET_FILE="/lib/systemd/system/linuxio-webserver.socket"
 else
     SOCKET_FILE=""
 fi

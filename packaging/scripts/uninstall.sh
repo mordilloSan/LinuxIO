@@ -86,6 +86,7 @@ rm -rf /run/linuxio
 rm -rf /usr/share/linuxio
 rm -rf "${DATA_DIR}"
 rm -f /etc/motd.d/linuxio 2>/dev/null || true
+rm -f /etc/update-motd.d/60-linuxio 2>/dev/null || true
 Show 0 "Runtime files removed"
 
 # ========== REMOVE DEV FILES ==========

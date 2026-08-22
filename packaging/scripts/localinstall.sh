@@ -149,9 +149,21 @@ else
     Show 3 "update-issue script not found"
 fi
 
-if [[ -d /etc/motd.d ]]; then
+# Wire the banner into the distro's MOTD mechanism:
+# - Debian/Ubuntu/Mint render /etc/update-motd.d/* into /run/motd.dynamic
+# - Fedora/RHEL-style pam_motd reads /etc/motd.d directly
+if [[ -d /etc/update-motd.d ]]; then
+    if [[ -f "$REPO_ROOT/packaging/etc/update-motd.d/60-linuxio" ]]; then
+        install -m 0755 "$REPO_ROOT/packaging/etc/update-motd.d/60-linuxio" /etc/update-motd.d/
+        Show 0 "SSH login banner configured (update-motd.d)"
+    else
+        Show 3 "60-linuxio motd script not found"
+    fi
+elif [[ -d /etc/motd.d ]]; then
     ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
-    Show 0 "SSH login banner configured"
+    Show 0 "SSH login banner configured (motd.d)"
+else
+    Show 3 "No update-motd.d or motd.d directory found, skipping login banner setup"
 fi
 
 # Journal access

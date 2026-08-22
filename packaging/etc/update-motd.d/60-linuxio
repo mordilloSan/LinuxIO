@@ -1,0 +1,5 @@
+#!/bin/sh
+# LinuxIO login banner - rendered into /run/motd.dynamic by pam_motd
+# via the Debian/Ubuntu update-motd framework. Installed by LinuxIO.
+[ -r /run/linuxio/issue ] && cat /run/linuxio/issue
+exit 0
