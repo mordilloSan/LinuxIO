@@ -16,7 +16,7 @@ TEST="" BUILD="" CI="" CHORE="" OTHER=""
 
 # NUL-delimited fields preserve pipes and backslashes without interpreting
 # commit text as shell or printf syntax. `%s` is Git's single-line subject.
-LOG_ARGS=(--reverse --pretty=format:'%s%x00%h%x00%an%x00')
+LOG_ARGS=(--reverse --no-merges --pretty=format:'%s%x00%h%x00%an%x00')
 if [ -n "$COMMIT_RANGE" ]; then
   LOG_ARGS+=("$COMMIT_RANGE")
 fi
@@ -63,9 +63,9 @@ done < <(git log "${LOG_ARGS[@]}")
 # Contributors
 printf "###  Contributors\n\n"
 if [ -n "$COMMIT_RANGE" ]; then
-  git log "$COMMIT_RANGE" --pretty=format:'* @%an' | sort -u
+  git log --no-merges "$COMMIT_RANGE" --pretty=format:'* @%an' | sort -u
 else
-  git log --pretty=format:'* @%an' | sort -u
+  git log --no-merges --pretty=format:'* @%an' | sort -u
 fi
 
 # Full changelog link
