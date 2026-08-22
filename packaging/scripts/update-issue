@@ -41,8 +41,14 @@ URLS=()
 # Add hostname URL first
 URLS+=("https://${HOSTNAME}:${PORT}/")
 
-# Add first IPv4 address only
-FIRST_IPV4=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1 || true)
+# Add the primary IPv4 address: the source IP of the default outbound route.
+# Plain interface enumeration is unreliable — it can pick docker/libvirt
+# bridges, or WSL2's 10.255.255.254 DNS-tunneling address on lo.
+FIRST_IPV4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 || true)
+if [[ -z "$FIRST_IPV4" ]]; then
+    # No default route: fall back to the first global IPv4 on a real interface
+    FIRST_IPV4=$(ip -4 -o addr show scope global 2>/dev/null | awk '$2 !~ /^(lo|docker|virbr|br-)/ {print $4}' | cut -d/ -f1 | head -1 || true)
+fi
 if [[ -n "$FIRST_IPV4" ]]; then
     URLS+=("https://${FIRST_IPV4}:${PORT}/")
 fi
