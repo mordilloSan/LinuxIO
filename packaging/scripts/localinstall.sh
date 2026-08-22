@@ -189,6 +189,10 @@ Show 0 "Services enabled"
 Show 2 "Restarting LinuxIO..."
 linuxio restart
 
+# linuxio restart covers the control plane only; regenerate the login
+# banner explicitly so an updated update-issue script takes effect now.
+systemctl restart linuxio-issue.service 2>/dev/null || true
+
 sleep 2
 
 if systemctl is-active --quiet linuxio.target; then
