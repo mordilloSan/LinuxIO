@@ -1,8 +1,10 @@
 package system
 
 import (
+	"log/slog"
 	"sync"
 
+	"github.com/jaypipes/ghw"
 	"github.com/jaypipes/ghw/pkg/gpu"
 	"github.com/jaypipes/ghw/pkg/pci"
 )
@@ -41,9 +43,13 @@ var (
 )
 
 func cachedPCIInfo() (*pci.Info, error) {
-	return pciInfoCache.get(func() (*pci.Info, error) { return pci.New() })
+	return pciInfoCache.get(func() (*pci.Info, error) {
+		return pci.New(ghw.WithLogger(slog.Default()))
+	})
 }
 
 func cachedGPUInfo() (*gpu.Info, error) {
-	return gpuInfoCache.get(func() (*gpu.Info, error) { return gpu.New() })
+	return gpuInfoCache.get(func() (*gpu.Info, error) {
+		return gpu.New(ghw.WithLogger(slog.Default()))
+	})
 }

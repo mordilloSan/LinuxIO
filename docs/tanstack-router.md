@@ -448,20 +448,20 @@ loader: (loaderArgs) =>
   ]),
 ```
 
-Deferred visible widgets — `_authenticated/index.tsx`:
+Deferred dashboard widgets — `_authenticated/index.tsx`:
 
 ```ts
 loader: async ({ abortController, context, preload }) => {
   await loadRouteTransport(context, abortController.signal);
-  const cachedConfig = readConfigCache(context.auth.user?.id);
-  if (!cachedConfig) return;
-
-  const hiddenCards = new Set(cachedConfig.appSettings?.hiddenCards ?? []);
+  const ui = await loadRouteUIConfig(context, abortController.signal);
   const queries: LoaderQueryOptions[] = [];
-  if (!hiddenCards.has("overview")) {
+  if (!ui.hiddenCards.includes("overview")) {
     queries.push(linuxio.system.get_host_info);
   }
-  // Add the other visible card queries, plus Docker queries when capable.
+  if (context.access.dockerAvailable === true &&
+      !ui.hiddenCards.includes("docker")) {
+    queries.push(linuxio.docker.list_containers);
+  }
   startRouteQueryPrefetches(
     { context, preload, signal: abortController.signal },
     queries,
@@ -469,11 +469,13 @@ loader: async ({ abortController, context, preload }) => {
 },
 ```
 
-The real route constructs the array inline and also checks the Docker
-capability. It reads only an existing per-user config cache: it never guesses
-which cards are hidden on a first visit. With no cache, mounted visible cards
-start their locally bounded queries themselves. Hardware uses the same pattern
-for expanded sections, and collapsed sections unmount their observers.
+Dashboard and Hardware use `loadRouteUIConfig` to read the backend-owned UI
+snapshot from the same user-scoped TanStack Query entry consumed by
+`ConfigProvider`. The route loader therefore has no browser cache or frontend
+default table to maintain, and it prefetches only cards or sections that the
+snapshot says can mount. Collapsed hardware history remains lazy because its
+widgets use ordinary `useQuery` observers. Mounted widgets remain the owners of
+active subscriptions and polling cadence.
 
 Annotate conditional arrays as `LoaderQueryOptions[]` so heterogeneous options
 stay assignable.
@@ -1221,7 +1223,7 @@ protects router *mechanics* and production chunk boundaries.
 
 It deliberately does **not** cover real authentication, the WebSocket bridge, or
 backend data. Those belong to Tiers 2 and 3 of the
-[three-tier test plan](./e2e-testing.md), which are **not yet implemented**:
+[three-tier test plan](./TODO/e2e-testing.md), which are **not yet implemented**:
 Tier 2 (local Playwright against a real session, non-privileged queries) and
 Tier 3 (VM Playwright for privileged queries and safe mutations) still have open
 done-criteria. Until they land, an authenticated end-to-end regression is a

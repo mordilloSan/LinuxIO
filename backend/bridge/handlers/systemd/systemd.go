@@ -131,7 +131,7 @@ func GetActiveState(ctx context.Context, name string) (string, error) {
 		}
 
 		unit := session.ObjectAt(path)
-		activeState, err := dbusclient.GetProperty[string](session.Context(), unit, dbusclient.SystemdUnitIface, "ActiveState")
+		activeState, err := dbusclient.GetProperty[string](session, unit, dbusclient.SystemdUnitIface, "ActiveState")
 		if err != nil {
 			if session.Context().Err() != nil {
 				return session.Context().Err()

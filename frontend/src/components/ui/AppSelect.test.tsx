@@ -29,4 +29,14 @@ describe("AppSelect accessibility", () => {
     expect(combobox).toHaveAttribute("aria-expanded", "false");
     expect(combobox).not.toHaveAttribute("aria-controls");
   });
+
+  it("forwards an aria-label to the interactive trigger", () => {
+    render(
+      <AppSelect aria-label="History range" value="one">
+        <option value="one">One</option>
+      </AppSelect>,
+    );
+
+    expect(screen.getByRole("combobox")).toHaveAccessibleName("History range");
+  });
 });

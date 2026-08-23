@@ -1,16 +1,13 @@
 import { useCallback } from "react";
 
 import type { TableCardViewMode } from "@/api";
-import { useConfigValue } from "@/hooks/useConfig";
-
-/* The app-wide default for every table/card toggle. A surface's mode is only
-   stored when it differs from this, so changing it re-defaults every surface
-   the user hasn't explicitly switched away from it. */
-const DEFAULT_VIEW_MODE: TableCardViewMode = "card";
+import { useConfig, useConfigValue } from "@/hooks/useConfig";
 
 export function useViewMode(key: string) {
+  const { config } = useConfig();
   const [viewModes, setViewModes] = useConfigValue("viewModes");
-  const viewMode = viewModes?.[key] ?? DEFAULT_VIEW_MODE;
+  const viewModeDefault = config.appSettings.viewModeDefault;
+  const viewMode = viewModes[key] ?? viewModeDefault;
 
   const setViewMode = useCallback(
     (
@@ -19,22 +16,20 @@ export function useViewMode(key: string) {
         | ((prev: TableCardViewMode) => TableCardViewMode),
     ) => {
       setViewModes((prev) => {
-        const prevModes = prev ?? {};
-        const current = prevModes[key] ?? DEFAULT_VIEW_MODE;
+        const current = prev[key] ?? viewModeDefault;
         const resolved = typeof next === "function" ? next(current) : next;
 
-        if (resolved === DEFAULT_VIEW_MODE) {
-          if (!(key in prevModes)) return prev;
-          const rest = { ...prevModes };
-          delete rest[key];
-          return Object.keys(rest).length > 0 ? rest : undefined;
+        if (resolved === viewModeDefault) {
+          if (!(key in prev)) return prev;
+          const nextModes = { ...prev };
+          delete nextModes[key];
+          return nextModes;
         }
-
-        if (prevModes[key] === resolved) return prev;
-        return { ...prevModes, [key]: resolved };
+        if (prev[key] === resolved) return prev;
+        return { ...prev, [key]: resolved };
       });
     },
-    [key, setViewModes],
+    [key, setViewModes, viewModeDefault],
   );
 
   return [viewMode, setViewMode] as const;

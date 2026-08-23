@@ -1172,6 +1172,29 @@ type MonitoringNetworkHistoryPoint struct {
 	Interfaces      map[string]MonitoringNetworkRates `json:"interfaces,omitempty"`
 }
 
+// MonitoringContainerSample is one container's slice of a container history
+// point. ID is the agent's short container ID, which prefixes the full ID
+// Docker inventory reports.
+type MonitoringContainerSample struct {
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	CPUPercent      float64 `json:"cpu_percent"`
+	MemoryMB        float64 `json:"memory_mb"`
+	SentBytesPerSec float64 `json:"sent_bytes_per_sec"`
+	RecvBytesPerSec float64 `json:"recv_bytes_per_sec"`
+	// ReadBytesPerSec and WriteBytesPerSec are block I/O summed over the
+	// container's processes by the agent's container_telemetry plugin. Nil when
+	// that plugin has no sample near this point, so the UI can say
+	// "unavailable" instead of drawing a zero line.
+	ReadBytesPerSec  *float64 `json:"read_bytes_per_sec,omitempty"`
+	WriteBytesPerSec *float64 `json:"write_bytes_per_sec,omitempty"`
+}
+
+type MonitoringContainerHistoryPoint struct {
+	CapturedAtMs int64                       `json:"captured_at_ms"`
+	Containers   []MonitoringContainerSample `json:"containers"`
+}
+
 type MonitoringListenerStatus struct {
 	Active           bool     `json:"active"`
 	Address          string   `json:"address"`
@@ -1443,21 +1466,27 @@ type AppConfig struct {
 }
 
 type AppSettings struct {
-	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
-	DockTileColors          DockTileColors                  `json:"dockTileColors,omitempty"`
-	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
-	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
-	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
-	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
-	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
-	NavigationMode          NavigationMode                  `json:"navigationMode,omitempty"`
+	ChunkSizeMB     *int `json:"chunkSizeMB,omitempty"`
+	ShowHiddenFiles bool `json:"showHiddenFiles"`
+}
+
+// UIConfig is the effective presentation-only configuration. Backend defaults
+// are included so the frontend has one authoritative default source.
+type UIConfig struct {
+	DockAccentGradient      ConfigDockAccentGradient        `json:"dockAccentGradient"`
+	DockTileColors          DockTileColors                  `json:"dockTileColors"`
+	DockerDashboardSections ConfigDockerDashboardSections   `json:"dockerDashboardSections"`
+	HardwareSections        ConfigHardwareSections          `json:"hardwareSections"`
+	HiddenCards             []string                        `json:"hiddenCards"`
+	LayoutOrders            map[string][]string             `json:"layoutOrders"`
+	NavigationMode          NavigationMode                  `json:"navigationMode"`
 	PrimaryColor            string                          `json:"primaryColor"`
-	ShowHiddenFiles         bool                            `json:"showHiddenFiles"`
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`
-	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
+	TerminalFontSize        int                             `json:"terminalFontSize"`
 	Theme                   Theme                           `json:"theme"`
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
-	ViewModes               map[string]TableCardViewMode    `json:"viewModes,omitempty"`
+	ViewModes               map[string]TableCardViewMode    `json:"viewModes"`
+	ViewModeDefault         TableCardViewMode               `json:"viewModeDefault"`
 }
 
 type DockerProxySettings struct {

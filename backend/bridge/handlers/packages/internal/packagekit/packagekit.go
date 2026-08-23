@@ -105,7 +105,7 @@ func (s ClientSession) CreateTransaction(buffer int) (*Transaction, error) {
 }
 
 func (s ClientSession) UpdatePrepared() (bool, error) {
-	return dbusclient.GetProperty[bool](s.Context(), s.session.Object(), OfflineIface, "UpdatePrepared")
+	return dbusclient.GetProperty[bool](s.session, s.session.Object(), OfflineIface, "UpdatePrepared")
 }
 
 func (s ClientSession) TriggerOffline(action string) error {

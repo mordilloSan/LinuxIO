@@ -262,6 +262,9 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
 		return err
 	}
+	// Label only the canonical registered route. req.Route is client-controlled
+	// and must not be copied into production diagnostics before validation.
+	ctx = goroutinelabel.With(ctx, "route", route.Name)
 	if route.Privileged && (req.Session == nil || !req.Session.Privileged) {
 		err := fmt.Errorf("%w: privileged route %s requires elevated bridge", ErrForbidden, req.Route)
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
@@ -527,7 +530,7 @@ func (r *Router) startOrQueueTaskWithIdentity(route Route, req Request, identity
 func (r *Router) reserveTaskAdmission(routeName, ownerRouteKey string, policy TaskPolicy, now time.Time) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err := r.checkRateLocked(ownerRouteKey, policy, now); err != nil {
+	if err := r.checkRateLocked(routeName, ownerRouteKey, policy, now); err != nil {
 		return false, err
 	}
 	if policy.DuplicateActiveReject && r.activeByRoute[routeName] > 0 {
@@ -605,7 +608,7 @@ func normalizedTaskLifetime(lifetime TaskLifetime) TaskLifetime {
 	return lifetime
 }
 
-func (r *Router) checkRateLocked(ownerRouteKey string, policy TaskPolicy, now time.Time) error {
+func (r *Router) checkRateLocked(routeName, ownerRouteKey string, policy TaskPolicy, now time.Time) error {
 	if policy.StartRatePerMinuteOwner <= 0 {
 		return nil
 	}
@@ -619,7 +622,7 @@ func (r *Router) checkRateLocked(ownerRouteKey string, policy TaskPolicy, now ti
 	}
 	r.startsByOwnerRoute[ownerRouteKey] = kept
 	if len(kept) >= policy.StartRatePerMinuteOwner {
-		return fmt.Errorf("%w: %s", ErrRateLimited, ownerRouteKey)
+		return fmt.Errorf("%w for route %q", ErrRateLimited, routeName)
 	}
 	return nil
 }
@@ -662,11 +665,10 @@ func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner) {
 		// Set explicitly, not inherited: a queued task is promoted from
 		// finishTask, so this goroutine may be spawned by the waiter of an
 		// unrelated task and would otherwise carry that task's labels.
-		goroutinelabel.With(context.Background(),
+		goroutinelabel.WithSession(context.Background(), owner.SessionID, owner.UID,
+			"component", "task-tracker",
 			"route", route.Name,
 			"task_id", task.ID(),
-			"session_id", owner.SessionID,
-			"user", owner.Username,
 		)
 
 		<-task.Done()

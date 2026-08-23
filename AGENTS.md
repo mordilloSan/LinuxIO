@@ -47,4 +47,4 @@
 ## Git and handoff
 
 - Never create, amend, or push a Git commit. Leave commit creation to the user.
-- When work is complete, always present a concise suggested commit message for the resulting changes, even though no commit is created automatically.
+- When coding work is complete, always present a concise suggested commit message for the resulting changes, even though no commit is created automatically. Do this only when actual code has been changed and not in exploratory reviews/comments.

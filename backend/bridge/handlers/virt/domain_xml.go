@@ -4,7 +4,6 @@ import (
 	"encoding/xml"
 	"path/filepath"
 	"strings"
-
 	"uuid"
 
 	libvirt "github.com/digitalocean/go-libvirt"

@@ -86,27 +86,17 @@
 
 ## Generated files and contract changes
 
-- Do not hand-edit `frontend/src/api/generated/*` or
-  `frontend/src/routeTree.gen.ts`.
-- When Go-owned API contracts or generator inputs change, use `make generate`
-  and then validate the combined result with `make test-quiet`.
-- Trace contract, router, and query-ownership changes through their callers,
-  invalidation paths, cancellation paths, tests, source guards, and canonical
-  documentation rather than changing one layer in isolation.
+- Do not hand-edit `frontend/src/api/generated/*` or `frontend/src/routeTree.gen.ts`.
+- When Go-owned API contracts or generator inputs change, use `make generate` and then validate the combined result with `make test-quiet`.
+- Trace contract, router, and query-ownership changes through their callers, invalidation paths, cancellation paths, tests, source guards, and canonical documentation rather than changing one layer in isolation.
 
 ## Reviews, cleanup, and documentation
 
-- Add or update tests for behavior changes. Reconcile related documentation,
-  audit resolution text, and checkboxes when the implementation lands.
-- Before removing code that looks like a compatibility wrapper or legacy API,
-  inspect callers, generated references, history, and production reachability;
-  do not delete it based on naming alone.
-- Keep conclusions scoped to the evidence gathered. Clearly separate
-  source-verified findings, automated-test results, and runtime-observed
-  behavior.
+- Add or update tests for behavior changes. Reconcile related documentation, audit resolution text, and checkboxes when the implementation lands.
+- Before removing code that looks like a compatibility wrapper or legacy API, inspect callers, generated references, history, and production reachability; do not delete it based on naming alone.
+- Keep conclusions scoped to the evidence gathered. Clearly separate source-verified findings, automated-test results, and runtime-observed behavior.
 
 ## Git and handoff
 
 - Never create, amend, or push a Git commit. Leave commit creation to the user.
-- When work is complete, always present a concise suggested commit message for
-  the resulting changes, even though no commit is created automatically.
+- When coding work is complete, always present a concise suggested commit message for the resulting changes, even though no commit is created automatically. Do this only when actual code has been changed and not in exploratory reviews/comments.

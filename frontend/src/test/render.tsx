@@ -17,14 +17,13 @@ import {
   useContext,
 } from "react";
 
-import type { AppConfig } from "@/api";
 import { emptyCapabilityState } from "@/api/capabilities";
 import type { CapabilitiesResponse } from "@/api/capabilities";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import type { AuthContextType } from "@/types/auth";
-import type { ConfigContextType } from "@/types/config";
+import type { ConfigContextType, EffectiveAppSettings } from "@/types/config";
 
 export function createTestQueryClient() {
   return new QueryClient({
@@ -61,16 +60,45 @@ export function createAuthContextValue(
 // saved order from it. Tests get a real context with inert writes so they never
 // have to know that.
 export function createConfigContextValue(
-  overrides: Partial<AppConfig["appSettings"]> = {},
+  overrides: Partial<EffectiveAppSettings> = {},
 ): ConfigContextType {
   return {
     config: {
       appSettings: {
         primaryColor: "#2196f3",
         showHiddenFiles: true,
+        chunkSizeMB: 1,
         sidebarCollapsed: false,
         theme: "DARK",
+        navigationMode: "sidebar",
+        dockTileColors: "accent",
+        dockAccentGradient: {
+          startColor: "",
+          endColor: "",
+          rangeStart: 0,
+          rangeEnd: 100,
+        },
+        hiddenCards: [],
+        dockerDashboardSections: {
+          overview: true,
+          monitoring: true,
+          daemon: true,
+          resources: true,
+        },
+        hardwareSections: {
+          overview: true,
+          hardware: true,
+          sensors: true,
+          systemInfo: true,
+          gpu: true,
+          pciDevices: true,
+          memoryModules: true,
+        },
+        viewModes: {},
+        viewModeDefault: "card",
+        terminalFontSize: 16,
         ...overrides,
+        layoutOrders: overrides.layoutOrders ?? {},
       },
       docker: {
         folders: [],
@@ -93,7 +121,7 @@ export function createConfigContextValue(
 }
 
 interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
-  appSettings?: Partial<AppConfig["appSettings"]>;
+  appSettings?: Partial<EffectiveAppSettings>;
   auth?: Partial<AuthContextType>;
   queryClient?: QueryClient;
 }

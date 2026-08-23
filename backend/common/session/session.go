@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -325,6 +326,19 @@ func (m *Manager) NewSessionID() (string, error) {
 	return randID(16)
 }
 
+// DiagnosticRef returns a stable, non-secret correlation value for a session
+// credential. Production session IDs contain 128 bits of randomness, so a
+// one-way digest preserves diagnostic correlation without disclosing the
+// bearer credential itself. The result is diagnostic-only and must never be
+// accepted for authentication or authorization.
+func DiagnosticRef(sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("linuxio-session-diagnostic-ref\x00" + sessionID))
+	return "sr-" + hex.EncodeToString(sum[:16])
+}
+
 func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session, error) {
 	if id == "" {
 		return nil, fmt.Errorf("session id required")
@@ -357,7 +371,7 @@ func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session
 	})
 	slog.Info("session created",
 		"user", user.Username,
-		"session_id", sess.SessionID,
+		"session_ref", DiagnosticRef(sess.SessionID),
 		"privileged", privileged)
 	return sess, nil
 }
@@ -395,7 +409,7 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	if s, err := m.decode(b); err == nil {
 		slog.Info("session deleted",
 			"user", s.User.Username,
-			"session_id", s.SessionID,
+			"session_ref", DiagnosticRef(s.SessionID),
 			"reason", string(r))
 		m.broadcastOnDelete(s, r)
 	}
@@ -422,7 +436,7 @@ func (m *Manager) ValidateSession(id string) (*Session, error) {
 	if expiredAbsolute(s, now) {
 		if delErr := m.DeleteSession(id, ReasonGCAbsolute); delErr != nil {
 			slog.Warn("failed to delete absolute-expired session",
-				"session_id", id,
+				"session_ref", DiagnosticRef(id),
 				"reason", string(ReasonGCAbsolute),
 				"error", delErr)
 		}
@@ -431,7 +445,7 @@ func (m *Manager) ValidateSession(id string) (*Session, error) {
 	if expiredIdle(s, now) {
 		if delErr := m.DeleteSession(id, ReasonGCIdle); delErr != nil {
 			slog.Warn("failed to delete idle-expired session",
-				"session_id", id,
+				"session_ref", DiagnosticRef(id),
 				"reason", string(ReasonGCIdle),
 				"error", delErr)
 		}
@@ -480,7 +494,7 @@ func (m *Manager) ValidateFromRequest(r *http.Request) (*Session, error) {
 	if err != nil {
 		slog.Debug("access attempt with unknown session cookie",
 			"cookie_name", m.cfg.Cookie.Name,
-			"session_id", ck.Value)
+			"session_ref", DiagnosticRef(ck.Value))
 		return nil, fmt.Errorf("unknown session ID")
 	}
 	return s, nil
@@ -559,7 +573,7 @@ func (m *Manager) evictUserSessions(username string) {
 			if deleteErr := m.st.Delete(tok); deleteErr != nil {
 				slog.Warn("failed deleting existing session",
 					"user", username,
-					"session_id", tok,
+					"session_ref", DiagnosticRef(tok),
 					"error", deleteErr)
 				continue
 			}
@@ -590,7 +604,7 @@ func (m *Manager) gcCollect() {
 		if reason != "" {
 			if err := m.st.Delete(tok); err != nil {
 				slog.Warn("failed to delete expired session",
-					"session_id", tok,
+					"session_ref", DiagnosticRef(tok),
 					"reason", string(reason),
 					"error", err)
 				continue

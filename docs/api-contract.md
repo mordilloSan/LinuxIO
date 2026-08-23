@@ -350,6 +350,56 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 ```
 
+## Configuration Ownership
+
+Per-user configuration is exposed as two resources because its fields have
+different owners and failure consequences:
+
+| Route | Contract | Semantics |
+|---|---|---|
+| `config.get` | `void -> AppConfig` | Retry-safe read of bridge-owned functional settings. |
+| `config.set` | `ConfigSetPayload -> ConfigSetResult` | Partial update of functional settings. |
+| `config.get_ui` | `void -> UIConfig` | Retry-safe read of effective UI preferences, including backend-owned defaults. |
+| `config.set_ui` | `ConfigUISetPayload -> ConfigSetResult` | Full UI snapshot replacement; omitted fields resolve to backend defaults. |
+
+`AppConfig.appSettings` contains only `showHiddenFiles` and `chunkSizeMB`.
+Docker, job, and dismissal fields remain on `AppConfig`. `UIConfig` contains
+theme, navigation, section visibility, view-mode, layout-order, and related
+presentation fields. The frontend combines these responses into its internal
+effective configuration; that combined type is not a wire contract.
+
+This is an intentional change to the prior `config.get`/`config.set` shape.
+Keeping UI fields in those messages would preserve the ownership ambiguity and
+make omission impossible to define as reset-to-backend-default. The bridge and
+frontend are shipped together, and the schema parity tests and generated client
+cover all four route declarations.
+
+On disk, `~/.linuxio-config.yaml` and `~/.linuxio-ui.yaml` use independent
+sidecar locks and atomic whole-file replacement. A missing or invalid UI file
+is written as `{}`. The bridge expands that sentinel, or any valid sparse UI
+document, over backend defaults when serving `config.get_ui`; it does not
+rewrite the sentinel merely because it was read. On the first preference
+change, the frontend sends one complete effective snapshot to `config.set_ui`.
+There is no session-storage configuration copy or local-storage theme cache.
+Concurrent UI replacements are serialized but not field-merged; the last
+complete snapshot committed wins.
+
+At upgrade, a valid pre-split combined `.linuxio-config.yaml` is recognized
+under the existing config locks and converted once: functional settings,
+including `docker.folders`, remain in the core file and presentation settings
+move to the UI file. Invalid or ambiguous legacy content is left untouched and
+fails startup; current malformed core content likewise fails without a reset.
+The conversion never uses filesystem observations to repair Docker folders.
+
+All four disk artifacts (the two YAML files and their lock files), plus atomic
+replacement files, use the authenticated session UID/GID even when the bridge
+runs as root. LinuxIO resolves only that user's passwd home and verifies its
+owner; it follows a symlinked passwd home only after verifying the resolved
+directory's owner, and it neither falls back to the bridge process home nor
+changes ownership of the home directory. Before dropping privileges, the root
+launcher normalizes legacy root-owned YAML and lock inodes in place so old and new
+bridges continue to coordinate through `flock`.
+
 ## Tasks
 
 Tasks are reserved for work that emits progress, continues independently of a
@@ -366,8 +416,10 @@ authenticated numeric UID, so a later session for that UID can observe the
 same operation.
 
 `TaskOwner.SessionID` is an internal authorization value and is never emitted
-in public Task snapshots or serialized API models. Public owner fields are
-limited to non-secret identity data.
+in public Task snapshots, serialized API models, client-visible errors, or
+diagnostic output. Public owner fields are limited to non-secret identity data;
+diagnostics use the one-way `session_ref` defined by the
+[Production Diagnostic Data Policy](./production-diagnostics.md).
 
 WebSocket keepalive, passive relay frames, Task progress, and Channel traffic
 only validate session expiry. The outer relay `FlagActivity` bit is the sole

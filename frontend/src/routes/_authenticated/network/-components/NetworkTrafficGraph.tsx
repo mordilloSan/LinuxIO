@@ -99,9 +99,21 @@ const NetworkTrafficGraph = ({ series }: NetworkTrafficGraphProps) => {
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      {/* Absolute so the canvas stays out of intrinsic sizing. Smoothie's
+          responsive mode writes the measured height back onto the `height`
+          attribute, and a percentage height against an indefinite parent
+          falls back to that attribute — an in-flow canvas therefore reports
+          its own last size as a content floor and the grid row it sits in can
+          only ever grow. */}
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block" }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          display: "block",
+        }}
       />
       <LiveChartHover
         delayMs={STREAM_DELAY_MS}

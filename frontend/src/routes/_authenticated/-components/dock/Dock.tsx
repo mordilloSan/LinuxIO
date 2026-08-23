@@ -104,7 +104,7 @@ const Dock = () => {
   const { navRef, onPointerDown, onPointerLeave, onPointerMove } =
     useDockPointerLiveness();
 
-  const palette = dockTileColors ?? "accent";
+  const palette = dockTileColors;
   const accent = theme.palette.primary.main;
 
   /* Only the neutral palette lights the current route differently, and which

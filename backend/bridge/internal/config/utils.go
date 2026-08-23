@@ -1,72 +1,179 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/goccy/go-yaml"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
+
+// fileOwnership describes the ownership that applies to runtime artifacts.
+// Production stores enforce it regardless of whether the bridge is privileged.
+type fileOwnership struct {
+	uid     int
+	gid     int
+	enforce bool
+}
+
+func resolveFileOwnership(targetUID, targetGID uint32) (fileOwnership, error) {
+	uid := int(targetUID)
+	gid := int(targetGID)
+	if uint32(uid) != targetUID || uint32(gid) != targetGID {
+		return fileOwnership{}, fmt.Errorf("target ownership IDs are not representable: uid=%d gid=%d", targetUID, targetGID)
+	}
+	if euid := os.Geteuid(); euid != 0 {
+		if euid != uid {
+			return fileOwnership{}, fmt.Errorf("bridge effective uid %d does not match target uid %d", euid, uid)
+		}
+		if egid := os.Getegid(); egid != gid {
+			return fileOwnership{}, fmt.Errorf("bridge effective gid %d does not match target gid %d", egid, gid)
+		}
+	}
+	return fileOwnership{uid: uid, gid: gid, enforce: true}, nil
+}
+
+func (o fileOwnership) ensureDirectory(path string) error {
+	if o.enforce {
+		return o.verifyDirectoryOwner(path)
+	}
+	if err := os.MkdirAll(path, dirPerm); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("stat config directory %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("config directory must not be a symlink: %s", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("config path is not a directory: %s", path)
+	}
+	return nil
+}
+
+func (o fileOwnership) verifyDirectoryOwner(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("stat config directory %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("config directory must not be a symlink: %s", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("config path is not a directory: %s", path)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("config directory %q has no ownership metadata", path)
+	}
+	if uint64(stat.Uid) != uint64(o.uid) {
+		return fmt.Errorf("config directory %q is owned by uid %d, want %d", path, stat.Uid, o.uid)
+	}
+	return nil
+}
+
+func (o fileOwnership) ensureFile(path string) error {
+	if !o.enforce {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("open config file %q: %w", path, err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat config file %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("config path is not a regular file: %s", path)
+	}
+	if err := f.Chown(o.uid, o.gid); err != nil {
+		return fmt.Errorf("own config file %q: %w", path, err)
+	}
+	if err := f.Chmod(filePerm); err != nil {
+		return fmt.Errorf("set config file permissions %q: %w", path, err)
+	}
+	return nil
+}
+
+func (o fileOwnership) writeAtomic(path string, data []byte, mode fs.FileMode) error {
+	if o.enforce {
+		return utils.WriteFileAtomicOwned(path, data, mode, o.uid, o.gid)
+	}
+	return utils.WriteFileAtomic(path, data, mode)
+}
+
+func (o fileOwnership) lockOptions() []filelock.Option {
+	opts := []filelock.Option{
+		filelock.WithPermissions(lockFilePerm),
+		filelock.WithDirPermissions(dirPerm),
+	}
+	if o.enforce {
+		opts = append(opts, filelock.WithOwnership(o.uid, o.gid))
+	}
+	return opts
+}
 
 // Homedir determines the user's home folder
 func Homedir(username string) (string, error) {
 	if strings.TrimSpace(username) == "" {
 		return "", errors.New("empty username")
 	}
-	// 1) Prefer the target user's passwd entry (correct when running as root)
-	if u, err := user.Lookup(username); err == nil && u.HomeDir != "" {
-		if fi, err2 := os.Stat(u.HomeDir); err2 == nil && fi.IsDir() {
-			return u.HomeDir, nil
-		} else if err2 != nil {
-			return "", err2
-		}
-		return "", errors.New("home path is not a directory")
+	u, err := user.Lookup(username)
+	if err != nil {
+		return "", fmt.Errorf("lookup user %q: %w", username, err)
 	}
-	// 2) Fall back to the process $HOME
-	if home := os.Getenv("HOME"); home != "" && filepath.IsAbs(home) {
-		if fi, err := os.Stat(home); err == nil && fi.IsDir() {
-			return home, nil
-		}
+	if u.HomeDir == "" {
+		return "", errors.New("user has no home directory")
 	}
-	return "", errors.New("could not resolve home dir for user")
+	if !filepath.IsAbs(u.HomeDir) {
+		return "", fmt.Errorf("user home directory is not absolute: %s", u.HomeDir)
+	}
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		return "", fmt.Errorf("user %q has invalid uid %q: %w", username, u.Uid, err)
+	}
+	return resolveHomePath(u.HomeDir, uint32(uid))
 }
 
-// fallbackBase returns a writable, non-root-required base folder:
-//   - $XDG_DATA_HOME/linuxio/users/<username>
-//   - else ~/.local/share/linuxio/users/<username> (of the running process)
-//   - else /var/tmp/linuxio-<procUID>/users/<username>
-func fallbackBase(username string) (string, error) {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return "", errors.New("empty username")
+// resolveHomePath follows the passwd home path, then verifies the resolved
+// directory belongs to the authenticated user. Returning the resolved path
+// also keeps later config-path checks from traversing a home symlink.
+func resolveHomePath(home string, uid uint32) (string, error) {
+	if !filepath.IsAbs(home) {
+		return "", fmt.Errorf("user home directory is not absolute: %s", home)
 	}
-
-	if base := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); base != "" && filepath.IsAbs(base) {
-		p := filepathJoinClean(base, "linuxio", "users", username)
-		if err := os.MkdirAll(p, dirPerm); err == nil {
-			return p, nil
-		}
+	info, err := os.Stat(home)
+	if err != nil {
+		return "", err
 	}
-
-	if h, _ := os.UserHomeDir(); h != "" {
-		p := filepathJoinClean(h, ".local", "share", "linuxio", "users", username)
-		if err := os.MkdirAll(p, dirPerm); err == nil {
-			return p, nil
-		}
+	if !info.IsDir() {
+		return "", errors.New("home path is not a directory")
 	}
-
-	p := filepathJoinClean("/var", "tmp", "linuxio", "users", username)
-	if err := os.MkdirAll(p, dirPerm); err != nil {
-		return "", fmt.Errorf("mkdir fallback %s: %w", p, err)
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", errors.New("home directory has no ownership metadata")
 	}
-	return p, nil
+	if uint64(stat.Uid) != uint64(uid) {
+		return "", fmt.Errorf("home directory %q is owned by uid %d, want %d", home, stat.Uid, uid)
+	}
+	resolved, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory %q: %w", home, err)
+	}
+	return filepath.Clean(resolved), nil
 }
 
 // CheckConfig returns true if the config file exists and is a regular file (not a symlink).
@@ -84,87 +191,22 @@ func CheckConfig(path string) (bool, error) {
 	return false, err
 }
 
-// guardConfigPath rejects symlinked config paths; it is a no-op if the file doesn't exist.
-func guardConfigPath(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("config path must not be a symlink")
-	}
-	return nil
-}
-
-// writeConfig writes a default config atomically to the given path (filePerm)
-// and ensures the parent directory exists with dirPerm.
-func writeConfig(path string, base string) error {
-	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
-		return err
-	}
-	return writeConfigFrom(path, *DefaultSettings(base))
-}
-
-func ensureFilePerms(path string, mode os.FileMode) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("config path is a symlink")
-	}
-	return os.Chmod(path, mode)
-}
-
-// writeConfigFrom writes the provided Settings atomically to cfgPath with filePerm.
-func writeConfigFrom(cfgPath string, cfg Settings) error {
+func writeCoreConfigOwned(cfgPath string, cfg Settings, owner fileOwnership) error {
 	data, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return err
 	}
-	return utils.WriteFileAtomic(cfgPath, data, filePerm)
+	return owner.writeAtomic(cfgPath, data, filePerm)
 }
 
-// filepathJoinClean joins then cleans the result (normalizes).
-func filepathJoinClean(elem ...string) string {
-	return filepath.Clean(filepath.Join(elem...))
-}
-
-// readConfigStrict parses YAML and FAILS on unknown fields.
-func readConfigStrict(path string) (*Settings, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var out Settings
-	dec := yaml.NewDecoder(bytes.NewReader(b), yaml.Strict())
-	if err := dec.Decode(&out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// init.go (near other helpers)
-func chownIfRoot(path, username string) error {
-	if os.Geteuid() != 0 {
-		return nil // Nothing to do if not root
-	}
-	u, err := user.Lookup(username)
+func writeUIConfigOwned(uiPath string, ui UIPreferences, owner fileOwnership) error {
+	data, err := yaml.Marshal(&ui)
 	if err != nil {
 		return err
 	}
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
+	return owner.writeAtomic(uiPath, data, filePerm)
+}
 
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("refusing to chown symlink")
-	}
-	return os.Chown(path, uid, gid)
+func writeEmptyUIConfigOwned(uiPath string, owner fileOwnership) error {
+	return owner.writeAtomic(uiPath, []byte("{}\n"), filePerm)
 }

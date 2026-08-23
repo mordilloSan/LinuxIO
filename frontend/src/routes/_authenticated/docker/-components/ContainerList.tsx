@@ -44,6 +44,7 @@ import {
 } from "@/theme/constants";
 
 import ContainerDetailsPanel from "./ContainerDetailsPanel";
+import { ContainerHistoryCards } from "./ContainerHistoryCards";
 import {
   ContainerStackBand,
   ContainerStackSummaryCard,
@@ -601,10 +602,24 @@ const ContainerList = ({
             </motion.div>
             <motion.div
               animate={{ opacity: 1, y: 0 }}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 18 }}
               transition={{
                 duration: slowTransitionDurationSeconds,
                 delay: 0.16,
+                ease: EASING_STANDARD,
+              }}
+            >
+              <ContainerHistoryCards
+                containerId={selectedContainer.Id}
+                key={selectedContainer.Id}
+              />
+            </motion.div>
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 20 }}
+              transition={{
+                duration: slowTransitionDurationSeconds,
+                delay: 0.2,
                 ease: EASING_STANDARD,
               }}
             >

@@ -1,49 +1,36 @@
 package config
 
-// DefaultAppSettings returns sane UI defaults.
+import "path/filepath"
+
+// DefaultAppSettings returns defaults for the important configuration file.
 func DefaultAppSettings() PersistedAppSettings {
-	return PersistedAppSettings{
-		Theme:              ThemeDark,
-		PrimaryColor:       "#2196f3",
-		ThemeColors:        defaultThemeColors(),
-		SidebarCollapsed:   false,
-		DockAccentGradient: DockAccentGradient{RangeStart: 0, RangeEnd: 100},
-		ShowHiddenFiles:    true,
-		HiddenCards:        []string{},
-		DockerDashboardSections: &DockerDashboardSections{
-			Overview:  true,
-			Daemon:    true,
-			Resources: true,
-		},
-		HardwareSections: &HardwareSections{
-			Overview:      true,
-			Hardware:      true,
-			Sensors:       true,
-			SystemInfo:    true,
-			GPU:           true,
-			PCIDevices:    true,
-			MemoryModules: true,
-		},
-		ViewModes:    defaultViewModes(),
-		LayoutOrders: map[string][]string{},
-		ChunkSizeMB:  1,
-	}
+	return PersistedAppSettings{ShowHiddenFiles: true, ChunkSizeMB: 1}
 }
 
-func defaultViewModes() map[string]string {
-	return map[string]string{
-		"accounts.groups":   "card",
-		"accounts.users":    "card",
-		"docker.containers": "card",
-		"docker.images":     "card",
-		"docker.networks":   "card",
-		"docker.stacks":     "card",
-		"docker.volumes":    "card",
-		"services.list":     "card",
-		"shares":            "card",
-		"shares.mounts":     "card",
-		"sockets.list":      "card",
-		"timers.list":       "card",
+const DefaultViewMode = "card"
+
+// DefaultUIPreferences returns the effective backend-owned UI defaults. The
+// empty UI file is represented separately by writeEmptyUIConfigOwned; it must
+// not be confused with this populated runtime value.
+func DefaultUIPreferences() UIPreferences {
+	return UIPreferences{
+		Theme:              ThemeDark,
+		PrimaryColor:       CSSColor("#2196f3"),
+		ThemeColors:        defaultThemeColors(),
+		NavigationMode:     NavigationModeSidebar,
+		DockTileColors:     DockTileColorsAccent,
+		DockAccentGradient: &DockAccentGradient{RangeStart: 0, RangeEnd: 100},
+		HiddenCards:        []string{},
+		DockerDashboardSections: &DockerDashboardSections{
+			Overview: true, Monitoring: true, Daemon: true, Resources: true,
+		},
+		HardwareSections: &HardwareSections{
+			Overview: true, Hardware: true, Sensors: true, SystemInfo: true,
+			GPU: true, PCIDevices: true, MemoryModules: true,
+		},
+		ViewModes:        map[string]string{},
+		LayoutOrders:     map[string][]string{},
+		TerminalFontSize: 16,
 	}
 }
 
@@ -92,10 +79,15 @@ func defaultThemeColors() *ThemeColorsByMode {
 	}
 }
 
+func cssColor(value string) *CSSColor {
+	color := CSSColor(value)
+	return &color
+}
+
 // DefaultDocker returns Docker defaults based on the chosen base directory.
 func DefaultDocker(base string) Docker {
 	return Docker{
-		Folders: []AbsolutePath{AbsolutePath(filepathJoinClean(base, "docker"))},
+		Folders: []AbsolutePath{AbsolutePath(filepath.Join(base, "docker"))},
 	}
 }
 
@@ -133,7 +125,7 @@ func EffectiveJobSettings(jobSettings PersistedJobSettings) PersistedJobSettings
 	return jobSettings
 }
 
-// DefaultSettings composes full defaults for later expansion.
+// DefaultSettings returns defaults for the important configuration file.
 func DefaultSettings(base string) *Settings {
 	return &Settings{
 		AppSettings: DefaultAppSettings(),
@@ -141,5 +133,3 @@ func DefaultSettings(base string) *Settings {
 		Jobs:        DefaultJobSettings(),
 	}
 }
-
-func cssColor(s string) *CSSColor { c := CSSColor(s); return &c }

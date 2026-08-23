@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shirou/gopsutil/v4/cpu"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
@@ -26,6 +28,11 @@ const (
 var historyResolutions = map[apischema.MonitoringHistoryResolution]struct{}{
 	"1m": {}, "10m": {}, "20m": {}, "120m": {}, "480m": {},
 }
+
+// logicalCPUCount is injectable so history conversion tests can use a
+// deterministic CPU count while production requests retain gopsutil's
+// context-aware host query.
+var logicalCPUCount = cpu.CountsWithContext
 
 // newMetricsClient builds the HTTP client used to reach the agent's metrics
 // listener. Overridable in tests.
@@ -72,7 +79,23 @@ type memHistoryStats struct {
 // containerHistoryRecord is one container's entry inside a containers-plugin
 // history point, whose stats payload is an array of these records.
 type containerHistoryRecord struct {
-	MemMB float64 `json:"memory_mb"`
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	CPUPct float64 `json:"cpu_percent"`
+	MemMB  float64 `json:"memory_mb"`
+	// Bandwidth is [sent, received] bytes per second.
+	Bandwidth [2]uint64 `json:"bandwidth_bytes"`
+}
+
+// containerTelemetryRecord is one container's entry inside a
+// container_telemetry-plugin history point. That plugin attributes host
+// processes to containers, so it carries the block I/O the containers plugin
+// does not collect.
+type containerTelemetryRecord struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	ReadBytesPerSec  uint64 `json:"disk_read_bytes_per_second"`
+	WriteBytesPerSec uint64 `json:"disk_write_bytes_per_second"`
 }
 
 type diskIOHistoryStats struct {
@@ -142,20 +165,129 @@ func mergeDockerMemHistory(ctx context.Context, req apischema.MonitoringHistoryR
 		return
 	}
 
-	// Both plugins snapshot on the same collector tick, but rollup buckets can
-	// land a little apart, so match each memory point to the nearest container
-	// sample within one resolution step. Both series are in ascending order.
-	tolerance := resolutionStepMs(req.Resolution)
-	j := 0
+	dockerTimes := make([]int64, len(docker))
+	for i, point := range docker {
+		dockerTimes[i] = point.capturedAtMs
+	}
+	nearest := nearestTimeMatcher(dockerTimes, resolutionStepMs(req.Resolution))
 	for i := range points {
-		t := points[i].CapturedAtMs
-		for j+1 < len(docker) && absInt64(docker[j+1].capturedAtMs-t) <= absInt64(docker[j].capturedAtMs-t) {
-			j++
-		}
-		if absInt64(docker[j].capturedAtMs-t) <= tolerance {
+		if j := nearest(points[i].CapturedAtMs); j >= 0 {
 			points[i].DockerUsedGB = docker[j].usedGB
 		}
 	}
+}
+
+// nearestTimeMatcher returns a lookup over an ascending series of capture
+// timestamps. Two plugins snapshot on the same collector tick, but their
+// rollup buckets can land a little apart, so a caller walking its own
+// ascending points asks for the nearest source sample and gets -1 when none
+// falls within tolerance.
+func nearestTimeMatcher(times []int64, tolerance int64) func(int64) int {
+	j := 0
+	return func(t int64) int {
+		if len(times) == 0 {
+			return -1
+		}
+		for j+1 < len(times) && absInt64(times[j+1]-t) <= absInt64(times[j]-t) {
+			j++
+		}
+		if absInt64(times[j]-t) <= tolerance {
+			return j
+		}
+		return -1
+	}
+}
+
+// FetchContainerHistory returns per-container CPU, memory, and network history
+// from the agent's containers plugin, annotated with block I/O from its
+// container_telemetry plugin where that plugin has a nearby sample.
+func FetchContainerHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringContainerHistoryPoint, error) {
+	logicalCPUs, err := logicalCPUCount(ctx, true)
+	if err != nil {
+		return nil, fmt.Errorf("count logical CPUs for container history: %w", err)
+	}
+	if logicalCPUs <= 0 {
+		return nil, fmt.Errorf("count logical CPUs for container history: got %d", logicalCPUs)
+	}
+	cpuMultiplier := float64(logicalCPUs)
+
+	points, err := fetchHistory(ctx, "containers", req, func(item historyItem, records []containerHistoryRecord) apischema.MonitoringContainerHistoryPoint {
+		samples := make([]apischema.MonitoringContainerSample, 0, len(records))
+		for _, record := range records {
+			samples = append(samples, apischema.MonitoringContainerSample{
+				ID:              record.ID,
+				Name:            record.Name,
+				CPUPercent:      record.CPUPct * cpuMultiplier,
+				MemoryMB:        record.MemMB,
+				SentBytesPerSec: float64(record.Bandwidth[0]),
+				RecvBytesPerSec: float64(record.Bandwidth[1]),
+			})
+		}
+		return apischema.MonitoringContainerHistoryPoint{CapturedAtMs: item.CapturedAt, Containers: samples}
+	})
+	if err != nil {
+		return nil, err
+	}
+	mergeContainerDiskHistory(ctx, req, points)
+	return points, nil
+}
+
+type containerDiskHistoryPoint struct {
+	capturedAtMs int64
+	byContainer  map[string]containerTelemetryRecord
+}
+
+// mergeContainerDiskHistory annotates each container sample with the block I/O
+// captured nearest to it. Best-effort: container_telemetry is a separate
+// history plugin an operator can disable, and an agent older than v1.7 does
+// not have it at all, so failures leave the disk fields nil rather than zero.
+func mergeContainerDiskHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, points []apischema.MonitoringContainerHistoryPoint) {
+	if len(points) == 0 {
+		return
+	}
+	telemetry, err := fetchHistory(ctx, "container_telemetry", req, func(item historyItem, records []containerTelemetryRecord) containerDiskHistoryPoint {
+		byContainer := make(map[string]containerTelemetryRecord, len(records))
+		for _, record := range records {
+			byContainer[containerKey(record.ID, record.Name)] = record
+		}
+		return containerDiskHistoryPoint{capturedAtMs: item.CapturedAt, byContainer: byContainer}
+	})
+	if err != nil || len(telemetry) == 0 {
+		return
+	}
+
+	times := make([]int64, len(telemetry))
+	for i, point := range telemetry {
+		times[i] = point.capturedAtMs
+	}
+	nearest := nearestTimeMatcher(times, resolutionStepMs(req.Resolution))
+	for i := range points {
+		j := nearest(points[i].CapturedAtMs)
+		if j < 0 {
+			continue
+		}
+		for k := range points[i].Containers {
+			sample := &points[i].Containers[k]
+			record, ok := telemetry[j].byContainer[containerKey(sample.ID, sample.Name)]
+			if !ok {
+				continue
+			}
+			read := float64(record.ReadBytesPerSec)
+			write := float64(record.WriteBytesPerSec)
+			sample.ReadBytesPerSec = &read
+			sample.WriteBytesPerSec = &write
+		}
+	}
+}
+
+// containerKey identifies a container across the two plugins. Both report the
+// agent's short ID, but a record that lost its ID through an old rollup still
+// carries the name.
+func containerKey(id, name string) string {
+	if id != "" {
+		return "id:" + id
+	}
+	return "name:" + name
 }
 
 func resolutionStepMs(resolution apischema.MonitoringHistoryResolution) int64 {

@@ -31,7 +31,7 @@ func TestHandlerMapsLevelIdentifierAndAppFields(t *testing.T) {
 	}
 
 	logger := slog.New(handler)
-	logger.Warn("bridge start timeout", "session_id", "abc", "privileged", true)
+	logger.Warn("bridge start timeout", "session_id", "abc", "session_ref", "sr-safe", "privileged", true)
 
 	got := fieldMap(sender.fields)
 	if got["SYSLOG_IDENTIFIER"] != "linuxio-bridge" {
@@ -45,6 +45,9 @@ func TestHandlerMapsLevelIdentifierAndAppFields(t *testing.T) {
 	}
 	if _, ok := got["LINUXIO_SESSION_ID"]; ok {
 		t.Fatalf("session field unexpectedly present: %q", got["LINUXIO_SESSION_ID"])
+	}
+	if got["LINUXIO_SESSION_REF"] != "sr-safe" {
+		t.Fatalf("session reference = %q", got["LINUXIO_SESSION_REF"])
 	}
 	if got["LINUXIO_PRIVILEGED"] != "true" {
 		t.Fatalf("privileged field = %q", got["LINUXIO_PRIVILEGED"])

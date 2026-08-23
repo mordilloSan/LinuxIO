@@ -1,11 +1,5 @@
 version: "2"
 linters:
-  # Staticcheck 2026.1 cannot analyze Go 1.27 promoted-field literals yet.
-  # Re-enable it after golangci-lint ships Go 1.27 support.
-  # https://github.com/golangci/golangci-lint/issues/6603
-  disable:
-    - staticcheck
-
   settings:
     staticcheck:
       checks:
@@ -184,8 +178,6 @@ formatters:
       custom-order: true
       sections:
         - standard
-        # Remove when gci recognizes Go 1.27's root-level uuid package.
-        - prefix(uuid)
         - default
         - prefix(github.com/mordilloSan/LinuxIO/backend)
   enable:

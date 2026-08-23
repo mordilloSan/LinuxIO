@@ -1451,6 +1451,10 @@ func discoverOfflineStacks(ctx context.Context, username string, store *config.U
 	if err != nil {
 		return fmt.Errorf("failed to load user config: %w", err)
 	}
+	return discoverOfflineStacksInFolders(ctx, username, dockerFolders, projects)
+}
+
+func discoverOfflineStacksInFolders(ctx context.Context, username string, dockerFolders []string, projects map[string]*apischema.ComposeProject) error {
 	if len(dockerFolders) == 0 {
 		slog.Debug("no docker folders configured; skipping offline stack discovery", "component", "docker", "subsystem", "compose", "user", username)
 		return nil

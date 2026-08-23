@@ -15,7 +15,9 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	handlers := configHandlers{rt: rt}
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, apischema.AppConfig]("config.get", apischema.RetrySafe()).Handle(handlers.handleGetConfig),
+		apischema.Call[apischema.NoRequest, apischema.UIConfig]("config.get_ui", apischema.RetrySafe()).Handle(handlers.handleGetUIConfig),
 		apischema.Call[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
+		apischema.Call[apischema.ConfigUISetPayload, apischema.ConfigSetResult]("config.set_ui").Handle(handlers.handleSetUIConfig),
 	)
 }
 
@@ -35,4 +37,17 @@ func (h configHandlers) handleGetConfig(ctx context.Context, _ apischema.NoReque
 
 func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload) (apischema.ConfigSetResult, error) {
 	return SetConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store, h.rt.Session.Privileged)
+}
+
+func (h configHandlers) handleGetUIConfig(ctx context.Context, _ apischema.NoRequest) (apischema.UIConfig, error) {
+	slog.Debug("config.get_ui requested", "component", "config", "user", h.rt.Session.User.Username)
+	result, err := GetUIConfigForUser(ctx, h.rt.Session.User.Username, h.rt.Store)
+	if err != nil {
+		return apischema.UIConfig{}, err
+	}
+	return uiConfigToAPI(*result), nil
+}
+
+func (h configHandlers) handleSetUIConfig(ctx context.Context, req apischema.ConfigUISetPayload) (apischema.ConfigSetResult, error) {
+	return SetUIConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store)
 }

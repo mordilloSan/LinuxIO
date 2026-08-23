@@ -1,19 +1,19 @@
 #!/bin/bash
 # LinuxIO issue banner generator - shows access URLs at SSH login
-# Called by linuxio.socket via ExecStartPost
+# Run by linuxio-issue.service (pulled in by linuxio-webserver.socket)
 
 set -euo pipefail
 
-# Extract port from linuxio.socket unit file
+# Extract port from linuxio-webserver.socket unit file
 # Check in order: env var, /etc, /usr/lib, /lib
 if [[ -n "${SOCKET_FILE:-}" && -f "$SOCKET_FILE" ]]; then
     : # Use env var if set
-elif [[ -f "/etc/systemd/system/linuxio.socket" ]]; then
-    SOCKET_FILE="/etc/systemd/system/linuxio.socket"
-elif [[ -f "/usr/lib/systemd/system/linuxio.socket" ]]; then
-    SOCKET_FILE="/usr/lib/systemd/system/linuxio.socket"
-elif [[ -f "/lib/systemd/system/linuxio.socket" ]]; then
-    SOCKET_FILE="/lib/systemd/system/linuxio.socket"
+elif [[ -f "/etc/systemd/system/linuxio-webserver.socket" ]]; then
+    SOCKET_FILE="/etc/systemd/system/linuxio-webserver.socket"
+elif [[ -f "/usr/lib/systemd/system/linuxio-webserver.socket" ]]; then
+    SOCKET_FILE="/usr/lib/systemd/system/linuxio-webserver.socket"
+elif [[ -f "/lib/systemd/system/linuxio-webserver.socket" ]]; then
+    SOCKET_FILE="/lib/systemd/system/linuxio-webserver.socket"
 else
     SOCKET_FILE=""
 fi
@@ -41,8 +41,14 @@ URLS=()
 # Add hostname URL first
 URLS+=("https://${HOSTNAME}:${PORT}/")
 
-# Add first IPv4 address only
-FIRST_IPV4=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1 || true)
+# Add the primary IPv4 address: the source IP of the default outbound route.
+# Plain interface enumeration is unreliable — it can pick docker/libvirt
+# bridges, or WSL2's 10.255.255.254 DNS-tunneling address on lo.
+FIRST_IPV4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 || true)
+if [[ -z "$FIRST_IPV4" ]]; then
+    # No default route: fall back to the first global IPv4 on a real interface
+    FIRST_IPV4=$(ip -4 -o addr show scope global 2>/dev/null | awk '$2 !~ /^(lo|docker|virbr|br-)/ {print $4}' | cut -d/ -f1 | head -1 || true)
+fi
 if [[ -n "$FIRST_IPV4" ]]; then
     URLS+=("https://${FIRST_IPV4}:${PORT}/")
 fi
@@ -65,8 +71,9 @@ OUTPUT_FILE="${OUTPUT_FILE:-/run/linuxio/issue}"
 if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" != "-" ]]; then
     # Ensure directory exists
     mkdir -p "$(dirname "${OUTPUT_FILE}")" 2>/dev/null || true
-    # Write to file
-    echo "${OUTPUT}" > "${OUTPUT_FILE}"
+    # Write to file, padded with blank lines so every MOTD consumer
+    # (update-motd.d wrapper, /etc/motd.d symlink) renders it with spacing
+    printf '\n%s\n\n' "${OUTPUT}" > "${OUTPUT_FILE}"
 else
     # Print to stdout for manual testing
     echo "${OUTPUT}"

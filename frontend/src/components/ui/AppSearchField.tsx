@@ -1,17 +1,12 @@
-import { forwardRef } from "react";
-
 import "./app-search-field.css";
 import AppTextField, { type AppTextFieldProps } from "./AppTextField";
 
-const AppSearchField = forwardRef<
-  HTMLInputElement | HTMLTextAreaElement,
-  AppTextFieldProps
->((props, ref) => {
+const AppSearchField = ({ ref, ...props }: AppTextFieldProps) => {
   const { className, size = "small", ...rest } = props;
   const rootClass = ["app-search-field", className].filter(Boolean).join(" ");
 
   return <AppTextField className={rootClass} ref={ref} size={size} {...rest} />;
-});
+};
 
 AppSearchField.displayName = "AppSearchField";
 

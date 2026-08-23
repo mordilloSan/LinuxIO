@@ -123,7 +123,7 @@ const DashboardPage = () => {
   );
 
   const visibleCards = useMemo(() => {
-    const hiddenSet = new Set(hiddenCards ?? []);
+    const hiddenSet = new Set(hiddenCards);
     return availableCards.filter((card) => !hiddenSet.has(card.id));
   }, [availableCards, hiddenCards]);
 
@@ -135,10 +135,9 @@ const DashboardPage = () => {
 
   const toggleCard = useCallback(
     (id: string) => {
-      const current = hiddenCards ?? [];
-      const next = current.includes(id)
-        ? current.filter((c) => c !== id)
-        : [...current, id];
+      const next = hiddenCards.includes(id)
+        ? hiddenCards.filter((card) => card !== id)
+        : [...hiddenCards, id];
       setHiddenCards(next);
     },
     [hiddenCards, setHiddenCards],

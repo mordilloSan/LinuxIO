@@ -14,10 +14,14 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  CACHE_TTL_MS,
   ensureLoaderRequestReady,
   getStreamMux,
+  linuxio,
   subscribeRequestAvailability,
+  type UIConfig,
 } from "@/api";
+import { scopedConfigQueryKey } from "@/api/config-query";
 import { subscribeLiveUpdateBlocked } from "@/contexts/UpdateContext";
 import type { LinuxIORouterContext } from "@/routes/-auth";
 
@@ -129,6 +133,31 @@ export function startRouteQueryPrefetches(
       throw error;
     }
   }
+}
+
+/**
+ * Read the backend-owned UI snapshot for route decisions. The authenticated
+ * provider consumes the same user-scoped cache entry, so the initial load is
+ * one request and no frontend defaults are needed in a loader.
+ */
+export async function loadRouteUIConfig(
+  context: LinuxIORouterContext,
+  signal?: AbortSignal,
+): Promise<UIConfig> {
+  throwIfAborted(signal);
+  const userId = context.auth.user?.id ?? "anonymous";
+  const queryKey = scopedConfigQueryKey(linuxio.config.get_ui.queryKey, userId);
+  const cached = context.queryClient.getQueryData<UIConfig>(queryKey);
+  if (cached) return cached;
+
+  return rejectOnAbort(
+    context.queryClient.fetchQuery({
+      ...linuxio.config.get_ui,
+      queryKey,
+      staleTime: CACHE_TTL_MS.NONE,
+    }),
+    signal,
+  );
 }
 
 /** Prepare the RPC transport for stream-only routes such as Terminal. */

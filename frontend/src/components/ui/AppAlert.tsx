@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
+import { type HTMLAttributes, type ReactNode, type Ref } from "react";
 
 import "./app-alert.css";
 
@@ -18,6 +18,7 @@ export interface AppAlertProps extends Omit<
 > {
   action?: ReactNode;
   onClose?: () => void;
+  ref?: Ref<HTMLDivElement>;
   severity?: AlertSeverity;
 }
 
@@ -25,39 +26,42 @@ export const AppAlertTitle = ({ children }: { children: ReactNode }) => (
   <div className="app-alert__title">{children}</div>
 );
 
-const AppAlert = forwardRef<HTMLDivElement, AppAlertProps>(
-  (
-    { severity = "info", onClose, action, children, className, ...rest },
-    ref,
-  ) => {
-    const cls = ["app-alert", `app-alert--${severity}`, className]
-      .filter(Boolean)
-      .join(" ");
+const AppAlert = ({
+  ref,
+  severity = "info",
+  onClose,
+  action,
+  children,
+  className,
+  ...rest
+}: AppAlertProps) => {
+  const cls = ["app-alert", `app-alert--${severity}`, className]
+    .filter(Boolean)
+    .join(" ");
 
-    return (
-      <div className={cls} ref={ref} role="alert" {...rest}>
-        <Icon
-          className="app-alert__icon"
-          height={22}
-          icon={SEVERITY_ICONS[severity]}
-          width={22}
-        />
-        <div className="app-alert__message">{children}</div>
-        {action && <div className="app-alert__action">{action}</div>}
-        {onClose && (
-          <button
-            aria-label="Close"
-            className="app-alert__close"
-            onClick={onClose}
-            type="button"
-          >
-            <Icon height={18} icon="mdi:close" width={18} />
-          </button>
-        )}
-      </div>
-    );
-  },
-);
+  return (
+    <div className={cls} ref={ref} role="alert" {...rest}>
+      <Icon
+        className="app-alert__icon"
+        height={22}
+        icon={SEVERITY_ICONS[severity]}
+        width={22}
+      />
+      <div className="app-alert__message">{children}</div>
+      {action && <div className="app-alert__action">{action}</div>}
+      {onClose && (
+        <button
+          aria-label="Close"
+          className="app-alert__close"
+          onClick={onClose}
+          type="button"
+        >
+          <Icon height={18} icon="mdi:close" width={18} />
+        </button>
+      )}
+    </div>
+  );
+};
 
 AppAlert.displayName = "AppAlert";
 

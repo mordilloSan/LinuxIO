@@ -403,6 +403,17 @@ const isExpandedRecord = (value: unknown): value is Record<string, true> =>
   !Array.isArray(value) &&
   Object.values(value).every((entry) => entry === true);
 
+/**
+ * Stand-in for a missing row list. A Go handler that accumulates into a nil
+ * slice serializes as JSON `null` even where the generated contract says the
+ * result is an array, so a table can be handed null despite its prop type.
+ * TanStack Table reads `data.length` unguarded, which would throw and take the
+ * whole widget down to its error boundary — an empty table is the honest
+ * rendering instead. Shared and never mutated, so the table sees one stable
+ * identity rather than a new array every render.
+ */
+const EMPTY_TABLE_ROWS: never[] = [];
+
 function persistableExpanded(expanded: ExpandedState): Record<string, true> {
   if (expanded === true) return {};
   const next: Record<string, true> = {};
@@ -414,7 +425,7 @@ function persistableExpanded(expanded: ExpandedState): Record<string, true> {
 
 export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
   columns: AppDataTableColumnDef<TData>[];
-  data: TData[];
+  data: TData[] | null | undefined;
   dnd?: TDnd;
   enableSorting: boolean;
   getRowCanExpand?: (row: Row<AppTableFeatures, TData>) => boolean;
@@ -517,7 +528,7 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
     features: appTableFeatures,
     autoResetExpanded: false,
     columns,
-    data,
+    data: data ?? EMPTY_TABLE_ROWS,
     enableSorting,
     enableSortingRemoval: false,
     getRowCanExpand: (row) =>

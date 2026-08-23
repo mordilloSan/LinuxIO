@@ -141,7 +141,7 @@ func forEachListedUnitLimited(ctx context.Context, entries []listedUnit, fn func
 }
 
 func getStringProperty(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (string, bool) {
-	str, err := dbusclient.GetProperty[string](session.Context(), unit, iface, property)
+	str, err := dbusclient.GetProperty[string](session, unit, iface, property)
 	if err != nil {
 		return "", false
 	}
@@ -149,7 +149,7 @@ func getStringProperty(session dbusclient.SystemSession, unit dbusclient.BusObje
 }
 
 func getUint64Property(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (uint64, bool) {
-	n, err := dbusclient.GetProperty[uint64](session.Context(), unit, iface, property)
+	n, err := dbusclient.GetProperty[uint64](session, unit, iface, property)
 	if err != nil {
 		return 0, false
 	}
@@ -157,7 +157,7 @@ func getUint64Property(session dbusclient.SystemSession, unit dbusclient.BusObje
 }
 
 func getUint32Property(session dbusclient.SystemSession, unit dbusclient.BusObject, iface, property string) (uint32, bool) {
-	n, err := dbusclient.GetProperty[uint32](session.Context(), unit, iface, property)
+	n, err := dbusclient.GetProperty[uint32](session, unit, iface, property)
 	if err != nil {
 		return 0, false
 	}

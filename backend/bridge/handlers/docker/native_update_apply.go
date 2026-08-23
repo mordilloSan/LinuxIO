@@ -193,7 +193,7 @@ func validateComposeServiceScopes(
 	}
 	for _, service := range services {
 		if replicas[service] > 1 {
-			return fmt.Errorf("Compose service %q has %d replicas and cannot be updated safely as a single container", service, replicas[service])
+			return fmt.Errorf("compose service %q has %d replicas and cannot be updated safely as a single container", service, replicas[service])
 		}
 	}
 	return nil
@@ -233,7 +233,7 @@ func composeTargetForContainer(
 	}
 	service := strings.TrimSpace(labels["com.docker.compose.service"])
 	if service == "" {
-		return composeProjectTarget{}, "", true, fmt.Errorf("Compose-managed container %q has no service label", strings.TrimPrefix(inspect.Name, "/"))
+		return composeProjectTarget{}, "", true, fmt.Errorf("compose-managed container %q has no service label", strings.TrimPrefix(inspect.Name, "/"))
 	}
 
 	workingDir := strings.TrimSpace(labels["com.docker.compose.project.working_dir"])
@@ -283,7 +283,7 @@ func resolveComposeUpdateConfigFiles(
 		configFiles = inferComposeFilesFromWorkingDir(ctx, cli, workingDir)
 	}
 	if len(configFiles) == 0 {
-		return nil, fmt.Errorf("Compose project %q has no accessible config files", projectName)
+		return nil, fmt.Errorf("compose project %q has no accessible config files", projectName)
 	}
 	if len(rawConfigFiles) > 0 && len(configFiles) != len(rawConfigFiles) {
 		return nil, fmt.Errorf("not all config files for Compose project %q are accessible", projectName)
@@ -294,7 +294,7 @@ func resolveComposeUpdateConfigFiles(
 			return nil, fmt.Errorf("stat Compose config %q: %w", configFile, err)
 		}
 		if !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("Compose config %q is not a regular file", configFile)
+			return nil, fmt.Errorf("compose config %q is not a regular file", configFile)
 		}
 	}
 	return configFiles, nil
@@ -319,7 +319,7 @@ func resolveComposeUpdateWorkingDir(
 		return "", fmt.Errorf("stat Compose working directory %q: %w", workingDir, err)
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("Compose working directory %q is not a directory", workingDir)
+		return "", fmt.Errorf("compose working directory %q is not a directory", workingDir)
 	}
 	return workingDir, nil
 }
@@ -350,7 +350,7 @@ func resolveComposeUpdateEnvironmentFiles(
 			return nil, fmt.Errorf("stat Compose environment file %q: %w", environmentFile, err)
 		}
 		if !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("Compose environment file %q is not a regular file", environmentFile)
+			return nil, fmt.Errorf("compose environment file %q is not a regular file", environmentFile)
 		}
 	}
 	return environmentFiles, nil

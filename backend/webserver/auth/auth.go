@@ -93,7 +93,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 			"subsystem", "login",
 			"user", req.Username,
 			"remote_host", remoteHost,
-			"session_id", sessionID,
+			"session_ref", session.DiagnosticRef(sessionID),
 			"error", err)
 		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
 		return

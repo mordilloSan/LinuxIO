@@ -211,7 +211,10 @@ func formatBytesIEC(value string) string {
 func parseDMIMemory(output string) []apischema.MemoryModule {
 	// Split on "Memory Device" sections (skip "Physical Memory Array" blocks)
 	sections := strings.Split(output, "Memory Device")
-	var modules []apischema.MemoryModule
+	// Stay non-nil: the route contract is MemoryModule[], and a nil slice
+	// marshals to JSON null, which the memory table cannot render. Hosts
+	// without SMBIOS memory records (WSL, some VMs) hit exactly that path.
+	modules := make([]apischema.MemoryModule, 0, len(sections)-1)
 
 	for _, section := range sections[1:] { // skip preamble before first "Memory Device"
 		fields := parseDMIFields(section)

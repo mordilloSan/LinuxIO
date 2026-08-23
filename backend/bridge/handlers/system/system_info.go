@@ -3,7 +3,9 @@ package system
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
+	"github.com/jaypipes/ghw"
 	"github.com/jaypipes/ghw/pkg/bios"
 	"github.com/jaypipes/ghw/pkg/chassis"
 	"github.com/jaypipes/ghw/pkg/product"
@@ -27,19 +29,20 @@ func FetchCPUSummary(ctx context.Context) string {
 
 func FetchSystemInfo(ctx context.Context) (*apischema.SystemInfo, error) {
 	info := &apischema.SystemInfo{}
+	ghwLogger := slog.Default()
 
 	// ghw has no context support; check ctx before each hardware metadata read.
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if ch, err := chassis.New(); err == nil {
+	if ch, err := chassis.New(ghw.WithLogger(ghwLogger)); err == nil {
 		info.ChassisType = ch.TypeDescription
 	}
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if pr, err := product.New(); err == nil {
+	if pr, err := product.New(ghw.WithLogger(ghwLogger)); err == nil {
 		info.ProductName = pr.Name
 		info.ProductVersion = pr.Version
 		info.ProductVendor = pr.Vendor
@@ -48,7 +51,7 @@ func FetchSystemInfo(ctx context.Context) (*apischema.SystemInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if bi, err := bios.New(); err == nil {
+	if bi, err := bios.New(ghw.WithLogger(ghwLogger)); err == nil {
 		info.BIOSVendor = bi.Vendor
 		info.BIOSVersion = bi.Version
 		info.BIOSDate = bi.Date

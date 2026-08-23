@@ -7,9 +7,9 @@ import { requireAccess } from "@/routes/-auth";
 import {
   type LoaderQueryOptions,
   loadRouteTransport,
+  loadRouteUIConfig,
   startRouteQueryPrefetches,
 } from "@/routes/-loader";
-import { readConfigCache } from "@/utils/configCache";
 
 import HardwarePage from "./-components/HardwarePage";
 import {
@@ -17,7 +17,6 @@ import {
   hardwareSensorQueryOptions,
   hardwareStableQueryOptions,
 } from "./-components/hardwareQueryOptions";
-import { resolvedHardwareSections } from "./-components/hardwareSections";
 
 const access = {
   requiredCapabilities: ["lmSensorsAvailable"],
@@ -27,42 +26,32 @@ export const Route = createFileRoute("/_authenticated/hardware")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: async ({ abortController, context, preload }) => {
     await loadRouteTransport(context, abortController.signal);
+    const ui = await loadRouteUIConfig(context, abortController.signal);
+    const sections = ui.hardwareSections;
 
-    const cachedConfig = readConfigCache(context.auth.user?.id);
-    if (!cachedConfig) return;
-
-    const sections = resolvedHardwareSections(
-      cachedConfig.appSettings?.hardwareSections,
-    );
     const queries: LoaderQueryOptions[] = [];
-    if (sections.sensors) {
+    if (sections.sensors)
       queries.push({
         ...linuxio.system.get_sensor_info,
         ...hardwareSensorQueryOptions,
       });
-    }
-    if (sections.pciDevices) {
+    if (sections.pciDevices)
       queries.push({
         ...linuxio.system.get_pci_devices,
         ...hardwareStableQueryOptions,
       });
-    }
-    if (sections.memoryModules) {
+    if (sections.memoryModules)
       queries.push({
         ...linuxio.system.get_memory_modules,
         ...hardwareStableQueryOptions,
       });
-    }
     if (sections.systemInfo) {
       queries.push(
         {
           ...linuxio.system.get_motherboard_info,
           ...hardwareStableQueryOptions,
         },
-        {
-          ...linuxio.system.get_system_info,
-          ...hardwareStableQueryOptions,
-        },
+        { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
         { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
         { ...linuxio.system.get_gpu_info, ...hardwareGpuQueryOptions },
       );

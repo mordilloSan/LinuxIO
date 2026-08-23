@@ -10,7 +10,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useConfig, useConfigValue } from "@/hooks/useConfig";
+import { useConfigValue } from "@/hooks/useConfig";
 import { buildAppTheme, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
@@ -43,21 +43,22 @@ interface ColorEntry {
 
 function ThemeColorsSection() {
   const theme = useAppTheme();
-  const { config } = useConfig();
+  const [themeMode] = useConfigValue("theme");
+  const [primaryColor] = useConfigValue("primaryColor");
   const [themeColors, setThemeColors] = useConfigValue("themeColors");
 
   const [editMode, setEditMode] = useState<"light" | "dark">(
-    config.appSettings.theme === "DARK" ? "dark" : "light",
+    themeMode === "DARK" ? "dark" : "light",
   );
 
   const editTheme = useMemo(
     () =>
       buildAppTheme(
         editMode === "dark" ? "DARK" : "LIGHT",
-        config.appSettings.primaryColor,
+        primaryColor,
         themeColors,
       ),
-    [editMode, config.appSettings.primaryColor, themeColors],
+    [editMode, primaryColor, themeColors],
   );
 
   const entries: ColorEntry[] = useMemo(

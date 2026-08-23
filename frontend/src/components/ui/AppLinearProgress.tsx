@@ -1,5 +1,4 @@
-import type { HTMLAttributes } from "react";
-import { forwardRef, type CSSProperties } from "react";
+import type { CSSProperties, HTMLAttributes, Ref } from "react";
 
 import "./app-linear-progress.css";
 
@@ -7,55 +6,50 @@ type ProgressColor = "primary" | "error" | "warning" | "success";
 
 export interface AppLinearProgressProps extends HTMLAttributes<HTMLDivElement> {
   color?: ProgressColor;
+  ref?: Ref<HTMLDivElement>;
   value?: number;
   variant?: "determinate" | "indeterminate";
 }
 
-const AppLinearProgress = forwardRef<HTMLDivElement, AppLinearProgressProps>(
-  (
-    {
-      variant = "indeterminate",
-      value = 0,
-      color = "primary",
-      className,
-      ...rest
-    },
-    ref,
-  ) => {
-    const cls = [
-      "app-linear-progress",
-      `app-linear-progress--${variant}`,
-      color !== "primary" && `app-linear-progress--${color}`,
-      className,
-    ]
-      .filter(Boolean)
-      .join(" ");
+const AppLinearProgress = ({
+  ref,
+  variant = "indeterminate",
+  value = 0,
+  color = "primary",
+  className,
+  ...rest
+}: AppLinearProgressProps) => {
+  const cls = [
+    "app-linear-progress",
+    `app-linear-progress--${variant}`,
+    color !== "primary" && `app-linear-progress--${color}`,
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-    const barStyle: CSSProperties | undefined =
-      variant === "determinate"
-        ? { transform: `translateX(${value - 100}%)` }
-        : undefined;
+  const barStyle: CSSProperties | undefined =
+    variant === "determinate"
+      ? { transform: `translateX(${value - 100}%)` }
+      : undefined;
 
-    return (
-      <div
-        aria-valuemax={100}
-        aria-valuemin={0}
-        aria-valuenow={
-          variant === "determinate" ? Math.round(value) : undefined
-        }
-        className={cls}
-        ref={ref}
-        role="progressbar"
-        {...rest}
-      >
-        <span className="app-linear-progress__bar" style={barStyle} />
-        {variant === "indeterminate" && (
-          <span className="app-linear-progress__bar app-linear-progress__bar2" />
-        )}
-      </div>
-    );
-  },
-);
+  return (
+    <div
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={variant === "determinate" ? Math.round(value) : undefined}
+      className={cls}
+      ref={ref}
+      role="progressbar"
+      {...rest}
+    >
+      <span className="app-linear-progress__bar" style={barStyle} />
+      {variant === "indeterminate" && (
+        <span className="app-linear-progress__bar app-linear-progress__bar2" />
+      )}
+    </div>
+  );
+};
 
 AppLinearProgress.displayName = "AppLinearProgress";
 

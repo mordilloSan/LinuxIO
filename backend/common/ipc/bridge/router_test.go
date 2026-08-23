@@ -1,11 +1,13 @@
 package bridge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,7 +15,40 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
+
+func dispatchResult(t *testing.T, router *Router, req Request) (relay.ResultFrame, error) {
+	t.Helper()
+	server, client := net.Pipe()
+	defer client.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- router.Dispatch(context.Background(), server, req)
+	}()
+
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(result): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamResult {
+		t.Fatalf("result opcode = 0x%02x, want OpStreamResult", frame.Opcode)
+	}
+	var result relay.ResultFrame
+	if unmarshalErr := json.Unmarshal(frame.Payload, &result); unmarshalErr != nil {
+		t.Fatalf("json.Unmarshal(result): %v", unmarshalErr)
+	}
+	closeFrame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if closeFrame.Opcode != relay.OpStreamClose {
+		t.Fatalf("close opcode = 0x%02x, want OpStreamClose", closeFrame.Opcode)
+	}
+	return result, <-errCh
+}
 
 func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 	registry := NewTaskService()
@@ -193,16 +228,125 @@ func TestRouterOwnerStartRateLimitStillEnforced(t *testing.T) {
 		Policy: policy,
 		Runner: func(context.Context, *Task, any) (any, error) { return nil, nil },
 	}
+	owner := TaskOwner{SessionID: "0123456789abcdef0123456789abcdef"}
 
 	for i := range 2 {
-		task, _, err := router.startOrQueueTask(route, Request{Route: route.Name})
+		task, _, err := router.startOrQueueTask(route, Request{Route: route.Name, Owner: owner})
 		if err != nil {
 			t.Fatalf("start %d: %v", i, err)
 		}
 		<-task.Done()
 	}
-	if _, _, err := router.startOrQueueTask(route, Request{Route: route.Name}); !errors.Is(err, ErrRateLimited) {
+	_, _, err := router.startOrQueueTask(route, Request{Route: route.Name, Owner: owner})
+	if !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("third start error = %v, want ErrRateLimited", err)
+	}
+	if strings.Contains(err.Error(), owner.SessionID) {
+		t.Fatalf("rate limit error contains session credential: %q", err)
+	}
+	if !strings.Contains(err.Error(), route.Name) {
+		t.Fatalf("rate limit error = %q, want safe route context", err)
+	}
+}
+
+func TestRouterRateLimitResultDoesNotExposeSessionCredential(t *testing.T) {
+	const credential = "0123456789abcdef0123456789abcdef"
+	router := NewRouter(NewTaskService())
+	policy := TaskDefault
+	policy.StartRatePerMinuteOwner = 1
+	router.TaskRunner("test.rate.response", func(context.Context, *Task, any) (any, error) {
+		return nil, nil
+	}, policy)
+	req := Request{
+		Route: "test.rate.response",
+		Session: &session.Session{
+			SessionID: credential,
+			User:      session.User{Username: "alice", UID: 1000},
+		},
+	}
+
+	if result, err := dispatchResult(t, router, req); err != nil || result.Status != "ok" {
+		t.Fatalf("first dispatch = %#v, %v; want successful task start", result, err)
+	}
+	result, err := dispatchResult(t, router, req)
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("second dispatch error = %v, want ErrRateLimited", err)
+	}
+	if result.Status != "error" {
+		t.Fatalf("result status = %q, want error", result.Status)
+	}
+	if strings.Contains(result.Error, credential) {
+		t.Fatalf("client error contains session credential: %q", result.Error)
+	}
+	if !strings.Contains(result.Error, req.Route) {
+		t.Fatalf("client error = %q, want safe route context", result.Error)
+	}
+}
+
+func TestRouterDoesNotLabelUnknownClientRoute(t *testing.T) {
+	const credential = "feedfacefeedfacefeedfacefeedface"
+	router := NewRouter(NewTaskService())
+	server, client := net.Pipe()
+	defer client.Close()
+
+	dispatched := make(chan struct{})
+	release := make(chan struct{})
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		err := router.Dispatch(context.Background(), server, Request{Route: credential})
+		close(dispatched)
+		<-release
+		errCh <- err
+	}()
+
+	if _, err := relay.ReadRelayFrame(client); err != nil {
+		t.Fatalf("ReadRelayFrame(result): %v", err)
+	}
+	if _, err := relay.ReadRelayFrame(client); err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	<-dispatched
+
+	var dump bytes.Buffer
+	if err := pprof.Lookup("goroutine").WriteTo(&dump, 2); err != nil {
+		close(release)
+		t.Fatalf("dump goroutines: %v", err)
+	}
+	if strings.Contains(dump.String(), credential) {
+		close(release)
+		t.Fatalf("traceback contains client-controlled unknown route:\n%s", dump.String())
+	}
+	close(release)
+	if err := <-errCh; !errors.Is(err, ErrRouteNotFound) {
+		t.Fatalf("Dispatch error = %v, want ErrRouteNotFound", err)
+	}
+}
+
+func TestRouterLabelsRegisteredRoute(t *testing.T) {
+	const routeName = "test.labeled.route"
+	router := NewRouter(NewTaskService())
+	gotRoute := make(chan string, 1)
+	router.Call(routeName, func(ctx context.Context, _ Request) (any, error) {
+		pprof.ForLabels(ctx, func(key, value string) bool {
+			if key == "route" {
+				gotRoute <- value
+			}
+			return true
+		})
+		return nil, nil
+	})
+
+	if result, err := dispatchResult(t, router, Request{Route: routeName}); err != nil || result.Status != "ok" {
+		t.Fatalf("Dispatch = %#v, %v; want success", result, err)
+	}
+	select {
+	case got := <-gotRoute:
+		if got != routeName {
+			t.Fatalf("route label = %q, want %q", got, routeName)
+		}
+	default:
+		t.Fatal("registered handler context has no route label")
 	}
 }
 

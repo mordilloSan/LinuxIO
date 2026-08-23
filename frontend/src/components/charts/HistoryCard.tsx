@@ -120,14 +120,17 @@ export const useHistoryTimestampFormatter = (range: HistoryRange) =>
 export const RangeSelect = ({
   value,
   onChange,
+  ariaLabel,
 }: {
   value: HistoryRangeId;
   onChange: (id: HistoryRangeId) => void;
+  ariaLabel?: string;
 }) => {
   const theme = useAppTheme();
 
   return (
     <AppSelect
+      aria-label={ariaLabel}
       className="history-range-select"
       disableUnderline
       onChange={(event) => onChange(event.target.value as HistoryRangeId)}

@@ -115,34 +115,19 @@ describe("targeted route query ownership", () => {
     for (const route of [dashboardRoute, hardwareRoute]) {
       expect(route).toContain("loadRouteTransport");
       expect(route).toContain("startRouteQueryPrefetches");
-      expect(route).toContain("readConfigCache");
+      expect(route).not.toContain("configCache");
+      expect(route).not.toContain("get_ui");
       expect(route).not.toContain("loadRouteQueries");
     }
-    expect(
-      [...dashboardRoute.matchAll(/if \(visible\("([^"]+)"\)\)/g)].map(
-        (match) => match[1],
-      ),
-    ).toEqual([
-      "overview",
-      "system",
-      "cpu",
-      "memory",
-      "nic",
-      "fs",
-      "mb",
-      "gpu",
-      "drive",
-    ]);
-    expect(dashboardRoute).toContain(
-      'visible("docker") && context.access.dockerAvailable === true',
-    );
+    expect(dashboardRoute).toContain("linuxio.system.get_host_info");
+    expect(dashboardRoute).toContain("linuxio.system.get_health_summary");
+    expect(dashboardRoute).toContain("context.access.dockerAvailable === true");
     expect(dashboardRoute).not.toContain(".queryOptions(");
     expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(16);
-    expect(
-      [...hardwareRoute.matchAll(/if \(sections\.([^)]+)\)/g)].map(
-        (match) => match[1],
-      ),
-    ).toEqual(["sensors", "pciDevices", "memoryModules", "systemInfo"]);
+    expect(hardwareRoute).toContain("sections.sensors");
+    expect(hardwareRoute).toContain("sections.systemInfo");
+    expect(hardwareRoute).toContain("sections.pciDevices");
+    expect(hardwareRoute).toContain("sections.memoryModules");
     expect(hardwareRoute).not.toContain(".queryOptions(");
     expect(hardwareRoute.match(/linuxio\./g)).toHaveLength(7);
     expect(dashboardPage).toContain("<Suspense");

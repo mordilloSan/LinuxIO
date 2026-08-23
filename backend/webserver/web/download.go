@@ -117,7 +117,7 @@ func serveNativeDownload(
 	}
 
 	if err := streamNativeDownload(w, r, stream); err != nil {
-		slog.Debug("native download stream ended", "route", route, "session_id", sess.SessionID, "error", err)
+		slog.Debug("native download stream ended", "route", route, "session_ref", session.DiagnosticRef(sess.SessionID), "error", err)
 	}
 }
 

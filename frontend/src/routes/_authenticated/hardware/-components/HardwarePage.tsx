@@ -35,13 +35,11 @@ import {
   hardwareSensorQueryOptions,
   hardwareStableQueryOptions,
 } from "./hardwareQueryOptions";
-import {
-  defaultHardwareSections,
-  resolvedHardwareSections,
-} from "./hardwareSections";
 
-export const selectVisibleSensorGroupIdentities = (groups: SensorGroup[]) =>
-  groups.flatMap((group, sourceIndex) => {
+export const selectVisibleSensorGroupIdentities = (
+  groups: SensorGroup[] | null | undefined,
+) =>
+  (groups ?? []).flatMap((group, sourceIndex) => {
     const visibleReadingCount = group.readings.filter(
       isPrimarySensorReading,
     ).length;
@@ -182,7 +180,7 @@ function MemoryModulesTable() {
         ariaLabel="Memory modules"
         columns={memoryColumns}
         data={memoryModules}
-        emptyMessage="No memory module data available. Ensure dmidecode is installed."
+        emptyMessage="No memory module inventory reported. WSL and some VMs expose no DMI/SMBIOS memory records; on bare metal, ensure dmidecode is installed."
         fillAvailable={false}
         getRowId={(module, index) => `${module.id}-${index}`}
         maxHeight={280}
@@ -255,8 +253,7 @@ const HardwarePage = () => {
   });
 
   // ── section collapse state ──
-  const [hwSections, setHwSections] = useConfigValue("hardwareSections");
-  const sections = resolvedHardwareSections(hwSections);
+  const [sections, setHwSections] = useConfigValue("hardwareSections");
   const toggleSection = useCallback(
     (
       key:
@@ -269,8 +266,7 @@ const HardwarePage = () => {
         | "memoryModules",
     ) =>
       setHwSections((prev) => {
-        const cur = { ...defaultHardwareSections, ...(prev ?? {}) };
-        return { ...cur, [key]: !cur[key] };
+        return { ...prev, [key]: !prev[key] };
       }),
     [setHwSections],
   );

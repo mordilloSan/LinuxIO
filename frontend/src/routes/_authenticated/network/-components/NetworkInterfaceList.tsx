@@ -62,6 +62,21 @@ export const selectNetworkInterfaceIdentities = (
 /** Live sampling cadence, matching the dashboard network chart. */
 const SAMPLE_INTERVAL_MS = 1000;
 
+/* The detail view's upper row of summary cards. A floor rather than a fixed
+   height: the statistics card is the tallest of the three at its natural size
+   and comes in just under this, so the row buys the editor and the live chart
+   a little room without capping a card whose content runs longer — the manual
+   IPv4 form, or a stat value that wraps in a narrow column. */
+const DETAIL_SUMMARY_ROW_MIN_HEIGHT = 300;
+
+/* The detail view's lower row: traffic history beside the interface journal,
+   half the width each. Both cards are pinned to this one row height rather
+   than sized by their content, so the chart and the log viewport keep a shared
+   baseline as log lines arrive and as the history range changes. Taller than
+   `cardHeight` because a multi-hour chart and a log tail both need the room
+   the upper row of summary cards does not. */
+const DETAIL_HISTORY_ROW_HEIGHT = 320;
+
 const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
   const theme = useAppTheme();
   const queryClient = useQueryClient();
@@ -308,7 +323,11 @@ const NetworkInterfaceList = () => {
           // `align-content: stretch` would hand that spare height to the single
           // auto row — inflating every `height: 100%` card to the full page.
           // Packing the row at the start keeps the cards content-tall.
-          style={{ alignContent: "start", gap: DETAIL_PANEL_GAP }}
+          style={{
+            alignContent: "start",
+            gap: DETAIL_PANEL_GAP,
+            gridAutoRows: `minmax(${DETAIL_SUMMARY_ROW_MIN_HEIGHT}px, auto)`,
+          }}
           transition={{
             duration: slowTransitionDurationSeconds,
             delay: 0.04,
@@ -330,17 +349,21 @@ const NetworkInterfaceList = () => {
           component={motion.div}
           container
           initial={{ opacity: 0, y: 18 }}
-          style={{ alignContent: "start", gap: DETAIL_PANEL_GAP }}
+          style={{
+            alignContent: "start",
+            gap: DETAIL_PANEL_GAP,
+            gridAutoRows: DETAIL_HISTORY_ROW_HEIGHT,
+          }}
           transition={{
             duration: slowTransitionDurationSeconds,
             delay: 0.12,
             ease: EASING_STANDARD,
           }}
         >
-          <AppGrid size={{ xs: 12, md: 8 }}>
+          <AppGrid size={{ xs: 12, md: 6 }}>
             <NetworkTrafficHistoryCard name={selectedIface.name} />
           </AppGrid>
-          <AppGrid size={{ xs: 12, md: 4 }}>
+          <AppGrid size={{ xs: 12, md: 6 }}>
             <NetworkInterfaceLogsCard name={selectedIface.name} />
           </AppGrid>
         </AppGrid>

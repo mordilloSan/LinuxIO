@@ -14,6 +14,25 @@ import (
 // survives a crash. The destination is validated upfront; refusing to clobber
 // symlinks, directories, or special files.
 func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
+	return writeFileAtomic(path, data, mode, nil)
+}
+
+// WriteFileAtomicOwned writes data to path atomically and assigns uid/gid to
+// the temporary inode before any data is written. The ownership therefore
+// follows the inode through the final rename.
+func WriteFileAtomicOwned(path string, data []byte, mode fs.FileMode, uid, gid int) error {
+	if err := validateOwnership(uid, gid); err != nil {
+		return fmt.Errorf("validate file ownership: %w", err)
+	}
+	return writeFileAtomic(path, data, mode, &fileOwnership{uid: uid, gid: gid})
+}
+
+type fileOwnership struct {
+	uid int
+	gid int
+}
+
+func writeFileAtomic(path string, data []byte, mode fs.FileMode, ownership *fileOwnership) error {
 	if err := validateDestination(path); err != nil {
 		return err
 	}
@@ -27,6 +46,12 @@ func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
 	}
 	tmp := f.Name()
 	defer os.Remove(tmp)
+	if ownership != nil {
+		if err := f.Chown(ownership.uid, ownership.gid); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("chown temp %q to %d:%d: %w", tmp, ownership.uid, ownership.gid, err)
+		}
+	}
 	if _, err := f.Write(data); err != nil {
 		f.Close()
 		return fmt.Errorf("write temp %q: %w", tmp, err)
@@ -46,6 +71,16 @@ func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
 		return fmt.Errorf("rename %q to %q: %w", tmp, path, err)
 	}
 	return fsyncDir(dir)
+}
+
+func validateOwnership(uid, gid int) error {
+	if uid < 0 {
+		return fmt.Errorf("uid %d is invalid: must be non-negative", uid)
+	}
+	if gid < 0 {
+		return fmt.Errorf("gid %d is invalid: must be non-negative", gid)
+	}
+	return nil
 }
 
 // validateDestination refuses to write to anything but a regular file (or a

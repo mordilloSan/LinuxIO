@@ -19,6 +19,15 @@ func GetConfigForUser(ctx context.Context, username string, store *bridgeconfig.
 	return cfg, nil
 }
 
+func GetUIConfigForUser(ctx context.Context, username string, store *bridgeconfig.UserStore) (*bridgeconfig.UIPreferences, error) {
+	ui, uiPath, err := bridgeconfig.UISnapshotForUser(ctx, username, store)
+	if err != nil {
+		return nil, fmt.Errorf("load UI config: %w", err)
+	}
+	slog.Debug("loaded user UI config", "component", "config", "user", username, "path", uiPath)
+	return ui, nil
+}
+
 func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, username string, store *bridgeconfig.UserStore, privileged bool) (apischema.ConfigSetResult, error) {
 	var syncDockerMountOrdering bool
 	updated, cfgPath, err := bridgeconfig.UpdateForUser(ctx, username, store, func(cfg *bridgeconfig.Settings) error {
@@ -41,6 +50,19 @@ func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, usern
 	}
 	slog.Info("user config updated", "component", "config", "user", username, "path", cfgPath)
 	return apischema.ConfigSetResult{Message: "config updated", Path: cfgPath}, nil
+}
+
+func SetUIConfigForUser(ctx context.Context, req apischema.ConfigUISetPayload, username string, store *bridgeconfig.UserStore) (apischema.ConfigSetResult, error) {
+	ui := bridgeconfig.DefaultUIPreferences()
+	if err := applyUISettingsUpdate(&ui, &req); err != nil {
+		return apischema.ConfigSetResult{}, fmt.Errorf("update UI config: %w", err)
+	}
+	_, uiPath, err := bridgeconfig.ReplaceUIForUser(ctx, username, store, ui)
+	if err != nil {
+		return apischema.ConfigSetResult{}, fmt.Errorf("update UI config: %w", err)
+	}
+	slog.Info("user UI config updated", "component", "config", "user", username, "path", uiPath)
+	return apischema.ConfigSetResult{Message: "config updated", Path: uiPath}, nil
 }
 
 func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload, privileged bool) error {

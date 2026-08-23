@@ -1,17 +1,21 @@
-import type { HTMLAttributes } from "react";
-import { forwardRef } from "react";
+import type { HTMLAttributes, Ref } from "react";
 
 import "./app-circular-progress.css";
 
 export interface AppCircularProgressProps extends HTMLAttributes<HTMLSpanElement> {
   color?: "primary" | "inherit";
+  ref?: Ref<HTMLSpanElement>;
   size?: number;
 }
 
-const AppCircularProgress = forwardRef<
-  HTMLSpanElement,
-  AppCircularProgressProps
->(({ size = 40, color = "primary", className, style, ...rest }, ref) => {
+const AppCircularProgress = ({
+  ref,
+  size = 40,
+  color = "primary",
+  className,
+  style,
+  ...rest
+}: AppCircularProgressProps) => {
   const cls = ["app-circular-progress", className].filter(Boolean).join(" ");
 
   return (
@@ -39,7 +43,7 @@ const AppCircularProgress = forwardRef<
       </svg>
     </span>
   );
-});
+};
 
 AppCircularProgress.displayName = "AppCircularProgress";
 

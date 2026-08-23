@@ -19,10 +19,19 @@ func cloneSettings(in *Settings) *Settings {
 	return &out
 }
 
-func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
-	out := in
-	out.ThemeColors = cloneThemeColorsByMode(in.ThemeColors)
+func cloneUIPreferences(in *UIPreferences) *UIPreferences {
+	if in == nil {
+		return nil
+	}
+	out := *in
 	out.HiddenCards = slices.Clone(in.HiddenCards)
+	out.ViewModes = maps.Clone(in.ViewModes)
+	out.LayoutOrders = cloneLayoutOrders(in.LayoutOrders)
+	out.ThemeColors = cloneThemeColorsByMode(in.ThemeColors)
+	if in.DockAccentGradient != nil {
+		gradient := *in.DockAccentGradient
+		out.DockAccentGradient = &gradient
+	}
 	if in.DockerDashboardSections != nil {
 		sections := *in.DockerDashboardSections
 		out.DockerDashboardSections = &sections
@@ -31,9 +40,11 @@ func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
 		sections := *in.HardwareSections
 		out.HardwareSections = &sections
 	}
-	out.ViewModes = maps.Clone(in.ViewModes)
-	out.LayoutOrders = cloneLayoutOrders(in.LayoutOrders)
-	return out
+	return &out
+}
+
+func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
+	return in
 }
 
 func cloneLayoutOrders(in map[string][]string) map[string][]string {

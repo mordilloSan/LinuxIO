@@ -30,6 +30,7 @@ vi.mock("@/api", async () => {
 });
 
 import { emptyCapabilityState } from "@/api/capabilities";
+import { scopedConfigQueryKey } from "@/api/config-query";
 import linuxio from "@/api/generated/client";
 import type { ExtendedFileInfo } from "@/api/generated/linuxio-types";
 import {
@@ -41,6 +42,7 @@ import type { LinuxIORouterContext } from "@/routes/-auth";
 import {
   LOADER_FRESHNESS,
   loadRouteQueries,
+  loadRouteUIConfig,
   startRouteQueryPrefetches,
 } from "@/routes/-loader";
 
@@ -789,5 +791,46 @@ describe("loadRouteQueries", () => {
       routeInitialLoad: true,
       silent: true,
     });
+  });
+});
+
+describe("loadRouteUIConfig", () => {
+  it("reuses the authenticated user's cached backend snapshot", async () => {
+    const queryClient = createClient();
+    const context = createRouterContext(queryClient);
+    const uiConfig = {
+      theme: "DARK",
+      primaryColor: "#2196f3",
+      sidebarCollapsed: false,
+      navigationMode: "sidebar",
+      dockTileColors: "accent",
+      dockAccentGradient: { rangeStart: 0, rangeEnd: 100 },
+      hiddenCards: ["gpu"],
+      dockerDashboardSections: {
+        overview: true,
+        monitoring: true,
+        daemon: true,
+        resources: true,
+      },
+      hardwareSections: {
+        overview: true,
+        hardware: true,
+        sensors: false,
+        systemInfo: true,
+        gpu: true,
+        pciDevices: true,
+        memoryModules: true,
+      },
+      viewModes: {},
+      viewModeDefault: "card",
+      layoutOrders: {},
+      terminalFontSize: 16,
+    } as const;
+    queryClient.setQueryData(
+      scopedConfigQueryKey(linuxio.config.get_ui.queryKey, "root"),
+      uiConfig,
+    );
+
+    await expect(loadRouteUIConfig(context)).resolves.toEqual(uiConfig);
   });
 });

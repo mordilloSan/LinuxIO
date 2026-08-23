@@ -5,24 +5,12 @@ import (
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-// appConfigToAPI is deliberately explicit: persisted configuration has
+// appConfigToAPI is deliberately explicit: core persisted configuration has
 // validation-specific types, while apischema owns the public response shape.
 func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
-	viewModes := make(map[string]apischema.TableCardViewMode, len(value.AppSettings.ViewModes))
-	for key, mode := range value.AppSettings.ViewModes {
-		viewModes[key] = apischema.TableCardViewMode(mode)
-	}
 	result := apischema.AppConfig{
 		AppSettings: apischema.AppSettings{
-			Theme: apischema.Theme(value.AppSettings.Theme), PrimaryColor: value.AppSettings.PrimaryColor.String(),
-			ThemeColors: themeColorsToAPI(value.AppSettings.ThemeColors), SidebarCollapsed: value.AppSettings.SidebarCollapsed,
-			NavigationMode:     apischema.NavigationMode(value.AppSettings.NavigationMode),
-			DockTileColors:     apischema.DockTileColors(value.AppSettings.DockTileColors),
-			DockAccentGradient: dockAccentGradientToAPI(value.AppSettings.DockAccentGradient),
-			ShowHiddenFiles:    value.AppSettings.ShowHiddenFiles, HiddenCards: value.AppSettings.HiddenCards,
-			DockerDashboardSections: dockerDashboardSectionsToAPI(value.AppSettings.DockerDashboardSections),
-			HardwareSections:        hardwareSectionsToAPI(value.AppSettings.HardwareSections), ViewModes: viewModes,
-			LayoutOrders: value.AppSettings.LayoutOrders,
+			ShowHiddenFiles: value.AppSettings.ShowHiddenFiles,
 		},
 		Docker: apischema.DockerSettings{
 			Folders: absolutePathsToStrings(value.Docker.Folders), RequireMountsForFolders: value.Docker.RequireMountsForFolders,
@@ -38,12 +26,69 @@ func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
 	if value.AppSettings.ChunkSizeMB != 0 {
 		result.AppSettings.ChunkSizeMB = &value.AppSettings.ChunkSizeMB
 	}
-	if value.AppSettings.TerminalFontSize != 0 {
-		result.AppSettings.TerminalFontSize = &value.AppSettings.TerminalFontSize
-	}
 	if value.Dismissals != nil {
 		result.Dismissals = &apischema.Dismissals{UncleanShutdownBootID: optionalString(value.Dismissals.UncleanShutdownBootID), FailedLoginAlertID: optionalString(value.Dismissals.FailedLoginAlertID)}
 	}
+	return result
+}
+
+func uiConfigToAPI(value bridgeconfig.UIPreferences) apischema.UIConfig {
+	// Store reads normally return a validated complete snapshot, but keeping
+	// this boundary total prevents a malformed in-memory value (or a direct
+	// unit-test call) from turning an API response into a panic.
+	defaults := bridgeconfig.DefaultUIPreferences()
+	if value.DockAccentGradient == nil {
+		value.DockAccentGradient = defaults.DockAccentGradient
+	}
+	if value.DockerDashboardSections == nil {
+		value.DockerDashboardSections = defaults.DockerDashboardSections
+	}
+	if value.HardwareSections == nil {
+		value.HardwareSections = defaults.HardwareSections
+	}
+	if value.HiddenCards == nil {
+		value.HiddenCards = defaults.HiddenCards
+	}
+	if value.ViewModes == nil {
+		value.ViewModes = defaults.ViewModes
+	}
+	if value.LayoutOrders == nil {
+		value.LayoutOrders = defaults.LayoutOrders
+	}
+	if value.NavigationMode == "" {
+		value.NavigationMode = defaults.NavigationMode
+	}
+	if value.DockTileColors == "" {
+		value.DockTileColors = defaults.DockTileColors
+	}
+	if value.Theme == "" {
+		value.Theme = defaults.Theme
+	}
+	if value.PrimaryColor == "" {
+		value.PrimaryColor = defaults.PrimaryColor
+	}
+	if value.TerminalFontSize == 0 {
+		value.TerminalFontSize = defaults.TerminalFontSize
+	}
+	result := apischema.UIConfig{
+		Theme:                   apischema.Theme(value.Theme),
+		PrimaryColor:            value.PrimaryColor.String(),
+		ThemeColors:             themeColorsToAPI(value.ThemeColors),
+		SidebarCollapsed:        value.SidebarCollapsed,
+		NavigationMode:          apischema.NavigationMode(value.NavigationMode),
+		DockTileColors:          apischema.DockTileColors(value.DockTileColors),
+		HiddenCards:             value.HiddenCards,
+		DockerDashboardSections: *dockerDashboardSectionsToAPI(value.DockerDashboardSections),
+		HardwareSections:        *hardwareSectionsToAPI(value.HardwareSections),
+		LayoutOrders:            value.LayoutOrders,
+		ViewModeDefault:         apischema.TableCardViewMode(bridgeconfig.DefaultViewMode),
+		TerminalFontSize:        value.TerminalFontSize,
+	}
+	result.ViewModes = make(map[string]apischema.TableCardViewMode, len(value.ViewModes))
+	for key, mode := range value.ViewModes {
+		result.ViewModes[key] = apischema.TableCardViewMode(mode)
+	}
+	result.DockAccentGradient = *dockAccentGradientToAPI(*value.DockAccentGradient)
 	return result
 }
 
@@ -63,7 +108,7 @@ func dockerDashboardSectionsToAPI(value *bridgeconfig.DockerDashboardSections) *
 	if value == nil {
 		return nil
 	}
-	return &apischema.ConfigDockerDashboardSections{Overview: value.Overview, Daemon: value.Daemon, Resources: value.Resources}
+	return &apischema.ConfigDockerDashboardSections{Overview: value.Overview, Monitoring: value.Monitoring, Daemon: value.Daemon, Resources: value.Resources}
 }
 
 func hardwareSectionsToAPI(value *bridgeconfig.HardwareSections) *apischema.ConfigHardwareSections {

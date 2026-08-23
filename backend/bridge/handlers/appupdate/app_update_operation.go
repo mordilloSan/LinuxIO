@@ -225,7 +225,7 @@ func prepareAndLaunchAppUpdate(
 ) (durabletask.Record, error) {
 	version, err := appUpdateTarget(ctx, record, req)
 	if err != nil {
-		return failAppUpdateRecord(ctx, store, record, 500, err.Error())
+		return failAppUpdate(ctx, store, record, 500, err.Error())
 	}
 	record, err = updateAppUpdateProgress(ctx, task, store, record, "preparing", "Downloading and verifying the install script", func(current *durabletask.Record) {
 		current.Target = version
@@ -235,7 +235,7 @@ func prepareAndLaunchAppUpdate(
 	}
 	scriptPath, resultPath, err := prepareAppUpdateArtifacts(ctx, store, record, version)
 	if err != nil {
-		return failAppUpdateRecord(ctx, store, record, 500, err.Error())
+		return failAppUpdate(ctx, store, record, 500, err.Error())
 	}
 	unitName := appUpdateUnitName(record.ID)
 	description := appUpdateUnitDescription(record.ID, record.UID)
@@ -312,7 +312,7 @@ func reconcileAppUpdateStart(
 	state, inspectErr := executor.Inspect(ctx, launch.Unit, launch.Description)
 	if inspectErr != nil {
 		if errors.Is(inspectErr, errUpdaterUnitNotFound) {
-			return failAppUpdateRecord(ctx, store, record, 500, startErr.Error())
+			return failAppUpdate(ctx, store, record, 500, startErr.Error())
 		}
 		unknown, unknownErr := unknownAppUpdateRecord(ctx, store, record, fmt.Sprintf("transient-unit start outcome is unknown: %v", startErr))
 		if unknownErr != nil {
@@ -620,6 +620,15 @@ func updateAppUpdateProgress(
 	return updated, err
 }
 
+func failAppUpdate(ctx context.Context, store *durabletask.Store, record durabletask.Record, code int, message string) (durabletask.Record, error) {
+	message = boundedOperationMessage(message)
+	updated, err := failAppUpdateRecord(ctx, store, record, code, message)
+	if err != nil {
+		return durabletask.Record{}, err
+	}
+	return updated, bridgeipc.NewError(message, code)
+}
+
 func failAppUpdateRecord(ctx context.Context, store *durabletask.Store, record durabletask.Record, code int, message string) (durabletask.Record, error) {
 	finished := time.Now().UTC()
 	message = boundedOperationMessage(message)
@@ -633,7 +642,7 @@ func failAppUpdateRecord(ctx context.Context, store *durabletask.Store, record d
 	if err != nil {
 		return durabletask.Record{}, err
 	}
-	return updated, bridgeipc.NewError(message, code)
+	return updated, nil
 }
 
 func unknownAppUpdateRecord(ctx context.Context, store *durabletask.Store, record durabletask.Record, message string) (durabletask.Record, error) {

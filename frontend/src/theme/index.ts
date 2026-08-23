@@ -3,17 +3,13 @@ import {
   createElement,
   useCallback,
   useContext,
-  useEffect,
   useInsertionEffect,
   useMemo,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 
-import type {
-  AppSettings,
-  ConfigThemeColorsByModePayload as ThemeColorsByMode,
-} from "@/api";
+import type { ConfigThemeColorsByModePayload as ThemeColorsByMode } from "@/api";
 import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
@@ -29,6 +25,7 @@ import {
 } from "@/theme/constants";
 import { getFrostedCardShadow } from "@/theme/surfaces";
 import variants from "@/theme/variants";
+import type { EffectiveUISettings } from "@/types/config";
 import { alpha, darken, lighten } from "@/utils/color";
 
 type BreakpointKey = keyof typeof breakpoints.values;
@@ -519,7 +516,7 @@ function resolveVariantTheme(
 
 export function buildAppTheme(
   configOrTheme:
-    | Pick<AppSettings, "theme" | "primaryColor" | "themeColors">
+    | Pick<EffectiveUISettings, "theme" | "primaryColor" | "themeColors">
     | string,
   primaryColorToken?: string,
   themeColors?: ThemeColorsByMode,
@@ -660,23 +657,6 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
 
     applyCssVariables(root, cssVariables);
   }, [cssVariables, value]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "linuxio_theme_bootstrap",
-        JSON.stringify({
-          scheme: value.colorScheme,
-          bg: value.palette.background.default,
-          text: value.palette.text.primary,
-          primary: value.palette.primary.main,
-        }),
-      );
-    } catch {
-      // Best-effort cache only.
-    }
-  }, [value]);
-
   return createElement(APP_THEME_CONTEXT.Provider, { value }, children);
 }
 

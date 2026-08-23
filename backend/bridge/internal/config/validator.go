@@ -1,429 +1,216 @@
 package config
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
-	"maps"
 	"os"
-	"slices"
+	"path/filepath"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 )
 
-// repairConfig loads cfgPath, validates keys/values, and rewrites only if needed.
-// If the YAML cannot be parsed at all (including validation errors from custom types),
-// it rewrites full defaults using base.
-func repairConfig(cfgPath, base string) error {
-	raw, err := os.ReadFile(cfgPath)
+// parseCoreConfig decodes one complete core document and validates the result.
+// Defaults only supply omitted core fields. A failed decode is returned to the
+// caller unchanged so a malformed or unknown-field document cannot be erased
+// by a read or an unrelated mutation.
+func parseCoreConfig(raw []byte, path, base string) (*Settings, error) {
+	cfg, err := decodeCoreConfig(raw, base)
 	if err != nil {
+		logYAMLError(err, path)
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func decodeCoreConfig(raw []byte, base string) (*Settings, error) {
+	if err := validateSingleYAMLDocument(raw); err != nil {
+		return nil, err
+	}
+
+	cfg := DefaultSettings(base)
+	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
+		return nil, err
+	}
+	if errs := ValidateConfig(cfg); len(errs) > 0 {
+		return nil, errors.New(strings.Join(errs, "; "))
+	}
+	return cfg, nil
+}
+
+// parseUIConfig decodes one UI document over the backend defaults. This keeps
+// old sparse UI documents readable while making the runtime value complete.
+func parseUIConfig(raw []byte, path string) (*UIPreferences, error) {
+	if err := validateSingleYAMLDocument(raw); err != nil {
+		logYAMLError(err, path)
+		return nil, err
+	}
+
+	ui := DefaultUIPreferences()
+	if err := yaml.UnmarshalWithOptions(raw, &ui, yaml.Strict()); err != nil {
+		logYAMLError(err, path)
+		return nil, err
+	}
+	ui.ViewModes = normalizeViewModesForDefault(ui.ViewModes)
+	if errs := ValidateUIPreferences(&ui); len(errs) > 0 {
+		err := errors.New(strings.Join(errs, "; "))
+		slog.Error("UI config validation failed", "component", "config", "path", path, "error", err)
+		return nil, err
+	}
+	return &ui, nil
+}
+
+// normalizeViewModesForDefault keeps only explicit deviations from the
+// backend policy. This lets a future backend default change affect surfaces
+// that were previously left at the policy value, including snapshots written
+// by the first split-config release before inheritance was restored.
+func normalizeViewModesForDefault(viewModes map[string]string) map[string]string {
+	if viewModes == nil {
+		return nil
+	}
+	result := make(map[string]string, len(viewModes))
+	for key, mode := range viewModes {
+		if mode == DefaultViewMode {
+			continue
+		}
+		result[key] = mode
+	}
+	return result
+}
+func validateSingleYAMLDocument(raw []byte) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(raw))
+	var document any
+	if err := decoder.Decode(&document); err != nil {
+		if errors.Is(err, io.EOF) {
+			return errors.New("YAML document is empty")
+		}
 		return err
 	}
-
-	var cfg Settings
-	defaults := DefaultSettings(base)
-	changed, err := parseAndSanitizeConfig(raw, cfgPath, base, &cfg)
-	if err != nil {
-		return err
-	}
-	changed = repairInvalidConfigValues(&cfg, defaults) || changed
-	changed = repairMissingDefaultValues(raw, &cfg, defaults) || changed
-	changed = repairDockerFolderPaths(&cfg, defaults) || changed
-	changed = migrateLegacyLayoutOrders(&cfg.AppSettings) || changed
-
-	if changed {
-		return writeConfigFrom(cfgPath, cfg)
+	if document == nil {
+		return errors.New("YAML document is empty")
 	}
 
-	// Config is valid, nothing to repair
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return err
+		}
+		return errors.New("multiple YAML documents are not supported")
+	}
 	return nil
 }
 
-func parseAndSanitizeConfig(raw []byte, cfgPath, base string, cfg *Settings) (bool, error) {
-	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
-		if permissiveErr := yaml.Unmarshal(raw, cfg); permissiveErr != nil {
-			logYAMLError(err, cfgPath)
-			slog.Warn("config validation failed, rewriting defaults")
-			return false, writeConfig(cfgPath, base)
-		}
-		slog.Warn("config contained unsupported fields; rewriting sanitized config")
-		return true, nil
-	}
-	return false, nil
-}
-
-func repairInvalidConfigValues(cfg *Settings, defaults *Settings) bool {
-	errs := ValidateConfig(cfg)
-	if len(errs) == 0 {
-		return false
-	}
-	slog.Warn("config validation issues detected", "component", "config", "error", strings.Join(errs, "; "))
-
-	changed := false
-	if cfg.AppSettings.Theme != ThemeLight && cfg.AppSettings.Theme != ThemeDark {
-		cfg.AppSettings.Theme = defaults.AppSettings.Theme
-		changed = true
-	}
-	if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
-		cfg.AppSettings.PrimaryColor = defaults.AppSettings.PrimaryColor
-		changed = true
-	}
-	if !IsValidNavigationMode(cfg.AppSettings.NavigationMode) {
-		cfg.AppSettings.NavigationMode = defaults.AppSettings.NavigationMode
-		changed = true
-	}
-	if !IsValidDockTileColors(cfg.AppSettings.DockTileColors) {
-		cfg.AppSettings.DockTileColors = defaults.AppSettings.DockTileColors
-		changed = true
-	}
-	if gradientErrs := ValidateDockAccentGradient(cfg.AppSettings.DockAccentGradient); len(gradientErrs) > 0 {
-		cfg.AppSettings.DockAccentGradient = defaults.AppSettings.DockAccentGradient
-		changed = true
-	}
-	if themeColorsNeedReset(cfg.AppSettings.ThemeColors) {
-		cfg.AppSettings.ThemeColors = nil
-		changed = true
-	}
-	if folders, repaired := repairDockerFolderValues(cfg.Docker.Folders, defaults.Docker.Folders); repaired {
-		cfg.Docker.Folders = folders
-		changed = true
-	}
-	if cfg.Jobs.ProgressMinIntervalMs < 0 ||
-		cfg.Jobs.NotificationMinIntervalMs < 0 ||
-		cfg.Jobs.ProgressMinBytesMB < 0 ||
-		cfg.Jobs.HeavyArchiveConcurrency < 0 ||
-		cfg.Jobs.ArchiveCompressionWorkers < 0 ||
-		cfg.Jobs.ArchiveExtractWorkers < 0 {
-		cfg.Jobs = defaults.Jobs
-		changed = true
-	}
-	return changed
-}
-
-func repairMissingDefaultValues(raw []byte, cfg *Settings, defaults *Settings) bool {
-	var root map[string]any
-	if err := yaml.Unmarshal(raw, &root); err != nil {
-		return false
-	}
-
-	changed := false
-	appSettings, hasAppSettings := childMap(root, "appSettings")
-	if !hasAppSettings {
-		cfg.AppSettings = cloneAppSettings(defaults.AppSettings)
-		changed = true
-	} else {
-		changed = repairMissingAppSettings(appSettings, cfg, defaults) || changed
-	}
-
-	docker, hasDocker := childMap(root, "docker")
-	if !hasDocker {
-		cfg.Docker = cloneDocker(defaults.Docker)
-		changed = true
-	} else {
-		changed = repairMissingDockerSettings(docker, cfg, defaults) || changed
-	}
-
-	jobs, hasJobs := childMap(root, "jobs")
-	if !hasJobs {
-		cfg.Jobs = defaults.Jobs
-		changed = true
-	} else {
-		changed = repairMissingJobSettings(jobs, cfg, defaults) || changed
-	}
-
-	return changed
-}
-
-// migrateLegacyLayoutOrders folds the pre-LayoutOrders dashboardOrder and
-// containerOrder keys into LayoutOrders so an existing install keeps the layout
-// its owner arranged. The legacy fields are cleared, which drops them from the
-// file on the rewrite this migration asks for.
-func migrateLegacyLayoutOrders(app *PersistedAppSettings) bool {
-	legacy := []struct {
-		order   *[]string
-		surface string
-	}{
-		{order: &app.DashboardOrder, surface: "dashboard"},
-		{order: &app.ContainerOrder, surface: "docker.containers"},
-	}
-
-	changed := false
-	for _, entry := range legacy {
-		order := *entry.order
-		*entry.order = nil
-		if len(order) == 0 {
-			// A present-but-empty legacy key still has to disappear from the file.
-			changed = changed || order != nil
-			continue
-		}
-		changed = true
-		if _, taken := app.LayoutOrders[entry.surface]; taken {
-			continue
-		}
-		if app.LayoutOrders == nil {
-			app.LayoutOrders = map[string][]string{}
-		}
-		app.LayoutOrders[entry.surface] = order
-	}
-	return changed
-}
-
-func repairMissingAppSettings(appSettings map[string]any, cfg *Settings, defaults *Settings) bool {
-	changed := false
-	if !hasMapKey(appSettings, "themeColors") {
-		cfg.AppSettings.ThemeColors = cloneThemeColorsByMode(defaults.AppSettings.ThemeColors)
-		changed = true
-	}
-	if !hasMapKey(appSettings, "dockAccentGradient") {
-		cfg.AppSettings.DockAccentGradient = defaults.AppSettings.DockAccentGradient
-		changed = true
-	}
-	if !hasMapKey(appSettings, "dockerDashboardSections") {
-		if defaults.AppSettings.DockerDashboardSections != nil {
-			sections := *defaults.AppSettings.DockerDashboardSections
-			cfg.AppSettings.DockerDashboardSections = &sections
-		}
-		changed = true
-	}
-	if !hasMapKey(appSettings, "hardwareSections") {
-		if defaults.AppSettings.HardwareSections != nil {
-			sections := *defaults.AppSettings.HardwareSections
-			cfg.AppSettings.HardwareSections = &sections
-		}
-		changed = true
-	}
-	if !hasMapKey(appSettings, "viewModes") {
-		cfg.AppSettings.ViewModes = maps.Clone(defaults.AppSettings.ViewModes)
-		changed = true
-	}
-	if !hasMapKey(appSettings, "chunkSizeMB") {
-		cfg.AppSettings.ChunkSizeMB = defaults.AppSettings.ChunkSizeMB
-		changed = true
-	}
-	return changed
-}
-
-func repairMissingDockerSettings(docker map[string]any, cfg *Settings, defaults *Settings) bool {
-	changed := false
-	if !hasMapKey(docker, "folders") {
-		cfg.Docker.Folders = slices.Clone(defaults.Docker.Folders)
-		changed = true
-	}
-	if !hasMapKey(docker, "requireMountsForFolders") {
-		cfg.Docker.RequireMountsForFolders = defaults.Docker.RequireMountsForFolders
-		changed = true
-	}
-	return changed
-}
-
-func repairMissingJobSettings(jobs map[string]any, cfg *Settings, defaults *Settings) bool {
-	changed := false
-	if !hasMapKey(jobs, "progressMinIntervalMs") {
-		cfg.Jobs.ProgressMinIntervalMs = defaults.Jobs.ProgressMinIntervalMs
-		changed = true
-	}
-	if !hasMapKey(jobs, "notificationMinIntervalMs") {
-		cfg.Jobs.NotificationMinIntervalMs = defaults.Jobs.NotificationMinIntervalMs
-		changed = true
-	}
-	if !hasMapKey(jobs, "progressMinBytesMB") {
-		cfg.Jobs.ProgressMinBytesMB = defaults.Jobs.ProgressMinBytesMB
-		changed = true
-	}
-	if !hasMapKey(jobs, "heavyArchiveConcurrency") {
-		cfg.Jobs.HeavyArchiveConcurrency = defaults.Jobs.HeavyArchiveConcurrency
-		changed = true
-	}
-	if !hasMapKey(jobs, "archiveCompressionWorkers") {
-		cfg.Jobs.ArchiveCompressionWorkers = defaults.Jobs.ArchiveCompressionWorkers
-		changed = true
-	}
-	if !hasMapKey(jobs, "archiveExtractWorkers") {
-		cfg.Jobs.ArchiveExtractWorkers = defaults.Jobs.ArchiveExtractWorkers
-		changed = true
-	}
-	return changed
-}
-
-func childMap(root map[string]any, key string) (map[string]any, bool) {
-	value, ok := root[key]
-	if !ok {
-		return nil, false
-	}
-	child, ok := value.(map[string]any)
-	return child, ok
-}
-
-func hasMapKey(values map[string]any, key string) bool {
-	if values == nil {
-		return false
-	}
-	_, ok := values[key]
-	return ok
-}
-
-func repairDockerFolderValues(folders, defaults []AbsolutePath) ([]AbsolutePath, bool) {
-	if len(folders) == 0 {
-		return defaults, true
-	}
-
-	repaired := make([]AbsolutePath, 0, len(folders))
-	seen := make(map[string]struct{}, len(folders))
-	changed := false
-	for _, folderValue := range folders {
-		folder := strings.TrimSpace(string(folderValue))
-		if folder == "" || folder == string(os.PathSeparator) {
-			changed = true
-			continue
-		}
-		if _, exists := seen[folder]; exists {
-			changed = true
-			continue
-		}
-		seen[folder] = struct{}{}
-		repaired = append(repaired, AbsolutePath(folder))
-	}
-
-	if len(repaired) == 0 {
-		return defaults, true
-	}
-	return repaired, changed
-}
-
-func validateThemeColorMode(modeName string, tc *ThemeColors) []string {
-	if tc == nil {
-		return nil
-	}
-	prefix := "appSettings.themeColors." + modeName + "."
-	fields := map[string]*CSSColor{
-		"backgroundDefault": tc.BackgroundDefault,
-		"backgroundPaper":   tc.BackgroundPaper,
-		"headerBackground":  tc.HeaderBackground,
-		"footerBackground":  tc.FooterBackground,
-		"sidebarBackground": tc.SidebarBackground,
-		"cardBackground":    tc.CardBackground,
+// ValidateUIPreferences validates effective UI preferences accepted from disk
+// and by UI replacements.
+func ValidateUIPreferences(cfg *UIPreferences) []string {
+	if cfg == nil {
+		return []string{"UI preferences are nil"}
 	}
 	var errs []string
-	for key, ptr := range fields {
-		if ptr != nil && !IsValidCSSColor(string(*ptr)) {
-			errs = append(errs, prefix+key+" must be a valid CSS color")
+	if cfg.Theme != ThemeLight && cfg.Theme != ThemeDark {
+		errs = append(errs, "theme must be LIGHT or DARK")
+	}
+	if !IsValidCSSColor(string(cfg.PrimaryColor)) {
+		errs = append(errs, "primaryColor must be a valid CSS color")
+	}
+	if cfg.NavigationMode != NavigationModeSidebar && cfg.NavigationMode != NavigationModeDock {
+		errs = append(errs, "navigationMode must be sidebar or dock")
+	}
+	if cfg.DockTileColors == "" || !IsValidDockTileColors(cfg.DockTileColors) {
+		errs = append(errs, "dockTileColors must be accent, mono, neutral or vibrant")
+	}
+	if cfg.DockAccentGradient == nil {
+		errs = append(errs, "dockAccentGradient is required")
+	} else {
+		errs = append(errs, ValidateDockAccentGradient(*cfg.DockAccentGradient)...)
+	}
+	if cfg.DockerDashboardSections == nil {
+		errs = append(errs, "dockerDashboardSections is required")
+	}
+	if cfg.HardwareSections == nil {
+		errs = append(errs, "hardwareSections is required")
+	}
+	if cfg.HiddenCards == nil {
+		errs = append(errs, "hiddenCards is required")
+	}
+	if cfg.ViewModes == nil {
+		errs = append(errs, "viewModes is required")
+	}
+	if cfg.LayoutOrders == nil {
+		errs = append(errs, "layoutOrders is required")
+	}
+	if cfg.TerminalFontSize < 10 || cfg.TerminalFontSize > 28 {
+		errs = append(errs, "terminalFontSize must be between 10 and 28")
+	}
+	errs = append(errs, validateThemeColors(cfg)...)
+	errs = append(errs, validateViewModes(cfg.ViewModes)...)
+	return errs
+}
+
+func validateThemeColors(cfg *UIPreferences) []string {
+	var errs []string
+	for modeName, colors := range map[string]*ThemeColors{
+		"light": cfg.themeColorsValue(ThemeLight),
+		"dark":  cfg.themeColorsValue(ThemeDark),
+	} {
+		if colors == nil {
+			continue
+		}
+		for key, color := range themeColorFields(colors) {
+			if color != nil && *color != "" && !IsValidCSSColor(string(*color)) {
+				errs = append(errs, fmt.Sprintf("themeColors.%s.%s must be a valid CSS color", modeName, key))
+			}
 		}
 	}
 	return errs
 }
 
-func themeColorsNeedReset(byMode *ThemeColorsByMode) bool {
-	if byMode == nil {
-		return false
-	}
-	for _, tc := range []*ThemeColors{byMode.Light, byMode.Dark} {
-		if tc == nil {
-			continue
-		}
-		for _, ptr := range []*CSSColor{
-			tc.BackgroundDefault,
-			tc.BackgroundPaper,
-			tc.HeaderBackground,
-			tc.FooterBackground,
-			tc.SidebarBackground,
-			tc.CardBackground,
-		} {
-			if ptr != nil && !IsValidCSSColor(string(*ptr)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func repairDockerFolderPaths(cfg *Settings, defaults *Settings) bool {
-	validFolders := make([]AbsolutePath, 0, len(cfg.Docker.Folders))
-	changed := false
-
-	for _, folder := range cfg.Docker.Folders {
-		fi, err := os.Stat(string(folder))
-		if err != nil || fi.IsDir() {
-			validFolders = append(validFolders, folder)
-			continue
-		}
-		slog.Warn("docker folder exists as a file; removing from config", "component", "config", "path", string(folder))
-		changed = true
-	}
-
-	if len(validFolders) == 0 {
-		cfg.Docker.Folders = defaults.Docker.Folders
-		return true
-	}
-
-	cfg.Docker.Folders = validFolders
-	return changed
-}
-
-// logYAMLError extracts and logs detailed error information from goccy/go-yaml
-func logYAMLError(err error, path string) {
-	// Try to extract syntax error with position info
-	if syntaxErr, ok := errors.AsType[*yaml.SyntaxError](err); ok {
-		if tok := syntaxErr.GetToken(); tok != nil {
-			slog.Error("config syntax error", "component", "config", "path", path, "line", tok.Position.Line, "column", tok.Position.Column, "detail", syntaxErr.GetMessage())
-			return
-		}
-		// SyntaxError without token
-		slog.Error("config syntax error", "component", "config", "path", path, "detail", syntaxErr.GetMessage())
-		return
-	}
-	// Fallback to generic error
-	slog.Error("config parse error", "component", "config", "path", path, "error", err)
-}
-
-// ValidateConfig validates a Settings struct and returns detailed errors
-func ValidateConfig(cfg *Settings) []string {
+func validateViewModes(viewModes map[string]string) []string {
 	var errs []string
-
-	// Theme validation (already done by custom type, but for manual checks)
-	if cfg.AppSettings.Theme != ThemeLight && cfg.AppSettings.Theme != ThemeDark {
-		errs = append(errs, "appSettings.theme must be LIGHT or DARK")
+	for key, mode := range viewModes {
+		if strings.TrimSpace(key) == "" {
+			errs = append(errs, "viewModes keys cannot be empty")
+		}
+		if mode != "card" && mode != "table" {
+			errs = append(errs, fmt.Sprintf("viewModes.%s must be card or table", key))
+		}
 	}
+	return errs
+}
 
-	// PrimaryColor validation
-	if !IsValidCSSColor(string(cfg.AppSettings.PrimaryColor)) {
-		errs = append(errs, "appSettings.primaryColor must be a valid CSS color")
+// ValidateConfig validates the functional settings accepted by disk loads and
+// core updates. Docker folders are configuration values, not filesystem
+// observations: they must be structurally valid but need not exist yet.
+func ValidateConfig(cfg *Settings) []string {
+	if cfg == nil {
+		return []string{"config is nil"}
 	}
-
-	if !IsValidNavigationMode(cfg.AppSettings.NavigationMode) {
-		errs = append(errs, "appSettings.navigationMode must be sidebar or dock")
-	}
-
-	if !IsValidDockTileColors(cfg.AppSettings.DockTileColors) {
-		errs = append(errs, "appSettings.dockTileColors must be accent, mono, neutral or vibrant")
-	}
-	errs = append(errs, ValidateDockAccentGradient(cfg.AppSettings.DockAccentGradient)...)
-
-	// ThemeColors validation (all fields optional, but if set must be valid CSS colors)
-	if byMode := cfg.AppSettings.ThemeColors; byMode != nil {
-		errs = append(errs, validateThemeColorMode("light", byMode.Light)...)
-		errs = append(errs, validateThemeColorMode("dark", byMode.Dark)...)
-	}
-
-	// Docker.Folders validation
+	var errs []string
 	if len(cfg.Docker.Folders) == 0 {
 		errs = append(errs, "docker.folders cannot be empty")
 	}
 	seenFolders := make(map[string]struct{}, len(cfg.Docker.Folders))
 	for _, folderValue := range cfg.Docker.Folders {
 		folder := strings.TrimSpace(string(folderValue))
-		if folder == "" {
-			errs = append(errs, "docker.folders cannot include an empty path")
+		if folder == "" || !filepath.IsAbs(filepath.Clean(folder)) {
+			errs = append(errs, "docker.folders must contain absolute paths")
 			continue
 		}
+		folder = filepath.Clean(folder)
 		if folder == string(os.PathSeparator) {
 			errs = append(errs, "docker.folders cannot include root")
-			continue
 		}
 		if _, exists := seenFolders[folder]; exists {
 			errs = append(errs, "docker.folders cannot include duplicates")
 			continue
 		}
 		seenFolders[folder] = struct{}{}
+	}
+	if cfg.AppSettings.ChunkSizeMB < 0 || cfg.AppSettings.ChunkSizeMB > 32 {
+		errs = append(errs, "appSettings.chunkSizeMB must be 0 (default) or between 1 and 32")
 	}
 	if cfg.Jobs.ProgressMinIntervalMs < 0 {
 		errs = append(errs, "jobs.progressMinIntervalMs must be >= 0")
@@ -443,6 +230,42 @@ func ValidateConfig(cfg *Settings) []string {
 	if cfg.Jobs.ArchiveExtractWorkers < 0 {
 		errs = append(errs, "jobs.archiveExtractWorkers must be >= 0")
 	}
-
 	return errs
+}
+
+func (p *UIPreferences) themeColorsValue(mode PersistedTheme) *ThemeColors {
+	if p == nil || p.ThemeColors == nil {
+		return nil
+	}
+	if mode == ThemeLight {
+		return p.ThemeColors.Light
+	}
+	return p.ThemeColors.Dark
+}
+
+func themeColorFields(colors *ThemeColors) map[string]*CSSColor {
+	return map[string]*CSSColor{
+		"backgroundDefault": colors.BackgroundDefault, "backgroundPaper": colors.BackgroundPaper,
+		"headerBackground": colors.HeaderBackground, "footerBackground": colors.FooterBackground,
+		"sidebarBackground": colors.SidebarBackground, "cardBackground": colors.CardBackground,
+		"dialogBorder": colors.DialogBorder, "dialogGlow": colors.DialogGlow,
+		"dialogBackdrop": colors.DialogBackdrop, "codeBackground": colors.CodeBackground,
+		"codeText": colors.CodeText, "chartRx": colors.ChartRx, "chartTx": colors.ChartTx,
+		"chartNeutral": colors.ChartNeutral, "fileBrowserSurface": colors.FileBrowserSurface,
+		"fileBrowserChrome":               colors.FileBrowserChrome,
+		"fileBrowserBreadcrumbBackground": colors.FileBrowserBreadcrumbBackground,
+		"fileBrowserBreadcrumbText":       colors.FileBrowserBreadcrumbText,
+	}
+}
+
+func logYAMLError(err error, path string) {
+	if syntaxErr, ok := errors.AsType[*yaml.SyntaxError](err); ok {
+		if tok := syntaxErr.GetToken(); tok != nil {
+			slog.Error("config syntax error", "component", "config", "path", path, "line", tok.Position.Line, "column", tok.Position.Column, "detail", syntaxErr.GetMessage())
+			return
+		}
+		slog.Error("config syntax error", "component", "config", "path", path, "detail", syntaxErr.GetMessage())
+		return
+	}
+	slog.Error("config parse error", "component", "config", "path", path, "error", err)
 }

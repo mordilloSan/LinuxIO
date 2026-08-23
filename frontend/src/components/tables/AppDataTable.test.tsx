@@ -365,4 +365,26 @@ describe("AppDataTable", () => {
       "false",
     );
   });
+
+  // A Go handler that accumulates into a nil slice sends JSON null even where
+  // the generated contract promises an array. Rendering the empty state keeps
+  // the surrounding widget alive instead of tripping its error boundary.
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+  ])("renders the empty state for %s data", (_label, data) => {
+    render(
+      <AppDataTable
+        columns={columns}
+        data={data}
+        emptyMessage="No rows reported."
+        fillAvailable={false}
+        getRowId={(row) => row.id}
+        maxHeight={280}
+      />,
+    );
+
+    expect(screen.getByText("No rows reported.")).toBeInTheDocument();
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
+  });
 });

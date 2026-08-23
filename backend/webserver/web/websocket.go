@@ -75,7 +75,7 @@ func addWebSocketForSession(sessionID string, conn *websocket.Conn) {
 	connsInterface, _ := wsConnsBySession.LoadOrStore(sessionID, &sync.Map{})
 	connsMap, ok := connsInterface.(*sync.Map)
 	if !ok {
-		slog.Error("invalid WebSocket connection map type", "session_id", sessionID)
+		slog.Error("invalid WebSocket connection map type", "session_ref", session.DiagnosticRef(sessionID))
 		return
 	}
 	connsMap.Store(conn, struct{}{})
@@ -86,7 +86,7 @@ func removeWebSocketForSession(sessionID string, conn *websocket.Conn) {
 	if connsInterface, ok := wsConnsBySession.Load(sessionID); ok {
 		connsMap, ok := connsInterface.(*sync.Map)
 		if !ok {
-			slog.Error("invalid WebSocket connection map type", "session_id", sessionID)
+			slog.Error("invalid WebSocket connection map type", "session_ref", session.DiagnosticRef(sessionID))
 			return
 		}
 		connsMap.Delete(conn)
@@ -109,7 +109,7 @@ func CloseWebSocketForSession(sessionID string) {
 	if connsInterface, ok := wsConnsBySession.Load(sessionID); ok {
 		connsMap, ok := connsInterface.(*sync.Map)
 		if !ok {
-			slog.Error("invalid WebSocket connection map type", "session_id", sessionID)
+			slog.Error("invalid WebSocket connection map type", "session_ref", session.DiagnosticRef(sessionID))
 			return
 		}
 		count := 0
@@ -117,7 +117,7 @@ func CloseWebSocketForSession(sessionID string) {
 		connsMap.Range(func(key, value any) bool {
 			conn, ok := key.(*websocket.Conn)
 			if !ok {
-				slog.Error("invalid WebSocket entry type", "session_id", sessionID)
+				slog.Error("invalid WebSocket entry type", "session_ref", session.DiagnosticRef(sessionID))
 				return true // Continue to next connection
 			}
 
@@ -126,14 +126,14 @@ func CloseWebSocketForSession(sessionID string) {
 			closeMsg := websocket.FormatCloseMessage(1008, "Session expired")
 			if err := conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait)); err != nil {
 				slog.Debug("failed to write WebSocket close control frame",
-					"session_id", sessionID,
+					"session_ref", session.DiagnosticRef(sessionID),
 					"error", err)
 			}
 
 			// Close the underlying connection
 			if err := conn.Close(); err != nil {
 				slog.Debug("failed to close WebSocket",
-					"session_id", sessionID,
+					"session_ref", session.DiagnosticRef(sessionID),
 					"error", err)
 			}
 			count++
@@ -142,7 +142,7 @@ func CloseWebSocketForSession(sessionID string) {
 
 		wsConnsBySession.Delete(sessionID)
 		slog.Debug("closed WebSockets for expired session",
-			"session_id", sessionID,
+			"session_ref", session.DiagnosticRef(sessionID),
 			"count", count)
 	}
 }
@@ -211,7 +211,7 @@ func wsAuthMiddleware(sm *session.Manager, next http.Handler) http.Handler {
 func refreshSessionActivity(sm *session.Manager, sessionID string) error {
 	if err := sm.Refresh(sessionID); err != nil {
 		slog.Debug("failed to refresh WebSocket session",
-			"session_id", sessionID,
+			"session_ref", session.DiagnosticRef(sessionID),
 			"error", err)
 		return err
 	}
@@ -255,30 +255,30 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 			removeWebSocketForSession(sess.SessionID, conn)
 			relay.closeAll()
 		}()
-		slog.Info("WebSocket connected", "user", sess.User.Username, "session_id", sess.SessionID)
+		slog.Info("WebSocket connected", "user", sess.User.Username, "session_ref", session.DiagnosticRef(sess.SessionID))
 
 		conn.SetPongHandler(func(string) error {
-			slog.Debug("WebSocket pong received", "session_id", sess.SessionID, "deadline", pongWait)
+			slog.Debug("WebSocket pong received", "session_ref", session.DiagnosticRef(sess.SessionID), "deadline", pongWait)
 			if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
 				slog.Debug("failed to set WebSocket read deadline in pong handler",
-					"session_id", sess.SessionID,
+					"session_ref", session.DiagnosticRef(sess.SessionID),
 					"error", err)
 				return err
 			}
 			if err := validateSessionActivity(sm, sess.SessionID); err != nil {
-				slog.Debug("WebSocket pong rejected for expired session", "session_id", sess.SessionID, "error", err)
+				slog.Debug("WebSocket pong rejected for expired session", "session_ref", session.DiagnosticRef(sess.SessionID), "error", err)
 				return err
 			}
 			return nil
 		})
 		// Set initial read deadline.
 		slog.Debug("setting initial WebSocket read deadline",
-			"session_id", sess.SessionID,
+			"session_ref", session.DiagnosticRef(sess.SessionID),
 			"deadline", pongWait,
 			"ping_interval", pingInterval)
 		if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
 			slog.Warn("failed to set initial WebSocket read deadline",
-				"session_id", sess.SessionID,
+				"session_ref", session.DiagnosticRef(sess.SessionID),
 				"error", err)
 			return
 		}
@@ -287,7 +287,7 @@ func WebSocketRelayHandler(sm *session.Manager) http.Handler {
 		go relay.pingLoop()
 
 		relay.readLoop(sm, sess)
-		slog.Info("WebSocket disconnected", "user", sess.User.Username, "session_id", sess.SessionID)
+		slog.Info("WebSocket disconnected", "user", sess.User.Username, "session_ref", session.DiagnosticRef(sess.SessionID))
 	})
 }
 
@@ -306,7 +306,7 @@ func (r *streamRelay) readLoop(sm *session.Manager, sess *session.Session) {
 			return
 		}
 		if err := validateSessionActivity(sm, sess.SessionID); err != nil {
-			slog.Debug("WebSocket frame rejected for expired session", "session_id", sess.SessionID, "error", err)
+			slog.Debug("WebSocket frame rejected for expired session", "session_ref", session.DiagnosticRef(sess.SessionID), "error", err)
 			r.closeAll()
 			return
 		}
@@ -367,7 +367,7 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	yamuxSession, err := bridge.GetYamuxSession(sess.SessionID)
 	if err != nil {
 		slog.Error("failed to get yamux session",
-			"session_id", sess.SessionID,
+			"session_ref", session.DiagnosticRef(sess.SessionID),
 			"stream_id", streamID,
 			"error", err)
 		r.sendFrame(streamID, FlagRST, nil)
@@ -382,7 +382,7 @@ func (r *streamRelay) handleSYN(sess *session.Session, streamID uint32, payload 
 	stream, err := yamuxSession.Open(openCtx)
 	if err != nil {
 		slog.Error("failed to open yamux stream",
-			"session_id", sess.SessionID,
+			"session_ref", session.DiagnosticRef(sess.SessionID),
 			"stream_id", streamID,
 			"error", err)
 		r.sendFrame(streamID, FlagRST, nil)

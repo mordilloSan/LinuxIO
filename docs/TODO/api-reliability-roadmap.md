@@ -11,15 +11,17 @@ implementation documents.
 
 Focused implementation and design details remain in their own documents:
 
-- [API Contract](./api-contract.md) describes implemented API behavior.
-- [Handler Patterns](./bridge_handler_patterns.md) defines handler code style.
-- [Durable Operations Architecture](./durable-operations-architecture.md)
+- [API Contract](../api-contract.md) describes implemented API behavior.
+- [Handler Patterns](../bridge_handler_patterns.md) defines handler code style.
+- [Durable Operations Architecture](../durable-operations-architecture.md)
   defines durable Task execution and recovery mechanics.
 - [Notifications](./notifications.md) defines the notification product and
   storage contract.
 - [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
   run-summary, and journald ownership boundaries.
-The repository [`ToDo`](../ToDo) links here instead of duplicating these plans.
+
+The repository [`ToDo`](../../ToDo) links here instead of duplicating these
+plans.
 
 ## Principles
 
@@ -298,7 +300,7 @@ session Tasks end with the session.
 
 ## Phase 4: Durable Task Foundation (complete)
 
-The [Durable Operations Architecture](./durable-operations-architecture.md)
+The [Durable Operations Architecture](../durable-operations-architecture.md)
 is implemented for both current durable routes:
 `control.app_update` and `docker.update_container`.
 

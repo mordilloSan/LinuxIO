@@ -3,7 +3,7 @@
 ### API reliability, recovery, and notifications
 
 Follow the dependency-ordered
-[`API Reliability, Recovery, and Notifications Roadmap`](docs/api-reliability-roadmap.md):
+[`API Reliability, Recovery, and Notifications Roadmap`](docs/TODO/api-reliability-roadmap.md):
 
 1. Add a persistent alert lifecycle: severity, deduplication, seen, dismissal,
    restoration, and resolution.
@@ -12,16 +12,17 @@ Follow the dependency-ordered
 3. Add notification routing through metadata matchers and delivery targets.
 4. Reassess durable Task reconstruction and extensions only from measured need.
 
-The focused architecture and design details live in
-[`docs/durable-operations-architecture.md`](docs/durable-operations-architecture.md),
-[`docs/notifications.md`](docs/notifications.md), and
-[`docs/scheduled-execution.md`](docs/scheduled-execution.md). Do not duplicate
-their task lists here.
+The remaining design details live in
+[`docs/TODO/notifications.md`](docs/TODO/notifications.md) and
+[`docs/TODO/scheduled-execution.md`](docs/TODO/scheduled-execution.md). Do not
+duplicate their task lists here. The durable-operation boundary is implemented
+and documented in
+[`docs/durable-operations-architecture.md`](docs/durable-operations-architecture.md).
 
 ### VM bridged networking
 
 Follow the phased
-[`VM Bridge Networking Plan`](docs/vm-bridge-networking-plan.md):
+[`VM Bridge Networking Plan`](docs/TODO/vm-bridge-networking-plan.md):
 
 1. VM-side network selection: enumerate libvirt networks and host bridges,
    generate `type='bridge'` domain XML, and add the create-dialog network
@@ -39,25 +40,33 @@ Follow the phased
    production, Vitest, source-map, and compiler-coverage behavior
    (`vitejs/vite-plugin-react#1419` or its successor).
 
-### Router policy settings
-
-Decide whether the fixed values in `router.go` belong in the global settings
-file.
-
 ### Frontend test coverage
 
-Define and complete the intended division of coverage between Vitest and
-Playwright.
+Define and complete the intended division of coverage between Vitest and Playwright.
 
 ## Completed or closed
 
+- [x] Split bridge per-user state into bridge-owned functional settings and
+  frontend-produced UI snapshots, each independently created in its own
+  YAML file and lock; retained atomic flat-file writes and frontend-only UI
+  behavior while making the backend authoritative for persisted UI defaults;
+  made strict decode plus pure validation reset only the affected
+  file on content failure while I/O/security failures fail; removed legacy
+  conversion, permissive salvage, field repair, and filesystem-based Docker
+  folder mutation; made YAML, lock, and atomic replacement ownership follow
+  the authenticated UID/GID in privileged and unprivileged bridge modes. No
+  embedded database or JSON configuration was added.
+- [x] Closed the router policy settings question: the bridge `TaskPolicy`
+  values stay compile-time constants. They are cross-user admission limits, so
+  the per-user config file is the wrong scope, and no system-wide settings
+  store exists; revisit only if a real deployment hits a limit.
 - [x] Completed the phased native Docker update engine work: native registry
   digest checks replaced Watchtower-based checks,
   Compose-managed containers update through their Compose project, opted-in
   standalone containers recreate transactionally with rollback, and scheduled
   execution moved to a LinuxIO systemd runner.
 - [x] Completed Phases 1–5.5 of the
-  [`API Reliability, Recovery, and Notifications Roadmap`](docs/api-reliability-roadmap.md):
+  [`API Reliability, Recovery, and Notifications Roadmap`](docs/TODO/api-reliability-roadmap.md):
   strict standard-library request decoding with an explicit safe-retry policy
   and honest connection-loss outcomes; Task lifetime/owner scope and session
   activity semantics; two durable Tasks (`control.app_update` and

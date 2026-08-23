@@ -22,6 +22,12 @@ type options struct {
 	dirMode    os.FileMode
 	timeout    time.Duration
 	retryDelay time.Duration
+	ownership  *lockOwnership
+}
+
+type lockOwnership struct {
+	uid int
+	gid int
 }
 
 // Option configures lock acquisition.
@@ -53,6 +59,15 @@ func WithTimeout(timeout time.Duration) Option {
 func WithRetryDelay(delay time.Duration) Option {
 	return func(o *options) {
 		o.retryDelay = delay
+	}
+}
+
+// WithOwnership assigns uid/gid to the opened lock file before acquiring the
+// advisory lock. The option is opt-in; without it, lock-file ownership keeps
+// the existing behavior.
+func WithOwnership(uid, gid int) Option {
+	return func(o *options) {
+		o.ownership = &lockOwnership{uid: uid, gid: gid}
 	}
 }
 
@@ -93,10 +108,21 @@ func AcquireExclusive(ctx context.Context, path string, opts ...Option) (func() 
 	if cfg.retryDelay <= 0 {
 		cfg.retryDelay = defaultRetryDelay
 	}
+	if cfg.ownership != nil {
+		if err := validateOwnership(cfg.ownership.uid, cfg.ownership.gid); err != nil {
+			return nil, fmt.Errorf("validate lock ownership: %w", err)
+		}
+	}
 
 	f, err := openLockFile(path, cfg.mode, cfg.dirMode)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.ownership != nil {
+		if chownErr := f.Chown(cfg.ownership.uid, cfg.ownership.gid); chownErr != nil {
+			_ = f.Close()
+			return nil, fmt.Errorf("chown lock %q to %d:%d: %w", path, cfg.ownership.uid, cfg.ownership.gid, chownErr)
+		}
 	}
 	release, err := waitExclusive(ctx, f, path, cfg)
 	if err != nil {
@@ -104,6 +130,16 @@ func AcquireExclusive(ctx context.Context, path string, opts ...Option) (func() 
 		return nil, err
 	}
 	return release, nil
+}
+
+func validateOwnership(uid, gid int) error {
+	if uid < 0 {
+		return fmt.Errorf("uid %d is invalid: must be non-negative", uid)
+	}
+	if gid < 0 {
+		return fmt.Errorf("gid %d is invalid: must be non-negative", gid)
+	}
+	return nil
 }
 
 func openLockFile(path string, mode, dirMode os.FileMode) (*os.File, error) {
