@@ -10,7 +10,8 @@ import { transform } from "oxc-transform-react";
 import ts from "typescript";
 
 const compilerRuntime = "react/compiler-runtime";
-const reactCompilerMarker = "[ReactCompiler]";
+const legacyReactCompilerMarker = "[ReactCompiler]";
+const currentReactCompilerMarker = /react-compiler\(([^)\r\n]+)\):/i;
 const scriptPath = fileURLToPath(import.meta.url);
 const scriptDirectory = path.dirname(scriptPath);
 const frontendRoot = path.resolve(scriptDirectory, "..");
@@ -190,16 +191,43 @@ function isUseCallbackBoundary(boundary) {
 function isRecoverableCompilerDiagnostic(diagnostic) {
   return (
     diagnostic.severity === "Warning" &&
-    (diagnostic.message.includes(reactCompilerMarker) ||
-      diagnostic.codeframe?.includes(reactCompilerMarker))
+    [diagnostic.message, diagnostic.codeframe].some(
+      (text) =>
+        typeof text === "string" &&
+        (text.includes(legacyReactCompilerMarker) ||
+          currentReactCompilerMarker.test(text)),
+    )
   );
 }
 
+function currentCompilerDiagnosticCategory(diagnostic) {
+  for (const text of [diagnostic.message, diagnostic.codeframe]) {
+    if (typeof text !== "string") continue;
+    const match = text.match(currentReactCompilerMarker);
+    if (match) return match[1].trim();
+  }
+  return undefined;
+}
+
+function normalizedDiagnosticText(text, fallbackCategory) {
+  let normalized = text.replace(/^\[ReactCompiler\]\s*/, "").trim();
+  const currentMarker = normalized.match(/^react-compiler\(([^)\r\n]+)\):\s*/i);
+  const category = currentMarker?.[1].trim() || fallbackCategory;
+  if (currentMarker) normalized = normalized.slice(currentMarker[0].length);
+  if (!category) return normalized;
+
+  const categoryPrefix = `${category}:`;
+  if (normalized.toLowerCase().startsWith(categoryPrefix.toLowerCase())) {
+    return normalized;
+  }
+  return normalized ? `${categoryPrefix} ${normalized}` : category;
+}
+
 function diagnosticReason(diagnostic) {
-  const summary = diagnostic.message
-    .replace(/^\[ReactCompiler\]\s*/, "")
-    .trim();
-  const detail = diagnostic.labels?.find((label) => label.message)?.message;
+  const category = currentCompilerDiagnosticCategory(diagnostic);
+  const summary = normalizedDiagnosticText(diagnostic.message, category);
+  const rawDetail = diagnostic.labels?.find((label) => label.message)?.message;
+  const detail = rawDetail && normalizedDiagnosticText(rawDetail);
   return detail && !summary.includes(detail)
     ? `${summary} — ${detail}`
     : summary;

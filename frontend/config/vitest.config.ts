@@ -5,17 +5,19 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-import { oxcReactCompiler } from "./oxc-react-compiler.ts";
-
 const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(configDirectory, "..");
+const testModuleRE = [
+  /\/node_modules\//,
+  /\/src\/test\//,
+  /\.(?:test|spec)\.[jt]sx?$/,
+];
 
 export default defineConfig({
   cacheDir: path.join(frontendRoot, "node_modules/.vite"),
   plugins: [
     tanstackRouter({ disableLogging: true, target: "react" }),
-    oxcReactCompiler({ excludeTests: true }),
-    react(),
+    react({ compiler: { target: "19" }, exclude: testModuleRE }),
   ],
   resolve: {
     alias: {

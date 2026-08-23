@@ -7,6 +7,7 @@ import {
   type WaitForStreamResultOptions,
 } from "@/api";
 import { streamWriteChunks, waitForStreamResult } from "@/api";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 export interface RunStreamResultOptions<
   TResult = unknown,
@@ -96,22 +97,23 @@ export function useStreamResult(): UseStreamResultReturn {
 
       onOpen?.(stream);
 
-      try {
+      const operation = (async () => {
         const result = await waitForStreamResult<TResult, TProgress>(stream, {
           ...awaitOptions,
           signal,
         });
         onSuccess?.(result);
         return result;
-      } catch (error) {
+      })().catch((error: unknown): TResult | undefined => {
         onError?.(error);
         if (shouldThrow) {
           throw error;
         }
         return undefined;
-      } finally {
+      });
+      return withPromiseCleanup(operation, () => {
         onFinally?.();
-      }
+      });
     },
     [],
   );
@@ -151,39 +153,38 @@ export function useStreamResult(): UseStreamResultReturn {
 
       onOpen?.(stream);
 
-      try {
+      const operation = (async () => {
         const completion = waitForStreamResult<TResult, TProgress>(stream, {
           ...awaitOptions,
           signal,
         });
 
-        try {
-          await streamWriteChunks(stream, data, {
-            chunkSize,
-            yieldMs,
-            closeAtEnd,
-            signal,
-          });
-        } catch (writeError) {
+        await streamWriteChunks(stream, data, {
+          chunkSize,
+          yieldMs,
+          closeAtEnd,
+          signal,
+        }).catch(async (writeError: unknown) => {
           if (stream.status === "open" || stream.status === "opening") {
             stream.abort();
           }
           await completion.catch(() => undefined);
           throw writeError;
-        }
+        });
 
         const result = await completion;
         onSuccess?.(result);
         return result;
-      } catch (error) {
+      })().catch((error: unknown): TResult | undefined => {
         onError?.(error);
         if (shouldThrow) {
           throw error;
         }
         return undefined;
-      } finally {
+      });
+      return withPromiseCleanup(operation, () => {
         onFinally?.();
-      }
+      });
     },
     [],
   );

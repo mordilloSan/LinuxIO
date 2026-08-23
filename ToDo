@@ -31,15 +31,6 @@ Follow the phased
    NICs, then the single-NIC IP hand-off protected by snapshot, transient
    revert timer, and reconnect check-in.
 
-### React Compiler upstream follow-ups
-
-1. Revisit the React Compiler integration when
-   [`@vitejs/plugin-react`](https://npmx.dev/package/@vitejs/plugin-react)
-   publishes native support. At that point, compare it with and replace the
-   custom `oxc-transform-react` Vite plugin only if it preserves the current
-   production, Vitest, source-map, and compiler-coverage behavior
-   (`vitejs/vite-plugin-react#1419` or its successor).
-
 ### Frontend test coverage
 
 Define and complete the intended division of coverage between Vitest and Playwright.
@@ -89,6 +80,14 @@ Define and complete the intended division of coverage between Vitest and Playwri
   outlining safeguard after `oxc-project/oxc#25548` shipped, aligned compiler
   coverage with production, and passed the frontend, coverage, and browser gates
   (2026-08-19).
+- [x] Replaced the custom React Compiler Vite plugin with the native
+  `@vitejs/plugin-react` 6.1 integration after upstream support shipped. Kept
+  React 19 compilation production-only in Vite, compiled production modules but
+  not test-only modules under Vitest, and left the browser fixture uncompiled.
+  Accepted the upstream integration's development JSX and source maps under
+  Vitest, warning diagnostics, and fatal-error handling after verifying the
+  resulting production, test, compiler-coverage, and browser behavior
+  (2026-08-23).
 - [x] Replaced the ESLint stack with Oxlint, tsgolint, and JS plugins.
 - [x] Completed the post-migration frontend UI architecture cleanup.
 - [x] Fixed file-browser progress updates rerendering the entire browser.

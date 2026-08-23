@@ -25,6 +25,7 @@ import {
   getCapabilityReason,
   getCapabilityStatus,
 } from "@/hooks/useCapabilities";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 const STATUS_DETAILS: Record<
   CapabilityStatus,
@@ -107,29 +108,34 @@ const CapabilityManagerSection = () => {
       setIsRefreshing(true);
       setErrorText(null);
 
-      try {
-        const data = await refreshCapabilities();
-        if (!mountedRef.current) return;
-        setLatest(data);
-        setLastChecked(new Date());
-        if (showSuccessToast) {
-          toast.success("Capabilities refreshed");
-        }
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to refresh capabilities";
-        if (!mountedRef.current) return;
-        setErrorText(message);
-        if (showSuccessToast) {
-          toast.error(message);
-        }
-      } finally {
-        if (mountedRef.current) {
-          setIsRefreshing(false);
-        }
-      }
+      return withPromiseCleanup(
+        (async () => {
+          try {
+            const data = await refreshCapabilities();
+            if (!mountedRef.current) return;
+            setLatest(data);
+            setLastChecked(new Date());
+            if (showSuccessToast) {
+              toast.success("Capabilities refreshed");
+            }
+          } catch (error: unknown) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "Failed to refresh capabilities";
+            if (!mountedRef.current) return;
+            setErrorText(message);
+            if (showSuccessToast) {
+              toast.error(message);
+            }
+          }
+        })(),
+        () => {
+          if (mountedRef.current) {
+            setIsRefreshing(false);
+          }
+        },
+      );
     },
     [refreshCapabilities],
   );
@@ -139,28 +145,33 @@ const CapabilityManagerSection = () => {
       setInstallingWire(wire);
       setInstallStatus("Starting…");
       setInstallPercent(null);
-      try {
-        const result = await installCapability({ capability: wire });
-        if (!mountedRef.current) return;
-        // Optimistically reflect the result while the panel is open. The
-        // completion toast and app-wide capability refresh are owned by the
-        // global background-task handler (useRecoveredTasks) so they still fire
-        // if this dialog has been closed mid-install.
-        setLatest((previous) => ({
-          ...(previous ?? ({} as CapabilitiesResponse)),
-          [`${wire}_available`]: result.available,
-          [`${wire}_error`]: result.error ?? "",
-        }));
-        setLastChecked(new Date());
-      } catch {
-        // The global background-task handler owns the install error toast.
-      } finally {
-        if (mountedRef.current) {
-          setInstallingWire(null);
-          setInstallStatus(null);
-          setInstallPercent(null);
-        }
-      }
+      return withPromiseCleanup(
+        (async () => {
+          try {
+            const result = await installCapability({ capability: wire });
+            if (!mountedRef.current) return;
+            // Optimistically reflect the result while the panel is open. The
+            // completion toast and app-wide capability refresh are owned by
+            // the global background-task handler (useRecoveredTasks) so they
+            // still fire if this dialog has been closed mid-install.
+            setLatest((previous) => ({
+              ...(previous ?? ({} as CapabilitiesResponse)),
+              [`${wire}_available`]: result.available,
+              [`${wire}_error`]: result.error ?? "",
+            }));
+            setLastChecked(new Date());
+          } catch {
+            // The global background-task handler owns the install error toast.
+          }
+        })(),
+        () => {
+          if (mountedRef.current) {
+            setInstallingWire(null);
+            setInstallStatus(null);
+            setInstallPercent(null);
+          }
+        },
+      );
     },
     [installCapability],
   );

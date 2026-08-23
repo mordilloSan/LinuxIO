@@ -23,6 +23,7 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { ensureTrailingSlash } from "@/utils/path";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
 import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
@@ -208,45 +209,50 @@ const DockerSettingsSection = () => {
     setErrorTexts([]);
     setIsSaving(true);
 
-    try {
-      for (let index = 0; index < folders.length; index += 1) {
-        const folder = folders[index];
-        const validation = await validateDockerFolder({ dirPath: folder });
-        if (!validation.valid) {
-          setErrorTexts((prev) => {
-            const next = [...prev];
-            next[index] = validation.error || "Docker folder is not valid.";
-            return next;
-          });
-          return;
-        }
+    return withPromiseCleanup(
+      (async () => {
+        try {
+          for (let index = 0; index < folders.length; index += 1) {
+            const folder = folders[index];
+            const validation = await validateDockerFolder({ dirPath: folder });
+            if (!validation.valid) {
+              setErrorTexts((prev) => {
+                const next = [...prev];
+                next[index] = validation.error || "Docker folder is not valid.";
+                return next;
+              });
+              return;
+            }
 
-        if (!validation.exists) {
-          const shouldCreate = await askCreatePrompt(folder);
-          if (!shouldCreate) {
-            toast.info("Docker folder was not created. Save canceled.");
-            return;
+            if (!validation.exists) {
+              const shouldCreate = await askCreatePrompt(folder);
+              if (!shouldCreate) {
+                toast.info("Docker folder was not created. Save canceled.");
+                return;
+              }
+
+              await createDockerFolder({
+                path: ensureTrailingSlash(folder),
+              });
+              toast.success("Docker folder created.");
+            }
           }
 
-          await createDockerFolder({
-            path: ensureTrailingSlash(folder),
-          });
-          toast.success("Docker folder created.");
+          setDockerFolders(folders);
+          setDrafts(folders);
+          toast.success("Docker folders saved.");
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to save Docker folders";
+          toast.error(message);
         }
-      }
-
-      setDockerFolders(folders);
-      setDrafts(folders);
-      toast.success("Docker folders saved.");
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to save Docker folders";
-      toast.error(message);
-    } finally {
-      setIsSaving(false);
-    }
+      })(),
+      () => {
+        setIsSaving(false);
+      },
+    );
   }, [
     askCreatePrompt,
     createDockerFolder,

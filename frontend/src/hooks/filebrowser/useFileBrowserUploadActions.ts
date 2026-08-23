@@ -3,6 +3,7 @@ import { useCallback, type ChangeEvent } from "react";
 import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import { buildEntriesFromFileList } from "@/utils/fileUpload";
 import { joinPath } from "@/utils/path";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import type { ResolveCollisionsFn } from "./useFileConflicts";
 import type { UploadSlice } from "./useFileUpload";
@@ -89,41 +90,46 @@ export const useFileBrowserUploadActions = ({
     }
 
     uploadActions.setProcessing(true);
-    try {
-      // Uploads never overwrite silently: check the landing paths and ask the
-      // user per collision before any bytes move.
-      const resolution = await resolveCollisions(
-        uploadEntries.filter((entry) => !entry.isDirectory),
-        (entry) => joinPath(normalizedPath, entry.relativePath),
-        normalizedPath,
-      );
-      if (!resolution) {
-        return; // user cancelled the conflict prompt; keep the dialog open
-      }
-      const kept = new Set(resolution.kept);
-      const entriesToSend = uploadEntries.filter(
-        (entry) => entry.isDirectory || kept.has(entry),
-      );
-      if (!entriesToSend.length) {
-        toast.info("All items skipped");
-        return;
-      }
+    return withPromiseCleanup(
+      (async () => {
+        try {
+          // Uploads never overwrite silently: check the landing paths and ask
+          // the user per collision before any bytes move.
+          const resolution = await resolveCollisions(
+            uploadEntries.filter((entry) => !entry.isDirectory),
+            (entry) => joinPath(normalizedPath, entry.relativePath),
+            normalizedPath,
+          );
+          if (!resolution) {
+            return; // user cancelled the conflict prompt; keep the dialog open
+          }
+          const kept = new Set(resolution.kept);
+          const entriesToSend = uploadEntries.filter(
+            (entry) => entry.isDirectory || kept.has(entry),
+          );
+          if (!entriesToSend.length) {
+            toast.info("All items skipped");
+            return;
+          }
 
-      const result = await startUpload(
-        entriesToSend,
-        normalizedPath,
-        resolution.overwrite,
-      );
-      if (result.uploaded > 0) {
-        invalidateListing();
-      }
-      uploadActions.closeDialog();
-    } catch (error) {
-      console.error("Upload failed", error);
-      toast.error("Upload failed");
-    } finally {
-      uploadActions.setProcessing(false);
-    }
+          const result = await startUpload(
+            entriesToSend,
+            normalizedPath,
+            resolution.overwrite,
+          );
+          if (result.uploaded > 0) {
+            invalidateListing();
+          }
+          uploadActions.closeDialog();
+        } catch (error) {
+          console.error("Upload failed", error);
+          toast.error("Upload failed");
+        }
+      })(),
+      () => {
+        uploadActions.setProcessing(false);
+      },
+    );
   }, [
     invalidateListing,
     normalizedPath,
