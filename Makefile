@@ -862,7 +862,7 @@ test-updater: ensure-go
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./bridge/handlers/control -run TestInstallScriptDryRunWithSystemdSandbox -v
+	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run TestInstallScriptDryRunWithSystemdSandbox -count=1 -v
 
 test-docker-update-integration: ensure-go
 	@echo "🐳 Running native Docker update integration test..."
@@ -1084,6 +1084,7 @@ analyze-auth:
 
 # Run any public validation target with bounded output. The underlying target
 # is unchanged, and its complete output remains available for diagnosis.
+# test-updater stays in the foreground so sudo retains a controlling terminal.
 $(quiet_aliases):
 	@set -euo pipefail; \
 	target="$(patsubst %-quiet,%,$@)"; \
@@ -1103,12 +1104,16 @@ $(quiet_aliases):
 		fi; \
 		exit "$$rc"; \
 	}; \
-	"$(setsid_cmd)" $(MAKE) --no-print-directory "$$target" >"$$log" 2>&1 & target_pid=$$!; \
 	trap 'stop_target TERM 129' HUP; \
 	trap 'stop_target TERM 130' INT; \
 	trap 'stop_target TERM 143' TERM; \
 	trap 'stop_target TERM $$?' EXIT; \
-	if wait "$$target_pid"; then rc=0; else rc=$$?; fi; \
+	if [ "$$target" = "test-updater" ]; then \
+		if $(MAKE) --no-print-directory "$$target" >"$$log" 2>&1; then rc=0; else rc=$$?; fi; \
+	else \
+		"$(setsid_cmd)" $(MAKE) --no-print-directory "$$target" >"$$log" 2>&1 & target_pid=$$!; \
+		if wait "$$target_pid"; then rc=0; else rc=$$?; fi; \
+	fi; \
 	trap - EXIT HUP INT TERM; \
 	if [ "$$rc" -eq 0 ]; then \
 		elapsed="$$(awk -v start="$$start_seconds" -v end="$$(awk '{ print $$1 }' /proc/uptime)" 'BEGIN { printf "%.1f", end - start }')"; \

@@ -69,7 +69,7 @@ Explicitly excluded:
 | Images | Repository/tag/ID/size/created/usage data and deletion/pruning | No pull/tag/run/build, inspect/config, layer history, registry workflow, export, or vulnerability results |
 | Volumes | Create/delete/prune, usage, options, labels, and selected details | No content browser, export/import, clone, backup/restore, or attached-container safety workflow |
 | Networks | Create/delete/prune, IPAM details, connected containers, and selected details | No connect/disconnect, richer create options, port-conflict view, or topology |
-| Operations | Typed Tasks, progress, durable app/container updates, native update timer, and planned notifications/schedules | No unified Docker activity centre or Docker event history |
+| Operations | Typed Tasks, progress, durable container updates, session-bound app updates, native update timer, and planned notifications/schedules | No unified Docker activity centre or Docker event history |
 | Environments | One process-global Docker client created from the local environment | No environment identity, connection registry, remote agent, health model, or route scoping |
 | Security | Application authentication and privileged route declarations | No Docker-resource RBAC, environment scoping, audit view, image scanner, or remote credential store |
 

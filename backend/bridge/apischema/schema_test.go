@@ -106,7 +106,7 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			}
 		case bridgeipc.TaskLifetimeDurable:
 			durableCount++
-			if route.Route != "control.app_update" && route.Route != "docker.update_container" {
+			if route.Route != "docker.update_container" {
 				t.Errorf("unexpected durable task route %s", route.Route)
 			}
 			if route.Identity == nil {
@@ -116,8 +116,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 16 || durableCount != 2 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 16 and 2", sessionCount, durableCount)
+	if sessionCount != 17 || durableCount != 1 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 17 and 1", sessionCount, durableCount)
 	}
 }
 

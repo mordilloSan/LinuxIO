@@ -36,12 +36,12 @@ function createStream(): Stream {
   };
 }
 
-describe("durable app-update stream", () => {
+describe("session-bound app-update stream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("detaches on close without canceling the durable Task", async () => {
+  it("detaches on close without implicitly canceling the Task", async () => {
     const watch = createStream();
     mocks.getStreamMux.mockReturnValue({
       openStream: vi.fn().mockReturnValue(watch),

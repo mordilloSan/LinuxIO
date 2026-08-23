@@ -1,6 +1,8 @@
 package appupdate
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,9 +15,11 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -25,7 +29,10 @@ const (
 	maxHTTPErrorBodyBytes     int64 = 8 << 10
 	maxChecksumBodyBytes      int64 = 64 << 10
 	maxInstallScriptBodyBytes int64 = 4 << 20
+	updaterStopTimeout              = 30 * time.Second
 )
+
+var stopUpdaterUnit = systemdapi.StopUnit
 
 // buildScriptURLs constructs URLs to download install script and checksum from a specific release
 func buildScriptURLs(ver string) (scriptURL, checksumURL string) {
@@ -37,6 +44,61 @@ func buildScriptURLs(ver string) (scriptURL, checksumURL string) {
 
 // --- small helper for clean log lines (no ANSI) ---
 var ansiRE = regexp.MustCompile(`\x1B\[[0-9;]*[A-Za-z]`)
+
+// outputTail keeps the last N lines of script output so we can include
+// them in the error returned when the installer fails silently.
+type outputTail struct {
+	mu    sync.Mutex
+	max   int
+	lines []string
+}
+
+func newOutputTail(max int) *outputTail {
+	return &outputTail{max: max}
+}
+
+func (t *outputTail) Add(line string) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.lines = append(t.lines, line)
+	if len(t.lines) > t.max {
+		t.lines = t.lines[len(t.lines)-t.max:]
+	}
+}
+
+func (t *outputTail) String() string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Join(t.lines, "\n")
+}
+
+func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer, tail *outputTail) {
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := ansiRE.ReplaceAllString(sc.Text(), "")
+		if isInfo {
+			slog.Info(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
+		} else {
+			slog.Error(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
+		}
+		tail.Add(line)
+		if relay != nil {
+			// Best-effort relay; don't fail the update on write errors
+			_, _ = io.WriteString(relay, line+"\n")
+		}
+	}
+	if err := sc.Err(); err != nil {
+		slog.Error("log stream scanner error",
+			"component", "control", "subsystem", "app_update",
+			"mode", strings.TrimSpace(prefix), "error", err)
+	}
+}
 
 func getVersionInfo(ctx context.Context) (apischema.VersionResponse, error) {
 	currentVersion := getInstalledVersion(ctx)
@@ -82,7 +144,7 @@ func updaterWritablePaths() []updaterWritablePath {
 	}
 }
 
-func systemdReadWritePaths() []string {
+func systemdReadWritePathsProperty() string {
 	paths := make([]string, 0, len(updaterWritablePaths()))
 	for _, entry := range updaterWritablePaths() {
 		path := entry.path
@@ -91,7 +153,7 @@ func systemdReadWritePaths() []string {
 		}
 		paths = append(paths, path)
 	}
-	return paths
+	return strings.Join(paths, " ")
 }
 
 func ensureUpdaterWritablePathDirs() error {
@@ -106,13 +168,41 @@ func ensureUpdaterWritablePathDirs() error {
 	return nil
 }
 
-// downloadVerifiedInstallScript downloads and verifies the release installer.
-// Execution is owned separately by the transient-unit executor.
-func downloadVerifiedInstallScript(ctx context.Context, ver string) ([]byte, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("nil context")
+func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
+	args := []string{
+		"--unit=" + unit,
+		"--property=Description=LinuxIO updater",
+		"--quiet",
+		"--collect",
+		"--wait",
+		"--pipe",
+		"--setenv=TERM=dumb",
+		"--setenv=NO_COLOR=1",
+		"--setenv=CLICOLOR=0",
+		"--setenv=LC_ALL=C.UTF-8",
+		"-p", "Type=exec",
+		"-p", "ProtectSystem=full",
+		"-p", "ReadWritePaths=" + systemdReadWritePathsProperty(),
+		"-p", "PrivateTmp=false",
+		"-p", "NoNewPrivileges=no",
+		"-p", "RuntimeMaxSec=10min",
+		"-p", "TimeoutStopSec=30s",
+		"/bin/bash", "-s", "--",
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	if len(scriptArgs) > 0 {
+		args = append(args, scriptArgs...)
+	}
+	return args
+}
+
+// runInstallScript downloads the installer and runs it in a transient unit
+// with stdout/stderr piped back to this process (so logs appear in-order).
+// If relay is non-nil, output lines are also written to it.
+func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	client := &http.Client{Timeout: 20 * time.Second}
@@ -123,7 +213,7 @@ func downloadVerifiedInstallScript(ctx context.Context, ver string) ([]byte, err
 	slog.Debug("downloading checksum", "component", "control", "subsystem", "app_update", "path", checksumURL)
 	expectedChecksum, err := downloadChecksum(ctx, client, checksumURL)
 	if err != nil {
-		return nil, fmt.Errorf("download checksum failed: %w", err)
+		return fmt.Errorf("download checksum failed: %w", err)
 	}
 	slog.Info("downloaded expected checksum", "component", "control", "subsystem", "app_update", "checksum", expectedChecksum)
 
@@ -131,7 +221,7 @@ func downloadVerifiedInstallScript(ctx context.Context, ver string) ([]byte, err
 	slog.Debug("downloading install script", "component", "control", "subsystem", "app_update", "path", scriptURL)
 	scriptBytes, err := downloadScript(ctx, client, scriptURL)
 	if err != nil {
-		return nil, fmt.Errorf("download script failed: %w", err)
+		return fmt.Errorf("download script failed: %w", err)
 	}
 	slog.Debug("downloaded install script", "component", "control", "subsystem", "app_update", "bytes", len(scriptBytes))
 
@@ -141,10 +231,83 @@ func downloadVerifiedInstallScript(ctx context.Context, ver string) ([]byte, err
 
 	if actualChecksum != expectedChecksum {
 		slog.Error("install script checksum mismatch", "component", "control", "subsystem", "app_update", "expected_checksum", expectedChecksum, "actual_checksum", actualChecksum)
-		return nil, fmt.Errorf("checksum verification failed: script integrity compromised")
+		return fmt.Errorf("checksum verification failed: script integrity compromised")
 	}
 	slog.Info("checksum verified successfully")
-	return scriptBytes, nil
+
+	// 4) Run a transient unit with unique name and feed script on STDIN
+	if tempUnitTestErr := ensureUpdaterWritablePathDirs(); tempUnitTestErr != nil {
+		return tempUnitTestErr
+	}
+
+	unit := fmt.Sprintf("linuxio-updater-%d.service", time.Now().UnixNano())
+	systemdRunArgs := buildInstallCommandArgs(unit, scriptArgs(ver)...)
+	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
+
+	cmd := exec.CommandContext(ctx, "systemd-run", systemdRunArgs...)
+
+	// Connect streams BEFORE Start
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("capture updater stdout: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("capture updater stderr: %w", err)
+	}
+	cmd.Stdin = bytes.NewReader(scriptBytes) // Feed verified script
+
+	err = cmd.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start systemd-run (unit=%s): %w", unit, err)
+	}
+
+	// Stream logs in real-time and capture a bounded tail for error reporting.
+	tail := newOutputTail(40)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		logStream(stdout, "", true, relay, tail)
+	})
+	wg.Go(func() {
+		logStream(stderr, "", false, relay, tail)
+	})
+
+	// Wait for command to complete
+	err = cmd.Wait()
+
+	// Wait for log goroutines to finish processing all output
+	wg.Wait()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		stopCanceledUpdater(ctx, unit)
+		if err == nil {
+			err = ctxErr
+		}
+	}
+
+	if err != nil {
+		captured := tail.String()
+		journal := systemdUnitJournalTail(ctx, unit)
+		if journal != "" {
+			if captured != "" {
+				captured += "\n"
+			}
+			captured += "systemd journal:\n" + journal
+		}
+		if captured == "" {
+			return fmt.Errorf("installer failed (unit=%s, no script output captured): %w", unit, err)
+		}
+		return fmt.Errorf("installer failed (unit=%s): %w; last output:\n%s", unit, err, captured)
+	}
+
+	return nil
+}
+
+func stopCanceledUpdater(parent context.Context, unit string) {
+	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(parent), updaterStopTimeout)
+	defer cancel()
+	if err := stopUpdaterUnit(stopCtx, unit); err != nil {
+		slog.Debug("failed to stop canceled updater unit", "component", "control", "subsystem", "app_update", "unit", unit, "error", err)
+	}
 }
 
 func systemdUnitJournalTail(parent context.Context, unit string) string {

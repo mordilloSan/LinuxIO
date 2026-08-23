@@ -272,8 +272,9 @@ demonstrates value.
 
 | Route group | Initial lifetime / recovery owner |
 |-------------|-----------------------------------|
-| File operations, `docker.compose`, `virt.create`, `filebrowser.index`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` (17 routes) | Session Task. Each is canceled with its owning bridge/session. |
-| `control.app_update`, `docker.update_container` (2 routes) | Durable Task owned by authenticated numeric UID. Each has a persistent record and deterministic systemd transient unit for recovery. |
+| File operations, `docker.compose`, `virt.create`, `filebrowser.index`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` (16 routes) | Session Task. Each is canceled with its owning bridge/session. |
+| `control.app_update` | Session Task. Installer output is piped to the initiating Task; restart occurs only after terminal status/result publication. |
+| `docker.update_container` | Durable Task owned by authenticated numeric UID, with a persistent record and deterministic systemd transient unit for recovery. |
 
 ### Session activity
 
@@ -289,9 +290,9 @@ session Tasks end with the session.
 ### Phase 3 exit criteria
 
 - [x] Every Task declaration has an explicit lifetime: 17 session routes and
-  two durable routes, `control.app_update` and `docker.update_container`.
+  one durable route, `docker.update_container`.
 - [x] Owner plumbing distinguishes exact `SessionID` from durable numeric UID;
-  both durable routes use UID scope and the other 17 routes use session scope.
+  Docker update uses UID scope and the other 17 routes use session scope.
 - [x] Bridge shutdown calls `CancelTasksForSession` before closing its transport.
 - [x] Session IDs remain internal authorization values and are redacted from
   public Task snapshots and serialized owner models.
@@ -301,8 +302,7 @@ session Tasks end with the session.
 ## Phase 4: Durable Task Foundation (complete)
 
 The [Durable Operations Architecture](../durable-operations-architecture.md)
-is implemented for both current durable routes:
-`control.app_update` and `docker.update_container`.
+is implemented for the current durable route, `docker.update_container`.
 
 A durable Task requires both:
 
@@ -327,12 +327,11 @@ the record remains authoritative. A recovered `queued` record is safe to resume
 because it proves the executor was never called; after `launching`, recovery
 may only adopt the recorded executor and must never start a replacement.
 
-The app update remains an explicitly privileged root operation; the initiating
-UID owns its record but is not automatically the unit's execution user. The
-Docker update uses the same identity-checked transient-unit boundary while
+The Docker update uses the identity-checked transient-unit boundary while
 retaining Docker-specific admission, target validation, and typed result
-semantics. In both cases journald owns logs, the operation record owns typed
-state and result, and bridge-owned pipes are not a durability mechanism.
+semantics. Journald owns its logs and the operation record owns typed state and
+result. App update is deliberately outside this durable model: a bridge-owned
+pipe is its live feedback mechanism, not a durability mechanism.
 
 ### Required fault matrix
 
@@ -340,10 +339,10 @@ These are different events with deliberately different outcomes:
 
 | Event | Durable-route behavior |
 |-------|------------------------|
-| App-update page reload | The browser retains the canonical operation ID and target, detaches its watch without canceling, then converges through authenticated `/api/update-status`. |
+| App-update page reload | No recovery is claimed. The new provider starts unlocked and removes the legacy `linuxio.active-app-update` marker. |
 | Docker-update page or transport loss | Detaching the UI does not cancel the systemd worker. Same-UID bridge recovery reconstructs an active Task from the persisted record and resumes observation without launching a second unit. |
-| WebSocket reconnect | Repeating the same UID/UUID/fingerprint claim for either durable route returns the existing Task/record; a different request fingerprint conflicts. |
-| Bridge death and later reauthentication | The systemd unit and record outlive the bridge. A replacement bridge reattaches each active app-update or Docker-update record as a real UID-owned Task, validates the exact unit identity, and resumes observation without launching a second unit; watch and cancellation work from the replacement session. |
+| WebSocket reconnect | Repeating the same UID/UUID/fingerprint claim for Docker update returns the existing Task/record; a different request fingerprint conflicts. |
+| Bridge death and later reauthentication | Docker's systemd unit and record outlive the bridge, and a replacement bridge reattaches it. App update does not claim recovery; its unit is runtime-bounded and receives `--defer-restart`. |
 | Host restart | The JSON record survives but the transient unit does not promise reboot survival. A previously running record with no typed result becomes terminal `unknown`; recovery never starts a replacement automatically. |
 
 Do not claim survival for an event unless the external executor and persistent
@@ -352,22 +351,22 @@ owner confirms it stopped.
 
 ### Phase 4 exit criteria
 
-- [x] `control.app_update` and `docker.update_container` are the two durable
-  Tasks; all other 17 Tasks remain session-bound by default.
+- [x] `docker.update_container` is durable; the other 17 Tasks, including app
+  update, are session-bound.
 - [x] Starts use a Web-Crypto UUID as the Task and operation identity, with
   idempotent same-fingerprint claims and conflict on reuse for other input.
 - [x] The bounded UID-scoped store atomically persists one sanitized record per
   operation and never prunes active records.
-- [x] Both durable executors run in deterministic, identity-checked systemd
-  transient units started through D-Bus; journald remains diagnostic-only and
-  typed result files determine completion.
+- [x] The Docker durable executor runs in a deterministic, identity-checked
+  systemd transient unit started through D-Bus; journald remains diagnostic-only
+  and its typed result file determines completion.
 - [x] Same-identity claims, persisted-result recovery without relaunch, bridge
   recovery, conservative host-restart `unknown`, cancellation before mutation,
   and stop-confirmed cancellation have focused automated coverage across the
-  durable routes.
+  durable route.
 - [x] Durable status and recovery require authentication and hide records owned
-  by a different UID as missing; app update additionally exposes
-  `/api/update-status` for its existing status projection.
+  by a different UID as missing. App update separately exposes a versioned,
+  UID-scoped `/api/update-status` runtime projection.
 - [x] Recovered operations are reattached to the router Task registry, remain
   cancelable from a replacement same-UID session, and count toward singleton
   admission; the locked store also enforces the singleton across processes.
@@ -518,7 +517,7 @@ whether the alert itself is active, seen, or dismissed.
 
 After the progress, alert, and scheduled-run vertical slices:
 
-- reassess the current durable routes: keep their external systemd executors and
+- reassess the current durable route: keep its external systemd executor and
   stable results, but replace replacement-bridge Task reconstruction if the
   generic run status model gives the same honest post-login recovery with less
   machinery;
@@ -591,7 +590,7 @@ This roadmap is complete when:
   outcome honestly;
 - every Task has an explicit lifetime and owner scope;
 - session deletion cancels session Tasks in production;
-- both durable routes survive every event they claim to survive;
+- the durable route survives every event it claims to survive;
 - all Tasks expose uniform generic progress while route UIs retain typed detail;
 - alerts have one persistent server owner and one frontend cache owner;
 - scheduled scripts remain systemd-owned and their bounded run summaries link

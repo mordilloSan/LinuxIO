@@ -1,105 +1,112 @@
 package auth
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const updateStatusTestID = "00000000-0000-4000-8000-000000000042"
-const otherDurableTestID = "00000000-0000-4000-8000-000000000043"
 
-func TestUpdateStatusIsUIDScopedAndReconcilesExecutorResult(t *testing.T) {
-	oldRoot := updateStatusStoreRoot
-	updateStatusStoreRoot = filepath.Join(t.TempDir(), "operations")
-	defer func() { updateStatusStoreRoot = oldRoot }()
-	store := durabletask.NewStore(updateStatusStoreRoot)
-	record, _, err := store.Claim(context.Background(), durabletask.Claim{
-		ID:                 updateStatusTestID,
-		Route:              "control.app_update",
-		UID:                1000,
-		RequestFingerprint: durabletask.Fingerprint("control.app_update", "version=v2.3.4"),
-		Target:             "v2.3.4",
+func TestUpdateStatusReadsSafeRuntimeProjection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "update-status.json")
+	oldPath := updateStatusPath
+	updateStatusPath = path
+	defer func() { updateStatusPath = oldPath }()
+
+	exitCode := 0
+	startedAt := int64(100)
+	finishedAt := int64(200)
+	data, err := json.Marshal(updateStatusFile{
+		Version:    updateStatusVersion,
+		ID:         updateStatusTestID,
+		OwnerUID:   1000,
+		Status:     "ok",
+		ExitCode:   &exitCode,
+		StartedAt:  &startedAt,
+		FinishedAt: &finishedAt,
 	})
 	if err != nil {
-		t.Fatalf("Claim: %v", err)
+		t.Fatalf("marshal status: %v", err)
 	}
-	started := time.Now().UTC()
-	if _, updateErr := store.Update(context.Background(), record.ID, record.UID, func(current *durabletask.Record) error {
-		current.State = durabletask.StateRunning
-		current.StartedAt = &started
-		current.Executor = durabletask.Executor{Kind: "systemd-transient-unit", Handle: "unit.service", Identity: "root:root"}
-		return nil
-	}); updateErr != nil {
-		t.Fatalf("mark running: %v", updateErr)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write status: %v", err)
 	}
 
-	handler := &Handlers{}
-	owner := &session.Session{User: session.User{Username: "alice", UID: 1000}}
-	response := serveUpdateStatus(t, handler, owner)
-	if response.Status != "running" || response.ID != updateStatusTestID {
-		t.Fatalf("running response = %+v", response)
+	response := serveUpdateStatus(t, updateStatusTestID, true)
+	if response.Status != "ok" || response.ID != updateStatusTestID || response.ExitCode == nil || *response.ExitCode != 0 {
+		t.Fatalf("response = %+v", response)
 	}
-	other := &session.Session{User: session.User{Username: "bob", UID: 1001}}
-	if hidden := serveUpdateStatus(t, handler, other); hidden.Status != "unknown" || hidden.ID != "" {
-		t.Fatalf("cross-UID response = %+v", hidden)
-	}
-	if _, _, claimErr := store.Claim(context.Background(), durabletask.Claim{
-		ID:                 otherDurableTestID,
-		Route:              "future.durable_operation",
-		UID:                owner.User.UID,
-		RequestFingerprint: durabletask.Fingerprint("future.durable_operation", "request"),
-	}); claimErr != nil {
-		t.Fatalf("Claim other route: %v", claimErr)
-	}
-	if hidden := serveUpdateStatusID(t, handler, owner, otherDurableTestID); hidden.Status != "unknown" || hidden.ID != "" {
-		t.Fatalf("other-route response = %+v", hidden)
+	if hidden := serveUpdateStatus(t, "00000000-0000-4000-8000-000000000043", true); hidden.Status != "unknown" {
+		t.Fatalf("mismatched response = %+v", hidden)
 	}
 
-	result := durabletask.ExecutorResult{ID: record.ID, State: durabletask.StateCompleted, ExitCode: 0, FinishedAt: time.Now().UTC()}
-	data, err := json.Marshal(result)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	if _, writeErr := store.WriteArtifact(record.ID, "executor-result.json", data, 0o600); writeErr != nil {
-		t.Fatalf("WriteArtifact: %v", writeErr)
-	}
-	completed := serveUpdateStatus(t, handler, owner)
-	if completed.Status != "ok" || completed.ExitCode == nil || *completed.ExitCode != 0 || completed.FinishedAt == nil {
-		t.Fatalf("completed response = %+v", completed)
-	}
-	persisted, err := store.Get(context.Background(), record.ID, record.UID)
-	if err != nil || persisted.State != durabletask.StateCompleted {
-		t.Fatalf("persisted record = %+v, %v", persisted, err)
-	}
-}
-
-func TestUpdateStatusRequiresAuthenticatedContext(t *testing.T) {
-	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/update-status?id="+updateStatusTestID, nil)
+	request = request.WithContext(session.WithSession(request.Context(), &session.Session{
+		User: session.User{Username: "bob", UID: 1001},
+	}))
+	recorder := httptest.NewRecorder()
 	(&Handlers{}).UpdateStatus(recorder, request)
-	if recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	var hidden updateStatusResponse
+	if decodeErr := json.Unmarshal(recorder.Body.Bytes(), &hidden); decodeErr != nil || hidden.Status != "unknown" {
+		t.Fatalf("cross-UID response = %+v, %v", hidden, decodeErr)
 	}
 }
 
-func serveUpdateStatus(t *testing.T, handler *Handlers, sess *session.Session) updateStatusResponse {
-	return serveUpdateStatusID(t, handler, sess, updateStatusTestID)
+func TestUpdateStatusRequiresAuthentication(t *testing.T) {
+	responseRecorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/update-status?id="+updateStatusTestID, nil)
+	(&Handlers{}).UpdateStatus(responseRecorder, request)
+	if responseRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", responseRecorder.Code, http.StatusUnauthorized)
+	}
 }
 
-func serveUpdateStatusID(t *testing.T, handler *Handlers, sess *session.Session, id string) updateStatusResponse {
+func TestUpdateStatusReturnsUnknownWhenProjectionIsMissing(t *testing.T) {
+	oldPath := updateStatusPath
+	updateStatusPath = filepath.Join(t.TempDir(), "missing.json")
+	defer func() { updateStatusPath = oldPath }()
+
+	if response := serveUpdateStatus(t, updateStatusTestID, true); response.Status != "unknown" {
+		t.Fatalf("response = %+v", response)
+	}
+}
+
+func TestUpdateStatusRejectsLegacyAndMalformedProjection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "update-status.json")
+	oldPath := updateStatusPath
+	updateStatusPath = path
+	defer func() { updateStatusPath = oldPath }()
+
+	for _, data := range [][]byte{
+		[]byte(`{"id":"` + updateStatusTestID + `","owner_uid":1000,"status":"ok"}`),
+		[]byte(`{"version":1,"id":"` + updateStatusTestID + `","owner_uid":1000,"status":"completed"}`),
+		[]byte(`{"version":1,"id":"` + updateStatusTestID + `","owner_uid":1000,"status":"ok","started_at":100,"finished_at":200}`),
+	} {
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatalf("write status: %v", err)
+		}
+		if response := serveUpdateStatus(t, updateStatusTestID, true); response.Status != "unknown" {
+			t.Fatalf("response for %s = %+v", data, response)
+		}
+	}
+}
+
+func serveUpdateStatus(t *testing.T, id string, authenticated bool) updateStatusResponse {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/update-status?id="+id, nil)
-	request = request.WithContext(session.WithSession(request.Context(), sess))
-	handler.UpdateStatus(recorder, request)
+	if authenticated {
+		request = request.WithContext(session.WithSession(request.Context(), &session.Session{
+			User: session.User{Username: "alice", UID: 1000},
+		}))
+	}
+	(&Handlers{}).UpdateStatus(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
 	}

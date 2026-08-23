@@ -55,6 +55,11 @@ function response(data: unknown, ok = true): Response {
   } as Response;
 }
 
+function requestURL(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
 function Probe() {
   const update = useLinuxIOUpdater();
   return (
@@ -84,8 +89,8 @@ async function renderProvider() {
 
 describe("UpdateProvider", () => {
   beforeEach(() => {
-    window.localStorage.clear();
     vi.useRealTimers();
+    window.localStorage.clear();
     apiMocks.bindStreamHandlers.mockReturnValue(vi.fn());
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -96,6 +101,20 @@ describe("UpdateProvider", () => {
     expect(screen.getByTestId("phase")).toHaveTextContent("idle");
     expect(screen.getByTestId("progress")).toHaveTextContent("0");
     expect(screen.getByTestId("can-navigate")).toHaveTextContent("true");
+    expect(isLiveUpdateBlocked()).toBe(false);
+  });
+
+  it("ignores and removes the legacy update marker", async () => {
+    window.localStorage.setItem(
+      "linuxio.active-app-update",
+      JSON.stringify({ runId: "stale", targetVersion: "v2.0.0" }),
+    );
+
+    await renderProvider();
+
+    expect(screen.getByTestId("phase")).toHaveTextContent("idle");
+    expect(screen.getByTestId("can-navigate")).toHaveTextContent("true");
+    expect(window.localStorage.getItem("linuxio.active-app-update")).toBeNull();
     expect(isLiveUpdateBlocked()).toBe(false);
   });
 
@@ -140,11 +159,6 @@ describe("UpdateProvider", () => {
       expect.any(String),
       "v2.0.0",
     );
-    expect(
-      JSON.parse(
-        window.localStorage.getItem("linuxio.active-app-update") ?? "{}",
-      ),
-    ).toMatchObject({ targetVersion: "v2.0.0" });
     expect(mux.setUpdating).toHaveBeenCalledWith(true);
     expect(screen.getByTestId("phase")).toHaveTextContent("running");
     expect(screen.getByTestId("target")).toHaveTextContent("v2.0.0");
@@ -189,13 +203,13 @@ describe("UpdateProvider", () => {
     };
     let statusCalls = 0;
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
-      const url = input instanceof Request ? input.url : String(input);
+      const url = requestURL(input);
       if (url.startsWith("/api/update-status")) {
         statusCalls += 1;
         return response({ status: statusCalls === 1 ? "running" : "ok" });
       }
       if (url === "/api/version") {
-        return response({ version: "v2.0.0" });
+        return response({ "LinuxIO Web Server": "v2.0.0" });
       }
       return response({}, false);
     });
@@ -231,51 +245,86 @@ describe("UpdateProvider", () => {
     expect(mux.setUpdating).toHaveBeenLastCalledWith(false);
   });
 
-  it("recovers an active durable update after a page reload", async () => {
-    window.localStorage.setItem(
-      "linuxio.active-app-update",
-      JSON.stringify({
-        runId: "00000000-0000-4000-8000-000000000042",
-        targetVersion: "v2.0.0",
-      }),
-    );
+  it("unlocks after a successful update when the restarted server rejects the old session", async () => {
+    const stream = createStream();
     const mux = { setUpdating: vi.fn(), status: "open" };
-    let statusCalls = 0;
+    let handlers!: {
+      onClose: () => void;
+      onData: (data: Uint8Array) => void;
+      onResult: (result: { status: "ok" | "error"; error?: string }) => void;
+    };
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.startsWith("/api/update-status")) {
-        statusCalls += 1;
-        return response({ status: statusCalls === 1 ? "running" : "ok" });
-      }
+      const url = requestURL(input);
       if (url === "/api/version") {
-        return response({ version: "v2.0.0" });
+        return response({ "LinuxIO Web Server": "v2.0.0" });
+      }
+      if (url.startsWith("/api/update-status")) {
+        return response({}, false);
       }
       return response({}, false);
     });
     apiMocks.getStreamMux.mockReturnValue(mux);
+    apiMocks.openAppUpdateStream.mockReturnValue(stream);
+    apiMocks.bindStreamHandlers.mockImplementation((_stream, nextHandlers) => {
+      handlers = nextHandlers;
+      return vi.fn();
+    });
+    await renderProvider();
     vi.useFakeTimers();
 
-    renderWithTanStackRouter(
-      <UpdateProvider>
-        <Probe />
-      </UpdateProvider>,
-    );
     await act(async () => {
+      screen.getByRole("button", { name: "start" }).click();
+      handlers.onResult({ status: "ok" });
       await flushPromises();
     });
-    expect(screen.getByTestId("phase")).toHaveTextContent("verifying");
-    expect(screen.getByTestId("target")).toHaveTextContent("v2.0.0");
-    expect(apiMocks.openAppUpdateStream).not.toHaveBeenCalled();
-    expect(mux.setUpdating).toHaveBeenCalledWith(true);
-
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4000);
+      await vi.advanceTimersByTimeAsync(2000);
       await flushPromises();
     });
 
     expect(screen.getByTestId("phase")).toHaveTextContent("done");
-    expect(window.localStorage.getItem("linuxio.active-app-update")).toBeNull();
+    expect(screen.getByTestId("can-navigate")).toHaveTextContent("true");
     expect(mux.setUpdating).toHaveBeenLastCalledWith(false);
+    expect(isLiveUpdateBlocked()).toBe(false);
+  });
+
+  it("does not accept another component's target version as restart proof", async () => {
+    const stream = createStream();
+    const mux = { setUpdating: vi.fn(), status: "open" };
+    let handlers!: {
+      onClose: () => void;
+      onData: (data: Uint8Array) => void;
+      onResult: (result: { status: "ok" | "error"; error?: string }) => void;
+    };
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = requestURL(input);
+      if (url === "/api/version") {
+        return response({
+          "LinuxIO Bridge": "v2.0.0",
+          "LinuxIO Web Server": "v1.9.0",
+        });
+      }
+      return response({}, false);
+    });
+    apiMocks.getStreamMux.mockReturnValue(mux);
+    apiMocks.openAppUpdateStream.mockReturnValue(stream);
+    apiMocks.bindStreamHandlers.mockImplementation((_stream, nextHandlers) => {
+      handlers = nextHandlers;
+      return vi.fn();
+    });
+    await renderProvider();
+    vi.useFakeTimers();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "start" }).click();
+      handlers.onResult({ status: "ok" });
+      await vi.advanceTimersByTimeAsync(2000);
+      await flushPromises();
+    });
+
+    expect(screen.getByTestId("phase")).toHaveTextContent("verifying");
+    expect(screen.getByTestId("can-navigate")).toHaveTextContent("false");
+    expect(mux.setUpdating).not.toHaveBeenLastCalledWith(false);
   });
 
   it("surfaces backend update-status failures after stream errors", async () => {
@@ -312,6 +361,39 @@ describe("UpdateProvider", () => {
     expect(screen.getByTestId("error")).toHaveTextContent(
       "Update failed (exit code 7): checksum mismatch",
     );
+    expect(mux.setUpdating).toHaveBeenLastCalledWith(false);
+  });
+
+  it("fails and unlocks when the Task reports an error but status is unavailable", async () => {
+    const stream = createStream();
+    const mux = { setUpdating: vi.fn(), status: "open" };
+    let handlers!: {
+      onClose: () => void;
+      onData: (data: Uint8Array) => void;
+      onResult: (result: { status: "ok" | "error"; error?: string }) => void;
+    };
+    vi.mocked(fetch).mockResolvedValue(response({}, false));
+    apiMocks.getStreamMux.mockReturnValue(mux);
+    apiMocks.openAppUpdateStream.mockReturnValue(stream);
+    apiMocks.bindStreamHandlers.mockImplementation((_stream, nextHandlers) => {
+      handlers = nextHandlers;
+      return vi.fn();
+    });
+    await renderProvider();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "start" }).click();
+      handlers.onData(new TextEncoder().encode("Downloading binaries\n"));
+      handlers.onResult({ status: "error", error: "stream failed" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("phase")).toHaveTextContent("failed");
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "Update failed: stream failed",
+    );
+    expect(screen.getByTestId("can-navigate")).toHaveTextContent("true");
     expect(mux.setUpdating).toHaveBeenLastCalledWith(false);
   });
 });

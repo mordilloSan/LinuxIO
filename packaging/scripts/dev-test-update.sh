@@ -8,14 +8,26 @@
 set -euo pipefail
 
 UPDATE_STATUS_FILE="/run/linuxio/update-status.json"
-RUN_ID="${1:-dev-test-$(date +%s)}"
+RUN_ID="${1:-$(</proc/sys/kernel/random/uuid)}"
+OWNER_UID="${2:-${SUDO_UID:-$(id -u)}}"
+
+if [[ ! "$RUN_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+    echo "Invalid update run ID: expected a canonical UUID" >&2
+    exit 2
+fi
+if [[ ! "$OWNER_UID" =~ ^[0-9]+$ ]] || (( OWNER_UID > 4294967295 )); then
+    echo "Invalid owner UID" >&2
+    exit 2
+fi
 
 # Create run directory
 mkdir -p /run/linuxio
 
 # Write initial status
 started=$(date +%s)
-printf '{"id":"%s","status":"running","started_at":%s}\n' "$RUN_ID" "$started" > "$UPDATE_STATUS_FILE"
+printf '{"version":1,"id":"%s","owner_uid":%s,"status":"running","started_at":%s}\n' \
+    "$RUN_ID" "$OWNER_UID" "$started" > "$UPDATE_STATUS_FILE"
+chmod 0644 "$UPDATE_STATUS_FILE"
 
 # Output similar to production installer
 echo "▸ Starting LinuxIO test update (dev mode)"
@@ -125,8 +137,9 @@ echo "✓ Configuration directory exists at /etc/linuxio"
 
 # Write success status
 finished=$(date +%s)
-printf '{"id":"%s","status":"ok","exit_code":0,"started_at":%s,"finished_at":%s}\n' \
-    "$RUN_ID" "$started" "$finished" > "$UPDATE_STATUS_FILE"
+printf '{"version":1,"id":"%s","owner_uid":%s,"status":"ok","exit_code":0,"started_at":%s,"finished_at":%s}\n' \
+    "$RUN_ID" "$OWNER_UID" "$started" "$finished" > "$UPDATE_STATUS_FILE"
+chmod 0644 "$UPDATE_STATUS_FILE"
 
 echo ""
 echo " Installation complete!"

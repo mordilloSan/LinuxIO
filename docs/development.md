@@ -18,6 +18,10 @@ make check-backend-quiet
 make test-quiet quiet_failure_lines=80
 ```
 
+`test-updater-quiet` remains attached to the foreground terminal so its required
+`sudo` invocation can prompt for a password; the test output is still captured
+in the quiet log.
+
 Do not invoke `go test`, Vitest, TypeScript, linters, or formatters directly;
 use the corresponding Make target.
 
