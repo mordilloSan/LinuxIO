@@ -209,6 +209,24 @@ class CircularBuffer {
   }
 }
 
+/**
+ * Build a bridge StreamFrame: [opcode:1][streamID:4][length:4][payload:N].
+ * Must match backend/common/ipc/relay/protocol.go framing (big endian).
+ */
+function buildBridgeFrame(
+  opcode: number,
+  streamID: number,
+  payload: Uint8Array = new Uint8Array(0),
+): Uint8Array {
+  const frame = new Uint8Array(9 + payload.length);
+  const view = new DataView(frame.buffer);
+  frame[0] = opcode;
+  view.setUint32(1, streamID, false);
+  view.setUint32(5, payload.length, false);
+  frame.set(payload, 9);
+  return frame;
+}
+
 class StreamImpl implements Stream {
   private _onData: ((data: Uint8Array) => void) | null = null;
   public onClose: (() => void) | null = null;
@@ -283,14 +301,11 @@ class StreamImpl implements Stream {
       );
       return;
     }
-    // Wrap in StreamFrame for bridge: [opcode:1][streamID:4][length:4][payload]
-    const bridgeFrame = new Uint8Array(9 + data.length);
-    const view = new DataView(bridgeFrame.buffer);
-    bridgeFrame[0] = BridgeOpcode.StreamData;
-    view.setUint32(1, this.id, false);
-    view.setUint32(5, data.length, false);
-    bridgeFrame.set(data, 9);
-    this.mux.sendStreamData(this.id, this.type, bridgeFrame);
+    this.mux.sendStreamData(
+      this.id,
+      this.type,
+      buildBridgeFrame(BridgeOpcode.StreamData, this.id, data),
+    );
   }
 
   resize(cols: number, rows: number): void {
@@ -303,14 +318,11 @@ class StreamImpl implements Stream {
     const payloadView = new DataView(payload.buffer);
     payloadView.setUint16(0, safeCols, false);
     payloadView.setUint16(2, safeRows, false);
-
-    const bridgeFrame = new Uint8Array(9 + payload.length);
-    const view = new DataView(bridgeFrame.buffer);
-    bridgeFrame[0] = BridgeOpcode.StreamResize;
-    view.setUint32(1, this.id, false);
-    view.setUint32(5, payload.length, false);
-    bridgeFrame.set(payload, 9);
-    this.mux.sendFrame(this.id, Flags.DATA, bridgeFrame);
+    this.mux.sendFrame(
+      this.id,
+      Flags.DATA,
+      buildBridgeFrame(BridgeOpcode.StreamResize, this.id, payload),
+    );
   }
 
   close(): void {
@@ -318,13 +330,11 @@ class StreamImpl implements Stream {
       return;
     }
     this._status = "closing";
-    // Build OpStreamClose frame for bridge: [opcode:1][streamID:4][length:4]
-    const closeFrame = new Uint8Array(9);
-    const view = new DataView(closeFrame.buffer);
-    closeFrame[0] = BridgeOpcode.StreamClose;
-    view.setUint32(1, this.id, false);
-    view.setUint32(5, 0, false); // length = 0
-    this.mux.sendFrame(this.id, Flags.FIN, closeFrame);
+    this.mux.sendFrame(
+      this.id,
+      Flags.FIN,
+      buildBridgeFrame(BridgeOpcode.StreamClose, this.id),
+    );
     // Don't remove stream or call onClose yet - wait for server's response.
     // The stream will be cleaned up when we receive the server's FIN (in handleMessage).
   }
@@ -342,14 +352,12 @@ class StreamImpl implements Stream {
     // Always send abort, even if already closing (overrides pending FIN)
     this._status = "closing";
 
-    // Send OpStreamAbort frame to backend: [opcode:1][streamID:4][length:4]
-    // This signals the backend's AbortMonitor to cancel the operation
-    const abortFrame = new Uint8Array(9);
-    const view = new DataView(abortFrame.buffer);
-    abortFrame[0] = BridgeOpcode.StreamAbort;
-    view.setUint32(1, this.id, false);
-    view.setUint32(5, 0, false); // length = 0
-    this.mux.sendFrame(this.id, Flags.DATA, abortFrame);
+    // OpStreamAbort signals the backend's AbortMonitor to cancel the operation
+    this.mux.sendFrame(
+      this.id,
+      Flags.DATA,
+      buildBridgeFrame(BridgeOpcode.StreamAbort, this.id),
+    );
 
     // Then send RST to close the transport layer
     this.mux.sendFrame(this.id, Flags.RST, new Uint8Array(0));
@@ -812,17 +820,12 @@ export class StreamMultiplexer {
       this.streamsByType.set(type, stream);
     }
 
-    // Wrap initial payload in StreamFrame for bridge: [opcode:1][streamID:4][length:4][payload]
-    const payload = initialPayload || new Uint8Array(0);
-    const bridgeFrame = new Uint8Array(9 + payload.length);
-    const view = new DataView(bridgeFrame.buffer);
-    bridgeFrame[0] = BridgeOpcode.StreamOpen;
-    view.setUint32(1, id, false);
-    view.setUint32(5, payload.length, false);
-    bridgeFrame.set(payload, 9);
-
-    // Send SYN with the StreamFrame as payload
-    const sent = this.sendFrame(id, Flags.SYN, bridgeFrame);
+    // Send SYN with the initial payload wrapped in a StreamFrame for the bridge
+    const sent = this.sendFrame(
+      id,
+      Flags.SYN,
+      buildBridgeFrame(BridgeOpcode.StreamOpen, id, initialPayload),
+    );
     if (!sent) {
       // No SYN reached the WebSocket send queue, so callers can distinguish an
       // unavailable connection from a stream that opened and later lost its
@@ -964,7 +967,7 @@ export function decodeString(data: Uint8Array): string {
   return textDecoder.decode(data);
 }
 
-// Bridge StreamFrame opcodes (must match backend ipc/stream_relay.go)
+// Bridge StreamFrame opcodes (must match backend/common/ipc/relay/protocol.go)
 export const BridgeOpcode = {
   StreamOpen: 0x80,
   StreamData: 0x81,
