@@ -384,11 +384,21 @@ There is no session-storage configuration copy or local-storage theme cache.
 Concurrent UI replacements are serialized but not field-merged; the last
 complete snapshot committed wins.
 
+At upgrade, a valid pre-split combined `.linuxio-config.yaml` is recognized
+under the existing config locks and converted once: functional settings,
+including `docker.folders`, remain in the core file and presentation settings
+move to the UI file. Invalid or ambiguous legacy content is left untouched and
+fails startup; current malformed core content likewise fails without a reset.
+The conversion never uses filesystem observations to repair Docker folders.
+
 All four disk artifacts (the two YAML files and their lock files), plus atomic
 replacement files, use the authenticated session UID/GID even when the bridge
 runs as root. LinuxIO resolves only that user's passwd home and verifies its
-owner; it neither falls back to the bridge process home nor changes ownership
-of the home directory.
+owner; it follows a symlinked passwd home only after verifying the resolved
+directory's owner, and it neither falls back to the bridge process home nor
+changes ownership of the home directory. Before dropping privileges, the root
+launcher normalizes legacy root-owned YAML and lock inodes in place so old and new
+bridges continue to coordinate through `flock`.
 
 ## Tasks
 

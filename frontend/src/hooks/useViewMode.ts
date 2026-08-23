@@ -19,6 +19,12 @@ export function useViewMode(key: string) {
         const current = prev[key] ?? viewModeDefault;
         const resolved = typeof next === "function" ? next(current) : next;
 
+        if (resolved === viewModeDefault) {
+          if (!(key in prev)) return prev;
+          const nextModes = { ...prev };
+          delete nextModes[key];
+          return nextModes;
+        }
         if (prev[key] === resolved) return prev;
         return { ...prev, [key]: resolved };
       });

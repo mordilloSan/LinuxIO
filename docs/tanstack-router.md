@@ -453,11 +453,13 @@ Deferred dashboard widgets — `_authenticated/index.tsx`:
 ```ts
 loader: async ({ abortController, context, preload }) => {
   await loadRouteTransport(context, abortController.signal);
-  const queries: LoaderQueryOptions[] = [
-    linuxio.system.get_host_info,
-    // Add the dashboard's other normal queries.
-  ];
-  if (context.access.dockerAvailable === true) {
+  const ui = await loadRouteUIConfig(context, abortController.signal);
+  const queries: LoaderQueryOptions[] = [];
+  if (!ui.hiddenCards.includes("overview")) {
+    queries.push(linuxio.system.get_host_info);
+  }
+  if (context.access.dockerAvailable === true &&
+      !ui.hiddenCards.includes("docker")) {
     queries.push(linuxio.docker.list_containers);
   }
   startRouteQueryPrefetches(
@@ -467,12 +469,13 @@ loader: async ({ abortController, context, preload }) => {
 },
 ```
 
-UI configuration is loaded once by `ConfigProvider`; route loaders neither read
-a browser copy nor guess configuration defaults. Because these pages use
-Suspense queries, Dashboard and Hardware warm every query that may mount; this
-can fetch data for a hidden section once, but avoids a second configuration load
-path. Mounted widgets remain the owners of active subscriptions and polling
-cadence.
+Dashboard and Hardware use `loadRouteUIConfig` to read the backend-owned UI
+snapshot from the same user-scoped TanStack Query entry consumed by
+`ConfigProvider`. The route loader therefore has no browser cache or frontend
+default table to maintain, and it prefetches only cards or sections that the
+snapshot says can mount. Collapsed hardware history remains lazy because its
+widgets use ordinary `useQuery` observers. Mounted widgets remain the owners of
+active subscriptions and polling cadence.
 
 Annotate conditional arrays as `LoaderQueryOptions[]` so heterogeneous options
 stay assignable.

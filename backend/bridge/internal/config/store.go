@@ -59,7 +59,7 @@ func OpenUserStore(username string, targetUID, targetGID uint32) (*UserStore, er
 		if err := initializeLockedOwned(cfgPath, uiPath, base, owner); err != nil {
 			return err
 		}
-		cfg, err := readCoreLatestOwned(cfgPath, base, owner)
+		cfg, err := readCoreLatestOwned(cfgPath, base)
 		if err != nil {
 			return err
 		}
@@ -126,15 +126,12 @@ func UISnapshotForUser(ctx context.Context, username string, store *UserStore) (
 	return ui, store.UIPath(), nil
 }
 
-// UpdateUIForUser applies a UI mutation through the per-user bridge store.
-func UpdateUIForUser(ctx context.Context, username string, store *UserStore, mutate func(*UIPreferences) error) (*UIPreferences, string, error) {
-	if mutate == nil {
-		return nil, "", errors.New("UI update function is nil")
-	}
+// ReplaceUIForUser replaces the complete UI snapshot through the per-user bridge store.
+func ReplaceUIForUser(ctx context.Context, username string, store *UserStore, replacement UIPreferences) (*UIPreferences, string, error) {
 	if err := validateStoreUser(username, store); err != nil {
 		return nil, "", err
 	}
-	ui, err := store.UpdateUI(ctx, mutate)
+	ui, err := store.ReplaceUI(ctx, replacement)
 	return ui, store.UIPath(), err
 }
 
@@ -195,7 +192,7 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		current, err := readCoreLatestOwned(s.path, filepath.Dir(s.path), s.owner)
+		current, err := readCoreLatestOwned(s.path, filepath.Dir(s.path))
 		if err != nil {
 			return fmt.Errorf("read core config: %w", err)
 		}
@@ -224,17 +221,19 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 	return cloneSettings(updated), nil
 }
 
-// UpdateUI applies a mutation to the latest complete UI snapshot under its
-// sidecar lock. UI updates never read or rewrite the core file.
-func (s *UserStore) UpdateUI(ctx context.Context, mutate func(*UIPreferences) error) (*UIPreferences, error) {
+// ReplaceUI validates and writes one complete UI snapshot under its sidecar
+// lock. Replacement semantics deliberately avoid reading or merging the old
+// UI file.
+func (s *UserStore) ReplaceUI(ctx context.Context, replacement UIPreferences) (*UIPreferences, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
 	}
-	if mutate == nil {
-		return nil, errors.New("UI update function is nil")
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	next := cloneUIPreferences(&replacement)
+	if errs := ValidateUIPreferences(next); len(errs) > 0 {
+		return nil, fmt.Errorf("validate UI config: %s", strings.Join(errs, "; "))
 	}
 	s.uiUpdateMu.Lock()
 	defer s.uiUpdateMu.Unlock()
@@ -243,20 +242,6 @@ func (s *UserStore) UpdateUI(ctx context.Context, mutate func(*UIPreferences) er
 	}
 	var updated *UIPreferences
 	err := withExclusiveUILockOwned(ctx, s.uiLockPath, s.owner, func() error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		current, err := readUILatestOwned(s.uiPath, s.owner)
-		if err != nil {
-			return fmt.Errorf("read UI config: %w", err)
-		}
-		next := cloneUIPreferences(current)
-		if err := mutate(next); err != nil {
-			return err
-		}
-		if errs := ValidateUIPreferences(next); len(errs) > 0 {
-			return fmt.Errorf("validate UI config: %s", strings.Join(errs, "; "))
-		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -275,7 +260,7 @@ func (s *UserStore) UpdateUI(ctx context.Context, mutate func(*UIPreferences) er
 	return cloneUIPreferences(updated), nil
 }
 
-func readCoreLatestOwned(path, base string, owner fileOwnership) (*Settings, error) {
+func readCoreLatestOwned(path, base string) (*Settings, error) {
 	exists, err := CheckConfig(path)
 	if err != nil {
 		return nil, err
@@ -291,14 +276,7 @@ func readCoreLatestOwned(path, base string, owner fileOwnership) (*Settings, err
 	if parseErr == nil {
 		return cfg, nil
 	}
-	replacement := DefaultSettings(base)
-	if err := writeCoreConfigOwned(path, *replacement, owner); err != nil {
-		return nil, errors.Join(
-			fmt.Errorf("invalid core config: %w", parseErr),
-			fmt.Errorf("reset core config: %w", err),
-		)
-	}
-	return replacement, nil
+	return nil, fmt.Errorf("invalid core config: %w", parseErr)
 }
 
 func readUILatestOwned(path string, owner fileOwnership) (*UIPreferences, error) {

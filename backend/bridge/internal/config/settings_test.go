@@ -86,20 +86,179 @@ func TestInitializeCreatesMissingFilesIndependently(t *testing.T) {
 	require.Equal(t, "{}\n", string(raw))
 }
 
-func TestCoreSyntaxFailureResetsToDefaults(t *testing.T) {
+func TestInitializeMigratesLegacyCombinedConfigWithoutResettingCoreState(t *testing.T) {
 	base := t.TempDir()
-	path := filepath.Join(base, cfgFileName)
-	require.NoError(t, os.WriteFile(path, []byte("docker: [broken"), filePerm))
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	legacy := "appSettings:\n" +
+		"  theme: LIGHT\n" +
+		"  primaryColor: '#123456'\n" +
+		"  sidebarCollapsed: true\n" +
+		"  navigationMode: dock\n" +
+		"  dockTileColors: vibrant\n" +
+		"  dockAccentGradient:\n" +
+		"    startColor: '#101010'\n" +
+		"    endColor: '#fefefe'\n" +
+		"    rangeStart: 10\n" +
+		"    rangeEnd: 90\n" +
+		"  showHiddenFiles: false\n" +
+		"  hiddenCards: [updates]\n" +
+		"  dockerDashboardSections:\n" +
+		"    overview: false\n" +
+		"    monitoring: true\n" +
+		"    daemon: false\n" +
+		"    resources: true\n" +
+		"  hardwareSections:\n" +
+		"    overview: false\n" +
+		"    hardware: true\n" +
+		"    sensors: false\n" +
+		"    systemInfo: true\n" +
+		"    gpu: false\n" +
+		"    pciDevices: true\n" +
+		"    memoryModules: false\n" +
+		"  viewModes:\n" +
+		"    accounts.users: card\n" +
+		"    docker.stacks: table\n" +
+		"  dashboardOrder: [docker, system]\n" +
+		"  containerOrder: [beta, alpha]\n" +
+		"  chunkSizeMB: 8\n" +
+		"  terminalFontSize: 20\n" +
+		"docker:\n" +
+		"  folders: [/srv/compose, /mnt/stacks]\n" +
+		"  requireMountsForFolders: true\n" +
+		"  proxy:\n" +
+		"    caddyEnabled: true\n" +
+		"    baseDomain: apps.example.test\n" +
+		"    tlsEmail: admin@example.test\n" +
+		"jobs:\n" +
+		"  progressMinIntervalMs: 400\n" +
+		"  notificationMinIntervalMs: 1200\n" +
+		"  progressMinBytesMB: 32\n" +
+		"  heavyArchiveConcurrency: 2\n" +
+		"dismissals:\n" +
+		"  uncleanShutdownBootId: boot-1\n" +
+		"  failedLoginAlertId: login-1\n"
+	require.NoError(t, os.WriteFile(cfgPath, []byte(legacy), filePerm))
 
-	replacement, err := readCoreLatest(path, base)
+	require.NoError(t, initializeLocked(cfgPath, uiPath, base))
+	core, err := readConfigStrict(cfgPath)
 	require.NoError(t, err)
-	require.Equal(t, DefaultSettings(base), replacement)
-	reloaded, err := readConfigStrict(path)
+	require.Equal(t, []AbsolutePath{"/srv/compose", "/mnt/stacks"}, core.Docker.Folders)
+	require.True(t, core.Docker.RequireMountsForFolders)
+	require.Equal(t, 8, core.AppSettings.ChunkSizeMB)
+	require.False(t, core.AppSettings.ShowHiddenFiles)
+	require.Equal(t, 400, core.Jobs.ProgressMinIntervalMs)
+	require.Equal(t, "boot-1", core.Dismissals.UncleanShutdownBootID)
+
+	ui, err := readUILatest(uiPath)
 	require.NoError(t, err)
-	require.Equal(t, DefaultSettings(base), reloaded)
+	require.Equal(t, ThemeLight, ui.Theme)
+	require.Equal(t, CSSColor("#123456"), ui.PrimaryColor)
+	require.NotNil(t, ui.ThemeColors)
+	require.Equal(t, CSSColor("#D4D4D4"), *ui.ThemeColors.Dark.CodeText)
+	require.True(t, ui.SidebarCollapsed)
+	require.Equal(t, NavigationModeDock, ui.NavigationMode)
+	require.Equal(t, []string{"updates"}, ui.HiddenCards)
+	require.NotContains(t, ui.ViewModes, "accounts.users", "legacy card defaults must remain inherited")
+	require.Equal(t, "table", ui.ViewModes["docker.stacks"])
+	require.Equal(t, []string{"docker", "system"}, ui.LayoutOrders["dashboard"])
+	require.Equal(t, []string{"beta", "alpha"}, ui.LayoutOrders["docker.containers"])
+	require.Equal(t, 20, ui.TerminalFontSize)
+
+	uiRaw, err := os.ReadFile(uiPath)
+	require.NoError(t, err)
+	require.NotEqual(t, "{}\n", string(uiRaw), "migration must preserve UI preferences")
 }
 
-func TestCoreUnknownFieldResetsWholeDocument(t *testing.T) {
+func TestInitializeCompletesInterruptedLegacyConversionWithoutReplacingUI(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	legacy := []byte("appSettings:\n  theme: LIGHT\n" +
+		"docker:\n  folders: [/srv/compose]\n" +
+		"jobs: {}\n")
+	existingUI := DefaultUIPreferences()
+	existingUI.Theme = ThemeDark
+	existingUI.PrimaryColor = "#123456"
+	require.NoError(t, os.WriteFile(cfgPath, legacy, filePerm))
+	require.NoError(t, writeUIConfig(uiPath, existingUI))
+	uiBefore, err := os.ReadFile(uiPath)
+	require.NoError(t, err)
+
+	require.NoError(t, initializeLocked(cfgPath, uiPath, base))
+	core, err := readConfigStrict(cfgPath)
+	require.NoError(t, err)
+	require.Equal(t, []AbsolutePath{"/srv/compose"}, core.Docker.Folders)
+	uiAfter, err := os.ReadFile(uiPath)
+	require.NoError(t, err)
+	require.Equal(t, uiBefore, uiAfter)
+}
+
+func TestLegacyConversionResetsMalformedUISidecarWithoutResettingCore(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	legacy := []byte("appSettings:\n  theme: LIGHT\n" +
+		"docker:\n  folders: [/srv/compose]\n" +
+		"jobs: {}\n")
+	require.NoError(t, os.WriteFile(cfgPath, legacy, filePerm))
+	require.NoError(t, os.WriteFile(uiPath, []byte("theme: [broken"), filePerm))
+
+	require.NoError(t, initializeLocked(cfgPath, uiPath, base))
+	core, err := readConfigStrict(cfgPath)
+	require.NoError(t, err)
+	require.Equal(t, []AbsolutePath{"/srv/compose"}, core.Docker.Folders)
+	uiAfter, err := os.ReadFile(uiPath)
+	require.NoError(t, err)
+	require.Equal(t, "{}\n", string(uiAfter))
+}
+
+func TestInvalidLegacyCombinedConfigIsNotRewritten(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	raw := []byte("appSettings:\n  theme: LIGHT\ndocker:\n  folders: [relative]\n")
+	require.NoError(t, os.WriteFile(cfgPath, raw, filePerm))
+
+	err := initializeLocked(cfgPath, uiPath, base)
+	require.Error(t, err)
+	rewritten, readErr := os.ReadFile(cfgPath)
+	require.NoError(t, readErr)
+	require.Equal(t, raw, rewritten)
+	_, readErr = os.Lstat(uiPath)
+	require.Error(t, readErr)
+}
+
+func TestAmbiguousLegacyConfigWithoutDockerIsNotRewritten(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	raw := []byte("appSettings:\n  theme: LIGHT\njobs: {}\n")
+	require.NoError(t, os.WriteFile(cfgPath, raw, filePerm))
+
+	err := initializeLocked(cfgPath, uiPath, base)
+	require.Error(t, err)
+	rewritten, readErr := os.ReadFile(cfgPath)
+	require.NoError(t, readErr)
+	require.Equal(t, raw, rewritten)
+	_, readErr = os.Lstat(uiPath)
+	require.ErrorIs(t, readErr, os.ErrNotExist)
+}
+
+func TestCoreSyntaxFailureDoesNotRewrite(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, cfgFileName)
+	raw := []byte("docker: [broken")
+	require.NoError(t, os.WriteFile(path, raw, filePerm))
+
+	_, err := readCoreLatest(path, base)
+	require.Error(t, err)
+	rewritten, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, raw, rewritten)
+}
+
+func TestCoreUnknownFieldDoesNotRewrite(t *testing.T) {
 	base := t.TempDir()
 	path := filepath.Join(base, cfgFileName)
 	raw := []byte("appSettings:\n  showHiddenFiles: false\n" +
@@ -107,15 +266,14 @@ func TestCoreUnknownFieldResetsWholeDocument(t *testing.T) {
 		"jobs: {}\nunknown: true\n")
 	require.NoError(t, os.WriteFile(path, raw, filePerm))
 
-	replacement, err := readCoreLatest(path, base)
-	require.NoError(t, err)
-	require.Equal(t, DefaultSettings(base), replacement)
+	_, err := readCoreLatest(path, base)
+	require.Error(t, err)
 	rewritten, err := os.ReadFile(path)
 	require.NoError(t, err)
-	require.NotContains(t, string(rewritten), "unknown:")
+	require.Equal(t, raw, rewritten)
 }
 
-func TestCoreSemanticFailureResetsWholeDocument(t *testing.T) {
+func TestCoreSemanticFailureDoesNotRewrite(t *testing.T) {
 	base := t.TempDir()
 	path := filepath.Join(base, cfgFileName)
 	raw := []byte("appSettings:\n  chunkSizeMB: 33\n" +
@@ -123,12 +281,14 @@ func TestCoreSemanticFailureResetsWholeDocument(t *testing.T) {
 		"jobs: {}\n")
 	require.NoError(t, os.WriteFile(path, raw, filePerm))
 
-	replacement, err := readCoreLatest(path, base)
+	_, err := readCoreLatest(path, base)
+	require.Error(t, err)
+	rewritten, err := os.ReadFile(path)
 	require.NoError(t, err)
-	require.Equal(t, DefaultSettings(base), replacement)
+	require.Equal(t, raw, rewritten)
 }
 
-func TestCoreStrictContentFailuresResetWholeDocument(t *testing.T) {
+func TestCoreStrictContentFailuresDoNotRewrite(t *testing.T) {
 	tests := map[string]string{
 		"empty document":     "# comments only\n",
 		"typed path failure": "docker:\n  folders: [relative]\n",
@@ -140,9 +300,11 @@ func TestCoreStrictContentFailuresResetWholeDocument(t *testing.T) {
 			path := filepath.Join(base, cfgFileName)
 			require.NoError(t, os.WriteFile(path, []byte(contents), filePerm))
 
-			replacement, err := readCoreLatest(path, base)
+			_, err := readCoreLatest(path, base)
+			require.Error(t, err)
+			rewritten, err := os.ReadFile(path)
 			require.NoError(t, err)
-			require.Equal(t, DefaultSettings(base), replacement)
+			require.Equal(t, []byte(contents), rewritten)
 		})
 	}
 }
@@ -161,21 +323,14 @@ func TestCoreOmittedFieldsUseDefaultsWithoutRewrite(t *testing.T) {
 	require.Equal(t, raw, persisted)
 }
 
-func TestCoreResetPreCommitWriteFailurePreservesInvalidDocument(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root can write through directory permission restrictions")
-	}
+func TestCoreReadFailurePreservesInvalidDocument(t *testing.T) {
 	base := t.TempDir()
 	path := filepath.Join(base, cfgFileName)
 	raw := []byte("docker: [broken")
 	require.NoError(t, os.WriteFile(path, raw, filePerm))
-	require.NoError(t, os.Chmod(base, 0o500))
-	t.Cleanup(func() { _ = os.Chmod(base, 0o700) })
 
 	_, err := readCoreLatest(path, base)
 	require.ErrorContains(t, err, "invalid core config")
-	require.ErrorContains(t, err, "reset core config")
-	require.NoError(t, os.Chmod(base, 0o700))
 	persisted, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	require.Equal(t, raw, persisted)
@@ -253,6 +408,17 @@ func TestSparseUIConfigLoadsWithBackendDefaults(t *testing.T) {
 	require.Empty(t, loaded.LayoutOrders)
 }
 
+func TestUIViewModesEqualToBackendDefaultRemainInherited(t *testing.T) {
+	path := filepath.Join(t.TempDir(), uiCfgFileName)
+	raw := []byte("viewModes:\n  accounts.users: card\n  docker.stacks: table\n")
+	require.NoError(t, os.WriteFile(path, raw, filePerm))
+
+	loaded, err := readUILatest(path)
+	require.NoError(t, err)
+	require.NotContains(t, loaded.ViewModes, "accounts.users")
+	require.Equal(t, "table", loaded.ViewModes["docker.stacks"])
+}
+
 func TestInvalidCoreDoesNotClobberValidUI(t *testing.T) {
 	base := t.TempDir()
 	cfgPath := filepath.Join(base, cfgFileName)
@@ -262,17 +428,15 @@ func TestInvalidCoreDoesNotClobberValidUI(t *testing.T) {
 	persistedUI.Theme = ThemeLight
 	require.NoError(t, writeUIConfig(uiPath, persistedUI))
 
-	require.NoError(t, initializeLocked(cfgPath, uiPath, base))
+	require.Error(t, initializeLocked(cfgPath, uiPath, base))
 	_, err := readCoreLatest(cfgPath, base)
-	require.NoError(t, err)
-	_, err = readUILatest(uiPath)
-	require.NoError(t, err)
-	cfg, err := readConfigStrict(cfgPath)
-	require.NoError(t, err)
-	require.Equal(t, DefaultSettings(base), cfg)
+	require.Error(t, err)
 	ui, err := readUIConfigStrict(uiPath)
 	require.NoError(t, err)
 	require.Equal(t, ThemeLight, ui.Theme)
+	rewritten, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	require.Equal(t, []byte("unknown: true\n"), rewritten)
 }
 
 func TestInvalidUIDoesNotClobberValidCore(t *testing.T) {
@@ -287,14 +451,14 @@ func TestInvalidUIDoesNotClobberValidCore(t *testing.T) {
 	require.NoError(t, initializeLocked(cfgPath, uiPath, base))
 	_, err := readCoreLatest(cfgPath, base)
 	require.NoError(t, err)
-	_, err = readUILatest(uiPath)
-	require.NoError(t, err)
 	loaded, err := readConfigStrict(cfgPath)
 	require.NoError(t, err)
 	require.Equal(t, cfg.Docker.Folders, loaded.Docker.Folders)
-	ui, err := readUIConfigStrict(uiPath)
+	_, err = readUILatest(uiPath)
 	require.NoError(t, err)
-	require.Empty(t, ui)
+	uiRaw, err := os.ReadFile(uiPath)
+	require.NoError(t, err)
+	require.Equal(t, "{}\n", string(uiRaw))
 }
 
 func TestDockerFoldersAreNotRepairedFromFilesystemState(t *testing.T) {

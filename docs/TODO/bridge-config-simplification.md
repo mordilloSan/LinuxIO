@@ -7,28 +7,31 @@
 ## Implemented ownership model
 
 LinuxIO has two bridge-owned, per-user YAML files. There is no embedded
-database, JSON configuration, or legacy conversion:
+database or JSON configuration. A narrowly scoped one-time conversion handles
+the pre-split combined YAML shape:
 
 | File | Owner and contents | Failure policy |
 |---|---|---|
-| `~/.linuxio-config.yaml` | Bridge-owned functional settings and defaults: file-browser and upload behavior, Docker (including `docker.folders`), jobs, and dismissals. | A missing file is created from functional defaults. A decode or validation failure atomically replaces only this file with functional defaults. |
+| `~/.linuxio-config.yaml` | Bridge-owned functional settings and defaults: file-browser and upload behavior, Docker (including `docker.folders`), jobs, and dismissals. | A missing file is created from functional defaults. A decode or validation failure fails without modifying the file. |
 | `~/.linuxio-ui.yaml` | Frontend-produced UI snapshots: theme, navigation, collapsed/hidden state, sections, view modes, and layout orders. The backend owns their default values and validation. | A missing file is created as an empty document. A decode or validation failure atomically replaces only this file with an empty document. |
 
 At bridge login, each file is checked and initialized independently. A valid
 core file is loaded as-is; an empty or older sparse UI document is decoded on
 top of backend UI defaults without rewriting it. Missing one file never causes
-the bridge to read the other file as a migration source, and a bad UI file
-cannot reset functional settings (or vice versa). There is no projection,
-rename, archive, or other conversion of the former combined configuration. Any
-old or unknown content that fails the current strict schema is treated as a
-content failure and the corresponding file is reset.
+the bridge to read the other file as a migration source, except at the one
+explicit upgrade boundary: a valid pre-split combined `.linuxio-config.yaml`
+is converted under both locks, preserving functional values and moving UI
+values into `.linuxio-ui.yaml`. Its `docker.folders` value is copied, never
+repaired or replaced with a default. Invalid or ambiguous old content is left
+untouched and fails startup. A bad UI file cannot reset functional settings (or
+vice versa).
 
 Decode is strict and validation is pure: the bridge either accepts the whole
-document or resets that document. It does not use a permissive second decode,
+document or returns an error. It does not use a permissive second decode,
 salvage valid siblings, or perform field-by-field repair. Read, permissions,
 locking, symlink, and other security failures are operational errors and do not
-trigger a reset. A reset write uses the owner-aware atomic writer: failures before its
-rename preserve the old bytes; a directory-sync failure reported after rename
+trigger a reset. A UI reset uses the owner-aware atomic writer: failures before
+its rename preserve the old bytes; a directory-sync failure reported after rename
 has an intentionally uncertain commit result, so startup still fails rather
 than claiming the replacement is durable.
 
@@ -52,17 +55,24 @@ rejects a process UID/GID mismatch, resolves only the authenticated user's
 passwd home, and verifies that home is user-owned without changing its
 ownership. A privileged bridge assigns the target UID/GID to an atomic temp
 inode before writing configuration bytes and to a lock fd before taking the
-lock; the same owner-aware path is used by an unprivileged bridge. This avoids
-root-owned completed artifacts without adding a separate writer process.
+lock; the same owner-aware path is used by an unprivileged bridge. Before an
+unprivileged bridge drops privileges, the root launcher also changes ownership
+of any existing pre-upgrade root-owned YAML or lock file in place. It does not
+create missing artifacts, and it never unlinks and recreates a lock,
+so an old bridge holding that inode remains coordinated through `flock`. This
+avoids root-owned completed artifacts without adding a separate writer process.
 
 The backend is the only source of persisted defaults, including presentation
 defaults. `config.get_ui` expands an empty UI document into an effective
 snapshot; the frontend renders that response directly and cannot save until it
 loads. The first UI change writes one complete frontend-produced snapshot, and
 later changes replace it through one ordered save queue. There is no browser
-configuration snapshot, theme cache, or default-equality normalization.
-Frontend theme design tokens and each component's natural layout remain
-presentation implementation, not persisted configuration defaults.
+configuration snapshot, theme cache, or generic sparse/default-equality
+normalization. View modes are the deliberate exception: values equal to the
+backend's advertised default are omitted so a future policy change still
+reaches inherited surfaces. Frontend theme design tokens and each component's
+natural layout remain presentation implementation, not persisted configuration
+defaults.
 
 The public boundary changed deliberately: `config.get`/`config.set` now carry
 only functional configuration, while `config.get_ui` returns effective UI
@@ -70,9 +80,10 @@ configuration and `config.set_ui` replaces the persisted UI snapshot. Omitted
 replacement fields resolve to backend defaults. The generated API parity guard
 covers both shapes.
 
-This removes the temporary migration and repair machinery from the ownership
-contract. The bridge has one coherent reset decision per file and one pure
-validation boundary for each persisted schema.
+The permanent repair machinery is gone. The only compatibility code is the
+temporary, strict one-time conversion of the former combined YAML document;
+current malformed core files fail without mutation. The bridge has one pure
+validation boundary per persisted schema.
 
 ## Historical context
 
@@ -134,7 +145,7 @@ Three threats, three correct owners. Only two of the threats are real.
 |---|---|---|
 | Torn or partial write | No | `utils.WriteFileAtomic` plus `updateMu` and the sidecar flock already in `store.go:130-137`. No validation mechanism is aimed here. |
 | Externally modified or corrupted file | Yes | Fatal-but-recoverable parse: refuse the value, log it with position, write defaults, **stop**. Mechanisms 1 and 2. |
-| Upgrade adds, removes, or renames a field | Yes | The former plan proposed zero values plus a named one-way migration for renames; the implemented policy intentionally does not add a legacy conversion path. Invalid or unknown content resets the affected file. |
+| Upgrade adds, removes, or renames a field | Yes | Use defaults for newly omitted fields and a named, strict one-way conversion only when an on-disk schema actually changes. The combined-to-split conversion is the current example. |
 
 A silent mutating fixer is the wrong owner for every row. For the second threat
 it destroys the operator's edit and reports nothing but a log line; today it
@@ -449,9 +460,9 @@ it does not maintain a second persisted-default table.
 
 The following "Do not do" rules belonged to the former repair/migration plan.
 They are preserved to explain the original risk analysis, but they must not be
-read as current behavior. Under the implemented policy, content failures reset
-the affected YAML file, there is no legacy conversion, and Docker-folder
-filesystem usability is never persisted or mutated.
+read as current behavior. Under the implemented policy, malformed core content
+fails without mutation; only a valid pre-split document is converted once; and
+Docker-folder filesystem usability is never persisted or mutated.
 
 - **Do not delete the repair layer outright.** Four of its responsibilities must
   survive in some form: the self-healing parse, without which a single
@@ -487,7 +498,8 @@ filesystem usability is never persisted or mutated.
 ## Historical verification notes
 
 The old phase plan expected backend or repository-wide Make targets. Those
-notes describe the historical plan; they do not reopen the declined migration
-or define the current ownership contract. Current changes should use the
+notes describe the historical plan; they do not reopen the declined format
+migration or define the current ownership contract. The named combined-YAML
+upgrade conversion is the only compatibility path. Current changes should use the
 repository's applicable verification target and inspect any tooling-generated
 worktree changes afterward.

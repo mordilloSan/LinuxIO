@@ -1104,18 +1104,6 @@ export function waitForStreamMux(
       }
     });
     signal?.addEventListener("abort", handleAbort, { once: true });
-    const readCurrentStatus = (): MuxStatus => mux.status;
-    const statusAfterSubscribe = readCurrentStatus();
-    if (signal?.aborted) {
-      handleAbort();
-    } else if (statusAfterSubscribe === "open") {
-      finish(true);
-    } else if (
-      statusAfterSubscribe === "closed" ||
-      statusAfterSubscribe === "error"
-    ) {
-      finish(false);
-    }
   });
 }
 

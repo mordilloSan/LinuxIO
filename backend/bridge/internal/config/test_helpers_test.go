@@ -15,7 +15,7 @@ func initializeLocked(cfgPath, uiPath, base string) error {
 }
 
 func readCoreLatest(path, base string) (*Settings, error) {
-	return readCoreLatestOwned(path, base, normalFileOwnership())
+	return readCoreLatestOwned(path, base)
 }
 
 func readUILatest(path string) (*UIPreferences, error) {

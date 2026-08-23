@@ -33,6 +33,43 @@ func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
 }
 
 func uiConfigToAPI(value bridgeconfig.UIPreferences) apischema.UIConfig {
+	// Store reads normally return a validated complete snapshot, but keeping
+	// this boundary total prevents a malformed in-memory value (or a direct
+	// unit-test call) from turning an API response into a panic.
+	defaults := bridgeconfig.DefaultUIPreferences()
+	if value.DockAccentGradient == nil {
+		value.DockAccentGradient = defaults.DockAccentGradient
+	}
+	if value.DockerDashboardSections == nil {
+		value.DockerDashboardSections = defaults.DockerDashboardSections
+	}
+	if value.HardwareSections == nil {
+		value.HardwareSections = defaults.HardwareSections
+	}
+	if value.HiddenCards == nil {
+		value.HiddenCards = defaults.HiddenCards
+	}
+	if value.ViewModes == nil {
+		value.ViewModes = defaults.ViewModes
+	}
+	if value.LayoutOrders == nil {
+		value.LayoutOrders = defaults.LayoutOrders
+	}
+	if value.NavigationMode == "" {
+		value.NavigationMode = defaults.NavigationMode
+	}
+	if value.DockTileColors == "" {
+		value.DockTileColors = defaults.DockTileColors
+	}
+	if value.Theme == "" {
+		value.Theme = defaults.Theme
+	}
+	if value.PrimaryColor == "" {
+		value.PrimaryColor = defaults.PrimaryColor
+	}
+	if value.TerminalFontSize == 0 {
+		value.TerminalFontSize = defaults.TerminalFontSize
+	}
 	result := apischema.UIConfig{
 		Theme:                   apischema.Theme(value.Theme),
 		PrimaryColor:            value.PrimaryColor.String(),

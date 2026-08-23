@@ -16,7 +16,7 @@ func TestApplyUISettingsUpdateUsesReplacementShape(t *testing.T) {
 	fontSize := 18
 	primary := "#123456"
 
-	var replacement bridgeconfig.UIPreferences
+	replacement := bridgeconfig.DefaultUIPreferences()
 	err := applyUISettingsUpdate(&replacement, &apischema.ConfigUISetPayload{
 		Theme:            &theme,
 		PrimaryColor:     &primary,
@@ -31,17 +31,18 @@ func TestApplyUISettingsUpdateUsesReplacementShape(t *testing.T) {
 	require.Equal(t, navigation, replacement.NavigationMode)
 	require.True(t, replacement.SidebarCollapsed)
 	require.Equal(t, fontSize, replacement.TerminalFontSize)
-	require.Nil(t, replacement.ThemeColors)
+	require.Equal(t, defaults.ThemeColors, replacement.ThemeColors)
 	require.Equal(t, defaults.HiddenCards, replacement.HiddenCards)
 	require.Equal(t, defaults.ViewModes, replacement.ViewModes)
 }
 
 func TestApplyUISettingsUpdateClearsOmittedOverrides(t *testing.T) {
 	theme := "LIGHT"
-	var replacement bridgeconfig.UIPreferences
+	replacement := bridgeconfig.DefaultUIPreferences()
 	require.NoError(t, applyUISettingsUpdate(&replacement, &apischema.ConfigUISetPayload{Theme: &theme}))
 	require.Equal(t, bridgeconfig.ThemeLight, replacement.Theme)
 	require.Equal(t, bridgeconfig.CSSColor("#2196f3"), replacement.PrimaryColor)
+	require.Equal(t, bridgeconfig.DefaultUIPreferences().ThemeColors, replacement.ThemeColors)
 	require.False(t, replacement.SidebarCollapsed)
 	require.Empty(t, replacement.HiddenCards)
 	require.Empty(t, replacement.ViewModes)

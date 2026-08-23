@@ -13,13 +13,10 @@ func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *api
 	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
 
-// applyUISettingsUpdate starts from backend defaults so config.set_ui has
-// replacement semantics while every persisted snapshot remains complete.
 func applyUISettingsUpdate(ui *bridgeconfig.UIPreferences, payload *apischema.ConfigUISetPayload) error {
 	if ui == nil {
 		return fmt.Errorf("UI preferences are nil")
 	}
-	*ui = bridgeconfig.DefaultUIPreferences()
 	if err := applyThemeSetting(ui, payload.Theme); err != nil {
 		return err
 	}

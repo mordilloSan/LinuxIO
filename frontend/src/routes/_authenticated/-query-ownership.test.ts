@@ -124,7 +124,10 @@ describe("targeted route query ownership", () => {
     expect(dashboardRoute).toContain("context.access.dockerAvailable === true");
     expect(dashboardRoute).not.toContain(".queryOptions(");
     expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(16);
-    expect(hardwareRoute).not.toContain("if (sections.");
+    expect(hardwareRoute).toContain("sections.sensors");
+    expect(hardwareRoute).toContain("sections.systemInfo");
+    expect(hardwareRoute).toContain("sections.pciDevices");
+    expect(hardwareRoute).toContain("sections.memoryModules");
     expect(hardwareRoute).not.toContain(".queryOptions(");
     expect(hardwareRoute.match(/linuxio\./g)).toHaveLength(7);
     expect(dashboardPage).toContain("<Suspense");

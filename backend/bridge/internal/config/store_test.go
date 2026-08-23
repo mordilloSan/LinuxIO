@@ -69,10 +69,9 @@ func TestUpdateForUserAndUIForUser(t *testing.T) {
 	require.Equal(t, cfgPath, path)
 	require.False(t, updated.AppSettings.ShowHiddenFiles)
 
-	updatedUI, uiFile, err := UpdateUIForUser(context.Background(), "miguel", store, func(value *UIPreferences) error {
-		value.Theme = ThemeDark
-		return nil
-	})
+	replacement := DefaultUIPreferences()
+	replacement.Theme = ThemeDark
+	updatedUI, uiFile, err := ReplaceUIForUser(context.Background(), "miguel", store, replacement)
 	require.NoError(t, err)
 	require.Equal(t, uiPath, uiFile)
 	require.Equal(t, ThemeDark, updatedUI.Theme)
@@ -97,15 +96,13 @@ func TestUserStoreRejectsInvalidCoreAndUIUpdates(t *testing.T) {
 		return nil
 	})
 	require.Error(t, err)
-	_, err = store.UpdateUI(context.Background(), func(value *UIPreferences) error {
-		value.Theme = PersistedTheme("PURPLE")
-		return nil
-	})
+	invalidUI := DefaultUIPreferences()
+	invalidUI.Theme = PersistedTheme("PURPLE")
+	_, err = store.ReplaceUI(context.Background(), invalidUI)
 	require.Error(t, err)
-	_, err = store.UpdateUI(context.Background(), func(value *UIPreferences) error {
-		value.ViewModes = map[string]string{"accounts.users": "grid"}
-		return nil
-	})
+	invalidUI = DefaultUIPreferences()
+	invalidUI.ViewModes = map[string]string{"accounts.users": "grid"}
+	_, err = store.ReplaceUI(context.Background(), invalidUI)
 	require.Error(t, err)
 	coreAfter, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
@@ -115,7 +112,7 @@ func TestUserStoreRejectsInvalidCoreAndUIUpdates(t *testing.T) {
 	require.Equal(t, uiBefore, uiAfter)
 }
 
-func TestUserStoreUpdatesStartFromLatestIndependentDiskFiles(t *testing.T) {
+func TestUserStoreCoreUpdateReadsLatestDiskAndUIReplacementDoesNot(t *testing.T) {
 	base := t.TempDir()
 	cfgPath := filepath.Join(base, cfgFileName)
 	uiPath := filepath.Join(base, uiCfgFileName)
@@ -140,13 +137,50 @@ func TestUserStoreUpdatesStartFromLatestIndependentDiskFiles(t *testing.T) {
 	require.Equal(t, 8, updatedCore.AppSettings.ChunkSizeMB)
 	require.False(t, updatedCore.AppSettings.ShowHiddenFiles)
 
-	updatedUI, err := store.UpdateUI(context.Background(), func(value *UIPreferences) error {
-		value.PrimaryColor = "#123456"
+	replacement := DefaultUIPreferences()
+	replacement.PrimaryColor = "#123456"
+	updatedUI, err := store.ReplaceUI(context.Background(), replacement)
+	require.NoError(t, err)
+	require.Equal(t, replacement.Theme, updatedUI.Theme)
+	require.Equal(t, CSSColor("#123456"), updatedUI.PrimaryColor)
+}
+
+func TestUserStoreUIReplacementDoesNotReadMalformedOldSnapshot(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	cfg := DefaultSettings(base)
+	replacement := DefaultUIPreferences()
+	replacement.Theme = ThemeDark
+	require.NoError(t, writeCoreConfig(cfgPath, *cfg))
+	require.NoError(t, os.WriteFile(uiPath, []byte("theme: [broken"), filePerm))
+	store := newUserStore("miguel", cfgPath, uiPath, cfg, nil)
+
+	updated, err := store.ReplaceUI(context.Background(), replacement)
+	require.NoError(t, err)
+	require.Equal(t, ThemeDark, updated.Theme)
+	loaded, err := readUILatest(uiPath)
+	require.NoError(t, err)
+	require.Equal(t, ThemeDark, loaded.Theme)
+}
+
+func TestUserStoreMutationRejectsMalformedCoreWithoutRewriting(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	coreRaw := []byte("docker: [broken")
+	require.NoError(t, os.WriteFile(cfgPath, coreRaw, filePerm))
+	require.NoError(t, writeUIConfig(uiPath, DefaultUIPreferences()))
+	store := newUserStore("miguel", cfgPath, uiPath, DefaultSettings(base), nil)
+
+	_, err := store.Update(context.Background(), func(value *Settings) error {
+		value.AppSettings.ShowHiddenFiles = false
 		return nil
 	})
+	require.Error(t, err)
+	rewritten, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
-	require.Equal(t, ThemeLight, updatedUI.Theme)
-	require.Equal(t, CSSColor("#123456"), updatedUI.PrimaryColor)
+	require.Equal(t, coreRaw, rewritten)
 }
 
 func TestUserStoresSerializeConcurrentCoreUpdates(t *testing.T) {

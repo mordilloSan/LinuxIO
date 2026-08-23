@@ -53,12 +53,11 @@ func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, usern
 }
 
 func SetUIConfigForUser(ctx context.Context, req apischema.ConfigUISetPayload, username string, store *bridgeconfig.UserStore) (apischema.ConfigSetResult, error) {
-	_, uiPath, err := bridgeconfig.UpdateUIForUser(ctx, username, store, func(ui *bridgeconfig.UIPreferences) error {
-		if applyErr := applyUISettingsUpdate(ui, &req); applyErr != nil {
-			return applyErr
-		}
-		return nil
-	})
+	ui := bridgeconfig.DefaultUIPreferences()
+	if err := applyUISettingsUpdate(&ui, &req); err != nil {
+		return apischema.ConfigSetResult{}, fmt.Errorf("update UI config: %w", err)
+	}
+	_, uiPath, err := bridgeconfig.ReplaceUIForUser(ctx, username, store, ui)
 	if err != nil {
 		return apischema.ConfigSetResult{}, fmt.Errorf("update UI config: %w", err)
 	}

@@ -81,6 +81,21 @@ func TestUIConfigToAPIIncludesBackendDefaults(t *testing.T) {
 	if got["viewModeDefault"] != "card" {
 		t.Fatalf("view mode default missing: %#v", got)
 	}
+	themeColors, ok := got["themeColors"].(map[string]any)
+	if !ok {
+		t.Fatalf("backend theme-color defaults missing: %#v", got)
+	}
+	dark, ok := themeColors["dark"].(map[string]any)
+	if !ok || dark["codeText"] != "#D4D4D4" {
+		t.Fatalf("backend dark theme-color defaults missing: %#v", themeColors)
+	}
+}
+
+func TestUIConfigToAPIHandlesIncompleteValue(t *testing.T) {
+	got := uiConfigToAPI(bridgeconfig.UIPreferences{})
+	if got.Theme != "DARK" || got.NavigationMode != "sidebar" || got.ViewModeDefault != "card" {
+		t.Fatalf("incomplete UI value did not receive safe defaults: %#v", got)
+	}
 }
 
 func decodeConfigJSON(t *testing.T, value any) map[string]any {

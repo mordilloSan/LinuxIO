@@ -15,6 +15,7 @@ import {
   useCallMutation,
   useStreamMux,
 } from "@/api";
+import { scopedConfigQueryKey } from "@/api/config-query";
 import {
   ConfigAccessorContext,
   ConfigContext,
@@ -67,6 +68,11 @@ const cloneThemeColorsByMode = (
     : undefined;
 
 function cloneUIConfig(value: UIConfig): EffectiveUISettings {
+  const viewModes = Object.fromEntries(
+    Object.entries(value.viewModes).filter(
+      ([, mode]) => mode !== value.viewModeDefault,
+    ),
+  );
   return {
     theme: value.theme,
     primaryColor: value.primaryColor,
@@ -78,7 +84,7 @@ function cloneUIConfig(value: UIConfig): EffectiveUISettings {
     hiddenCards: [...value.hiddenCards],
     dockerDashboardSections: { ...value.dockerDashboardSections },
     hardwareSections: { ...value.hardwareSections },
-    viewModes: { ...value.viewModes },
+    viewModes,
     viewModeDefault: value.viewModeDefault,
     layoutOrders: Object.fromEntries(
       Object.entries(value.layoutOrders).map(([key, order]) => [
@@ -87,6 +93,28 @@ function cloneUIConfig(value: UIConfig): EffectiveUISettings {
       ]),
     ),
     terminalFontSize: value.terminalFontSize,
+  };
+}
+
+function uiConfigFromEffective(config: EffectiveAppConfig): UIConfig {
+  const ui = config.appSettings;
+  return {
+    theme: ui.theme,
+    primaryColor: ui.primaryColor,
+    themeColors: cloneThemeColorsByMode(ui.themeColors),
+    sidebarCollapsed: ui.sidebarCollapsed,
+    navigationMode: ui.navigationMode,
+    dockTileColors: ui.dockTileColors,
+    dockAccentGradient: { ...ui.dockAccentGradient },
+    hiddenCards: [...ui.hiddenCards],
+    dockerDashboardSections: { ...ui.dockerDashboardSections },
+    hardwareSections: { ...ui.hardwareSections },
+    viewModes: { ...ui.viewModes },
+    layoutOrders: Object.fromEntries(
+      Object.entries(ui.layoutOrders).map(([key, order]) => [key, [...order]]),
+    ),
+    viewModeDefault: ui.viewModeDefault,
+    terminalFontSize: ui.terminalFontSize,
   };
 }
 
@@ -253,6 +281,7 @@ const patchConfigValue = <K extends ConfigValueKey>(
 interface SaveOperation {
   bridge?: ConfigPatch;
   ui?: ConfigUISetPayload;
+  uiCacheValue?: UIConfig;
   onSaved?: () => void;
 }
 
@@ -281,7 +310,7 @@ function LoadedConfigProviders({
 }
 
 export const ConfigProvider = ({ children }: ConfigProviderProps) => {
-  const { sessionExpired } = useAuth();
+  const { sessionExpired, user } = useAuth();
   const queryClient = useQueryClient();
   const [config, setConfig] = useState<EffectiveAppConfig | null>(null);
   const [isLoaded, setLoaded] = useState(false);
@@ -303,6 +332,12 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   });
   const saveTailRef = useRef<Promise<void>>(Promise.resolve());
   const activeQueueRef = useRef(true);
+  const configUserId = user?.id ?? "anonymous";
+  const scopedConfigKey = useCallback(
+    (queryKey: readonly unknown[]) =>
+      scopedConfigQueryKey(queryKey, configUserId),
+    [configUserId],
+  );
 
   useEffect(() => {
     activeQueueRef.current = true;
@@ -312,26 +347,47 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      queryClient.removeQueries({
+        exact: true,
+        queryKey: scopedConfigKey(linuxio.config.get.queryKey),
+      });
+      queryClient.removeQueries({
+        exact: true,
+        queryKey: scopedConfigKey(linuxio.config.get_ui.queryKey),
+      });
+    };
+  }, [queryClient, scopedConfigKey]);
+
   const enqueueSave = useCallback(
     (operation: SaveOperation) => {
       saveTailRef.current = saveTailRef.current
         .then(async () => {
           if (!activeQueueRef.current) return;
-          if (operation.bridge) {
-            await setConfigRemote(operation.bridge);
-            if (!activeQueueRef.current) return;
+          const results = await Promise.allSettled([
+            operation.bridge
+              ? setConfigRemote(operation.bridge)
+              : Promise.resolve(),
+            operation.ui ? setUIRemote(operation.ui) : Promise.resolve(),
+          ]);
+          if (!activeQueueRef.current) return;
+
+          const uiResult = results[1];
+          if (operation.uiCacheValue && uiResult.status === "fulfilled") {
+            queryClient.setQueryData(
+              scopedConfigKey(linuxio.config.get_ui.queryKey),
+              operation.uiCacheValue,
+            );
           }
-          if (operation.ui) {
-            await setUIRemote(operation.ui);
-            if (!activeQueueRef.current) return;
-          }
+          if (results.some((result) => result.status === "rejected")) return;
           operation.onSaved?.();
         })
         // Mutation hooks report the individual failure. Keep the queue alive
         // so a later user change can still be sent.
         .catch(() => undefined);
     },
-    [setConfigRemote, setUIRemote],
+    [queryClient, scopedConfigKey, setConfigRemote, setUIRemote],
   );
 
   useEffect(() => {
@@ -345,15 +401,21 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     }
 
     const load = async () => {
+      const uiQueryKey = scopedConfigKey(linuxio.config.get_ui.queryKey);
+      const cachedUI = queryClient.getQueryData<UIConfig>(uiQueryKey);
       const results = await Promise.allSettled([
         queryClient.fetchQuery({
           ...linuxio.config.get,
+          queryKey: scopedConfigKey(linuxio.config.get.queryKey),
           staleTime: CACHE_TTL_MS.NONE,
         }),
-        queryClient.fetchQuery({
-          ...linuxio.config.get_ui,
-          staleTime: CACHE_TTL_MS.NONE,
-        }),
+        cachedUI
+          ? Promise.resolve(cachedUI)
+          : queryClient.fetchQuery({
+              ...linuxio.config.get_ui,
+              queryKey: uiQueryKey,
+              staleTime: CACHE_TTL_MS.NONE,
+            }),
       ]);
       if (cancelled) return;
 
@@ -399,7 +461,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       cancelled = true;
       canSaveRef.current = false;
     };
-  }, [isMuxOpen, queryClient, sessionExpired]);
+  }, [isMuxOpen, queryClient, scopedConfigKey, sessionExpired]);
 
   const save = useCallback(
     (
@@ -423,6 +485,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       enqueueSave({
         bridge: wantsBridge ? bridgePatch(patch) : undefined,
         ui: wantsUI ? uiSnapshotFromConfig(nextConfig) : undefined,
+        uiCacheValue: wantsUI ? uiConfigFromEffective(nextConfig) : undefined,
         onSaved,
       });
     },

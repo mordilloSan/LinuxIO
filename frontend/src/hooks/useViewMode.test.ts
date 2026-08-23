@@ -24,6 +24,7 @@ const { act, renderHook } = await import("@/test/render");
 describe("useViewMode", () => {
   beforeEach(() => {
     configMocks.viewModes = {};
+    configMocks.viewModeDefault = "card";
     configMocks.setViewModes.mockReset();
   });
 
@@ -50,17 +51,27 @@ describe("useViewMode", () => {
     expect(updater({})).toEqual({ services: "table" });
   });
 
-  it("stores an explicit selection of the backend default", () => {
+  it("prunes an explicit selection of the backend default", () => {
     const { result } = renderHook(() => useViewMode("services"));
 
     act(() => result.current[1]("card"));
     const updater = configMocks.setViewModes.mock.calls[0][0];
 
     expect(updater({ services: "table", docker: "table" })).toEqual({
-      services: "card",
       docker: "table",
     });
-    expect(updater({ services: "table" })).toEqual({ services: "card" });
+    expect(updater({ services: "card" })).toEqual({});
+  });
+
+  it("uses a changed backend default to re-default inherited surfaces", () => {
+    configMocks.viewModes = { services: "card" };
+    configMocks.viewModeDefault = "table";
+    const { result } = renderHook(() => useViewMode("services"));
+
+    act(() => result.current[1]("table"));
+    const updater = configMocks.setViewModes.mock.calls[0][0];
+
+    expect(updater({ services: "card" })).toEqual({});
   });
 
   it("supports functional updates", () => {

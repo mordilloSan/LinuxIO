@@ -14,23 +14,29 @@ import (
 )
 
 // parseCoreConfig decodes one complete core document and validates the result.
-// Defaults only supply omitted core fields; a failed decode or validation is
-// handled by readCoreLatest, which replaces the whole document.
+// Defaults only supply omitted core fields. A failed decode is returned to the
+// caller unchanged so a malformed or unknown-field document cannot be erased
+// by a read or an unrelated mutation.
 func parseCoreConfig(raw []byte, path, base string) (*Settings, error) {
-	if err := validateSingleYAMLDocument(raw); err != nil {
+	cfg, err := decodeCoreConfig(raw, base)
+	if err != nil {
 		logYAMLError(err, path)
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func decodeCoreConfig(raw []byte, base string) (*Settings, error) {
+	if err := validateSingleYAMLDocument(raw); err != nil {
 		return nil, err
 	}
 
 	cfg := DefaultSettings(base)
 	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
-		logYAMLError(err, path)
 		return nil, err
 	}
 	if errs := ValidateConfig(cfg); len(errs) > 0 {
-		err := errors.New(strings.Join(errs, "; "))
-		slog.Error("config validation failed", "component", "config", "path", path, "error", err)
-		return nil, err
+		return nil, errors.New(strings.Join(errs, "; "))
 	}
 	return cfg, nil
 }
@@ -48,12 +54,31 @@ func parseUIConfig(raw []byte, path string) (*UIPreferences, error) {
 		logYAMLError(err, path)
 		return nil, err
 	}
+	ui.ViewModes = normalizeViewModesForDefault(ui.ViewModes)
 	if errs := ValidateUIPreferences(&ui); len(errs) > 0 {
 		err := errors.New(strings.Join(errs, "; "))
 		slog.Error("UI config validation failed", "component", "config", "path", path, "error", err)
 		return nil, err
 	}
 	return &ui, nil
+}
+
+// normalizeViewModesForDefault keeps only explicit deviations from the
+// backend policy. This lets a future backend default change affect surfaces
+// that were previously left at the policy value, including snapshots written
+// by the first split-config release before inheritance was restored.
+func normalizeViewModesForDefault(viewModes map[string]string) map[string]string {
+	if viewModes == nil {
+		return nil
+	}
+	result := make(map[string]string, len(viewModes))
+	for key, mode := range viewModes {
+		if mode == DefaultViewMode {
+			continue
+		}
+		result[key] = mode
+	}
+	return result
 }
 func validateSingleYAMLDocument(raw []byte) error {
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))

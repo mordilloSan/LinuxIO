@@ -186,6 +186,9 @@ function Probe() {
       <div data-testid="docker-dashboard-sections">
         {JSON.stringify(config.appSettings.dockerDashboardSections)}
       </div>
+      <div data-testid="view-modes">
+        {JSON.stringify(config.appSettings.viewModes)}
+      </div>
       <button onClick={() => setKey("theme", "DARK")}>set theme</button>
       <button onClick={() => setKey("primaryColor", "#abcdef")}>
         set primary color
@@ -219,6 +222,18 @@ function Probe() {
       >
         set mounts
       </button>
+      <button
+        onClick={() =>
+          updateConfig(
+            {
+              appSettings: { showHiddenFiles: false, theme: "DARK" },
+            },
+            onSavedSpy,
+          )
+        }
+      >
+        set mixed settings
+      </button>
     </div>
   );
 }
@@ -238,14 +253,16 @@ function renderProvider({
   uiQueryFn = async () => remoteUI(),
   sessionExpired = vi.fn(),
   strictMode = false,
+  queryClient: providedQueryClient,
 }: {
   configQueryFn?: () => Promise<AppConfig>;
   uiQueryFn?: () => Promise<UIConfig>;
   sessionExpired?: () => void;
   strictMode?: boolean;
+  queryClient?: ReturnType<typeof createTestQueryClient>;
 } = {}) {
   const actionConfigs: CapturedActionConfig[] = [];
-  const queryClient = createTestQueryClient();
+  const queryClient = providedQueryClient ?? createTestQueryClient();
   const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
   apiMocks.useStreamMux.mockReturnValue({
@@ -345,6 +362,55 @@ describe("ConfigProvider", () => {
     expect(sessionStorage.length).toBe(0);
   });
 
+  it("clears scoped config snapshots when the authenticated provider ends", async () => {
+    const first = renderProvider();
+    await screen.findByTestId("loaded");
+    expect(
+      first.queryClient.getQueryData([
+        "linuxio",
+        "config",
+        "get",
+        "user",
+        "miguel",
+      ]),
+    ).toBeDefined();
+    expect(
+      first.queryClient.getQueryData([
+        "linuxio",
+        "config",
+        "get_ui",
+        "user",
+        "miguel",
+      ]),
+    ).toBeDefined();
+
+    first.unmount();
+
+    expect(
+      first.queryClient.getQueryData([
+        "linuxio",
+        "config",
+        "get",
+        "user",
+        "miguel",
+      ]),
+    ).toBeUndefined();
+    expect(
+      first.queryClient.getQueryData([
+        "linuxio",
+        "config",
+        "get_ui",
+        "user",
+        "miguel",
+      ]),
+    ).toBeUndefined();
+
+    apiMocks.uiGetCall.mockClear();
+    renderProvider({ queryClient: first.queryClient });
+    await screen.findByTestId("loaded");
+    expect(apiMocks.uiGetCall).toHaveBeenCalledTimes(1);
+  });
+
   it("saves user changes only after a successful backend load", async () => {
     const { actionConfigs } = renderProvider();
 
@@ -376,6 +442,28 @@ describe("ConfigProvider", () => {
       appSettings: { showHiddenFiles: false },
     });
     expect(apiMocks.setUIRemote).not.toHaveBeenCalled();
+  });
+
+  it("attempts mixed bridge and UI writes independently", async () => {
+    onSavedSpy.mockClear();
+    apiMocks.setConfigRemote.mockRejectedValueOnce(new Error("bridge failed"));
+    apiMocks.setUIRemote.mockResolvedValueOnce(undefined);
+    renderProvider();
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set mixed settings" }).click();
+    });
+
+    await waitFor(() => expect(apiMocks.setConfigRemote).toHaveBeenCalled());
+    await waitFor(() => expect(apiMocks.setUIRemote).toHaveBeenCalled());
+    expect(onSavedSpy).not.toHaveBeenCalled();
+    expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
+      appSettings: { showHiddenFiles: false },
+    });
+    expect(apiMocks.setUIRemote).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: "DARK" }),
+    );
   });
 
   it("persists a StrictMode-replayed update only once", async () => {
@@ -492,6 +580,24 @@ describe("ConfigProvider", () => {
 
     const [payload] = apiMocks.setUIRemote.mock.lastCall ?? [];
     expect(payload).not.toHaveProperty("themeColors");
+  });
+
+  it("prunes stored view modes that match the backend default", async () => {
+    renderProvider({
+      uiQueryFn: async () =>
+        remoteUI({
+          viewModeDefault: "table",
+          viewModes: {
+            "docker.images": "table",
+            "docker.networks": "card",
+          },
+        }),
+    });
+
+    await screen.findByTestId("loaded");
+    expect(screen.getByTestId("view-modes")).toHaveTextContent(
+      '{"docker.networks":"card"}',
+    );
   });
 
   it("invalidates compose projects after persisted Docker folder changes", async () => {

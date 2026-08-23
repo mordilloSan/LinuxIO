@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -101,6 +102,9 @@ func (o fileOwnership) ensureFile(path string) error {
 	if err := f.Chown(o.uid, o.gid); err != nil {
 		return fmt.Errorf("own config file %q: %w", path, err)
 	}
+	if err := f.Chmod(filePerm); err != nil {
+		return fmt.Errorf("set config file permissions %q: %w", path, err)
+	}
 	return nil
 }
 
@@ -137,17 +141,39 @@ func Homedir(username string) (string, error) {
 	if !filepath.IsAbs(u.HomeDir) {
 		return "", fmt.Errorf("user home directory is not absolute: %s", u.HomeDir)
 	}
-	info, err := os.Lstat(u.HomeDir)
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		return "", fmt.Errorf("user %q has invalid uid %q: %w", username, u.Uid, err)
+	}
+	return resolveHomePath(u.HomeDir, uint32(uid))
+}
+
+// resolveHomePath follows the passwd home path, then verifies the resolved
+// directory belongs to the authenticated user. Returning the resolved path
+// also keeps later config-path checks from traversing a home symlink.
+func resolveHomePath(home string, uid uint32) (string, error) {
+	if !filepath.IsAbs(home) {
+		return "", fmt.Errorf("user home directory is not absolute: %s", home)
+	}
+	info, err := os.Stat(home)
 	if err != nil {
 		return "", err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("home path must not be a symlink")
 	}
 	if !info.IsDir() {
 		return "", errors.New("home path is not a directory")
 	}
-	return u.HomeDir, nil
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", errors.New("home directory has no ownership metadata")
+	}
+	if uint64(stat.Uid) != uint64(uid) {
+		return "", fmt.Errorf("home directory %q is owned by uid %d, want %d", home, stat.Uid, uid)
+	}
+	resolved, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory %q: %w", home, err)
+	}
+	return filepath.Clean(resolved), nil
 }
 
 // CheckConfig returns true if the config file exists and is a regular file (not a symlink).

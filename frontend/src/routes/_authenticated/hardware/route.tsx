@@ -7,6 +7,7 @@ import { requireAccess } from "@/routes/-auth";
 import {
   type LoaderQueryOptions,
   loadRouteTransport,
+  loadRouteUIConfig,
   startRouteQueryPrefetches,
 } from "@/routes/-loader";
 
@@ -25,33 +26,36 @@ export const Route = createFileRoute("/_authenticated/hardware")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: async ({ abortController, context, preload }) => {
     await loadRouteTransport(context, abortController.signal);
+    const ui = await loadRouteUIConfig(context, abortController.signal);
+    const sections = ui.hardwareSections;
 
-    // ConfigProvider owns the authoritative UI load. Warm the full Suspense
-    // query set without creating a second config/default path in the loader.
-    const queries: LoaderQueryOptions[] = [
-      {
+    const queries: LoaderQueryOptions[] = [];
+    if (sections.sensors)
+      queries.push({
         ...linuxio.system.get_sensor_info,
         ...hardwareSensorQueryOptions,
-      },
-      {
+      });
+    if (sections.pciDevices)
+      queries.push({
         ...linuxio.system.get_pci_devices,
         ...hardwareStableQueryOptions,
-      },
-      {
+      });
+    if (sections.memoryModules)
+      queries.push({
         ...linuxio.system.get_memory_modules,
         ...hardwareStableQueryOptions,
-      },
-      {
-        ...linuxio.system.get_motherboard_info,
-        ...hardwareStableQueryOptions,
-      },
-      {
-        ...linuxio.system.get_system_info,
-        ...hardwareStableQueryOptions,
-      },
-      { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
-      { ...linuxio.system.get_gpu_info, ...hardwareGpuQueryOptions },
-    ];
+      });
+    if (sections.systemInfo) {
+      queries.push(
+        {
+          ...linuxio.system.get_motherboard_info,
+          ...hardwareStableQueryOptions,
+        },
+        { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
+        { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
+        { ...linuxio.system.get_gpu_info, ...hardwareGpuQueryOptions },
+      );
+    }
 
     startRouteQueryPrefetches(
       { context, preload, signal: abortController.signal },
