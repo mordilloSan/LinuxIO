@@ -7,8 +7,8 @@
 ## Implemented ownership model
 
 LinuxIO has two bridge-owned, per-user YAML files. There is no embedded
-database or JSON configuration. A narrowly scoped one-time conversion handles
-the pre-split combined YAML shape:
+database or JSON configuration. Pre-split combined YAML files are no longer
+accepted; current installations use the independent resources below:
 
 | File | Owner and contents | Failure policy |
 |---|---|---|
@@ -18,13 +18,10 @@ the pre-split combined YAML shape:
 At bridge login, each file is checked and initialized independently. A valid
 core file is loaded as-is; an empty or older sparse UI document is decoded on
 top of backend UI defaults without rewriting it. Missing one file never causes
-the bridge to read the other file as a migration source, except at the one
-explicit upgrade boundary: a valid pre-split combined `.linuxio-config.yaml`
-is converted under both locks, preserving functional values and moving UI
-values into `.linuxio-ui.yaml`. Its `docker.folders` value is copied, never
-repaired or replaced with a default. Invalid or ambiguous old content is left
-untouched and fails startup. A bad UI file cannot reset functional settings (or
-vice versa).
+the bridge to read the other file as a migration source. A pre-split combined
+`.linuxio-config.yaml` is no longer accepted: strict core decoding rejects its
+UI fields and leaves the file untouched, so startup fails. A bad UI file cannot
+reset functional settings (or vice versa).
 
 Decode is strict and validation is pure: the bridge either accepts the whole
 document or returns an error. It does not use a permissive second decode,
@@ -55,12 +52,10 @@ rejects a process UID/GID mismatch, resolves only the authenticated user's
 passwd home, and verifies that home is user-owned without changing its
 ownership. A privileged bridge assigns the target UID/GID to an atomic temp
 inode before writing configuration bytes and to a lock fd before taking the
-lock; the same owner-aware path is used by an unprivileged bridge. Before an
-unprivileged bridge drops privileges, the root launcher also changes ownership
-of any existing pre-upgrade root-owned YAML or lock file in place. It does not
-create missing artifacts, and it never unlinks and recreates a lock,
-so an old bridge holding that inode remains coordinated through `flock`. This
-avoids root-owned completed artifacts without adding a separate writer process.
+lock; the same owner-aware path is used by an unprivileged bridge. The normal
+initialization path creates missing artifacts, and it never unlinks and
+recreates a lock, so an old bridge holding that inode remains coordinated
+through `flock`.
 
 The backend is the only source of persisted defaults, including presentation
 defaults. `config.get_ui` expands an empty UI document into an effective
@@ -80,10 +75,10 @@ configuration and `config.set_ui` replaces the persisted UI snapshot. Omitted
 replacement fields resolve to backend defaults. The generated API parity guard
 covers both shapes.
 
-The permanent repair machinery is gone. The only compatibility code is the
-temporary, strict one-time conversion of the former combined YAML document;
-current malformed core files fail without mutation. The bridge has one pure
-validation boundary per persisted schema.
+The permanent repair machinery and the former combined-YAML conversion are
+gone. Pre-split combined files fail strict validation without mutation, just
+like any other malformed core file. The bridge has one pure validation
+boundary per persisted schema.
 
 ## Historical context
 
@@ -145,7 +140,7 @@ Three threats, three correct owners. Only two of the threats are real.
 |---|---|---|
 | Torn or partial write | No | `utils.WriteFileAtomic` plus `updateMu` and the sidecar flock already in `store.go:130-137`. No validation mechanism is aimed here. |
 | Externally modified or corrupted file | Yes | Fatal-but-recoverable parse: refuse the value, log it with position, write defaults, **stop**. Mechanisms 1 and 2. |
-| Upgrade adds, removes, or renames a field | Yes | Use defaults for newly omitted fields and a named, strict one-way conversion only when an on-disk schema actually changes. The combined-to-split conversion is the current example. |
+| Upgrade adds, removes, or renames a field | Yes | Use defaults for newly omitted fields and a named, strict one-way conversion only when an on-disk schema actually changes. The former combined-to-split conversion was the historical example; no such conversion remains in the current branch. |
 
 A silent mutating fixer is the wrong owner for every row. For the second threat
 it destroys the operator's edit and reports nothing but a log line; today it
@@ -460,9 +455,9 @@ it does not maintain a second persisted-default table.
 
 The following "Do not do" rules belonged to the former repair/migration plan.
 They are preserved to explain the original risk analysis, but they must not be
-read as current behavior. Under the implemented policy, malformed core content
-fails without mutation; only a valid pre-split document is converted once; and
-Docker-folder filesystem usability is never persisted or mutated.
+read as current behavior. Under the implemented policy, malformed core content,
+including pre-split combined YAML, fails without mutation; Docker-folder
+filesystem usability is never persisted or mutated.
 
 - **Do not delete the repair layer outright.** Four of its responsibilities must
   survive in some form: the self-healing parse, without which a single
@@ -499,7 +494,7 @@ Docker-folder filesystem usability is never persisted or mutated.
 
 The old phase plan expected backend or repository-wide Make targets. Those
 notes describe the historical plan; they do not reopen the declined format
-migration or define the current ownership contract. The named combined-YAML
-upgrade conversion is the only compatibility path. Current changes should use the
+migration or define the current ownership contract. No combined-YAML upgrade
+conversion remains in the current branch. Current changes should use the
 repository's applicable verification target and inspect any tooling-generated
 worktree changes afterward.

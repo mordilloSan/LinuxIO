@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 )
 
@@ -44,18 +43,6 @@ func initializeLockedOwned(cfgPath, uiPath, base string, owner fileOwnership) er
 	} else if err := owner.ensureFile(cfgPath); err != nil {
 		return fmt.Errorf("own core config: %w", err)
 	}
-	// A pre-split install has UI keys inside the core document. Recognize and
-	// convert that one shape before the normal strict core read. Invalid current
-	// or legacy documents are left untouched and reported to the caller.
-	if coreExists {
-		migrated, err := migrateLegacyIfNeeded(cfgPath, uiPath, base, owner, uiExists)
-		if err != nil {
-			return err
-		}
-		if migrated {
-			uiExists = true
-		}
-	}
 	if !uiExists {
 		if err := writeEmptyUIConfigOwned(uiPath, owner); err != nil {
 			return fmt.Errorf("write default UI config: %w", err)
@@ -64,24 +51,4 @@ func initializeLockedOwned(cfgPath, uiPath, base string, owner fileOwnership) er
 		return fmt.Errorf("own UI config: %w", err)
 	}
 	return nil
-}
-
-func migrateLegacyIfNeeded(cfgPath, uiPath, base string, owner fileOwnership, uiExists bool) (bool, error) {
-	raw, err := os.ReadFile(cfgPath)
-	if err != nil {
-		return false, fmt.Errorf("read core config during initialization: %w", err)
-	}
-	if _, parseErr := decodeCoreConfig(raw, base); parseErr == nil {
-		return false, nil
-	} else {
-		migrated, migrationErr := migrateLegacyConfigLocked(cfgPath, uiPath, base, owner, uiExists)
-		if migrationErr != nil {
-			return false, migrationErr
-		}
-		if !migrated {
-			return false, fmt.Errorf("invalid core config: %w", parseErr)
-		}
-		slog.Info("converted legacy user configuration", "component", "config", "path", cfgPath, "uiPath", uiPath)
-		return true, nil
-	}
 }
