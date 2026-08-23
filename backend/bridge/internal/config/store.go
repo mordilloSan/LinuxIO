@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,53 +14,66 @@ import (
 
 const lockFilePerm = 0o600
 
-// UserStore owns the current per-user config snapshot for a bridge process.
-//
-// Reads are served from memory. Writes are serialized in-process and through a
-// sidecar file lock so multiple bridge sessions for the same user do not clobber
-// one another's config changes.
+// UserStore owns independent core and UI snapshots for one bridge process.
+// Core and UI updates use separate locks so a frontend preference write cannot
+// block or clobber Docker/job state.
 type UserStore struct {
-	username string
-	path     string
-	lockPath string
+	username   string
+	path       string
+	uiPath     string
+	lockPath   string
+	uiLockPath string
+	owner      fileOwnership
 
-	mu       sync.RWMutex
-	updateMu sync.Mutex
-	cfg      Settings
+	mu         sync.RWMutex
+	uiMu       sync.RWMutex
+	updateMu   sync.Mutex
+	uiUpdateMu sync.Mutex
+	cfg        Settings
+	ui         UIPreferences
 }
 
-// OpenUserStore prepares the user's config file, loads it once, and returns an
-// in-memory store for runtime reads and write-through updates.
-func OpenUserStore(username string) (*UserStore, error) {
-	if err := Initialize(username); err != nil {
-		return nil, err
-	}
-
-	cfg, cfgPath, err := load(username)
+// OpenUserStore prepares both files and loads both snapshots while holding both
+// sidecar locks. The authenticated numeric UID/GID identify the owner of every
+// runtime artifact; username is used only to resolve the configuration base.
+func OpenUserStore(username string, targetUID, targetGID uint32) (*UserStore, error) {
+	owner, err := resolveFileOwnership(targetUID, targetGID)
 	if err != nil {
 		return nil, err
 	}
-
-	if err := chownIfRoot(filepath.Dir(cfgPath), username); err != nil {
+	base, err := configBase(username)
+	if err != nil {
 		return nil, err
 	}
-	if err := chownIfRoot(cfgPath, username); err != nil {
-		return nil, err
-	}
-
-	return newUserStore(username, cfgPath, cfg), nil
-}
-
-func newUserStore(username, cfgPath string, cfg *Settings) *UserStore {
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
 	store := &UserStore{
-		username: username,
-		path:     cfgPath,
-		lockPath: cfgPath + ".lock",
+		username:   username,
+		path:       cfgPath,
+		uiPath:     uiPath,
+		lockPath:   cfgPath + ".lock",
+		uiLockPath: uiPath + ".lock",
+		owner:      owner,
 	}
-	if cfg != nil {
+	if err := withConfigLocksOwned(context.Background(), store.lockPath, store.uiLockPath, owner, func() error {
+		if err := initializeLockedOwned(cfgPath, uiPath, base, owner); err != nil {
+			return err
+		}
+		cfg, err := readCoreLatestOwned(cfgPath, base, owner)
+		if err != nil {
+			return err
+		}
+		ui, err := readUILatestOwned(uiPath, owner)
+		if err != nil {
+			return err
+		}
 		store.cfg = *cloneSettings(cfg)
+		store.ui = *cloneUIPreferences(ui)
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-	return store
+	return store, nil
 }
 
 func (s *UserStore) Path() string {
@@ -69,13 +83,17 @@ func (s *UserStore) Path() string {
 	return s.path
 }
 
-// SnapshotForUser returns config from the per-user bridge store.
-func SnapshotForUser(ctx context.Context, username string, store *UserStore) (*Settings, string, error) {
-	if store == nil {
-		return nil, "", errors.New("config store is nil")
+func (s *UserStore) UIPath() string {
+	if s == nil {
+		return ""
 	}
-	if store.username != username {
-		return nil, "", fmt.Errorf("config store user mismatch: store=%q requested=%q", store.username, username)
+	return s.uiPath
+}
+
+// SnapshotForUser returns core config from the per-user bridge store.
+func SnapshotForUser(ctx context.Context, username string, store *UserStore) (*Settings, string, error) {
+	if err := validateStoreUser(username, store); err != nil {
+		return nil, "", err
 	}
 	cfg, err := store.Snapshot(ctx)
 	if err != nil {
@@ -84,22 +102,53 @@ func SnapshotForUser(ctx context.Context, username string, store *UserStore) (*S
 	return cfg, store.Path(), nil
 }
 
-// UpdateForUser applies mutate through the per-user bridge store.
+// UpdateForUser applies a core mutation through the per-user bridge store.
 func UpdateForUser(ctx context.Context, username string, store *UserStore, mutate func(*Settings) error) (*Settings, string, error) {
 	if mutate == nil {
 		return nil, "", errors.New("config update function is nil")
 	}
-	if store == nil {
-		return nil, "", errors.New("config store is nil")
-	}
-	if store.username != username {
-		return nil, "", fmt.Errorf("config store user mismatch: store=%q requested=%q", store.username, username)
+	if err := validateStoreUser(username, store); err != nil {
+		return nil, "", err
 	}
 	cfg, err := store.Update(ctx, mutate)
 	return cfg, store.Path(), err
 }
 
-// Snapshot returns a copy of the current in-memory config.
+// UISnapshotForUser returns UI preferences from the per-user bridge store.
+func UISnapshotForUser(ctx context.Context, username string, store *UserStore) (*UIPreferences, string, error) {
+	if err := validateStoreUser(username, store); err != nil {
+		return nil, "", err
+	}
+	ui, err := store.UISnapshot(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return ui, store.UIPath(), nil
+}
+
+// UpdateUIForUser applies a UI mutation through the per-user bridge store.
+func UpdateUIForUser(ctx context.Context, username string, store *UserStore, mutate func(*UIPreferences) error) (*UIPreferences, string, error) {
+	if mutate == nil {
+		return nil, "", errors.New("UI update function is nil")
+	}
+	if err := validateStoreUser(username, store); err != nil {
+		return nil, "", err
+	}
+	ui, err := store.UpdateUI(ctx, mutate)
+	return ui, store.UIPath(), err
+}
+
+func validateStoreUser(username string, store *UserStore) error {
+	if store == nil {
+		return errors.New("config store is nil")
+	}
+	if store.username != username {
+		return fmt.Errorf("config store user mismatch: store=%q requested=%q", store.username, username)
+	}
+	return nil
+}
+
+// Snapshot returns a copy of the current core snapshot.
 func (s *UserStore) Snapshot(ctx context.Context) (*Settings, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
@@ -107,14 +156,25 @@ func (s *UserStore) Snapshot(ctx context.Context) (*Settings, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	// sync.RWMutex.RLock is not cancellable once entered.
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return cloneSettings(&s.cfg), nil
 }
 
-// Update applies mutate to the latest on-disk config under an exclusive sidecar
-// lock, writes it atomically, then refreshes the in-memory snapshot.
+// UISnapshot returns a copy of the current UI snapshot.
+func (s *UserStore) UISnapshot(ctx context.Context) (*UIPreferences, error) {
+	if s == nil {
+		return nil, errors.New("config store is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.uiMu.RLock()
+	defer s.uiMu.RUnlock()
+	return cloneUIPreferences(&s.ui), nil
+}
+
+// Update applies a mutation to the latest core file under its sidecar lock.
 func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*Settings, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
@@ -125,24 +185,20 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
-	// sync.Mutex.Lock is not cancellable once entered.
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
 	var updated *Settings
-	if err := withExclusiveConfigLock(ctx, s.lockPath, func() error {
+	err := withExclusiveConfigLockOwned(ctx, s.lockPath, s.owner, func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		current, err := readConfigStrict(s.path)
+		current, err := readCoreLatestOwned(s.path, filepath.Dir(s.path), s.owner)
 		if err != nil {
-			return fmt.Errorf("read config: %w", err)
+			return fmt.Errorf("read core config: %w", err)
 		}
-
 		next := cloneSettings(current)
 		if err := mutate(next); err != nil {
 			return err
@@ -153,55 +209,163 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := writeConfigFrom(s.path, *next); err != nil {
-			return fmt.Errorf("write config: %w", err)
+		if err := writeCoreConfigOwned(s.path, *next, s.owner); err != nil {
+			return fmt.Errorf("write core config: %w", err)
 		}
-		if err := ensureFilePerms(s.path, filePerm); err != nil {
-			return fmt.Errorf("set config permissions: %w", err)
-		}
-
 		updated = cloneSettings(next)
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
-
 	s.mu.Lock()
 	s.cfg = *cloneSettings(updated)
 	s.mu.Unlock()
-
 	return cloneSettings(updated), nil
 }
 
-func withExclusiveConfigLock(ctx context.Context, lockPath string, fn func() error) error {
-	return filelock.RunExclusive(
-		ctx,
-		lockPath,
-		fn,
-		filelock.WithPermissions(lockFilePerm),
-		filelock.WithDirPermissions(dirPerm),
-	)
+// UpdateUI applies a mutation to the latest complete UI snapshot under its
+// sidecar lock. UI updates never read or rewrite the core file.
+func (s *UserStore) UpdateUI(ctx context.Context, mutate func(*UIPreferences) error) (*UIPreferences, error) {
+	if s == nil {
+		return nil, errors.New("config store is nil")
+	}
+	if mutate == nil {
+		return nil, errors.New("UI update function is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.uiUpdateMu.Lock()
+	defer s.uiUpdateMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var updated *UIPreferences
+	err := withExclusiveUILockOwned(ctx, s.uiLockPath, s.owner, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		current, err := readUILatestOwned(s.uiPath, s.owner)
+		if err != nil {
+			return fmt.Errorf("read UI config: %w", err)
+		}
+		next := cloneUIPreferences(current)
+		if err := mutate(next); err != nil {
+			return err
+		}
+		if errs := ValidateUIPreferences(next); len(errs) > 0 {
+			return fmt.Errorf("validate UI config: %s", strings.Join(errs, "; "))
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := writeUIConfigOwned(s.uiPath, *next, s.owner); err != nil {
+			return fmt.Errorf("write UI config: %w", err)
+		}
+		updated = cloneUIPreferences(next)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.uiMu.Lock()
+	s.ui = *cloneUIPreferences(updated)
+	s.uiMu.Unlock()
+	return cloneUIPreferences(updated), nil
 }
 
-// load returns the parsed Settings for `username` and the absolute config path.
-// It does NOT create/repair the file; call Initialize(username) first if needed.
-func load(username string) (*Settings, string, error) {
-	base, err := Homedir(username)
+func readCoreLatestOwned(path, base string, owner fileOwnership) (*Settings, error) {
+	exists, err := CheckConfig(path)
 	if err != nil {
-		// fall back if no home (same logic as Initialize)
-		if base, err = fallbackBase(username); err != nil {
-			return nil, "", err
-		}
+		return nil, err
 	}
-	cfgPath := filepath.Join(base, cfgFileName)
-	if err = guardConfigPath(cfgPath); err != nil {
-		return nil, "", err
+	if !exists {
+		return nil, fmt.Errorf("core config path is not a regular file: %s", path)
 	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg, parseErr := parseCoreConfig(raw, path, base)
+	if parseErr == nil {
+		return cfg, nil
+	}
+	replacement := DefaultSettings(base)
+	if err := writeCoreConfigOwned(path, *replacement, owner); err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("invalid core config: %w", parseErr),
+			fmt.Errorf("reset core config: %w", err),
+		)
+	}
+	return replacement, nil
+}
 
-	// strict read (unknown keys rejected); your repair path runs in Initialize.
-	cfg, err := readConfigStrict(cfgPath)
+func readUILatestOwned(path string, owner fileOwnership) (*UIPreferences, error) {
+	exists, err := CheckConfig(path)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return cfg, cfgPath, nil
+	if !exists {
+		return nil, fmt.Errorf("UI config path is not a regular file: %s", path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	ui, parseErr := parseUIConfig(raw, path)
+	if parseErr == nil {
+		return ui, nil
+	}
+	replacement := DefaultUIPreferences()
+	if err := writeEmptyUIConfigOwned(path, owner); err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("invalid UI config: %w", parseErr),
+			fmt.Errorf("reset UI config: %w", err),
+		)
+	}
+	return &replacement, nil
+}
+
+func withExclusiveConfigLockOwned(ctx context.Context, lockPath string, owner fileOwnership, fn func() error) error {
+	return runExclusive(ctx, lockPath, owner, fn)
+}
+
+func withExclusiveUILockOwned(ctx context.Context, lockPath string, owner fileOwnership, fn func() error) error {
+	return runExclusive(ctx, lockPath, owner, fn)
+}
+
+func runExclusive(ctx context.Context, lockPath string, owner fileOwnership, fn func() error) error {
+	if fn == nil {
+		return errors.New("lock function is nil")
+	}
+	if err := owner.ensureDirectory(filepath.Dir(lockPath)); err != nil {
+		return err
+	}
+	release, err := filelock.AcquireExclusive(ctx, lockPath, owner.lockOptions()...)
+	if err != nil {
+		return err
+	}
+	return errors.Join(fn(), release())
+}
+
+func withConfigLocksOwned(ctx context.Context, configLockPath, uiLockPath string, owner fileOwnership, fn func() error) error {
+	if fn == nil {
+		return errors.New("lock function is nil")
+	}
+	if err := owner.ensureDirectory(filepath.Dir(configLockPath)); err != nil {
+		return err
+	}
+	releaseConfig, err := filelock.AcquireExclusive(ctx, configLockPath, owner.lockOptions()...)
+	if err != nil {
+		return err
+	}
+	if dirErr := owner.ensureDirectory(filepath.Dir(uiLockPath)); dirErr != nil {
+		return errors.Join(dirErr, releaseConfig())
+	}
+	releaseUI, err := filelock.AcquireExclusive(ctx, uiLockPath, owner.lockOptions()...)
+	if err != nil {
+		return errors.Join(err, releaseConfig())
+	}
+	return errors.Join(fn(), releaseUI(), releaseConfig())
 }

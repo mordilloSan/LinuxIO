@@ -132,27 +132,15 @@ const DockerDashboard = ({
   ) => {
     void navigate({ to });
   };
-  const [dockerDashboardSections, setDockerDashboardSections] = useConfigValue(
+  const [sections, setDockerDashboardSections] = useConfigValue(
     "dockerDashboardSections",
   );
-  const sections = dockerDashboardSections ?? {
-    overview: true,
-    monitoring: true,
-    daemon: true,
-    resources: true,
-  };
   const setSection = useCallback(
     (key: "overview" | "monitoring" | "daemon" | "resources") =>
       setDockerDashboardSections((prev) => {
-        const cur = prev ?? {
-          overview: true,
-          monitoring: true,
-          daemon: true,
-          resources: true,
-        };
         return {
-          ...cur,
-          [key]: !cur[key],
+          ...prev,
+          [key]: !prev[key],
         };
       }),
     [setDockerDashboardSections],

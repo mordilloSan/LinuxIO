@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { REORDER_IDLE_EXIT_MS } from "@/constants/reorder";
 
 const configMocks = vi.hoisted(() => ({
-  layoutOrders: undefined as Record<string, string[]> | undefined,
+  layoutOrders: {} as Record<string, string[]>,
   setLayoutOrders: vi.fn(),
 }));
 
@@ -45,7 +45,7 @@ const renderSurface = (surfaceItems: Item[] = items) =>
 
 describe("useReorderableSurface", () => {
   beforeEach(() => {
-    configMocks.layoutOrders = undefined;
+    configMocks.layoutOrders = {};
     configMocks.setLayoutOrders.mockReset();
   });
 
@@ -101,7 +101,7 @@ describe("useReorderableSurface", () => {
     });
 
     const update = configMocks.setLayoutOrders.mock.calls[0][0] as (
-      previous: Record<string, string[]> | undefined,
+      previous: Record<string, string[]>,
     ) => Record<string, string[]>;
 
     expect(update(configMocks.layoutOrders)).toEqual({

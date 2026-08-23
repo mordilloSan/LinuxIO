@@ -4,102 +4,193 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestUserStoreSnapshotReturnsIsolatedCopy(t *testing.T) {
-	cfgPath, cfg := writeTestConfig(t)
-	store := newUserStore("miguel", cfgPath, cfg)
-
-	snapshot, err := store.Snapshot(context.Background())
-	require.NoError(t, err)
-	snapshot.AppSettings.Theme = ThemeLight
-	snapshot.AppSettings.LayoutOrders["dashboard"][0] = "mutated"
-	snapshot.AppSettings.ViewModes["accounts.users"] = "table"
-	*snapshot.AppSettings.ThemeColors.Dark.BackgroundDefault = "#ffffff"
-	snapshot.Docker.Folders[0] = "/tmp/mutated"
-
-	next, err := store.Snapshot(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, ThemeDark, next.AppSettings.Theme)
-	require.Equal(t, "overview", next.AppSettings.LayoutOrders["dashboard"][0])
-	require.Equal(t, "card", next.AppSettings.ViewModes["accounts.users"])
-	require.Equal(t, cssColor("#1B2635"), next.AppSettings.ThemeColors.Dark.BackgroundDefault)
-	require.Equal(t, cfg.Docker.Folders, next.Docker.Folders)
+func newUserStore(username, cfgPath, uiPath string, cfg *Settings, ui *UIPreferences) *UserStore {
+	store := &UserStore{
+		username:   username,
+		path:       cfgPath,
+		uiPath:     uiPath,
+		lockPath:   cfgPath + ".lock",
+		uiLockPath: uiPath + ".lock",
+		owner:      currentProcessFileOwnership(),
+	}
+	if cfg != nil {
+		store.cfg = *cloneSettings(cfg)
+	}
+	if ui != nil {
+		store.ui = *cloneUIPreferences(ui)
+	}
+	return store
 }
 
-func TestUserStoreUpdatePersistsAndRefreshesMemory(t *testing.T) {
-	cfgPath, cfg := writeTestConfig(t)
-	store := newUserStore("miguel", cfgPath, cfg)
+func TestUserStoreSnapshotReturnsIsolatedCopies(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	cfg := DefaultSettings(base)
+	ui := UIPreferences{ViewModes: map[string]string{"accounts.users": "card"}}
+	store := newUserStore("miguel", cfgPath, uiPath, cfg, &ui)
 
-	updated, err := store.Update(context.Background(), func(settings *Settings) error {
-		settings.AppSettings.Theme = ThemeLight
+	core, err := store.Snapshot(context.Background())
+	require.NoError(t, err)
+	core.Docker.Folders[0] = "/tmp/mutated"
+	uiSnapshot, err := store.UISnapshot(context.Background())
+	require.NoError(t, err)
+	uiSnapshot.ViewModes["accounts.users"] = "table"
+
+	nextCore, err := store.Snapshot(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, cfg.Docker.Folders, nextCore.Docker.Folders)
+	nextUI, err := store.UISnapshot(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "card", nextUI.ViewModes["accounts.users"])
+}
+
+func TestUpdateForUserAndUIForUser(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	cfg := DefaultSettings(base)
+	ui := DefaultUIPreferences()
+	require.NoError(t, writeCoreConfig(cfgPath, *cfg))
+	require.NoError(t, writeUIConfig(uiPath, ui))
+	store := newUserStore("miguel", cfgPath, uiPath, cfg, &ui)
+
+	updated, path, err := UpdateForUser(context.Background(), "miguel", store, func(value *Settings) error {
+		value.AppSettings.ShowHiddenFiles = false
 		return nil
 	})
 	require.NoError(t, err)
-	require.Equal(t, ThemeLight, updated.AppSettings.Theme)
-
-	snapshot, err := store.Snapshot(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, ThemeLight, snapshot.AppSettings.Theme)
-
-	onDisk, err := readConfigStrict(cfgPath)
-	require.NoError(t, err)
-	require.Equal(t, ThemeLight, onDisk.AppSettings.Theme)
-	require.FileExists(t, cfgPath+".lock")
-}
-
-func TestUserStoreUpdateStartsFromLatestDiskConfig(t *testing.T) {
-	cfgPath, cfg := writeTestConfig(t)
-	store := newUserStore("miguel", cfgPath, cfg)
-
-	external := cloneSettings(cfg)
-	external.AppSettings.PrimaryColor = "#00ff00"
-	require.NoError(t, writeConfigFrom(cfgPath, *external))
-
-	updated, err := store.Update(context.Background(), func(settings *Settings) error {
-		settings.AppSettings.ShowHiddenFiles = false
-		return nil
-	})
-	require.NoError(t, err)
-	require.Equal(t, CSSColor("#00ff00"), updated.AppSettings.PrimaryColor)
+	require.Equal(t, cfgPath, path)
 	require.False(t, updated.AppSettings.ShowHiddenFiles)
 
-	snapshot, err := store.Snapshot(context.Background())
+	updatedUI, uiFile, err := UpdateUIForUser(context.Background(), "miguel", store, func(value *UIPreferences) error {
+		value.Theme = ThemeDark
+		return nil
+	})
 	require.NoError(t, err)
-	require.Equal(t, CSSColor("#00ff00"), snapshot.AppSettings.PrimaryColor)
-	require.False(t, snapshot.AppSettings.ShowHiddenFiles)
+	require.Equal(t, uiPath, uiFile)
+	require.Equal(t, ThemeDark, updatedUI.Theme)
 }
 
-func TestUserStoreUpdateRejectsInvalidConfig(t *testing.T) {
-	cfgPath, cfg := writeTestConfig(t)
-	store := newUserStore("miguel", cfgPath, cfg)
+func TestUserStoreRejectsInvalidCoreAndUIUpdates(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	cfg := DefaultSettings(base)
+	ui := DefaultUIPreferences()
+	require.NoError(t, writeCoreConfig(cfgPath, *cfg))
+	require.NoError(t, writeUIConfig(uiPath, ui))
+	store := newUserStore("miguel", cfgPath, uiPath, cfg, &ui)
+	coreBefore, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	uiBefore, err := os.ReadFile(uiPath)
+	require.NoError(t, err)
 
-	_, err := store.Update(context.Background(), func(settings *Settings) error {
-		settings.AppSettings.PrimaryColor = "nope"
+	_, err = store.Update(context.Background(), func(value *Settings) error {
+		value.AppSettings.ChunkSizeMB = 33
 		return nil
 	})
 	require.Error(t, err)
-
-	snapshot, snapErr := store.Snapshot(context.Background())
-	require.NoError(t, snapErr)
-	require.Equal(t, CSSColor("#2196f3"), snapshot.AppSettings.PrimaryColor)
-
-	onDisk, readErr := readConfigStrict(cfgPath)
-	require.NoError(t, readErr)
-	require.Equal(t, CSSColor("#2196f3"), onDisk.AppSettings.PrimaryColor)
+	_, err = store.UpdateUI(context.Background(), func(value *UIPreferences) error {
+		value.Theme = PersistedTheme("PURPLE")
+		return nil
+	})
+	require.Error(t, err)
+	_, err = store.UpdateUI(context.Background(), func(value *UIPreferences) error {
+		value.ViewModes = map[string]string{"accounts.users": "grid"}
+		return nil
+	})
+	require.Error(t, err)
+	coreAfter, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	uiAfter, err := os.ReadFile(uiPath)
+	require.NoError(t, err)
+	require.Equal(t, coreBefore, coreAfter)
+	require.Equal(t, uiBefore, uiAfter)
 }
 
-func writeTestConfig(t *testing.T) (string, *Settings) {
-	t.Helper()
-
+func TestUserStoreUpdatesStartFromLatestIndependentDiskFiles(t *testing.T) {
 	base := t.TempDir()
 	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
 	cfg := DefaultSettings(base)
-	cfg.AppSettings.LayoutOrders = map[string][]string{"dashboard": {"overview", "cpu"}}
-	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), dirPerm))
-	require.NoError(t, writeConfigFrom(cfgPath, *cfg))
-	return cfgPath, cfg
+	ui := DefaultUIPreferences()
+	require.NoError(t, writeCoreConfig(cfgPath, *cfg))
+	require.NoError(t, writeUIConfig(uiPath, ui))
+	store := newUserStore("miguel", cfgPath, uiPath, cfg, &ui)
+
+	externalCore := cloneSettings(cfg)
+	externalCore.AppSettings.ChunkSizeMB = 8
+	require.NoError(t, writeCoreConfig(cfgPath, *externalCore))
+	externalUI := cloneUIPreferences(&ui)
+	externalUI.Theme = ThemeLight
+	require.NoError(t, writeUIConfig(uiPath, *externalUI))
+
+	updatedCore, err := store.Update(context.Background(), func(value *Settings) error {
+		value.AppSettings.ShowHiddenFiles = false
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 8, updatedCore.AppSettings.ChunkSizeMB)
+	require.False(t, updatedCore.AppSettings.ShowHiddenFiles)
+
+	updatedUI, err := store.UpdateUI(context.Background(), func(value *UIPreferences) error {
+		value.PrimaryColor = "#123456"
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, ThemeLight, updatedUI.Theme)
+	require.Equal(t, CSSColor("#123456"), updatedUI.PrimaryColor)
+}
+
+func TestUserStoresSerializeConcurrentCoreUpdates(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	uiPath := filepath.Join(base, uiCfgFileName)
+	cfg := DefaultSettings(base)
+	ui := DefaultUIPreferences()
+	require.NoError(t, writeCoreConfig(cfgPath, *cfg))
+	require.NoError(t, writeUIConfig(uiPath, ui))
+	first := newUserStore("miguel", cfgPath, uiPath, cfg, &ui)
+	second := newUserStore("miguel", cfgPath, uiPath, cfg, &ui)
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		_, err := first.Update(context.Background(), func(value *Settings) error {
+			value.AppSettings.ShowHiddenFiles = false
+			return nil
+		})
+		errs <- err
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		_, err := second.Update(context.Background(), func(value *Settings) error {
+			value.AppSettings.ChunkSizeMB = 8
+			return nil
+		})
+		errs <- err
+	}()
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	loaded, err := readCoreLatest(cfgPath, base)
+	require.NoError(t, err)
+	require.False(t, loaded.AppSettings.ShowHiddenFiles)
+	require.Equal(t, 8, loaded.AppSettings.ChunkSizeMB)
 }

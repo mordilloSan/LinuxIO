@@ -31,24 +31,6 @@ Follow the phased
    NICs, then the single-NIC IP hand-off protected by snapshot, transient
    revert timer, and reconnect check-in.
 
-### Bridge per-user config package
-
-Follow the phased
-[`Bridge Per-User Config Simplification`](docs/TODO/bridge-config-simplification.md):
-
-1. Fix the startup repair defects and add the test floor that pins what repair
-   must preserve. These land together.
-2. Prefill defaults before decode and delete the hand-maintained missing-key
-   probing.
-3. Delete the validation that the typed decoders make unreachable, and make
-   `ValidateConfig` a real superset of the decoder.
-4. Remove the unused `config_generated.yaml` generator apparatus.
-5. Reduce the type and exported surface.
-
-The format question is settled in that document: keep YAML for now, because
-dropping it removes no dependency and no complexity. A JSON migration is
-optional, last, and its own commit.
-
 ### React Compiler upstream follow-ups
 
 1. Revisit the React Compiler integration when
@@ -64,6 +46,16 @@ Define and complete the intended division of coverage between Vitest and Playwri
 
 ## Completed or closed
 
+- [x] Split bridge per-user state into bridge-owned functional settings and
+  frontend-produced UI snapshots, each independently created in its own
+  YAML file and lock; retained atomic flat-file writes and frontend-only UI
+  behavior while making the backend authoritative for persisted UI defaults;
+  made strict decode plus pure validation reset only the affected
+  file on content failure while I/O/security failures fail; removed legacy
+  conversion, permissive salvage, field repair, and filesystem-based Docker
+  folder mutation; made YAML, lock, and atomic replacement ownership follow
+  the authenticated UID/GID in privileged and unprivileged bridge modes. No
+  embedded database or JSON configuration was added.
 - [x] Closed the router policy settings question: the bridge `TaskPolicy`
   values stay compile-time constants. They are cross-user admission limits, so
   the per-user config file is the wrong scope, and no system-wide settings

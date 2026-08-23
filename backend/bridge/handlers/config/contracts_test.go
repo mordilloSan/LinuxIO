@@ -8,36 +8,11 @@ import (
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 )
 
-func TestAppConfigToAPIPreservesPersistedJSONShape(t *testing.T) {
+func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 	light := bridgeconfig.CSSColor("#112233")
 	dark := bridgeconfig.CSSColor("rgb(4, 5, 6)")
-	value := bridgeconfig.Settings{
-		AppSettings: bridgeconfig.PersistedAppSettings{
-			Theme:              bridgeconfig.ThemeDark,
-			PrimaryColor:       bridgeconfig.CSSColor("#abcdef"),
-			DockAccentGradient: bridgeconfig.DockAccentGradient{StartColor: "#112233", EndColor: "#aabbcc", RangeStart: 15, RangeEnd: 85},
-			SidebarCollapsed:   true,
-			ShowHiddenFiles:    true,
-			HiddenCards:        []string{"updates"},
-			LayoutOrders: map[string][]string{
-				"dashboard":         {"system", "docker"},
-				"docker.containers": {"alpha", "beta"},
-			},
-			DockerDashboardSections: &bridgeconfig.DockerDashboardSections{
-				Overview: true, Daemon: false, Resources: true,
-			},
-			HardwareSections: &bridgeconfig.HardwareSections{
-				Overview: true, Hardware: false, Sensors: true, SystemInfo: false,
-				GPU: true, PCIDevices: false, MemoryModules: true,
-			},
-			ThemeColors: &bridgeconfig.ThemeColorsByMode{
-				Light: &bridgeconfig.ThemeColors{BackgroundDefault: &light},
-				Dark:  &bridgeconfig.ThemeColors{CodeText: &dark},
-			},
-			ViewModes:        map[string]string{"docker": "table", "storage": "card"},
-			ChunkSizeMB:      8,
-			TerminalFontSize: 18,
-		},
+	core := bridgeconfig.Settings{
+		AppSettings: bridgeconfig.PersistedAppSettings{ShowHiddenFiles: true, ChunkSizeMB: 8},
 		Docker: bridgeconfig.Docker{
 			Folders:                 []bridgeconfig.AbsolutePath{"/srv/docker", "/mnt/apps"},
 			RequireMountsForFolders: true,
@@ -60,11 +35,51 @@ func TestAppConfigToAPIPreservesPersistedJSONShape(t *testing.T) {
 			FailedLoginAlertID:    "login-id",
 		},
 	}
+	ui := bridgeconfig.UIPreferences{
+		Theme:              bridgeconfig.ThemeDark,
+		PrimaryColor:       bridgeconfig.CSSColor("#abcdef"),
+		NavigationMode:     bridgeconfig.NavigationModeSidebar,
+		DockTileColors:     bridgeconfig.DockTileColorsAccent,
+		DockAccentGradient: &bridgeconfig.DockAccentGradient{StartColor: "#112233", EndColor: "#aabbcc", RangeStart: 15, RangeEnd: 85},
+		SidebarCollapsed:   true,
+		HiddenCards:        []string{"updates"},
+		LayoutOrders: map[string][]string{
+			"dashboard":         {"system", "docker"},
+			"docker.containers": {"alpha", "beta"},
+		},
+		DockerDashboardSections: &bridgeconfig.DockerDashboardSections{
+			Overview: true, Daemon: false, Resources: true,
+		},
+		HardwareSections: &bridgeconfig.HardwareSections{
+			Overview: true, Hardware: false, Sensors: true, SystemInfo: false,
+			GPU: true, PCIDevices: false, MemoryModules: true,
+		},
+		ThemeColors: &bridgeconfig.ThemeColorsByMode{
+			Light: &bridgeconfig.ThemeColors{BackgroundDefault: &light},
+			Dark:  &bridgeconfig.ThemeColors{CodeText: &dark},
+		},
+		ViewModes:        map[string]string{"docker": "table", "storage": "card"},
+		TerminalFontSize: 18,
+	}
 
-	want := decodeConfigJSON(t, value)
-	got := decodeConfigJSON(t, appConfigToAPI(value))
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("converted config JSON differs:\n got: %#v\nwant: %#v", got, want)
+	wantCore := decodeConfigJSON(t, core)
+	wantUI := decodeConfigJSON(t, ui)
+	wantUI["viewModeDefault"] = "card"
+	if got := decodeConfigJSON(t, appConfigToAPI(core)); !reflect.DeepEqual(got, wantCore) {
+		t.Fatalf("converted core config JSON differs:\n got: %#v\nwant: %#v", got, wantCore)
+	}
+	if got := decodeConfigJSON(t, uiConfigToAPI(ui)); !reflect.DeepEqual(got, wantUI) {
+		t.Fatalf("converted UI config JSON differs:\n got: %#v\nwant: %#v", got, wantUI)
+	}
+}
+
+func TestUIConfigToAPIIncludesBackendDefaults(t *testing.T) {
+	got := decodeConfigJSON(t, uiConfigToAPI(bridgeconfig.DefaultUIPreferences()))
+	if got["theme"] != "DARK" || got["primaryColor"] != "#2196f3" {
+		t.Fatalf("backend UI defaults missing: %#v", got)
+	}
+	if got["viewModeDefault"] != "card" {
+		t.Fatalf("view mode default missing: %#v", got)
 	}
 }
 

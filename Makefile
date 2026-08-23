@@ -1377,7 +1377,6 @@ build-nocheck: generate build-vite build-bridge _build-binaries
 fastbuild: generate build-bridge _build-binaries
 
 generate: ensure-go ensure-node setup
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" generate ./bridge/internal/config/init.go
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
 
 clean:
@@ -1456,7 +1455,7 @@ help:
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev              $(COLOR_RESET) Start frontend dev server (detached) + tail LinuxIO logs"
-	@$(PRINTC) "$(COLOR_YELLOW)    make generate         $(COLOR_RESET) Run go generate on config handlers"
+	@$(PRINTC) "$(COLOR_YELLOW)    make generate         $(COLOR_RESET) Regenerate frontend API contracts"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Build$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build            $(COLOR_RESET) Full build (test + frontend + all binaries)"

@@ -3,7 +3,10 @@ package filelock
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -105,5 +108,57 @@ func TestReleaseIsIdempotent(t *testing.T) {
 	}
 	if err := release(); err != nil {
 		t.Fatalf("second release: %v", err)
+	}
+}
+
+func TestAcquireExclusiveOwnership(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.lock")
+	uid, gid := os.Getuid(), os.Getgid()
+
+	release, err := AcquireExclusive(context.Background(), path, WithOwnership(uid, gid))
+	if err != nil {
+		t.Fatalf("AcquireExclusive: %v", err)
+	}
+	defer func() { _ = release() }()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat lock: %v", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("stat lock type = %T, want *syscall.Stat_t", info.Sys())
+	}
+	if got := int(stat.Uid); got != uid {
+		t.Fatalf("lock uid = %d, want %d", got, uid)
+	}
+	if got := int(stat.Gid); got != gid {
+		t.Fatalf("lock gid = %d, want %d", got, gid)
+	}
+}
+
+func TestAcquireExclusiveRejectsInvalidOwnership(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.lock")
+	for _, test := range []struct {
+		name string
+		uid  int
+		gid  int
+		want string
+	}{
+		{name: "negative uid", uid: -1, gid: os.Getgid(), want: "uid -1 is invalid"},
+		{name: "negative gid", uid: os.Getuid(), gid: -1, want: "gid -1 is invalid"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := AcquireExclusive(context.Background(), path, WithOwnership(test.uid, test.gid))
+			if err == nil {
+				t.Fatal("AcquireExclusive succeeded with invalid ownership")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %q, want substring %q", err, test.want)
+			}
+			if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
+				t.Fatalf("lock exists after rejected ownership: %v", statErr)
+			}
+		})
 	}
 }

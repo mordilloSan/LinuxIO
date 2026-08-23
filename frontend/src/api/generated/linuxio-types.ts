@@ -136,20 +136,7 @@ export interface AppConfig {
 
 export interface AppSettings {
   chunkSizeMB?: number;
-  dockTileColors?: DockTileColors;
-  dockAccentGradient?: ConfigDockAccentGradient;
-  dockerDashboardSections?: ConfigDockerDashboardSections;
-  hardwareSections?: ConfigHardwareSections;
-  hiddenCards?: string[];
-  layoutOrders?: Record<string, string[]>;
-  navigationMode?: NavigationMode;
-  primaryColor: string;
   showHiddenFiles: boolean;
-  sidebarCollapsed: boolean;
-  terminalFontSize?: number;
-  theme: Theme;
-  themeColors?: ConfigThemeColorsByModePayload;
-  viewModes?: Record<string, TableCardViewMode>;
 }
 
 export interface AppUpdateRequest {
@@ -382,21 +369,8 @@ export interface ComposeTaskResult {
 }
 
 export interface ConfigAppSettingsPayload {
-  theme?: string;
-  primaryColor?: string;
-  themeColors?: ConfigThemeColorsByModePayload;
-  sidebarCollapsed?: boolean;
-  navigationMode?: string;
-  dockTileColors?: string;
-  dockAccentGradient?: ConfigDockAccentGradient;
   showHiddenFiles?: boolean;
-  hiddenCards?: string[];
-  dockerDashboardSections?: ConfigDockerDashboardSections;
-  hardwareSections?: ConfigHardwareSections;
-  viewModes?: Record<string, string>;
-  layoutOrders?: Record<string, string[]>;
   chunkSizeMB?: number;
-  terminalFontSize?: number;
 }
 
 export interface ConfigDismissalsPayload {
@@ -485,6 +459,22 @@ export interface ConfigThemeColorsPayload {
   fileBrowserChrome?: string;
   fileBrowserBreadcrumbBackground?: string;
   fileBrowserBreadcrumbText?: string;
+}
+
+export interface ConfigUISetPayload {
+  theme?: string;
+  primaryColor?: string;
+  themeColors?: ConfigThemeColorsByModePayload;
+  sidebarCollapsed?: boolean;
+  navigationMode?: string;
+  dockTileColors?: string;
+  dockAccentGradient?: ConfigDockAccentGradient;
+  hiddenCards?: string[];
+  dockerDashboardSections?: ConfigDockerDashboardSections;
+  hardwareSections?: ConfigHardwareSections;
+  viewModes?: Record<string, string>;
+  layoutOrders?: Record<string, string[]>;
+  terminalFontSize?: number;
 }
 
 export interface ContainerEndpoint {
@@ -2097,6 +2087,23 @@ export interface TunedProfile {
   recommended: boolean;
 }
 
+export interface UIConfig {
+  dockAccentGradient: ConfigDockAccentGradient;
+  dockTileColors: DockTileColors;
+  dockerDashboardSections: ConfigDockerDashboardSections;
+  hardwareSections: ConfigHardwareSections;
+  hiddenCards: string[];
+  layoutOrders: Record<string, string[]>;
+  navigationMode: NavigationMode;
+  primaryColor: string;
+  sidebarCollapsed: boolean;
+  terminalFontSize: number;
+  theme: Theme;
+  themeColors?: ConfigThemeColorsByModePayload;
+  viewModes: Record<string, TableCardViewMode>;
+  viewModeDefault: TableCardViewMode;
+}
+
 export interface UnitInfo {
   ActiveEnterTimestamp?: number;
   ActiveState?: string;
@@ -2410,9 +2417,15 @@ export interface LinuxIOSchema {
 
   config: {
     get: { input: []; request: void; result: AppConfig };
+    get_ui: { input: []; request: void; result: UIConfig };
     set: {
       input: [request: ConfigSetPayload];
       request: ConfigSetPayload;
+      result: ConfigSetResult;
+    };
+    set_ui: {
+      input: [request: ConfigUISetPayload];
+      request: ConfigUISetPayload;
       result: ConfigSetResult;
     };
   };
@@ -3257,7 +3270,9 @@ export interface LinuxIOCallSchema {
   };
   "accounts.unlock_user": { request: UsernameRequest; result: void };
   "config.get": { request: void; result: AppConfig };
+  "config.get_ui": { request: void; result: UIConfig };
   "config.set": { request: ConfigSetPayload; result: ConfigSetResult };
+  "config.set_ui": { request: ConfigUISetPayload; result: ConfigSetResult };
   "control.logoff": { request: SessionIDRequest; result: void };
   "control.power_off": { request: void; result: void };
   "control.reboot": { request: void; result: void };

@@ -108,7 +108,7 @@ const DockerSettingsSection = () => {
     [updateConfig],
   );
   const configuredFolders = useMemo(
-    () => normalizeFolderList(dockerFolders ?? []),
+    () => normalizeFolderList(dockerFolders),
     [dockerFolders],
   );
   const configuredFoldersKey = configuredFolders.join("\n");

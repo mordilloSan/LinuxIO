@@ -1466,21 +1466,27 @@ type AppConfig struct {
 }
 
 type AppSettings struct {
-	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
-	DockTileColors          DockTileColors                  `json:"dockTileColors,omitempty"`
-	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
-	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
-	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
-	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
-	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
-	NavigationMode          NavigationMode                  `json:"navigationMode,omitempty"`
+	ChunkSizeMB     *int `json:"chunkSizeMB,omitempty"`
+	ShowHiddenFiles bool `json:"showHiddenFiles"`
+}
+
+// UIConfig is the effective presentation-only configuration. Backend defaults
+// are included so the frontend has one authoritative default source.
+type UIConfig struct {
+	DockAccentGradient      ConfigDockAccentGradient        `json:"dockAccentGradient"`
+	DockTileColors          DockTileColors                  `json:"dockTileColors"`
+	DockerDashboardSections ConfigDockerDashboardSections   `json:"dockerDashboardSections"`
+	HardwareSections        ConfigHardwareSections          `json:"hardwareSections"`
+	HiddenCards             []string                        `json:"hiddenCards"`
+	LayoutOrders            map[string][]string             `json:"layoutOrders"`
+	NavigationMode          NavigationMode                  `json:"navigationMode"`
 	PrimaryColor            string                          `json:"primaryColor"`
-	ShowHiddenFiles         bool                            `json:"showHiddenFiles"`
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`
-	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
+	TerminalFontSize        int                             `json:"terminalFontSize"`
 	Theme                   Theme                           `json:"theme"`
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
-	ViewModes               map[string]TableCardViewMode    `json:"viewModes,omitempty"`
+	ViewModes               map[string]TableCardViewMode    `json:"viewModes"`
+	ViewModeDefault         TableCardViewMode               `json:"viewModeDefault"`
 }
 
 type DockerProxySettings struct {

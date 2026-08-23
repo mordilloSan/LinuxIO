@@ -466,6 +466,13 @@ type ConfigSetPayload struct {
 }
 
 type ConfigAppSettingsPayload struct {
+	ShowHiddenFiles *bool `json:"showHiddenFiles,omitempty"`
+	ChunkSizeMB     *int  `json:"chunkSizeMB,omitempty"`
+}
+
+// ConfigUISetPayload replaces the user's UI preferences. A missing field
+// resets that preference to the backend default.
+type ConfigUISetPayload struct {
 	Theme                   *string                         `json:"theme,omitempty"`
 	PrimaryColor            *string                         `json:"primaryColor,omitempty"`
 	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
@@ -473,13 +480,11 @@ type ConfigAppSettingsPayload struct {
 	NavigationMode          *string                         `json:"navigationMode,omitempty"`
 	DockTileColors          *string                         `json:"dockTileColors,omitempty"`
 	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
-	ShowHiddenFiles         *bool                           `json:"showHiddenFiles,omitempty"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
 	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
 	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
 	ViewModes               map[string]string               `json:"viewModes,omitempty"`
 	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
-	ChunkSizeMB             *int                            `json:"chunkSizeMB,omitempty"`
 	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
 }
 

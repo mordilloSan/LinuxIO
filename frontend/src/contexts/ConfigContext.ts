@@ -1,7 +1,6 @@
 import { createContext } from "react";
 
-import type { AppConfig } from "@/api";
-import type { ConfigContextType } from "@/types/config";
+import type { ConfigContextType, EffectiveAppConfig } from "@/types/config";
 
 export const ConfigContext = createContext<ConfigContextType | undefined>(
   undefined,
@@ -9,7 +8,7 @@ export const ConfigContext = createContext<ConfigContextType | undefined>(
 
 export interface ConfigAccessorContextValue {
   /** Current config, read through a ref — always fresh, never a rerender. */
-  getConfig: () => AppConfig;
+  getConfig: () => EffectiveAppConfig;
 }
 
 // Identity-stable escape hatch for providers that must not rerender on

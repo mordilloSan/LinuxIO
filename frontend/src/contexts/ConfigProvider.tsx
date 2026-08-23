@@ -1,28 +1,19 @@
-// src/contexts/ConfigProvider.tsx
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
   type AppConfig,
   type AppSettings,
   CACHE_TTL_MS,
-  type ConfigDockerDashboardSections as DockerDashboardSections,
-  type ConfigHardwareSections as HardwareSections,
+  type ConfigUISetPayload,
   type ConfigThemeColorsByModePayload as ThemeColorsByMode,
   type ConfigThemeColorsPayload as ThemeColors,
+  type UIConfig,
   linuxio,
   LinuxIOError,
-  type TableCardViewMode,
-  useStreamMux,
   useCallMutation,
+  useStreamMux,
 } from "@/api";
 import {
   ConfigAccessorContext,
@@ -37,138 +28,30 @@ import type {
   ConfigProviderProps,
   ConfigValueKey,
   ConfigValueMap,
+  EffectiveAppConfig,
+  EffectiveAppSettings,
+  EffectiveUISettings,
 } from "@/types/config";
-import { readConfigCache, writeConfigCache } from "@/utils/configCache";
 
-type AppViewModes = Record<string, TableCardViewMode>;
+type ConfigurableUIKey = Exclude<keyof EffectiveUISettings, "viewModeDefault">;
 
-const DEFAULT_DOCK_ACCENT_GRADIENT = {
-  startColor: "",
-  endColor: "",
-  rangeStart: 0,
-  rangeEnd: 100,
-} as const;
+const IMPORTANT_APP_KEYS = ["showHiddenFiles", "chunkSizeMB"] as const;
 
-const isTableCardViewMode = (mode: unknown): mode is TableCardViewMode =>
-  mode === "card" || mode === "table";
-
-const normalizeViewModes = (
-  viewModes: AppSettings["viewModes"] | undefined,
-): AppViewModes | undefined => {
-  if (!viewModes) return undefined;
-
-  const normalized: AppViewModes = {};
-  for (const [key, value] of Object.entries(viewModes)) {
-    if (!key || !isTableCardViewMode(value)) continue;
-    normalized[key] = value;
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-};
-
-const defaultThemeColors: ThemeColorsByMode = {
-  light: {
-    backgroundDefault: "#F7F9FC",
-    backgroundPaper: "#FFFFFF",
-    headerBackground: "#F7F9FC",
-    footerBackground: "#F7F9FC",
-    sidebarBackground: "#F7F9FC",
-    cardBackground: "#FFFFFF",
-    dialogBorder: "#FFFFFF",
-    dialogGlow: "#FFFFFF",
-    dialogBackdrop: "#000000",
-    codeBackground: "#F5F5F5",
-    codeText: "#333333",
-    chartRx: "#8884D8",
-    chartTx: "#82CA9D",
-    chartNeutral: "#808080",
-    fileBrowserSurface: "#FFFFFF",
-    fileBrowserChrome: "#253137",
-    fileBrowserBreadcrumbBackground: "#D0D4D8",
-    fileBrowserBreadcrumbText: "#5A5A5A",
-  },
-  dark: {
-    backgroundDefault: "#1B2635",
-    backgroundPaper: "#233044",
-    headerBackground: "#1B2635",
-    footerBackground: "#1B2635",
-    sidebarBackground: "#1B2635",
-    cardBackground: "#11192A",
-    dialogBorder: "#FFFFFF",
-    dialogGlow: "#FFFFFF",
-    dialogBackdrop: "#000000",
-    codeBackground: "#1E1E1E",
-    codeText: "#D4D4D4",
-    chartRx: "#8884D8",
-    chartTx: "#82CA9D",
-    chartNeutral: "#808080",
-    fileBrowserSurface: "#20292F",
-    fileBrowserChrome: "#253137",
-    fileBrowserBreadcrumbBackground: "#283136",
-    fileBrowserBreadcrumbText: "#FFFFFF",
-  },
-};
-
-const defaultConfig: AppConfig = {
-  appSettings: {
-    theme: "DARK",
-    primaryColor: "#2196f3",
-    themeColors: defaultThemeColors,
-    sidebarCollapsed: false,
-    navigationMode: "sidebar",
-    dockTileColors: "accent",
-    dockAccentGradient: { ...DEFAULT_DOCK_ACCENT_GRADIENT },
-    showHiddenFiles: true,
-    hiddenCards: [],
-    dockerDashboardSections: {
-      overview: true,
-      monitoring: true,
-      daemon: true,
-      resources: true,
-    },
-    hardwareSections: {
-      overview: true,
-      hardware: true,
-      sensors: true,
-      systemInfo: true,
-      gpu: true,
-      pciDevices: true,
-      memoryModules: true,
-    },
-    viewModes: {
-      "accounts.groups": "card",
-      "accounts.users": "card",
-      "docker.containers": "card",
-      "docker.images": "card",
-      "docker.networks": "card",
-      "docker.stacks": "card",
-      "docker.volumes": "card",
-      "services.list": "card",
-      shares: "card",
-      "shares.mounts": "card",
-      "sockets.list": "card",
-      "timers.list": "card",
-    },
-    chunkSizeMB: 1,
-  },
-  docker: {
-    folders: ["/var/lib/linuxio/docker"],
-    requireMountsForFolders: false,
-    proxy: {
-      caddyEnabled: false,
-      baseDomain: "",
-      tlsEmail: "",
-    },
-  },
-  jobs: {
-    progressMinIntervalMs: 250,
-    notificationMinIntervalMs: 1000,
-    progressMinBytesMB: 16,
-    heavyArchiveConcurrency: 1,
-    archiveCompressionWorkers: 0,
-    archiveExtractWorkers: 0,
-  },
-};
+const UI_KEYS = [
+  "theme",
+  "primaryColor",
+  "themeColors",
+  "sidebarCollapsed",
+  "navigationMode",
+  "dockTileColors",
+  "dockAccentGradient",
+  "hiddenCards",
+  "dockerDashboardSections",
+  "hardwareSections",
+  "viewModes",
+  "layoutOrders",
+  "terminalFontSize",
+] as const satisfies readonly ConfigurableUIKey[];
 
 const cloneThemeColors = (colors?: ThemeColors): ThemeColors | undefined =>
   colors ? { ...colors } : undefined;
@@ -183,342 +66,409 @@ const cloneThemeColorsByMode = (
       }
     : undefined;
 
-const cloneArray = <T,>(items?: T[]): T[] | undefined =>
-  items ? [...items] : undefined;
-
-const cloneRecord = <T,>(
-  value?: Record<string, T>,
-): Record<string, T> | undefined => (value ? { ...value } : undefined);
-
-// Surfaces the user never rearranged stay absent instead of being stored as an
-// empty array, so an undefined map is the normal case rather than a defect.
-const cloneLayoutOrders = (
-  layoutOrders?: AppSettings["layoutOrders"],
-): AppSettings["layoutOrders"] => {
-  if (!layoutOrders) return undefined;
-
-  const normalized: Record<string, string[]> = {};
-  for (const [surface, order] of Object.entries(layoutOrders)) {
-    if (!surface || !Array.isArray(order) || order.length === 0) continue;
-    normalized[surface] = [...order];
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-};
-
-const cloneDockerDashboardSections = (
-  sections?: DockerDashboardSections,
-): DockerDashboardSections | undefined =>
-  sections
-    ? {
-        ...defaultConfig.appSettings.dockerDashboardSections,
-        ...sections,
-      }
-    : undefined;
-
-const cloneHardwareSections = (
-  sections?: HardwareSections,
-): HardwareSections | undefined => (sections ? { ...sections } : undefined);
-
-const applyDefaults = (
-  cfg: ConfigPatch | Partial<AppConfig> | null,
-): AppConfig => {
-  const app: Partial<AppSettings> = cfg?.appSettings ?? {};
-  const docker: NonNullable<ConfigPatch["docker"]> = cfg?.docker ?? {};
-  const jobs: Partial<AppConfig["jobs"]> = cfg?.jobs ?? {};
-  const viewModes =
-    normalizeViewModes(app.viewModes) ??
-    cloneRecord(defaultConfig.appSettings.viewModes);
-
+function cloneUIConfig(value: UIConfig): EffectiveUISettings {
   return {
-    appSettings: {
-      theme: app.theme ?? defaultConfig.appSettings.theme,
-      primaryColor: app.primaryColor ?? defaultConfig.appSettings.primaryColor,
-      themeColors: cloneThemeColorsByMode(
-        app.themeColors ?? defaultConfig.appSettings.themeColors,
-      ),
-      sidebarCollapsed:
-        app.sidebarCollapsed ?? defaultConfig.appSettings.sidebarCollapsed,
-      navigationMode:
-        app.navigationMode ?? defaultConfig.appSettings.navigationMode,
-      dockTileColors:
-        app.dockTileColors ?? defaultConfig.appSettings.dockTileColors,
-      dockAccentGradient: {
-        ...DEFAULT_DOCK_ACCENT_GRADIENT,
-        ...app.dockAccentGradient,
-      },
-      showHiddenFiles:
-        app.showHiddenFiles ?? defaultConfig.appSettings.showHiddenFiles,
-      hiddenCards:
-        cloneArray(app.hiddenCards) ??
-        cloneArray(defaultConfig.appSettings.hiddenCards),
-      layoutOrders: cloneLayoutOrders(app.layoutOrders),
-      dockerDashboardSections:
-        cloneDockerDashboardSections(app.dockerDashboardSections) ??
-        cloneDockerDashboardSections(
-          defaultConfig.appSettings.dockerDashboardSections,
-        ),
-      hardwareSections:
-        cloneHardwareSections(app.hardwareSections) ??
-        cloneHardwareSections(defaultConfig.appSettings.hardwareSections),
-      viewModes,
-      chunkSizeMB: app.chunkSizeMB ?? defaultConfig.appSettings.chunkSizeMB,
-      // Absent means "frontend default"; the terminal owns that constant.
-      terminalFontSize: app.terminalFontSize,
-    },
-    docker: {
-      folders:
-        cloneArray(docker.folders) ??
-        cloneArray(defaultConfig.docker.folders) ??
-        [],
-      requireMountsForFolders:
-        docker.requireMountsForFolders ??
-        defaultConfig.docker.requireMountsForFolders,
-      proxy: {
-        caddyEnabled:
-          docker.proxy?.caddyEnabled ?? defaultConfig.docker.proxy.caddyEnabled,
-        baseDomain:
-          docker.proxy?.baseDomain ?? defaultConfig.docker.proxy.baseDomain,
-        tlsEmail: docker.proxy?.tlsEmail ?? defaultConfig.docker.proxy.tlsEmail,
-      },
-    },
-    jobs: {
-      ...defaultConfig.jobs,
-      ...jobs,
-    },
-    dismissals: cfg?.dismissals ? { ...cfg.dismissals } : undefined,
+    theme: value.theme,
+    primaryColor: value.primaryColor,
+    themeColors: cloneThemeColorsByMode(value.themeColors),
+    sidebarCollapsed: value.sidebarCollapsed,
+    navigationMode: value.navigationMode,
+    dockTileColors: value.dockTileColors,
+    dockAccentGradient: { ...value.dockAccentGradient },
+    hiddenCards: [...value.hiddenCards],
+    dockerDashboardSections: { ...value.dockerDashboardSections },
+    hardwareSections: { ...value.hardwareSections },
+    viewModes: { ...value.viewModes },
+    viewModeDefault: value.viewModeDefault,
+    layoutOrders: Object.fromEntries(
+      Object.entries(value.layoutOrders).map(([key, order]) => [
+        key,
+        [...order],
+      ]),
+    ),
+    terminalFontSize: value.terminalFontSize,
   };
-};
+}
 
-const mergeConfig = (prev: AppConfig, patch: ConfigPatch): AppConfig => {
-  const next = applyDefaults({
-    appSettings: patch.appSettings
-      ? { ...prev.appSettings, ...patch.appSettings }
-      : prev.appSettings,
+function cloneAppConfig(value: AppConfig): AppConfig {
+  return {
+    appSettings: { ...value.appSettings },
+    docker: {
+      ...value.docker,
+      folders: [...value.docker.folders],
+      proxy: { ...value.docker.proxy },
+    },
+    jobs: { ...value.jobs },
+    dismissals: value.dismissals ? { ...value.dismissals } : undefined,
+  };
+}
+
+function composeConfig(bridge: AppConfig, ui: UIConfig): EffectiveAppConfig {
+  const clonedBridge = cloneAppConfig(bridge);
+  return {
+    ...clonedBridge,
+    appSettings: {
+      ...clonedBridge.appSettings,
+      ...cloneUIConfig(ui),
+    },
+  };
+}
+
+function cloneEffectiveAppSettings(
+  value: EffectiveAppSettings,
+): EffectiveAppSettings {
+  return {
+    ...value,
+    themeColors: cloneThemeColorsByMode(value.themeColors),
+    dockAccentGradient: { ...value.dockAccentGradient },
+    hiddenCards: [...value.hiddenCards],
+    dockerDashboardSections: { ...value.dockerDashboardSections },
+    hardwareSections: { ...value.hardwareSections },
+    viewModes: { ...value.viewModes },
+    layoutOrders: Object.fromEntries(
+      Object.entries(value.layoutOrders).map(([key, order]) => [
+        key,
+        [...order],
+      ]),
+    ),
+  };
+}
+
+function mergeConfig(
+  previous: EffectiveAppConfig,
+  patch: ConfigPatch,
+): EffectiveAppConfig {
+  const nextAppSettings = cloneEffectiveAppSettings({
+    ...previous.appSettings,
+    ...(patch.appSettings ?? {}),
+  });
+  return {
+    ...previous,
+    appSettings: nextAppSettings,
     docker: patch.docker
       ? {
-          ...prev.docker,
+          ...previous.docker,
           ...patch.docker,
+          folders:
+            patch.docker.folders === undefined
+              ? [...previous.docker.folders]
+              : [...patch.docker.folders],
           proxy: patch.docker.proxy
-            ? { ...prev.docker.proxy, ...patch.docker.proxy }
-            : prev.docker.proxy,
+            ? { ...previous.docker.proxy, ...patch.docker.proxy }
+            : { ...previous.docker.proxy },
         }
-      : prev.docker,
-    jobs: patch.jobs ? { ...prev.jobs, ...patch.jobs } : prev.jobs,
+      : previous.docker,
+    jobs: patch.jobs ? { ...previous.jobs, ...patch.jobs } : previous.jobs,
     dismissals:
       patch.dismissals === undefined
-        ? prev.dismissals
-        : { ...prev.dismissals, ...patch.dismissals },
-  });
-  // applyDefaults defensively clones themeColors, which would hand memo
-  // consumers (the theme provider) a fresh reference on every unrelated
-  // update; keep the previous object when the patch didn't touch it.
-  if (!patch.appSettings || !("themeColors" in patch.appSettings)) {
-    next.appSettings.themeColors = prev.appSettings.themeColors;
+        ? previous.dismissals
+        : { ...previous.dismissals, ...patch.dismissals },
+  };
+}
+
+function pickImportantAppSettings(
+  appSettings: Partial<EffectiveAppSettings>,
+): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  for (const key of IMPORTANT_APP_KEYS) {
+    if (key in appSettings) {
+      Object.assign(result, { [key]: appSettings[key] });
+    }
   }
-  if (!patch.appSettings || !("dockAccentGradient" in patch.appSettings)) {
-    next.appSettings.dockAccentGradient = prev.appSettings.dockAccentGradient;
+  return result;
+}
+
+function pickUISettings(
+  appSettings: Partial<EffectiveAppSettings> | undefined,
+): Partial<EffectiveUISettings> {
+  const result: Partial<EffectiveUISettings> = {};
+  if (!appSettings) return result;
+  for (const key of UI_KEYS) {
+    if (key in appSettings) {
+      Object.assign(result, { [key]: appSettings[key] });
+    }
   }
-  return next;
-};
+  return result;
+}
+
+function bridgePatch(patch: ConfigPatch): ConfigPatch {
+  const result: ConfigPatch = {};
+  const appSettings = pickImportantAppSettings(patch.appSettings ?? {});
+  if (Object.keys(appSettings).length > 0) result.appSettings = appSettings;
+  if (patch.docker !== undefined) result.docker = patch.docker;
+  if (patch.jobs !== undefined) result.jobs = patch.jobs;
+  if (patch.dismissals !== undefined) result.dismissals = patch.dismissals;
+  return result;
+}
+
+function uiPatch(patch: ConfigPatch): Partial<EffectiveUISettings> {
+  return pickUISettings(patch.appSettings);
+}
+
+function hasValues(value: object): boolean {
+  return Object.keys(value).length > 0;
+}
+
+function hasImportantPatch(patch: ConfigPatch): boolean {
+  return hasValues(bridgePatch(patch));
+}
+
+function hasUIPatch(patch: ConfigPatch): boolean {
+  return hasValues(uiPatch(patch));
+}
+
+function uiSnapshotFromConfig(config: EffectiveAppConfig): ConfigUISetPayload {
+  const ui = config.appSettings;
+  const payload: ConfigUISetPayload = {
+    theme: ui.theme,
+    primaryColor: ui.primaryColor,
+    sidebarCollapsed: ui.sidebarCollapsed,
+    navigationMode: ui.navigationMode,
+    dockTileColors: ui.dockTileColors,
+    dockAccentGradient: { ...ui.dockAccentGradient },
+    hiddenCards: [...ui.hiddenCards],
+    dockerDashboardSections: { ...ui.dockerDashboardSections },
+    hardwareSections: { ...ui.hardwareSections },
+    viewModes: { ...ui.viewModes },
+    terminalFontSize: ui.terminalFontSize,
+  };
+  if (ui.themeColors)
+    payload.themeColors = cloneThemeColorsByMode(ui.themeColors);
+  payload.layoutOrders = Object.fromEntries(
+    Object.entries(ui.layoutOrders).map(([key, order]) => [key, [...order]]),
+  );
+  return payload;
+}
 
 const getConfigValue = <K extends ConfigValueKey>(
-  cfg: AppConfig,
+  config: EffectiveAppConfig,
   key: K,
-): ConfigValueMap[K] => {
-  return cfg.appSettings[key];
-};
+): ConfigValueMap[K] => config.appSettings[key];
 
 const patchConfigValue = <K extends ConfigValueKey>(
   key: K,
   value: ConfigValueMap[K],
-): ConfigPatch => {
-  return {
-    appSettings: {
-      [key]: value,
-    },
-  };
-};
+): ConfigPatch => ({ appSettings: { [key]: value } });
 
-// Config state is deliberately layered: the sessionStorage cache seeds the
-// initial render synchronously (no theme flash before the mux is up), the
-// useState mirror is the live copy feature code reads, and the backend is the
-// durable store. Saves are optimistic — local state updates immediately and a
-// failed persist surfaces via the action's error toast.
-export const ConfigProvider = ({ children }: ConfigProviderProps) => {
-  const { sessionExpired, user } = useAuth();
-  const queryClient = useQueryClient();
-  const username = user?.id;
-  const [config, setConfig] = useState<AppConfig>(() =>
-    applyDefaults(readConfigCache(username)),
+interface SaveOperation {
+  bridge?: ConfigPatch;
+  ui?: ConfigUISetPayload;
+  onSaved?: () => void;
+}
+
+function LoadedConfigProviders({
+  children,
+  config,
+  setKey,
+  updateConfig,
+}: Pick<ConfigProviderProps, "children"> &
+  Pick<ConfigContextType, "config" | "setKey" | "updateConfig">) {
+  const configRef = useLatestRef(config);
+  const value = useMemo<ConfigContextType>(
+    () => ({ config, setKey, updateConfig, isLoaded: true }),
+    [config, setKey, updateConfig],
   );
+  const accessorValue = useMemo<ConfigAccessorContextValue>(
+    () => ({ getConfig: () => configRef.current }),
+    [configRef],
+  );
+
+  return (
+    <ConfigAccessorContext.Provider value={accessorValue}>
+      <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
+    </ConfigAccessorContext.Provider>
+  );
+}
+
+export const ConfigProvider = ({ children }: ConfigProviderProps) => {
+  const { sessionExpired } = useAuth();
+  const queryClient = useQueryClient();
+  const [config, setConfig] = useState<EffectiveAppConfig | null>(null);
   const [isLoaded, setLoaded] = useState(false);
-  // Track if we successfully loaded from backend - only allow saves if true
-  const [canSave, setCanSave] = useState(false);
-  // Keep a synchronously updated draft so multiple actions in one event use
-  // the latest state even before React commits the queued update.
-  const configDraftRef = useRef(config);
-  useLayoutEffect(() => {
-    configDraftRef.current = config;
-  }, [config]);
+  const configDraftRef = useRef<EffectiveAppConfig | null>(null);
+  const loadedOnceRef = useRef(false);
+  const canSaveRef = useRef(false);
+  const warnedUnsavedRef = useRef(false);
   const { isOpen: isMuxOpen } = useStreamMux();
-  const { mutate: setConfigRemote } = useCallMutation(linuxio.config.set, {
+  const { mutateAsync: setConfigRemote } = useCallMutation(linuxio.config.set, {
     error: "Failed to save settings",
     invalidates: (_result, patch) =>
       patch.docker?.folders !== undefined
         ? [linuxio.docker.list_compose_projects.queryKey]
         : [],
   });
+  const { mutateAsync: setUIRemote } = useCallMutation(linuxio.config.set_ui, {
+    error: "Failed to save appearance settings",
+    invalidates: [],
+  });
+  const saveTailRef = useRef<Promise<void>>(Promise.resolve());
+  const activeQueueRef = useRef(true);
+
+  useEffect(() => {
+    activeQueueRef.current = true;
+    return () => {
+      activeQueueRef.current = false;
+      canSaveRef.current = false;
+    };
+  }, []);
+
+  const enqueueSave = useCallback(
+    (operation: SaveOperation) => {
+      saveTailRef.current = saveTailRef.current
+        .then(async () => {
+          if (!activeQueueRef.current) return;
+          if (operation.bridge) {
+            await setConfigRemote(operation.bridge);
+            if (!activeQueueRef.current) return;
+          }
+          if (operation.ui) {
+            await setUIRemote(operation.ui);
+            if (!activeQueueRef.current) return;
+          }
+          operation.onSaved?.();
+        })
+        // Mutation hooks report the individual failure. Keep the queue alive
+        // so a later user change can still be sent.
+        .catch(() => undefined);
+    },
+    [setConfigRemote, setUIRemote],
+  );
 
   useEffect(() => {
     let cancelled = false;
-    // If the mux never opens, render with cached/default config after 2.5s;
-    // saving stays disabled until a backend load succeeds.
-    const giveUp = setTimeout(() => {
-      if (!cancelled) {
-        console.warn("Stream mux not ready, using cached/default config");
-        setLoaded(true);
-      }
-    }, 2_500);
+    canSaveRef.current = false;
 
-    const fetchConfig = async (): Promise<void> => {
-      // The effect re-runs when the mux opens (same gating the endpoint
-      // hooks get from `enabled`), so a slow startup never leaves saving
-      // disabled forever.
-      if (!isMuxOpen) return;
-
-      const loadConfig = async () => {
-        try {
-          if (readConfigCache(username)) {
-            setCanSave(true);
-            setLoaded(true);
-            return;
-          }
-
-          const settings = await queryClient.fetchQuery({
-            ...linuxio.config.get,
-            staleTime: CACHE_TTL_MS.NONE,
-          });
-
-          if (!cancelled) {
-            const nextConfig = applyDefaults(settings);
-            setConfig(nextConfig);
-            writeConfigCache(username, nextConfig);
-            setCanSave(true); // Successfully loaded from backend, allow saves
-            setLoaded(true);
-          }
-        } catch (error: unknown) {
-          if (cancelled) return;
-
-          // Don't treat stream errors as auth errors - just use defaults
-          if (error instanceof LinuxIOError && error.code === 503) {
-            console.warn("Stream API unavailable, using default config");
-            setLoaded(true);
-            // canSave stays false
-            return;
-          }
-
-          // Only treat actual auth errors (401/403) as session expired
-          const code = error instanceof LinuxIOError ? error.code : 500;
-          if (code === 401 || code === 403) {
-            // Involuntary expiry during config load: preserve the path, notify,
-            // and sign out locally (same handling as a dropped auth socket).
-            sessionExpired();
-            return;
-          }
-
-          // For other errors, just log and use defaults
-          console.error("Failed to load config:", error);
-          setLoaded(true);
-          // canSave stays false
-        }
+    if (!isMuxOpen) {
+      return () => {
+        cancelled = true;
       };
+    }
 
-      await loadConfig().finally(() => {
-        // The load settled one way or another; the give-up fallback must not
-        // fire later and warn about a mux that is actually up.
-        clearTimeout(giveUp);
-      });
+    const load = async () => {
+      const results = await Promise.allSettled([
+        queryClient.fetchQuery({
+          ...linuxio.config.get,
+          staleTime: CACHE_TTL_MS.NONE,
+        }),
+        queryClient.fetchQuery({
+          ...linuxio.config.get_ui,
+          staleTime: CACHE_TTL_MS.NONE,
+        }),
+      ]);
+      if (cancelled) return;
+
+      for (const result of results) {
+        if (result.status !== "rejected") continue;
+        const error = result.reason;
+        const code = error instanceof LinuxIOError ? error.code : 500;
+        if (code === 401 || code === 403) {
+          sessionExpired();
+          return;
+        }
+      }
+
+      const bridgeResult = results[0];
+      const uiResult = results[1];
+      if (
+        bridgeResult.status !== "fulfilled" ||
+        uiResult.status !== "fulfilled"
+      ) {
+        if (!loadedOnceRef.current) setLoaded(false);
+        if (bridgeResult.status === "rejected") {
+          console.error("Failed to load config:", bridgeResult.reason);
+        }
+        if (uiResult.status === "rejected") {
+          console.error("Failed to load appearance settings:", uiResult.reason);
+        }
+        return;
+      }
+
+      const bridge = bridgeResult.value;
+      const ui = uiResult.value;
+      const nextConfig = composeConfig(bridge, ui);
+      configDraftRef.current = nextConfig;
+      setConfig(nextConfig);
+      loadedOnceRef.current = true;
+      setLoaded(true);
+      canSaveRef.current = true;
+      warnedUnsavedRef.current = false;
     };
 
-    // Async config load (mux-gated, query-cache fetcher), not a synchronous
-    // external store — useSyncExternalStore can't express async loading, so
-    // this rule misfires here.
-
-    void fetchConfig();
-
+    void load();
     return () => {
       cancelled = true;
-      clearTimeout(giveUp);
+      canSaveRef.current = false;
     };
-  }, [isMuxOpen, queryClient, sessionExpired, username]);
+  }, [isMuxOpen, queryClient, sessionExpired]);
 
-  // Warn once per unreachable period, not on every discarded change.
-  const warnedUnsavedRef = useRef(false);
   const save = useCallback(
-    (patch: ConfigPatch, onSaved?: () => void) => {
-      if (!canSave) {
-        // Startup never reached the backend: the change stays local so the
-        // UI keeps working, but the user must know it will not survive.
+    (
+      patch: ConfigPatch,
+      nextConfig: EffectiveAppConfig,
+      onSaved?: () => void,
+    ) => {
+      const wantsBridge = hasImportantPatch(patch);
+      const wantsUI = hasUIPatch(patch);
+      if (!wantsBridge && !wantsUI) return;
+
+      if (!canSaveRef.current) {
         if (!warnedUnsavedRef.current) {
           warnedUnsavedRef.current = true;
           toast.warning("Settings are not being saved (backend unreachable).");
         }
         return;
       }
+
       warnedUnsavedRef.current = false;
-      if (onSaved) {
-        setConfigRemote(patch, { onSuccess: onSaved });
-      } else {
-        setConfigRemote(patch);
-      }
+      enqueueSave({
+        bridge: wantsBridge ? bridgePatch(patch) : undefined,
+        ui: wantsUI ? uiSnapshotFromConfig(nextConfig) : undefined,
+        onSaved,
+      });
     },
-    [canSave, setConfigRemote],
+    [enqueueSave],
   );
 
   const setKey: ConfigContextType["setKey"] = useCallback(
     (key, value) => {
-      const prev = configDraftRef.current;
-      const current = getConfigValue(prev, key);
-      const nextVal =
+      const previous = configDraftRef.current;
+      if (!previous) return;
+      const current = getConfigValue(previous, key);
+      const nextValue =
         typeof value === "function" ? (value as any)(current) : value;
-      if (Object.is(current, nextVal)) return;
-      const patch = patchConfigValue(key, nextVal);
-      const next = mergeConfig(prev, patch);
-      configDraftRef.current = next;
-      setConfig(next);
-      if (canSave) writeConfigCache(username, next);
-      save(patch);
+      if (Object.is(current, nextValue)) return;
+
+      const patch = patchConfigValue(key, nextValue);
+      const nextConfig = mergeConfig(previous, patch);
+      configDraftRef.current = nextConfig;
+      setConfig(nextConfig);
+      save(patch, nextConfig);
     },
-    [canSave, save, username],
+    [save],
   );
 
   const updateConfig: ConfigContextType["updateConfig"] = useCallback(
     (patch, onSaved) => {
-      const prev = configDraftRef.current;
-      const partial = typeof patch === "function" ? patch(prev) : patch;
-      const next = mergeConfig(prev, partial);
-      configDraftRef.current = next;
-      setConfig(next);
-      if (canSave) writeConfigCache(username, next);
-      save(partial, onSaved);
+      const previous = configDraftRef.current;
+      if (!previous) return;
+      const resolvedPatch =
+        typeof patch === "function" ? patch(previous) : patch;
+      const nextConfig = mergeConfig(previous, resolvedPatch);
+      configDraftRef.current = nextConfig;
+      setConfig(nextConfig);
+      save(resolvedPatch, nextConfig, onSaved);
     },
-    [canSave, save, username],
+    [save],
   );
 
-  const value = useMemo(
-    () => ({ config, setKey, updateConfig, isLoaded }),
-    [config, setKey, updateConfig, isLoaded],
-  );
-  const configRef = useLatestRef(config);
-  const accessorValue = useMemo<ConfigAccessorContextValue>(
-    () => ({ getConfig: () => configRef.current }),
-    [configRef],
-  );
-  if (!isLoaded) return null;
+  if (!config || !isLoaded) return null;
   return (
-    <ConfigAccessorContext.Provider value={accessorValue}>
-      <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
-    </ConfigAccessorContext.Provider>
+    <LoadedConfigProviders
+      config={config}
+      setKey={setKey}
+      updateConfig={updateConfig}
+    >
+      {children}
+    </LoadedConfigProviders>
   );
 };

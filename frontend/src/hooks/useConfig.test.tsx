@@ -1,17 +1,39 @@
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AppConfig } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { useConfig, useConfigValue } from "@/hooks/useConfig";
 import { act, renderHook } from "@/test/render";
-import type { ConfigContextType } from "@/types/config";
+import type { ConfigContextType, EffectiveAppConfig } from "@/types/config";
 
-const config: AppConfig = {
+const config: EffectiveAppConfig = {
   appSettings: {
     chunkSizeMB: 1,
     hiddenCards: [],
     layoutOrders: { dashboard: ["overview"] },
+    navigationMode: "sidebar",
+    dockTileColors: "accent",
+    dockAccentGradient: {
+      startColor: "",
+      endColor: "",
+      rangeStart: 0,
+      rangeEnd: 100,
+    },
+    dockerDashboardSections: {
+      overview: true,
+      monitoring: true,
+      daemon: true,
+      resources: true,
+    },
+    hardwareSections: {
+      overview: true,
+      hardware: true,
+      sensors: true,
+      systemInfo: true,
+      gpu: true,
+      pciDevices: true,
+      memoryModules: true,
+    },
     primaryColor: "#2196f3",
     showHiddenFiles: true,
     sidebarCollapsed: false,
@@ -19,6 +41,8 @@ const config: AppConfig = {
     viewModes: {
       "services.list": "card",
     },
+    viewModeDefault: "card",
+    terminalFontSize: 16,
   },
   docker: {
     folders: ["/var/lib/linuxio/docker"],

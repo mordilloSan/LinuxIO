@@ -9,38 +9,45 @@ import (
 )
 
 func applyAppSettingsUpdate(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigAppSettingsPayload) error {
-	if err := applyThemeSetting(app, payload.Theme); err != nil {
-		return err
-	}
-	if err := applyPrimaryColorSetting(app, payload.PrimaryColor); err != nil {
-		return err
-	}
-	if err := applyThemeColorOverrides(app, payload.ThemeColors); err != nil {
-		return err
-	}
-	if err := applyNavigationModeSetting(app, payload.NavigationMode); err != nil {
-		return err
-	}
-	if err := applyDockTileColorsSetting(app, payload.DockTileColors); err != nil {
-		return err
-	}
-	if err := applyDockAccentGradientSetting(app, payload.DockAccentGradient); err != nil {
-		return err
-	}
-	applyOptionalBool(&app.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalBool(&app.ShowHiddenFiles, payload.ShowHiddenFiles)
-	applyOptionalStringSlice(&app.HiddenCards, payload.HiddenCards)
-	applyOptionalDockerDashboardSections(app, payload.DockerDashboardSections)
-	applyOptionalHardwareSections(app, payload.HardwareSections)
-	applyViewModes(app, payload.ViewModes)
-	applyLayoutOrders(app, payload.LayoutOrders)
-	if err := applyChunkSizeSetting(app, payload.ChunkSizeMB); err != nil {
-		return err
-	}
-	return applyTerminalFontSizeSetting(app, payload.TerminalFontSize)
+	return applyChunkSizeSetting(app, payload.ChunkSizeMB)
 }
 
-func applyDockAccentGradientSetting(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigDockAccentGradient) error {
+// applyUISettingsUpdate starts from backend defaults so config.set_ui has
+// replacement semantics while every persisted snapshot remains complete.
+func applyUISettingsUpdate(ui *bridgeconfig.UIPreferences, payload *apischema.ConfigUISetPayload) error {
+	if ui == nil {
+		return fmt.Errorf("UI preferences are nil")
+	}
+	*ui = bridgeconfig.DefaultUIPreferences()
+	if err := applyThemeSetting(ui, payload.Theme); err != nil {
+		return err
+	}
+	if err := applyPrimaryColorSetting(ui, payload.PrimaryColor); err != nil {
+		return err
+	}
+	if err := applyThemeColorOverrides(ui, payload.ThemeColors); err != nil {
+		return err
+	}
+	if err := applyNavigationModeSetting(ui, payload.NavigationMode); err != nil {
+		return err
+	}
+	if err := applyDockTileColorsSetting(ui, payload.DockTileColors); err != nil {
+		return err
+	}
+	if err := applyDockAccentGradientSetting(ui, payload.DockAccentGradient); err != nil {
+		return err
+	}
+	applyOptionalBool(&ui.SidebarCollapsed, payload.SidebarCollapsed)
+	applyOptionalStringSlice(&ui.HiddenCards, payload.HiddenCards)
+	applyOptionalDockerDashboardSections(ui, payload.DockerDashboardSections)
+	applyOptionalHardwareSections(ui, payload.HardwareSections)
+	applyViewModes(ui, payload.ViewModes)
+	applyLayoutOrders(ui, payload.LayoutOrders)
+	return applyTerminalFontSizeSetting(ui, payload.TerminalFontSize)
+}
+
+func applyDockAccentGradientSetting(app *bridgeconfig.UIPreferences, payload *apischema.ConfigDockAccentGradient) error {
 	if payload == nil {
 		return nil
 	}
@@ -53,7 +60,7 @@ func applyDockAccentGradientSetting(app *bridgeconfig.PersistedAppSettings, payl
 	if errs := bridgeconfig.ValidateDockAccentGradient(gradient); len(errs) > 0 {
 		return fmt.Errorf("invalid dockAccentGradient: %s", strings.Join(errs, "; "))
 	}
-	app.DockAccentGradient = gradient
+	app.DockAccentGradient = &gradient
 	return nil
 }
 
@@ -64,7 +71,7 @@ func trimmedOptionalString(value *string) string {
 	return strings.TrimSpace(*value)
 }
 
-func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) error {
+func applyThemeSetting(app *bridgeconfig.UIPreferences, theme *string) error {
 	if theme == nil {
 		return nil
 	}
@@ -76,7 +83,7 @@ func applyThemeSetting(app *bridgeconfig.PersistedAppSettings, theme *string) er
 	return nil
 }
 
-func applyNavigationModeSetting(app *bridgeconfig.PersistedAppSettings, mode *string) error {
+func applyNavigationModeSetting(app *bridgeconfig.UIPreferences, mode *string) error {
 	if mode == nil {
 		return nil
 	}
@@ -88,7 +95,7 @@ func applyNavigationModeSetting(app *bridgeconfig.PersistedAppSettings, mode *st
 	return nil
 }
 
-func applyDockTileColorsSetting(app *bridgeconfig.PersistedAppSettings, mode *string) error {
+func applyDockTileColorsSetting(app *bridgeconfig.UIPreferences, mode *string) error {
 	if mode == nil {
 		return nil
 	}
@@ -100,7 +107,7 @@ func applyDockTileColorsSetting(app *bridgeconfig.PersistedAppSettings, mode *st
 	return nil
 }
 
-func applyPrimaryColorSetting(app *bridgeconfig.PersistedAppSettings, primaryColor *string) error {
+func applyPrimaryColorSetting(app *bridgeconfig.UIPreferences, primaryColor *string) error {
 	if primaryColor == nil {
 		return nil
 	}
@@ -111,7 +118,7 @@ func applyPrimaryColorSetting(app *bridgeconfig.PersistedAppSettings, primaryCol
 	return nil
 }
 
-func applyThemeColorOverrides(app *bridgeconfig.PersistedAppSettings, payload *apischema.ConfigThemeColorsByModePayload) error {
+func applyThemeColorOverrides(app *bridgeconfig.UIPreferences, payload *apischema.ConfigThemeColorsByModePayload) error {
 	if payload == nil {
 		return nil
 	}
@@ -178,19 +185,19 @@ func buildThemeColors(payload *apischema.ConfigThemeColorsPayload, modePrefix st
 	return colors, nil
 }
 
-func applyOptionalDockerDashboardSections(app *bridgeconfig.PersistedAppSettings, sections *apischema.ConfigDockerDashboardSections) {
+func applyOptionalDockerDashboardSections(app *bridgeconfig.UIPreferences, sections *apischema.ConfigDockerDashboardSections) {
 	if sections != nil {
 		app.DockerDashboardSections = &bridgeconfig.DockerDashboardSections{Overview: sections.Overview, Monitoring: sections.Monitoring, Daemon: sections.Daemon, Resources: sections.Resources}
 	}
 }
 
-func applyOptionalHardwareSections(app *bridgeconfig.PersistedAppSettings, sections *apischema.ConfigHardwareSections) {
+func applyOptionalHardwareSections(app *bridgeconfig.UIPreferences, sections *apischema.ConfigHardwareSections) {
 	if sections != nil {
 		app.HardwareSections = &bridgeconfig.HardwareSections{Overview: sections.Overview, Hardware: sections.Hardware, Sensors: sections.Sensors, SystemInfo: sections.SystemInfo, GPU: sections.GPU, PCIDevices: sections.PCIDevices, MemoryModules: sections.MemoryModules}
 	}
 }
 
-func applyViewModes(app *bridgeconfig.PersistedAppSettings, viewModes map[string]string) {
+func applyViewModes(app *bridgeconfig.UIPreferences, viewModes map[string]string) {
 	if viewModes == nil {
 		return
 	}
@@ -212,7 +219,7 @@ func applyViewModes(app *bridgeconfig.PersistedAppSettings, viewModes map[string
 // applyLayoutOrders replaces the whole per-surface order map, dropping surfaces
 // whose order is empty: an absent surface already means "natural order", so
 // storing the empty case would only grow the config file.
-func applyLayoutOrders(app *bridgeconfig.PersistedAppSettings, layoutOrders map[string][]string) {
+func applyLayoutOrders(app *bridgeconfig.UIPreferences, layoutOrders map[string][]string) {
 	if layoutOrders == nil {
 		return
 	}
@@ -250,14 +257,16 @@ func applyChunkSizeSetting(app *bridgeconfig.PersistedAppSettings, chunkSize *in
 	return nil
 }
 
-func applyTerminalFontSizeSetting(app *bridgeconfig.PersistedAppSettings, fontSize *int) error {
+func applyTerminalFontSizeSetting(app *bridgeconfig.UIPreferences, fontSize *int) error {
 	if fontSize == nil {
 		return nil
 	}
 	value := *fontSize
 	if value != 0 && (value < 10 || value > 28) {
-		return fmt.Errorf("terminalFontSize must be 0 (default) or between 10 and 28")
+		return fmt.Errorf("terminalFontSize must be between 10 and 28")
 	}
-	app.TerminalFontSize = value
+	if value != 0 {
+		app.TerminalFontSize = value
+	}
 	return nil
 }

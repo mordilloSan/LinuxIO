@@ -1,14 +1,83 @@
 # Bridge per-user config simplification
 
-> **Status: Planned.** No part of this plan is implemented. The defects listed
-> below are present in `backend/bridge/internal/config` as of `dev/v0.23.0`.
+> **Status: Implemented.** This document records the current two-file policy
+> and the historical defect evidence that led to it. The current policy at the
+> top takes precedence over the historical sections below.
 
-This plan reduces the per-user configuration package to one coherent mechanism
-per real threat, and fixes the correctness defects the current overlap hides.
-It covers `backend/bridge/internal/config` and the small surface it forces on
-`backend/bridge/handlers/config`.
+## Implemented ownership model
 
-The package owns exactly one file: `~/.linuxio-config.yaml`, created and
+LinuxIO has two bridge-owned, per-user YAML files. There is no embedded
+database, JSON configuration, or legacy conversion:
+
+| File | Owner and contents | Failure policy |
+|---|---|---|
+| `~/.linuxio-config.yaml` | Bridge-owned functional settings and defaults: file-browser and upload behavior, Docker (including `docker.folders`), jobs, and dismissals. | A missing file is created from functional defaults. A decode or validation failure atomically replaces only this file with functional defaults. |
+| `~/.linuxio-ui.yaml` | Frontend-produced UI snapshots: theme, navigation, collapsed/hidden state, sections, view modes, and layout orders. The backend owns their default values and validation. | A missing file is created as an empty document. A decode or validation failure atomically replaces only this file with an empty document. |
+
+At bridge login, each file is checked and initialized independently. A valid
+core file is loaded as-is; an empty or older sparse UI document is decoded on
+top of backend UI defaults without rewriting it. Missing one file never causes
+the bridge to read the other file as a migration source, and a bad UI file
+cannot reset functional settings (or vice versa). There is no projection,
+rename, archive, or other conversion of the former combined configuration. Any
+old or unknown content that fails the current strict schema is treated as a
+content failure and the corresponding file is reset.
+
+Decode is strict and validation is pure: the bridge either accepts the whole
+document or resets that document. It does not use a permissive second decode,
+salvage valid siblings, or perform field-by-field repair. Read, permissions,
+locking, symlink, and other security failures are operational errors and do not
+trigger a reset. A reset write uses the owner-aware atomic writer: failures before its
+rename preserve the old bytes; a directory-sync failure reported after rename
+has an intentionally uncertain commit result, so startup still fails rather
+than claiming the replacement is durable.
+
+Docker-folder validation is structural only. It checks the configuration
+invariants (including a non-empty list of absolute, non-root, non-duplicate
+paths), but never checks whether a path currently exists or is a directory.
+Filesystem usability is runtime state; it is never persisted, repaired, or
+mutated by configuration loading.
+
+Both files use independent in-process mutexes and sidecar `flock` files, and
+both use atomic whole-file writes. A UI write therefore cannot couple itself to
+a Docker-setting write, while concurrent sessions for the same user still
+serialize updates. UI snapshots use deliberate last-committed-snapshot semantics:
+the lock prevents torn or interleaved files, but it does not merge fields from
+two simultaneously open browser sessions. That trade-off is confined to
+cheaply recoverable presentation state.
+
+The authenticated bootstrap UID/GID, rather than the bridge process identity,
+owns both YAML files, their lock files, and every atomic replacement. The store
+rejects a process UID/GID mismatch, resolves only the authenticated user's
+passwd home, and verifies that home is user-owned without changing its
+ownership. A privileged bridge assigns the target UID/GID to an atomic temp
+inode before writing configuration bytes and to a lock fd before taking the
+lock; the same owner-aware path is used by an unprivileged bridge. This avoids
+root-owned completed artifacts without adding a separate writer process.
+
+The backend is the only source of persisted defaults, including presentation
+defaults. `config.get_ui` expands an empty UI document into an effective
+snapshot; the frontend renders that response directly and cannot save until it
+loads. The first UI change writes one complete frontend-produced snapshot, and
+later changes replace it through one ordered save queue. There is no browser
+configuration snapshot, theme cache, or default-equality normalization.
+Frontend theme design tokens and each component's natural layout remain
+presentation implementation, not persisted configuration defaults.
+
+The public boundary changed deliberately: `config.get`/`config.set` now carry
+only functional configuration, while `config.get_ui` returns effective UI
+configuration and `config.set_ui` replaces the persisted UI snapshot. Omitted
+replacement fields resolve to backend defaults. The generated API parity guard
+covers both shapes.
+
+This removes the temporary migration and repair machinery from the ownership
+contract. The bridge has one coherent reset decision per file and one pure
+validation boundary for each persisted schema.
+
+## Historical context
+
+Before this work the package owned exactly one file:
+`~/.linuxio-config.yaml`, created and
 repaired at `Initialize`, then read once and written through `UserStore`. The
 file is machine-owned. It is not documented anywhere as user-editable, its path
 appears in only two places in the repository (both in `init.go`), every write
@@ -21,7 +90,11 @@ Related documents:
 - [Handler Patterns](../bridge_handler_patterns.md) defines the validation
   boundary that already owns every config mutation.
 
-## Current baseline
+## Historical baseline (pre-simplification)
+
+The following measurements and source references describe the implementation
+before the two-file reset policy. They explain why the old machinery was
+removed; they are not requirements for the current implementation.
 
 The package is 1,558 non-test Go lines, of which 1,472 compile into the bridge
 (`generator.go` carries `//go:build ignore`). Three validation mechanisms are
@@ -46,9 +119,14 @@ the gradient range integers, the docker folder list, and negative job integers.
 The repair layer is also unpinned. Replaying every `repairConfig` fixture in
 `settings_test.go` with `repairInvalidConfigValues` deleted, and again with
 `repairDockerFolderPaths` deleted, produces byte-identical output in all five
-cases. Both stages can be removed today and the suite stays green.
+cases. Both stages were candidates for removal at the time of analysis and the
+suite stayed green.
 
-## Ownership model
+## Historical ownership analysis
+
+This analysis supported the old phased plan. The current ownership and failure
+rules are defined in [Implemented ownership model](#implemented-ownership-model)
+above.
 
 Three threats, three correct owners. Only two of the threats are real.
 
@@ -56,7 +134,7 @@ Three threats, three correct owners. Only two of the threats are real.
 |---|---|---|
 | Torn or partial write | No | `utils.WriteFileAtomic` plus `updateMu` and the sidecar flock already in `store.go:130-137`. No validation mechanism is aimed here. |
 | Externally modified or corrupted file | Yes | Fatal-but-recoverable parse: refuse the value, log it with position, write defaults, **stop**. Mechanisms 1 and 2. |
-| Upgrade adds, removes, or renames a field | Yes | Zero value plus defaults prefilled before decode, plus a named one-way migration for renames only. |
+| Upgrade adds, removes, or renames a field | Yes | The former plan proposed zero values plus a named one-way migration for renames; the implemented policy intentionally does not add a legacy conversion path. Invalid or unknown content resets the affected file. |
 
 A silent mutating fixer is the wrong owner for every row. For the second threat
 it destroys the operator's edit and reports nothing but a log line; today it
@@ -64,11 +142,16 @@ does not even write the defaults it claims to. For the third it hand-maintains
 an allow-list of keys that a prefilled decode handles for free, for every
 present and future field.
 
-## Confirmed defects
+## Historical defect evidence
+
+The C1-C9 findings below were confirmed against the pre-simplification
+implementation. They are retained as rationale and regression context, not as
+descriptions of live current behavior.
 
 Evidence classes are stated per defect. Source-verified means read from the
-current tree. Reproduced means observed by running the real package against
-`goccy/go-yaml v1.19.2` in a scratch harness outside the repository. No
+pre-simplification tree at the time of analysis. Reproduced means observed by
+running the real package against `goccy/go-yaml v1.19.2` in a scratch harness
+outside the repository. No
 repository Make target was run to produce this document.
 
 ### Live — reachable on a normal install
@@ -158,7 +241,7 @@ Source-verified.
 operator is told about the unknown key while the invalid value is what actually
 forced the destructive path. Source-verified.
 
-### Test floor
+### Historical test floor
 
 No test covers any of C1–C9. `settings_test.go` writes only valid, known-key
 YAML and pins only the missing-key backfill and the legacy layout migration;
@@ -168,7 +251,8 @@ YAML and pins only the missing-key backfill and the legacy layout migration;
 
 ## Format decision
 
-**Keep YAML for now. Do not treat a JSON migration as simplification.**
+**Keep YAML. There is no JSON migration.** The two per-user files remain YAML,
+and the bridge does not add a database or a YAML-to-JSON conversion shim.
 
 Dropping YAML here removes no dependency: `goccy/go-yaml` stays a direct require
 for three foreign formats that can never be JSON — `handlers/docker/compose.go`,
@@ -180,37 +264,37 @@ three places; the three `UnmarshalYAML` bodies are line-for-line identical as
 `UnmarshalJSON`; and the presence-probing this plan deletes is format-agnostic.
 Counting a migration shim and its tests, the swap is net **+50 to +70 lines**.
 
-The one real argument for switching is consistency. Every other LinuxIO-owned
-state file uses `json.MarshalIndent`, including the admin-facing
-`/etc/linuxio/docker-update.json`; `~/.linuxio-config.yaml` is the single
-exception, and the rule the codebase actually follows is "YAML only when a
-foreign tool owns the format". Against it: `readConfigStrict` accepts comments
-today and `repairConfig` only rewrites when something changed, so hand-added
-comments survive a clean start — a read-side affordance JSON rejects outright.
-
-If the consistency argument wins, the migration is roughly 30 lines plus one
-test, and it must be a shim, not a reset: in `Initialize`, before
-`CheckConfig`, if the `.json` file is absent and the `.yaml` exists, decode
-permissively, write the JSON, and rename the YAML to `.migrated`. Doing nothing
-is not acceptable, because `validator.go:43-50` would silently reset every
-existing install, and losing `docker.folders` is a functional regression — it
-determines which Compose projects are visible at all.
+The historical proposal to switch formats was declined. YAML remains useful
+for operator inspection and is already a direct dependency for Compose,
+netplan, and cloud-init. The old consistency argument for JSON does not
+authorize a migration, and an absent sidecar does not trigger one: each YAML
+file follows the independent create/load/reset rules above.
 
 ## Principles
 
-- One mechanism per threat. Validation that cannot fire is deleted, not fixed.
-- Defaults are established once, before decode, for every field — never by a
-  hand-maintained allow-list of key names.
-- Defaulting that belongs at the use site stays at the use site.
-  `EffectiveJobSettings` already owns the job integers and cannot go stale.
-- A rejected config is reported and replaced, never silently rewritten into a
-  third state that is neither the operator's file nor the defaults.
-- Every repair must converge: a second start with no external change writes
-  nothing.
-- Tests land before deletions, so each deletion is provably
-  behaviour-preserving.
+- One mechanism per file: strict decode, pure validation, and an atomic reset
+  on content failure.
+- Functional and persisted UI defaults are both established by the backend. An
+  empty or sparse UI document is expanded to a complete effective value before
+  it crosses the API boundary.
+- Theme design tokens and natural component layout stay at the use site; they
+  are presentation implementation, not a second configuration default table.
+  `EffectiveJobSettings` likewise remains the runtime owner of job integers.
+- A rejected document is reported and replaced, never permissively salvaged or
+  silently rewritten into a third state.
+- Docker-folder validation is structural; it does not inspect, create, remove,
+  or rewrite filesystem paths.
+- Operational failures (I/O, permissions, locking, or security checks) fail
+  the operation and do not replace the existing document.
 
-## Phase 1 — correctness and test floor
+## Historical implementation plan (superseded)
+
+The phase sections below are retained as an audit trail for the old
+repair-based proposal. They are complete or superseded by the current policy
+above; they are not a remaining TODO, and their migration/repair
+recommendations are not normative.
+
+### Phase 1 — correctness and test floor
 
 These land together. The convergence test cannot pass without the C1 fix, and
 no later phase is safe to land without this test floor.
@@ -231,7 +315,7 @@ no later phase is safe to land without this test floor.
    - a folder that exists as a regular file: dropped once, and **converges** —
      a second `repairConfig` writes nothing.
 
-## Phase 2 — prefill defaults, delete the probing
+### Phase 2 — prefill defaults, delete the probing
 
 Set `cfg := *DefaultSettings(base)` before the decode in `repairConfig`, then
 delete `repairMissingDefaultValues`, `repairMissingAppSettings`,
@@ -249,7 +333,7 @@ The apparent staleness of the current probe list is misleading and should not be
 value and carries `omitempty`, so a probe would be a no-op. The real gap is
 exactly one field, `showHiddenFiles`, and prefilling closes it.
 
-## Phase 3 — delete unreachable validation
+### Phase 3 — delete unreachable validation
 
 1. Delete `validateThemeColorMode` and `themeColorsNeedReset`
    (`validator.go:296-342`, 45 lines) and their call sites at
@@ -264,7 +348,7 @@ exactly one field, `showHiddenFiles`, and prefilling closes it.
    assigns `false` over `false` and returns `changed = true`, forcing a rewrite.
 4. Keep a single approximately 40-line `sanitize(cfg, defaults)` covering only
    the five reachable invalid states listed in
-   [Current baseline](#current-baseline).
+   [historical baseline](#historical-baseline-pre-simplification).
 5. Widen `ValidateConfig` into a genuine superset of the decoder to close
    **C5**: apply `filepath.IsAbs` per folder, and validate all 18 colors from
    one shared field list also used by `apply_app.go`. Accept `""` in
@@ -274,7 +358,7 @@ exactly one field, `showHiddenFiles`, and prefilling closes it.
    `ensureFilePerms` or dropping the redundant call, and **C9** by logging the
    permissive error and rewording the warning to match what the code does.
 
-## Phase 4 — remove the generator apparatus
+### Phase 4 — remove the generator apparatus
 
 Delete `generator.go`, `config_generated.yaml`, the `//go:generate` line at
 `init.go:1`, the `generate` prerequisite in the `Makefile`, and its help line
@@ -298,7 +382,7 @@ drift gate. CI never runs `make generate`, only `build`, `build-nocheck`, and
 `fastbuild` depend on it, and `make tsc-ci` type-checks the stale file against
 itself. Track that as repository tooling, not as config work.
 
-## Phase 5 — type and API surface reduction
+### Phase 5 — type and API surface reduction
 
 1. Collapse the 18 `*CSSColor` fields in `ThemeColors` to value `CSSColor` with
    `omitempty`. The pointer exists to distinguish unset from empty, but
@@ -339,27 +423,35 @@ about 152, with `types.go`, `store.go`, and `settings.go` roughly unchanged —
 about 1,470 compiled lines down to about 1,070, plus `generator.go` (86) and
 `config_generated.yaml` (89) deleted.
 
-## Phase 6 — optional format migration
+### Phase 6 — optional format migration (declined)
 
-Only if the consistency argument in [Format decision](#format-decision) is
-accepted, and only after Phases 1–5 have landed, so the churn is attributable.
-Target `encoding/json/v2` with `RejectUnknownMembers(true)` and `omitzero`, and
-ship the read-old-write-new shim in the same commit as its test.
+The historical proposal to target `encoding/json/v2` with
+`RejectUnknownMembers(true)` and `omitzero`, including a read-old/write-new
+shim, was declined. YAML is retained and no format migration is planned.
 
-## Out of scope
+## Resolved ownership question
 
-- Any change to `apischema` or the generated frontend contract. The persisted
-  struct is deliberately not the wire shape (`handlers/config/contracts.go`).
-- The duplication of default values between `settings.go` and
-  `ConfigProvider.tsx`. It is real, the docker folder default has already
-  drifted, and the frontend is the only place `navigationMode: "sidebar"` and
-  `dockTileColors: "accent"` are stated — but resolving it means deciding who
-  owns UI defaults, which is a contract question, not a config-package one.
+- The `apischema` and generated frontend contract changed because a separate UI
+  resource is the ownership boundary. The persisted structs remain distinct
+  from the wire shapes (`handlers/config/contracts.go`).
+- Default duplication is resolved at the bridge boundary: backend defaults own
+both functional settings and persisted presentation preferences. The frontend
+renders the effective `config.get_ui` response and writes complete snapshots;
+it does not maintain a second persisted-default table.
+
+## Still out of scope
+
 - `docker.proxy.baseDomain` and `tlsEmail`, which the Caddyfile generator
   consumes but no frontend code writes, and the `jobs` branch of the wire
   contract, which has no frontend reader or writer. Both are product gaps.
 
-## Do not do
+## Historical recommendations (superseded)
+
+The following "Do not do" rules belonged to the former repair/migration plan.
+They are preserved to explain the original risk analysis, but they must not be
+read as current behavior. Under the implemented policy, content failures reset
+the affected YAML file, there is no legacy conversion, and Docker-folder
+filesystem usability is never persisted or mutated.
 
 - **Do not delete the repair layer outright.** Four of its responsibilities must
   survive in some form: the self-healing parse, without which a single
@@ -392,10 +484,10 @@ ship the read-old-write-new shim in the same commit as its test.
   determines which Compose stacks are visible, and it is the one setting a user
   cannot re-enter in seconds.
 
-## Verification
+## Historical verification notes
 
-Each phase is backend-only and finishes with `make check-backend-quiet`. Phase 5
-step 1 changes `handlers/config` alongside `internal/config`, and Phase 4 and
-Phase 6 touch build tooling and the generated contract respectively, so those
-finish with `make test-quiet`. Inspect the diff again after any Make target
-that can mutate the worktree.
+The old phase plan expected backend or repository-wide Make targets. Those
+notes describe the historical plan; they do not reopen the declined migration
+or define the current ownership contract. Current changes should use the
+repository's applicable verification target and inspect any tooling-generated
+worktree changes afterward.

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/moby/moby/api/types/container"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 // requireDockerCompose skips tests that shell out to `docker compose`.
@@ -239,5 +241,45 @@ func TestDiscoverComposeProjectsIncludesContainers(t *testing.T) {
 	}
 	if len(got.Ports) != 1 || got.Ports[0].PrivatePort != 2283 {
 		t.Fatalf("container ports = %#v", got.Ports)
+	}
+}
+
+func TestDiscoverOfflineStacksSkipsMissingFolderAndFindsLaterFolder(t *testing.T) {
+	home := t.TempDir()
+	validFolder := filepath.Join(home, "docker")
+	composePath := filepath.Join(validFolder, "later-stack", "compose.yaml")
+	if err := os.MkdirAll(filepath.Dir(composePath), 0o755); err != nil {
+		t.Fatalf("create compose directory: %v", err)
+	}
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx:latest\n"), 0o644); err != nil {
+		t.Fatalf("write compose file: %v", err)
+	}
+
+	missingFolder := filepath.Join(home, "missing-docker")
+	running := &apischema.ComposeProject{
+		Name:        "running-stack",
+		Containers:  []apischema.ContainerInfo{{ID: "container-id"}},
+		Services:    map[string]*apischema.ComposeService{},
+		ConfigFiles: []string{"/existing/running/compose.yaml"},
+	}
+	projects := map[string]*apischema.ComposeProject{"running-stack": running}
+	if err := discoverOfflineStacksInFolders(
+		context.Background(),
+		"linuxio-compose-test-user",
+		[]string{missingFolder, validFolder},
+		projects,
+	); err != nil {
+		t.Fatalf("discoverOfflineStacksInFolders() error = %v", err)
+	}
+
+	project, ok := projects["later-stack"]
+	if !ok {
+		t.Fatalf("missing stack discovered from later valid folder; projects = %#v", projects)
+	}
+	if len(project.ConfigFiles) != 1 || project.ConfigFiles[0] != composePath {
+		t.Fatalf("discovered config files = %#v, want [%q]", project.ConfigFiles, composePath)
+	}
+	if _, ok := projects["running-stack"]; !ok {
+		t.Fatal("existing running project was removed during offline discovery")
 	}
 }

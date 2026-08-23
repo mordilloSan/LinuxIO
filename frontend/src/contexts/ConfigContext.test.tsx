@@ -3,19 +3,21 @@ import { screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AppConfig } from "@/api";
+import type { AppConfig, UIConfig } from "@/api";
 import { AuthContext } from "@/contexts/AuthContext";
-import { writeConfigCache } from "@/utils/configCache";
 
 const apiMocks = vi.hoisted(() => ({
   configGetCall: vi.fn(),
+  uiGetCall: vi.fn(),
   configSetUseAction: vi.fn(),
+  uiSetUseAction: vi.fn(),
   dockerListComposeProjectsQueryKey: [
     "linuxio",
     "docker",
     "list_compose_projects",
   ],
   setConfigRemote: vi.fn(),
+  setUIRemote: vi.fn(),
   useStreamMux: vi.fn(),
 }));
 
@@ -37,8 +39,19 @@ vi.mock("@/api", async () => {
     useCallMutation: (endpoint: { route?: string }, config: unknown) => {
       if (endpoint.route === "config.set") {
         apiMocks.configSetUseAction(config);
+      } else if (endpoint.route === "config.set_ui") {
+        apiMocks.uiSetUseAction(config);
       }
-      return { mutate: apiMocks.setConfigRemote };
+      return {
+        mutate:
+          endpoint.route === "config.set_ui"
+            ? apiMocks.setUIRemote
+            : apiMocks.setConfigRemote,
+        mutateAsync:
+          endpoint.route === "config.set_ui"
+            ? apiMocks.setUIRemote
+            : apiMocks.setConfigRemote,
+      };
     },
     useStreamMux: apiMocks.useStreamMux,
     linuxio: {
@@ -51,8 +64,18 @@ vi.mock("@/api", async () => {
               staleTime: 0,
             }),
         },
+        get_ui: {
+          queryKey: ["linuxio", "config", "get_ui"],
+          queryFn: () =>
+            apiMocks.uiGetCall("config.get_ui", undefined, {
+              staleTime: 0,
+            }),
+        },
         set: {
           route: "config.set",
+        },
+        set_ui: {
+          route: "config.set_ui",
         },
       },
       docker: {
@@ -74,15 +97,7 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     appSettings: {
       chunkSizeMB: 1,
-      hiddenCards: [],
-      layoutOrders: { dashboard: ["overview"] },
-      primaryColor: "#123456",
       showHiddenFiles: true,
-      sidebarCollapsed: false,
-      theme: "LIGHT",
-      viewModes: {
-        "docker.images": "table",
-      },
     },
     docker: {
       folders: ["/srv/docker"],
@@ -105,6 +120,47 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
+type TestUIConfig = UIConfig & { viewModeDefault: "card" | "table" };
+
+function remoteUI(overrides: Partial<TestUIConfig> = {}): TestUIConfig {
+  return {
+    primaryColor: "#123456",
+    theme: "LIGHT",
+    sidebarCollapsed: false,
+    navigationMode: "sidebar",
+    dockTileColors: "accent",
+    dockAccentGradient: {
+      startColor: "",
+      endColor: "",
+      rangeStart: 0,
+      rangeEnd: 100,
+    },
+    hiddenCards: [],
+    dockerDashboardSections: {
+      overview: true,
+      monitoring: true,
+      daemon: true,
+      resources: true,
+    },
+    hardwareSections: {
+      overview: true,
+      hardware: true,
+      sensors: true,
+      systemInfo: true,
+      gpu: true,
+      pciDevices: true,
+      memoryModules: true,
+    },
+    layoutOrders: { dashboard: ["overview"] },
+    viewModes: {
+      "docker.images": "table",
+    },
+    viewModeDefault: "card",
+    terminalFontSize: 16,
+    ...overrides,
+  };
+}
+
 const onSavedSpy = vi.fn();
 
 function Probe() {
@@ -113,6 +169,16 @@ function Probe() {
     <div>
       <div data-testid="loaded">{String(isLoaded)}</div>
       <div data-testid="theme">{config.appSettings.theme}</div>
+      <div data-testid="theme-colors">
+        {JSON.stringify(config.appSettings.themeColors)}
+      </div>
+      <div data-testid="show-hidden-files">
+        {String(config.appSettings.showHiddenFiles)}
+      </div>
+      <div data-testid="chunk-size">
+        {String(config.appSettings.chunkSizeMB)}
+      </div>
+      <div data-testid="job-settings">{JSON.stringify(config.jobs)}</div>
       <div data-testid="dock-accent-gradient">
         {JSON.stringify(config.appSettings.dockAccentGradient)}
       </div>
@@ -121,6 +187,17 @@ function Probe() {
         {JSON.stringify(config.appSettings.dockerDashboardSections)}
       </div>
       <button onClick={() => setKey("theme", "DARK")}>set theme</button>
+      <button onClick={() => setKey("primaryColor", "#abcdef")}>
+        set primary color
+      </button>
+      <button onClick={() => setKey("themeColors", undefined)}>
+        reset colors
+      </button>
+      <button onClick={() => setKey("showHiddenFiles", false)}>
+        set hidden files
+      </button>
+      <button onClick={() => setKey("chunkSizeMB", 4)}>set chunk four</button>
+      <button onClick={() => setKey("chunkSizeMB", 8)}>set chunk eight</button>
       <button
         onClick={() =>
           updateConfig({
@@ -158,10 +235,12 @@ interface CapturedActionConfig {
 
 function renderProvider({
   configQueryFn = async () => remoteConfig(),
+  uiQueryFn = async () => remoteUI(),
   sessionExpired = vi.fn(),
   strictMode = false,
 }: {
   configQueryFn?: () => Promise<AppConfig>;
+  uiQueryFn?: () => Promise<UIConfig>;
   sessionExpired?: () => void;
   strictMode?: boolean;
 } = {}) {
@@ -177,27 +256,34 @@ function renderProvider({
   apiMocks.configGetCall.mockImplementation(
     (_route: string, _request: undefined, _options: unknown) => configQueryFn(),
   );
+  apiMocks.uiGetCall.mockImplementation(
+    (_route: string, _request: undefined, _options: unknown) => uiQueryFn(),
+  );
   apiMocks.configSetUseAction.mockImplementation((config) => {
     actionConfigs.push(config);
     return { mutate: apiMocks.setConfigRemote };
+  });
+  apiMocks.uiSetUseAction.mockImplementation((config) => {
+    actionConfigs.push(config);
+    return { mutate: apiMocks.setUIRemote };
   });
 
   // Emulates useAction's success path: invalidates -> success, with the
   // bounded action result.
   const fireActionSuccess = (result: unknown, variables: unknown) => {
-    const config = actionConfigs.at(-1);
-    if (!config) return;
-    const keys =
-      typeof config.invalidates === "function"
-        ? config.invalidates(result, variables)
-        : config.invalidates;
-    for (const queryKey of keys ?? []) {
-      void queryClient.invalidateQueries({ queryKey });
-    }
-    if (typeof config.success === "function") {
-      config.success(result, variables);
-    } else if (config.success !== undefined) {
-      toastMocks.success(config.success);
+    for (const config of actionConfigs) {
+      const keys =
+        typeof config.invalidates === "function"
+          ? config.invalidates(result, variables)
+          : config.invalidates;
+      for (const queryKey of keys ?? []) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+      if (typeof config.success === "function") {
+        config.success(result, variables);
+      } else if (config.success !== undefined) {
+        toastMocks.success(config.success);
+      }
     }
   };
 
@@ -207,7 +293,7 @@ function renderProvider({
     </ConfigProvider>
   );
 
-  render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider
         value={createAuthContextValue({
@@ -227,11 +313,12 @@ function renderProvider({
     actionConfigs,
     queryClient,
     sessionExpired,
+    unmount: rendered.unmount,
   };
 }
 
 describe("ConfigProvider", () => {
-  it("loads backend config after the stream mux is ready and caches defaults", async () => {
+  it("loads both authoritative bridge files without a client cache", async () => {
     renderProvider();
 
     expect(await screen.findByTestId("loaded")).toHaveTextContent("true");
@@ -248,91 +335,14 @@ describe("ConfigProvider", () => {
       undefined,
       { staleTime: 0 },
     );
-    expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
-      "/srv/docker",
-    );
-  });
-
-  it("uses cached config without refetching when a user cache exists", async () => {
-    const cached = remoteConfig();
-    writeConfigCache("miguel", {
-      ...cached,
-      docker: { ...cached.docker, folders: ["/cached"] },
-    });
-
-    renderProvider();
-
-    expect(await screen.findByTestId("docker-folders")).toHaveTextContent(
-      "/cached",
-    );
-    expect(apiMocks.configGetCall).not.toHaveBeenCalled();
-  });
-
-  it("fills missing cached Docker dashboard section defaults", async () => {
-    const cached = remoteConfig({
-      appSettings: {
-        ...remoteConfig().appSettings,
-        dockerDashboardSections: {
-          overview: false,
-          daemon: false,
-          resources: true,
-        } as AppConfig["appSettings"]["dockerDashboardSections"],
+    expect(apiMocks.uiGetCall).toHaveBeenCalledWith(
+      "config.get_ui",
+      undefined,
+      {
+        staleTime: 0,
       },
-    });
-    writeConfigCache("miguel", cached);
-
-    renderProvider();
-
-    expect(
-      await screen.findByTestId("docker-dashboard-sections"),
-    ).toHaveTextContent(
-      '{"overview":false,"monitoring":true,"daemon":false,"resources":true}',
     );
-    expect(apiMocks.configGetCall).not.toHaveBeenCalled();
-  });
-
-  it("preserves an explicit cached Docker monitoring section value", async () => {
-    const cached = remoteConfig({
-      appSettings: {
-        ...remoteConfig().appSettings,
-        dockerDashboardSections: {
-          overview: true,
-          monitoring: false,
-          daemon: true,
-          resources: false,
-        },
-      },
-    });
-    writeConfigCache("miguel", cached);
-
-    renderProvider();
-
-    expect(
-      await screen.findByTestId("docker-dashboard-sections"),
-    ).toHaveTextContent(
-      '{"overview":true,"monitoring":false,"daemon":true,"resources":false}',
-    );
-  });
-
-  it("fills missing Docker dashboard section defaults from the backend config", async () => {
-    const backend = remoteConfig({
-      appSettings: {
-        ...remoteConfig().appSettings,
-        dockerDashboardSections: {
-          overview: false,
-          daemon: true,
-          resources: false,
-        } as AppConfig["appSettings"]["dockerDashboardSections"],
-      },
-    });
-
-    renderProvider({ configQueryFn: async () => backend });
-
-    expect(
-      await screen.findByTestId("docker-dashboard-sections"),
-    ).toHaveTextContent(
-      '{"overview":false,"monitoring":true,"daemon":true,"resources":false}',
-    );
+    expect(sessionStorage.length).toBe(0);
   });
 
   it("saves user changes only after a successful backend load", async () => {
@@ -343,15 +353,29 @@ describe("ConfigProvider", () => {
       screen.getByRole("button", { name: "set theme" }).click();
     });
 
-    expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
-      appSettings: {
-        theme: "DARK",
-      },
-    });
+    expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1);
+    expect(apiMocks.setUIRemote.mock.calls[0]).toHaveLength(1);
+    const expectedSnapshot: Partial<TestUIConfig> = {
+      ...remoteUI({ theme: "DARK" }),
+    };
+    delete expectedSnapshot.viewModeDefault;
+    expect(apiMocks.setUIRemote.mock.calls[0]?.[0]).toEqual(expectedSnapshot);
     expect(actionConfigs.length).toBeGreaterThan(0);
-    expect(sessionStorage.getItem("linuxio_config:miguel")).toContain(
-      '"theme":"DARK"',
-    );
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it("sends important settings to the bridge config endpoint", async () => {
+    renderProvider();
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set hidden files" }).click();
+    });
+
+    expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
+      appSettings: { showHiddenFiles: false },
+    });
+    expect(apiMocks.setUIRemote).not.toHaveBeenCalled();
   });
 
   it("persists a StrictMode-replayed update only once", async () => {
@@ -362,12 +386,112 @@ describe("ConfigProvider", () => {
       screen.getByRole("button", { name: "set theme" }).click();
     });
 
-    expect(apiMocks.setConfigRemote).toHaveBeenCalledTimes(1);
-    expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
-      appSettings: {
-        theme: "DARK",
-      },
+    expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1);
+    expect(apiMocks.setUIRemote.mock.calls[0]).toHaveLength(1);
+    expect(apiMocks.setUIRemote.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ theme: "DARK", primaryColor: "#123456" }),
+    );
+  });
+
+  it("serializes UI replacement writes in browser event order", async () => {
+    let resolveFirst: (() => void) | undefined;
+    apiMocks.setUIRemote
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    renderProvider();
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set theme" }).click();
+      screen.getByRole("button", { name: "set primary color" }).click();
     });
+    await waitFor(() => expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1));
+    resolveFirst?.();
+    await waitFor(() => expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(2));
+    expect(apiMocks.setUIRemote.mock.calls[0]?.[0]).not.toHaveProperty(
+      "primaryColor",
+      "#abcdef",
+    );
+    expect(apiMocks.setUIRemote.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({ primaryColor: "#abcdef" }),
+    );
+  });
+
+  it("drops queued saves when the authenticated config provider unmounts", async () => {
+    let resolveFirst: (() => void) | undefined;
+    apiMocks.setUIRemote
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const { unmount } = renderProvider();
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set theme" }).click();
+      screen.getByRole("button", { name: "set primary color" }).click();
+    });
+    await waitFor(() => expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1));
+
+    unmount();
+    await act(async () => resolveFirst?.());
+    expect(apiMocks.setUIRemote).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes important-setting writes in browser event order", async () => {
+    let resolveFirst: (() => void) | undefined;
+    apiMocks.setConfigRemote
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    renderProvider();
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set chunk four" }).click();
+      screen.getByRole("button", { name: "set chunk eight" }).click();
+    });
+
+    await waitFor(() =>
+      expect(apiMocks.setConfigRemote).toHaveBeenCalledTimes(1),
+    );
+    resolveFirst?.();
+    await waitFor(() =>
+      expect(apiMocks.setConfigRemote).toHaveBeenCalledTimes(2),
+    );
+    expect(apiMocks.setConfigRemote.mock.calls[0]?.[0]).toEqual({
+      appSettings: { chunkSizeMB: 4 },
+    });
+    expect(apiMocks.setConfigRemote.mock.calls[1]?.[0]).toEqual({
+      appSettings: { chunkSizeMB: 8 },
+    });
+  });
+
+  it("resets UI fields by omitting them from the replacement payload", async () => {
+    renderProvider({
+      uiQueryFn: async () =>
+        remoteUI({ themeColors: { dark: { codeText: "red" } } }),
+    });
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "reset colors" }).click();
+    });
+
+    const [payload] = apiMocks.setUIRemote.mock.lastCall ?? [];
+    expect(payload).not.toHaveProperty("themeColors");
   });
 
   it("invalidates compose projects after persisted Docker folder changes", async () => {
@@ -394,6 +518,13 @@ describe("ConfigProvider", () => {
   });
 
   it("invokes onSaved only after the backend confirms the save", async () => {
+    let resolveSave: (() => void) | undefined;
+    apiMocks.setConfigRemote.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
     renderProvider();
 
     await screen.findByTestId("loaded");
@@ -401,13 +532,11 @@ describe("ConfigProvider", () => {
       screen.getByRole("button", { name: "set mounts" }).click();
     });
 
-    // The per-save callback is forwarded as the mutate call's onSuccess and
-    // must not fire before the mutation succeeds.
     expect(onSavedSpy).not.toHaveBeenCalled();
-    const [patch, mutateOptions] = apiMocks.setConfigRemote.mock.lastCall ?? [];
+    const [patch] = apiMocks.setConfigRemote.mock.lastCall ?? [];
     expect(patch).toEqual({ docker: { requireMountsForFolders: true } });
-    (mutateOptions as { onSuccess: () => void }).onSuccess();
-    expect(onSavedSpy).toHaveBeenCalledTimes(1);
+    resolveSave?.();
+    await waitFor(() => expect(onSavedSpy).toHaveBeenCalledTimes(1));
   });
 
   it("signs out and does not render children on auth failures", async () => {
@@ -426,26 +555,16 @@ describe("ConfigProvider", () => {
     expect(screen.queryByTestId("loaded")).not.toBeInTheDocument();
   });
 
-  it("falls back to defaults without saving when the stream API is unavailable", async () => {
-    const consoleWarn = vi
-      .spyOn(console, "warn")
-      .mockImplementation(() => undefined);
-
+  it("does not render until both backend snapshots load", async () => {
     renderProvider({
       configQueryFn: async () => {
         throw new LinuxIOError("unavailable", 503);
       },
+      uiQueryFn: async () => {
+        throw new LinuxIOError("unavailable", 503);
+      },
     });
 
-    expect(await screen.findByTestId("theme")).toHaveTextContent("DARK");
-    await act(async () => {
-      screen.getByRole("button", { name: "set theme" }).click();
-    });
-
-    expect(apiMocks.setConfigRemote).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem("linuxio_config:miguel")).toBeNull();
-    expect(consoleWarn).toHaveBeenCalledWith(
-      "Stream API unavailable, using default config",
-    );
+    await waitFor(() => expect(screen.queryByTestId("theme")).toBeNull());
   });
 });

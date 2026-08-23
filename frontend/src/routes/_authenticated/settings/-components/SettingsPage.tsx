@@ -57,14 +57,14 @@ const SettingsPage = () => {
   const [themeMode, setThemeMode] = useConfigValue("theme");
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
-  const dockColorMode = dockTileColors ?? "accent";
+  const dockColorMode = dockTileColors;
   // The dock needs the header width only a desktop viewport gives it, so on a
   // phone the sidebar is the only choice — and the one choice is not a toggle.
   const navigationOptions = isDesktop
     ? NAVIGATION_MODE_OPTIONS
     : NAVIGATION_MODE_OPTIONS.filter((option) => option.value === "sidebar");
   const navigationValue: NavigationMode = isDesktop
-    ? (navigationMode ?? "sidebar")
+    ? navigationMode
     : "sidebar";
   const [dockAccentGradient, setDockAccentGradient] =
     useConfigValue("dockAccentGradient");

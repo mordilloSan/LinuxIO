@@ -35,10 +35,6 @@ import {
   hardwareSensorQueryOptions,
   hardwareStableQueryOptions,
 } from "./hardwareQueryOptions";
-import {
-  defaultHardwareSections,
-  resolvedHardwareSections,
-} from "./hardwareSections";
 
 export const selectVisibleSensorGroupIdentities = (
   groups: SensorGroup[] | null | undefined,
@@ -257,8 +253,7 @@ const HardwarePage = () => {
   });
 
   // ── section collapse state ──
-  const [hwSections, setHwSections] = useConfigValue("hardwareSections");
-  const sections = resolvedHardwareSections(hwSections);
+  const [sections, setHwSections] = useConfigValue("hardwareSections");
   const toggleSection = useCallback(
     (
       key:
@@ -271,8 +266,7 @@ const HardwarePage = () => {
         | "memoryModules",
     ) =>
       setHwSections((prev) => {
-        const cur = { ...defaultHardwareSections, ...(prev ?? {}) };
-        return { ...cur, [key]: !cur[key] };
+        return { ...prev, [key]: !prev[key] };
       }),
     [setHwSections],
   );

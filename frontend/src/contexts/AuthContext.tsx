@@ -32,7 +32,6 @@ import type {
   LoginResponse,
 } from "@/types/auth";
 import { AUTH_ACTIONS } from "@/types/auth";
-import { clearConfigCache } from "@/utils/configCache";
 import { redirectToSignIn } from "@/utils/navigation";
 import { setSigninNotice } from "@/utils/signinNotice";
 
@@ -231,7 +230,6 @@ function AuthProvider({ children }: AuthProviderProps) {
       try {
         sessionStorage.removeItem("update_info");
         sessionStorage.removeItem("update_info_checked");
-        clearConfigCache();
         localStorage.removeItem("auth_username");
         localStorage.removeItem("auth_privileged");
         localStorage.removeItem(AUTH_CAPABILITIES_KEY);
@@ -371,8 +369,6 @@ function AuthProvider({ children }: AuthProviderProps) {
       throw new Error(loginErrorMessage(err.code, err.error));
     }
     const data: LoginResponse = await res.json();
-
-    clearConfigCache();
 
     // Store username and privileged status in localStorage (persists across tab close)
     try {

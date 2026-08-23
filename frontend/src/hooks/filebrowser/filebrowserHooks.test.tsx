@@ -8,7 +8,7 @@ import {
   useFileSelectionState,
 } from "@/hooks/filebrowser/useFileSelection";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
-import { act, renderHook } from "@/test/render";
+import { act, createConfigContextValue, renderHook } from "@/test/render";
 import type { ConfigContextType } from "@/types/config";
 import type { FileResource } from "@/types/filebrowser";
 
@@ -50,37 +50,8 @@ function configWrapper({
   showHiddenFiles?: boolean;
 } = {}) {
   const value = {
-    config: {
-      appSettings: {
-        chunkSizeMB: 1,
-        hiddenCards: [],
-        primaryColor: "#2196f3",
-        showHiddenFiles,
-        sidebarCollapsed: false,
-        theme: "DARK",
-        viewModes: {},
-      },
-      docker: {
-        folders: [],
-        requireMountsForFolders: false,
-        proxy: {
-          baseDomain: "",
-          caddyEnabled: false,
-          tlsEmail: "",
-        },
-      },
-      jobs: {
-        archiveCompressionWorkers: 0,
-        archiveExtractWorkers: 0,
-        heavyArchiveConcurrency: 1,
-        notificationMinIntervalMs: 1000,
-        progressMinBytesMB: 16,
-        progressMinIntervalMs: 250,
-      },
-    },
-    isLoaded: true,
+    ...createConfigContextValue({ showHiddenFiles }),
     setKey,
-    updateConfig: vi.fn(),
   } satisfies ConfigContextType;
 
   return function Wrapper({ children }: { children: ReactNode }) {

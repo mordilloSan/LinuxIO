@@ -17,7 +17,6 @@ import { alpha } from "@/utils/color";
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
-const DEFAULT_FONT = 16;
 
 const TERMINAL_FONT = "JetBrains Mono";
 const TERMINAL_FONT_STACK = `"${TERMINAL_FONT}", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
@@ -44,8 +43,8 @@ function loadTerminalFonts() {
 
   terminalFontsLoading = true;
   void Promise.all([
-    document.fonts.load(`${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
-    document.fonts.load(`bold ${DEFAULT_FONT}px "${TERMINAL_FONT}"`),
+    document.fonts.load(`1em "${TERMINAL_FONT}"`),
+    document.fonts.load(`bold 1em "${TERMINAL_FONT}"`),
   ]).then(markTerminalFontsReady, markTerminalFontsReady);
 }
 
@@ -110,9 +109,7 @@ const TerminalXTerm = () => {
   const { streamRef, openStream, closeStream, detachStream } = useLiveStream({
     closeOnUnmount: false,
   });
-  const [configFontSize, setConfigFontSize] =
-    useConfigValue("terminalFontSize");
-  const fontSize = configFontSize ?? DEFAULT_FONT;
+  const [fontSize, setConfigFontSize] = useConfigValue("terminalFontSize");
 
   // xterm measures its cell grid once on open; opening before the bundled
   // font is available would leave a mismatched grid until the next resize.
@@ -207,7 +204,7 @@ const TerminalXTerm = () => {
 
   const adjustFontSize = (delta: number) => {
     setConfigFontSize((prev) =>
-      Math.min(MAX_FONT, Math.max(MIN_FONT, (prev ?? DEFAULT_FONT) + delta)),
+      Math.min(MAX_FONT, Math.max(MIN_FONT, prev + delta)),
     );
   };
 

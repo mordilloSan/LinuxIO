@@ -161,7 +161,7 @@ export function useReorderableSurface<TItem>({
     editModeRef.current = isEditing;
   }, [isEditing]);
 
-  const savedOrder = layoutOrders?.[surface];
+  const savedOrder = layoutOrders[surface];
   const orderedItems = useMemo(
     () => applySavedOrder(items, savedOrder, getId),
     [getId, items, savedOrder],
@@ -232,7 +232,7 @@ export function useReorderableSurface<TItem>({
       const resolvedOrder = resolveDragEndRef.current?.(ids, activeId, overId);
       if (resolvedOrder) {
         setLayoutOrders((previous) => ({
-          ...(previous ?? {}),
+          ...previous,
           [surface]: resolvedOrder,
         }));
         return;
@@ -244,7 +244,7 @@ export function useReorderableSurface<TItem>({
 
       const nextOrder = arrayMove(ids, oldIndex, newIndex);
       setLayoutOrders((previous) => ({
-        ...(previous ?? {}),
+        ...previous,
         [surface]: nextOrder,
       }));
     },

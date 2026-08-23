@@ -4,10 +4,14 @@ import type { TableCardViewMode } from "@/api";
 
 const configMocks = vi.hoisted(() => ({
   setViewModes: vi.fn(),
-  viewModes: undefined as Record<string, TableCardViewMode> | undefined,
+  viewModes: {} as Record<string, TableCardViewMode>,
+  viewModeDefault: "card" as TableCardViewMode,
 }));
 
 vi.mock("@/hooks/useConfig", () => ({
+  useConfig: () => ({
+    config: { appSettings: { viewModeDefault: configMocks.viewModeDefault } },
+  }),
   useConfigValue: vi.fn(() => [
     configMocks.viewModes,
     configMocks.setViewModes,
@@ -19,7 +23,7 @@ const { act, renderHook } = await import("@/test/render");
 
 describe("useViewMode", () => {
   beforeEach(() => {
-    configMocks.viewModes = undefined;
+    configMocks.viewModes = {};
     configMocks.setViewModes.mockReset();
   });
 
@@ -37,25 +41,26 @@ describe("useViewMode", () => {
     expect(result.current[0]).toBe("table");
   });
 
-  it("stores non-default modes", () => {
+  it("stores selected modes", () => {
     const { result } = renderHook(() => useViewMode("services"));
 
     act(() => result.current[1]("table"));
     const updater = configMocks.setViewModes.mock.calls[0][0];
 
-    expect(updater(undefined)).toEqual({ services: "table" });
+    expect(updater({})).toEqual({ services: "table" });
   });
 
-  it("removes keys when resetting to the default", () => {
+  it("stores an explicit selection of the backend default", () => {
     const { result } = renderHook(() => useViewMode("services"));
 
     act(() => result.current[1]("card"));
     const updater = configMocks.setViewModes.mock.calls[0][0];
 
     expect(updater({ services: "table", docker: "table" })).toEqual({
+      services: "card",
       docker: "table",
     });
-    expect(updater({ services: "table" })).toBeUndefined();
+    expect(updater({ services: "table" })).toEqual({ services: "card" });
   });
 
   it("supports functional updates", () => {
@@ -66,6 +71,6 @@ describe("useViewMode", () => {
     );
     const updater = configMocks.setViewModes.mock.calls[0][0];
 
-    expect(updater(undefined)).toEqual({ services: "table" });
+    expect(updater({})).toEqual({ services: "table" });
   });
 });

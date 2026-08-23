@@ -26,7 +26,9 @@ const linuxio = {
   },
   config: {
     get: defineCall("config.get"),
+    get_ui: defineCall("config.get_ui"),
     set: defineCallWithRequest("config.set"),
+    set_ui: defineCallWithRequest("config.set_ui"),
   },
   control: {
     logoff: defineCallWithRequest("control.logoff"),

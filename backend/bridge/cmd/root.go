@@ -81,7 +81,7 @@ func runBridgeProcess() error {
 	}
 	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
 
-	userConfig, err := config.OpenUserStore(sess.User.Username)
+	userConfig, err := config.OpenUserStore(sess.User.Username, sess.User.UID, sess.User.GID)
 	if err != nil {
 		logBridgeStartupError("failed to open config store", err)
 		status.fail("bridge config store failed: " + err.Error())

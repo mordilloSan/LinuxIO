@@ -3,6 +3,7 @@ package main
 import (
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestJournalTermsForMode(t *testing.T) {
@@ -89,7 +90,8 @@ func TestFormatJournalEntryUsesSyslogIdentifier(t *testing.T) {
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := "2023/11/14 22:13:20 \033[32m[INFO]\033[0m bridge bridge started"; !containsSubstring(got, want) {
+	timestamp := time.Unix(0, 1_700_000_000_000_000*1_000).Format("2006/01/02 15:04:05")
+	if want := timestamp + " \033[32m[INFO]\033[0m bridge bridge started"; !containsSubstring(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
 }

@@ -448,20 +448,18 @@ loader: (loaderArgs) =>
   ]),
 ```
 
-Deferred visible widgets — `_authenticated/index.tsx`:
+Deferred dashboard widgets — `_authenticated/index.tsx`:
 
 ```ts
 loader: async ({ abortController, context, preload }) => {
   await loadRouteTransport(context, abortController.signal);
-  const cachedConfig = readConfigCache(context.auth.user?.id);
-  if (!cachedConfig) return;
-
-  const hiddenCards = new Set(cachedConfig.appSettings?.hiddenCards ?? []);
-  const queries: LoaderQueryOptions[] = [];
-  if (!hiddenCards.has("overview")) {
-    queries.push(linuxio.system.get_host_info);
+  const queries: LoaderQueryOptions[] = [
+    linuxio.system.get_host_info,
+    // Add the dashboard's other normal queries.
+  ];
+  if (context.access.dockerAvailable === true) {
+    queries.push(linuxio.docker.list_containers);
   }
-  // Add the other visible card queries, plus Docker queries when capable.
   startRouteQueryPrefetches(
     { context, preload, signal: abortController.signal },
     queries,
@@ -469,11 +467,12 @@ loader: async ({ abortController, context, preload }) => {
 },
 ```
 
-The real route constructs the array inline and also checks the Docker
-capability. It reads only an existing per-user config cache: it never guesses
-which cards are hidden on a first visit. With no cache, mounted visible cards
-start their locally bounded queries themselves. Hardware uses the same pattern
-for expanded sections, and collapsed sections unmount their observers.
+UI configuration is loaded once by `ConfigProvider`; route loaders neither read
+a browser copy nor guess configuration defaults. Because these pages use
+Suspense queries, Dashboard and Hardware warm every query that may mount; this
+can fetch data for a hidden section once, but avoids a second configuration load
+path. Mounted widgets remain the owners of active subscriptions and polling
+cadence.
 
 Annotate conditional arrays as `LoaderQueryOptions[]` so heterogeneous options
 stay assignable.
