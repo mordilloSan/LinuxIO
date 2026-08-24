@@ -43,20 +43,43 @@ jobs:
           git fetch --tags --force
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            BRANCH="${{ github.event.pull_request.head.ref }}"   # e.g., dev/v0.2.4
-            TAG="${BRANCH#dev/}"                                # -> v0.2.4
-            echo "Derived tag from PR branch: $TAG"
+            BRANCH="${{ github.event.pull_request.head.ref }}"        # e.g., dev/v0.2.4
+            MERGE_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+            TAG="${BRANCH#dev/}"                                      # -> v0.2.4
+            echo "Derived tag from PR branch: $TAG (merge commit $MERGE_SHA)"
+
+            # The checkout ref for a closed PR is not the merge commit; fetch
+            # the base branch so the merge commit is available to tag.
+            git fetch origin "${{ github.event.pull_request.base.ref }}"
 
             # Configure identity for tagging
             git config user.name  "${{ github.actor }}"
             git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-            # Create tag atomically (fails if exists)
-            if git tag -a "$TAG" -m "Release $TAG" 2>/dev/null; then
-              git push origin "$TAG"
-              echo "Created tag $TAG"
+            # Tag exactly the merge commit; never release a different commit
+            # under an existing tag.
+            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              EXISTING_SHA="$(git rev-parse "$TAG^{commit}")"
+              if [[ "$EXISTING_SHA" != "$MERGE_SHA" ]]; then
+                echo "Tag $TAG already exists at $EXISTING_SHA, but this merge is $MERGE_SHA."
+                echo "Refusing to release a different commit under an existing tag."
+                exit 1
+              fi
+              echo "Tag $TAG already exists at the expected merge commit."
             else
-              echo "Tag $TAG already exists (created by another workflow?)"
+              git tag -a "$TAG" -m "Release $TAG" "$MERGE_SHA"
+              if git push origin "$TAG"; then
+                echo "Created tag $TAG at $MERGE_SHA"
+              else
+                echo "Tag push failed; checking for a concurrently created tag…"
+                git fetch --tags --force
+                EXISTING_SHA="$(git rev-parse "$TAG^{commit}")"
+                if [[ "$EXISTING_SHA" != "$MERGE_SHA" ]]; then
+                  echo "Remote tag $TAG points at $EXISTING_SHA, expected $MERGE_SHA."
+                  exit 1
+                fi
+                echo "Tag $TAG was created concurrently at the expected merge commit."
+              fi
             fi
 
           else  

@@ -1,11 +1,12 @@
-# Private release automation (encrypted with git-crypt)
-# This file contains release workflow targets only available to maintainers
+# Release flow targets for maintainers (gh CLI): start-dev, open-pr, merge-release.
 
-# -------- Release flow helpers (gh CLI) --------
 DEFAULT_BASE_BRANCH := main
 REPO ?=
 CONFIRM ?= 1
-current_rel_branch = $(shell git branch --show-current)
+
+# One version pattern shared by VERSION validation and dev/v* branch checks,
+# matching what .github/workflows/release.yml accepts (any dev/v* prerelease).
+release_version_re := v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?
 
 define _require_clean
 	@if ! git diff --quiet || ! git diff --cached --quiet; then \
@@ -27,7 +28,7 @@ define _read_and_validate_version
 	fi; \
 	VERSION="$${VERSION_INPUT:-}"; \
 	VERSION="$$(printf '%s' "$$VERSION" | sed -E 's/^V/v/')"; \
-	if ! echo "$$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.-]+)?$$'; then \
+	if ! echo "$$VERSION" | grep -Eq '^$(release_version_re)$$'; then \
 	  echo "ERROR: VERSION must look like v1.2.3 or v1.2.3-rc.1 (got '$$VERSION')"; \
 	  exit 1; \
 	fi; \
@@ -90,10 +91,11 @@ open-pr:
 	@{ \
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
-	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	  if ! echo "$$BRANCH" | grep -qE '^dev/$(release_version_re)$$'; then \
 	    echo "ERROR: Not on a dev/v* release branch (got '$$BRANCH')."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
+	  trap 'rm -f "$${PR_BODY_FILE:-}"' EXIT; \
 	  OPEN_PR_STATUS=0; \
 	  PUSHED=0; \
 	  PUSH_REMOTE="$$(git config --get "branch.$$BRANCH.remote" 2>/dev/null || echo origin)"; \
@@ -132,14 +134,16 @@ open-pr:
 	    fi; \
 	  fi; \
 	  BASE_BRANCH="$(DEFAULT_BASE_BRANCH)"; \
-	  PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
+	  if ! PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; then \
+	    echo "ERROR: Unable to query open PRs for $$BRANCH."; \
+	    exit 1; \
+	  fi; \
 	  if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
 	    echo "==> An open PR (#$$PRNUM) from $$BRANCH -> $$BASE_BRANCH already exists."; \
 	    if [ "$$PUSHED" -eq 1 ]; then \
 	      echo "==> Refreshing PR body with the latest changelog…"; \
 	      $(call _generate_pr_body); \
 	      gh pr edit $(call _repo_flag) "$$PRNUM" --body-file "$$PR_BODY_FILE"; \
-	      rm -f "$$PR_BODY_FILE"; \
 	      echo "OK: PR body updated."; \
 	    fi; \
 	  else \
@@ -150,7 +154,6 @@ open-pr:
 	      --head "$$BRANCH" \
 	      --title "Release $$VERSION" \
 	      --body-file "$$PR_BODY_FILE"; \
-	    rm -f "$$PR_BODY_FILE"; \
 	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$$BASE_BRANCH" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; \
 	  fi; \
 	  echo ""; \
@@ -216,7 +219,7 @@ merge-release:
 	@{ \
 	  set -euo pipefail; \
 	  BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
-	  if ! echo "$$BRANCH" | grep -qE '^dev/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$$'; then \
+	  if ! echo "$$BRANCH" | grep -qE '^dev/$(release_version_re)$$'; then \
 	    echo "ERROR: Current branch '$$BRANCH' is not a dev/v* release branch."; exit 1; \
 	  fi; \
 	  VERSION="$${BRANCH#dev/}"; \
@@ -225,16 +228,19 @@ merge-release:
 	  PR_STATE=""; \
 	  if [ -n "$(PR)" ]; then \
 	    PRNUM="$(PR)"; \
-	    PR_STATE="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json state --jq '.state' 2>/dev/null || true)"; \
-	    if [ -z "$$PR_STATE" ]; then \
+	    if ! PR_STATE="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json state --jq '.state')"; then \
 	      echo "ERROR: Unable to query PR #$$PRNUM."; exit 1; \
 	    fi; \
 	  else \
-	    PRNUM="$$(gh pr list $(call _repo_flag) --base "$(DEFAULT_BASE_BRANCH)" --head "$$BRANCH" --state open --json number --jq '.[0].number' || true)"; \
+	    if ! PRNUM="$$(gh pr list $(call _repo_flag) --base "$(DEFAULT_BASE_BRANCH)" --head "$$BRANCH" --state open --json number --jq '.[0].number')"; then \
+	      echo "ERROR: Unable to query open PRs for $$BRANCH."; exit 1; \
+	    fi; \
 	    if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
 	      PR_STATE="OPEN"; \
 	    else \
-	      PRNUM="$$(gh pr list $(call _repo_flag) --base "$(DEFAULT_BASE_BRANCH)" --head "$$BRANCH" --state merged --json number --jq '.[0].number' || true)"; \
+	      if ! PRNUM="$$(gh pr list $(call _repo_flag) --base "$(DEFAULT_BASE_BRANCH)" --head "$$BRANCH" --state merged --json number --jq '.[0].number')"; then \
+	        echo "ERROR: Unable to query merged PRs for $$BRANCH."; exit 1; \
+	      fi; \
 	      if [ -n "$$PRNUM" ] && [ "$$PRNUM" != "null" ]; then \
 	        PR_STATE="MERGED"; \
 	      else \
@@ -247,12 +253,13 @@ merge-release:
 	  fi; \
 	  if [ "$$PR_STATE" = "MERGED" ]; then \
 	    echo "==> PR #$$PRNUM from $$BRANCH is already merged - resuming release watch and cleanup."; \
-	    RESUME_INFO="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json headRefOid,mergedAt --jq '[.headRefOid, .mergedAt] | @tsv')"; \
-	    IFS=$$'\t' read -r RELEASE_HEAD MERGED_AT <<< "$$RESUME_INFO" || true; \
-	    if [ -z "$${RELEASE_HEAD:-}" ] || [ -z "$${MERGED_AT:-}" ]; then \
-	      echo "ERROR: Unable to read merge details for PR #$$PRNUM."; exit 1; \
+	    RESUME_INFO="$$(gh pr view $(call _repo_flag) "$$PRNUM" --json baseRefName,headRefName,headRefOid --jq '[.baseRefName, .headRefName, .headRefOid] | @tsv')"; \
+	    IFS=$$'\t' read -r PR_BASE_BRANCH PR_HEAD_BRANCH RELEASE_HEAD <<< "$$RESUME_INFO" || true; \
+	    if [ "$${PR_BASE_BRANCH:-}" != "$(DEFAULT_BASE_BRANCH)" ] || [ "$${PR_HEAD_BRANCH:-}" != "$$BRANCH" ] || [ -z "$${RELEASE_HEAD:-}" ]; then \
+	      echo "ERROR: PR #$$PRNUM is not a merged $$BRANCH -> $(DEFAULT_BASE_BRANCH) release PR."; \
+	      echo "    PR: $${PR_HEAD_BRANCH:-?} -> $${PR_BASE_BRANCH:-?}"; \
+	      exit 1; \
 	    fi; \
-	    TRIGGER_MARK=$$(( $$(date -u -d "$$MERGED_AT" +%s) - 30 )); \
 	  elif [ "$$PR_STATE" = "OPEN" ]; then \
 	    echo "==> Checking status of PR #$$PRNUM…"; \
 	    CHECK_OUTPUT="$$(gh pr checks $(call _repo_flag) "$$PRNUM" 2>&1 || true)"; \
@@ -317,7 +324,6 @@ merge-release:
 	        *) echo "==> Merge aborted."; exit 1;; \
 	      esac; \
 	    fi; \
-	    TRIGGER_MARK=$$(( $$(date -u +%s) - 30 )); \
 	    echo ""; \
 	    echo "==> Merging PR #$$PRNUM…"; \
 	    if ! gh pr merge $(call _repo_flag) "$$PRNUM" --merge --match-head-commit "$$RELEASE_HEAD"; then \
@@ -334,14 +340,10 @@ merge-release:
 	  sleep 2; \
 	  WORKFLOW_TSV=""; \
 	  for i in $$(seq 1 10); do \
-	    WORKFLOW_TSV="$$(VER="$$VERSION" BR="$$BRANCH" T="$$TRIGGER_MARK" \
-	      gh run list $(call _repo_flag) --workflow=release.yml --limit=20 \
+	    WORKFLOW_TSV="$$(gh run list $(call _repo_flag) --workflow=release.yml \
+	      --event pull_request --commit "$$RELEASE_HEAD" --limit 1 \
 	      --json databaseId,status,conclusion,name,createdAt,displayTitle,headBranch,event \
-	      --jq '[ .[] \
-	              | select((.createdAt|fromdateiso8601) >= ($$ENV.T|tonumber)) \
-	              | select((.headBranch == "main") or (.headBranch == $$ENV.BR) or ((.displayTitle // .name) | contains($$ENV.VER))) \
-	            ] \
-	            | .[0] | $(_run_tsv)')" ; \
+	      --jq '.[0] | $(_run_tsv)')" ; \
 	    if [ -n "$$WORKFLOW_TSV" ]; then break; fi; \
 	    echo "==> Waiting for workflow to start... (attempt $$i/10)"; \
 	    sleep 2; \
@@ -361,7 +363,7 @@ merge-release:
 	  echo "    Status: $$STATUS"; \
 	  echo "    Started: $$CREATED"; \
 	  WORKFLOW_SUCCESS=0; \
-	  if [ "$$STATUS" = "in_progress" ] || [ "$$STATUS" = "queued" ] || [ "$$STATUS" = "waiting" ]; then \
+	  if [ "$$STATUS" != "completed" ]; then \
 	    echo ""; \
 	    echo "==> Watching release workflow #$$RUN_ID..."; \
 	    echo "    (Ctrl+C stops watching; re-run 'make merge-release' to resume)"; \
@@ -413,14 +415,14 @@ merge-release:
 	      echo "ERROR: $$PUSH_REMOTE/$$BRANCH advanced after merge; leaving both branch refs intact."; \
 	      exit 1; \
 	    fi; \
-	    if ! git branch -d "$$BRANCH"; then \
-	      echo "ERROR: Unable to delete local branch $$BRANCH; remote branch was left intact."; \
-	      exit 1; \
-	    fi; \
 	    if [ -n "$$REMOTE_CLEANUP_INFO" ] && ! git push \
 	      --force-with-lease="refs/heads/$$BRANCH:$$RELEASE_HEAD" \
 	      "$$PUSH_REMOTE" ":refs/heads/$$BRANCH"; then \
-	      echo "ERROR: Unable to delete remote branch $$PUSH_REMOTE/$$BRANCH."; \
+	      echo "ERROR: Unable to delete remote branch $$PUSH_REMOTE/$$BRANCH; local branch kept for retry."; \
+	      exit 1; \
+	    fi; \
+	    if ! git branch -d "$$BRANCH"; then \
+	      echo "ERROR: Unable to delete local branch $$BRANCH (remote branch already deleted)."; \
 	      exit 1; \
 	    fi; \
 	    echo "OK: Branch cleanup complete"; \
