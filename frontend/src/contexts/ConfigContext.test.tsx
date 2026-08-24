@@ -89,7 +89,8 @@ vi.mock("@/api", async () => {
 });
 const { LinuxIOError } = await import("@/api");
 const { ConfigProvider } = await import("@/contexts/ConfigProvider");
-const { useConfig } = await import("@/hooks/useConfig");
+const { useConfig, useConfigValue, useDockerSettings } =
+  await import("@/hooks/useConfig");
 const { act, createAuthContextValue, createTestQueryClient, render } =
   await import("@/test/render");
 
@@ -164,31 +165,30 @@ function remoteUI(overrides: Partial<TestUIConfig> = {}): TestUIConfig {
 const onSavedSpy = vi.fn();
 
 function Probe() {
-  const { config, isLoaded, setKey, updateConfig } = useConfig();
+  const { isLoaded, setKey, updateConfig } = useConfig();
+  const [theme] = useConfigValue("theme");
+  const [themeColors] = useConfigValue("themeColors");
+  const [showHiddenFiles] = useConfigValue("showHiddenFiles");
+  const [chunkSizeMB] = useConfigValue("chunkSizeMB");
+  const [dockAccentGradient] = useConfigValue("dockAccentGradient");
+  const [dockerDashboardSections] = useConfigValue("dockerDashboardSections");
+  const [viewModes] = useConfigValue("viewModes");
+  const docker = useDockerSettings();
   return (
     <div>
       <div data-testid="loaded">{String(isLoaded)}</div>
-      <div data-testid="theme">{config.appSettings.theme}</div>
-      <div data-testid="theme-colors">
-        {JSON.stringify(config.appSettings.themeColors)}
-      </div>
-      <div data-testid="show-hidden-files">
-        {String(config.appSettings.showHiddenFiles)}
-      </div>
-      <div data-testid="chunk-size">
-        {String(config.appSettings.chunkSizeMB)}
-      </div>
-      <div data-testid="job-settings">{JSON.stringify(config.jobs)}</div>
+      <div data-testid="theme">{theme}</div>
+      <div data-testid="theme-colors">{JSON.stringify(themeColors)}</div>
+      <div data-testid="show-hidden-files">{String(showHiddenFiles)}</div>
+      <div data-testid="chunk-size">{String(chunkSizeMB)}</div>
       <div data-testid="dock-accent-gradient">
-        {JSON.stringify(config.appSettings.dockAccentGradient)}
+        {JSON.stringify(dockAccentGradient)}
       </div>
-      <div data-testid="docker-folders">{config.docker.folders.join(",")}</div>
+      <div data-testid="docker-folders">{docker.folders.join(",")}</div>
       <div data-testid="docker-dashboard-sections">
-        {JSON.stringify(config.appSettings.dockerDashboardSections)}
+        {JSON.stringify(dockerDashboardSections)}
       </div>
-      <div data-testid="view-modes">
-        {JSON.stringify(config.appSettings.viewModes)}
-      </div>
+      <div data-testid="view-modes">{JSON.stringify(viewModes)}</div>
       <button onClick={() => setKey("theme", "DARK")}>set theme</button>
       <button onClick={() => setKey("primaryColor", "#abcdef")}>
         set primary color
@@ -322,6 +322,8 @@ function renderProvider({
         {strictMode ? <StrictMode>{provider}</StrictMode> : provider}
       </AuthContext.Provider>
     </QueryClientProvider>,
+    // The provider under test owns its cache: no pre-seeded snapshots.
+    { seedConfig: false },
   );
 
   return {

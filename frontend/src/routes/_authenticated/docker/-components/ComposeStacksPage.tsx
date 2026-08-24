@@ -27,7 +27,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { markTerminalFeedbackEmitted } from "@/hooks/backgroundTasks/terminalTaskFeedback";
-import { useConfig } from "@/hooks/useConfig";
+import { useDockerSettings } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
@@ -71,7 +71,7 @@ const ComposeStacksPage = ({
   viewMode = "table",
 }: ComposeStacksPageProps) => {
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  const { config } = useConfig();
+  const dockerSettings = useDockerSettings();
   const chunkSize = useUploadChunkSize();
 
   // Setup dialog state
@@ -535,7 +535,7 @@ const ComposeStacksPage = ({
         />
 
         <StackSetupDialog
-          defaultWorkingDir={config.docker.folders?.[0]}
+          defaultWorkingDir={dockerSettings.folders?.[0]}
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
           open={setupDialogOpen}

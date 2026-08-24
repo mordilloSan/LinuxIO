@@ -1,3 +1,4 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,7 +9,13 @@ import {
   useFileSelectionState,
 } from "@/hooks/filebrowser/useFileSelection";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
-import { act, createConfigContextValue, renderHook } from "@/test/render";
+import {
+  act,
+  createConfigContextValue,
+  createTestQueryClient,
+  renderHook,
+  seedConfigCache,
+} from "@/test/render";
 import type { ConfigContextType } from "@/types/config";
 import type { FileResource } from "@/types/filebrowser";
 
@@ -49,14 +56,17 @@ function configWrapper({
   setKey?: ConfigContextType["setKey"];
   showHiddenFiles?: boolean;
 } = {}) {
-  const value = {
-    ...createConfigContextValue({ showHiddenFiles }),
-    setKey,
-  } satisfies ConfigContextType;
+  const queryClient = createTestQueryClient();
+  seedConfigCache(queryClient, { showHiddenFiles });
+  const value = createConfigContextValue({ setKey });
 
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
+      <QueryClientProvider client={queryClient}>
+        <ConfigContext.Provider value={value}>
+          {children}
+        </ConfigContext.Provider>
+      </QueryClientProvider>
     );
   };
 }

@@ -54,8 +54,10 @@ export interface ConfigPatch {
   jobs?: Partial<JobSettings>;
 }
 
+// Config values are read from the TanStack Query cache through the slice
+// hooks in useConfig.ts; the context carries only identity-stable actions so
+// no consumer re-renders through it.
 export interface ConfigContextType {
-  config: EffectiveAppConfig;
   isLoaded: boolean;
   setKey: <K extends ConfigValueKey>(
     key: K,

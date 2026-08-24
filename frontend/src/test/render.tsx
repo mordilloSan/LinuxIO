@@ -17,8 +17,10 @@ import {
   useContext,
 } from "react";
 
+import type { AppConfig, UIConfig } from "@/api";
 import { emptyCapabilityState } from "@/api/capabilities";
 import type { CapabilitiesResponse } from "@/api/capabilities";
+import { bridgeConfigQueryKey, uiConfigQueryKey } from "@/api/config-query";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
@@ -56,74 +58,95 @@ export function createAuthContextValue(
   };
 }
 
-// Anything rendering a list reads config now: reorderable surfaces read their
-// saved order from it. Tests get a real context with inert writes so they never
-// have to know that.
+// Config values now live in the query cache (read via useConfigValue's
+// select slices); the context only carries actions. Tests get inert actions
+// plus a seeded cache so components never have to know that.
 export function createConfigContextValue(
-  overrides: Partial<EffectiveAppSettings> = {},
+  overrides: Partial<ConfigContextType> = {},
 ): ConfigContextType {
   return {
-    config: {
-      appSettings: {
-        primaryColor: "#2196f3",
-        showHiddenFiles: true,
-        chunkSizeMB: 1,
-        sidebarCollapsed: false,
-        theme: "DARK",
-        navigationMode: "sidebar",
-        dockTileColors: "accent",
-        dockAccentGradient: {
-          startColor: "",
-          endColor: "",
-          rangeStart: 0,
-          rangeEnd: 100,
-        },
-        hiddenCards: [],
-        dockerDashboardSections: {
-          overview: true,
-          monitoring: true,
-          daemon: true,
-          resources: true,
-        },
-        hardwareSections: {
-          overview: true,
-          hardware: true,
-          sensors: true,
-          systemInfo: true,
-          gpu: true,
-          pciDevices: true,
-          memoryModules: true,
-        },
-        viewModes: {},
-        viewModeDefault: "card",
-        terminalFontSize: 16,
-        ...overrides,
-        layoutOrders: overrides.layoutOrders ?? {},
-      },
-      docker: {
-        folders: [],
-        proxy: { caddyEnabled: false },
-        requireMountsForFolders: false,
-      },
-      jobs: {
-        archiveCompressionWorkers: 0,
-        archiveExtractWorkers: 0,
-        heavyArchiveConcurrency: 1,
-        notificationMinIntervalMs: 1000,
-        progressMinBytesMB: 16,
-        progressMinIntervalMs: 250,
-      },
-    },
     isLoaded: true,
     setKey: () => {},
     updateConfig: () => {},
+    ...overrides,
   };
+}
+
+/** Build the bridge and UI snapshots the slice hooks read, with overrides. */
+export function buildTestConfigSnapshots(
+  overrides: Partial<EffectiveAppSettings> = {},
+): { bridge: AppConfig; ui: UIConfig } {
+  const { showHiddenFiles = true, chunkSizeMB = 1, ...uiOverrides } = overrides;
+  const ui: UIConfig = {
+    primaryColor: "#2196f3",
+    sidebarCollapsed: false,
+    theme: "DARK",
+    navigationMode: "sidebar",
+    dockTileColors: "accent",
+    dockAccentGradient: {
+      startColor: "",
+      endColor: "",
+      rangeStart: 0,
+      rangeEnd: 100,
+    },
+    hiddenCards: [],
+    dockerDashboardSections: {
+      overview: true,
+      monitoring: true,
+      daemon: true,
+      resources: true,
+    },
+    hardwareSections: {
+      overview: true,
+      hardware: true,
+      sensors: true,
+      systemInfo: true,
+      gpu: true,
+      pciDevices: true,
+      memoryModules: true,
+    },
+    viewModes: {},
+    viewModeDefault: "card",
+    terminalFontSize: 16,
+    ...uiOverrides,
+    layoutOrders: uiOverrides.layoutOrders ?? {},
+  };
+  const bridge: AppConfig = {
+    appSettings: { showHiddenFiles, chunkSizeMB },
+    docker: {
+      folders: [],
+      proxy: { caddyEnabled: false },
+      requireMountsForFolders: false,
+    },
+    jobs: {
+      archiveCompressionWorkers: 0,
+      archiveExtractWorkers: 0,
+      heavyArchiveConcurrency: 1,
+      notificationMinIntervalMs: 1000,
+      progressMinBytesMB: 16,
+      progressMinIntervalMs: 250,
+    },
+  };
+  return { bridge, ui };
+}
+
+/** Seed the per-user config cache entries that useConfigValue subscribes to. */
+export function seedConfigCache(
+  queryClient: QueryClient,
+  appSettings: Partial<EffectiveAppSettings> = {},
+  userId = "anonymous",
+) {
+  const { bridge, ui } = buildTestConfigSnapshots(appSettings);
+  queryClient.setQueryData(bridgeConfigQueryKey(userId), bridge);
+  queryClient.setQueryData(uiConfigQueryKey(userId), ui);
 }
 
 interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
   appSettings?: Partial<EffectiveAppSettings>;
   auth?: Partial<AuthContextType>;
   queryClient?: QueryClient;
+  /** Disable for trees that mount the real ConfigProvider and own its cache. */
+  seedConfig?: boolean;
 }
 
 export function render(
@@ -132,11 +155,19 @@ export function render(
     appSettings,
     auth,
     queryClient = createTestQueryClient(),
+    seedConfig = true,
     ...options
   }: AppRenderOptions = {},
 ) {
   const authValue = createAuthContextValue(auth);
-  const configValue = createConfigContextValue(appSettings);
+  if (seedConfig) {
+    seedConfigCache(
+      queryClient,
+      appSettings,
+      authValue.user?.id ?? "anonymous",
+    );
+  }
+  const configValue = createConfigContextValue();
   const user = userEvent.setup();
 
   function Wrapper({ children }: { children: ReactNode }) {
@@ -180,6 +211,7 @@ export function createTanStackRouterWrapper({
   queryClient?: QueryClient;
 } = {}) {
   const authValue = createAuthContextValue(auth);
+  seedConfigCache(queryClient, {}, authValue.user?.id ?? "anonymous");
   const rootRoute = createRootRoute({ component: TanStackRouterTestRoute });
   const router = createRouter({
     history: createMemoryHistory({ initialEntries }),

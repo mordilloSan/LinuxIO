@@ -1,84 +1,42 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { useConfig, useConfigValue } from "@/hooks/useConfig";
-import { act, renderHook } from "@/test/render";
-import type { ConfigContextType, EffectiveAppConfig } from "@/types/config";
+import {
+  useConfig,
+  useConfigValue,
+  useDockerSettings,
+  useViewModeDefault,
+} from "@/hooks/useConfig";
+import {
+  act,
+  createConfigContextValue,
+  createTestQueryClient,
+  renderHook,
+  seedConfigCache,
+} from "@/test/render";
+import type { ConfigContextType, EffectiveAppSettings } from "@/types/config";
 
-const config: EffectiveAppConfig = {
-  appSettings: {
-    chunkSizeMB: 1,
-    hiddenCards: [],
-    layoutOrders: { dashboard: ["overview"] },
-    navigationMode: "sidebar",
-    dockTileColors: "accent",
-    dockAccentGradient: {
-      startColor: "",
-      endColor: "",
-      rangeStart: 0,
-      rangeEnd: 100,
-    },
-    dockerDashboardSections: {
-      overview: true,
-      monitoring: true,
-      daemon: true,
-      resources: true,
-    },
-    hardwareSections: {
-      overview: true,
-      hardware: true,
-      sensors: true,
-      systemInfo: true,
-      gpu: true,
-      pciDevices: true,
-      memoryModules: true,
-    },
-    primaryColor: "#2196f3",
-    showHiddenFiles: true,
-    sidebarCollapsed: false,
-    theme: "DARK",
-    viewModes: {
-      "services.list": "card",
-    },
-    viewModeDefault: "card",
-    terminalFontSize: 16,
-  },
-  docker: {
-    folders: ["/var/lib/linuxio/docker"],
-    requireMountsForFolders: false,
-    proxy: {
-      baseDomain: "",
-      caddyEnabled: false,
-      tlsEmail: "",
-    },
-  },
-  jobs: {
-    archiveCompressionWorkers: 0,
-    archiveExtractWorkers: 0,
-    heavyArchiveConcurrency: 1,
-    notificationMinIntervalMs: 1000,
-    progressMinBytesMB: 16,
-    progressMinIntervalMs: 250,
-  },
-};
-
-function makeContext(
+function wrapper(
   overrides: Partial<ConfigContextType> = {},
-): ConfigContextType {
-  return {
-    config,
-    isLoaded: true,
-    setKey: vi.fn(),
-    updateConfig: vi.fn(),
-    ...overrides,
-  };
-}
+  appSettings: Partial<EffectiveAppSettings> = {},
+) {
+  const queryClient = createTestQueryClient();
+  seedConfigCache(queryClient, {
+    viewModes: { "services.list": "card", "docker.containers": "table" },
+    layoutOrders: { dashboard: ["overview"] },
+    ...appSettings,
+  });
+  const value = createConfigContextValue(overrides);
 
-function wrapper(value = makeContext()) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
+      <QueryClientProvider client={queryClient}>
+        <ConfigContext.Provider value={value}>
+          {children}
+        </ConfigContext.Provider>
+      </QueryClientProvider>
     );
   };
 }
@@ -93,15 +51,17 @@ describe("useConfig", () => {
     );
   });
 
-  it("returns the config context", () => {
+  it("returns the config actions", () => {
     const { result } = renderHook(() => useConfig(), {
       wrapper: wrapper(),
     });
 
-    expect(result.current.config.appSettings.theme).toBe("DARK");
+    expect(result.current.isLoaded).toBe(true);
+    expect(typeof result.current.setKey).toBe("function");
+    expect(typeof result.current.updateConfig).toBe("function");
   });
 
-  it("reads typed config values", () => {
+  it("reads bridge-owned values from the bridge snapshot", () => {
     const { result } = renderHook(() => useConfigValue("showHiddenFiles"), {
       wrapper: wrapper(),
     });
@@ -109,10 +69,42 @@ describe("useConfig", () => {
     expect(result.current[0]).toBe(true);
   });
 
+  it("reads UI values from the UI snapshot", () => {
+    const { result } = renderHook(() => useConfigValue("theme"), {
+      wrapper: wrapper(),
+    });
+
+    expect(result.current[0]).toBe("DARK");
+  });
+
+  it("prunes stored view modes that match the backend default", () => {
+    const { result } = renderHook(() => useConfigValue("viewModes"), {
+      wrapper: wrapper(),
+    });
+
+    expect(result.current[0]).toEqual({ "docker.containers": "table" });
+  });
+
+  it("exposes the read-only view-mode default", () => {
+    const { result } = renderHook(() => useViewModeDefault(), {
+      wrapper: wrapper(),
+    });
+
+    expect(result.current).toBe("card");
+  });
+
+  it("reads docker settings from the bridge snapshot", () => {
+    const { result } = renderHook(() => useDockerSettings(), {
+      wrapper: wrapper(),
+    });
+
+    expect(result.current.requireMountsForFolders).toBe(false);
+  });
+
   it("passes direct config value updates to setKey", () => {
     const setKey = vi.fn();
     const { result } = renderHook(() => useConfigValue("theme"), {
-      wrapper: wrapper(makeContext({ setKey })),
+      wrapper: wrapper({ setKey }),
     });
 
     act(() => result.current[1]("LIGHT"));
@@ -123,7 +115,7 @@ describe("useConfig", () => {
   it("passes functional config value updates to setKey", () => {
     const setKey = vi.fn();
     const { result } = renderHook(() => useConfigValue("sidebarCollapsed"), {
-      wrapper: wrapper(makeContext({ setKey })),
+      wrapper: wrapper({ setKey }),
     });
 
     act(() => result.current[1]((prev) => !prev));

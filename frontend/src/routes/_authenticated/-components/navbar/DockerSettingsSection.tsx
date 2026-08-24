@@ -20,7 +20,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useConfig } from "@/hooks/useConfig";
+import { useConfig, useDockerSettings } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { ensureTrailingSlash } from "@/utils/path";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
@@ -80,7 +80,8 @@ const validateDraftFolders = (
 const DockerSettingsSection = () => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
-  const { config, updateConfig } = useConfig();
+  const { updateConfig } = useConfig();
+  const dockerSettings = useDockerSettings();
   const dockerAutoUpdate = useDockerAutoUpdateState();
   const { isEnabled: dockerUpdatesEnabled, reason: dockerUpdatesReason } =
     useCapability("dockerUpdatesAvailable");
@@ -91,8 +92,8 @@ const DockerSettingsSection = () => {
   const { mutateAsync: validateDockerFolder } = useCallMutation(
     linuxio.docker.validate_stack_directory,
   );
-  const dockerFolders = config.docker.folders;
-  const requireMountsForFolders = config.docker.requireMountsForFolders;
+  const dockerFolders = dockerSettings.folders;
+  const requireMountsForFolders = dockerSettings.requireMountsForFolders;
   const setDockerFolders = useCallback(
     (folders: string[]) => updateConfig({ docker: { folders } }),
     [updateConfig],
