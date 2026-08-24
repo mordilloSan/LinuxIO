@@ -441,4 +441,8 @@ merge-release:
 	  fi; \
 	}
 
-.PHONY: start-dev open-pr merge-release
+.PHONY: start-dev open-pr merge-release test-release-automation
+
+# Exercise release automation in isolated temporary Git repositories.
+test-release-automation:
+	@"$(packaging_scripts_dir)/test-release-automation.sh"
