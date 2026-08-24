@@ -31,6 +31,15 @@ Follow the phased
    NICs, then the single-NIC IP hand-off protected by snapshot, transient
    revert timer, and reconnect check-in.
 
+### Frontend task state unification
+
+Follow [`Frontend Task State Unification`](docs/TODO/frontend-task-state-unification.md):
+move background-task progress state from provider `useState` into per-task
+TanStack Query cache entries read through select slices, collapsing the four
+task contexts to one identity-stable actions context. Architectural follow-on
+to the completed config-state migration; schedule with the tasks-page or
+notification work rather than as standalone churn.
+
 ### Frontend test coverage
 
 Define and complete the intended division of coverage between Vitest and Playwright.
