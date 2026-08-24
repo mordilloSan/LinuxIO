@@ -179,6 +179,12 @@ available. Their supported inputs are:
 | `REPO` | Repository passed to GitHub CLI commands, for example `owner/name`. |
 | `VERSION` | Release version consumed by `start-dev`/`open-pr`, such as `v1.2.3`. |
 | `PR` | Optional pull-request number for `merge-release`. |
+| `CONFIRM` | Set to `0` to skip the `merge-release` confirmation prompt. |
+
+`merge-release` shows a merge summary and asks for confirmation before merging.
+If the release PR is already merged — for example after an interrupted run —
+re-running `make merge-release` resumes the release-workflow watch and branch
+cleanup instead of failing.
 
 GitHub CLI authentication is provided by its normal credential mechanism; no
 credentials are stored in Make variables.
