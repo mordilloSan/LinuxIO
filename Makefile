@@ -862,8 +862,10 @@ test-updater: ensure-go
 
 test-installation-scripts:
 	@echo ""
-	@echo "🧪 Running installation-script fixture tests..."
+	@echo "🧪 Running install-dependencies fixture tests..."
 	@bash "$(packaging_scripts_dir)/test-install-dependencies.sh"
+	@echo ""
+	@echo "🧪 Running installer port and recovery-asset fixture tests..."
 	@bash "$(packaging_scripts_dir)/tests/installer-port-fixtures.sh"
 
 test-docker-update-integration: ensure-go
