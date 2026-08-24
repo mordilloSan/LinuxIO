@@ -6,8 +6,11 @@
  * Adding a capability = adding one entry to this list.
  */
 
+import type { QueryKey } from "@tanstack/react-query";
+
 import type { ToastMeta } from "@/types/navigation";
 
+import linuxio from "./generated/client";
 import type { CapabilitiesResponse as GeneratedCapabilitiesResponse } from "./generated/linuxio-types";
 
 export interface CapabilityDef {
@@ -296,6 +299,30 @@ export const pickCapabilityState = (
   Object.fromEntries(
     CAPABILITIES.map((c) => [c.state, src[c.state] ?? null]),
   ) as CapabilityState;
+
+/**
+ * Per-user cache entry holding the last capability scan (wire shape).
+ * AuthProvider owns writes; useCapabilityState subscribes with a select.
+ */
+export const capabilitiesQueryKey = (userId: string): QueryKey => [
+  ...linuxio.system.get_capabilities.queryKey,
+  "user",
+  userId,
+];
+
+/**
+ * Inverse of capabilityStateFromWire, for seeding the cache from a stored
+ * snapshot. Unknown (null) flags are omitted rather than sent as false.
+ */
+export const wireFromCapabilityState = (
+  state: Partial<CapabilityState>,
+): Partial<CapabilitiesResponse> =>
+  Object.fromEntries(
+    CAPABILITIES.flatMap((c) => {
+      const value = state[c.state];
+      return typeof value === "boolean" ? [[`${c.wire}_available`, value]] : [];
+    }),
+  );
 
 /** Parse capability state from untrusted JSON (e.g. localStorage). */
 export const parseCapabilityState = (raw: unknown): CapabilityState => {

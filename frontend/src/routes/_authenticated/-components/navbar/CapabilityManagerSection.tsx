@@ -24,6 +24,7 @@ import {
   type CapabilityStatus,
   getCapabilityReason,
   getCapabilityStatus,
+  useCapabilityState,
 } from "@/hooks/useCapabilities";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
@@ -46,8 +47,8 @@ const formatLastChecked = (value: Date | null) => {
 };
 
 const CapabilityManagerSection = () => {
-  const auth = useAuth();
-  const { refreshCapabilities } = auth;
+  const { refreshCapabilities } = useAuth();
+  const capabilities = useCapabilityState();
 
   const [latest, setLatest] = useState<CapabilitiesResponse | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -74,16 +75,16 @@ const CapabilityManagerSection = () => {
     });
 
   const packageKitAvailable =
-    latest?.packagekit_available ?? auth.packageKitAvailable ?? false;
+    latest?.packagekit_available ?? capabilities.packageKitAvailable ?? false;
   const dockerAvailable =
-    latest?.docker_available ?? auth.dockerAvailable ?? false;
+    latest?.docker_available ?? capabilities.dockerAvailable ?? false;
 
   const rows = useMemo(
     () =>
       CAPABILITIES.map((item) => {
         const valueKey = `${item.wire}_available` as CapabilityValueKey;
         const errorKey = `${item.wire}_error` as CapabilityErrorKey;
-        const authValue = auth[item.state];
+        const authValue = capabilities[item.state];
         const value = latest?.[valueKey] ?? authValue;
         const status = getCapabilityStatus(value);
         const detail =
@@ -100,7 +101,7 @@ const CapabilityManagerSection = () => {
           detail,
         };
       }),
-    [auth, latest],
+    [capabilities, latest],
   );
 
   const handleRefresh = useCallback(

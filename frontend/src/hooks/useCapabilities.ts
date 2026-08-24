@@ -1,12 +1,17 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import {
   CAPABILITIES,
+  type CapabilitiesResponse,
   type CapabilityKey,
   type CapabilityState,
-  pickCapabilityState,
+  capabilitiesQueryKey,
+  capabilityStateFromWire,
+  emptyCapabilityState,
 } from "@/api/capabilities";
 import useAuth from "@/hooks/useAuth";
+import { useConfigUserId } from "@/hooks/useConfig";
 
 export type CapabilityStatus = "unknown" | "available" | "unavailable";
 
@@ -59,14 +64,34 @@ export const hasAccessPolicy = (
   return true;
 };
 
+/**
+ * Latest capability scan from the per-user query cache; every flag is null
+ * until a scan (or the stored bootstrap seed) lands. AuthProvider owns all
+ * fetching — this hook only subscribes.
+ */
+export const useCapabilityState = (): CapabilityState => {
+  const userId = useConfigUserId();
+  const { data } = useQuery<
+    Partial<CapabilitiesResponse>,
+    Error,
+    CapabilityState
+  >({
+    queryKey: capabilitiesQueryKey(userId),
+    enabled: false,
+    select: capabilityStateFromWire,
+  });
+  return data ?? emptyCapabilityState;
+};
+
 export const useAccessContext = (): AccessContext => {
-  const auth = useAuth();
+  const { privileged } = useAuth();
+  const capabilities = useCapabilityState();
   return useMemo(
     () => ({
-      privileged: auth.privileged,
-      ...pickCapabilityState(auth),
+      privileged,
+      ...capabilities,
     }),
-    [auth],
+    [privileged, capabilities],
   );
 };
 

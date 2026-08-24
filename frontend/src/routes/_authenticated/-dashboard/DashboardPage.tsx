@@ -12,7 +12,7 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
-import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppTheme } from "@/theme";
@@ -113,7 +113,7 @@ const getCardId = (card: DashboardCardDefinition) => card.id;
 
 const DashboardPage = () => {
   const theme = useAppTheme();
-  const { dockerAvailable } = useAuth();
+  const { value: dockerAvailable } = useCapability("dockerAvailable");
   const [hiddenCards, setHiddenCards] = useConfigValue("hiddenCards");
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
 

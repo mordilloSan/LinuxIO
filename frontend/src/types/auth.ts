@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { CapabilitiesResponse, CapabilityState } from "@/api/capabilities";
+import type { CapabilitiesResponse } from "@/api/capabilities";
 
 /**
  * Generic utility for creating discriminated union action types.
@@ -24,8 +24,9 @@ export interface AuthUser {
 
 /**
  * Reducer-managed state representing the authentication context.
+ * Capability flags live in the query cache (see useCapabilityState), not here.
  */
-export interface AuthState extends CapabilityState {
+export interface AuthState {
   isAuthenticated: boolean;
   isInitialized: boolean;
   privileged: boolean;
@@ -35,7 +36,7 @@ export interface AuthState extends CapabilityState {
 /**
  * The shape of the public API exposed by `useAuth()` or `AuthContext`.
  */
-export interface AuthContextType extends CapabilityState {
+export interface AuthContextType {
   isAuthenticated: boolean;
   isInitialized: boolean;
   method: "session";
@@ -65,9 +66,6 @@ export const AUTH_ACTIONS = {
   /** Dispatched after a successful login. */
   SIGN_IN: "SIGN_IN",
 
-  /** Dispatched when system capability checks are refreshed. */
-  REFRESH_CAPABILITIES: "REFRESH_CAPABILITIES",
-
   /** Dispatched after logout or session expiration. */
   SIGN_OUT: "SIGN_OUT",
 } as const satisfies Record<string, string>;
@@ -82,8 +80,7 @@ export interface AuthActionTypes {
   [AUTH_ACTIONS.INITIALIZE_SUCCESS]: {
     user: AuthUser;
     privileged: boolean;
-  } & Partial<CapabilityState>;
-  [AUTH_ACTIONS.REFRESH_CAPABILITIES]: Partial<CapabilityState>;
+  };
   [AUTH_ACTIONS.SIGN_IN]: {
     user: AuthUser;
     privileged: boolean;

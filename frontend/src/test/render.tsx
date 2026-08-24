@@ -18,8 +18,11 @@ import {
 } from "react";
 
 import type { AppConfig, UIConfig } from "@/api";
-import { emptyCapabilityState } from "@/api/capabilities";
-import type { CapabilitiesResponse } from "@/api/capabilities";
+import {
+  capabilitiesQueryKey,
+  wireFromCapabilityState,
+} from "@/api/capabilities";
+import type { CapabilitiesResponse, CapabilityState } from "@/api/capabilities";
 import { bridgeConfigQueryKey, uiConfigQueryKey } from "@/api/config-query";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
@@ -44,7 +47,6 @@ export function createAuthContextValue(
   overrides: Partial<AuthContextType> = {},
 ): AuthContextType {
   return {
-    ...emptyCapabilityState,
     isAuthenticated: false,
     isInitialized: true,
     method: "session",
@@ -56,6 +58,18 @@ export function createAuthContextValue(
     user: null,
     ...overrides,
   };
+}
+
+/** Seed the per-user capability cache entry that useCapabilityState reads. */
+export function seedCapabilityCache(
+  queryClient: QueryClient,
+  overrides: Partial<CapabilityState> = {},
+  userId = "anonymous",
+) {
+  queryClient.setQueryData(
+    capabilitiesQueryKey(userId),
+    wireFromCapabilityState(overrides),
+  );
 }
 
 // Config values now live in the query cache (read via useConfigValue's
@@ -144,6 +158,8 @@ export function seedConfigCache(
 interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {
   appSettings?: Partial<EffectiveAppSettings>;
   auth?: Partial<AuthContextType>;
+  /** Capability flags to seed into the query cache (default: all unknown). */
+  capabilities?: Partial<CapabilityState>;
   queryClient?: QueryClient;
   /** Disable for trees that mount the real ConfigProvider and own its cache. */
   seedConfig?: boolean;
@@ -154,6 +170,7 @@ export function render(
   {
     appSettings,
     auth,
+    capabilities,
     queryClient = createTestQueryClient(),
     seedConfig = true,
     ...options
@@ -164,6 +181,13 @@ export function render(
     seedConfigCache(
       queryClient,
       appSettings,
+      authValue.user?.id ?? "anonymous",
+    );
+  }
+  if (capabilities) {
+    seedCapabilityCache(
+      queryClient,
+      capabilities,
       authValue.user?.id ?? "anonymous",
     );
   }
@@ -204,14 +228,23 @@ function TanStackRouterTestRoute() {
 
 export function createTanStackRouterWrapper({
   auth,
+  capabilities,
   initialEntries = ["/"],
   queryClient = createTestQueryClient(),
 }: TanStackMemoryRouterOptions & {
   auth?: Partial<AuthContextType>;
+  capabilities?: Partial<CapabilityState>;
   queryClient?: QueryClient;
 } = {}) {
   const authValue = createAuthContextValue(auth);
   seedConfigCache(queryClient, {}, authValue.user?.id ?? "anonymous");
+  if (capabilities) {
+    seedCapabilityCache(
+      queryClient,
+      capabilities,
+      authValue.user?.id ?? "anonymous",
+    );
+  }
   const rootRoute = createRootRoute({ component: TanStackRouterTestRoute });
   const router = createRouter({
     history: createMemoryHistory({ initialEntries }),
@@ -238,6 +271,7 @@ export function createTanStackRouterWrapper({
 
 interface TanStackAppRenderOptions extends Omit<RenderOptions, "wrapper"> {
   auth?: Partial<AuthContextType>;
+  capabilities?: Partial<CapabilityState>;
   queryClient?: QueryClient;
   tanstackRouter?: TanStackMemoryRouterOptions;
 }
@@ -246,6 +280,7 @@ export function renderWithTanStackRouter(
   ui: ReactElement,
   {
     auth,
+    capabilities,
     queryClient,
     tanstackRouter,
     ...options
@@ -254,6 +289,7 @@ export function renderWithTanStackRouter(
   const user = userEvent.setup();
   const { router, Wrapper } = createTanStackRouterWrapper({
     auth,
+    capabilities,
     queryClient,
     ...tanstackRouter,
   });

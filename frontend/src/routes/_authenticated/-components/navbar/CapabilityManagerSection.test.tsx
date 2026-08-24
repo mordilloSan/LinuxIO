@@ -12,11 +12,26 @@ const { refreshCapabilities, useTaskStreamAction } = vi.hoisted(() => ({
 
 vi.mock("@/hooks/useAuth", () => ({
   default: () => ({
-    dockerAvailable: false,
-    packageKitAvailable: false,
     refreshCapabilities,
   }),
 }));
+
+vi.mock("@/hooks/useCapabilities", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/hooks/useCapabilities")>();
+  const { emptyCapabilityState } =
+    await vi.importActual<typeof import("@/api/capabilities")>(
+      "@/api/capabilities",
+    );
+  return {
+    ...actual,
+    useCapabilityState: () => ({
+      ...emptyCapabilityState,
+      dockerAvailable: false,
+      packageKitAvailable: false,
+    }),
+  };
+});
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();

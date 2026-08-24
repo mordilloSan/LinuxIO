@@ -118,8 +118,10 @@ export type {
 export {
   CAPABILITIES,
   CAPABILITY_KEYS,
+  capabilitiesQueryKey,
   capabilityStateFromWire,
   emptyCapabilityState,
   parseCapabilityState,
   pickCapabilityState,
+  wireFromCapabilityState,
 } from "./capabilities";

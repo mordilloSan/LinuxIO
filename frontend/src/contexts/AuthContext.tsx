@@ -1,4 +1,5 @@
 // src/contexts/AuthContext.tsx
+import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -13,13 +14,15 @@ import {
   type CapabilitiesResponse,
   type CapabilityState,
   call,
+  capabilitiesQueryKey,
   capabilityStateFromWire,
   closeStreamMux,
   emptyCapabilityState,
   initStreamMux,
+  linuxio,
   type MuxStatus,
   parseCapabilityState,
-  pickCapabilityState,
+  wireFromCapabilityState,
 } from "@/api";
 import type {
   AuthActions,
@@ -88,7 +91,6 @@ const initialState: AuthState = {
   isInitialized: false,
   user: null,
   privileged: false,
-  ...emptyCapabilityState,
 };
 
 const reducer = (state: AuthState, action: AuthActions): AuthState => {
@@ -102,7 +104,6 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: true,
         user: action.payload.user,
         privileged: action.payload.privileged,
-        ...pickCapabilityState(action.payload),
       };
     case AUTH_ACTIONS.INITIALIZE_FAILURE:
       return {
@@ -111,7 +112,6 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: false,
         user: null,
         privileged: false,
-        ...emptyCapabilityState,
       };
     case AUTH_ACTIONS.SIGN_IN:
       return {
@@ -119,12 +119,6 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: true,
         user: action.payload.user,
         privileged: action.payload.privileged,
-        ...emptyCapabilityState,
-      };
-    case AUTH_ACTIONS.REFRESH_CAPABILITIES:
-      return {
-        ...state,
-        ...pickCapabilityState(action.payload),
       };
     case AUTH_ACTIONS.SIGN_OUT:
       return {
@@ -132,7 +126,6 @@ const reducer = (state: AuthState, action: AuthActions): AuthState => {
         isAuthenticated: false,
         user: null,
         privileged: false,
-        ...emptyCapabilityState,
       };
     default: {
       const exhaustiveCheck: never = action;
@@ -147,34 +140,27 @@ AuthContext.displayName = "AuthContext";
 
 function AuthProvider({ children }: AuthProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const queryClient = useQueryClient();
   const authGeneration = useRef(0);
-  const mounted = useRef(true);
-  const capabilityRefresh = useRef<{
-    identity: string;
-    promise: Promise<CapabilitiesResponse>;
-    applied: boolean;
-  } | null>(null);
+  const userId = state.user?.id ?? "anonymous";
 
+  // Unmounting invalidates the generation so a scan that settles afterwards
+  // can no longer persist a snapshot.
   useEffect(() => {
-    mounted.current = true;
     return () => {
-      mounted.current = false;
+      authGeneration.current += 1;
     };
   }, []);
 
-  const applyCapabilities = useCallback(
-    (data: Partial<CapabilitiesResponse>) => {
-      const capabilities = capabilityStateFromWire(data);
+  // Persist the last confirmed scan so the next page load can seed the cache
+  // and gate capability-protected deep links before the mux reopens.
+  const persistCapabilitySnapshot = useCallback(
+    (wire: Partial<CapabilitiesResponse>) => {
       try {
-        persistCapabilities(capabilities);
+        persistCapabilities(capabilityStateFromWire(wire));
       } catch (error) {
         console.error("Failed to store capability info:", error);
       }
-      dispatch({
-        type: AUTH_ACTIONS.REFRESH_CAPABILITIES,
-        payload: capabilities,
-      });
-      return capabilities;
     },
     [],
   );
@@ -183,39 +169,43 @@ function AuthProvider({ children }: AuthProviderProps) {
     useCallback(async (): Promise<CapabilitiesResponse> => {
       const generation = authGeneration.current;
       const data = await call("system.get_capabilities");
-      if (
-        mounted.current &&
-        state.isAuthenticated &&
-        authGeneration.current === generation
-      ) {
-        applyCapabilities(data);
+      // A scan that settles after sign-out, unmount, or a newer sign-in must
+      // not repopulate the cache or the stored snapshot.
+      if (authGeneration.current === generation) {
+        queryClient.setQueryData(capabilitiesQueryKey(userId), data);
+        persistCapabilitySnapshot(data);
       }
       return data;
-    }, [applyCapabilities, state.isAuthenticated]);
+    }, [queryClient, userId, persistCapabilitySnapshot]);
 
-  const initialize = useCallback(async () => {
+  const initialize = useCallback(() => {
     dispatch({ type: AUTH_ACTIONS.INITIALIZE_START });
 
     // Check if we have stored user info from a previous session
     // The WebSocket connection will validate the session cookie
     const storedUsername = localStorage.getItem("auth_username");
     const storedPrivileged = localStorage.getItem("auth_privileged");
-    const storedCapabilities = readStoredCapabilities();
 
     if (storedUsername) {
+      // Seed the capability cache from the last confirmed scan so route
+      // guards can gate deep links before the mux reopens and rescans.
+      const seed = wireFromCapabilityState(readStoredCapabilities());
+      if (Object.keys(seed).length > 0) {
+        queryClient.setQueryData(capabilitiesQueryKey(storedUsername), seed);
+      }
       // Optimistically set authenticated - WebSocket will validate
       // If session is invalid, WebSocket will fail and trigger logout
       const user: AuthUser = { id: storedUsername, name: storedUsername };
       const privileged = storedPrivileged === "true";
       dispatch({
         type: AUTH_ACTIONS.INITIALIZE_SUCCESS,
-        payload: { user, privileged, ...storedCapabilities },
+        payload: { user, privileged },
       });
     } else {
       // No stored username, not authenticated
       dispatch({ type: AUTH_ACTIONS.INITIALIZE_FAILURE });
     }
-  }, []);
+  }, [queryClient]);
 
   // One place to clear local state and redirect.
   // `broadcast` writes the sign-out reason to localStorage so other tabs can
@@ -225,7 +215,9 @@ function AuthProvider({ children }: AuthProviderProps) {
   const doLocalSignOut = useCallback(
     (broadcast: SignOutBroadcast, preservePath = false) => {
       authGeneration.current += 1;
-      capabilityRefresh.current = null;
+      queryClient.removeQueries({
+        queryKey: linuxio.system.get_capabilities.queryKey,
+      });
       // Clear update info and user data on logout
       try {
         sessionStorage.removeItem("update_info");
@@ -246,7 +238,7 @@ function AuthProvider({ children }: AuthProviderProps) {
       dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
       redirectToSignIn(preservePath);
     },
-    [],
+    [queryClient],
   );
 
   // The session was lost involuntarily (expired/invalidated, not a deliberate
@@ -260,7 +252,7 @@ function AuthProvider({ children }: AuthProviderProps) {
 
   // Init on mount
   useEffect(() => {
-    void initialize();
+    initialize();
   }, [initialize]);
 
   // Cross-tab logout via localStorage
@@ -286,46 +278,35 @@ function AuthProvider({ children }: AuthProviderProps) {
   // WebSocket connection validates session - if invalid, triggers logout
   useEffect(() => {
     if (state.isAuthenticated) {
-      const identity = `${state.user?.id ?? ""}:${authGeneration.current}`;
-      let active = true;
+      const scopedKey = capabilitiesQueryKey(state.user?.id ?? "anonymous");
+      const generation = authGeneration.current;
       const mux = initStreamMux();
 
-      const refreshCapabilitiesAfterOpen = () => {
-        let refresh = capabilityRefresh.current;
-        if (refresh?.identity !== identity) {
-          refresh = {
-            identity,
-            promise: call("system.get_capabilities"),
-            applied: false,
-          };
-          capabilityRefresh.current = refresh;
-        }
-
-        const currentRefresh = refresh;
-        void currentRefresh.promise
+      const warmCapabilities = () => {
+        // The query cache dedupes concurrent open notifications and keeps the
+        // settled scan for the whole sign-in (staleTime: Infinity); a failed
+        // scan leaves no entry, so a later open retries it.
+        void queryClient
+          .query({
+            ...linuxio.system.get_capabilities,
+            queryKey: scopedKey,
+            staleTime: Number.POSITIVE_INFINITY,
+            meta: { silent: true },
+          })
           .then((data) => {
-            if (
-              !active ||
-              currentRefresh.applied ||
-              capabilityRefresh.current !== currentRefresh
-            ) {
-              return;
+            if (authGeneration.current === generation) {
+              persistCapabilitySnapshot(data);
             }
-            currentRefresh.applied = true;
-            applyCapabilities(data);
           })
           .catch(() => {
             // A failed scan may be retried after a later reconnect/open event.
-            if (capabilityRefresh.current === currentRefresh) {
-              capabilityRefresh.current = null;
-            }
           });
       };
 
       // Listen for WebSocket status changes
       const unsubscribe = mux.addStatusListener((status: MuxStatus) => {
         if (status === "open") {
-          refreshCapabilitiesAfterOpen();
+          warmCapabilities();
         } else if (status === "error") {
           // "error" status means close code 1008 (session expired/invalid)
           // or WebSocket connection failed (session cookie invalid)
@@ -340,58 +321,64 @@ function AuthProvider({ children }: AuthProviderProps) {
           // Don't logout - StreamMultiplexer will auto-reconnect
         }
       });
-      if (mux.status === "open") refreshCapabilitiesAfterOpen();
+      if (mux.status === "open") warmCapabilities();
       return () => {
-        active = false;
         unsubscribe();
       };
     } else {
-      capabilityRefresh.current = null;
       closeStreamMux();
     }
   }, [
     state.isAuthenticated,
     state.user?.id,
-    applyCapabilities,
+    queryClient,
+    persistCapabilitySnapshot,
     sessionExpired,
   ]);
 
-  const signIn = useCallback(async (username: string, password: string) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as LoginErrorResponse;
-      throw new Error(loginErrorMessage(err.code, err.error));
-    }
-    const data: LoginResponse = await res.json();
+  const signIn = useCallback(
+    async (username: string, password: string) => {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as LoginErrorResponse;
+        throw new Error(loginErrorMessage(err.code, err.error));
+      }
+      const data: LoginResponse = await res.json();
 
-    // Store username and privileged status in localStorage (persists across tab close)
-    try {
-      localStorage.setItem("auth_username", username);
-      localStorage.setItem("auth_privileged", String(data.privileged));
-      localStorage.removeItem(AUTH_CAPABILITIES_KEY);
-    } catch (error) {
-      console.error("Failed to store user info:", error);
-    }
+      // Store username and privileged status in localStorage (persists across tab close)
+      try {
+        localStorage.setItem("auth_username", username);
+        localStorage.setItem("auth_privileged", String(data.privileged));
+        localStorage.removeItem(AUTH_CAPABILITIES_KEY);
+      } catch (error) {
+        console.error("Failed to store user info:", error);
+      }
 
-    const user: AuthUser = { id: username, name: username };
-    authGeneration.current += 1;
-    dispatch({
-      type: AUTH_ACTIONS.SIGN_IN,
-      payload: {
-        user,
-        privileged: data.privileged,
-      },
-    });
+      const user: AuthUser = { id: username, name: username };
+      authGeneration.current += 1;
+      // A fresh sign-in must not inherit an earlier session's scan.
+      queryClient.removeQueries({
+        queryKey: linuxio.system.get_capabilities.queryKey,
+      });
+      dispatch({
+        type: AUTH_ACTIONS.SIGN_IN,
+        payload: {
+          user,
+          privileged: data.privileged,
+        },
+      });
 
-    // Show welcome message
-    toast.success(`Welcome, ${username}!`);
-  }, []);
+      // Show welcome message
+      toast.success(`Welcome, ${username}!`);
+    },
+    [queryClient],
+  );
 
   const signOut = useCallback(async () => {
     try {
