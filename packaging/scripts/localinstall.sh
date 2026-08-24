@@ -40,9 +40,144 @@ Header() {
 
 # ---------- Configuration ----------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PORT=8090
+readonly SYSTEMD_DIR="/etc/systemd/system"
+readonly LINUXIO_SOCKET_NAME="linuxio-webserver.socket"
+readonly LINUXIO_PORT_MIN=8090
+readonly LINUXIO_PORT_MAX=8099
+PORT=""
+
+# The socket port is deliberately bounded to the range supported by the
+# release installer.  LINUXIO_EXISTING_SOCKET_FILE is a fixture hook and is
+# otherwise unset on real hosts.
+linuxio_socket_candidates() {
+    if [[ -n "${LINUXIO_EXISTING_SOCKET_FILE:-}" ]]; then
+        printf '%s\n' "$LINUXIO_EXISTING_SOCKET_FILE"
+        return 0
+    fi
+
+    printf '%s\n' \
+        "${SYSTEMD_DIR}/${LINUXIO_SOCKET_NAME}" \
+        "/run/systemd/system/${LINUXIO_SOCKET_NAME}" \
+        "/usr/lib/systemd/system/${LINUXIO_SOCKET_NAME}" \
+        "/lib/systemd/system/${LINUXIO_SOCKET_NAME}"
+}
+
+extract_linuxio_socket_port() {
+    local socket_file="$1"
+    local line value port
+
+    [[ -f "$socket_file" ]] || return 1
+
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*ListenStream[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
+        value="${BASH_REMATCH[1]}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%%[[:space:]]*}"
+
+        if [[ "$value" =~ ^[0-9]+$ ]]; then
+            port="$value"
+        elif [[ "$value" =~ :([0-9]+)$ ]]; then
+            port="${BASH_REMATCH[1]}"
+        else
+            continue
+        fi
+
+        if [[ "$port" =~ ^[0-9]+$ ]] &&
+            ((10#$port >= LINUXIO_PORT_MIN && 10#$port <= LINUXIO_PORT_MAX)); then
+            echo "$((10#$port))"
+            return 0
+        fi
+    done < "$socket_file"
+
+    return 1
+}
+
+find_existing_linuxio_port() {
+    local socket_file port
+
+    while IFS= read -r socket_file; do
+        port=$(extract_linuxio_socket_port "$socket_file") || continue
+        echo "$port"
+        return 0
+    done < <(linuxio_socket_candidates)
+
+    return 1
+}
+
+is_port_in_use() {
+    local port="$1"
+    local proc
+
+    proc=$(ss -tlnpH "sport = :${port}" 2>/dev/null || true)
+    [[ -n "$proc" ]]
+}
+
+linuxio_socket_active() {
+    systemctl is-active --quiet "$LINUXIO_SOCKET_NAME" 2>/dev/null
+}
+
+linuxio_socket_owns_port() {
+    local port="$1"
+    local listeners endpoint listener_port
+
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    linuxio_socket_active || return 1
+    listeners=$(systemctl show --property=Listen --value "$LINUXIO_SOCKET_NAME" 2>/dev/null) || return 1
+
+    while read -r endpoint _; do
+        if [[ "$endpoint" =~ ^[0-9]+$ ]]; then
+            listener_port="$endpoint"
+        elif [[ "$endpoint" =~ :([0-9]+)$ ]]; then
+            listener_port="${BASH_REMATCH[1]}"
+        else
+            continue
+        fi
+        if ((10#$listener_port == 10#$port)); then
+            return 0
+        fi
+    done <<< "$listeners"
+
+    return 1
+}
+
+find_available_port() {
+    local preferred_port="${1:-}"
+    local port
+
+    if [[ "$preferred_port" =~ ^[0-9]+$ ]] &&
+        ((10#$preferred_port >= LINUXIO_PORT_MIN && 10#$preferred_port <= LINUXIO_PORT_MAX)); then
+        if ! is_port_in_use "$preferred_port" || linuxio_socket_owns_port "$preferred_port"; then
+            echo "$((10#$preferred_port))"
+            return 0
+        fi
+    fi
+
+    for ((port = LINUXIO_PORT_MIN; port <= LINUXIO_PORT_MAX; port++)); do
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+rewrite_linuxio_socket_port() {
+    local socket_file="$1"
+    local port="$2"
+
+    [[ -f "$socket_file" ]] || return 1
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    grep -Eq '^[[:space:]]*ListenStream[[:space:]]*=[[:space:]]*([^[:space:]]*:)?[0-9]+' "$socket_file" || return 1
+
+    sed -Ei \
+        "s|^([[:space:]]*ListenStream[[:space:]]*=[[:space:]]*)([^[:space:]]*:)?[0-9]+([[:space:]]*(#.*)?)$|\1\2${port}\3|" \
+        "$socket_file"
+}
 
 # ---------- Main ----------
+
+main() {
 
 Header "LinuxIO ${GREY}· Local Install${COLOUR_RESET}"
 
@@ -81,16 +216,30 @@ Show 0 "Binaries installed to /usr/local/bin"
 
 # Systemd
 Show 2 "Installing systemd service files..."
+existing_port=$(find_existing_linuxio_port || true)
 for file in linuxio.target linuxio-webserver.service linuxio-webserver.socket \
             linuxio-auth.socket linuxio-auth@.service \
             linuxio-bridge-socket-user.service \
             linuxio-issue.service; do
     if [[ -f "$REPO_ROOT/packaging/systemd/$file" ]]; then
-        install -m 0644 "$REPO_ROOT/packaging/systemd/$file" /etc/systemd/system/
+        install -m 0644 "$REPO_ROOT/packaging/systemd/$file" "${SYSTEMD_DIR}/"
     else
         Show 3 "${file} not found in packaging/systemd/"
     fi
 done
+if ! PORT=$(find_available_port "$existing_port"); then
+    Show 1 "No available LinuxIO port in supported range ${LINUXIO_PORT_MIN}-${LINUXIO_PORT_MAX}"
+fi
+if ! rewrite_linuxio_socket_port "${SYSTEMD_DIR}/${LINUXIO_SOCKET_NAME}" "$PORT"; then
+    Show 1 "Could not apply selected port ${PORT} to ${SYSTEMD_DIR}/${LINUXIO_SOCKET_NAME}"
+fi
+if [[ -n "$existing_port" && "$PORT" == "$existing_port" ]]; then
+    Show 0 "Preserving existing LinuxIO port ${PORT}"
+elif [[ -n "$existing_port" ]]; then
+    Show 3 "Existing LinuxIO port ${existing_port} is unavailable; using ${BOLD}${PORT}${COLOUR_RESET}"
+else
+    Show 0 "Selected LinuxIO port ${PORT}"
+fi
 Show 0 "Systemd files installed"
 
 # Tmpfiles
@@ -227,3 +376,9 @@ if pgrep -x avahi-daemon >/dev/null 2>&1; then
     fi
 fi
 echo ""
+
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

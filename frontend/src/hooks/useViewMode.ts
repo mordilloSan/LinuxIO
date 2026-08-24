@@ -1,12 +1,11 @@
 import { useCallback } from "react";
 
 import type { TableCardViewMode } from "@/api";
-import { useConfig, useConfigValue } from "@/hooks/useConfig";
+import { useConfigValue, useViewModeDefault } from "@/hooks/useConfig";
 
 export function useViewMode(key: string) {
-  const { config } = useConfig();
   const [viewModes, setViewModes] = useConfigValue("viewModes");
-  const viewModeDefault = config.appSettings.viewModeDefault;
+  const viewModeDefault = useViewModeDefault();
   const viewMode = viewModes[key] ?? viewModeDefault;
 
   const setViewMode = useCallback(

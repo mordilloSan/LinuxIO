@@ -4,8 +4,6 @@ import { defineConfig, type PluginOption, type UserConfig } from "vite";
 import { analyzer } from "vite-bundle-analyzer";
 import { compression } from "vite-plugin-compression2";
 
-import { oxcReactCompiler } from "./oxc-react-compiler.ts";
-
 export default defineConfig(async ({ command }): Promise<UserConfig> => {
   const { generateIcons } = await import("../scripts/generate-icons.mjs");
   generateIcons();
@@ -18,10 +16,9 @@ export default defineConfig(async ({ command }): Promise<UserConfig> => {
 
   const plugins: PluginOption[] = [
     tanstackRouter({ autoCodeSplitting: true, target: "react" }),
-    react(),
+    react(isBuild ? { compiler: { target: "19" } } : undefined),
   ];
   if (isBuild) {
-    plugins.push(oxcReactCompiler());
     plugins.push(
       compression({
         algorithms: ["gzip", "brotliCompress"],
@@ -68,8 +65,8 @@ export default defineConfig(async ({ command }): Promise<UserConfig> => {
       // No sourcemaps in the production bundle: it ships embedded in the Go
       // webserver, there is no error-tracking service to consume maps, and we
       // avoid publishing original source. Debug with sourcemaps via `dev`
-      // instead. If you flip this on, also flip `sourcemap` in
-      // oxcReactCompiler() above so compiled files keep complete maps.
+      // instead. The React plugin follows this setting when the production
+      // compiler is enabled above.
       sourcemap: false,
       // The compression plugin emits real .gz/.br artifacts below; the extra
       // gzip pass behind this option only feeds the build-log size column.

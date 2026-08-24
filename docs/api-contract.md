@@ -12,9 +12,9 @@ LinuxIO exposes three deliberately different operation shapes:
   recovery. Tasks may be session-bound or durable, with the lifetime selected
   explicitly by each route.
 
-The shipped Task catalog contains 17 session-bound routes and two durable routes:
-`control.app_update` and `docker.update_container`. Durable routes persist a
-UID-owned operation record and use an external executor; all other Tasks remain
+The shipped Task catalog contains 17 session-bound routes and one durable route,
+`docker.update_container`. That route persists a UID-owned operation record and
+uses an external executor; all other Tasks, including `control.app_update`, are
 owned by the authenticated session. This browser-to-bridge API is an internal
 product surface. A future supported external API would be a separate contract.
 
@@ -104,7 +104,7 @@ Every route has one mode:
 | Mode | Use |
 |------|-----|
 | `bridgeipc.ModeCall` | Bounded request/response work. React Query caching versus mutation behavior is chosen only at the frontend callsite. |
-| `bridgeipc.ModeTask` | Tracked work with Task identity, progress, watcher recovery, and an explicit session or durable lifetime. `control.app_update` and `docker.update_container` opt into durable execution; other Task routes are session-bound. |
+| `bridgeipc.ModeTask` | Tracked work with Task identity, progress, watcher recovery, and an explicit session or durable lifetime. `docker.update_container` opts into durable execution; other Task routes are session-bound. |
 | `bridgeipc.ModeDuplex` | Long-lived Channels, including server-producing logs and bidirectional terminals; resumption is explicit in each Channel protocol. |
 
 Every route has one schema kind:
@@ -384,21 +384,18 @@ There is no session-storage configuration copy or local-storage theme cache.
 Concurrent UI replacements are serialized but not field-merged; the last
 complete snapshot committed wins.
 
-At upgrade, a valid pre-split combined `.linuxio-config.yaml` is recognized
-under the existing config locks and converted once: functional settings,
-including `docker.folders`, remain in the core file and presentation settings
-move to the UI file. Invalid or ambiguous legacy content is left untouched and
-fails startup; current malformed core content likewise fails without a reset.
-The conversion never uses filesystem observations to repair Docker folders.
+Pre-split combined `.linuxio-config.yaml` files are no longer accepted. Strict
+core decoding rejects their UI fields and leaves the file untouched, so startup
+fails; current malformed core content likewise fails without a reset. The
+bridge never uses filesystem observations to repair Docker folders.
 
 All four disk artifacts (the two YAML files and their lock files), plus atomic
 replacement files, use the authenticated session UID/GID even when the bridge
 runs as root. LinuxIO resolves only that user's passwd home and verifies its
 owner; it follows a symlinked passwd home only after verifying the resolved
 directory's owner, and it neither falls back to the bridge process home nor
-changes ownership of the home directory. Before dropping privileges, the root
-launcher normalizes legacy root-owned YAML and lock inodes in place so old and new
-bridges continue to coordinate through `flock`.
+changes ownership of the home directory. Lock inodes are never unlinked and
+recreated, so concurrent bridges continue to coordinate through `flock`.
 
 ## Tasks
 
@@ -408,12 +405,11 @@ through a single direct `useCallMutation` request/response.
 
 ### Task lifetime, ownership, and activity
 
-Seventeen Task routes declare `SessionTask()`. Their owner is the exact
-authenticated `SessionID`; logout, expiry, session deletion, bridge failure,
-or bridge shutdown cancels the in-memory Task. `control.app_update` and
-`docker.update_container` declare `DurableTask()` and are owned by the
-authenticated numeric UID, so a later session for that UID can observe the
-same operation.
+Seventeen Task routes, including `control.app_update`, declare `SessionTask()`.
+Their owner is the exact authenticated `SessionID`; logout, expiry, session
+deletion, bridge failure, or bridge shutdown cancels the in-memory Task. Only
+`docker.update_container` declares `DurableTask()` and is owned by the
+authenticated numeric UID, so a later session for that UID can observe it.
 
 `TaskOwner.SessionID` is an internal authorization value and is never emitted
 in public Task snapshots, serialized API models, client-visible errors, or
@@ -475,22 +471,27 @@ executor confirms it stopped. A replacement bridge reattaches active records as
 Tasks before accepting requests, so a later session for the same UID retains
 watch/cancel access and recovered work still occupies route admission.
 
-`control.app_update` uses the requested-version fingerprint. Its systemd unit
-deliberately severs the bridge during service replacement; the persistent
-record and typed executor result, not the stream, are authoritative.
-`docker.update_container` fingerprints the target
-container, admits only one active update, and runs a validated root-owned
-systemd worker. The worker revalidates the persisted route, target fingerprint,
-executor identity, operation state, and cancellation intent before mutating
-Docker, then writes a typed executor-result artifact for reconciliation. Both
-routes reattach after bridge loss without blindly launching a second executor.
+`docker.update_container` fingerprints the target container, admits only one
+active update, and runs a validated root-owned systemd worker. The worker
+revalidates the persisted route, target fingerprint, executor identity,
+operation state, and cancellation intent before mutating Docker, then writes a
+typed executor-result artifact for reconciliation. It reattaches after bridge
+loss without blindly launching a second executor.
+
+`control.app_update` is intentionally session-bound. It downloads and verifies
+the installer, then executes it with `systemd-run --wait --pipe` and
+`--defer-restart`, relaying sanitized stdout/stderr directly as Task data. On
+success it reloads systemd, writes the terminal status projection, reports the
+terminal Task output/result, and only then restarts `linuxio.target`. It does
+not claim page-, session-, or bridge-restart recovery.
 
 For `control.app_update`, `GET /api/update-status?id=<uuid>` is
-session-authenticated and UID-scoped. It reads the persistent operation record,
-reconciles a typed executor result when available, and reports `running`, `ok`,
-`error`, or `unknown`. Missing and different-UID records are indistinguishable.
-The endpoint is the app-update browser flow's convergence path across reloads
-and the LinuxIO service restart performed by the updater.
+session-authenticated and UID-scoped. It reads a versioned, sanitized projection
+under `/run/linuxio` and reports `running`, `ok`, `error`, or `unknown`. Missing,
+legacy, mismatched-ID, and different-UID projections are indistinguishable. The
+browser treats an exact target value from the public `LinuxIO Web Server`
+version entry as restart proof even when the restart invalidates the previous
+in-memory login session and the authenticated status request returns `401`.
 
 Built-in Task routes:
 

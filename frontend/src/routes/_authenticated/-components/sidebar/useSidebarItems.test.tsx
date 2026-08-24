@@ -3,13 +3,14 @@ import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { emptyCapabilityState } from "@/api/capabilities";
+import type { CapabilityState } from "@/api/capabilities";
 import { AuthContext } from "@/contexts/AuthContext";
 import {
   createAuthContextValue,
   createTestQueryClient,
   render,
   renderHook,
+  seedCapabilityCache,
 } from "@/test/render";
 
 import SidebarNavList from "./SidebarNavList";
@@ -41,17 +42,27 @@ vi.mock("@tanstack/react-router", async () => {
     },
   };
 });
-function wrapper(auth = createAuthContextValue()) {
+function wrapper({
+  capabilities = {},
+  privileged = false,
+}: {
+  capabilities?: Partial<CapabilityState>;
+  privileged?: boolean;
+} = {}) {
+  const auth = createAuthContextValue({ privileged });
   const queryClient = createTestQueryClient();
+  seedCapabilityCache(queryClient, capabilities);
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <AuthContext.Provider value={auth}>
-          <RouterContextProvider router={router}>
+      <AuthContext.Provider value={auth}>
+        <RouterContextProvider router={router}>
+          {/* Innermost so the app router's own Wrap (the module query
+              client) cannot shadow the seeded test client. */}
+          <QueryClientProvider client={queryClient}>
             {children}
-          </RouterContextProvider>
-        </AuthContext.Provider>
-      </QueryClientProvider>
+          </QueryClientProvider>
+        </RouterContextProvider>
+      </AuthContext.Provider>
     );
   };
 }
@@ -59,15 +70,14 @@ function wrapper(auth = createAuthContextValue()) {
 describe("useSidebarItems", () => {
   it("filters capability-gated and privileged routes", () => {
     const { result } = renderHook(() => useSidebarItems(), {
-      wrapper: wrapper(
-        createAuthContextValue({
-          ...emptyCapabilityState,
+      wrapper: wrapper({
+        capabilities: {
           dockerAvailable: false,
           lmSensorsAvailable: false,
-          privileged: false,
           wireguardAvailable: true,
-        }),
-      ),
+        },
+        privileged: false,
+      }),
     });
 
     const titles = result.current.map((item) => item.title);
@@ -79,15 +89,14 @@ describe("useSidebarItems", () => {
 
   it("keeps sidebar items in configured order when access allows them", () => {
     const { result } = renderHook(() => useSidebarItems(), {
-      wrapper: wrapper(
-        createAuthContextValue({
-          ...emptyCapabilityState,
+      wrapper: wrapper({
+        capabilities: {
           dockerAvailable: true,
           lmSensorsAvailable: true,
-          privileged: true,
           wireguardAvailable: true,
-        }),
-      ),
+        },
+        privileged: true,
+      }),
     });
 
     expect(result.current.map((item) => item.title)).toEqual([
@@ -110,16 +119,15 @@ describe("useSidebarItems", () => {
 
   it("inherits global intent preloading without per-link overrides", () => {
     const { result } = renderHook(() => useSidebarItems(), {
-      wrapper: wrapper(
-        createAuthContextValue({
-          ...emptyCapabilityState,
+      wrapper: wrapper({
+        capabilities: {
           dockerAvailable: true,
           libvirtAvailable: true,
           lmSensorsAvailable: true,
-          privileged: true,
           wireguardAvailable: true,
-        }),
-      ),
+        },
+        privileged: true,
+      }),
     });
 
     linkProps.calls.length = 0;

@@ -26,7 +26,7 @@ const CpuGraph = ({ usage }: CpuGraphProps) => {
   const [series] = useLiveSeries([SERIES_ID], async (request) => {
     // One-shot backfill: the request carries a rolling from_ms, so caching
     // the entry would only pollute the cache.
-    const points = await queryClient.fetchQuery({
+    const points = await queryClient.query({
       ...linuxio.monitoring.get_cpu_history(request),
       staleTime: CACHE_TTL_MS.NONE,
       gcTime: CACHE_TTL_MS.NONE,

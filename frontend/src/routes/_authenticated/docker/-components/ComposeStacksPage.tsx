@@ -27,10 +27,11 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { markTerminalFeedbackEmitted } from "@/hooks/backgroundTasks/terminalTaskFeedback";
-import { useConfig } from "@/hooks/useConfig";
+import { useDockerSettings } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import ComposeList from "./ComposeList";
 
@@ -70,7 +71,7 @@ const ComposeStacksPage = ({
   viewMode = "table",
 }: ComposeStacksPageProps) => {
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  const { config } = useConfig();
+  const dockerSettings = useDockerSettings();
   const chunkSize = useUploadChunkSize();
 
   // Setup dialog state
@@ -187,43 +188,48 @@ const ComposeStacksPage = ({
       const projectName = deleteDialogProject.name;
       setDeleteLoading(true);
 
-      try {
-        if (option === "containers") {
-          // Just run docker compose down via operation dialog
-          setDeleteDialogOpen(false);
-          setDeleteDialogProject(null);
+      return withPromiseCleanup(
+        (async () => {
+          try {
+            if (option === "containers") {
+              // Just run docker compose down via operation dialog
+              setDeleteDialogOpen(false);
+              setDeleteDialogProject(null);
+              setDeleteLoading(false);
+              setOperationAction("down");
+              setOperationProjectName(projectName);
+              setOperationComposePath(undefined);
+              setOperationDialogOpen(true);
+            } else {
+              // Use the delete_stack endpoint with options
+              const deleteFile = option === "file" || option === "directory";
+              const deleteDirectory = option === "directory";
+
+              await deleteStack({
+                projectName,
+                deleteFile,
+                deleteDirectory,
+              });
+
+              const successMsg =
+                option === "directory"
+                  ? `Stack ${projectName} and its directory deleted successfully`
+                  : `Stack ${projectName} and compose file deleted successfully`;
+              toast.success(successMsg);
+
+              setDeleteDialogOpen(false);
+              setDeleteDialogProject(null);
+            }
+          } catch (error) {
+            toast.error(
+              `Failed to delete stack: ${error instanceof Error ? error.message : "Unknown error"}`,
+            );
+          }
+        })(),
+        () => {
           setDeleteLoading(false);
-          setOperationAction("down");
-          setOperationProjectName(projectName);
-          setOperationComposePath(undefined);
-          setOperationDialogOpen(true);
-        } else {
-          // Use the delete_stack endpoint with options
-          const deleteFile = option === "file" || option === "directory";
-          const deleteDirectory = option === "directory";
-
-          await deleteStack({
-            projectName,
-            deleteFile,
-            deleteDirectory,
-          });
-
-          const successMsg =
-            option === "directory"
-              ? `Stack ${projectName} and its directory deleted successfully`
-              : `Stack ${projectName} and compose file deleted successfully`;
-          toast.success(successMsg);
-
-          setDeleteDialogOpen(false);
-          setDeleteDialogProject(null);
-        }
-      } catch (error) {
-        toast.error(
-          `Failed to delete stack: ${error instanceof Error ? error.message : "Unknown error"}`,
-        );
-      } finally {
-        setDeleteLoading(false);
-      }
+        },
+      );
     },
     [deleteDialogProject, deleteStack, toast],
   );
@@ -439,22 +445,27 @@ const ComposeStacksPage = ({
     if (!pendingSaveData) return;
 
     setOverwriteDialogOpen(false);
-    try {
-      await performSave(
-        pendingSaveData.content,
-        pendingSaveData.stackName,
-        pendingSaveData.filePath,
-        true, // override = true
-        pendingSaveData.envContent,
-      );
-    } catch (error) {
-      toast.error(
-        `Failed to save file: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-      throw error;
-    } finally {
-      setPendingSaveData(null);
-    }
+    return withPromiseCleanup(
+      (async () => {
+        try {
+          await performSave(
+            pendingSaveData.content,
+            pendingSaveData.stackName,
+            pendingSaveData.filePath,
+            true, // override = true
+            pendingSaveData.envContent,
+          );
+        } catch (error) {
+          toast.error(
+            `Failed to save file: ${error instanceof Error ? error.message : "Unknown error"}`,
+          );
+          throw error;
+        }
+      })(),
+      () => {
+        setPendingSaveData(null);
+      },
+    );
   }, [pendingSaveData, performSave, toast]);
 
   // Handle overwrite cancellation
@@ -524,7 +535,7 @@ const ComposeStacksPage = ({
         />
 
         <StackSetupDialog
-          defaultWorkingDir={config.docker.folders?.[0]}
+          defaultWorkingDir={dockerSettings.folders?.[0]}
           onClose={() => setSetupDialogOpen(false)}
           onConfirm={handleSetupConfirm}
           open={setupDialogOpen}

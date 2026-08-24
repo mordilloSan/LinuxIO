@@ -18,6 +18,10 @@ make check-backend-quiet
 make test-quiet quiet_failure_lines=80
 ```
 
+`test-updater-quiet` remains attached to the foreground terminal so its required
+`sudo` invocation can prompt for a password; the test output is still captured
+in the quiet log.
+
 Do not invoke `go test`, Vitest, TypeScript, linters, or formatters directly;
 use the corresponding Make target.
 
@@ -45,6 +49,18 @@ sudo dnf install -y gcc pam-devel systemd-devel cppcheck clang-tools-extra \
 The static-analysis tools are only needed by `analyze-auth`. The wrapper
 libraries are needed by `test-auth-pam`; that target skips when they are not
 installed.
+
+The runtime bootstrap script installs only PAM, PolicyKit, and PackageKit.
+Install Docker separately through its supported convenience installer when it
+is needed. Other optional host capabilities are installed after sign-in from
+LinuxIO Capability Manager, not from the bootstrap script.
+
+Release installation deliberately combines immutable release binaries with
+current-`main` packaging assets (systemd units, PAM and application
+configuration, MOTD, and helper files). This is the recovery path for fixing
+installer or service-definition bugs in already-published releases. Keep those
+assets compatible with supported historical binaries, or add a clear minimum
+binary-version failure before making an incompatible packaging change.
 
 ## Initial setup
 
@@ -80,7 +96,6 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `NVM_DIR` | `$(HOME)/.nvm` | Node Version Manager installation. |
 | `VITE_DEV_LOG` | `$(FRONTEND_DIR)/.vite-dev.log` | Vite log file. |
 | `VITE_DEV_PID` | `$(FRONTEND_DIR)/.vite-dev.pid` | Vite PID file. |
-| `SCRIPT_SERVER_PID` | `.script-server.pid` | Development script-server PID file. |
 | `quiet_log_dir` | `$(CACHE_DIR)/test-logs` | Full logs created by `*-quiet` targets. |
 
 Paths are quoted by the recipes. Keep overrides confined to the repository or
@@ -138,8 +153,11 @@ system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VITE_DEV_PORT` | `3000` | Vite development server port (`1`–`65535`). |
-| `SCRIPT_SERVER_PORT` | `9999` | Packaging-script HTTP server port (`1`–`65535`). |
 | `DEV_LOG_LINES` | `25` | Number of LinuxIO log lines shown by `make dev`. |
+
+`make dev` starts only the Vite development server and tails LinuxIO logs. The
+backend still runs through systemd; stop the Vite process using the PID and
+command printed by the target.
 
 ### Target-specific inputs
 
@@ -161,6 +179,12 @@ available. Their supported inputs are:
 | `REPO` | Repository passed to GitHub CLI commands, for example `owner/name`. |
 | `VERSION` | Release version consumed by `start-dev`/`open-pr`, such as `v1.2.3`. |
 | `PR` | Optional pull-request number for `merge-release`. |
+| `CONFIRM` | Set to `0` to skip the `merge-release` confirmation prompt. |
+
+`merge-release` shows a merge summary and asks for confirmation before merging.
+If the release PR is already merged — for example after an interrupted run —
+re-running `make merge-release` resumes the release-workflow watch and branch
+cleanup instead of failing.
 
 GitHub CLI authentication is provided by its normal credential mechanism; no
 credentials are stored in Make variables.

@@ -9,13 +9,11 @@ const configMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/useConfig", () => ({
-  useConfig: () => ({
-    config: { appSettings: { viewModeDefault: configMocks.viewModeDefault } },
-  }),
   useConfigValue: vi.fn(() => [
     configMocks.viewModes,
     configMocks.setViewModes,
   ]),
+  useViewModeDefault: () => configMocks.viewModeDefault,
 }));
 
 const { useViewMode } = await import("@/hooks/useViewMode");

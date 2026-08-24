@@ -33,14 +33,32 @@ type CapabilitySpec struct {
 type InstallSpec struct {
 	PackageDebian string
 	PackageRHEL   string
-	ServiceDebian string
-	ServiceRHEL   string
-	EnableService bool
+	// OptionalPackageRHEL is installed on RHEL-family systems when available,
+	// but a package-manager failure must not prevent the required capability
+	// service from being enabled and verified.
+	OptionalPackageRHEL string
+	// OptionalPackageRHELFailureWarning explains the capability-specific
+	// consequence when OptionalPackageRHEL cannot be installed. Package-manager
+	// details remain in task output rather than this user-facing summary.
+	OptionalPackageRHELFailureWarning string
+	ServiceDebian                     string
+	ServiceRHEL                       string
+	EnableService                     bool
+	PostInstall                       *InstallCommand
 
 	// OptionalComponent names a LinuxIO-managed install that is not provided by
 	// the distro package manager.
 	OptionalComponent string
 	RequiresDocker    bool
+}
+
+// InstallCommand describes a capability-specific command that must run after
+// its packages are installed and before any service actions. Keeping this
+// metadata on the registry entry avoids making the capability installer
+// depend on capability names for post-install behavior.
+type InstallCommand struct {
+	Name string
+	Args []string
 }
 
 const (
@@ -101,7 +119,11 @@ var capabilityRegistry = []CapabilitySpec{
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(checkDependencyCommand("sensors", "lm-sensors"))
 		},
-		Install: &InstallSpec{PackageDebian: "lm-sensors", PackageRHEL: "lm_sensors"},
+		Install: &InstallSpec{
+			PackageDebian: "lm-sensors",
+			PackageRHEL:   "lm_sensors",
+			PostInstall:   &InstallCommand{Name: "sensors-detect", Args: []string{"--auto"}},
+		},
 	},
 	{
 		Name:    "memory_inventory",
@@ -197,11 +219,13 @@ var capabilityRegistry = []CapabilitySpec{
 			return checkedCapabilityErr(ok, err, errAvahiUnavailable)
 		},
 		Install: &InstallSpec{
-			PackageDebian: "avahi-daemon",
-			PackageRHEL:   "avahi",
-			ServiceDebian: "avahi-daemon.service",
-			ServiceRHEL:   "avahi-daemon.service",
-			EnableService: true,
+			PackageDebian:                     "avahi-daemon libnss-mdns",
+			PackageRHEL:                       "avahi",
+			OptionalPackageRHEL:               "nss-mdns",
+			OptionalPackageRHELFailureWarning: "nss-mdns was not installed. Avahi is running, but this host may need EPEL for .local name resolution.",
+			ServiceDebian:                     "avahi-daemon.service",
+			ServiceRHEL:                       "avahi-daemon.service",
+			EnableService:                     true,
 		},
 	},
 	{

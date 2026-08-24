@@ -5,6 +5,7 @@ import { linuxio, uploadContent } from "@/api";
 import { markTerminalFeedbackEmitted } from "@/hooks/backgroundTasks/terminalTaskFeedback";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import type { EditorSlice } from "./useFileEditor";
 
@@ -60,19 +61,24 @@ export const useFileBrowserEditorActions = ({
       if (!editingPath) return false;
 
       actions.setSaving(true);
-      try {
-        const contentBytes = new TextEncoder().encode(content);
-        await saveContentViaStream(editingPath, contentBytes);
-        toast.success("File saved successfully!");
-        invalidateEditedFile(editingPath);
-        return true;
-      } catch (error) {
-        console.error("Save error:", error);
-        toast.error(getErrorMessage(error, "Failed to save file"));
-        return false;
-      } finally {
-        actions.setSaving(false);
-      }
+      return withPromiseCleanup(
+        (async () => {
+          try {
+            const contentBytes = new TextEncoder().encode(content);
+            await saveContentViaStream(editingPath, contentBytes);
+            toast.success("File saved successfully!");
+            invalidateEditedFile(editingPath);
+            return true;
+          } catch (error) {
+            console.error("Save error:", error);
+            toast.error(getErrorMessage(error, "Failed to save file"));
+            return false;
+          }
+        })(),
+        () => {
+          actions.setSaving(false);
+        },
+      );
     },
     [actions, editingPath, invalidateEditedFile, saveContentViaStream, toast],
   );

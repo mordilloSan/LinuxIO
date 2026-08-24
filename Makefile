@@ -44,6 +44,7 @@ quiet_targets := \
 	test-auth \
 	test-auth-protocol \
 	test-auth-pam \
+	test-installation-scripts \
 	test-updater \
 	test-docker-update-integration \
 	analyze \
@@ -59,8 +60,6 @@ VITE_DEV_PORT ?= 3000
 DEV_LOG_LINES ?= 25
 VITE_DEV_LOG  ?= $(frontend_dir)/.vite-dev.log
 VITE_DEV_PID  ?= $(frontend_dir)/.vite-dev.pid
-SCRIPT_SERVER_PORT ?= 9999
-SCRIPT_SERVER_PID  ?= .script-server.pid
 VERBOSE      ?= true
 nvm_version := $(if $(NVM_VERSION),$(NVM_VERSION),0.40.2)
 NVM_VERSION  ?= $(nvm_version)
@@ -272,9 +271,6 @@ endif
 
 ifneq ($(shell if test "$(DEV_LOG_LINES)" -ge 0 2>/dev/null; then printf valid; else printf invalid; fi),valid)
 $(error DEV_LOG_LINES must be a non-negative integer)
-endif
-ifneq ($(shell if test "$(SCRIPT_SERVER_PORT)" -ge 1 2>/dev/null && test "$(SCRIPT_SERVER_PORT)" -le 65535 2>/dev/null; then printf valid; else printf invalid; fi),valid)
-$(error SCRIPT_SERVER_PORT must be an integer from 1 to 65535)
 endif
 ifneq ($(shell if test "$(quiet_failure_lines)" -ge 0 2>/dev/null; then printf valid; else printf invalid; fi),valid)
 $(error quiet_failure_lines must be a non-negative integer)
@@ -536,7 +532,7 @@ update-deps: ensure-node ensure-go
 	@echo "✅ Go dependencies updated to latest!"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
-.PHONY: lint tsc lint-ci golint test check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend deadcode deadcode-only ci-frontend-deps
+.PHONY: lint tsc lint-ci golint test check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend deadcode deadcode-only ci-frontend-deps
 lint: ensure-node setup
 	@$(MAKE) --no-print-directory lint-only
 
@@ -596,7 +592,7 @@ golint: ensure-golint ensure-modernize ensure-govulncheck
 #
 # Execution order is fixed by the lane chains; the follow() order below is only
 # how output is replayed, and does not constrain what runs when.
-test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep
+test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep test-installation-scripts
 	@set -uo pipefail; \
 	ST=0; \
 	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
@@ -862,7 +858,12 @@ test-updater: ensure-go
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./bridge/handlers/control -run TestInstallScriptDryRunWithSystemdSandbox -v
+	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run TestInstallScriptDryRunWithSystemdSandbox -count=1 -v
+
+test-installation-scripts:
+	@echo "🧪 Running installation-script fixture tests..."
+	@bash "$(packaging_scripts_dir)/test-install-dependencies.sh"
+	@bash "$(packaging_scripts_dir)/tests/installer-port-fixtures.sh"
 
 test-docker-update-integration: ensure-go
 	@echo "🐳 Running native Docker update integration test..."
@@ -1084,6 +1085,7 @@ analyze-auth:
 
 # Run any public validation target with bounded output. The underlying target
 # is unchanged, and its complete output remains available for diagnosis.
+# test-updater stays in the foreground so sudo retains a controlling terminal.
 $(quiet_aliases):
 	@set -euo pipefail; \
 	target="$(patsubst %-quiet,%,$@)"; \
@@ -1103,12 +1105,16 @@ $(quiet_aliases):
 		fi; \
 		exit "$$rc"; \
 	}; \
-	"$(setsid_cmd)" $(MAKE) --no-print-directory "$$target" >"$$log" 2>&1 & target_pid=$$!; \
 	trap 'stop_target TERM 129' HUP; \
 	trap 'stop_target TERM 130' INT; \
 	trap 'stop_target TERM 143' TERM; \
 	trap 'stop_target TERM $$?' EXIT; \
-	if wait "$$target_pid"; then rc=0; else rc=$$?; fi; \
+	if [ "$$target" = "test-updater" ]; then \
+		if $(MAKE) --no-print-directory "$$target" >"$$log" 2>&1; then rc=0; else rc=$$?; fi; \
+	else \
+		"$(setsid_cmd)" $(MAKE) --no-print-directory "$$target" >"$$log" 2>&1 & target_pid=$$!; \
+		if wait "$$target_pid"; then rc=0; else rc=$$?; fi; \
+	fi; \
 	trap - EXIT HUP INT TERM; \
 	if [ "$$rc" -eq 0 ]; then \
 		elapsed="$$(awk -v start="$$start_seconds" -v end="$$(awk '{ print $$1 }' /proc/uptime)" 'BEGIN { printf "%.1f", end - start }')"; \
@@ -1306,7 +1312,6 @@ dev: setup dev-prep
 	@echo "   Vite log: $(VITE_DEV_LOG)"
 	@echo ""
 	@STARTED_VITE=0
-	@STARTED_SCRIPT_SERVER=0
 	@cleanup() { \
 	  if [ "$$STARTED_VITE" = "1" ]; then \
 	    if [ -f "$(VITE_DEV_PID)" ]; then \
@@ -1318,26 +1323,7 @@ dev: setup dev-prep
 	    fi; \
 	    rm -f "$(VITE_DEV_LOG)"; \
 	  fi; \
-	  if [ "$$STARTED_SCRIPT_SERVER" = "1" ]; then \
-	    if [ -f "$(SCRIPT_SERVER_PID)" ]; then \
-	      pid="$$(cat "$(SCRIPT_SERVER_PID)")"; \
-	      if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
-	        kill "$$pid" 2>/dev/null || true; \
-	      fi; \
-	      rm -f "$(SCRIPT_SERVER_PID)"; \
-	    fi; \
-	  fi; \
 	}
-	@if [ -f "$(SCRIPT_SERVER_PID)" ] && kill -0 "$$(cat "$(SCRIPT_SERVER_PID)")" 2>/dev/null; then \
-	  echo "  Dev script server already running (pid $$(cat "$(SCRIPT_SERVER_PID)"))"; \
-	else \
-	  rm -f "$(SCRIPT_SERVER_PID)"; \
-	  nohup bash -c 'cd "$(packaging_scripts_dir)" && exec python3 -m http.server $(SCRIPT_SERVER_PORT)' >/dev/null 2>&1 & \
-	  echo $$! > "$(SCRIPT_SERVER_PID)"; \
-	  STARTED_SCRIPT_SERVER=1; \
-	  echo "✅ Dev script server started (pid $$(cat "$(SCRIPT_SERVER_PID)"))"; \
-	  echo "   ➜  Serving:  http://localhost:$(SCRIPT_SERVER_PORT)/"; \
-	fi
 	@if [ -f "$(VITE_DEV_PID)" ] && kill -0 "$$(cat "$(VITE_DEV_PID)")" 2>/dev/null; then \
 	  echo "  Vite already running (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	else \
@@ -1349,7 +1335,7 @@ dev: setup dev-prep
 	@if [ -f "$(VITE_DEV_PID)" ]; then \
 	  echo "✅ Vite started (pid $$(cat "$(VITE_DEV_PID)"))"; \
 	  echo "   ➜  Local:   http://localhost:$(VITE_DEV_PORT)/"; \
-	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)") $$(cat "$(SCRIPT_SERVER_PID)")"; \
+	  echo "   Stop with: kill $$(cat "$(VITE_DEV_PID)")"; \
 	else \
 	  echo "❌ Failed to capture Vite PID. Check $(VITE_DEV_LOG) for details."; \
 	fi
@@ -1381,7 +1367,7 @@ generate: ensure-go ensure-node setup
 
 clean:
 	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" || true
-	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(SCRIPT_SERVER_PID)" || true
+	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" || true
 	@rm -rf "$(frontend_node_modules_dir)" || true
 	@find "$(backend_frontend_dir)" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
@@ -1442,6 +1428,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth        $(COLOR_RESET) Run C authentication helper tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-installation-scripts$(COLOR_RESET) Run host-independent installer fixture tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-docker-update-integration$(COLOR_RESET) Run the opt-in real Docker/Compose update test"
 	@$(PRINTC) "$(COLOR_GREEN)    make <target>-quiet   $(COLOR_RESET) Run a validation target with compact output and a saved full log"

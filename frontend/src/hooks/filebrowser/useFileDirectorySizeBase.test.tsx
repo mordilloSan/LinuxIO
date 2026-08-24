@@ -1,3 +1,5 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { AuthContext } from "@/contexts/AuthContext";
@@ -10,7 +12,12 @@ import {
   shouldSkipSizeCalculation,
   useIndexerAvailability,
 } from "@/hooks/filebrowser/useFileDirectorySizeBase";
-import { createAuthContextValue, renderHook } from "@/test/render";
+import {
+  createAuthContextValue,
+  createTestQueryClient,
+  renderHook,
+  seedCapabilityCache,
+} from "@/test/render";
 
 describe("directory size query helpers", () => {
   it("skips empty and system directory paths", () => {
@@ -80,23 +87,22 @@ describe("directory size query helpers", () => {
 
 describe("useIndexerAvailability", () => {
   it("maps indexer capability state to disabled boolean", () => {
+    const capabilityWrapper = (indexerAvailable: boolean) => {
+      const queryClient = createTestQueryClient();
+      seedCapabilityCache(queryClient, { indexerAvailable });
+      return ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          <AuthContext.Provider value={createAuthContextValue()}>
+            {children}
+          </AuthContext.Provider>
+        </QueryClientProvider>
+      );
+    };
     const enabled = renderHook(() => useIndexerAvailability(), {
-      wrapper: ({ children }) => (
-        <AuthContext.Provider
-          value={createAuthContextValue({ indexerAvailable: true })}
-        >
-          {children}
-        </AuthContext.Provider>
-      ),
+      wrapper: capabilityWrapper(true),
     });
     const disabled = renderHook(() => useIndexerAvailability(), {
-      wrapper: ({ children }) => (
-        <AuthContext.Provider
-          value={createAuthContextValue({ indexerAvailable: false })}
-        >
-          {children}
-        </AuthContext.Provider>
-      ),
+      wrapper: capabilityWrapper(false),
     });
 
     expect(enabled.result.current).toBe(false);

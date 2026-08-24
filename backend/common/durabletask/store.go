@@ -315,10 +315,6 @@ func (s *Store) WriteArtifact(id, name string, data []byte, mode fs.FileMode) (s
 	return path, nil
 }
 
-func (s *Store) ExecutorResultPath(id string) (string, error) {
-	return s.ArtifactPath(id, "executor-result.json")
-}
-
 func (s *Store) ReadExecutorResult(id string) (ExecutorResult, error) {
 	if err := ValidateID(id); err != nil {
 		return ExecutorResult{}, err

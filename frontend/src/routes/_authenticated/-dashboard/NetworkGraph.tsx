@@ -39,7 +39,7 @@ const NetworkGraph = ({ interfaceName, rx, tx }: NetworkGraphProps) => {
   const [rxSeries, txSeries] = useLiveSeries([rxId, txId], async (request) => {
     // One-shot backfill: the request carries a rolling from_ms, so caching
     // the entry would only pollute the cache.
-    const points = await queryClient.fetchQuery({
+    const points = await queryClient.query({
       ...linuxio.monitoring.get_network_history(request),
       staleTime: CACHE_TTL_MS.NONE,
       gcTime: CACHE_TTL_MS.NONE,

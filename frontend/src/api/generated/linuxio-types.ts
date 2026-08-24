@@ -1291,15 +1291,22 @@ export interface IndexerTimerSetResult {
   timer_unit: string;
 }
 
+export interface InstallCapabilityOutput {
+  stream: string;
+  text: string;
+}
+
 export interface InstallCapabilityProgress {
   stage: string;
   message: string;
   percentage?: number;
+  output?: InstallCapabilityOutput;
 }
 
 export interface InstallCapabilityResult {
   available: boolean;
   error?: string;
+  warning?: string;
 }
 
 export interface InterfaceMTURequest {

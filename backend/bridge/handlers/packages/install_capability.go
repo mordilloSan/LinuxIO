@@ -1,12 +1,17 @@
 package packages
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -22,9 +27,19 @@ import (
 // only moves forward across stages (it never resets per stage). Frontend
 // mirrors this shape.
 type InstallCapabilityProgress struct {
-	Stage      string  `json:"stage"`
-	Message    string  `json:"message"`
-	Percentage *uint32 `json:"percentage,omitempty"`
+	Stage      string                   `json:"stage"`
+	Message    string                   `json:"message"`
+	Percentage *uint32                  `json:"percentage,omitempty"`
+	Output     *InstallCapabilityOutput `json:"output,omitempty"`
+}
+
+// InstallCapabilityOutput is one ordered record from a capability installer.
+// stdout/stderr records retain the bytes read from the command, including line
+// endings. A status record is synthesized progress (including PackageKit
+// transaction updates), never literal command output.
+type InstallCapabilityOutput struct {
+	Stream string `json:"stream"` // "status", "stdout", or "stderr"
+	Text   string `json:"text"`
 }
 
 func (p InstallCapabilityProgress) ProgressEnvelope() bridgetask.TaskProgress {
@@ -45,6 +60,7 @@ const (
 	stageResolve        = "resolve"
 	stageInstallAsset   = "install_asset"
 	stageInstallPackage = "install_package"
+	stagePostInstall    = "post_install"
 	stageEnableService  = "enable_service"
 	stageStartService   = "start_service"
 	stageWaitActive     = "wait_service_active"
@@ -59,7 +75,8 @@ const (
 	pctResolve      uint32 = 3
 	pctInstallStart uint32 = 5
 	pctInstallEnd   uint32 = 85
-	pctEnable       uint32 = 86
+	pctPostInstall  uint32 = 86
+	pctEnable       uint32 = 87
 	pctStart        uint32 = 90
 	pctWait         uint32 = 94
 	pctDetect       uint32 = 98
@@ -72,6 +89,15 @@ const (
 )
 
 var capabilityInstallRoutes = capabilityInstallBindings().Routes()
+
+var (
+	capabilityDistroFamily      = detectDistroFamily
+	capabilityInstallPackage    = InstallByNameWithProgress
+	capabilityEnableService     = systemd.EnableUnit
+	capabilityStartService      = systemd.StartUnit
+	capabilityWaitServiceActive = waitUnitActive
+	capabilityDetectWithRetry   = detectWithRetry
+)
 
 func capabilityInstallBindings() apischema.BindingSet {
 	policy := bridgetask.TaskSingletonSystem
@@ -115,7 +141,7 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("capability %q is not installable from the UI", name)
 	}
 
-	family := detectDistroFamily()
+	family := capabilityDistroFamily()
 	pkg := pickByFamily(family, spec.Install.PackageDebian, spec.Install.PackageRHEL)
 	service := pickByFamily(family, spec.Install.ServiceDebian, spec.Install.ServiceRHEL)
 
@@ -129,32 +155,50 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 		}
 	}
 
-	if err := installCapabilityPackages(ctx, task, name, pkg); err != nil {
+	optionalPackageWarning, err := installCapabilityDependencies(ctx, task, family, name, spec.LogName, pkg, spec.Install)
+	if err != nil {
 		return apischema.InstallCapabilityResult{}, err
+	}
+
+	if spec.Install.PostInstall != nil {
+		if err := runCapabilityPostInstall(ctx, task, spec.Install.PostInstall); err != nil {
+			return apischema.InstallCapabilityResult{}, err
+		}
 	}
 
 	if service != "" {
 		if spec.Install.EnableService {
 			reportProgress(task, stageEnableService, fmt.Sprintf("Enabling %s", service), pctEnable)
 			slog.Info("Enabling capability service.", "capability", name, "unit", service)
-			if err := systemd.EnableUnit(ctx, service); err != nil {
+			if err := capabilityEnableService(ctx, service); err != nil {
 				return apischema.InstallCapabilityResult{}, fmt.Errorf("enable %s: %w", service, err)
 			}
 		}
 		reportProgress(task, stageStartService, fmt.Sprintf("Starting %s", service), pctStart)
 		slog.Info("Starting capability service.", "capability", name, "unit", service)
-		if err := systemd.StartUnit(ctx, service); err != nil {
+		if err := capabilityStartService(ctx, service); err != nil {
 			return apischema.InstallCapabilityResult{}, fmt.Errorf("start %s: %w", service, err)
 		}
 		reportProgress(task, stageWaitActive, fmt.Sprintf("Waiting for %s to become active", service), pctWait)
-		if err := waitUnitActive(ctx, service, serviceActiveTimeout); err != nil {
+		if err := capabilityWaitServiceActive(ctx, service, serviceActiveTimeout); err != nil {
 			return apischema.InstallCapabilityResult{}, err
 		}
 	}
 
 	reportProgress(task, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
-	available, errMsg := detectWithRetry(ctx, spec, detectRetryTimeout)
-	return apischema.InstallCapabilityResult{Available: available, Error: utils.OptionalString(errMsg)}, nil
+	available, errMsg := capabilityDetectWithRetry(ctx, spec, detectRetryTimeout)
+	return apischema.InstallCapabilityResult{
+		Available: available,
+		Error:     utils.OptionalString(errMsg),
+		Warning:   utils.OptionalString(optionalPackageWarning),
+	}, nil
+}
+
+func installCapabilityDependencies(ctx context.Context, task *bridgetask.Task, family, name, logName, packageList string, spec *system.InstallSpec) (string, error) {
+	if err := installCapabilityPackages(ctx, task, name, packageList); err != nil {
+		return "", err
+	}
+	return installOptionalCapabilityPackage(ctx, task, family, logName, spec)
 }
 
 func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capabilityName string, packageList string) error {
@@ -167,12 +211,180 @@ func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capab
 		installStart, installEnd := packageInstallProgressRange(idx, len(packages))
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing %s", packageName), installStart)
 		slog.Info("Installing capability package.", "capability", capabilityName, "package", packageName)
-		if err := InstallByNameWithProgress(ctx, packageName, capabilityInstallReporter(task, packageName, installStart, installEnd)); err != nil {
+		if err := capabilityInstallPackage(ctx, packageName, capabilityInstallReporter(task, packageName, installStart, installEnd)); err != nil {
 			return fmt.Errorf("install %s: %w", packageName, err)
 		}
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installed %s", packageName), installEnd)
 	}
 	return nil
+}
+
+func installOptionalCapabilityPackage(ctx context.Context, task *bridgetask.Task, family, capabilityName string, spec *system.InstallSpec) (string, error) {
+	if !isRHELFamily(family) || spec == nil || strings.TrimSpace(spec.OptionalPackageRHEL) == "" {
+		return "", nil
+	}
+
+	packageName := strings.TrimSpace(spec.OptionalPackageRHEL)
+	reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing optional package %s", packageName), pctInstallEnd)
+	slog.Info("Installing optional capability package.", "capability", capabilityName, "package", packageName)
+	err := capabilityInstallPackage(ctx, packageName, capabilityInstallReporter(task, packageName, pctInstallEnd, pctInstallEnd))
+	if err == nil {
+		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installed optional package %s", packageName), pctInstallEnd)
+		return "", nil
+	}
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	detail := fmt.Sprintf("Optional package %s could not be installed: %v", packageName, err)
+	warning := strings.TrimSpace(spec.OptionalPackageRHELFailureWarning)
+	if warning == "" {
+		warning = fmt.Sprintf("Optional package %s was not installed; continuing without it.", packageName)
+	}
+	reportProgress(task, stageInstallPackage, detail+". "+warning, pctInstallEnd)
+	return warning, nil
+}
+
+func runCapabilityPostInstall(ctx context.Context, task *bridgetask.Task, command *system.InstallCommand) error {
+	if command == nil || strings.TrimSpace(command.Name) == "" {
+		return nil
+	}
+	args := append([]string(nil), command.Args...)
+	reportProgress(task, stagePostInstall, fmt.Sprintf("Running %s %s", command.Name, strings.Join(args, " ")), pctPostInstall)
+	slog.Info("Running capability post-install command.", "command", command.Name, "args", args)
+	if err := runCapabilityCommand(ctx, command.Name, args, func(output InstallCapabilityOutput) {
+		reportOutput(task, stagePostInstall, fmt.Sprintf("Running %s", command.Name), pctPostInstall, output)
+	}); err != nil {
+		return fmt.Errorf("run %s %s: %w", command.Name, strings.Join(args, " "), err)
+	}
+	return nil
+}
+
+var (
+	capabilityCommandLookPath = exec.LookPath
+	capabilityCommandExec     = exec.CommandContext
+)
+
+// runCapabilityCommand executes a capability-owned command while forwarding
+// stdout and stderr as separate records. Each pipe has an owner goroutine and
+// the command is always context-bound, so cancellation closes the process and
+// lets both readers exit before the function returns.
+func runCapabilityCommand(ctx context.Context, name string, args []string, report func(InstallCapabilityOutput)) error {
+	return runCapabilityProcess(ctx, name, args, nil, nil, report)
+}
+
+func runCapabilityScript(ctx context.Context, name string, args []string, script []byte, report func(InstallCapabilityOutput)) error {
+	return runCapabilityProcess(ctx, name, args, bytes.NewReader(script), append(os.Environ(), "DEBIAN_FRONTEND=noninteractive"), report)
+}
+
+type capabilityProcessOutput struct {
+	mu      sync.Mutex
+	readErr error
+	report  func(InstallCapabilityOutput)
+	stderr  bytes.Buffer
+}
+
+const (
+	capabilityOutputChunkBytes = 8 << 10
+	capabilityErrorTailBytes   = 16 << 10
+)
+
+func (o *capabilityProcessOutput) appendStderr(chunk []byte) {
+	if len(chunk) >= capabilityErrorTailBytes {
+		o.stderr.Reset()
+		_, _ = o.stderr.Write(chunk[len(chunk)-capabilityErrorTailBytes:])
+		return
+	}
+	if overflow := o.stderr.Len() + len(chunk) - capabilityErrorTailBytes; overflow > 0 {
+		retained := append([]byte(nil), o.stderr.Bytes()[overflow:]...)
+		o.stderr.Reset()
+		_, _ = o.stderr.Write(retained)
+	}
+	_, _ = o.stderr.Write(chunk)
+}
+
+func (o *capabilityProcessOutput) read(stream string, reader io.Reader) {
+	buf := bufio.NewReaderSize(reader, capabilityOutputChunkBytes)
+	for {
+		chunk, err := buf.ReadSlice('\n')
+		if len(chunk) > 0 {
+			o.mu.Lock()
+			if stream == "stderr" {
+				o.appendStderr(chunk)
+			}
+			if o.report != nil {
+				o.report(InstallCapabilityOutput{Stream: stream, Text: string(chunk)})
+			}
+			o.mu.Unlock()
+		}
+		if err == nil || err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != io.EOF {
+			o.mu.Lock()
+			if o.readErr == nil {
+				o.readErr = err
+			}
+			o.mu.Unlock()
+		}
+		return
+	}
+}
+
+func (o *capabilityProcessOutput) commandError(ctx context.Context, name string, waitErr error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.readErr != nil {
+		return fmt.Errorf("read %s output: %w", name, o.readErr)
+	}
+	if waitErr == nil {
+		return nil
+	}
+	message := strings.TrimSpace(o.stderr.String())
+	if message != "" {
+		return fmt.Errorf("%s: %w: %s", name, waitErr, message)
+	}
+	return fmt.Errorf("%s: %w", name, waitErr)
+}
+
+func runCapabilityProcess(ctx context.Context, name string, args []string, stdin io.Reader, env []string, report func(InstallCapabilityOutput)) error {
+	path, err := capabilityCommandLookPath(name)
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", name, err)
+	}
+	cmd := capabilityCommandExec(ctx, path, args...)
+	if env != nil {
+		cmd.Env = env
+	}
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("capture %s stdout: %w", name, err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("capture %s stderr: %w", name, err)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start %s: %w", name, err)
+	}
+
+	output := &capabilityProcessOutput{report: report}
+	var readers sync.WaitGroup
+	read := func(stream string, reader io.Reader) {
+		defer readers.Done()
+		output.read(stream, reader)
+	}
+	readers.Add(2)
+	go read("stdout", stdout)
+	go read("stderr", stderr)
+	readers.Wait()
+	waitErr := cmd.Wait()
+	return output.commandError(ctx, name, waitErr)
 }
 
 func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgetask.Task, spec system.CapabilitySpec) error {
@@ -202,10 +414,29 @@ func installOptionalComponent(ctx context.Context, task *bridgetask.Task, spec s
 }
 
 func reportProgress(task *bridgetask.Task, stage, message string, pct uint32) {
+	reportProgressDetail(task, stage, message, pct, &InstallCapabilityOutput{Stream: "status", Text: message})
+}
+
+func reportOutput(task *bridgetask.Task, stage, message string, pct uint32, output InstallCapabilityOutput) {
 	if task == nil {
 		return
 	}
-	task.ReportProgress(InstallCapabilityProgress{Stage: stage, Message: message, Percentage: &pct})
+	// Literal installer output belongs to direct task watchers. Keeping it
+	// transient avoids flooding the app-wide task event stream while preserving
+	// bounded replay for a dialog that reconnects to the running task.
+	task.ReportTransientProgress(InstallCapabilityProgress{
+		Stage:      stage,
+		Message:    message,
+		Percentage: &pct,
+		Output:     &output,
+	}.ProgressEnvelope())
+}
+
+func reportProgressDetail(task *bridgetask.Task, stage, message string, pct uint32, output *InstallCapabilityOutput) {
+	if task == nil {
+		return
+	}
+	task.ReportProgress(InstallCapabilityProgress{Stage: stage, Message: message, Percentage: &pct, Output: output})
 }
 
 func packageInstallProgressRange(index int, total int) (uint32, uint32) {
@@ -250,7 +481,10 @@ func capabilityInstallReporter(task *bridgetask.Task, pkg string, installStart u
 		if lastStatus != "" {
 			msg = fmt.Sprintf("Installing %s (%s)", pkg, lastStatus)
 		}
-		reportProgress(task, stageInstallPackage, msg, lastGlobal)
+		// PackageKit ticks update the phase/percentage header only. A status
+		// output record per tick would flood the raw-output panel with the
+		// transaction's per-dependency status churn.
+		reportProgressDetail(task, stageInstallPackage, msg, lastGlobal, nil)
 		return nil
 	}
 }
@@ -308,10 +542,10 @@ func detectWithRetry(ctx context.Context, spec system.CapabilitySpec, timeout ti
 	}
 }
 
-// pickByFamily returns the debian-side value when family is "debian", or the
-// rhel-side value when family is "rhel". Falls back to whichever is non-empty.
+// pickByFamily returns the Debian-side value for Debian-family hosts, or the
+// RHEL-side value for RHEL-family hosts. Falls back to whichever is non-empty.
 func pickByFamily(family, debian, rhel string) string {
-	if family == "rhel" && rhel != "" {
+	if isRHELFamily(family) && rhel != "" {
 		return rhel
 	}
 	if family == "debian" && debian != "" {
@@ -321,6 +555,15 @@ func pickByFamily(family, debian, rhel string) string {
 		return debian
 	}
 	return rhel
+}
+
+func isRHELFamily(family string) bool {
+	switch strings.ToLower(strings.TrimSpace(family)) {
+	case "rhel", "fedora", "centos", "rocky", "almalinux", "ol", "amzn":
+		return true
+	default:
+		return false
+	}
 }
 
 // detectDistroFamily reads /etc/os-release and classifies the host as either
@@ -350,11 +593,8 @@ func detectDistroFamily() string {
 	ids := []string{values["ID"]}
 	ids = append(ids, strings.Fields(values["ID_LIKE"])...)
 
-	rhelFamily := []string{"rhel", "fedora", "centos", "rocky", "almalinux", "ol", "amzn"}
-	for _, id := range ids {
-		if slices.Contains(rhelFamily, id) {
-			return "rhel"
-		}
+	if slices.ContainsFunc(ids, isRHELFamily) {
+		return "rhel"
 	}
 	return "debian"
 }

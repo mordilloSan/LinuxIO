@@ -6,11 +6,12 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...actual,
-    useQuery: () => ({
-      data: undefined,
-      isError: false,
-      isLoading: false,
-    }),
+    // Neutralize only the changelog-detail fetch; config slice reads keep
+    // going through the real useQuery against the seeded test cache.
+    useQuery: (options: { queryKey?: readonly unknown[] }) =>
+      options.queryKey?.[1] === "updates"
+        ? { data: undefined, isError: false, isLoading: false }
+        : actual.useQuery(options as Parameters<typeof actual.useQuery>[0]),
   };
 });
 

@@ -57,14 +57,15 @@ LinuxIO supports Linux kernels 5.9+.
 
 ### Quick install (recommended)
 
-**Step 1** — Install dependencies (interactive, prompts for optional extras):
+**Step 1** — Install the bootstrap dependencies (PAM, PolicyKit, and PackageKit):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash
 ```
 
-To install everything without prompts, pass `--all`:
+PackageKit is required because LinuxIO uses it for capability installation from the dashboard. Docker is separate from this bootstrap; when container support
+is needed, use Docker's convenience installer directly:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-dependencies.sh | sudo bash -s -- --all
+curl -fsSL https://get.docker.com | sudo sh
 ```
 
 **Step 2** — Install LinuxIO binaries:
@@ -72,7 +73,21 @@ curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
 ```
 
-Access the dashboard at `https://localhost:8090`. If Avahi is installed (offered during dependency setup), you can also reach the box from any LAN device at `https://<your-hostname>.local:8090`.
+Use the dashboard URL printed by the installer. It preserves an existing valid
+LinuxIO port when possible, otherwise selects an available port from
+`8090`–`8099`. After signing in, install optional capabilities such as sensors,
+SMART monitoring, NFS, or Avahi from LinuxIO Capability Manager. Avahi
+installation includes the required Debian mDNS NSS integration. On RHEL-family
+hosts the responder remains usable if the optional `nss-mdns` package is
+unavailable, and LinuxIO warns that EPEL may be needed for client-side `.local`
+resolution. The dashboard is then reachable at
+`https://<your-hostname>.local:<port>` using the same selected port. Installing
+lm-sensors from the Capability Manager also runs the required
+`sensors-detect --auto` hardware probe.
+
+A versioned installation downloads immutable binaries from that release, but intentionally fetches current `main` systemd, PAM, configuration, MOTD, and
+helper assets. This recovery policy lets packaging fixes repair already published releases; current packaging assets must therefore remain compatible
+with supported historical binaries.
 
 On first startup, LinuxIO creates a managed self-signed certificate in
 `/var/lib/linuxio/webserver/certificates`. It covers localhost, the system
@@ -85,12 +100,9 @@ certificate is reused across restarts, reboots, and updates until it enters its
 
 | Category | Packages | Required |
 |----------|----------|----------|
-| PAM, PolicyKit, PackageKit | Auth, authorization, system updates | Mandatory |
-| lm-sensors | Hardware temperature/voltage monitoring | Optional |
-| smartmontools | Disk SMART health data | Optional |
-| NFS utilities | Mount/browse and export NFS shares (`nfs-common` + `nfs-kernel-server` on Debian/Ubuntu, `nfs-utils` on Fedora/RHEL) | Optional |
-| Docker | Container management | Optional |
-| Avahi (mDNS) | Reach this host at `<hostname>.local` from other LAN devices | Optional |
+| PAM, PolicyKit, PackageKit | Authentication, authorization, system updates, and in-app capability installation | Mandatory bootstrap dependencies |
+| Docker | Container management, installed separately with Docker's convenience installer | Optional |
+| Other capabilities | Sensors, SMART monitoring, NFS, Avahi, and other host facilities | Install from LinuxIO Capability Manager |
 
 </details>
 

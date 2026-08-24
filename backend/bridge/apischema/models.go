@@ -1048,6 +1048,7 @@ type ConfigSetResult struct {
 type InstallCapabilityResult struct {
 	Available bool    `json:"available"`
 	Error     *string `json:"error,omitempty"`
+	Warning   *string `json:"warning,omitempty"`
 }
 
 type IndexerConfig struct {

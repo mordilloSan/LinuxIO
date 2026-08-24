@@ -1,13 +1,9 @@
 package packages
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -18,7 +14,6 @@ const (
 	monitoringInstallScriptURL      = "https://mordillosan.github.io/go-monitoring/install.sh"
 	monitoringInstallScriptMaxBytes = 4 << 20
 	monitoringInstallTimeout        = 10 * time.Minute
-	monitoringInstallErrorMaxBytes  = 4 << 10
 )
 
 var (
@@ -37,9 +32,11 @@ func installMonitoring(ctx context.Context, task *bridgetask.Task) error {
 	}
 
 	reportProgress(task, stageInstallAsset, "Running go-monitoring installer", pctInstallStart)
-	output, err := monitoringInstallRunner(ctx, script)
+	err = monitoringInstallRunner(ctx, script, func(output InstallCapabilityOutput) {
+		reportOutput(task, stageInstallAsset, "Running go-monitoring installer", pctInstallStart, output)
+	})
 	if err != nil {
-		return fmt.Errorf("run go-monitoring installer: %w", monitoringInstallCommandError(err, output))
+		return fmt.Errorf("run go-monitoring installer: %w", err)
 	}
 
 	reportProgress(task, stageInstallAsset, "Installed go-monitoring", pctInstallEnd)
@@ -73,21 +70,6 @@ func downloadMonitoringInstallScript(ctx context.Context, client *http.Client) (
 	return utils.ReadAllLimited(resp.Body, monitoringInstallScriptMaxBytes)
 }
 
-func runMonitoringInstallScript(ctx context.Context, script []byte) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "sh", "-s")
-	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
-	cmd.Stdin = bytes.NewReader(script)
-	return cmd.CombinedOutput()
-}
-
-func monitoringInstallCommandError(err error, output []byte) error {
-	message := strings.TrimSpace(string(output))
-	if message == "" {
-		return err
-	}
-	if len(message) > monitoringInstallErrorMaxBytes {
-		message = message[len(message)-monitoringInstallErrorMaxBytes:]
-		message = "..." + message
-	}
-	return fmt.Errorf("%w: %s", err, message)
+func runMonitoringInstallScript(ctx context.Context, script []byte, report func(InstallCapabilityOutput)) error {
+	return runCapabilityScript(ctx, "sh", []string{"-s"}, script, report)
 }

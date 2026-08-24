@@ -392,8 +392,8 @@ export function openAppUpdateStream(
   runId: string,
   version?: string,
 ): Stream | null {
-  // Closing the UI stream only detaches observation. The durable updater is
-  // canceled explicitly through abort()/tasks.cancel after systemd confirms it.
+  // The updater is session-bound. Closing this watch only detaches observation;
+  // abort()/tasks.cancel explicitly cancels the running Task.
   return openTaskOutputStream("control.app_update", { runId, version }, false);
 }
 

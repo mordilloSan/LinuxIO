@@ -20,9 +20,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useConfig } from "@/hooks/useConfig";
+import { useConfig, useDockerSettings } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { ensureTrailingSlash } from "@/utils/path";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
 import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
@@ -79,7 +80,8 @@ const validateDraftFolders = (
 const DockerSettingsSection = () => {
   const theme = useAppTheme();
   const { privileged } = useAuth();
-  const { config, updateConfig } = useConfig();
+  const { updateConfig } = useConfig();
+  const dockerSettings = useDockerSettings();
   const dockerAutoUpdate = useDockerAutoUpdateState();
   const { isEnabled: dockerUpdatesEnabled, reason: dockerUpdatesReason } =
     useCapability("dockerUpdatesAvailable");
@@ -90,8 +92,8 @@ const DockerSettingsSection = () => {
   const { mutateAsync: validateDockerFolder } = useCallMutation(
     linuxio.docker.validate_stack_directory,
   );
-  const dockerFolders = config.docker.folders;
-  const requireMountsForFolders = config.docker.requireMountsForFolders;
+  const dockerFolders = dockerSettings.folders;
+  const requireMountsForFolders = dockerSettings.requireMountsForFolders;
   const setDockerFolders = useCallback(
     (folders: string[]) => updateConfig({ docker: { folders } }),
     [updateConfig],
@@ -208,45 +210,50 @@ const DockerSettingsSection = () => {
     setErrorTexts([]);
     setIsSaving(true);
 
-    try {
-      for (let index = 0; index < folders.length; index += 1) {
-        const folder = folders[index];
-        const validation = await validateDockerFolder({ dirPath: folder });
-        if (!validation.valid) {
-          setErrorTexts((prev) => {
-            const next = [...prev];
-            next[index] = validation.error || "Docker folder is not valid.";
-            return next;
-          });
-          return;
-        }
+    return withPromiseCleanup(
+      (async () => {
+        try {
+          for (let index = 0; index < folders.length; index += 1) {
+            const folder = folders[index];
+            const validation = await validateDockerFolder({ dirPath: folder });
+            if (!validation.valid) {
+              setErrorTexts((prev) => {
+                const next = [...prev];
+                next[index] = validation.error || "Docker folder is not valid.";
+                return next;
+              });
+              return;
+            }
 
-        if (!validation.exists) {
-          const shouldCreate = await askCreatePrompt(folder);
-          if (!shouldCreate) {
-            toast.info("Docker folder was not created. Save canceled.");
-            return;
+            if (!validation.exists) {
+              const shouldCreate = await askCreatePrompt(folder);
+              if (!shouldCreate) {
+                toast.info("Docker folder was not created. Save canceled.");
+                return;
+              }
+
+              await createDockerFolder({
+                path: ensureTrailingSlash(folder),
+              });
+              toast.success("Docker folder created.");
+            }
           }
 
-          await createDockerFolder({
-            path: ensureTrailingSlash(folder),
-          });
-          toast.success("Docker folder created.");
+          setDockerFolders(folders);
+          setDrafts(folders);
+          toast.success("Docker folders saved.");
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to save Docker folders";
+          toast.error(message);
         }
-      }
-
-      setDockerFolders(folders);
-      setDrafts(folders);
-      toast.success("Docker folders saved.");
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to save Docker folders";
-      toast.error(message);
-    } finally {
-      setIsSaving(false);
-    }
+      })(),
+      () => {
+        setIsSaving(false);
+      },
+    );
   }, [
     askCreatePrompt,
     createDockerFolder,

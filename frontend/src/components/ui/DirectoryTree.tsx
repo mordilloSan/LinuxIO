@@ -216,7 +216,7 @@ const DirectoryTree = ({
   const queryClient = useQueryClient();
   const fetchResource = useCallback(
     (path: string) =>
-      queryClient.fetchQuery(linuxio.filebrowser.resource_get({ path })),
+      queryClient.query(linuxio.filebrowser.resource_get({ path })),
     [queryClient],
   );
   const [roots, setRoots] = useState<TreeNodeData[]>(() => [

@@ -10,6 +10,7 @@ import {
 import { useScopedToast } from "@/hooks/useScopedToast";
 import type { FileItem, FileResource } from "@/types/filebrowser";
 import { splitName, stripNumericSuffix } from "@/utils/fileUpload";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import { useFilePathUtilities } from "./useFilePathUtilities";
 
@@ -129,23 +130,28 @@ export const useFileBrowserArchiveActions = ({
         pendingNames,
       );
       pendingNames.add(archiveName);
-      try {
-        await compressItems({
-          paths,
-          archiveName,
-          destination: normalizedPath,
-        });
-      } catch (error) {
-        if (!(error instanceof Error && error.name === "AbortError")) {
-          const message =
-            error instanceof Error && error.message
-              ? error.message
-              : "Failed to create archive";
-          toast.error(message);
-        }
-      } finally {
-        pendingArchiveNamesRef.current.delete(archiveName);
-      }
+      return withPromiseCleanup(
+        (async () => {
+          try {
+            await compressItems({
+              paths,
+              archiveName,
+              destination: normalizedPath,
+            });
+          } catch (error) {
+            if (!(error instanceof Error && error.name === "AbortError")) {
+              const message =
+                error instanceof Error && error.message
+                  ? error.message
+                  : "Failed to create archive";
+              toast.error(message);
+            }
+          }
+        })(),
+        () => {
+          pendingArchiveNamesRef.current.delete(archiveName);
+        },
+      );
     },
     [compressFormatDialog, compressItems, getUniqueName, normalizedPath, toast],
   );

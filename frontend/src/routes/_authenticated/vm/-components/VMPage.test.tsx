@@ -442,9 +442,9 @@ async function renderVMPage(
     {
       auth: {
         isAuthenticated: true,
-        libvirtAvailable,
         privileged: true,
       },
+      capabilities: { libvirtAvailable },
       queryClient,
     },
   );

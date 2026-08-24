@@ -21,4 +21,3 @@ tsconfig.tsbuildinfo
 .DS_Store
 .vscode
 .claude
-.script-server.pid

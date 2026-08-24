@@ -31,14 +31,14 @@ Follow the phased
    NICs, then the single-NIC IP hand-off protected by snapshot, transient
    revert timer, and reconnect check-in.
 
-### React Compiler upstream follow-ups
+### Frontend task state unification
 
-1. Revisit the React Compiler integration when
-   [`@vitejs/plugin-react`](https://npmx.dev/package/@vitejs/plugin-react)
-   publishes native support. At that point, compare it with and replace the
-   custom `oxc-transform-react` Vite plugin only if it preserves the current
-   production, Vitest, source-map, and compiler-coverage behavior
-   (`vitejs/vite-plugin-react#1419` or its successor).
+Follow [`Frontend Task State Unification`](docs/TODO/frontend-task-state-unification.md):
+move background-task progress state from provider `useState` into per-task
+TanStack Query cache entries read through select slices, collapsing the four
+task contexts to one identity-stable actions context. Architectural follow-on
+to the completed config-state migration; schedule with the tasks-page or
+notification work rather than as standalone churn.
 
 ### Frontend test coverage
 
@@ -69,11 +69,11 @@ Define and complete the intended division of coverage between Vitest and Playwri
   [`API Reliability, Recovery, and Notifications Roadmap`](docs/TODO/api-reliability-roadmap.md):
   strict standard-library request decoding with an explicit safe-retry policy
   and honest connection-loss outcomes; Task lifetime/owner scope and session
-  activity semantics; two durable Tasks (`control.app_update` and
-  `docker.update_container`) proven with persistent operation records and
-  external execution owners; generic Task progress standardized while
-  preserving typed route detail; and visible, entity-scoped mutation feedback
-  restored across the frontend.
+  activity semantics; the durable `docker.update_container` Task proven with a
+  persistent operation record and external execution owner; app updates kept
+  session-bound with piped installer feedback and ordered post-result restart;
+  generic Task progress standardized while preserving typed route detail; and
+  visible, entity-scoped mutation feedback restored across the frontend.
 - [x] Completed the Call/Channel/Task transport migration: all Tasks use one
   typed runner/result shape, ordinary handlers have no emitter, and
   `TaskService` registers the reserved `tasks.*` Calls and Channels without a
@@ -89,6 +89,14 @@ Define and complete the intended division of coverage between Vitest and Playwri
   outlining safeguard after `oxc-project/oxc#25548` shipped, aligned compiler
   coverage with production, and passed the frontend, coverage, and browser gates
   (2026-08-19).
+- [x] Replaced the custom React Compiler Vite plugin with the native
+  `@vitejs/plugin-react` 6.1 integration after upstream support shipped. Kept
+  React 19 compilation production-only in Vite, compiled production modules but
+  not test-only modules under Vitest, and left the browser fixture uncompiled.
+  Accepted the upstream integration's development JSX and source maps under
+  Vitest, warning diagnostics, and fatal-error handling after verifying the
+  resulting production, test, compiler-coverage, and browser behavior
+  (2026-08-23).
 - [x] Replaced the ESLint stack with Oxlint, tsgolint, and JS plugins.
 - [x] Completed the post-migration frontend UI architecture cleanup.
 - [x] Fixed file-browser progress updates rerendering the entire browser.

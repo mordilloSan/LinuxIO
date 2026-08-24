@@ -263,7 +263,9 @@ const ContainerList = ({
   // slot's saved position", and the reflow shows the outcome.
   const dragStartRectsRef = useRef<DroppableRects | null>(null);
   const entryCollisionDetection = useCallback<CollisionDetection>((args) => {
-    dragStartRectsRef.current ??= new Map(args.droppableRects);
+    if (dragStartRectsRef.current === null) {
+      dragStartRectsRef.current = new Map(args.droppableRects);
+    }
     const frozen = { ...args, droppableRects: dragStartRectsRef.current };
     // The pointer is what the user aims with: the slot under it reacts the
     // moment the cursor crosses in. Judging by the dragged rect's own center

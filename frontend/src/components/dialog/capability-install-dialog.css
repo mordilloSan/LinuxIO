@@ -1,0 +1,121 @@
+.capability-install-dialog__title,
+.capability-install-dialog__phase {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.capability-install-dialog__phase {
+  justify-content: space-between;
+}
+
+.capability-install-dialog__content {
+  display: flex;
+  flex-direction: column;
+  max-height: 450px;
+  min-height: 380px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.capability-install-dialog__progress {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  transition: flex-grow var(--app-transition-duration-slow)
+    var(--app-easing-decelerate);
+}
+
+.capability-install-dialog__progress--yielded {
+  flex-grow: 0;
+}
+
+.capability-install-dialog__progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.capability-install-dialog__output {
+  --capability-install-output-toggle-height: 38px;
+
+  flex: 0 0 auto;
+  min-height: var(--capability-install-output-toggle-height);
+  position: relative;
+  transition:
+    flex-grow var(--app-transition-duration-slow)
+      var(--app-easing-decelerate),
+    min-height var(--app-transition-duration-slow)
+      var(--app-easing-decelerate);
+}
+
+.capability-install-dialog__output--expanded {
+  flex-grow: 1;
+  min-height: 55%;
+}
+
+.app-btn.capability-install-dialog__output-toggle {
+  align-items: center;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--app-palette-divider);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 4px;
+  height: var(--capability-install-output-toggle-height);
+  justify-content: flex-start;
+  padding: 8px 16px;
+  text-align: left;
+  user-select: none;
+  width: 100%;
+}
+
+.capability-install-dialog__chevron {
+  flex-shrink: 0;
+  transition: transform var(--app-transition-duration-slow)
+    var(--app-easing-decelerate);
+}
+
+.capability-install-dialog__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.capability-install-dialog__output-animator {
+  inset: var(--capability-install-output-toggle-height) 0 0;
+  overflow: hidden;
+  position: absolute;
+}
+
+.capability-install-dialog__output-scroller {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  height: 100%;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.capability-install-dialog__output-lines {
+  padding: 8px;
+}
+
+.capability-install-dialog__output-line--stderr {
+  color: var(--app-palette-error-main);
+}
+
+.capability-install-dialog__output-line--status,
+.capability-install-dialog__output-note {
+  color: var(--app-palette-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .capability-install-dialog__chevron,
+  .capability-install-dialog__output,
+  .capability-install-dialog__progress {
+    transition: none;
+  }
+}

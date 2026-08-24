@@ -127,6 +127,71 @@ describe("compiler coverage reporting", () => {
     ]);
   });
 
+  it("recognizes and cleanly reports current react-compiler diagnostics", () => {
+    const currentSource = `
+function CurrentFormat() {
+  firstOperation();
+  secondOperation();
+}
+`;
+    const firstStart = currentSource.indexOf("firstOperation");
+    const secondStart = currentSource.indexOf("secondOperation");
+    const analysis = analyzeCompilerCoverage(
+      "src/current-format.tsx",
+      currentSource,
+      transformResult({
+        errors: [
+          {
+            codeframe: "source frame without a diagnostic marker",
+            labels: [
+              {
+                end: firstStart + "firstOperation".length,
+                message: "(BuildHIR::lowerStatement) Handle try/finally",
+                start: firstStart,
+              },
+            ],
+            message:
+              "react-compiler(Todo): Todo: (BuildHIR::lowerStatement) Handle try/finally",
+            severity: "Warning",
+          },
+          {
+            codeframe:
+              "  ⚠ react-compiler(Todo): (BuildHIR::lowerStatement) Handle logical assignment",
+            labels: [
+              {
+                end: secondStart + "secondOperation".length,
+                message: null,
+                start: secondStart,
+              },
+            ],
+            message: "(BuildHIR::lowerStatement) Handle logical assignment",
+            severity: "Warning",
+          },
+        ],
+      }),
+    );
+
+    expect(analysis.recoverableBailouts).toEqual([
+      expect.objectContaining({
+        functionName: "CurrentFormat",
+        reasons: [
+          "Todo: (BuildHIR::lowerStatement) Handle logical assignment",
+          "Todo: (BuildHIR::lowerStatement) Handle try/finally",
+        ],
+      }),
+    ]);
+
+    const report = formatCompilerCoverageReport([
+      { rel: "src/current-format.tsx", ...analysis },
+    ]);
+    expect(report).toContain(
+      "CurrentFormat — Todo: (BuildHIR::lowerStatement) Handle logical assignment; " +
+        "Todo: (BuildHIR::lowerStatement) Handle try/finally",
+    );
+    expect(report).not.toContain("react-compiler(");
+    expect(report).not.toContain("Todo: Todo:");
+  });
+
   it("keeps fatal files and files with no memoized output distinct", () => {
     expect(
       analyzeCompilerCoverage(

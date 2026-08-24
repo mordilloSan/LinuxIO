@@ -14,7 +14,6 @@ import {
   type UIEvent,
 } from "react";
 
-import type { Service } from "@/api";
 import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -33,6 +32,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
 import { useAppTheme } from "@/theme";
+import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 // A fixed first page replaces the old "Lines" selector. Older entries are
 // fetched by cursor as the user scrolls, so choosing an up-front count no
@@ -563,7 +563,7 @@ const GeneralLogsPage = () => {
       return null;
     }
     const wanted = new Set<string>();
-    for (const svc of services as Service[]) {
+    for (const svc of services) {
       if (unitStatusFilter === "running" && svc.sub_state === "running") {
         wanted.add(svc.name);
       } else if (
@@ -926,57 +926,62 @@ const GeneralLogsPage = () => {
     isLoadingOlderRef.current = true;
     setIsLoadingOlder(true);
     setPaginationError(null);
-    try {
-      const page = await queryClient.fetchQuery({
-        ...linuxio.logs.general_page({
-          cursor: boundaryCursor,
-          lines: PAGE_SIZE,
-          timePeriod,
-          priority: priorityFilter === "all" ? "" : priorityFilter,
-          identifier: backendIdentifier,
-          fieldFilters,
-        }),
-        // The parsed rows below are the source of truth. Do not retain a
-        // second raw copy of every history page in React Query's cache.
-        gcTime: CACHE_TTL_MS.NONE,
-        staleTime: CACHE_TTL_MS.NONE,
-      });
-      if (generation !== paginationGenerationRef.current) return;
+    return withPromiseCleanup(
+      (async () => {
+        try {
+          const page = await queryClient.query({
+            ...linuxio.logs.general_page({
+              cursor: boundaryCursor,
+              lines: PAGE_SIZE,
+              timePeriod,
+              priority: priorityFilter === "all" ? "" : priorityFilter,
+              identifier: backendIdentifier,
+              fieldFilters,
+            }),
+            // The parsed rows below are the source of truth. Do not retain a
+            // second raw copy of every history page in React Query's cache.
+            gcTime: CACHE_TTL_MS.NONE,
+            staleTime: CACHE_TTL_MS.NONE,
+          });
+          if (generation !== paginationGenerationRef.current) return;
 
-      const olderLogs = (Array.isArray(page.entries) ? page.entries : [])
-        .map(parseLogEntry)
-        .filter((entry): entry is LogEntry => entry !== null);
-      setLogs((current) => {
-        // A very chatty follow stream may still have displaced part of the
-        // snapshot while the query ran. Restore that tail before appending its
-        // strictly-older page so the cursor boundary stays gap-free.
-        const withBoundary = appendUniqueLogs(
-          current,
-          logs,
-          Number.POSITIVE_INFINITY,
-        );
-        const merged = appendUniqueLogs(
-          withBoundary,
-          olderLogs,
-          Number.POSITIVE_INFINITY,
-        );
-        return merged;
-      });
-      setDisplayLimit((current) => current + DISPLAY_CHUNK);
-      setHasMoreOlder(page.hasMore && olderLogs.length > 0);
-    } catch (loadError) {
-      if (generation !== paginationGenerationRef.current) return;
-      setPaginationError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Failed to load older logs",
-      );
-    } finally {
-      if (generation === paginationGenerationRef.current) {
-        isLoadingOlderRef.current = false;
-        setIsLoadingOlder(false);
-      }
-    }
+          const olderLogs = (Array.isArray(page.entries) ? page.entries : [])
+            .map(parseLogEntry)
+            .filter((entry): entry is LogEntry => entry !== null);
+          setLogs((current) => {
+            // A very chatty follow stream may still have displaced part of the
+            // snapshot while the query ran. Restore that tail before appending
+            // its strictly-older page so the cursor boundary stays gap-free.
+            const withBoundary = appendUniqueLogs(
+              current,
+              logs,
+              Number.POSITIVE_INFINITY,
+            );
+            const merged = appendUniqueLogs(
+              withBoundary,
+              olderLogs,
+              Number.POSITIVE_INFINITY,
+            );
+            return merged;
+          });
+          setDisplayLimit((current) => current + DISPLAY_CHUNK);
+          setHasMoreOlder(page.hasMore && olderLogs.length > 0);
+        } catch (loadError) {
+          if (generation !== paginationGenerationRef.current) return;
+          setPaginationError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Failed to load older logs",
+          );
+        }
+      })(),
+      () => {
+        if (generation === paginationGenerationRef.current) {
+          isLoadingOlderRef.current = false;
+          setIsLoadingOlder(false);
+        }
+      },
+    );
   }, [
     queryClient,
     fieldFilters,

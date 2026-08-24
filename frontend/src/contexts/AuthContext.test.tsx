@@ -43,7 +43,11 @@ vi.mock("@/api", async () => {
     initStreamMux: apiMocks.initStreamMux,
     linuxio: {
       system: {
-        get_capabilities: { route: "system.get_capabilities" },
+        get_capabilities: {
+          route: "system.get_capabilities",
+          queryKey: ["linuxio", "system", "get_capabilities"],
+          queryFn: () => apiMocks.call("system.get_capabilities"),
+        },
       },
     },
   };
@@ -55,14 +59,16 @@ vi.mock("@/utils/navigation", () => ({
 
 const { AuthProvider } = await import("@/contexts/AuthContext");
 const useAuth = (await import("@/hooks/useAuth")).default;
+const { useCapabilityState } = await import("@/hooks/useCapabilities");
 
 function Consumer() {
   const auth = useAuth();
+  const { dockerAvailable } = useCapabilityState();
   return (
     <div>
       <div>
         {auth.user?.name ?? "none"}:{String(auth.isAuthenticated)}:
-        {String(auth.privileged)}:{String(auth.dockerAvailable)}
+        {String(auth.privileged)}:{String(dockerAvailable)}
       </div>
       <button onClick={() => void auth.signIn("miguel", "secret")}>
         sign in

@@ -8,6 +8,7 @@
 
 import {
   hashKey,
+  noop,
   type AnyUseQueryOptions,
   type QueryClient,
   type QueryKey,
@@ -124,10 +125,7 @@ export function startRouteQueryPrefetches(
     );
     try {
       throwIfAborted(signal);
-      void context.queryClient.prefetchQuery(prepared).then(
-        () => release(),
-        () => release(),
-      );
+      void context.queryClient.query(prepared).catch(noop).finally(release);
     } catch (error) {
       release();
       throw error;
@@ -151,7 +149,7 @@ export async function loadRouteUIConfig(
   if (cached) return cached;
 
   return rejectOnAbort(
-    context.queryClient.fetchQuery({
+    context.queryClient.query({
       ...linuxio.config.get_ui,
       queryKey,
       staleTime: CACHE_TTL_MS.NONE,
@@ -215,27 +213,23 @@ async function loadRouteQuery(
     let request: Promise<unknown>;
     switch (freshness) {
       case LOADER_FRESHNESS.PRESENCE:
-        request = queryClient.ensureQueryData(prepared);
+        request = queryClient.query({ ...prepared, staleTime: "static" });
         break;
       case LOADER_FRESHNESS.BACKGROUND:
         if (existing?.state.data !== undefined) {
-          // prefetchQuery exposes the lifetime of stale revalidation while
-          // preserving the policy's immediate cached-data return. Keep this
-          // loader registered so a later navigation abort can still cancel an
-          // orphaned refresh.
-          const backgroundRequest = queryClient.prefetchQuery(prepared);
+          // query(...).catch(noop) exposes the lifetime of stale revalidation
+          // while preserving the policy's immediate cached-data return. Keep
+          // this loader registered so a later navigation abort can still
+          // cancel an orphaned refresh.
+          void queryClient.query(prepared).catch(noop).finally(release);
           backgroundRetainsConsumer = true;
-          void backgroundRequest.then(
-            () => release(),
-            () => release(),
-          );
           throwIfAborted(signal);
           return;
         }
-        request = queryClient.fetchQuery(prepared);
+        request = queryClient.query(prepared);
         break;
       case LOADER_FRESHNESS.BLOCKING:
-        request = queryClient.fetchQuery(prepared);
+        request = queryClient.query(prepared);
         break;
     }
     await rejectOnAbort(request, signal);

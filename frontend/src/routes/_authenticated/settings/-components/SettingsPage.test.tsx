@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { createConfigContextValue, render, screen } from "@/test/render";
+import type { EffectiveAppSettings } from "@/types/config";
 
 import SettingsPage from "./SettingsPage";
 import type { SettingsTab } from "./settingsTabs";
@@ -35,15 +36,14 @@ beforeEach(() => {
 const createSetKeySpy = () => vi.fn<(key: string, value: unknown) => void>();
 
 const renderWithConfigSpy = (
-  appSettings: Parameters<typeof createConfigContextValue>[0],
+  appSettings: Partial<EffectiveAppSettings>,
   setKey: ReturnType<typeof createSetKeySpy>,
 ) =>
   render(
-    <ConfigContext.Provider
-      value={{ ...createConfigContextValue(appSettings), setKey }}
-    >
+    <ConfigContext.Provider value={createConfigContextValue({ setKey })}>
       <SettingsPage />
     </ConfigContext.Provider>,
+    { appSettings },
   );
 
 const mockDesktopViewport = (isDesktop: boolean) => {

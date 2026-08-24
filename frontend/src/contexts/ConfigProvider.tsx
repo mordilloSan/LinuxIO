@@ -15,14 +15,14 @@ import {
   useCallMutation,
   useStreamMux,
 } from "@/api";
-import { scopedConfigQueryKey } from "@/api/config-query";
 import {
-  ConfigAccessorContext,
-  ConfigContext,
-  type ConfigAccessorContextValue,
-} from "@/contexts/ConfigContext";
+  bridgeConfigQueryKey,
+  isBridgeAppSettingKey,
+  pruneViewModes,
+  uiConfigQueryKey,
+} from "@/api/config-query";
+import { ConfigContext } from "@/contexts/ConfigContext";
 import useAuth from "@/hooks/useAuth";
-import { useLatestRef } from "@/hooks/useLatestRef";
 import type {
   ConfigContextType,
   ConfigPatch,
@@ -30,29 +30,8 @@ import type {
   ConfigValueKey,
   ConfigValueMap,
   EffectiveAppConfig,
-  EffectiveAppSettings,
   EffectiveUISettings,
 } from "@/types/config";
-
-type ConfigurableUIKey = Exclude<keyof EffectiveUISettings, "viewModeDefault">;
-
-const IMPORTANT_APP_KEYS = ["showHiddenFiles", "chunkSizeMB"] as const;
-
-const UI_KEYS = [
-  "theme",
-  "primaryColor",
-  "themeColors",
-  "sidebarCollapsed",
-  "navigationMode",
-  "dockTileColors",
-  "dockAccentGradient",
-  "hiddenCards",
-  "dockerDashboardSections",
-  "hardwareSections",
-  "viewModes",
-  "layoutOrders",
-  "terminalFontSize",
-] as const satisfies readonly ConfigurableUIKey[];
 
 const cloneThemeColors = (colors?: ThemeColors): ThemeColors | undefined =>
   colors ? { ...colors } : undefined;
@@ -67,153 +46,26 @@ const cloneThemeColorsByMode = (
       }
     : undefined;
 
-function cloneUIConfig(value: UIConfig): EffectiveUISettings {
-  const viewModes = Object.fromEntries(
-    Object.entries(value.viewModes).filter(
-      ([, mode]) => mode !== value.viewModeDefault,
-    ),
-  );
-  return {
-    theme: value.theme,
-    primaryColor: value.primaryColor,
-    themeColors: cloneThemeColorsByMode(value.themeColors),
-    sidebarCollapsed: value.sidebarCollapsed,
-    navigationMode: value.navigationMode,
-    dockTileColors: value.dockTileColors,
-    dockAccentGradient: { ...value.dockAccentGradient },
-    hiddenCards: [...value.hiddenCards],
-    dockerDashboardSections: { ...value.dockerDashboardSections },
-    hardwareSections: { ...value.hardwareSections },
-    viewModes,
-    viewModeDefault: value.viewModeDefault,
-    layoutOrders: Object.fromEntries(
-      Object.entries(value.layoutOrders).map(([key, order]) => [
-        key,
-        [...order],
-      ]),
-    ),
-    terminalFontSize: value.terminalFontSize,
-  };
-}
-
-function uiConfigFromEffective(config: EffectiveAppConfig): UIConfig {
-  const ui = config.appSettings;
-  return {
-    theme: ui.theme,
-    primaryColor: ui.primaryColor,
-    themeColors: cloneThemeColorsByMode(ui.themeColors),
-    sidebarCollapsed: ui.sidebarCollapsed,
-    navigationMode: ui.navigationMode,
-    dockTileColors: ui.dockTileColors,
-    dockAccentGradient: { ...ui.dockAccentGradient },
-    hiddenCards: [...ui.hiddenCards],
-    dockerDashboardSections: { ...ui.dockerDashboardSections },
-    hardwareSections: { ...ui.hardwareSections },
-    viewModes: { ...ui.viewModes },
-    layoutOrders: Object.fromEntries(
-      Object.entries(ui.layoutOrders).map(([key, order]) => [key, [...order]]),
-    ),
-    viewModeDefault: ui.viewModeDefault,
-    terminalFontSize: ui.terminalFontSize,
-  };
-}
-
-function cloneAppConfig(value: AppConfig): AppConfig {
-  return {
-    appSettings: { ...value.appSettings },
-    docker: {
-      ...value.docker,
-      folders: [...value.docker.folders],
-      proxy: { ...value.docker.proxy },
-    },
-    jobs: { ...value.jobs },
-    dismissals: value.dismissals ? { ...value.dismissals } : undefined,
-  };
-}
-
-function composeConfig(bridge: AppConfig, ui: UIConfig): EffectiveAppConfig {
-  const clonedBridge = cloneAppConfig(bridge);
-  return {
-    ...clonedBridge,
-    appSettings: {
-      ...clonedBridge.appSettings,
-      ...cloneUIConfig(ui),
-    },
-  };
-}
-
-function cloneEffectiveAppSettings(
-  value: EffectiveAppSettings,
-): EffectiveAppSettings {
-  return {
-    ...value,
-    themeColors: cloneThemeColorsByMode(value.themeColors),
-    dockAccentGradient: { ...value.dockAccentGradient },
-    hiddenCards: [...value.hiddenCards],
-    dockerDashboardSections: { ...value.dockerDashboardSections },
-    hardwareSections: { ...value.hardwareSections },
-    viewModes: { ...value.viewModes },
-    layoutOrders: Object.fromEntries(
-      Object.entries(value.layoutOrders).map(([key, order]) => [
-        key,
-        [...order],
-      ]),
-    ),
-  };
-}
-
-function mergeConfig(
-  previous: EffectiveAppConfig,
-  patch: ConfigPatch,
-): EffectiveAppConfig {
-  const nextAppSettings = cloneEffectiveAppSettings({
-    ...previous.appSettings,
-    ...(patch.appSettings ?? {}),
-  });
-  return {
-    ...previous,
-    appSettings: nextAppSettings,
-    docker: patch.docker
-      ? {
-          ...previous.docker,
-          ...patch.docker,
-          folders:
-            patch.docker.folders === undefined
-              ? [...previous.docker.folders]
-              : [...patch.docker.folders],
-          proxy: patch.docker.proxy
-            ? { ...previous.docker.proxy, ...patch.docker.proxy }
-            : { ...previous.docker.proxy },
-        }
-      : previous.docker,
-    jobs: patch.jobs ? { ...previous.jobs, ...patch.jobs } : previous.jobs,
-    dismissals:
-      patch.dismissals === undefined
-        ? previous.dismissals
-        : { ...previous.dismissals, ...patch.dismissals },
-  };
-}
-
 function pickImportantAppSettings(
-  appSettings: Partial<EffectiveAppSettings>,
+  appSettings: Partial<ConfigValueMap>,
 ): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
-  for (const key of IMPORTANT_APP_KEYS) {
-    if (key in appSettings) {
-      Object.assign(result, { [key]: appSettings[key] });
+  for (const key of Object.keys(appSettings)) {
+    if (isBridgeAppSettingKey(key)) {
+      Object.assign(result, { [key]: appSettings[key as ConfigValueKey] });
     }
   }
   return result;
 }
 
 function pickUISettings(
-  appSettings: Partial<EffectiveAppSettings> | undefined,
+  appSettings: Partial<ConfigValueMap> | undefined,
 ): Partial<EffectiveUISettings> {
   const result: Partial<EffectiveUISettings> = {};
   if (!appSettings) return result;
-  for (const key of UI_KEYS) {
-    if (key in appSettings) {
-      Object.assign(result, { [key]: appSettings[key] });
+  for (const key of Object.keys(appSettings)) {
+    if (!isBridgeAppSettingKey(key)) {
+      Object.assign(result, { [key]: appSettings[key as ConfigValueKey] });
     }
   }
   return result;
@@ -229,10 +81,6 @@ function bridgePatch(patch: ConfigPatch): ConfigPatch {
   return result;
 }
 
-function uiPatch(patch: ConfigPatch): Partial<EffectiveUISettings> {
-  return pickUISettings(patch.appSettings);
-}
-
 function hasValues(value: object): boolean {
   return Object.keys(value).length > 0;
 }
@@ -242,11 +90,14 @@ function hasImportantPatch(patch: ConfigPatch): boolean {
 }
 
 function hasUIPatch(patch: ConfigPatch): boolean {
-  return hasValues(uiPatch(patch));
+  return hasValues(pickUISettings(patch.appSettings));
 }
 
-function uiSnapshotFromConfig(config: EffectiveAppConfig): ConfigUISetPayload {
-  const ui = config.appSettings;
+/**
+ * Full replacement payload for config.set_ui from the cached UI snapshot.
+ * Absent optional values (themeColors) are omitted, never sent as undefined.
+ */
+function buildUIPayload(ui: UIConfig): ConfigUISetPayload {
   const payload: ConfigUISetPayload = {
     theme: ui.theme,
     primaryColor: ui.primaryColor,
@@ -257,64 +108,77 @@ function uiSnapshotFromConfig(config: EffectiveAppConfig): ConfigUISetPayload {
     hiddenCards: [...ui.hiddenCards],
     dockerDashboardSections: { ...ui.dockerDashboardSections },
     hardwareSections: { ...ui.hardwareSections },
-    viewModes: { ...ui.viewModes },
+    viewModes: { ...pruneViewModes(ui.viewModes, ui.viewModeDefault) },
     terminalFontSize: ui.terminalFontSize,
+    layoutOrders: Object.fromEntries(
+      Object.entries(ui.layoutOrders).map(([key, order]) => [key, [...order]]),
+    ),
   };
-  if (ui.themeColors)
+  if (ui.themeColors) {
     payload.themeColors = cloneThemeColorsByMode(ui.themeColors);
-  payload.layoutOrders = Object.fromEntries(
-    Object.entries(ui.layoutOrders).map(([key, order]) => [key, [...order]]),
-  );
+  }
   return payload;
 }
 
-const getConfigValue = <K extends ConfigValueKey>(
-  config: EffectiveAppConfig,
-  key: K,
-): ConfigValueMap[K] => config.appSettings[key];
+function mergeBridgeConfig(previous: AppConfig, patch: ConfigPatch): AppConfig {
+  return {
+    appSettings: {
+      ...previous.appSettings,
+      ...pickImportantAppSettings(patch.appSettings ?? {}),
+    },
+    docker: patch.docker
+      ? {
+          ...previous.docker,
+          ...patch.docker,
+          proxy: patch.docker.proxy
+            ? { ...previous.docker.proxy, ...patch.docker.proxy }
+            : previous.docker.proxy,
+        }
+      : previous.docker,
+    jobs: patch.jobs ? { ...previous.jobs, ...patch.jobs } : previous.jobs,
+    dismissals:
+      patch.dismissals === undefined
+        ? previous.dismissals
+        : { ...previous.dismissals, ...patch.dismissals },
+  };
+}
 
-const patchConfigValue = <K extends ConfigValueKey>(
-  key: K,
-  value: ConfigValueMap[K],
-): ConfigPatch => ({ appSettings: { [key]: value } });
+function composeEffectiveConfig(
+  bridge: AppConfig,
+  ui: UIConfig,
+): EffectiveAppConfig {
+  return {
+    ...bridge,
+    appSettings: {
+      ...bridge.appSettings,
+      ...ui,
+      viewModes: pruneViewModes(ui.viewModes, ui.viewModeDefault),
+    },
+  };
+}
+
+function readConfigValue(
+  bridge: AppConfig,
+  ui: UIConfig,
+  key: ConfigValueKey,
+): unknown {
+  if (isBridgeAppSettingKey(key)) return bridge.appSettings[key];
+  if (key === "viewModes") {
+    return pruneViewModes(ui.viewModes, ui.viewModeDefault);
+  }
+  return ui[key as keyof UIConfig];
+}
 
 interface SaveOperation {
   bridge?: ConfigPatch;
   ui?: ConfigUISetPayload;
-  uiCacheValue?: UIConfig;
   onSaved?: () => void;
-}
-
-function LoadedConfigProviders({
-  children,
-  config,
-  setKey,
-  updateConfig,
-}: Pick<ConfigProviderProps, "children"> &
-  Pick<ConfigContextType, "config" | "setKey" | "updateConfig">) {
-  const configRef = useLatestRef(config);
-  const value = useMemo<ConfigContextType>(
-    () => ({ config, setKey, updateConfig, isLoaded: true }),
-    [config, setKey, updateConfig],
-  );
-  const accessorValue = useMemo<ConfigAccessorContextValue>(
-    () => ({ getConfig: () => configRef.current }),
-    [configRef],
-  );
-
-  return (
-    <ConfigAccessorContext.Provider value={accessorValue}>
-      <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
-    </ConfigAccessorContext.Provider>
-  );
 }
 
 export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const { sessionExpired, user } = useAuth();
   const queryClient = useQueryClient();
-  const [config, setConfig] = useState<EffectiveAppConfig | null>(null);
   const [isLoaded, setLoaded] = useState(false);
-  const configDraftRef = useRef<EffectiveAppConfig | null>(null);
   const loadedOnceRef = useRef(false);
   const canSaveRef = useRef(false);
   const warnedUnsavedRef = useRef(false);
@@ -333,11 +197,11 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const saveTailRef = useRef<Promise<void>>(Promise.resolve());
   const activeQueueRef = useRef(true);
   const configUserId = user?.id ?? "anonymous";
-  const scopedConfigKey = useCallback(
-    (queryKey: readonly unknown[]) =>
-      scopedConfigQueryKey(queryKey, configUserId),
+  const bridgeKey = useMemo(
+    () => bridgeConfigQueryKey(configUserId),
     [configUserId],
   );
+  const uiKey = useMemo(() => uiConfigQueryKey(configUserId), [configUserId]);
 
   useEffect(() => {
     activeQueueRef.current = true;
@@ -349,16 +213,10 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
   useEffect(() => {
     return () => {
-      queryClient.removeQueries({
-        exact: true,
-        queryKey: scopedConfigKey(linuxio.config.get.queryKey),
-      });
-      queryClient.removeQueries({
-        exact: true,
-        queryKey: scopedConfigKey(linuxio.config.get_ui.queryKey),
-      });
+      queryClient.removeQueries({ exact: true, queryKey: bridgeKey });
+      queryClient.removeQueries({ exact: true, queryKey: uiKey });
     };
-  }, [queryClient, scopedConfigKey]);
+  }, [queryClient, bridgeKey, uiKey]);
 
   const enqueueSave = useCallback(
     (operation: SaveOperation) => {
@@ -372,14 +230,6 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
             operation.ui ? setUIRemote(operation.ui) : Promise.resolve(),
           ]);
           if (!activeQueueRef.current) return;
-
-          const uiResult = results[1];
-          if (operation.uiCacheValue && uiResult.status === "fulfilled") {
-            queryClient.setQueryData(
-              scopedConfigKey(linuxio.config.get_ui.queryKey),
-              operation.uiCacheValue,
-            );
-          }
           if (results.some((result) => result.status === "rejected")) return;
           operation.onSaved?.();
         })
@@ -387,7 +237,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
         // so a later user change can still be sent.
         .catch(() => undefined);
     },
-    [queryClient, scopedConfigKey, setConfigRemote, setUIRemote],
+    [setConfigRemote, setUIRemote],
   );
 
   useEffect(() => {
@@ -401,19 +251,18 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     }
 
     const load = async () => {
-      const uiQueryKey = scopedConfigKey(linuxio.config.get_ui.queryKey);
-      const cachedUI = queryClient.getQueryData<UIConfig>(uiQueryKey);
+      const cachedUI = queryClient.getQueryData<UIConfig>(uiKey);
       const results = await Promise.allSettled([
-        queryClient.fetchQuery({
+        queryClient.query({
           ...linuxio.config.get,
-          queryKey: scopedConfigKey(linuxio.config.get.queryKey),
+          queryKey: bridgeKey,
           staleTime: CACHE_TTL_MS.NONE,
         }),
         cachedUI
           ? Promise.resolve(cachedUI)
-          : queryClient.fetchQuery({
+          : queryClient.query({
               ...linuxio.config.get_ui,
-              queryKey: uiQueryKey,
+              queryKey: uiKey,
               staleTime: CACHE_TTL_MS.NONE,
             }),
       ]);
@@ -445,11 +294,6 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
         return;
       }
 
-      const bridge = bridgeResult.value;
-      const ui = uiResult.value;
-      const nextConfig = composeConfig(bridge, ui);
-      configDraftRef.current = nextConfig;
-      setConfig(nextConfig);
       loadedOnceRef.current = true;
       setLoaded(true);
       canSaveRef.current = true;
@@ -461,14 +305,10 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       cancelled = true;
       canSaveRef.current = false;
     };
-  }, [isMuxOpen, queryClient, scopedConfigKey, sessionExpired]);
+  }, [isMuxOpen, queryClient, bridgeKey, uiKey, sessionExpired]);
 
   const save = useCallback(
-    (
-      patch: ConfigPatch,
-      nextConfig: EffectiveAppConfig,
-      onSaved?: () => void,
-    ) => {
+    (patch: ConfigPatch, nextUI: UIConfig, onSaved?: () => void) => {
       const wantsBridge = hasImportantPatch(patch);
       const wantsUI = hasUIPatch(patch);
       if (!wantsBridge && !wantsUI) return;
@@ -484,54 +324,82 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       warnedUnsavedRef.current = false;
       enqueueSave({
         bridge: wantsBridge ? bridgePatch(patch) : undefined,
-        ui: wantsUI ? uiSnapshotFromConfig(nextConfig) : undefined,
-        uiCacheValue: wantsUI ? uiConfigFromEffective(nextConfig) : undefined,
+        ui: wantsUI ? buildUIPayload(nextUI) : undefined,
         onSaved,
       });
     },
     [enqueueSave],
   );
 
+  /**
+   * Optimistically apply a patch to the two cache snapshots — the query cache
+   * is the single frontend copy that every slice hook subscribes to. Returns
+   * the post-patch UI snapshot so the save payload reflects this exact state.
+   */
+  const applyPatch = useCallback(
+    (patch: ConfigPatch): { ui: UIConfig } | null => {
+      const bridge = queryClient.getQueryData<AppConfig>(bridgeKey);
+      const ui = queryClient.getQueryData<UIConfig>(uiKey);
+      if (!bridge || !ui) return null;
+
+      const uiPart = pickUISettings(patch.appSettings);
+      const nextUI: UIConfig = hasValues(uiPart) ? { ...ui, ...uiPart } : ui;
+      if (nextUI !== ui) queryClient.setQueryData(uiKey, nextUI);
+
+      if (
+        hasValues(pickImportantAppSettings(patch.appSettings ?? {})) ||
+        patch.docker !== undefined ||
+        patch.jobs !== undefined ||
+        patch.dismissals !== undefined
+      ) {
+        queryClient.setQueryData(bridgeKey, mergeBridgeConfig(bridge, patch));
+      }
+      return { ui: nextUI };
+    },
+    [queryClient, bridgeKey, uiKey],
+  );
+
   const setKey: ConfigContextType["setKey"] = useCallback(
     (key, value) => {
-      const previous = configDraftRef.current;
-      if (!previous) return;
-      const current = getConfigValue(previous, key);
-      const nextValue =
-        typeof value === "function" ? (value as any)(current) : value;
+      const bridge = queryClient.getQueryData<AppConfig>(bridgeKey);
+      const ui = queryClient.getQueryData<UIConfig>(uiKey);
+      if (!bridge || !ui) return;
+      type Value = ConfigValueMap[typeof key];
+      const current = readConfigValue(bridge, ui, key) as Value;
+      const nextValue = typeof value === "function" ? value(current) : value;
       if (Object.is(current, nextValue)) return;
 
-      const patch = patchConfigValue(key, nextValue);
-      const nextConfig = mergeConfig(previous, patch);
-      configDraftRef.current = nextConfig;
-      setConfig(nextConfig);
-      save(patch, nextConfig);
+      const patch: ConfigPatch = { appSettings: { [key]: nextValue } };
+      const applied = applyPatch(patch);
+      if (!applied) return;
+      save(patch, applied.ui);
     },
-    [save],
+    [queryClient, bridgeKey, uiKey, applyPatch, save],
   );
 
   const updateConfig: ConfigContextType["updateConfig"] = useCallback(
     (patch, onSaved) => {
-      const previous = configDraftRef.current;
-      if (!previous) return;
+      const bridge = queryClient.getQueryData<AppConfig>(bridgeKey);
+      const ui = queryClient.getQueryData<UIConfig>(uiKey);
+      if (!bridge || !ui) return;
       const resolvedPatch =
-        typeof patch === "function" ? patch(previous) : patch;
-      const nextConfig = mergeConfig(previous, resolvedPatch);
-      configDraftRef.current = nextConfig;
-      setConfig(nextConfig);
-      save(resolvedPatch, nextConfig, onSaved);
+        typeof patch === "function"
+          ? patch(composeEffectiveConfig(bridge, ui))
+          : patch;
+      const applied = applyPatch(resolvedPatch);
+      if (!applied) return;
+      save(resolvedPatch, applied.ui, onSaved);
     },
-    [save],
+    [queryClient, bridgeKey, uiKey, applyPatch, save],
   );
 
-  if (!config || !isLoaded) return null;
+  const value = useMemo<ConfigContextType>(
+    () => ({ isLoaded: true, setKey, updateConfig }),
+    [setKey, updateConfig],
+  );
+
+  if (!isLoaded) return null;
   return (
-    <LoadedConfigProviders
-      config={config}
-      setKey={setKey}
-      updateConfig={updateConfig}
-    >
-      {children}
-    </LoadedConfigProviders>
+    <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>
   );
 };

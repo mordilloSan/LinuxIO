@@ -2,8 +2,8 @@
 
 This document describes the implemented durable-operation boundary. Most Tasks
 remain session-bound; durability is an explicit route policy for work that has
-an external owner and a safe recovery contract. The current durable routes are
-`control.app_update` and `docker.update_container`.
+an external owner and a safe recovery contract. The current durable route is
+`docker.update_container`.
 
 ## Shared durable record and store
 
@@ -74,19 +74,7 @@ result validation. Standard output and error go to journald for diagnostics;
 journald is not typed operation state. `CollectMode` cleanup never removes the
 service-owned record.
 
-## Implemented durable routes
-
-### `control.app_update`
-
-The route validates an optional release version, claims the operation, downloads
-and verifies the release installer, and stores the installer and result paths as
-operation artifacts. A root-owned systemd transient unit runs LinuxIO's fixed
-updater wrapper with positional arguments, bounded runtime/stop limits, and a
-deterministic unit name derived from the operation UUID. The wrapper performs
-the install/restart work and atomically writes an executor result artifact.
-The route reconciles that artifact into the durable record and returns the
-typed `AppUpdateResult` (`exit_code`). It is an exclusive operation: another
-app update is rejected while one is active.
+## Implemented durable route
 
 ### `docker.update_container`
 
@@ -103,9 +91,13 @@ systemd state; no duplicate mutation is launched automatically.
 ## Session-bound work and extensions
 
 The remaining Task routes keep their existing session lifetime and cancellation
-semantics. In particular, `docker.compose` is session-bound; its streaming
-progress and terminal result depend on the connected bridge Task and it has no
-durable record or external recovery owner.
+semantics. In particular, `control.app_update` uses a bounded
+`systemd-run --wait --pipe` process so installer output reaches the initiating
+Task directly. The installer receives `--defer-restart`; after success, the
+bridge writes a UID-scoped `/run` status projection, finishes the Task, and then
+restarts `linuxio.target`. This deliberately favors observable, ordered updates
+over recovery after page, session, or bridge loss. `docker.compose` is likewise
+session-bound and has no durable record or external recovery owner.
 
 A new durable route requires all of the following before opting in:
 

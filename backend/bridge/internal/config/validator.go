@@ -18,25 +18,20 @@ import (
 // caller unchanged so a malformed or unknown-field document cannot be erased
 // by a read or an unrelated mutation.
 func parseCoreConfig(raw []byte, path, base string) (*Settings, error) {
-	cfg, err := decodeCoreConfig(raw, base)
-	if err != nil {
-		logYAMLError(err, path)
-		return nil, err
-	}
-	return cfg, nil
-}
-
-func decodeCoreConfig(raw []byte, base string) (*Settings, error) {
 	if err := validateSingleYAMLDocument(raw); err != nil {
+		logYAMLError(err, path)
 		return nil, err
 	}
 
 	cfg := DefaultSettings(base)
 	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
+		logYAMLError(err, path)
 		return nil, err
 	}
 	if errs := ValidateConfig(cfg); len(errs) > 0 {
-		return nil, errors.New(strings.Join(errs, "; "))
+		err := errors.New(strings.Join(errs, "; "))
+		logYAMLError(err, path)
+		return nil, err
 	}
 	return cfg, nil
 }
