@@ -37,10 +37,14 @@ type InstallSpec struct {
 	// but a package-manager failure must not prevent the required capability
 	// service from being enabled and verified.
 	OptionalPackageRHEL string
-	ServiceDebian       string
-	ServiceRHEL         string
-	EnableService       bool
-	PostInstall         *InstallCommand
+	// OptionalPackageRHELFailureWarning explains the capability-specific
+	// consequence when OptionalPackageRHEL cannot be installed. Package-manager
+	// details remain in task output rather than this user-facing summary.
+	OptionalPackageRHELFailureWarning string
+	ServiceDebian                     string
+	ServiceRHEL                       string
+	EnableService                     bool
+	PostInstall                       *InstallCommand
 
 	// OptionalComponent names a LinuxIO-managed install that is not provided by
 	// the distro package manager.
@@ -215,12 +219,13 @@ var capabilityRegistry = []CapabilitySpec{
 			return checkedCapabilityErr(ok, err, errAvahiUnavailable)
 		},
 		Install: &InstallSpec{
-			PackageDebian:       "avahi-daemon libnss-mdns",
-			PackageRHEL:         "avahi",
-			OptionalPackageRHEL: "nss-mdns",
-			ServiceDebian:       "avahi-daemon.service",
-			ServiceRHEL:         "avahi-daemon.service",
-			EnableService:       true,
+			PackageDebian:                     "avahi-daemon libnss-mdns",
+			PackageRHEL:                       "avahi",
+			OptionalPackageRHEL:               "nss-mdns",
+			OptionalPackageRHELFailureWarning: "nss-mdns was not installed. Avahi is running, but this host may need EPEL for .local name resolution.",
+			ServiceDebian:                     "avahi-daemon.service",
+			ServiceRHEL:                       "avahi-daemon.service",
+			EnableService:                     true,
 		},
 	},
 	{

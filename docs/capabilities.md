@@ -140,7 +140,8 @@ resolve -> [install_asset] -> [install_package] -> [enable_service] -> [start_se
 | Field | Meaning |
 |-------|---------|
 | `PackageDebian` / `PackageRHEL` | Package name per family (empty = no package step). |
-| `OptionalPackageRHEL` | Best-effort RHEL-family package whose failure is returned as a warning. |
+| `OptionalPackageRHEL` | Best-effort RHEL-family package whose failure does not stop later stages. |
+| `OptionalPackageRHELFailureWarning` | Concise capability-specific consequence returned to the UI; raw package-manager errors remain in task output. |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
 | `OptionalComponent` | LinuxIO-managed non-package installer handled in `handlers/packages`. |

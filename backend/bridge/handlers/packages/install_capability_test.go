@@ -304,11 +304,36 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 	if result.Error != nil {
 		t.Fatalf("result.Error = %q, want nil for available responder", *result.Error)
 	}
-	if result.Warning == nil || !strings.Contains(*result.Warning, "nss-mdns") || !strings.Contains(*result.Warning, "EPEL") {
-		t.Fatalf("result.Warning = %v, want an NSS/EPEL warning", result.Warning)
+	if result.Warning == nil || *result.Warning != specOptionalRHELWarning(t, "avahi") {
+		t.Fatalf("result.Warning = %v, want the Avahi-specific optional-package warning", result.Warning)
+	}
+	if strings.Contains(*result.Warning, "no enabled repository") {
+		t.Fatalf("result.Warning contains raw package-manager error: %q", *result.Warning)
 	}
 
 	assertOptionalPackageWarningProgress(t, replay)
+}
+
+func TestInstallOptionalCapabilityPackageUsesGenericFallbackWarning(t *testing.T) {
+	originalPackage := capabilityInstallPackage
+	t.Cleanup(func() { capabilityInstallPackage = originalPackage })
+	capabilityInstallPackage = func(_ context.Context, _ string, _ pkgUpdateReporter) error {
+		return errors.New("package unavailable")
+	}
+
+	warning, err := installOptionalCapabilityPackage(
+		context.Background(),
+		nil,
+		"rhel",
+		"Example capability",
+		&system.InstallSpec{OptionalPackageRHEL: "example-extra"},
+	)
+	if err != nil {
+		t.Fatalf("installOptionalCapabilityPackage: %v", err)
+	}
+	if want := "Optional package example-extra was not installed; continuing without it."; warning != want {
+		t.Fatalf("warning = %q, want %q", warning, want)
+	}
 }
 
 func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgetask.TaskEvent) {
@@ -328,13 +353,22 @@ func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgetask.Task
 			lastPercentage = &percentage
 		}
 		detail, ok := progress.Detail.(InstallCapabilityProgress)
-		if ok && detail.Output != nil && detail.Output.Stream == "status" && strings.Contains(detail.Output.Text, "could not be installed") {
+		if ok && detail.Output != nil && detail.Output.Stream == "status" && strings.Contains(detail.Output.Text, "could not be installed") && strings.Contains(detail.Output.Text, "no enabled repository") {
 			warningOutput = true
 		}
 	}
 	if !warningOutput {
 		t.Fatal("progress replay did not contain the optional-package warning")
 	}
+}
+
+func specOptionalRHELWarning(t *testing.T, name string) string {
+	t.Helper()
+	spec, ok := system.CapabilitySpecByName(name)
+	if !ok || spec.Install == nil {
+		t.Fatalf("capability %q has no install specification", name)
+	}
+	return spec.Install.OptionalPackageRHELFailureWarning
 }
 
 func TestInstallCapabilityRunsSensorsDetectBeforeRedetection(t *testing.T) {

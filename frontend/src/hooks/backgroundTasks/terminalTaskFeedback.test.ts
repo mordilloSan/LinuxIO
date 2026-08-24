@@ -203,8 +203,11 @@ describe("terminalTaskFeedback", () => {
       deps,
     );
     expect(toastMocks.warning).toHaveBeenCalledWith(
-      "Virtual machines installed successfully, but optional setup reported a warning: nss-mdns was not available; EPEL may be required",
-      { meta: route },
+      "Virtual machines installed with warning",
+      {
+        description: "nss-mdns was not available; EPEL may be required",
+        meta: route,
+      },
     );
 
     emitTerminalTaskFeedback(

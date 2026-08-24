@@ -7,7 +7,6 @@ import "./capability-manager-section.css";
 import {
   CAPABILITIES,
   type CapabilitiesResponse,
-  type CapabilityDef,
   type CapabilityErrorKey,
   type CapabilityValueKey,
   type InstallCapabilityOutput,
@@ -38,6 +37,10 @@ import {
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 const MAX_INSTALL_OUTPUT_LINES = 500;
+const TERMINAL_CONTROL_SEQUENCE = new RegExp(
+  String.raw`(?:\u001B\][^\u0007]*(?:\u0007|\u001B\\)|(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]|\u001B[@-_])`,
+  "g",
+);
 
 interface CapabilityInstallRun {
   error: string | null;
@@ -63,17 +66,22 @@ const installOutputStream = (
     ? output.stream
     : "status";
 
+const stripTerminalControlSequences = (text: string): string =>
+  text.replace(TERMINAL_CONTROL_SEQUENCE, "");
+
 const appendInstallOutput = (
   run: CapabilityInstallRun,
   output: InstallCapabilityOutput | undefined,
 ): CapabilityInstallRun => {
-  if (!output || output.text.length === 0) return run;
+  if (!output) return run;
+  const text = stripTerminalControlSequences(output.text);
+  if (text.length === 0) return run;
   const records = [
     ...run.output,
     {
       id: run.nextOutputID,
       stream: installOutputStream(output),
-      text: output.text,
+      text,
     },
   ];
   const truncated = records.length > MAX_INSTALL_OUTPUT_LINES;
@@ -133,6 +141,13 @@ const CapabilityManagerSection = () => {
     linuxio.system.install_capability.useTaskStreamAction({
       error: (streamError, variables) => {
         if (!mountedRef.current) return;
+        const dismissed = dismissedInstallRef.current;
+        if (
+          dismissed?.wire === variables.capability &&
+          dismissed.taskID === undefined
+        ) {
+          dismissedInstallRef.current = null;
+        }
         setInstallRun((previous) => {
           if (!previous || previous.wire !== variables.capability) {
             return previous;
@@ -232,8 +247,7 @@ const CapabilityManagerSection = () => {
         wire &&
         CAPABILITIES.some(
           (capability) =>
-            capability.wire === wire &&
-            (capability as CapabilityDef).installable !== undefined,
+            capability.wire === wire && "installable" in capability,
         ),
       );
     },
@@ -308,7 +322,8 @@ const CapabilityManagerSection = () => {
           (status === "available"
             ? item.readyText
             : getCapabilityReason(item.state, status));
-        const installable = (item as CapabilityDef).installable;
+        const installable =
+          "installable" in item ? item.installable : undefined;
 
         return {
           ...item,
@@ -478,7 +493,9 @@ const CapabilityManagerSection = () => {
             !packageKitAvailable;
           const blockedByDocker =
             showInstall &&
-            row.installable?.requiresDocker === true &&
+            row.installable !== undefined &&
+            "requiresDocker" in row.installable &&
+            row.installable.requiresDocker === true &&
             !dockerAvailable;
           const installDisabled =
             !installing &&

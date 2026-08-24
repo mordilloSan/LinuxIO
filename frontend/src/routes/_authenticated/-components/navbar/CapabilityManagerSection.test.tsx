@@ -259,7 +259,10 @@ describe("CapabilityManagerSection", () => {
         {
           detail: {
             message: "Running sensors-detect",
-            output: { stream: "stderr", text: "Driver warning\n" },
+            output: {
+              stream: "stderr",
+              text: "\u001b[31mDriver warning\u001b[0m\n",
+            },
             percentage: 86,
             stage: "post_install",
           },
@@ -276,6 +279,7 @@ describe("CapabilityManagerSection", () => {
       screen.getAllByText("Running sensors-detect").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText(/stderr:Driver warning/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("\u001b");
     expect(screen.getAllByText("86%").length).toBeGreaterThan(0);
   });
 
@@ -316,6 +320,21 @@ describe("CapabilityManagerSection", () => {
 
     fireEvent.click(
       screen.getByRole("button", { name: "View lm-sensors installation" }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("does not carry an unbound dismissal past a task submission error", async () => {
+    render(<CapabilityManagerSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: "Run in background" }));
+    act(() => mocks.taskConfig?.error?.(new Error("submit failed"), request));
+    act(() => mocks.recoveryConfig?.onRecover?.(task));
+
+    await waitFor(() =>
+      expect(mocks.watch).toHaveBeenCalledWith(task, request),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

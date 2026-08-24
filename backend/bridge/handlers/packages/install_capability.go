@@ -235,8 +235,12 @@ func installOptionalCapabilityPackage(ctx context.Context, task *bridgetask.Task
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	warning := fmt.Sprintf("Optional package %s could not be installed: %v. Continuing with the %s responder; .local client resolution may be unavailable (the package may require an enabled EPEL repository).", packageName, err, capabilityName)
-	reportProgress(task, stageInstallPackage, warning, pctInstallEnd)
+	detail := fmt.Sprintf("Optional package %s could not be installed: %v", packageName, err)
+	warning := strings.TrimSpace(spec.OptionalPackageRHELFailureWarning)
+	if warning == "" {
+		warning = fmt.Sprintf("Optional package %s was not installed; continuing without it.", packageName)
+	}
+	reportProgress(task, stageInstallPackage, detail+". "+warning, pctInstallEnd)
 	return warning, nil
 }
 

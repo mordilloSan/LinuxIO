@@ -310,9 +310,16 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 		wantDebian       string
 		wantRHEL         string
 		wantOptionalRHEL string
+		wantWarning      string
 	}{
 		{name: "lm_sensors", wantDebian: "lm-sensors", wantRHEL: "lm_sensors"},
-		{name: "avahi", wantDebian: "avahi-daemon libnss-mdns", wantRHEL: "avahi", wantOptionalRHEL: "nss-mdns"},
+		{
+			name:             "avahi",
+			wantDebian:       "avahi-daemon libnss-mdns",
+			wantRHEL:         "avahi",
+			wantOptionalRHEL: "nss-mdns",
+			wantWarning:      "nss-mdns was not installed. Avahi is running, but this host may need EPEL for .local name resolution.",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -328,6 +335,9 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 			}
 			if got := spec.Install.OptionalPackageRHEL; got != test.wantOptionalRHEL {
 				t.Errorf("optional rhel package = %q, want %q", got, test.wantOptionalRHEL)
+			}
+			if got := spec.Install.OptionalPackageRHELFailureWarning; got != test.wantWarning {
+				t.Errorf("optional rhel package warning = %q, want %q", got, test.wantWarning)
 			}
 		})
 	}

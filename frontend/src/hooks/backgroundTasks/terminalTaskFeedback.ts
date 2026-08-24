@@ -2,7 +2,6 @@ import { toast } from "sonner";
 
 import {
   CAPABILITIES,
-  type CapabilityDef,
   type DockerContainerUpdateResult,
   type InstallCapabilityResult,
   type TaskSnapshot,
@@ -111,13 +110,11 @@ export function hasTerminalFeedbackOwner(type: string): boolean {
 
 function capabilityPresentation(task: TerminalFeedbackTask) {
   const wire = requestString(task.metadata, "capability") ?? "capability";
-  const def = CAPABILITIES.find((c) => c.wire === wire) as
-    | CapabilityDef
-    | undefined;
+  const def = CAPABILITIES.find((capability) => capability.wire === wire);
   const label = def?.label ?? wire;
   // Surface an "Open …" action link on the notification for capabilities
   // that have a dedicated page (omitted for ones that don't).
-  const opts = def?.route ? { meta: def.route } : undefined;
+  const opts = def && "route" in def ? { meta: def.route } : undefined;
   return { label, opts };
 }
 
@@ -176,10 +173,10 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
       const install = result as InstallCapabilityResult | undefined;
       if (install?.available) {
         if (install.warning) {
-          toast.warning(
-            `${label} installed successfully, but optional setup reported a warning: ${install.warning}`,
-            opts,
-          );
+          toast.warning(`${label} installed with warning`, {
+            ...opts,
+            description: install.warning,
+          });
         } else {
           toast.success(`${label} installed`, opts);
         }
