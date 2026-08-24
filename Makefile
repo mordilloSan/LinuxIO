@@ -861,6 +861,7 @@ test-updater: ensure-go
 	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run TestInstallScriptDryRunWithSystemdSandbox -count=1 -v
 
 test-installation-scripts:
+	@echo ""
 	@echo "🧪 Running installation-script fixture tests..."
 	@bash "$(packaging_scripts_dir)/test-install-dependencies.sh"
 	@bash "$(packaging_scripts_dir)/tests/installer-port-fixtures.sh"
@@ -874,6 +875,7 @@ test-docker-update-integration: ensure-go
 
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
+	@echo ""
 	@echo "🔎 Running Oxlint + Oxfmt (auto-fix)..."
 	@bash -c ' \
 	  cd "$(frontend_dir)"; \

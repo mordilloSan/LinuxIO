@@ -9,7 +9,7 @@ LOCAL_INSTALLER="${SCRIPT_DIR}/../localinstall.sh"
 RELEASE_INSTALLER="${SCRIPT_DIR}/../install-linuxio-binaries.sh"
 
 fail() {
-    echo "FAIL: $*" >&2
+    echo "❌ $*" >&2
     exit 1
 }
 
@@ -85,7 +85,9 @@ run_port_fixtures() {
 }
 
 run_port_fixtures "$LOCAL_INSTALLER"
+echo "   ✓ local installer port fixtures"
 run_port_fixtures "$RELEASE_INSTALLER"
+echo "   ✓ release installer port fixtures"
 
 grep -Fq \
     'CURRENT_MAIN_PACKAGING_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"' \
@@ -93,5 +95,6 @@ grep -Fq \
 if grep -Fq '/releases/download/${version}/packaging' "$RELEASE_INSTALLER"; then
     fail "packaging assets must not be forced to the release tag"
 fi
+echo "   ✓ recovery-asset packaging policy"
 
-echo "installer port and recovery-asset fixtures passed"
+echo "✅ Installer port and recovery-asset fixtures passed!"
