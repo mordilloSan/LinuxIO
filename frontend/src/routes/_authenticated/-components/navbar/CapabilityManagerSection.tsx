@@ -44,6 +44,7 @@ interface CapabilityInstallRun {
   id: number;
   label: string;
   message: string;
+  nextOutputID: number;
   output: CapabilityInstallOutputLine[];
   outputHistoryIncomplete: boolean;
   percentage: number | null;
@@ -69,7 +70,11 @@ const appendInstallOutput = (
   if (!output || output.text.length === 0) return run;
   const records = [
     ...run.output,
-    { stream: installOutputStream(output), text: output.text },
+    {
+      id: run.nextOutputID,
+      stream: installOutputStream(output),
+      text: output.text,
+    },
   ];
   const truncated = records.length > MAX_INSTALL_OUTPUT_LINES;
   return {
@@ -78,6 +83,7 @@ const appendInstallOutput = (
       ? records.slice(records.length - MAX_INSTALL_OUTPUT_LINES)
       : records,
     outputHistoryIncomplete: run.outputHistoryIncomplete || truncated,
+    nextOutputID: run.nextOutputID + 1,
   };
 };
 
@@ -114,6 +120,10 @@ const CapabilityManagerSection = () => {
   const mountedRef = useRef(true);
   const nextInstallRunID = useRef(0);
   const launchedInstallRunID = useRef<number | null>(null);
+  const dismissedInstallRef = useRef<{
+    taskID?: string;
+    wire: string;
+  } | null>(null);
   const { isOpen: muxIsOpen } = useStreamMux();
 
   // The dialog owns live presentation only. Completion feedback and the
@@ -136,7 +146,7 @@ const CapabilityManagerSection = () => {
           };
         });
       },
-      onProgress: (progress, _task, variables) => {
+      onProgress: (progress, task, variables) => {
         if (!mountedRef.current) return;
         setInstallRun((previous) => {
           if (
@@ -150,6 +160,7 @@ const CapabilityManagerSection = () => {
           const next = {
             ...previous,
             message: progress.message ?? detail?.message ?? previous.message,
+            task: task ?? previous.task,
             percentage:
               typeof progress.percentage === "number"
                 ? progress.percentage
@@ -161,8 +172,26 @@ const CapabilityManagerSection = () => {
           return appendInstallOutput(next, detail?.output);
         });
       },
+      onTaskStart: (task, variables) => {
+        if (!mountedRef.current) return;
+        const dismissed = dismissedInstallRef.current;
+        if (
+          dismissed?.wire === variables.capability &&
+          dismissed.taskID === undefined
+        ) {
+          dismissedInstallRef.current = { ...dismissed, taskID: task.id };
+        }
+        setInstallRun((previous) =>
+          previous?.wire === variables.capability
+            ? { ...previous, task }
+            : previous,
+        );
+      },
       success: (result, variables) => {
         if (!mountedRef.current) return;
+        if (dismissedInstallRef.current?.wire === variables.capability) {
+          dismissedInstallRef.current = null;
+        }
         setLatest((previous) => ({
           ...(previous ?? ({} as CapabilitiesResponse)),
           [`${variables.capability}_available`]: result.available,
@@ -173,9 +202,11 @@ const CapabilityManagerSection = () => {
           if (!previous || previous.wire !== variables.capability) {
             return previous;
           }
-          let warning: string | null = null;
+          const resultWarning = result.warning;
+          let warning: string | null = resultWarning ?? null;
           if (!result.available) {
             warning =
+              resultWarning ||
               result.error ||
               `${previous.label} was installed but is still unavailable`;
           }
@@ -185,7 +216,7 @@ const CapabilityManagerSection = () => {
             message: warning ?? "Installation completed",
             percentage: 100,
             running: false,
-            success: result.available,
+            success: result.available && !warning,
             warning,
           };
         });
@@ -210,6 +241,10 @@ const CapabilityManagerSection = () => {
       const wire = task.metadata?.capability;
       const capability = CAPABILITIES.find((item) => item.wire === wire);
       if (!wire || !capability) return;
+      const dismissed = dismissedInstallRef.current;
+      const wasDismissed =
+        dismissed?.wire === wire &&
+        (!dismissed.taskID || dismissed.taskID === task.id);
       const id = ++nextInstallRunID.current;
       setInstallRun((previous) =>
         previous?.running
@@ -219,6 +254,7 @@ const CapabilityManagerSection = () => {
               id,
               label: capability.label,
               message: "Reconnecting to installation…",
+              nextOutputID: 0,
               output: [],
               outputHistoryIncomplete: true,
               percentage: null,
@@ -230,7 +266,9 @@ const CapabilityManagerSection = () => {
               wire,
             },
       );
-      setInstallDialogOpen(true);
+      if (!wasDismissed) {
+        setInstallDialogOpen(true);
+      }
     },
     scanKey: muxIsOpen ? "capability-installation" : null,
     type: TASK_TYPE_SYSTEM_INSTALL_CAPABILITY,
@@ -320,12 +358,14 @@ const CapabilityManagerSection = () => {
   );
 
   const handleInstall = useCallback((wire: string, label: string) => {
+    dismissedInstallRef.current = null;
     const id = ++nextInstallRunID.current;
     setInstallRun({
       error: null,
       id,
       label,
       message: "Starting installation…",
+      nextOutputID: 0,
       output: [],
       outputHistoryIncomplete: false,
       percentage: null,
@@ -337,6 +377,21 @@ const CapabilityManagerSection = () => {
     });
     // The mutation starts from an Effect after this state is painted, so the
     // dialog is present before the first backend request is submitted.
+    setInstallDialogOpen(true);
+  }, []);
+
+  const handleInstallDialogClose = useCallback(() => {
+    if (installRun?.running) {
+      dismissedInstallRef.current = {
+        taskID: installRun.task?.id,
+        wire: installRun.wire,
+      };
+    }
+    setInstallDialogOpen(false);
+  }, [installRun]);
+
+  const handleViewInstall = useCallback(() => {
+    dismissedInstallRef.current = null;
     setInstallDialogOpen(true);
   }, []);
 
@@ -473,7 +528,7 @@ const CapabilityManagerSection = () => {
                             disabled={installDisabled}
                             onClick={() => {
                               if (installing) {
-                                setInstallDialogOpen(true);
+                                handleViewInstall();
                               } else {
                                 handleInstall(row.wire, row.label);
                               }
@@ -535,7 +590,7 @@ const CapabilityManagerSection = () => {
           capabilityLabel={installRun.label}
           error={installRun.error}
           message={installRun.message}
-          onClose={() => setInstallDialogOpen(false)}
+          onClose={handleInstallDialogClose}
           open={installDialogOpen}
           output={installRun.output}
           outputHistoryIncomplete={installRun.outputHistoryIncomplete}

@@ -33,10 +33,14 @@ type CapabilitySpec struct {
 type InstallSpec struct {
 	PackageDebian string
 	PackageRHEL   string
-	ServiceDebian string
-	ServiceRHEL   string
-	EnableService bool
-	PostInstall   *InstallCommand
+	// OptionalPackageRHEL is installed on RHEL-family systems when available,
+	// but a package-manager failure must not prevent the required capability
+	// service from being enabled and verified.
+	OptionalPackageRHEL string
+	ServiceDebian       string
+	ServiceRHEL         string
+	EnableService       bool
+	PostInstall         *InstallCommand
 
 	// OptionalComponent names a LinuxIO-managed install that is not provided by
 	// the distro package manager.
@@ -211,11 +215,12 @@ var capabilityRegistry = []CapabilitySpec{
 			return checkedCapabilityErr(ok, err, errAvahiUnavailable)
 		},
 		Install: &InstallSpec{
-			PackageDebian: "avahi-daemon libnss-mdns",
-			PackageRHEL:   "avahi nss-mdns",
-			ServiceDebian: "avahi-daemon.service",
-			ServiceRHEL:   "avahi-daemon.service",
-			EnableService: true,
+			PackageDebian:       "avahi-daemon libnss-mdns",
+			PackageRHEL:         "avahi",
+			OptionalPackageRHEL: "nss-mdns",
+			ServiceDebian:       "avahi-daemon.service",
+			ServiceRHEL:         "avahi-daemon.service",
+			EnableService:       true,
 		},
 	},
 	{

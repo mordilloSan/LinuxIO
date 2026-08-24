@@ -155,7 +155,8 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 		}
 	}
 
-	if err := installCapabilityPackages(ctx, task, name, pkg); err != nil {
+	optionalPackageWarning, err := installCapabilityDependencies(ctx, task, family, name, spec.LogName, pkg, spec.Install)
+	if err != nil {
 		return apischema.InstallCapabilityResult{}, err
 	}
 
@@ -186,7 +187,18 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 
 	reportProgress(task, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
 	available, errMsg := capabilityDetectWithRetry(ctx, spec, detectRetryTimeout)
-	return apischema.InstallCapabilityResult{Available: available, Error: utils.OptionalString(errMsg)}, nil
+	return apischema.InstallCapabilityResult{
+		Available: available,
+		Error:     utils.OptionalString(errMsg),
+		Warning:   utils.OptionalString(optionalPackageWarning),
+	}, nil
+}
+
+func installCapabilityDependencies(ctx context.Context, task *bridgetask.Task, family, name, logName, packageList string, spec *system.InstallSpec) (string, error) {
+	if err := installCapabilityPackages(ctx, task, name, packageList); err != nil {
+		return "", err
+	}
+	return installOptionalCapabilityPackage(ctx, task, family, logName, spec)
 }
 
 func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capabilityName string, packageList string) error {
@@ -205,6 +217,27 @@ func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capab
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installed %s", packageName), installEnd)
 	}
 	return nil
+}
+
+func installOptionalCapabilityPackage(ctx context.Context, task *bridgetask.Task, family, capabilityName string, spec *system.InstallSpec) (string, error) {
+	if !isRHELFamily(family) || spec == nil || strings.TrimSpace(spec.OptionalPackageRHEL) == "" {
+		return "", nil
+	}
+
+	packageName := strings.TrimSpace(spec.OptionalPackageRHEL)
+	reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing optional package %s", packageName), pctInstallEnd)
+	slog.Info("Installing optional capability package.", "capability", capabilityName, "package", packageName)
+	err := capabilityInstallPackage(ctx, packageName, capabilityInstallReporter(task, packageName, pctInstallEnd, pctInstallEnd))
+	if err == nil {
+		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installed optional package %s", packageName), pctInstallEnd)
+		return "", nil
+	}
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	warning := fmt.Sprintf("Optional package %s could not be installed: %v. Continuing with the %s responder; .local client resolution may be unavailable (the package may require an enabled EPEL repository).", packageName, err, capabilityName)
+	reportProgress(task, stageInstallPackage, warning, pctInstallEnd)
+	return warning, nil
 }
 
 func runCapabilityPostInstall(ctx context.Context, task *bridgetask.Task, command *system.InstallCommand) error {
@@ -505,10 +538,10 @@ func detectWithRetry(ctx context.Context, spec system.CapabilitySpec, timeout ti
 	}
 }
 
-// pickByFamily returns the debian-side value when family is "debian", or the
-// rhel-side value when family is "rhel". Falls back to whichever is non-empty.
+// pickByFamily returns the Debian-side value for Debian-family hosts, or the
+// RHEL-side value for RHEL-family hosts. Falls back to whichever is non-empty.
 func pickByFamily(family, debian, rhel string) string {
-	if family == "rhel" && rhel != "" {
+	if isRHELFamily(family) && rhel != "" {
 		return rhel
 	}
 	if family == "debian" && debian != "" {
@@ -518,6 +551,15 @@ func pickByFamily(family, debian, rhel string) string {
 		return debian
 	}
 	return rhel
+}
+
+func isRHELFamily(family string) bool {
+	switch strings.ToLower(strings.TrimSpace(family)) {
+	case "rhel", "fedora", "centos", "rocky", "almalinux", "ol", "amzn":
+		return true
+	default:
+		return false
+	}
 }
 
 // detectDistroFamily reads /etc/os-release and classifies the host as either
@@ -547,11 +589,8 @@ func detectDistroFamily() string {
 	ids := []string{values["ID"]}
 	ids = append(ids, strings.Fields(values["ID_LIKE"])...)
 
-	rhelFamily := []string{"rhel", "fedora", "centos", "rocky", "almalinux", "ol", "amzn"}
-	for _, id := range ids {
-		if slices.Contains(rhelFamily, id) {
-			return "rhel"
-		}
+	if slices.ContainsFunc(ids, isRHELFamily) {
+		return "rhel"
 	}
 	return "debian"
 }

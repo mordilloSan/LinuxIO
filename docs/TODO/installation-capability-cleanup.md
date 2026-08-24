@@ -30,9 +30,10 @@ The following decisions are settled for this work:
   into the dependency bootstrap.
 - Installing `lm-sensors` from the Capability Manager must also run
   `sensors-detect --auto` and expose that command's output.
-- Installing Avahi from the Capability Manager must also install the distro's
-  mDNS NSS package (`libnss-mdns` on Debian-family systems and the appropriate
-  RHEL-family package).
+- Installing Avahi from the Capability Manager must also install
+  `libnss-mdns` on Debian-family systems. On RHEL-family systems, `nss-mdns`
+  is best-effort because it may require EPEL; failure must warn without
+  preventing the Avahi responder from being enabled, started, or re-detected.
 - Every capability installation opens a progress dialog with a raw-output view,
   following the interaction used by Docker Compose operations and filesystem
   indexing.
@@ -193,20 +194,25 @@ LinuxIO installation paths
 
 ### Avahi and NSS integration
 
-1. Extend the Avahi package specification to install both the responder and
-   NSS integration:
-   - Debian family: `avahi-daemon` and `libnss-mdns`;
-   - RHEL family: `avahi` and the verified distro-equivalent NSS package.
+1. Extend the Avahi package specification to install the responder and NSS
+   integration:
+   - Debian family: require `avahi-daemon` and `libnss-mdns`;
+   - RHEL family: require `avahi`, then install `nss-mdns` best-effort and warn
+     that EPEL may be needed if the package is unavailable.
 2. Continue enabling and starting `avahi-daemon.service` through the existing
    systemd abstraction.
-3. Re-detect Avahi only after all packages and service steps complete.
-4. Add registry and install-runner tests for both distro families.
+3. Continue service activation and re-detection after a non-fatal RHEL
+   `nss-mdns` failure.
+4. Re-detect Avahi after package and service steps complete.
+5. Add registry and install-runner tests for both distro families and the
+   optional-package failure path.
 
 ### Phase 3 exit criteria
 
 - [x] Installing lm-sensors from LinuxIO runs `sensors-detect --auto` once.
 - [x] The command is cancellable and its output reaches the task stream.
-- [x] Installing Avahi also installs mDNS NSS integration on supported distros.
+- [x] Installing Avahi requires mDNS NSS integration on Debian and attempts it
+  with a visible non-fatal warning on RHEL-family systems.
 - [x] Capability detection runs after every required package, command, and
   service step.
 
@@ -234,6 +240,8 @@ LinuxIO installation paths
    invalidation must still occur through the global Task handler.
 8. Define reopen/recovery behavior explicitly:
    - an active capability Task can reopen its progress dialog;
+   - dismissing a running dialog remains respected across stream reconnects;
+     the row's explicit View action reopens it;
    - bounded output available from Task replay is restored;
    - if historical raw output is unavailable, state that honestly rather than
      fabricating a complete log.
@@ -367,7 +375,8 @@ When implementation resumes:
 - [x] PackageKit is enforced as a prerequisite.
 - [x] Optional capability installation is owned by LinuxIO.
 - [x] lm-sensors runs `sensors-detect --auto` with streamed output.
-- [x] Avahi installation includes mDNS NSS integration.
+- [x] Avahi installation includes Debian NSS integration and best-effort RHEL
+  NSS integration with a visible warning on failure.
 - [x] Capability installation has a progress/raw-output dialog.
 - [x] Localinstall preserves its development purpose and handles ports
   consistently.

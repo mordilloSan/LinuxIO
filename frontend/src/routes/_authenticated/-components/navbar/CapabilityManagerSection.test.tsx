@@ -26,6 +26,7 @@ interface TaskStreamConfig {
     task: TaskSnapshot,
     variables: CapabilityRequest,
   ) => void;
+  onTaskStart?: (task: TaskSnapshot, variables: CapabilityRequest) => void;
   success?: (
     result: InstallCapabilityResult,
     variables: CapabilityRequest,
@@ -130,8 +131,8 @@ vi.mock("@/components/dialog/CapabilityInstallDialog", () => ({
         <span>Installing {capabilityLabel}</span>
         <span>{message}</span>
         {percentage === null ? null : <span>{percentage}%</span>}
-        {output.map((record, index) => (
-          <span key={index}>
+        {output.map((record) => (
+          <span data-line-id={record.id} key={record.id}>
             {record.stream}:{record.text}
           </span>
         ))}
@@ -294,6 +295,31 @@ describe("CapabilityManagerSection", () => {
     expect(mocks.mutate).toHaveBeenCalledOnce();
   });
 
+  it("does not reopen a dismissed install after mux recovery, but View reopens it", async () => {
+    render(<CapabilityManagerSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: "Run in background" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    act(() => mocks.taskConfig?.onTaskStart?.(task, request));
+    act(() =>
+      mocks.taskConfig?.error?.(new Error("stream disconnected"), request),
+    );
+    act(() => mocks.recoveryConfig?.onRecover?.(task));
+
+    await waitFor(() =>
+      expect(mocks.watch).toHaveBeenCalledWith(task, request),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "View lm-sensors installation" }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("bounds retained output and marks a truncated history", async () => {
     render(<CapabilityManagerSection />);
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
@@ -321,6 +347,14 @@ describe("CapabilityManagerSection", () => {
 
     expect(screen.queryByText("stdout:line 0")).not.toBeInTheDocument();
     expect(screen.getByText("stdout:line 500")).toBeInTheDocument();
+    expect(screen.getByText("stdout:line 1")).toHaveAttribute(
+      "data-line-id",
+      "1",
+    );
+    expect(screen.getByText("stdout:line 500")).toHaveAttribute(
+      "data-line-id",
+      "500",
+    );
     expect(screen.getByText("Retained output only")).toBeInTheDocument();
   });
 
@@ -350,6 +384,27 @@ describe("CapabilityManagerSection", () => {
       mocks.taskConfig?.error?.(new Error("sensors-detect failed"), request),
     );
     expect(screen.getByText("sensors-detect failed")).toBeInTheDocument();
+  });
+
+  it("surfaces a backend warning even when the capability is available", async () => {
+    render(<CapabilityManagerSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
+    await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
+
+    act(() =>
+      mocks.taskConfig?.success?.(
+        {
+          available: true,
+          warning: "nss-mdns was not installed",
+        },
+        request,
+      ),
+    );
+
+    expect(
+      screen.getAllByText("nss-mdns was not installed").length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText("Install succeeded")).not.toBeInTheDocument();
   });
 
   it("recovers an active task with an honest retained-output marker", async () => {

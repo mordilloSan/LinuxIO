@@ -73,7 +73,17 @@ curl -fsSL https://get.docker.com | sudo sh
 curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/scripts/install-linuxio-binaries.sh | sudo bash
 ```
 
-Use the dashboard URL printed by the installer. It preserves an existing valid LinuxIO port when possible, otherwise selects an available port from `8090`–`8099`. After signing in, install optional capabilities such as sensors, SMART monitoring, NFS, or Avahi from LinuxIO Capability Manager. If Avahi is installed there, LinuxIO also installs the distro's mDNS NSS integration, and the dashboard is reachable at `https://<your-hostname>.local:<port>` using the same selected port. Installing lm-sensors from the Capability Manager also runs the required `sensors-detect --auto` hardware probe.
+Use the dashboard URL printed by the installer. It preserves an existing valid
+LinuxIO port when possible, otherwise selects an available port from
+`8090`–`8099`. After signing in, install optional capabilities such as sensors,
+SMART monitoring, NFS, or Avahi from LinuxIO Capability Manager. Avahi
+installation includes the required Debian mDNS NSS integration. On RHEL-family
+hosts the responder remains usable if the optional `nss-mdns` package is
+unavailable, and LinuxIO warns that EPEL may be needed for client-side `.local`
+resolution. The dashboard is then reachable at
+`https://<your-hostname>.local:<port>` using the same selected port. Installing
+lm-sensors from the Capability Manager also runs the required
+`sensors-detect --auto` hardware probe.
 
 A versioned installation downloads immutable binaries from that release, but intentionally fetches current `main` systemd, PAM, configuration, MOTD, and
 helper assets. This recovery policy lets packaging fixes repair already published releases; current packaging assets must therefore remain compatible

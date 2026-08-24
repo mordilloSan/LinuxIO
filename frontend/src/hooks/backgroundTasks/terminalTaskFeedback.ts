@@ -175,7 +175,14 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
       void deps.refreshCapabilities();
       const install = result as InstallCapabilityResult | undefined;
       if (install?.available) {
-        toast.success(`${label} installed`, opts);
+        if (install.warning) {
+          toast.warning(
+            `${label} installed successfully, but optional setup reported a warning: ${install.warning}`,
+            opts,
+          );
+        } else {
+          toast.success(`${label} installed`, opts);
+        }
       } else {
         const reason = install?.error ? `: ${install.error}` : ".";
         toast.warning(

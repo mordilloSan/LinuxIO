@@ -13,9 +13,9 @@ const runningProps = {
   onClose: vi.fn(),
   open: true,
   output: [
-    { stream: "status", text: "Resolving package names" },
-    { stream: "stdout", text: "Probing hardware" },
-    { stream: "stderr", text: "Driver warning" },
+    { id: 0, stream: "status", text: "Resolving package names" },
+    { id: 1, stream: "stdout", text: "Probing hardware" },
+    { id: 2, stream: "stderr", text: "Driver warning" },
   ] satisfies CapabilityInstallOutputLine[],
   percentage: 42,
   running: true,
@@ -61,11 +61,40 @@ describe("CapabilityInstallDialog", () => {
     rerender(
       <CapabilityInstallDialog
         {...runningProps}
-        output={[{ stream: "stdout", text: "Newest line" }]}
+        output={[{ id: 0, stream: "stdout", text: "Newest line" }]}
       />,
     );
 
     expect(scroller?.scrollTop).toBe(240);
+  });
+
+  it("preserves retained output row identity as the oldest record is removed", () => {
+    const initialOutput = Array.from({ length: 3 }, (_, id) => ({
+      id,
+      stream: "stdout" as const,
+      text: `line ${id}`,
+    }));
+    const { rerender } = render(
+      <CapabilityInstallDialog {...runningProps} output={initialOutput} />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show installation output" }),
+    );
+    const retainedRow = screen.getByText("line 1");
+
+    rerender(
+      <CapabilityInstallDialog
+        {...runningProps}
+        output={[
+          { id: 1, stream: "stdout", text: "line 1" },
+          { id: 2, stream: "stdout", text: "line 2" },
+          { id: 3, stream: "stdout", text: "line 3" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("line 1")).toBe(retainedRow);
   });
 
   it("allows a running install to continue in the background", () => {

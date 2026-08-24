@@ -187,6 +187,7 @@ func TestInstallCapabilityInstallsAvahiNSSBeforeServiceActions(t *testing.T) {
 	}{
 		{family: "debian", packages: []string{"avahi-daemon", "libnss-mdns"}},
 		{family: "rhel", packages: []string{"avahi", "nss-mdns"}},
+		{family: "fedora", packages: []string{"avahi", "nss-mdns"}},
 	}
 	for _, test := range tests {
 		t.Run(test.family, func(t *testing.T) {
@@ -230,6 +231,109 @@ func TestInstallCapabilityInstallsAvahiNSSBeforeServiceActions(t *testing.T) {
 				t.Fatalf("operation order = %v, want %v", order, want)
 			}
 		})
+	}
+}
+
+func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
+	originalFamily := capabilityDistroFamily
+	originalPackage := capabilityInstallPackage
+	originalEnable := capabilityEnableService
+	originalStart := capabilityStartService
+	originalWait := capabilityWaitServiceActive
+	originalDetect := capabilityDetectWithRetry
+	t.Cleanup(func() {
+		capabilityDistroFamily = originalFamily
+		capabilityInstallPackage = originalPackage
+		capabilityEnableService = originalEnable
+		capabilityStartService = originalStart
+		capabilityWaitServiceActive = originalWait
+		capabilityDetectWithRetry = originalDetect
+	})
+
+	capabilityDistroFamily = func() string { return "rhel" }
+	var order []string
+	capabilityInstallPackage = func(_ context.Context, name string, _ pkgUpdateReporter) error {
+		order = append(order, "package:"+name)
+		if name == "nss-mdns" {
+			return errors.New("no enabled repository provides nss-mdns")
+		}
+		return nil
+	}
+	capabilityEnableService = func(_ context.Context, service string) error {
+		order = append(order, "enable:"+service)
+		return nil
+	}
+	capabilityStartService = func(_ context.Context, service string) error {
+		order = append(order, "start:"+service)
+		return nil
+	}
+	capabilityWaitServiceActive = func(_ context.Context, service string, _ time.Duration) error {
+		order = append(order, "wait:"+service)
+		return nil
+	}
+	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ time.Duration) (bool, string) {
+		order = append(order, "detect:"+spec.Name)
+		return true, ""
+	}
+
+	registry := bridgetask.NewTaskService()
+	task, err := registry.Create("system.install_capability", nil)
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	result, err := installCapability(context.Background(), task, "avahi")
+	if err != nil {
+		t.Fatalf("installCapability: %v", err)
+	}
+	_, replay, unsubscribe := task.SubscribeWithReplay(64)
+	defer unsubscribe()
+	wantOrder := []string{
+		"package:avahi",
+		"package:nss-mdns",
+		"enable:avahi-daemon.service",
+		"start:avahi-daemon.service",
+		"wait:avahi-daemon.service",
+		"detect:avahi",
+	}
+	if !slices.Equal(order, wantOrder) {
+		t.Fatalf("operation order = %v, want %v", order, wantOrder)
+	}
+	if !result.Available {
+		t.Fatal("result.Available = false, want true after responder detection")
+	}
+	if result.Error != nil {
+		t.Fatalf("result.Error = %q, want nil for available responder", *result.Error)
+	}
+	if result.Warning == nil || !strings.Contains(*result.Warning, "nss-mdns") || !strings.Contains(*result.Warning, "EPEL") {
+		t.Fatalf("result.Warning = %v, want an NSS/EPEL warning", result.Warning)
+	}
+
+	assertOptionalPackageWarningProgress(t, replay)
+}
+
+func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgetask.TaskEvent) {
+	t.Helper()
+	var lastPercentage *int
+	warningOutput := false
+	for _, event := range replay {
+		progress, ok := event.Progress.(bridgetask.TaskProgress)
+		if !ok {
+			continue
+		}
+		if progress.Percentage != nil {
+			percentage := *progress.Percentage
+			if lastPercentage != nil && percentage < *lastPercentage {
+				t.Fatalf("progress percentage moved backwards from %d to %d", *lastPercentage, percentage)
+			}
+			lastPercentage = &percentage
+		}
+		detail, ok := progress.Detail.(InstallCapabilityProgress)
+		if ok && detail.Output != nil && detail.Output.Stream == "status" && strings.Contains(detail.Output.Text, "could not be installed") {
+			warningOutput = true
+		}
+	}
+	if !warningOutput {
+		t.Fatal("progress replay did not contain the optional-package warning")
 	}
 }
 

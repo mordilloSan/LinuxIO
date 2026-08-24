@@ -124,16 +124,23 @@ resolve -> [install_asset] -> [install_package] -> [enable_service] -> [start_se
   of PackageKit.
 - Package installs go through PackageKit (`InstallByName`), so installable
   capabilities that have a package step require PackageKit to be available.
+- A distro-specific optional package may report a warning without preventing
+  later service and detection stages. Avahi uses this on RHEL-family hosts for
+  `nss-mdns`, which may require EPEL; the responder is still enabled, started,
+  and re-detected if that optional package is unavailable.
 - Service steps use `systemd.EnableUnit` / `StartUnit`, then `waitUnitActive`.
 - Finally `detectWithRetry` re-runs `Detect` for a few seconds to cover the gap
   between a service going `active` and its surface (D-Bus name, socket) being
-  reachable. The job result is the freshly re-detected `{available, error}`.
+  reachable. The job result is the freshly re-detected
+  `{available, error, warning}`. `error` describes detection or availability;
+  `warning` describes non-fatal optional setup.
 
 `InstallSpec` fields:
 
 | Field | Meaning |
 |-------|---------|
 | `PackageDebian` / `PackageRHEL` | Package name per family (empty = no package step). |
+| `OptionalPackageRHEL` | Best-effort RHEL-family package whose failure is returned as a warning. |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
 | `OptionalComponent` | LinuxIO-managed non-package installer handled in `handlers/packages`. |

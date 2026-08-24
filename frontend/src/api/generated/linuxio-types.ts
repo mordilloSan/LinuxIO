@@ -1306,6 +1306,7 @@ export interface InstallCapabilityProgress {
 export interface InstallCapabilityResult {
   available: boolean;
   error?: string;
+  warning?: string;
 }
 
 export interface InterfaceMTURequest {

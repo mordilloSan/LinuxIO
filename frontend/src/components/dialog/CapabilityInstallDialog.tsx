@@ -18,6 +18,7 @@ import { useAppTheme } from "@/theme";
 export type CapabilityInstallOutputStream = "status" | "stderr" | "stdout";
 
 export interface CapabilityInstallOutputLine {
+  id: number;
   stream: CapabilityInstallOutputStream;
   text: string;
 }
@@ -243,10 +244,10 @@ const CapabilityInstallDialog = ({
                     [status] Earlier output may not have been retained.
                   </div>
                 ) : null}
-                {output.map((line, index) => (
+                {output.map((line) => (
                   <div
                     className={`capability-install-dialog__output-line capability-install-dialog__output-line--${line.stream}`}
-                    key={index}
+                    key={line.id}
                   >
                     {line.stream === "status"
                       ? `[status] ${line.text}`

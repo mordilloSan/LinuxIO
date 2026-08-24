@@ -306,12 +306,13 @@ func TestMonitoringCapabilityInstallSpec(t *testing.T) {
 
 func TestCapabilityInstallPackageSelection(t *testing.T) {
 	tests := []struct {
-		name       string
-		wantDebian string
-		wantRHEL   string
+		name             string
+		wantDebian       string
+		wantRHEL         string
+		wantOptionalRHEL string
 	}{
 		{name: "lm_sensors", wantDebian: "lm-sensors", wantRHEL: "lm_sensors"},
-		{name: "avahi", wantDebian: "avahi-daemon libnss-mdns", wantRHEL: "avahi nss-mdns"},
+		{name: "avahi", wantDebian: "avahi-daemon libnss-mdns", wantRHEL: "avahi", wantOptionalRHEL: "nss-mdns"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -324,6 +325,9 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 			}
 			if got := spec.Install.PackageRHEL; got != test.wantRHEL {
 				t.Errorf("rhel package = %q, want %q", got, test.wantRHEL)
+			}
+			if got := spec.Install.OptionalPackageRHEL; got != test.wantOptionalRHEL {
+				t.Errorf("optional rhel package = %q, want %q", got, test.wantOptionalRHEL)
 			}
 		})
 	}
