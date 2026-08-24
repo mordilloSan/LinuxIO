@@ -1437,7 +1437,6 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze          $(COLOR_RESET) Build frontend with bundle analysis enabled"
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-c-build-deps$(COLOR_RESET) Check C authentication build dependencies"
-	@$(PRINTC) "$(COLOR_GREEN)    make test-release-automation$(COLOR_RESET) Smoke-test release automation fixture"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"

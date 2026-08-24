@@ -211,7 +211,5 @@ follows:
 - installation: `localinstall`, `reinstall`, `uninstall`
 - documentation: `help-overrides`
 
-For release-helper smoke coverage, run `make test-release-automation`.
-
 `_build-binaries` is an internal implementation target. It remains callable
 for diagnostics but is not part of the normal user workflow.
