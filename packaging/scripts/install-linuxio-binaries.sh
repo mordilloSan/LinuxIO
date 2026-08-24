@@ -18,7 +18,13 @@ readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
 readonly DATA_DIR="/var/lib/linuxio"
 readonly STAGING="/tmp/linuxio-install-$$"
-readonly RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"
+# Recovery-asset policy: a versioned install downloads immutable release
+# binaries, but intentionally fetches current-main configuration, PAM, MOTD,
+# and systemd packaging assets. This lets a maintainer repair an installer or
+# service-definition bug for an already-published release without rebuilding
+# or republishing its binaries. Current-main assets must remain compatible
+# with supported historical binaries.
+readonly CURRENT_MAIN_PACKAGING_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"
 
 # ---------- Colors & Styling ----------
 readonly COLOUR_RESET='\e[0m'
@@ -218,7 +224,7 @@ install_config_files() {
     local disallowed_file="${CONFIG_DIR}/disallowed-users"
     if [[ ! -f "$disallowed_file" ]]; then
         Show 2 "Downloading disallowed-users..."
-        if ! curl -fsSL "${RAW_BASE}/etc/linuxio/disallowed-users" -o "$disallowed_file"; then
+        if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/linuxio/disallowed-users" -o "$disallowed_file"; then
             Show 1 "Failed to download disallowed-users"
         fi
         chown root:root "$disallowed_file"
@@ -236,7 +242,7 @@ install_pam_config() {
 
     local pam_file="${PAM_DIR}/linuxio"
 
-    if ! curl -fsSL "${RAW_BASE}/etc/pam.d/linuxio" -o "$pam_file"; then
+    if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/pam.d/linuxio" -o "$pam_file"; then
         Show 1 "Failed to download PAM configuration"
     fi
 
@@ -258,7 +264,7 @@ install_avahi_service() {
 
     mkdir -p "$avahi_dir"
 
-    if ! curl -fsSL "${RAW_BASE}/etc/avahi/services/linuxio.service" -o "$avahi_file"; then
+    if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/avahi/services/linuxio.service" -o "$avahi_file"; then
         Show 3 "Failed to download Avahi service file — mDNS advertisement skipped"
         return 0
     fi
@@ -277,7 +283,10 @@ install_avahi_service() {
 
 # ---------- Systemd Functions ----------
 
-SELECTED_PORT=8090
+readonly LINUXIO_SOCKET_NAME="linuxio-webserver.socket"
+readonly LINUXIO_PORT_MIN=8090
+readonly LINUXIO_PORT_MAX=8099
+SELECTED_PORT=""
 
 linuxio_services_active() {
     systemctl is-active linuxio.target >/dev/null 2>&1 || \
@@ -311,71 +320,172 @@ restart_or_start_services() {
     return 1
 }
 
+linuxio_socket_candidates() {
+    if [[ -n "${LINUXIO_EXISTING_SOCKET_FILE:-}" ]]; then
+        printf '%s\n' "$LINUXIO_EXISTING_SOCKET_FILE"
+        return 0
+    fi
+
+    printf '%s\n' \
+        "${SYSTEMD_DIR}/${LINUXIO_SOCKET_NAME}" \
+        "/run/systemd/system/${LINUXIO_SOCKET_NAME}" \
+        "/usr/lib/systemd/system/${LINUXIO_SOCKET_NAME}" \
+        "/lib/systemd/system/${LINUXIO_SOCKET_NAME}"
+}
+
+extract_linuxio_socket_port() {
+    local socket_file="$1"
+    local line value port
+
+    [[ -f "$socket_file" ]] || return 1
+
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*ListenStream[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
+        value="${BASH_REMATCH[1]}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%%[[:space:]]*}"
+
+        if [[ "$value" =~ ^[0-9]+$ ]]; then
+            port="$value"
+        elif [[ "$value" =~ :([0-9]+)$ ]]; then
+            port="${BASH_REMATCH[1]}"
+        else
+            continue
+        fi
+
+        if [[ "$port" =~ ^[0-9]+$ ]] &&
+            ((10#$port >= LINUXIO_PORT_MIN && 10#$port <= LINUXIO_PORT_MAX)); then
+            echo "$((10#$port))"
+            return 0
+        fi
+    done < "$socket_file"
+
+    return 1
+}
+
+find_existing_linuxio_port() {
+    local socket_file port
+
+    while IFS= read -r socket_file; do
+        port=$(extract_linuxio_socket_port "$socket_file") || continue
+        echo "$port"
+        return 0
+    done < <(linuxio_socket_candidates)
+
+    return 1
+}
+
 is_port_in_use() {
     local port="$1"
-
-    local existing_socket="/lib/systemd/system/linuxio-webserver.socket"
-    if [[ -f "$existing_socket" ]]; then
-        # Matches both "ListenStream=8090" (dual-stack) and "ListenStream=host:8090" forms.
-        if grep -qE "^ListenStream=([^=]*:)?${port}\$" "$existing_socket" 2>/dev/null; then
-            return 1
-        fi
-    fi
-
     local proc
-    proc=$(ss -tlnpH "sport = :${port}" 2>/dev/null)
 
-    [[ -z "$proc" ]] && return 1
+    proc=$(ss -tlnpH "sport = :${port}" 2>/dev/null || true)
+    [[ -n "$proc" ]]
+}
 
-    if echo "$proc" | grep -qE 'linuxio|systemd'; then
-        if systemctl is-active --quiet linuxio-webserver.socket 2>/dev/null; then
-            return 1
+linuxio_socket_active() {
+    systemctl is-active --quiet "$LINUXIO_SOCKET_NAME" 2>/dev/null
+}
+
+linuxio_socket_owns_port() {
+    local port="$1"
+    local listeners endpoint listener_port
+
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    linuxio_socket_active || return 1
+    listeners=$(systemctl show --property=Listen --value "$LINUXIO_SOCKET_NAME" 2>/dev/null) || return 1
+
+    while read -r endpoint _; do
+        if [[ "$endpoint" =~ ^[0-9]+$ ]]; then
+            listener_port="$endpoint"
+        elif [[ "$endpoint" =~ :([0-9]+)$ ]]; then
+            listener_port="${BASH_REMATCH[1]}"
+        else
+            continue
         fi
-    fi
+        if ((10#$listener_port == 10#$port)); then
+            return 0
+        fi
+    done <<< "$listeners"
 
-    return 0
+    return 1
 }
 
 find_available_port() {
-    local port=8090
-    local max_port=8099
+    local preferred_port="${1:-}"
+    local port
 
-    while [[ $port -le $max_port ]]; do
+    if [[ "$preferred_port" =~ ^[0-9]+$ ]] &&
+        ((10#$preferred_port >= LINUXIO_PORT_MIN && 10#$preferred_port <= LINUXIO_PORT_MAX)); then
+        if ! is_port_in_use "$preferred_port" || linuxio_socket_owns_port "$preferred_port"; then
+            echo "$((10#$preferred_port))"
+            return 0
+        fi
+    fi
+
+    for ((port = LINUXIO_PORT_MIN; port <= LINUXIO_PORT_MAX; port++)); do
         if ! is_port_in_use "$port"; then
             echo "$port"
             return 0
         fi
-        ((port++))
     done
 
-    echo "8090"
     return 1
 }
 
+rewrite_linuxio_socket_port() {
+    local socket_file="$1"
+    local port="$2"
+
+    [[ -f "$socket_file" ]] || return 1
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    grep -Eq '^[[:space:]]*ListenStream[[:space:]]*=[[:space:]]*([^[:space:]]*:)?[0-9]+' "$socket_file" || return 1
+
+    sed -Ei \
+        "s|^([[:space:]]*ListenStream[[:space:]]*=[[:space:]]*)([^[:space:]]*:)?[0-9]+([[:space:]]*(#.*)?)$|\1\2${port}\3|" \
+        "$socket_file"
+}
+
 install_systemd_files() {
+    local existing_port
+
     Show 2 "Installing systemd service files..."
+    # Capture this before downloading current-main assets overwrites the
+    # installed socket. A valid existing port is part of the reinstall
+    # compatibility contract and is preserved whenever possible.
+    existing_port=$(find_existing_linuxio_port || true)
 
     for file in linuxio.target linuxio-webserver.socket linuxio-webserver.service \
         linuxio-auth.socket linuxio-auth@.service \
         linuxio-bridge-socket-user.service \
         linuxio-issue.service ; do
         Show 2 "Downloading ${file}..."
-        if ! curl -fsSL "${RAW_BASE}/systemd/${file}" -o "${SYSTEMD_DIR}/${file}"; then
+        if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/systemd/${file}" -o "${SYSTEMD_DIR}/${file}"; then
             Show 1 "Failed to download ${file}"
         fi
         chmod 0644 "${SYSTEMD_DIR}/${file}"
         Show 0 "Installed ${file}"
     done
 
-    SELECTED_PORT=$(find_available_port)
-    if [[ "$SELECTED_PORT" != "8090" ]]; then
-        Show 3 "Port 8090 is in use, using port ${BOLD}${SELECTED_PORT}${COLOUR_RESET} instead"
-        sed -i "s/ListenStream=0.0.0.0:8090/ListenStream=0.0.0.0:${SELECTED_PORT}/" "${SYSTEMD_DIR}/linuxio-webserver.socket"
+    if ! SELECTED_PORT=$(find_available_port "$existing_port"); then
+        Show 1 "No available LinuxIO port in supported range ${LINUXIO_PORT_MIN}-${LINUXIO_PORT_MAX}"
+    fi
+    if ! rewrite_linuxio_socket_port "${SYSTEMD_DIR}/${LINUXIO_SOCKET_NAME}" "$SELECTED_PORT"; then
+        Show 1 "Could not apply selected port ${SELECTED_PORT} to ${SYSTEMD_DIR}/${LINUXIO_SOCKET_NAME}"
+    fi
+    if [[ -n "$existing_port" && "$SELECTED_PORT" == "$existing_port" ]]; then
+        Show 0 "Preserving existing LinuxIO port ${SELECTED_PORT}"
+    elif [[ -n "$existing_port" ]]; then
+        Show 3 "Existing LinuxIO port ${existing_port} is unavailable; using ${BOLD}${SELECTED_PORT}${COLOUR_RESET}"
+    elif [[ "$SELECTED_PORT" != "$LINUXIO_PORT_MIN" ]]; then
+        Show 3 "Port ${LINUXIO_PORT_MIN} is in use, using port ${BOLD}${SELECTED_PORT}${COLOUR_RESET} instead"
+    else
+        Show 0 "Selected LinuxIO port ${SELECTED_PORT}"
     fi
 
     Show 2 "Installing SSH login banner support..."
     mkdir -p /usr/share/linuxio/issue
-    if ! curl -fsSL "${RAW_BASE}/scripts/update-issue" -o /usr/share/linuxio/issue/update-issue; then
+    if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/scripts/update-issue" -o /usr/share/linuxio/issue/update-issue; then
         Show 3 "Failed to download issue script (non-critical)"
     else
         chmod 0755 /usr/share/linuxio/issue/update-issue
@@ -383,7 +493,7 @@ install_systemd_files() {
         # - Debian/Ubuntu/Mint render /etc/update-motd.d/* into /run/motd.dynamic
         # - Fedora/RHEL-style pam_motd reads /etc/motd.d directly
         if [[ -d /etc/update-motd.d ]]; then
-            if curl -fsSL "${RAW_BASE}/etc/update-motd.d/60-linuxio" -o /etc/update-motd.d/60-linuxio; then
+            if curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/update-motd.d/60-linuxio" -o /etc/update-motd.d/60-linuxio; then
                 chmod 0755 /etc/update-motd.d/60-linuxio
                 Show 0 "SSH login banner configured (update-motd.d)"
             else
@@ -399,7 +509,7 @@ install_systemd_files() {
 
     Show 2 "Installing tmpfiles.d configuration..."
     mkdir -p /usr/lib/tmpfiles.d
-    if ! curl -fsSL "${RAW_BASE}/systemd/linuxio-tmpfiles.conf" -o /usr/lib/tmpfiles.d/linuxio.conf; then
+    if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/systemd/linuxio-tmpfiles.conf" -o /usr/lib/tmpfiles.d/linuxio.conf; then
         Show 3 "Failed to download tmpfiles.d config (non-critical)"
     else
         chmod 0644 /usr/lib/tmpfiles.d/linuxio.conf

@@ -10,15 +10,24 @@ import {
   type CapabilityDef,
   type CapabilityErrorKey,
   type CapabilityValueKey,
+  type InstallCapabilityOutput,
+  type TaskSnapshot,
   linuxio,
+  useStreamMux,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import CapabilityInstallDialog, {
+  type CapabilityInstallOutputLine,
+  type CapabilityInstallOutputStream,
+} from "@/components/dialog/CapabilityInstallDialog";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { TASK_TYPE_SYSTEM_INSTALL_CAPABILITY } from "@/constants/backgroundTaskTypes";
+import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import useAuth from "@/hooks/useAuth";
 import {
   type CapabilityStatus,
@@ -27,6 +36,50 @@ import {
   useCapabilityState,
 } from "@/hooks/useCapabilities";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
+
+const MAX_INSTALL_OUTPUT_LINES = 500;
+
+interface CapabilityInstallRun {
+  error: string | null;
+  id: number;
+  label: string;
+  message: string;
+  output: CapabilityInstallOutputLine[];
+  outputHistoryIncomplete: boolean;
+  percentage: number | null;
+  running: boolean;
+  stage: string;
+  success: boolean;
+  task?: TaskSnapshot;
+  warning: string | null;
+  wire: string;
+}
+
+const installOutputStream = (
+  output: InstallCapabilityOutput,
+): CapabilityInstallOutputStream =>
+  output.stream === "stdout" || output.stream === "stderr"
+    ? output.stream
+    : "status";
+
+const appendInstallOutput = (
+  run: CapabilityInstallRun,
+  output: InstallCapabilityOutput | undefined,
+): CapabilityInstallRun => {
+  if (!output || output.text.length === 0) return run;
+  const records = [
+    ...run.output,
+    { stream: installOutputStream(output), text: output.text },
+  ];
+  const truncated = records.length > MAX_INSTALL_OUTPUT_LINES;
+  return {
+    ...run,
+    output: truncated
+      ? records.slice(records.length - MAX_INSTALL_OUTPUT_LINES)
+      : records,
+    outputHistoryIncomplete: run.outputHistoryIncomplete || truncated,
+  };
+};
 
 const STATUS_DETAILS: Record<
   CapabilityStatus,
@@ -54,25 +107,150 @@ const CapabilityManagerSection = () => {
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [installingWire, setInstallingWire] = useState<string | null>(null);
-  const [installStatus, setInstallStatus] = useState<string | null>(null);
-  const [installPercent, setInstallPercent] = useState<number | null>(null);
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
+  const [installRun, setInstallRun] = useState<CapabilityInstallRun | null>(
+    null,
+  );
   const mountedRef = useRef(true);
-  // Progress is rendered locally, but the completion toast and app-wide
-  // capability refresh stay owned by the global background-task handler
-  // (useRecoveredTasks) so they still fire if this panel closes mid-install.
-  const { mutateAsync: installCapability } =
+  const nextInstallRunID = useRef(0);
+  const launchedInstallRunID = useRef<number | null>(null);
+  const { isOpen: muxIsOpen } = useStreamMux();
+
+  // The dialog owns live presentation only. Completion feedback and the
+  // app-wide capability refresh remain in useRecoveredTasks, so closing this
+  // panel or dialog never takes ownership away from the system Task.
+  const installCapability =
     linuxio.system.install_capability.useTaskStreamAction({
-      onProgress: (progress) => {
+      error: (streamError, variables) => {
         if (!mountedRef.current) return;
-        if (typeof progress?.percentage === "number") {
-          setInstallPercent(progress.percentage);
-        }
-        if (progress?.message) {
-          setInstallStatus(progress.message);
-        }
+        setInstallRun((previous) => {
+          if (!previous || previous.wire !== variables.capability) {
+            return previous;
+          }
+          return {
+            ...previous,
+            error: streamError.message || "Capability installation failed",
+            running: false,
+            success: false,
+            warning: null,
+          };
+        });
+      },
+      onProgress: (progress, _task, variables) => {
+        if (!mountedRef.current) return;
+        setInstallRun((previous) => {
+          if (
+            !previous ||
+            !previous.running ||
+            previous.wire !== variables.capability
+          ) {
+            return previous;
+          }
+          const detail = progress.detail;
+          const next = {
+            ...previous,
+            message: progress.message ?? detail?.message ?? previous.message,
+            percentage:
+              typeof progress.percentage === "number"
+                ? progress.percentage
+                : typeof detail?.percentage === "number"
+                  ? detail.percentage
+                  : previous.percentage,
+            stage: detail?.stage ?? progress.phase ?? previous.stage,
+          };
+          return appendInstallOutput(next, detail?.output);
+        });
+      },
+      success: (result, variables) => {
+        if (!mountedRef.current) return;
+        setLatest((previous) => ({
+          ...(previous ?? ({} as CapabilitiesResponse)),
+          [`${variables.capability}_available`]: result.available,
+          [`${variables.capability}_error`]: result.error ?? "",
+        }));
+        setLastChecked(new Date());
+        setInstallRun((previous) => {
+          if (!previous || previous.wire !== variables.capability) {
+            return previous;
+          }
+          let warning: string | null = null;
+          if (!result.available) {
+            warning =
+              result.error ||
+              `${previous.label} was installed but is still unavailable`;
+          }
+          return {
+            ...previous,
+            error: null,
+            message: warning ?? "Installation completed",
+            percentage: 100,
+            running: false,
+            success: result.available,
+            warning,
+          };
+        });
       },
     });
+
+  const installingWire = installRun?.running ? installRun.wire : null;
+
+  useActiveTaskRecovery({
+    match: (task) => {
+      const wire = task.metadata?.capability;
+      return Boolean(
+        wire &&
+        CAPABILITIES.some(
+          (capability) =>
+            capability.wire === wire &&
+            (capability as CapabilityDef).installable !== undefined,
+        ),
+      );
+    },
+    onRecover: (task) => {
+      const wire = task.metadata?.capability;
+      const capability = CAPABILITIES.find((item) => item.wire === wire);
+      if (!wire || !capability) return;
+      const id = ++nextInstallRunID.current;
+      setInstallRun((previous) =>
+        previous?.running
+          ? previous
+          : {
+              error: null,
+              id,
+              label: capability.label,
+              message: "Reconnecting to installation…",
+              output: [],
+              outputHistoryIncomplete: true,
+              percentage: null,
+              running: true,
+              stage: "reconnecting",
+              success: false,
+              task,
+              warning: null,
+              wire,
+            },
+      );
+      setInstallDialogOpen(true);
+    },
+    scanKey: muxIsOpen ? "capability-installation" : null,
+    type: TASK_TYPE_SYSTEM_INSTALL_CAPABILITY,
+  });
+
+  useEffect(() => {
+    if (
+      !installRun?.running ||
+      launchedInstallRunID.current === installRun.id
+    ) {
+      return;
+    }
+    launchedInstallRunID.current = installRun.id;
+    const request = { capability: installRun.wire };
+    if (installRun.task) {
+      installCapability.watch(installRun.task, request);
+    } else {
+      installCapability.mutate(request);
+    }
+  }, [installCapability, installRun]);
 
   const packageKitAvailable =
     latest?.packagekit_available ?? capabilities.packageKitAvailable ?? false;
@@ -141,41 +319,26 @@ const CapabilityManagerSection = () => {
     [refreshCapabilities],
   );
 
-  const handleInstall = useCallback(
-    async (wire: string) => {
-      setInstallingWire(wire);
-      setInstallStatus("Starting…");
-      setInstallPercent(null);
-      return withPromiseCleanup(
-        (async () => {
-          try {
-            const result = await installCapability({ capability: wire });
-            if (!mountedRef.current) return;
-            // Optimistically reflect the result while the panel is open. The
-            // completion toast and app-wide capability refresh are owned by
-            // the global background-task handler (useRecoveredTasks) so they
-            // still fire if this dialog has been closed mid-install.
-            setLatest((previous) => ({
-              ...(previous ?? ({} as CapabilitiesResponse)),
-              [`${wire}_available`]: result.available,
-              [`${wire}_error`]: result.error ?? "",
-            }));
-            setLastChecked(new Date());
-          } catch {
-            // The global background-task handler owns the install error toast.
-          }
-        })(),
-        () => {
-          if (mountedRef.current) {
-            setInstallingWire(null);
-            setInstallStatus(null);
-            setInstallPercent(null);
-          }
-        },
-      );
-    },
-    [installCapability],
-  );
+  const handleInstall = useCallback((wire: string, label: string) => {
+    const id = ++nextInstallRunID.current;
+    setInstallRun({
+      error: null,
+      id,
+      label,
+      message: "Starting installation…",
+      output: [],
+      outputHistoryIncomplete: false,
+      percentage: null,
+      running: true,
+      stage: "starting",
+      success: false,
+      warning: null,
+      wire,
+    });
+    // The mutation starts from an Effect after this state is painted, so the
+    // dialog is present before the first backend request is submitted.
+    setInstallDialogOpen(true);
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -250,8 +413,10 @@ const CapabilityManagerSection = () => {
       <div className="capability-manager__list">
         {rows.map((row) => {
           const status = STATUS_DETAILS[row.status];
+          const installing = installingWire === row.wire;
           const showInstall =
-            row.status === "unavailable" && row.installable !== undefined;
+            installing ||
+            (row.status === "unavailable" && row.installable !== undefined);
           const blockedByPackageKit =
             showInstall &&
             row.installable?.requiresPackageKit === true &&
@@ -260,15 +425,15 @@ const CapabilityManagerSection = () => {
             showInstall &&
             row.installable?.requiresDocker === true &&
             !dockerAvailable;
-          const installing = installingWire === row.wire;
           const installDisabled =
-            installingWire !== null || blockedByPackageKit || blockedByDocker;
-          const installTooltip = blockedByPackageKit
-            ? "Install requires PackageKit, which is itself unavailable. Install PackageKit from a shell first."
-            : blockedByDocker
-              ? "Install requires Docker to be available first."
-              : installing
-                ? "Installing…"
+            !installing &&
+            (installingWire !== null || blockedByPackageKit || blockedByDocker);
+          const installTooltip = installing
+            ? "View installation progress"
+            : blockedByPackageKit
+              ? "Install requires PackageKit, which is itself unavailable. Install PackageKit from a shell first."
+              : blockedByDocker
+                ? "Install requires Docker to be available first."
                 : `Install ${row.label}`;
 
           return (
@@ -299,9 +464,20 @@ const CapabilityManagerSection = () => {
                       <AppTooltip title={installTooltip}>
                         <span>
                           <AppButton
+                            aria-label={
+                              installing
+                                ? `View ${row.label} installation`
+                                : `Install ${row.label}`
+                            }
                             color="primary"
                             disabled={installDisabled}
-                            onClick={() => void handleInstall(row.wire)}
+                            onClick={() => {
+                              if (installing) {
+                                setInstallDialogOpen(true);
+                              } else {
+                                handleInstall(row.wire, row.label);
+                              }
+                            }}
                             size="small"
                             startIcon={
                               <Icon
@@ -320,8 +496,8 @@ const CapabilityManagerSection = () => {
                             variant="outlined"
                           >
                             {installing
-                              ? installPercent !== null
-                                ? `${installPercent}%`
+                              ? typeof installRun?.percentage === "number"
+                                ? `${installRun?.percentage}%`
                                 : "Installing…"
                               : "Install"}
                           </AppButton>
@@ -347,15 +523,29 @@ const CapabilityManagerSection = () => {
                   >
                     {row.dependency}
                   </AppTypography>
-                  <span>
-                    {installing && installStatus ? installStatus : row.detail}
-                  </span>
+                  <span>{installing ? installRun?.message : row.detail}</span>
                 </div>
               </div>
             </FrostedCard>
           );
         })}
       </div>
+      {installRun ? (
+        <CapabilityInstallDialog
+          capabilityLabel={installRun.label}
+          error={installRun.error}
+          message={installRun.message}
+          onClose={() => setInstallDialogOpen(false)}
+          open={installDialogOpen}
+          output={installRun.output}
+          outputHistoryIncomplete={installRun.outputHistoryIncomplete}
+          percentage={installRun.percentage}
+          running={installRun.running}
+          stage={installRun.stage}
+          success={installRun.success}
+          warning={installRun.warning}
+        />
+      ) : null}
     </div>
   );
 };

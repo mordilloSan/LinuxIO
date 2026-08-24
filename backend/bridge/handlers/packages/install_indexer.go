@@ -1,13 +1,9 @@
 package packages
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -18,7 +14,6 @@ const (
 	indexerInstallScriptURL      = "https://github.com/mordilloSan/indexer/releases/latest/download/indexer-install.sh"
 	indexerInstallScriptMaxBytes = 4 << 20
 	indexerInstallTimeout        = 10 * time.Minute
-	indexerInstallErrorMaxBytes  = 4 << 10
 )
 
 var (
@@ -37,9 +32,11 @@ func installIndexer(ctx context.Context, task *bridgetask.Task) error {
 	}
 
 	reportProgress(task, stageInstallAsset, "Running Indexer installer", pctInstallStart)
-	output, err := indexerInstallRunner(ctx, script)
+	err = indexerInstallRunner(ctx, script, func(output InstallCapabilityOutput) {
+		reportOutput(task, stageInstallAsset, "Running Indexer installer", pctInstallStart, output)
+	})
 	if err != nil {
-		return fmt.Errorf("run Indexer installer: %w", indexerInstallCommandError(err, output))
+		return fmt.Errorf("run Indexer installer: %w", err)
 	}
 
 	reportProgress(task, stageInstallAsset, "Installed Indexer", pctInstallEnd)
@@ -73,21 +70,6 @@ func downloadIndexerInstallScript(ctx context.Context, client *http.Client) ([]b
 	return utils.ReadAllLimited(resp.Body, indexerInstallScriptMaxBytes)
 }
 
-func runIndexerInstallScript(ctx context.Context, script []byte) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "bash", "-s")
-	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
-	cmd.Stdin = bytes.NewReader(script)
-	return cmd.CombinedOutput()
-}
-
-func indexerInstallCommandError(err error, output []byte) error {
-	message := strings.TrimSpace(string(output))
-	if message == "" {
-		return err
-	}
-	if len(message) > indexerInstallErrorMaxBytes {
-		message = message[len(message)-indexerInstallErrorMaxBytes:]
-		message = "..." + message
-	}
-	return fmt.Errorf("%w: %s", err, message)
+func runIndexerInstallScript(ctx context.Context, script []byte, report func(InstallCapabilityOutput)) error {
+	return runCapabilityScript(ctx, "bash", []string{"-s"}, script, report)
 }

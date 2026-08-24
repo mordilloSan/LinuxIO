@@ -50,6 +50,18 @@ The static-analysis tools are only needed by `analyze-auth`. The wrapper
 libraries are needed by `test-auth-pam`; that target skips when they are not
 installed.
 
+The runtime bootstrap script installs only PAM, PolicyKit, and PackageKit.
+Install Docker separately through its supported convenience installer when it
+is needed. Other optional host capabilities are installed after sign-in from
+LinuxIO Capability Manager, not from the bootstrap script.
+
+Release installation deliberately combines immutable release binaries with
+current-`main` packaging assets (systemd units, PAM and application
+configuration, MOTD, and helper files). This is the recovery path for fixing
+installer or service-definition bugs in already-published releases. Keep those
+assets compatible with supported historical binaries, or add a clear minimum
+binary-version failure before making an incompatible packaging change.
+
 ## Initial setup
 
 ```sh
@@ -84,7 +96,6 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `NVM_DIR` | `$(HOME)/.nvm` | Node Version Manager installation. |
 | `VITE_DEV_LOG` | `$(FRONTEND_DIR)/.vite-dev.log` | Vite log file. |
 | `VITE_DEV_PID` | `$(FRONTEND_DIR)/.vite-dev.pid` | Vite PID file. |
-| `SCRIPT_SERVER_PID` | `.script-server.pid` | Development script-server PID file. |
 | `quiet_log_dir` | `$(CACHE_DIR)/test-logs` | Full logs created by `*-quiet` targets. |
 
 Paths are quoted by the recipes. Keep overrides confined to the repository or
@@ -142,8 +153,11 @@ system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VITE_DEV_PORT` | `3000` | Vite development server port (`1`–`65535`). |
-| `SCRIPT_SERVER_PORT` | `9999` | Packaging-script HTTP server port (`1`–`65535`). |
 | `DEV_LOG_LINES` | `25` | Number of LinuxIO log lines shown by `make dev`. |
+
+`make dev` starts only the Vite development server and tails LinuxIO logs. The
+backend still runs through systemd; stop the Vite process using the PID and
+command printed by the target.
 
 ### Target-specific inputs
 

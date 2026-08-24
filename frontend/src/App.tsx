@@ -7,8 +7,6 @@ function App() {
   // Disable right-click globally except where explicitly allowed
   useGlobalContextMenuGuard();
 
-  // AuthProvider seeds and warms the capability cache, so the shared query
-  // client must already be in scope above it.
   return (
     <AppQueryClientProvider>
       <AuthProvider>

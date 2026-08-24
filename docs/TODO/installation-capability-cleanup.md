@@ -2,7 +2,8 @@
 
 ## Status
 
-Planned. None of the work in this document is complete.
+Implemented and verified. Focused packaging, backend, and frontend validation
+passes, and the integrated `make test-quiet` target passed on 2026-08-24.
 
 This plan removes obsolete development infrastructure, narrows the public
 dependency bootstrap, improves capability installation feedback, and reconciles
@@ -17,16 +18,16 @@ The following decisions are settled for this work:
   script server. The frontend caller disappeared when application updates moved
   into the backend; the script and server are now orphaned.
 - Reduce `packaging/scripts/install-dependencies.sh` to the dependencies needed
-  to bootstrap LinuxIO: PAM, Polkit, and PackageKit, plus the existing Docker
-  convenience-install path.
+  to bootstrap LinuxIO: PAM, Polkit, and PackageKit. Docker uses its separate
+  upstream convenience installer and is not an option in this script.
 - PackageKit is a hard prerequisite. LinuxIO uses it to install optional distro
   packages from the Capability Manager, so a missing or failed PackageKit
   installation must fail clearly instead of continuing with a notice.
-- Optional capabilities other than Docker are installed from LinuxIO's
-  Capability Manager, not from the bootstrap script.
-- Docker remains installed through the convenience script. This plan does not
-  add a Docker installer to the Capability Manager and does not replace the
-  convenience path with manual documentation.
+- Optional capabilities are installed from LinuxIO's Capability Manager, not
+  from the bootstrap script.
+- Docker remains installed through its separate convenience script. This plan
+  does not add Docker to the Capability Manager or fold Docker installation
+  into the dependency bootstrap.
 - Installing `lm-sensors` from the Capability Manager must also run
   `sensors-detect --auto` and expose that command's output.
 - Installing Avahi from the Capability Manager must also install the distro's
@@ -62,8 +63,8 @@ Capability Manager already detects and installs these facilities through the
 backend capability registry. Keeping two catalogues creates drift in package
 names, service activation, progress reporting, and post-install behavior.
 
-Docker is the exception: its supported convenience-install workflow remains in
-the bootstrap script.
+Docker is separate: its supported upstream convenience installer remains
+available without being wrapped by the dependency bootstrap.
 
 ### Capability installation has no durable user-facing operation dialog
 
@@ -99,8 +100,10 @@ contract are not explicit enough and can look like accidental version skew.
 Public bootstrap script
 ├── PAM runtime
 ├── Polkit
-├── PackageKit (required)
-└── Docker convenience installation
+└── PackageKit (required)
+
+Separate Docker setup
+└── Docker's upstream convenience installer
 
 LinuxIO Capability Manager
 ├── distro package installation through PackageKit
@@ -134,10 +137,11 @@ LinuxIO installation paths
 
 ### Phase 1 exit criteria
 
-- [ ] No tracked file references `dev-test-update.sh`, `SCRIPT_SERVER_PORT`,
-  `SCRIPT_SERVER_PID`, `.script-server.pid`, or the port-9999 packaging server.
-- [ ] `make dev` starts and cleans up only the current development processes.
-- [ ] No application-update production or integration path changes.
+- [x] No current implementation or workflow references `dev-test-update.sh`,
+  `SCRIPT_SERVER_PORT`, `SCRIPT_SERVER_PID`, `.script-server.pid`, or the
+  port-9999 packaging server; this historical roadmap is the only exception.
+- [x] `make dev` starts and cleans up only the current development processes.
+- [x] No application-update production or integration path changes.
 
 ## Phase 2: Narrow the Dependency Bootstrap
 
@@ -146,30 +150,31 @@ LinuxIO installation paths
 2. Keep mandatory installation for PAM, Polkit, and PackageKit.
 3. Change mandatory dependency handling so PackageKit failure is fatal and
    explains that in-app capability installation cannot work without it.
-4. Preserve the Docker convenience installer and its supported invocation.
+4. Remove Docker installation and the `--all` option from this script. Keep
+   Docker's upstream convenience installer as a separate documented command.
 5. Remove the optional dependency arrays, terminal checklist, and installers
    now owned by the Capability Manager.
-6. Preserve CLI compatibility where it remains meaningful. Explicitly decide
-   and test how the current `--all` behavior maps to the reduced script instead
-   of silently changing it.
+6. Reject removed or unknown options, including `--all`, instead of silently
+   accepting them.
 7. Update `README.md`:
-   - bootstrap PAM, Polkit, PackageKit, and Docker through the convenience
-     script;
+   - bootstrap PAM, Polkit, and PackageKit;
+   - install Docker separately through its convenience script when needed;
    - install LinuxIO binaries through the existing installer;
    - install other optional capabilities from the Capability Manager after
      signing in.
 8. Update the script help text so it exactly matches the reduced behavior.
 9. Add fixture coverage for supported distro mappings, mandatory failures,
-   non-interactive execution, Docker selection, and help output. Expose this
+   non-interactive execution, removal of `--all`, and help output. Expose this
    coverage through a repository Make target.
 
 ### Phase 2 exit criteria
 
-- [ ] The bootstrap has one package catalogue for mandatory dependencies and
+- [x] The bootstrap has one package catalogue for mandatory dependencies and
   no second catalogue for capabilities owned by LinuxIO.
-- [ ] PackageKit installation failure stops the bootstrap with a useful error.
-- [ ] Docker still has a supported convenience-script installation path.
-- [ ] README commands and script help agree with actual behavior.
+- [x] PackageKit installation failure stops the bootstrap with a useful error.
+- [x] Docker has a separate supported convenience-script installation path,
+  with no Docker option in the dependency bootstrap.
+- [x] README commands and script help agree with actual behavior.
 
 ## Phase 3: Complete Capability-Specific Installation
 
@@ -199,10 +204,10 @@ LinuxIO installation paths
 
 ### Phase 3 exit criteria
 
-- [ ] Installing lm-sensors from LinuxIO runs `sensors-detect --auto` once.
-- [ ] The command is cancellable and its output reaches the task stream.
-- [ ] Installing Avahi also installs mDNS NSS integration on supported distros.
-- [ ] Capability detection runs after every required package, command, and
+- [x] Installing lm-sensors from LinuxIO runs `sensors-detect --auto` once.
+- [x] The command is cancellable and its output reaches the task stream.
+- [x] Installing Avahi also installs mDNS NSS integration on supported distros.
+- [x] Capability detection runs after every required package, command, and
   service step.
 
 ## Phase 4: Add the Capability Installation Dialog
@@ -240,12 +245,12 @@ LinuxIO installation paths
 
 ### Phase 4 exit criteria
 
-- [ ] Every Capability Manager Install action opens a dedicated dialog.
-- [ ] Live installer output is visible in a raw-output panel.
-- [ ] Closing the dialog does not cancel the installation.
-- [ ] Completion feedback and capability refresh still work after the settings
+- [x] Every Capability Manager Install action opens a dedicated dialog.
+- [x] Live installer output is visible in a raw-output panel.
+- [x] Closing the dialog does not cancel the installation.
+- [x] Completion feedback and capability refresh still work after the settings
   panel or dialog closes.
-- [ ] Recovered tasks never present an incomplete log as complete raw output.
+- [x] Recovered tasks never present an incomplete log as complete raw output.
 
 ## Phase 5: Reconcile Local and Production Port Handling
 
@@ -271,10 +276,10 @@ the release installer or remove its repository-source behavior.
 
 ### Phase 5 exit criteria
 
-- [ ] Local install preserves an existing valid LinuxIO port.
-- [ ] A fresh local install follows the production available-port policy.
-- [ ] The installed socket and displayed URLs use the same port.
-- [ ] `make localinstall` remains suitable for testing temporary development
+- [x] Local install preserves an existing valid LinuxIO port.
+- [x] A fresh local install follows the production available-port policy.
+- [x] The installed socket and displayed URLs use the same port.
+- [x] `make localinstall` remains suitable for testing temporary development
   binaries on a real host.
 
 ## Phase 6: Document and Protect the Recovery-Asset Policy
@@ -298,16 +303,18 @@ immutable release tag as part of this plan.
 
 ### Phase 6 exit criteria
 
-- [ ] The current-main recovery behavior remains the default.
-- [ ] Maintainers can explain which assets are mutable and why.
-- [ ] Compatibility expectations for old binaries are documented and tested.
+- [x] The current-main recovery behavior remains the default.
+- [x] Maintainers can explain which assets are mutable and why.
+- [x] Compatibility expectations for old binaries are documented, and a
+  fixture protects the current-main asset-base policy.
 
 ## Out of Scope
 
 - Removing or replacing `localinstall.sh`.
 - Moving LinuxIO to `.deb` or `.rpm` packages.
 - Adding Docker installation to the Capability Manager.
-- Replacing the Docker convenience installer with manual shell documentation.
+- Replacing Docker's convenience installer with manual package-by-package
+  installation instructions.
 - Forcing production packaging assets to use the binary release tag.
 - Moving installer or frontend operation logic into the Makefile solely to
   reduce the number of files.
@@ -355,16 +362,16 @@ When implementation resumes:
 
 ## Final Completion Checklist
 
-- [ ] Obsolete updater/server infrastructure is gone.
-- [ ] Bootstrap owns only mandatory prerequisites and Docker convenience setup.
-- [ ] PackageKit is enforced as a prerequisite.
-- [ ] Optional capability installation is owned by LinuxIO.
-- [ ] lm-sensors runs `sensors-detect --auto` with streamed output.
-- [ ] Avahi installation includes mDNS NSS integration.
-- [ ] Capability installation has a progress/raw-output dialog.
-- [ ] Localinstall preserves its development purpose and handles ports
+- [x] Obsolete updater/server infrastructure is gone.
+- [x] Bootstrap owns only mandatory prerequisites; Docker setup is separate.
+- [x] PackageKit is enforced as a prerequisite.
+- [x] Optional capability installation is owned by LinuxIO.
+- [x] lm-sensors runs `sensors-detect --auto` with streamed output.
+- [x] Avahi installation includes mDNS NSS integration.
+- [x] Capability installation has a progress/raw-output dialog.
+- [x] Localinstall preserves its development purpose and handles ports
   consistently.
-- [ ] Current-main packaging assets remain an explicit recovery mechanism.
-- [ ] README and focused architecture/development docs match the implementation.
-- [ ] Generated contracts are current.
-- [ ] Required Make targets pass and their exact results are reported.
+- [x] Current-main packaging assets remain an explicit recovery mechanism.
+- [x] README and focused architecture/development docs match the implementation.
+- [x] Generated contracts are current.
+- [x] Required Make targets pass and their exact results are reported.

@@ -304,6 +304,44 @@ func TestMonitoringCapabilityInstallSpec(t *testing.T) {
 	}
 }
 
+func TestCapabilityInstallPackageSelection(t *testing.T) {
+	tests := []struct {
+		name       string
+		wantDebian string
+		wantRHEL   string
+	}{
+		{name: "lm_sensors", wantDebian: "lm-sensors", wantRHEL: "lm_sensors"},
+		{name: "avahi", wantDebian: "avahi-daemon libnss-mdns", wantRHEL: "avahi nss-mdns"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			spec, ok := CapabilitySpecByName(test.name)
+			if !ok || spec.Install == nil {
+				t.Fatalf("capability %q is not installable", test.name)
+			}
+			if got := spec.Install.PackageDebian; got != test.wantDebian {
+				t.Errorf("debian package = %q, want %q", got, test.wantDebian)
+			}
+			if got := spec.Install.PackageRHEL; got != test.wantRHEL {
+				t.Errorf("rhel package = %q, want %q", got, test.wantRHEL)
+			}
+		})
+	}
+}
+
+func TestLMSensorsInstallPostInstallCommand(t *testing.T) {
+	spec, ok := CapabilitySpecByName("lm_sensors")
+	if !ok || spec.Install == nil || spec.Install.PostInstall == nil {
+		t.Fatal("lm_sensors post-install command is not registered")
+	}
+	if spec.Install.PostInstall.Name != "sensors-detect" {
+		t.Fatalf("post-install command = %q, want sensors-detect", spec.Install.PostInstall.Name)
+	}
+	if got, want := spec.Install.PostInstall.Args, []string{"--auto"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("post-install args = %v, want %v", got, want)
+	}
+}
+
 func TestCheckMonitoringAvailabilityReportsHealthOutput(t *testing.T) {
 	withMonitoringCLI(t,
 		func(string) (string, error) {

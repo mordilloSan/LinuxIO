@@ -61,10 +61,3 @@ func TestDownloadIndexerInstallScriptRejectsOversizedResponse(t *testing.T) {
 		t.Fatal("expected oversized installer error")
 	}
 }
-
-func TestIndexerInstallCommandErrorIncludesOutput(t *testing.T) {
-	err := indexerInstallCommandError(context.Canceled, []byte(" installer failed \n"))
-	if err == nil || !strings.Contains(err.Error(), "installer failed") {
-		t.Fatalf("error = %v, want command output", err)
-	}
-}
