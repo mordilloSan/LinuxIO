@@ -404,14 +404,14 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
       const uiQueryKey = scopedConfigKey(linuxio.config.get_ui.queryKey);
       const cachedUI = queryClient.getQueryData<UIConfig>(uiQueryKey);
       const results = await Promise.allSettled([
-        queryClient.fetchQuery({
+        queryClient.query({
           ...linuxio.config.get,
           queryKey: scopedConfigKey(linuxio.config.get.queryKey),
           staleTime: CACHE_TTL_MS.NONE,
         }),
         cachedUI
           ? Promise.resolve(cachedUI)
-          : queryClient.fetchQuery({
+          : queryClient.query({
               ...linuxio.config.get_ui,
               queryKey: uiQueryKey,
               staleTime: CACHE_TTL_MS.NONE,

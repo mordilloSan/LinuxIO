@@ -14,7 +14,6 @@ import {
   type UIEvent,
 } from "react";
 
-import type { Service } from "@/api";
 import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppDataTable from "@/components/tables/AppDataTable";
@@ -564,7 +563,7 @@ const GeneralLogsPage = () => {
       return null;
     }
     const wanted = new Set<string>();
-    for (const svc of services as Service[]) {
+    for (const svc of services) {
       if (unitStatusFilter === "running" && svc.sub_state === "running") {
         wanted.add(svc.name);
       } else if (
@@ -930,7 +929,7 @@ const GeneralLogsPage = () => {
     return withPromiseCleanup(
       (async () => {
         try {
-          const page = await queryClient.fetchQuery({
+          const page = await queryClient.query({
             ...linuxio.logs.general_page({
               cursor: boundaryCursor,
               lines: PAGE_SIZE,

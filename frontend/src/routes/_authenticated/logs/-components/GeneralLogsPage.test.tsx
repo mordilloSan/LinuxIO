@@ -1,12 +1,15 @@
+import type { QueryClient } from "@tanstack/react-query";
+import type { UIEventHandler } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
   act,
+  createTestQueryClient,
   fireEvent,
   render,
   screen,
   waitFor,
-} from "@testing-library/react";
-import type { UIEventHandler } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+} from "@/test/render";
 
 import GeneralLogsPage from "./GeneralLogsPage";
 
@@ -15,7 +18,6 @@ const mocks = vi.hoisted(() => {
   return {
     closeStream: vi.fn(),
     fetchPage: vi.fn(),
-    fetchQuery: vi.fn(),
     navigate: vi.fn(),
     openChannel: vi.fn(() => ({})),
     openStream: vi.fn(),
@@ -25,61 +27,45 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: [] }),
-  useQueryClient: () => ({ fetchQuery: mocks.fetchQuery }),
-}));
-
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
 }));
 
-vi.mock("@/api", () => ({
-  CACHE_TTL_MS: { NONE: 0, THIRTY_SECONDS: 30_000 },
-  linuxio: {
-    logs: {
-      general_entry: (request: { cursor: string }) => ({
-        queryKey: ["linuxio", "logs", "general_entry", request],
-        queryFn: () => Promise.resolve(undefined),
-      }),
-      general_page: (request: unknown) => ({
-        queryKey: ["linuxio", "logs", "general_page", request],
-        queryFn: () => mocks.fetchPage(request),
-      }),
-    },
-    systemd: {
-      list_services: {
-        queryKey: ["linuxio", "systemd", "list_services"],
-        queryFn: () => Promise.resolve([]),
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
+  return {
+    ...actual,
+    linuxio: {
+      ...actual.linuxio,
+      logs: {
+        ...actual.linuxio.logs,
+        general_entry: (request: { cursor: string }) => ({
+          queryKey: ["linuxio", "logs", "general_entry", request],
+          queryFn: () => Promise.resolve(undefined),
+        }),
+        general_page: (request: unknown) => ({
+          queryKey: ["linuxio", "logs", "general_page", request],
+          queryFn: () => mocks.fetchPage(request),
+        }),
+      },
+      systemd: {
+        ...actual.linuxio.systemd,
+        list_services: {
+          queryKey: ["linuxio", "systemd", "list_services"],
+          queryFn: () => Promise.resolve([]),
+        },
       },
     },
-  },
-  openChannel: mocks.openChannel,
-  useStreamMux: () => ({ isOpen: true }),
-}));
+    openChannel: mocks.openChannel,
+    useStreamMux: () => ({ isOpen: true }),
+  };
+});
 
 vi.mock("@/hooks/useLiveStream", () => ({
   useLiveStream: () => ({
     closeStream: mocks.closeStream,
     openStream: mocks.openStream,
     streamRef: mocks.streamRef,
-  }),
-}));
-
-vi.mock("@/theme", () => ({
-  useAppTheme: () => ({
-    codeBlock: { background: "#111" },
-    palette: {
-      mode: "dark",
-      error: { main: "#f00" },
-      info: { main: "#08f" },
-      primary: { main: "#08f" },
-      secondary: { main: "#888" },
-      success: { main: "#0a0" },
-      text: { primary: "#fff", secondary: "#aaa" },
-      warning: { main: "#fa0" },
-    },
-    spacing: (value: number) => `${value * 8}px`,
   }),
 }));
 
@@ -127,14 +113,16 @@ const journalEntry = (cursor: string, timestamp: number) =>
   });
 
 describe("GeneralLogsPage cursor pagination", () => {
+  let queryClient: QueryClient;
+
   beforeEach(() => {
+    queryClient = createTestQueryClient();
+    vi.spyOn(queryClient, "query");
     mocks.streamOptions = null;
     mocks.streamRef.current = null;
     mocks.scrollMetrics.clientHeight = 500;
     mocks.scrollMetrics.scrollHeight = 1000;
     mocks.fetchPage.mockReset();
-    mocks.fetchQuery.mockReset();
-    mocks.fetchQuery.mockImplementation((options) => options.queryFn());
     mocks.openChannel.mockClear();
     mocks.openStream.mockImplementation((options) => {
       mocks.streamOptions = options;
@@ -161,7 +149,7 @@ describe("GeneralLogsPage cursor pagination", () => {
       entries: [journalEntry("older-1", 1_000_000), journalEntry("older-2", 0)],
       hasMore: false,
     });
-    render(<GeneralLogsPage />);
+    render(<GeneralLogsPage />, { queryClient });
 
     await waitFor(() => expect(mocks.streamOptions).not.toBeNull());
     act(() => {
@@ -206,7 +194,7 @@ describe("GeneralLogsPage cursor pagination", () => {
   });
 
   it("resumes live mode strictly after the newest buffered cursor", async () => {
-    render(<GeneralLogsPage />);
+    render(<GeneralLogsPage />, { queryClient });
     await waitFor(() => expect(mocks.streamOptions).not.toBeNull());
     expect(mocks.openChannel.mock.calls[0]).toEqual([
       "logs.general.follow",
@@ -254,7 +242,7 @@ describe("GeneralLogsPage cursor pagination", () => {
     mocks.scrollMetrics.clientHeight = 0;
     mocks.scrollMetrics.scrollHeight = 0;
     mocks.fetchPage.mockResolvedValue({ entries: [], hasMore: false });
-    render(<GeneralLogsPage />);
+    render(<GeneralLogsPage />, { queryClient });
     await waitFor(() => expect(mocks.streamOptions).not.toBeNull());
 
     act(() => {
@@ -288,7 +276,7 @@ describe("GeneralLogsPage cursor pagination", () => {
         expect.objectContaining({ cursor: "old" }),
       ),
     );
-    expect(mocks.fetchQuery).toHaveBeenCalledWith(
+    expect(queryClient.query).toHaveBeenCalledWith(
       expect.objectContaining({ gcTime: 0, staleTime: 0 }),
     );
   });

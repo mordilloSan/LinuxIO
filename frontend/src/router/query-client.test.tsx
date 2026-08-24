@@ -51,7 +51,7 @@ describe("AppQueryClientProvider", () => {
         .mockRejectedValue(new LinuxIOError("offline", code));
 
       await expect(
-        createQueryClient().fetchQuery({
+        createQueryClient().query({
           networkMode: "always",
           queryFn,
           queryKey: ["connection-loss", code],
@@ -67,7 +67,7 @@ describe("AppQueryClientProvider", () => {
     const queryFn = vi.fn().mockRejectedValue(new Error("temporary failure"));
 
     await expect(
-      createQueryClient().fetchQuery({
+      createQueryClient().query({
         networkMode: "always",
         queryFn,
         queryKey: ["generic-error"],
@@ -82,7 +82,7 @@ describe("AppQueryClientProvider", () => {
     const queryClient = createQueryClient();
 
     await expect(
-      queryClient.fetchQuery({
+      queryClient.query({
         meta: { routeInitialLoad: true, silent: true },
         networkMode: "always",
         queryFn: () => Promise.reject(new Error("route owns this error")),
@@ -93,7 +93,7 @@ describe("AppQueryClientProvider", () => {
     expect(toastMocks.error).not.toHaveBeenCalled();
 
     await expect(
-      queryClient.fetchQuery({
+      queryClient.query({
         networkMode: "always",
         queryFn: () => Promise.reject(new Error("background failure")),
         queryKey: ["background-error"],

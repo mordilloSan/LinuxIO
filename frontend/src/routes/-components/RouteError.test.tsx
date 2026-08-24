@@ -42,7 +42,7 @@ describe("RouteError", () => {
       component: RouteContent,
       getParentRoute: () => rootRoute,
       loader: ({ context }) =>
-        context.queryClient.ensureQueryData(queryOptions),
+        context.queryClient.query({ ...queryOptions, staleTime: "static" }),
       path: "/",
     });
     const router = createRouter({
