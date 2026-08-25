@@ -7,17 +7,22 @@ import { defineConfig } from "vitest/config";
 
 const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(configDirectory, "..");
-const testModuleRE = [
+const compilerExcludeRE = [
   /\/node_modules\//,
   /\/src\/test\//,
   /\.(?:test|spec)\.[jt]sx?$/,
+  // These components deliberately opt out with "use no memo" because
+  // TanStack Virtual exposes functions the compiler cannot memoize safely.
+  // Compiler coverage checks those boundaries directly; transforming them in
+  // Vitest only emits redundant IncompatibleLibrary warnings.
+  /\/(?:AppDataTable|AppVirtualGrid|VirtualDirectoryItems)\.tsx$/,
 ];
 
 export default defineConfig({
   cacheDir: path.join(frontendRoot, "node_modules/.vite"),
   plugins: [
     tanstackRouter({ disableLogging: true, target: "react" }),
-    react({ compiler: { target: "19" }, exclude: testModuleRE }),
+    react({ compiler: { target: "19" }, exclude: compilerExcludeRE }),
   ],
   resolve: {
     alias: {

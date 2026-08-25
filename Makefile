@@ -329,7 +329,7 @@ SHELL := /bin/bash
 .PHONY: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck
 ensure-node:
 	@echo ""
-	@echo "🔍 Ensuring Node.js $(NODE_VERSION) is available..."
+	@$(PRINTC) "$(COLOR_CYAN)🔍 Ensuring Node.js $(NODE_VERSION) is available...$(COLOR_RESET)"
 	@if [ ! -d "$(NVM_DIR)" ]; then \
 		curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/v$(nvm_version)/install.sh" | bash; \
 	fi
@@ -346,11 +346,11 @@ ensure-node:
 		echo "   NPM version:  $$(npm -v)"; \
 		echo "   NPX version:  $$(npx -v)"; \
 	'
-	@echo "✅ Node.js environment ready!"
+	@$(PRINTC) "$(COLOR_GREEN)✅ Node.js environment ready!$(COLOR_RESET)"
 
 ensure-go:
 	@echo ""
-	@echo "🔍 Ensuring Go $(GO_VERSION) is available..."
+	@$(PRINTC) "$(COLOR_CYAN)🔍 Ensuring Go $(GO_VERSION) is available...$(COLOR_RESET)"
 	@bash -lc '\
 		set -euo pipefail; \
 		DESIRED="$(GO_VERSION)"; \
@@ -717,7 +717,7 @@ test-frontend-browser: ensure-node setup
 
 test-frontend-only:
 	@set -uo pipefail; \
-	echo "🧪 Running frontend unit tests..."; \
+	$(PRINTC) "$(COLOR_CYAN)🧪 Running frontend unit tests...$(COLOR_RESET)"; \
 	runner_pid=""; \
 	stop_runner() { signal="$$1"; rc="$$2"; trap - EXIT HUP INT TERM; \
 	  if [ -n "$${runner_pid:-}" ]; then \
@@ -743,7 +743,7 @@ test-frontend-only:
 	  if [ -n "$$VITEST_TEST_NAME" ]; then args+=(--testNamePattern "$$VITEST_TEST_NAME"); fi; \
 	  ./node_modules/.bin/vitest "$${args[@]}"; \
 	  rc=$$?; \
-	  if [ "$$rc" -eq 0 ]; then echo "✅ Frontend unit tests passed!"; fi; \
+	  if [ "$$rc" -eq 0 ]; then printf "\\033[1;32m%s\\033[0m\\n" "✅ Frontend unit tests passed!"; fi; \
 	  exit "$$rc" \
 	' _ "$(frontend_dir)" & runner_pid=$$!; \
 	trap 'stop_runner TERM 129' HUP; \
@@ -755,7 +755,7 @@ test-frontend-only:
 	exit "$$rc"
 
 test-auth: check-c-build-deps
-	@echo "🧪 Running C authentication helper tests..."
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running C authentication helper tests...$(COLOR_RESET)"
 	@set -euo pipefail; \
 	TEST_DIR="$$(mktemp -d)"; \
 	trap 'rm -rf "$$TEST_DIR"' EXIT; \
@@ -769,11 +769,11 @@ test-auth: check-c-build-deps
 	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
 	  -o "$$TEST_BIN" "$(backend_auth_dir)/linuxio-auth_test.c" $(LDFLAGS) $$LIBS; \
 	"$$TEST_BIN" | $(CHECKMARK_SED); \
-	echo "✅ C authentication helper tests passed!"
+	$(PRINTC) "$(COLOR_GREEN)✅ C authentication helper tests passed!$(COLOR_RESET)"
 
 test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
 	@echo ""
-	@echo "🧪 Running cross-language auth protocol tests..."
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running cross-language auth protocol tests...$(COLOR_RESET)"
 	@set -euo pipefail; \
 	TEST_DIR="$$(mktemp -d)"; \
 	trap 'rm -rf "$$TEST_DIR"' EXIT; \
@@ -788,7 +788,7 @@ test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
 	  -o "$$TEST_BIN" "$(backend_auth_dir)/linuxio-auth-frametool.c" $(LDFLAGS) $$LIBS; \
 	cd "$(backend_dir)" && LINUXIO_AUTH_FRAMETOOL="$$TEST_BIN" $(GO_CMD_ENV) \
 	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage -count=1 | $(GOTEST_STATUS_SED); \
-	echo "✅ Cross-language auth protocol tests passed!"
+	$(PRINTC) "$(COLOR_GREEN)✅ Cross-language auth protocol tests passed!$(COLOR_RESET)"
 
 # Tier-1 hermetic PAM/host-integration suite for the C launcher. Runs the
 # real handle_client() against a pam_wrapper/pam_matrix PAM stack, an
@@ -800,7 +800,7 @@ test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
 #   make test-auth-pam LINUXIO_CWRAP_LIBDIR=/path/containing/the/so/files
 test-auth-pam: check-c-build-deps
 	@echo ""
-	@echo "🧪 Running hermetic PAM integration tests (pam_wrapper)..."
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running hermetic PAM integration tests (pam_wrapper)...$(COLOR_RESET)"
 	@set -euo pipefail; \
 	CWRAP_DIR="$(LINUXIO_CWRAP_LIBDIR)"; \
 	find_lib() { \
@@ -849,7 +849,7 @@ test-auth-pam: check-c-build-deps
 	  LINUXIO_TEST_REAL_UID="$$(id -u)" LINUXIO_TEST_REAL_GID="$$(id -g)" \
 	  LANG=C.UTF-8 TERM=xterm \
 	  ./linuxio-auth-pam-test | $(CHECKMARK_SED); \
-	echo "✅ PAM integration tests passed!"
+	$(PRINTC) "$(COLOR_GREEN)✅ PAM integration tests passed!$(COLOR_RESET)"
 
 test-updater: ensure-go
 	@echo "🔎 Running updater systemd dry-run integration test..."
@@ -862,10 +862,10 @@ test-updater: ensure-go
 
 test-installation-scripts:
 	@echo ""
-	@echo "🧪 Running install-dependencies fixture tests..."
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running install-dependencies fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/test-install-dependencies.sh"
 	@echo ""
-	@echo "🧪 Running installer port and recovery-asset fixture tests..."
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running installer port and recovery-asset fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/installer-port-fixtures.sh"
 
 test-docker-update-integration: ensure-go
@@ -878,51 +878,66 @@ test-docker-update-integration: ensure-go
 # Core lint implementations (used by both individual targets and parallel test)
 lint-only:
 	@echo ""
-	@echo "🔎 Running Oxlint + Oxfmt (auto-fix)..."
+	@$(PRINTC) "$(COLOR_CYAN)🔎 Running Oxlint + Oxfmt (auto-fix)...$(COLOR_RESET)"
 	@bash -c ' \
 	  cd "$(frontend_dir)"; \
-	  lint_output="$$(mktemp)"; \
-	  trap "rm -f \"$$lint_output\"" EXIT; \
-	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config scripts/compiler-coverage.mjs scripts/run-browser-fixture.mjs 2>&1 | tee "$$lint_output"; \
-	  status=$${PIPESTATUS[0]}; \
+	  lint_output="$$(mktemp)"; format_output="$$(mktemp)"; \
+	  trap "rm -f \"$$lint_output\" \"$$format_output\"" EXIT; \
+	  ./node_modules/.bin/oxlint --type-aware --fix -c config/.oxlintrc.json src config scripts/compiler-coverage.mjs scripts/run-browser-fixture.mjs > "$$lint_output" 2>&1; \
+	  status=$$?; \
 	  warning_count="$$(awk '\''/^Found [0-9]+ warning/ { count = $$2; found = 1 } /: warning / || /^[[:space:]]*⚠ / { fallback++ } END { print found ? count : fallback + 0 }'\'' "$$lint_output")"; \
-	  [ "$$status" -eq 0 ] || { echo "❌ Oxlint failed!"; exit "$$status"; }; \
+	  [ "$$status" -eq 0 ] || { \
+	    printf "\\033[1;31m   ✗\\033[0m Oxlint failed\\n"; \
+	    sed "s/^/      /" "$$lint_output"; \
+	    exit "$$status"; \
+	  }; \
 	  if ! grep -Eq '"'"'Found[[:space:]]+[0-9]+[[:space:]]+warnings?[[:space:]]+and[[:space:]]+[0-9]+[[:space:]]+errors?'"'"' "$$lint_output"; then \
-	    printf '"'"'Found %s warnings and 0 errors.\n'"'"' "$$warning_count"; \
+	    printf '"'"'Found %s warnings and 0 errors.\n'"'"' "$$warning_count" >> "$$lint_output"; \
 	  fi; \
+	  printf "\\033[1;32m   ✓\\033[0m Oxlint\\n"; \
+	  sed "s/^/      /" "$$lint_output"; \
 	  if [ "$$warning_count" -gt 0 ]; then \
-	    echo "⚠️  Oxlint completed with $$warning_count warning(s); warnings are non-blocking."; \
+	    printf "\\033[1;33m   ⚠\\033[0m Oxlint completed with %s non-blocking warning(s).\\n" "$$warning_count"; \
 	    if [ -n "$${FRONTEND_LINT_WARNINGS_FILE:-}" ]; then printf "%s\\n" "$$warning_count" > "$$FRONTEND_LINT_WARNINGS_FILE"; fi; \
 	  fi; \
-	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/**/*.ts" "scripts/compiler-coverage.mjs" "scripts/run-browser-fixture.mjs"; \
+	  ./node_modules/.bin/oxfmt -c config/.oxfmtrc.json --no-error-on-unmatched-pattern "src/**/*.js" "src/**/*.jsx" "src/**/*.ts" "src/**/*.tsx" "src/test/browser/**/*.html" "!src/routeTree.gen.ts" "config/**/*.ts" "scripts/compiler-coverage.mjs" "scripts/run-browser-fixture.mjs" > "$$format_output" 2>&1; \
 	  status=$$?; \
-	  [ "$$status" -eq 0 ] && echo "✅ Frontend linting and formatting passed!" || { echo "❌ Oxfmt failed!"; exit "$$status"; } \
+	  [ "$$status" -eq 0 ] || { \
+	    printf "\\033[1;31m   ✗\\033[0m Oxfmt failed\\n"; \
+	    sed "s/^/      /" "$$format_output"; \
+	    exit "$$status"; \
+	  }; \
+	  printf "\\033[1;32m   ✓\\033[0m Oxfmt\\n"; \
+	  sed "s/^/      /" "$$format_output"; \
+	  printf "\\033[1;32m%s\\033[0m\\n" "✅ Frontend linting and formatting passed!" \
 	'
 
 tsc-only:
-	@echo "🔎 Running TypeScript type checks..."
-	@cd "$(frontend_dir)" && ./node_modules/.bin/tsc && echo "✅ TypeScript checks passed!"
+	@$(PRINTC) "$(COLOR_CYAN)🔎 Running TypeScript type checks...$(COLOR_RESET)"
+	@cd "$(frontend_dir)" && ./node_modules/.bin/tsc && $(PRINTC) "$(COLOR_GREEN)✅ TypeScript checks passed!$(COLOR_RESET)"
 
 golint-only:
 	@set -euo pipefail
 	@echo ""
-	@echo "🔎 test-backend: $(backend_dir)"
-	@echo "   Running Go formatters..."
+	@$(PRINTC) "$(COLOR_CYAN)🔎 Running backend lint and static analysis...$(COLOR_RESET)"
+	@echo "   Module: $(backend_dir)"
 	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" fmt )
-	@echo "   Ensuring go.mod is tidy..."
+	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) Go formatters"
 	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy && $(GO_CMD_ENV) "$(GO_BIN)" mod download )
-	@echo "   Running modernize..."
+	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) go.mod is tidy"
 	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(modernize)" -fix ./... )
-	@echo "   Running govulncheck..."
+	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) modernize"
 	@cd "$(backend_dir)" && \
 		if ! vuln_out="$$( $(GO_CMD_ENV) "$(govulncheck)" ./... 2>&1 )"; then \
 			$(PRINTC) "$(COLOR_RED)❌ govulncheck found vulnerabilities reachable from this code:$(COLOR_RESET)"; \
 			printf '%s\n' "$$vuln_out"; \
 			exit 1; \
 		fi
-	@echo "   Running golangci-lint..."
-	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) )
-	@echo "✅ Go linting passed!"
+	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) govulncheck"
+	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) ) 2>&1 \
+		| sed 's/^/      /'
+	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) golangci-lint"
+	@$(PRINTC) "$(COLOR_GREEN)✅ Go linting passed!$(COLOR_RESET)"
 
 # Backend test entry point; this is what `make test` and CI run. Race results
 # are cached like normal test results, so incremental runs stay fast. Pass
@@ -930,7 +945,7 @@ golint-only:
 # interleavings (races only surface on interleavings that actually happen).
 test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol test-auth-pam
 	@echo ""
-	@echo "🧪 Running Go unit tests with race detector (backend)..."
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running Go unit tests with race detector (backend)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
 		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
 		| grep --line-buffered -v '\[no test files\]' \
@@ -944,7 +959,7 @@ deadcode: ensure-deadcode
 # production APIs kept alive only by tests. testdbus is deliberately test-only
 # cross-package infrastructure and is the sole production-scan exclusion.
 deadcode-only:
-	@echo "🔎 Scanning backend for dead code (informational)..."
+	@$(PRINTC) "$(COLOR_CYAN)🔎 Scanning backend for dead code (informational)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
 		scan_dir="$$(mktemp -d)"; \
 		trap 'rm -rf "$$scan_dir"' EXIT; \

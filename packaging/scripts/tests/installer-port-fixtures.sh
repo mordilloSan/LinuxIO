@@ -97,4 +97,4 @@ if grep -Fq '/releases/download/${version}/packaging' "$RELEASE_INSTALLER"; then
 fi
 printf '   \033[1;32m✓\033[0m %s\n' "recovery-asset packaging policy"
 
-echo "✅ Installer port and recovery-asset fixtures passed!"
+printf '\033[1;32m%s\033[0m\n' "✅ Installer port and recovery-asset fixtures passed!"
