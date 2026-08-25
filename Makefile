@@ -6,8 +6,6 @@ default: help
 -include release.mk
 
 repo_root := $(if $(REPO_ROOT),$(REPO_ROOT),$(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST))))))
-# Lowercase names are canonical for project-local paths; uppercase aliases
-# remain supported for existing developer and CI overrides.
 REPO_ROOT ?= $(repo_root)
 frontend_dir := $(if $(FRONTEND_DIR),$(FRONTEND_DIR),$(repo_root)/frontend)
 FRONTEND_DIR ?= $(frontend_dir)
@@ -112,6 +110,8 @@ COLOR_CYAN   := \033[1;36m
 COLOR_RED    := \033[1;31m
 
 PRINTC := printf '%b\n'
+CHECKMARK_SED := sed 's/✓/\x1b[1;32m✓\x1b[0m/g;s/✗/\x1b[1;31m✗\x1b[0m/g'
+GOTEST_STATUS_SED := sed -E 's/^ok\s+/   \x1b[1;32m✓\x1b[0m /;s/^FAIL\s+/   \x1b[1;31m✗\x1b[0m /'
 sha256_cmd ?= sha256sum
 setsid_cmd ?= setsid
 GOLANGCI_LINT_OPTS ?= --modules-download-mode=mod
@@ -768,7 +768,7 @@ test-auth: check-c-build-deps
 	fi; \
 	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
 	  -o "$$TEST_BIN" "$(backend_auth_dir)/linuxio-auth_test.c" $(LDFLAGS) $$LIBS; \
-	"$$TEST_BIN"; \
+	"$$TEST_BIN" | $(CHECKMARK_SED); \
 	echo "✅ C authentication helper tests passed!"
 
 test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
@@ -787,7 +787,7 @@ test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
 	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
 	  -o "$$TEST_BIN" "$(backend_auth_dir)/linuxio-auth-frametool.c" $(LDFLAGS) $$LIBS; \
 	cd "$(backend_dir)" && LINUXIO_AUTH_FRAMETOOL="$$TEST_BIN" $(GO_CMD_ENV) \
-	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage -count=1; \
+	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage -count=1 | $(GOTEST_STATUS_SED); \
 	echo "✅ Cross-language auth protocol tests passed!"
 
 # Tier-1 hermetic PAM/host-integration suite for the C launcher. Runs the
@@ -848,7 +848,7 @@ test-auth-pam: check-c-build-deps
 	  UID_WRAPPER=1 UID_WRAPPER_ROOT=1 \
 	  LINUXIO_TEST_REAL_UID="$$(id -u)" LINUXIO_TEST_REAL_GID="$$(id -g)" \
 	  LANG=C.UTF-8 TERM=xterm \
-	  ./linuxio-auth-pam-test; \
+	  ./linuxio-auth-pam-test | $(CHECKMARK_SED); \
 	echo "✅ PAM integration tests passed!"
 
 test-updater: ensure-go
@@ -933,7 +933,8 @@ test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol test-auth-pam
 	@echo "🧪 Running Go unit tests with race detector (backend)..."
 	@cd "$(backend_dir)" && \
 		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
-		| grep --line-buffered -v '\[no test files\]'; \
+		| grep --line-buffered -v '\[no test files\]' \
+		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
 
 deadcode: ensure-deadcode

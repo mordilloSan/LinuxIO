@@ -85,9 +85,9 @@ run_port_fixtures() {
 }
 
 run_port_fixtures "$LOCAL_INSTALLER"
-echo "   ✓ local installer port fixtures"
+printf '   \033[1;32m✓\033[0m %s\n' "local installer port fixtures"
 run_port_fixtures "$RELEASE_INSTALLER"
-echo "   ✓ release installer port fixtures"
+printf '   \033[1;32m✓\033[0m %s\n' "release installer port fixtures"
 
 grep -Fq \
     'CURRENT_MAIN_PACKAGING_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"' \
@@ -95,6 +95,6 @@ grep -Fq \
 if grep -Fq '/releases/download/${version}/packaging' "$RELEASE_INSTALLER"; then
     fail "packaging assets must not be forced to the release tag"
 fi
-echo "   ✓ recovery-asset packaging policy"
+printf '   \033[1;32m✓\033[0m %s\n' "recovery-asset packaging policy"
 
 echo "✅ Installer port and recovery-asset fixtures passed!"

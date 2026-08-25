@@ -143,7 +143,7 @@ run_test() {
     local name="$1"
     shift
     "$@"
-    echo "   ✓ ${name}"
+    printf '   \033[1;32m✓\033[0m %s\n' "${name}"
 }
 
 run_test "Debian and RHEL package mappings" test_package_mappings
