@@ -5,8 +5,8 @@ import { CACHE_TTL_MS, linuxio, type NFSMount, useCallMutation } from "@/api";
 import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -954,7 +954,7 @@ const NFSMountTable = ({
       mount.mountpoint.toLowerCase().includes(normalizedSearch) ||
       getMountStatusLabel(mount).toLowerCase().includes(normalizedSearch),
   );
-  const columns = useMemo<AppDataTableColumnDef<NFSMount>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<NFSMount>[]>(
     () => [
       {
         accessorKey: "source",
@@ -1116,7 +1116,7 @@ const NFSMountTable = ({
   );
 
   return (
-    <AppDataTable
+    <AppVirtualTable
       dnd={tableDnd}
       ariaLabel="NFS mounts"
       columns={columns}

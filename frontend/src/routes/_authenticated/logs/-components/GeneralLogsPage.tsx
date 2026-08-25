@@ -16,8 +16,8 @@ import {
 
 import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -1167,7 +1167,7 @@ const GeneralLogsPage = () => {
   // Memoized so cell component identities stay stable across flushes — a
   // fresh cell function per render remounts every visible cell in dev, where
   // the React Compiler doesn't run.
-  const columns = useMemo<AppDataTableColumnDef<LogEntry>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<LogEntry>[]>(
     () => [
       {
         id: "severityIcon",
@@ -1505,7 +1505,7 @@ const GeneralLogsPage = () => {
       )}
 
       {!isLoading && !error && (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="General logs"
           columns={columns}
           data={displayedLogs}

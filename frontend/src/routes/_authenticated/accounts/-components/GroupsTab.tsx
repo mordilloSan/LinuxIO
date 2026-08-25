@@ -5,8 +5,8 @@ import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -112,7 +112,7 @@ const GroupsTab = ({
   // Stable column defs: cells render through flexRender, so a rebuilt array
   // remounts every cell subtree — including on the press that arms a
   // reorder hold. See docs/table-row-gestures.md.
-  const columns = useMemo<AppDataTableColumnDef<AccountGroup>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<AccountGroup>[]>(
     () => [
       {
         accessorKey: "name",
@@ -280,7 +280,7 @@ const GroupsTab = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Groups"
           columns={columns}
           data={filtered}

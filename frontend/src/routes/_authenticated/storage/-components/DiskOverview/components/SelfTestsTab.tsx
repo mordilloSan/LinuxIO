@@ -1,5 +1,5 @@
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
@@ -50,42 +50,43 @@ interface NvmeSelfTestRow {
   };
 }
 
-const standardSelfTestColumns: AppDataTableColumnDef<StandardSelfTestRow>[] = [
-  {
-    id: "number",
-    header: "#",
-    cell: ({ row }) => getSmartNumber(row.original.num) ?? row.index + 1,
-  },
-  {
-    id: "type",
-    header: "Type",
-    cell: ({ row }) => getSmartString(row.original.type) || "Unknown",
-  },
-  {
-    id: "status",
-    header: "Status",
-    cell: ({ row }) => (
-      <span
-        style={{
-          color: row.original.status?.passed
-            ? "var(--app-palette-success-main)"
-            : "var(--app-palette-error-main)",
-        }}
-      >
-        {getSmartString(row.original.status) || "Unknown"}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "lifetime_hours",
-    header: "Lifetime Hours",
-    cell: ({ row }) =>
-      getSmartNumber(row.original.lifetime_hours)?.toLocaleString() || "N/A",
-    meta: { align: "right" },
-  },
-];
+const standardSelfTestColumns: AppVirtualTableColumnDef<StandardSelfTestRow>[] =
+  [
+    {
+      id: "number",
+      header: "#",
+      cell: ({ row }) => getSmartNumber(row.original.num) ?? row.index + 1,
+    },
+    {
+      id: "type",
+      header: "Type",
+      cell: ({ row }) => getSmartString(row.original.type) || "Unknown",
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <span
+          style={{
+            color: row.original.status?.passed
+              ? "var(--app-palette-success-main)"
+              : "var(--app-palette-error-main)",
+          }}
+        >
+          {getSmartString(row.original.status) || "Unknown"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "lifetime_hours",
+      header: "Lifetime Hours",
+      cell: ({ row }) =>
+        getSmartNumber(row.original.lifetime_hours)?.toLocaleString() || "N/A",
+      meta: { align: "right" },
+    },
+  ];
 
-const nvmeSelfTestColumns: AppDataTableColumnDef<NvmeSelfTestRow>[] = [
+const nvmeSelfTestColumns: AppVirtualTableColumnDef<NvmeSelfTestRow>[] = [
   {
     id: "type",
     header: "Type",
@@ -222,7 +223,7 @@ export const SelfTestsTab = ({
         Self-Test History
       </AppTypography>
       {standardRows.length > 0 ? (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="SMART self-test history"
           columns={standardSelfTestColumns}
           data={standardRows}
@@ -236,7 +237,7 @@ export const SelfTestsTab = ({
           variant="embedded"
         />
       ) : nvmeRows.length > 0 ? (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="NVMe self-test history"
           columns={nvmeSelfTestColumns}
           data={nvmeRows}

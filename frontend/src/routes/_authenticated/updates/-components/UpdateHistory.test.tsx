@@ -2,7 +2,7 @@ import type { RowData } from "@tanstack/react-table";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UpdateHistoryRow } from "@/api";
-import type { AppDataTableProps } from "@/components/tables/AppDataTable";
+import type { AppVirtualTableProps } from "@/components/tables/AppVirtualTable";
 import { render, screen } from "@/test/render";
 
 import UpdateHistory from "./UpdateHistory";
@@ -12,20 +12,22 @@ const mocks = vi.hoisted(() => ({
   rows: [] as UpdateHistoryRow[],
 }));
 
-vi.mock("@/components/tables/AppDataTable", async (importOriginal) => {
+vi.mock("@/components/tables/AppVirtualTable", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/components/tables/AppDataTable")>();
-  const OriginalAppDataTable = actual.default;
-  const AppDataTable = <TData extends RowData>(
-    props: AppDataTableProps<TData>,
+    await importOriginal<
+      typeof import("@/components/tables/AppVirtualTable")
+    >();
+  const OriginalAppVirtualTable = actual.default;
+  const AppVirtualTable = <TData extends RowData>(
+    props: AppVirtualTableProps<TData>,
   ) => {
     if (props.ariaLabel?.startsWith("Packages installed on ")) {
       mocks.nestedTableRender();
     }
-    return <OriginalAppDataTable {...props} />;
+    return <OriginalAppVirtualTable {...props} />;
   };
 
-  return { ...actual, default: AppDataTable };
+  return { ...actual, default: AppVirtualTable };
 });
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {

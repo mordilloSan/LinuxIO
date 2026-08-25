@@ -1,7 +1,7 @@
 import { useState } from "react";
 
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppButton from "@/components/ui/AppButton";
 
 interface FixtureRow {
@@ -16,7 +16,7 @@ const rows: FixtureRow[] = Array.from({ length: 180 }, (_, index) => ({
   status: index % 3 === 0 ? "ready" : index % 3 === 1 ? "running" : "idle",
 }));
 
-const columns: AppDataTableColumnDef<FixtureRow>[] = [
+const columns: AppVirtualTableColumnDef<FixtureRow>[] = [
   {
     accessorKey: "name",
     header: "Name",
@@ -53,7 +53,7 @@ export default function VirtualExpansionTablePage() {
         data-testid="virtual-expansion-scrollport"
         style={{ height: 520, minHeight: 0, width: "100%" }}
       >
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Virtual expansion table"
           columns={columns}
           data={rows}
@@ -84,7 +84,7 @@ export default function VirtualExpansionTablePage() {
                   {isGrown ? "Shrink detail" : "Grow detail"}
                 </AppButton>
                 {original.id === rows[1].id && (
-                  <AppDataTable
+                  <AppVirtualTable
                     ariaLabel="Nested detail table"
                     columns={[
                       {

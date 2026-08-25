@@ -8,8 +8,8 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -56,7 +56,7 @@ interface ConnectedContainerRow {
   name: string;
 }
 
-const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] =
+const connectedContainerColumns: AppVirtualTableColumnDef<ConnectedContainerRow>[] =
   [
     {
       accessorKey: "name",
@@ -565,7 +565,7 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
           <b>Connected Containers:</b>
         </AppTypography>
         {Object.entries(network.Containers ?? {}).length ? (
-          <AppDataTable
+          <AppVirtualTable
             ariaLabel="Connected containers"
             columns={connectedContainerColumns}
             data={Object.entries(network.Containers ?? {}).map(
@@ -692,7 +692,9 @@ const NetworkList = ({
 
   // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
   // remounts every cell subtree on the press that arms the reorder hold.
-  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
+  const columns = useMemo<
+    AppVirtualTableColumnDef<(typeof filtered)[number]>[]
+  >(
     () => [
       {
         accessorKey: "Name",
@@ -927,7 +929,7 @@ const NetworkList = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Docker networks"
           columns={columns}
           data={filtered}

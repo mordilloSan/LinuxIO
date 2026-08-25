@@ -43,7 +43,7 @@ vi.mock("@/components/filebrowser/SelectionBox", () => ({
   default: () => null,
 }));
 
-vi.mock("@/components/filebrowser/VirtualDirectoryRows", () => ({
+vi.mock("@/components/filebrowser/DirectoryRows", () => ({
   DirectoryItem: () => null,
   SectionHeader: () => null,
 }));

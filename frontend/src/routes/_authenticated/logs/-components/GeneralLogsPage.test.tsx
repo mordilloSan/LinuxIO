@@ -69,7 +69,7 @@ vi.mock("@/hooks/useLiveStream", () => ({
   }),
 }));
 
-vi.mock("@/components/tables/AppDataTable", () => ({
+vi.mock("@/components/tables/AppVirtualTable", () => ({
   default: ({
     data,
     onScroll,

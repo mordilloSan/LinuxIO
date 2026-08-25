@@ -23,17 +23,17 @@ import {
 } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
-import AppDataTable from "@/components/tables/AppDataTable";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type {
-  AppDataTableDndOptions,
-  AppDataTableRowAttributes,
-  AppDataTableRowRenderProps,
-} from "@/components/tables/AppDataTable";
+  AppVirtualTableDndOptions,
+  AppVirtualTableRowAttributes,
+  AppVirtualTableRowRenderProps,
+} from "@/components/tables/AppVirtualTable";
 import type {
-  AppDataTableCellRenderKey,
-  AppDataTableColumnDef,
+  AppVirtualTableCellRenderKey,
+  AppVirtualTableColumnDef,
   AppTableFeatures,
-} from "@/components/tables/AppDataTable.types";
+} from "@/components/tables/AppVirtualTable.types";
 import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
@@ -305,8 +305,8 @@ const areContainerArraysEquivalent = (
 const asContainer = (row: unknown) => row as ContainerInfo;
 
 const containerCellRenderKey =
-  (getKey: (container: ContainerInfo) => AppDataTableCellRenderKey) =>
-  (row: unknown): AppDataTableCellRenderKey =>
+  (getKey: (container: ContainerInfo) => AppVirtualTableCellRenderKey) =>
+  (row: unknown): AppVirtualTableCellRenderKey =>
     isStackHeaderRow(row) ? [row.project] : getKey(asContainer(row));
 
 const getContainerTableRowId = (row: ContainerTableRow) =>
@@ -1117,7 +1117,7 @@ interface ContainerTableProps {
   collapsedStackIds?: ReadonlySet<string>;
   containers: ContainerInfo[];
   /** Reorder wiring from `useReorderableTableDnd`; omit to lock the row order. */
-  dnd?: AppDataTableDndOptions<ContainerTableRow>;
+  dnd?: AppVirtualTableDndOptions<ContainerTableRow>;
   onSelectContainer?: (containerId: string) => void;
   onToggleStack?: (project: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
@@ -1226,7 +1226,7 @@ const ContainerTable = ({
   const getRowAttributes = useCallback(
     (
       row: Row<AppTableFeatures, ContainerTableRow>,
-    ): AppDataTableRowAttributes => ({
+    ): AppVirtualTableRowAttributes => ({
       className: !isStackHeaderRow(row.original)
         ? stackMemberRowClasses.get(row.original.Id)
         : undefined,
@@ -1239,7 +1239,7 @@ const ContainerTable = ({
       dragHandle,
       row,
       rowProps,
-    }: AppDataTableRowRenderProps<ContainerTableRow>) => {
+    }: AppVirtualTableRowRenderProps<ContainerTableRow>) => {
       const original = row.original;
       if (isStackHeaderRow(original)) {
         return (
@@ -1314,7 +1314,7 @@ const ContainerTable = ({
     },
     [onSelectContainer, onToggleStack],
   );
-  const columns = useMemo<AppDataTableColumnDef<ContainerTableRow>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<ContainerTableRow>[]>(
     () => [
       {
         id: "name",
@@ -1557,7 +1557,7 @@ const ContainerTable = ({
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
         <CheckingUpdatesContext.Provider value={checkingUpdates}>
-          <AppDataTable
+          <AppVirtualTable
             ariaLabel="Docker containers"
             columns={columns}
             data={rows}

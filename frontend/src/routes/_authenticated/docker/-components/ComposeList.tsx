@@ -23,8 +23,8 @@ import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetai
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
@@ -331,7 +331,7 @@ const ComposeList = ({
     );
   }, [projects]);
 
-  const columns = useMemo<AppDataTableColumnDef<ComposeProject>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<ComposeProject>[]>(
     () => [
       {
         id: "status",
@@ -593,7 +593,7 @@ const ComposeList = ({
   );
 
   const expandedContainerColumns = useMemo<
-    AppDataTableColumnDef<ContainerInfo>[]
+    AppVirtualTableColumnDef<ContainerInfo>[]
   >(
     () => [
       {
@@ -803,7 +803,7 @@ const ComposeList = ({
       const containers = containersByProject.get(project.name) ?? [];
 
       return (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel={`Containers in ${project.name}`}
           className="compose-expanded-table"
           columns={expandedContainerColumns}
@@ -948,7 +948,7 @@ const ComposeList = ({
       }}
     >
       {searchControl}
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel="Docker compose stacks"
         columns={columns}
         data={filtered}

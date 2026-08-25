@@ -1,6 +1,6 @@
 import type { DiskPowerData } from "@/api";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -11,7 +11,7 @@ interface PowerStatesTabProps {
 
 type PowerStateRow = DiskPowerData["states"][number];
 
-const powerStateColumns: AppDataTableColumnDef<PowerStateRow>[] = [
+const powerStateColumns: AppVirtualTableColumnDef<PowerStateRow>[] = [
   {
     accessorKey: "state",
     header: "State",
@@ -69,7 +69,7 @@ export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
       <AppTypography gutterBottom variant="subtitle2">
         Supported Power States
       </AppTypography>
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel="Supported drive power states"
         columns={powerStateColumns}
         data={power.states}

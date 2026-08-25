@@ -3,8 +3,8 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { memo, useMemo } from "react";
 
 import { linuxio, type UpdateHistoryRow } from "@/api";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
@@ -42,7 +42,7 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
       })),
     [upgrades],
   );
-  const columns = useMemo<AppDataTableColumnDef<PackageChunkRow>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<PackageChunkRow>[]>(
     () =>
       Array.from({ length: 5 }, (_, index) => ({
         id: `package-${index}`,
@@ -75,7 +75,7 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
       <AppTypography gutterBottom variant="subtitle2">
         <b>Packages Installed:</b>
       </AppTypography>
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel={`Packages installed on ${date}`}
         columns={columns}
         data={data}
@@ -95,7 +95,7 @@ const UpdateHistory = () => {
   const theme = useAppTheme();
   const { data: rows } = useSuspenseQuery(linuxio.updates.get_update_history);
 
-  const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [
+  const columns: AppVirtualTableColumnDef<(typeof rows)[number]>[] = [
     {
       id: "history",
       header: "",
@@ -156,7 +156,7 @@ const UpdateHistory = () => {
     },
   ];
   return (
-    <AppDataTable
+    <AppVirtualTable
       ariaLabel="Update history"
       columns={columns}
       data={rows}

@@ -30,13 +30,13 @@ import {
   type ReactNode,
 } from "react";
 
-import { appTableFeatures } from "@/components/tables/AppDataTable.types";
+import { appTableFeatures } from "@/components/tables/AppVirtualTable.types";
 import type {
-  AppDataTableBreakpoint,
-  AppDataTableCellRenderKey,
-  AppDataTableColumnDef,
+  AppVirtualTableBreakpoint,
+  AppVirtualTableCellRenderKey,
+  AppVirtualTableColumnDef,
   AppTableFeatures,
-} from "@/components/tables/AppDataTable.types";
+} from "@/components/tables/AppVirtualTable.types";
 import {
   ROW_DOUBLE_CLICK_MS,
   clickTargetsRowBody,
@@ -61,7 +61,7 @@ import {
   writePersistedState,
 } from "@/utils/persistedState";
 
-// The table layer below AppDataTable: chrome, header, cells, and the gesture
+// The table layer below AppVirtualTable: chrome, header, cells, and the gesture
 // contract from `docs/table-row-gestures.md`. Like the app-dt__* CSS, nothing
 // here knows about virtualization — body/row rendering stays in the
 // component.
@@ -84,7 +84,7 @@ function alignToJustify(align?: "left" | "center" | "right") {
 }
 
 function getColumnDefId<TData extends RowData>(
-  column: AppDataTableColumnDef<TData>,
+  column: AppVirtualTableColumnDef<TData>,
   index: number,
 ) {
   const candidate = column as {
@@ -104,8 +104,8 @@ function getSortIcon(sortState: false | "asc" | "desc") {
 }
 
 function areCellRenderKeysEqual(
-  previous: AppDataTableCellRenderKey,
-  next: AppDataTableCellRenderKey,
+  previous: AppVirtualTableCellRenderKey,
+  next: AppVirtualTableCellRenderKey,
 ) {
   if (Object.is(previous, next)) return true;
   if (!Array.isArray(previous) || !Array.isArray(next)) return false;
@@ -118,8 +118,8 @@ interface AppTableCellProps<TData extends RowData> {
   // A snapshot of the definition at render time: TanStack can preserve Column
   // objects while swapping their definitions, so comparing the live
   // `cell.column.columnDef` would miss a renderer swap.
-  columnDef: AppDataTableColumnDef<TData>;
-  renderKey: AppDataTableCellRenderKey;
+  columnDef: AppVirtualTableColumnDef<TData>;
+  renderKey: AppVirtualTableCellRenderKey;
   rowIndex?: number;
 }
 
@@ -424,7 +424,7 @@ function persistableExpanded(expanded: ExpandedState): Record<string, true> {
 }
 
 export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
-  columns: AppDataTableColumnDef<TData>[];
+  columns: AppVirtualTableColumnDef<TData>[];
   data: TData[] | null | undefined;
   dnd?: TDnd;
   enableSorting: boolean;
@@ -489,7 +489,7 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
   }, [internalExpanded, persistExpandedKey]);
 
   const columnVisibility = useMemo<ColumnVisibilityState>(() => {
-    const below: Record<AppDataTableBreakpoint, boolean> = {
+    const below: Record<AppVirtualTableBreakpoint, boolean> = {
       sm: belowSm,
       md: belowMd,
       lg: belowLg,

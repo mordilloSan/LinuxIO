@@ -11,11 +11,10 @@ const compilerExcludeRE = [
   /\/node_modules\//,
   /\/src\/test\//,
   /\.(?:test|spec)\.[jt]sx?$/,
-  // These components deliberately opt out with "use no memo" because
-  // TanStack Virtual exposes functions the compiler cannot memoize safely.
-  // Compiler coverage checks those boundaries directly; transforming them in
-  // Vitest only emits redundant IncompatibleLibrary warnings.
-  /\/(?:AppDataTable|AppVirtualGrid|VirtualDirectoryItems)\.tsx$/,
+  // Virtualized components use manual memoization because TanStack Virtual
+  // exposes functions the compiler cannot memoize safely. Their filenames
+  // include "Virtual" so Vitest can skip the redundant compiler transform.
+  /\/[^/]*Virtual[^/]*\.tsx$/,
 ];
 
 export default defineConfig({

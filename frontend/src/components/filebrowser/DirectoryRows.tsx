@@ -44,7 +44,7 @@ export const SectionHeader = memo<{ label: string; viewMode: ViewMode }>(
   ),
 );
 
-SectionHeader.displayName = "VirtualDirectorySectionHeader";
+SectionHeader.displayName = "DirectorySectionHeader";
 
 export const DirectoryItem = memo<DirectoryItemProps>(
   ({
@@ -140,4 +140,4 @@ export const DirectoryItem = memo<DirectoryItemProps>(
   },
 );
 
-DirectoryItem.displayName = "VirtualDirectoryItem";
+DirectoryItem.displayName = "DirectoryItem";

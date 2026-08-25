@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import { render, screen } from "@/test/render";
 import { TABLE_ROW_MIN_HEIGHT } from "@/theme/constants";
 
@@ -86,7 +86,7 @@ const renderStatus = vi.fn(
   ({ row }: { row: { original: TableRow } }) => row.original.status,
 );
 
-const columns: AppDataTableColumnDef<TableRow>[] = [
+const columns: AppVirtualTableColumnDef<TableRow>[] = [
   {
     id: "name",
     header: "Name",
@@ -128,11 +128,11 @@ function TestTable({
   expandedContent?: (row: { original: TableRow }) => ReactNode;
   persistExpandedKey?: string;
   selectedRowId?: string;
-  tableColumns?: AppDataTableColumnDef<TableRow>[];
+  tableColumns?: AppVirtualTableColumnDef<TableRow>[];
   estimateRowHeight?: number;
 }) {
   return (
-    <AppDataTable
+    <AppVirtualTable
       columns={tableColumns}
       data={data}
       estimateRowHeight={estimateRowHeight}
@@ -146,7 +146,7 @@ function TestTable({
   );
 }
 
-describe("AppDataTable", () => {
+describe("AppVirtualTable", () => {
   it("exposes the canonical row floor and clamps low virtual estimates", () => {
     const view = render(<TestTable estimateRowHeight={40} />);
     const table = screen.getByRole("table");
@@ -189,7 +189,7 @@ describe("AppDataTable", () => {
 
   it("does not retain a stale renderer when a column definition changes", () => {
     const view = render(<TestTable />);
-    const replacementColumns: AppDataTableColumnDef<TableRow>[] = [
+    const replacementColumns: AppVirtualTableColumnDef<TableRow>[] = [
       {
         ...columns[0],
         cell: ({ row }) => `renamed:${row.original.name}`,
@@ -374,7 +374,7 @@ describe("AppDataTable", () => {
     ["undefined", undefined],
   ])("renders the empty state for %s data", (_label, data) => {
     render(
-      <AppDataTable
+      <AppVirtualTable
         columns={columns}
         data={data}
         emptyMessage="No rows reported."

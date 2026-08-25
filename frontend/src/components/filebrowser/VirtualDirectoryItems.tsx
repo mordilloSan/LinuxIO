@@ -10,11 +10,11 @@ import {
 } from "react";
 
 import type { SubfolderData } from "@/api";
-import SelectionBox from "@/components/filebrowser/SelectionBox";
 import {
   DirectoryItem,
   SectionHeader,
-} from "@/components/filebrowser/VirtualDirectoryRows";
+} from "@/components/filebrowser/DirectoryRows";
+import SelectionBox from "@/components/filebrowser/SelectionBox";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 import { useAppTheme } from "@/theme";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
@@ -214,7 +214,7 @@ export function getDirectoryRevealRowIndex(
 // React Compiler skips this whole module: TanStack Virtual's `useVirtualizer()`
 // returns unstable functions it refuses to memoize, and the bail is file-wide.
 // Manual memoization here stays load-bearing, and anything memo-worthy belongs
-// in VirtualDirectoryRows.tsx rather than in this file.
+// in DirectoryRows.tsx rather than in this file.
 const VirtualDirectoryItems = ({
   containerRef,
   cutPaths,
