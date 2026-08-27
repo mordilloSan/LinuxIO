@@ -4,8 +4,10 @@ import { useAppTheme } from "@/theme";
 
 export default function PreflightSummary({
   preflight,
+  showDefaultNetwork = true,
 }: {
   preflight?: VMPreflight;
+  showDefaultNetwork?: boolean;
 }) {
   const theme = useAppTheme();
   const checks = [
@@ -13,7 +15,9 @@ export default function PreflightSummary({
     ["QEMU", preflight?.qemuPresent],
     ["libvirt", preflight?.libvirtReachable],
     ["default pool", preflight?.defaultPoolExists],
-    ["default network", preflight?.defaultNetworkExists],
+    ...(showDefaultNetwork
+      ? ([["default network", preflight?.defaultNetworkExists]] as const)
+      : []),
     [
       "firmware",
       preflight?.firmware.biosAvailable || preflight?.firmware.uefiAvailable,

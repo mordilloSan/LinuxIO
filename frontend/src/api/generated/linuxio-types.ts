@@ -1615,6 +1615,61 @@ export interface NameRequest {
 
 export type NavigationMode = "sidebar" | "dock";
 
+export interface NetworkBridgeCandidate {
+  name: string;
+  mac: string;
+  backend?: string;
+  eligible: boolean;
+  reasons?: string[];
+  handoffEligible: boolean;
+  handoffReasons?: string[];
+}
+
+export interface NetworkBridgeCreateRequest {
+  name: string;
+  member: string;
+}
+
+export interface NetworkBridgeCreateResult {
+  name: string;
+  member: string;
+  backend?: string;
+}
+
+export interface NetworkBridgeHandoffOperationRequest {
+  operationId: string;
+}
+
+export interface NetworkBridgeHandoffRequest {
+  operationId: string;
+  name: string;
+  member: string;
+  consoleAcknowledged: boolean;
+}
+
+export type NetworkBridgeHandoffState =
+  | "applying"
+  | "awaiting_confirmation"
+  | "confirmed"
+  | "reverted"
+  | "unknown";
+
+export interface NetworkBridgeHandoffStatus {
+  operationId: string;
+  name: string;
+  member: string;
+  backend?: string;
+  state: NetworkBridgeHandoffState;
+  deadline?: string;
+  message?: string;
+  error?: string;
+}
+
+export interface NetworkBridgeOptions {
+  candidates: NetworkBridgeCandidate[];
+  warnings?: string[];
+}
+
 export interface NetworkInterface {
   carrier?: boolean;
   config_backend?: string;
@@ -2245,7 +2300,14 @@ export interface VMNIC {
   mac?: string;
   model?: string;
   network?: string;
+  attachmentType?: string;
   ipAddresses?: string[];
+}
+
+export interface VMNetwork {
+  name: string;
+  type: string;
+  active: boolean;
 }
 
 export interface VMPreflight {
@@ -2272,6 +2334,7 @@ export interface VMPreflightRequest {
   isoPath?: string;
   sourceType?: VMSourceType;
   imagePresetId?: VMImagePresetID;
+  network?: string;
 }
 
 export type VMSourceType = "iso" | "imagePreset";
@@ -2829,6 +2892,16 @@ export interface LinuxIOSchema {
   };
 
   network: {
+    confirm_bridge_handoff: {
+      input: [operationId: string];
+      request: NetworkBridgeHandoffOperationRequest;
+      result: NetworkBridgeHandoffStatus;
+    };
+    create_bridge: {
+      input: [request: NetworkBridgeCreateRequest];
+      request: NetworkBridgeCreateRequest;
+      result: NetworkBridgeCreateResult;
+    };
     disable_connection: {
       input: [iface: string];
       request: InterfaceRequest;
@@ -2839,8 +2912,23 @@ export interface LinuxIOSchema {
       request: InterfaceRequest;
       result: void;
     };
+    get_bridge_handoff: {
+      input: [operationId: string];
+      request: NetworkBridgeHandoffOperationRequest;
+      result: NetworkBridgeHandoffStatus;
+    };
+    get_bridge_options: {
+      input: [];
+      request: void;
+      result: NetworkBridgeOptions;
+    };
     get_interface_stats: { input: []; request: void; result: InterfaceStats[] };
     get_network_info: { input: []; request: void; result: NetworkInterface[] };
+    revert_bridge_handoff: {
+      input: [operationId: string];
+      request: NetworkBridgeHandoffOperationRequest;
+      result: NetworkBridgeHandoffStatus;
+    };
     set_ipv4: {
       input: [request: InterfaceMethodRequest];
       request: InterfaceMethodRequest;
@@ -2860,6 +2948,11 @@ export interface LinuxIOSchema {
       input: [request: InterfaceMTURequest];
       request: InterfaceMTURequest;
       result: void;
+    };
+    start_bridge_handoff: {
+      input: [request: NetworkBridgeHandoffRequest];
+      request: NetworkBridgeHandoffRequest;
+      result: NetworkBridgeHandoffStatus;
     };
   };
 
@@ -3179,6 +3272,7 @@ export interface LinuxIOSchema {
       result: VirtualMachine;
     };
     list: { input: []; request: void; result: VirtualMachine[] };
+    networks: { input: []; request: void; result: VMNetwork[] };
     preflight: {
       input: [request: VMPreflightRequest];
       request: VMPreflightRequest;
@@ -3462,14 +3556,35 @@ export interface LinuxIOCallSchema {
     request: MonitoringConfigPatch;
     result: MonitoringConfigSetResult;
   };
+  "network.confirm_bridge_handoff": {
+    request: NetworkBridgeHandoffOperationRequest;
+    result: NetworkBridgeHandoffStatus;
+  };
+  "network.create_bridge": {
+    request: NetworkBridgeCreateRequest;
+    result: NetworkBridgeCreateResult;
+  };
   "network.disable_connection": { request: InterfaceRequest; result: void };
   "network.enable_connection": { request: InterfaceRequest; result: void };
+  "network.get_bridge_handoff": {
+    request: NetworkBridgeHandoffOperationRequest;
+    result: NetworkBridgeHandoffStatus;
+  };
+  "network.get_bridge_options": { request: void; result: NetworkBridgeOptions };
   "network.get_interface_stats": { request: void; result: InterfaceStats[] };
   "network.get_network_info": { request: void; result: NetworkInterface[] };
+  "network.revert_bridge_handoff": {
+    request: NetworkBridgeHandoffOperationRequest;
+    result: NetworkBridgeHandoffStatus;
+  };
   "network.set_ipv4": { request: InterfaceMethodRequest; result: void };
   "network.set_ipv4_manual": { request: IPv4ManualRequest; result: void };
   "network.set_ipv6": { request: InterfaceMethodRequest; result: void };
   "network.set_mtu": { request: InterfaceMTURequest; result: void };
+  "network.start_bridge_handoff": {
+    request: NetworkBridgeHandoffRequest;
+    result: NetworkBridgeHandoffStatus;
+  };
   "power.disable": { request: void; result: PowerStatus };
   "power.get_status": { request: void; result: PowerStatus };
   "power.set_profile": { request: ProfileRequest; result: PowerStatus };
@@ -3616,6 +3731,7 @@ export interface LinuxIOCallSchema {
   "virt.force_off": { request: NameRequest; result: void };
   "virt.get": { request: NameRequest; result: VirtualMachine };
   "virt.list": { request: void; result: VirtualMachine[] };
+  "virt.networks": { request: void; result: VMNetwork[] };
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };

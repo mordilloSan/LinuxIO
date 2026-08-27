@@ -26,6 +26,7 @@ func ListVMs(ctx context.Context) ([]apischema.VirtualMachine, error) {
 			}
 			out = append(out, vm)
 		}
+		enrichBridgeAddresses(ctx, conn, domains, out)
 		return nil
 	})
 	if out == nil {
@@ -45,6 +46,9 @@ func GetVM(ctx context.Context, name string) (apischema.VirtualMachine, error) {
 			return err
 		}
 		vm, err = virtualMachineFromDomain(conn, domain)
+		if err == nil {
+			enrichDomainBridgeAddresses(ctx, conn, domain, &vm)
+		}
 		return err
 	})
 	return vm, err
@@ -79,7 +83,7 @@ func virtualMachineFromDomain(conn libvirtConn, domain libvirt.Domain) (apischem
 	if err != nil {
 		return apischema.VirtualMachine{}, err
 	}
-	enrichVMNICLeases(conn, &vm)
+	enrichVMNICLeaseAddresses(conn, &vm)
 	if vm.VCPUs == 0 || vm.MemoryMB == 0 {
 		_, maxMemKiB, memoryKiB, vcpus, _, infoErr := conn.DomainGetInfo(domain)
 		if infoErr == nil {
@@ -98,10 +102,13 @@ func virtualMachineFromDomain(conn libvirtConn, domain libvirt.Domain) (apischem
 	return vm, nil
 }
 
-func enrichVMNICLeases(conn libvirtConn, vm *apischema.VirtualMachine) {
+func enrichVMNICLeaseAddresses(conn libvirtConn, vm *apischema.VirtualMachine) {
 	for idx := range vm.NICs {
 		nic := &vm.NICs[idx]
 		if nic.Network == "" || nic.MAC == "" {
+			continue
+		}
+		if nic.AttachmentType == "bridge" {
 			continue
 		}
 		network, lookupErr := conn.NetworkLookupByName(nic.Network)
@@ -114,6 +121,31 @@ func enrichVMNICLeases(conn libvirtConn, vm *apischema.VirtualMachine) {
 		}
 		nic.IPAddresses = leaseIPAddresses(leases, nic.MAC)
 	}
+}
+
+func interfaceIPAddresses(interfaces []libvirt.DomainInterface, mac string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, iface := range interfaces {
+		if !interfaceMatchesMAC(iface.Hwaddr, mac) {
+			continue
+		}
+		for _, address := range iface.Addrs {
+			if address.Addr == "" {
+				continue
+			}
+			if _, ok := seen[address.Addr]; ok {
+				continue
+			}
+			seen[address.Addr] = struct{}{}
+			out = append(out, address.Addr)
+		}
+	}
+	return out
+}
+
+func interfaceMatchesMAC(hwaddr libvirt.OptString, mac string) bool {
+	return len(hwaddr) > 0 && strings.EqualFold(hwaddr[0], mac)
 }
 
 func leaseIPAddresses(leases []libvirt.NetworkDhcpLease, mac string) []string {

@@ -34,8 +34,9 @@ const VMPage = ({ children }: VMPageProps) => {
     null,
   );
   // This layout stays mounted for the whole VMs section, so it owns the poll
-  // cadence for both entries. Child routes observe the same keys with no
-  // interval of their own and inherit this freshness.
+  // cadence for shared VM data. Child routes observe the same keys with no
+  // interval of their own and inherit this freshness. The create dialog owns
+  // the available-network query because nothing else consumes it.
   const [listQuery, preflightQuery] = useSuspenseQueries({
     queries: [
       { ...linuxio.virt.list, refetchInterval: 5000 },

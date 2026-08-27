@@ -41,6 +41,7 @@ var StringEnums = map[string][]string{
 	"ValidationIssueType":           {"error", "warning"},
 	"VMImagePresetID":               {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
 	"VMSourceType":                  {"iso", "imagePreset"},
+	"NetworkBridgeHandoffState":     {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
 }
 
 const (
@@ -335,6 +336,52 @@ type NetworkInterface struct {
 	State     int     `json:"state"`
 	TXSpeed   float64 `json:"tx_speed"`
 	Type      string  `json:"type"`
+}
+
+// NetworkBridgeCandidate is one wired interface that can, or cannot, be used
+// for a spare-NIC bridge. Reasons explain an ineligible candidate.
+type NetworkBridgeCandidate struct {
+	Name            string   `json:"name"`
+	MAC             string   `json:"mac"`
+	Backend         string   `json:"backend,omitempty"`
+	Eligible        bool     `json:"eligible"`
+	Reasons         []string `json:"reasons,omitempty"`
+	HandoffEligible bool     `json:"handoffEligible"`
+	HandoffReasons  []string `json:"handoffReasons,omitempty"`
+}
+
+type NetworkBridgeOptions struct {
+	Candidates []NetworkBridgeCandidate `json:"candidates"`
+	Warnings   []string                 `json:"warnings,omitempty"`
+}
+
+type NetworkBridgeCreateResult struct {
+	Name    string `json:"name"`
+	Member  string `json:"member"`
+	Backend string `json:"backend,omitempty"`
+}
+
+type NetworkBridgeHandoffState string
+
+const (
+	NetworkBridgeHandoffApplying             NetworkBridgeHandoffState = "applying"
+	NetworkBridgeHandoffAwaitingConfirmation NetworkBridgeHandoffState = "awaiting_confirmation"
+	NetworkBridgeHandoffConfirmed            NetworkBridgeHandoffState = "confirmed"
+	NetworkBridgeHandoffReverted             NetworkBridgeHandoffState = "reverted"
+	NetworkBridgeHandoffUnknown              NetworkBridgeHandoffState = "unknown"
+)
+
+// NetworkBridgeHandoffStatus is state-oriented so reconnecting clients can
+// resolve an ambiguous transport result through the durable operation record.
+type NetworkBridgeHandoffStatus struct {
+	OperationID string                    `json:"operationId"`
+	Name        string                    `json:"name"`
+	Member      string                    `json:"member"`
+	Backend     string                    `json:"backend,omitempty"`
+	State       NetworkBridgeHandoffState `json:"state"`
+	Deadline    string                    `json:"deadline,omitempty"`
+	Message     string                    `json:"message,omitempty"`
+	Error       string                    `json:"error,omitempty"`
 }
 
 // NetworkInterfaceCounters carries the kernel's cumulative per-interface
@@ -1387,10 +1434,17 @@ type VMDisk struct {
 }
 
 type VMNIC struct {
-	MAC         string   `json:"mac,omitempty"`
-	Model       string   `json:"model,omitempty"`
-	Network     string   `json:"network,omitempty"`
-	IPAddresses []string `json:"ipAddresses,omitempty"`
+	MAC            string   `json:"mac,omitempty"`
+	Model          string   `json:"model,omitempty"`
+	Network        string   `json:"network,omitempty"`
+	AttachmentType string   `json:"attachmentType,omitempty"`
+	IPAddresses    []string `json:"ipAddresses,omitempty"`
+}
+
+type VMNetwork struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Active bool   `json:"active"`
 }
 
 type VirtualMachine struct {

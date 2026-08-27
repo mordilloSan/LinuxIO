@@ -21,15 +21,16 @@ import (
 )
 
 var (
-	networkMu     sync.Mutex
-	lastNetStats  = make(map[string]net.IOCountersStat)
-	lastTimestamp int64
-	networkEnv    = networkbackend.DefaultEnvironment()
+	networkMutationMu sync.Mutex
+	networkStatsMu    sync.Mutex
+	lastNetStats      = make(map[string]net.IOCountersStat)
+	lastTimestamp     int64
+	networkEnv        = networkbackend.DefaultEnvironment()
 )
 
 func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
-	networkMu.Lock()
-	defer networkMu.Unlock()
+	networkStatsMu.Lock()
+	defer networkStatsMu.Unlock()
 
 	snapshotMap, now, interval := currentNetworkSnapshot()
 	defer func() { lastTimestamp = now }()
@@ -59,6 +60,63 @@ func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
 	return results, nil
 }
 
+func GetBridgeOptions(ctx context.Context) (apischema.NetworkBridgeOptions, error) {
+	options, err := networkbackend.GetBridgeOptions(ctx, networkEnv)
+	if err != nil {
+		return apischema.NetworkBridgeOptions{}, fmt.Errorf("get bridge options: %w", err)
+	}
+	return mapBridgeOptions(options), nil
+}
+
+func CreateBridge(ctx context.Context, req apischema.NetworkBridgeCreateRequest) (apischema.NetworkBridgeCreateResult, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return apischema.NetworkBridgeCreateResult{}, fmt.Errorf("bridge name is required")
+	}
+	member := strings.TrimSpace(req.Member)
+	if member == "" {
+		return apischema.NetworkBridgeCreateResult{}, fmt.Errorf("bridge member interface is required")
+	}
+
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return apischema.NetworkBridgeCreateResult{}, err
+	}
+	defer unlock()
+
+	result, err := networkbackend.CreateBridge(ctx, networkEnv, networkbackend.BridgePlan{
+		Name:   name,
+		Member: member,
+	})
+	if err != nil {
+		return apischema.NetworkBridgeCreateResult{}, fmt.Errorf("create bridge %q over %q: %w", name, member, err)
+	}
+	return apischema.NetworkBridgeCreateResult{
+		Name:    result.Name,
+		Member:  result.Member,
+		Backend: result.Backend,
+	}, nil
+}
+
+func mapBridgeOptions(options networkbackend.BridgeOptions) apischema.NetworkBridgeOptions {
+	result := apischema.NetworkBridgeOptions{
+		Candidates: make([]apischema.NetworkBridgeCandidate, 0, len(options.Candidates)),
+		Warnings:   options.Warnings,
+	}
+	for _, candidate := range options.Candidates {
+		result.Candidates = append(result.Candidates, apischema.NetworkBridgeCandidate{
+			Name:            candidate.Name,
+			MAC:             candidate.MAC,
+			Backend:         candidate.Backend,
+			Eligible:        candidate.Eligible,
+			Reasons:         candidate.Reasons,
+			HandoffEligible: candidate.HandoffEligible,
+			HandoffReasons:  candidate.HandoffReasons,
+		})
+	}
+	return result
+}
+
 func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsServers []string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface is required")
@@ -72,8 +130,11 @@ func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsS
 	if len(dnsServers) == 0 {
 		return fmt.Errorf("at least one DNS server is required")
 	}
-	networkMu.Lock()
-	defer networkMu.Unlock()
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
@@ -86,8 +147,11 @@ func SetIPv4DHCP(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	networkMu.Lock()
-	defer networkMu.Unlock()
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
@@ -100,8 +164,11 @@ func SetIPv6DHCP(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	networkMu.Lock()
-	defer networkMu.Unlock()
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
@@ -114,8 +181,11 @@ func DisableConnection(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	networkMu.Lock()
-	defer networkMu.Unlock()
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
@@ -128,8 +198,11 @@ func EnableConnection(ctx context.Context, iface string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface name is required")
 	}
-	networkMu.Lock()
-	defer networkMu.Unlock()
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
@@ -149,14 +222,26 @@ func SetMTU(ctx context.Context, iface, mtu string) error {
 	if value < 68 {
 		return fmt.Errorf("invalid MTU value: %d (must be between 68 and 65535)", value)
 	}
-	networkMu.Lock()
-	defer networkMu.Unlock()
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	backend, err := networkbackend.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
 	return backend.SetMTU(ctx, uint32(value))
+}
+
+func beginNetworkMutation(ctx context.Context) (func(), error) {
+	networkMutationMu.Lock()
+	if err := ctx.Err(); err != nil {
+		networkMutationMu.Unlock()
+		return nil, err
+	}
+	return networkMutationMu.Unlock, nil
 }
 
 func currentNetworkSnapshot() (map[string]net.IOCountersStat, int64, int64) {

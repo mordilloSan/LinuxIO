@@ -20,6 +20,12 @@ func (s BusNameState) Available() bool {
 	return s.Active || s.Activatable
 }
 
+// BusNameState reports another service's state using this session's bus
+// connection and cancellation context.
+func (s SystemSession) BusNameState(busName string) (BusNameState, error) {
+	return ReadBusNameState(s.ctx, s.conn, busName)
+}
+
 // BusNameActive reports true only when the daemon is currently running, not
 // when it is merely D-Bus-activatable. Use this for services that must be
 // continuously running to be useful (e.g. Avahi, which only publishes mDNS

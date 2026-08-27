@@ -16,6 +16,7 @@ import {
   DEFAULT_MANAGED_CLOUD_PATH,
   DEFAULT_MANAGED_ISO_PATH,
   IMAGE_PRESETS,
+  formatAttachmentType,
   formatMemory,
   normalizeState,
   stateChipColor,
@@ -163,6 +164,7 @@ export function VMDashboardTab({
 }
 
 type VMNetworkRow = {
+  attachmentType: string;
   id: string;
   ips: string[];
   mac: string;
@@ -176,6 +178,7 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
   const theme = useAppTheme();
   const rows = vms.flatMap((vm) =>
     (vm.nics ?? []).map((nic, index) => ({
+      attachmentType: formatAttachmentType(nic.attachmentType),
       id: `${vm.name}-${nic.mac || index}`,
       ips: nic.ipAddresses ?? [],
       mac: nic.mac || "-",
@@ -207,6 +210,12 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
       meta: { width: "120px" },
     },
     {
+      accessorKey: "attachmentType",
+      header: "Attachment",
+      cell: ({ row }) => row.original.attachmentType,
+      meta: { width: "120px" },
+    },
+    {
       accessorKey: "network",
       header: "Network",
       cell: ({ row }) => row.original.network,
@@ -219,7 +228,7 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
         if (row.original.ips.length === 0) {
           return (
             <span style={{ color: theme.palette.text.secondary }}>
-              No lease
+              Unavailable
             </span>
           );
         }

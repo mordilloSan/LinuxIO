@@ -33,8 +33,10 @@ func CreateVMWithProgress(ctx context.Context, req apischema.VMCreateRequest, re
 	}
 	sourceType := normalizedVMSourceType(req.SourceType)
 	req.SourceType = sourceType
+	networkName := normalizeVMNetwork(req.Network)
 	preflightReq := apischema.VMPreflightRequest{
 		ImagePresetID: req.ImagePresetID,
+		Network:       networkName,
 		SourceType:    sourceType,
 	}
 	if sourceType == vmSourceTypeISO {
@@ -50,7 +52,7 @@ func CreateVMWithProgress(ctx context.Context, req apischema.VMCreateRequest, re
 	if preflightErr != nil {
 		return apischema.VirtualMachine{}, preflightErr
 	}
-	if readyErr := preflightReadyForCreate(preflight, sourceType); readyErr != nil {
+	if readyErr := preflightReadyForNetwork(preflight, sourceType, networkName); readyErr != nil {
 		return apischema.VirtualMachine{}, readyErr
 	}
 
@@ -88,6 +90,9 @@ func progressPercent(value int) *int {
 
 func createVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMCreateRequest, firmware apischema.VMPreflightFirmware, report vmCreateReporter) (apischema.VirtualMachine, error) {
 	reportVMCreateProgress(report, "checking", "Checking for existing VM", "", nil)
+	if networkErr := validateNetworkSelection(ctx, conn, req.Network); networkErr != nil {
+		return apischema.VirtualMachine{}, networkErr
+	}
 	if _, lookupErr := conn.DomainLookupByName(req.Name); lookupErr == nil {
 		return apischema.VirtualMachine{}, conflictf("VM %q already exists", req.Name)
 	} else if !isDomainMissing(lookupErr) {
@@ -103,9 +108,12 @@ func createVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMCre
 	if mkdirErr := ensureManagedStorageDirectories(); mkdirErr != nil {
 		return apischema.VirtualMachine{}, mkdirErr
 	}
-	reportVMCreateProgress(report, "network", "Preparing default NAT network", defaultNetworkName, nil)
-	if networkErr := ensureDefaultNetworkActive(conn); networkErr != nil {
-		return apischema.VirtualMachine{}, networkErr
+	networkName := normalizeVMNetwork(req.Network)
+	reportVMCreateProgress(report, "network", "Preparing VM network", networkName, nil)
+	if networkName == defaultNetworkName {
+		if networkErr := ensureDefaultNetworkActive(conn); networkErr != nil {
+			return apischema.VirtualMachine{}, networkErr
+		}
 	}
 
 	volumeName := managedVolumeName(req.Name)
@@ -132,6 +140,7 @@ func createVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMCre
 	if vmErr != nil {
 		return apischema.VirtualMachine{}, vmErr
 	}
+	enrichDomainBridgeAddresses(ctx, conn, domain, &vm)
 	reportVMCreateProgress(report, "complete", "VM created", req.Name, progressPercent(100))
 	return vm, nil
 }

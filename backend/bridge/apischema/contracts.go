@@ -159,6 +159,7 @@ type VMPreflightRequest struct {
 	ISOPath       *string         `json:"isoPath,omitempty"`
 	SourceType    VMSourceType    `json:"sourceType,omitempty"`
 	ImagePresetID VMImagePresetID `json:"imagePresetId,omitempty"`
+	Network       string          `json:"network,omitempty"`
 }
 
 type ImageIDRequest struct {
@@ -272,6 +273,27 @@ type IPv4ManualRequest struct {
 type InterfaceMTURequest struct {
 	Iface string `json:"iface"`
 	MTU   string `json:"mtu"`
+}
+
+// NetworkBridgeCreateRequest describes a Stage 2a bridge over a spare NIC.
+// Stage 2a never migrates host IP configuration to the new bridge.
+type NetworkBridgeCreateRequest struct {
+	Name   string `json:"name"`
+	Member string `json:"member"`
+}
+
+// NetworkBridgeHandoffRequest starts the single-NIC host-IP handoff. The
+// operation ID is allocated by the client so status can be recovered after
+// the apply severs the current connection.
+type NetworkBridgeHandoffRequest struct {
+	OperationID         string `json:"operationId"`
+	Name                string `json:"name"`
+	Member              string `json:"member"`
+	ConsoleAcknowledged bool   `json:"consoleAcknowledged"`
+}
+
+type NetworkBridgeHandoffOperationRequest struct {
+	OperationID string `json:"operationId"`
 }
 
 type ProfileRequest struct {

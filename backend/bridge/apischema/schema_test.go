@@ -49,6 +49,12 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 		"config.set",
 		"config.set_ui",
 		"system.get_cpu_info",
+		"network.get_bridge_options",
+		"network.create_bridge",
+		"network.start_bridge_handoff",
+		"network.get_bridge_handoff",
+		"network.confirm_bridge_handoff",
+		"network.revert_bridge_handoff",
 		"docker.update_container",
 		"tasks.watch",
 		"terminal.open",
@@ -80,7 +86,7 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 205; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 212; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeTask], 18; got != want {
@@ -191,10 +197,10 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
 	}
-	if count != 88 {
-		t.Fatalf("retry-safe Call count = %d, want 88", count)
+	if count != 93 {
+		t.Fatalf("retry-safe Call count = %d, want 93", count)
 	}
-	for _, route := range []string{"config.get", "config.get_ui", "system.get_cpu_info", "tasks.get", "virt.preflight"} {
+	for _, route := range []string{"config.get", "config.get_ui", "system.get_cpu_info", "tasks.get", "virt.preflight", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
 			t.Errorf("%s should be explicitly retry-safe", route)
 		}
@@ -206,6 +212,8 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 		"docker.start_container",
 		"network.get_interface_stats",
 		"network.get_network_info",
+		"network.create_bridge",
+		"network.start_bridge_handoff",
 		"system.get_disk_throughput",
 		"system.get_health_summary",
 		"system.get_updates_fast",

@@ -57,6 +57,12 @@ const VM_KEYS = [
   endpointQueryPrefix("virt.get"),
 ];
 
+const NETWORK_BRIDGE_KEYS = [
+  endpointQueryPrefix("network.get_network_info"),
+  endpointQueryPrefix("network.get_bridge_options"),
+  endpointQueryPrefix("virt.networks"),
+];
+
 /**
  * Single source of truth for which query caches a completed operation makes
  * stale, keyed by route.
@@ -158,6 +164,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("network.get_network_info"),
     endpointQueryPrefix("network.get_interface_stats"),
   ],
+  "network.create_bridge": NETWORK_BRIDGE_KEYS,
+  "network.start_bridge_handoff": NETWORK_BRIDGE_KEYS,
+  "network.confirm_bridge_handoff": NETWORK_BRIDGE_KEYS,
+  "network.revert_bridge_handoff": NETWORK_BRIDGE_KEYS,
 
   "hostname.set_hostname": [endpointQueryPrefix("system.get_host_info")],
   "system.dismiss_unclean_shutdown": [

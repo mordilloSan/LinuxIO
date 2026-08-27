@@ -164,14 +164,24 @@ const linuxio = {
     set_config: defineCallWithRequest("monitoring.set_config"),
   },
   network: {
+    confirm_bridge_handoff: defineCallWithRequest(
+      "network.confirm_bridge_handoff",
+    ),
+    create_bridge: defineCallWithRequest("network.create_bridge"),
     disable_connection: defineCallWithRequest("network.disable_connection"),
     enable_connection: defineCallWithRequest("network.enable_connection"),
+    get_bridge_handoff: defineCallWithRequest("network.get_bridge_handoff"),
+    get_bridge_options: defineCall("network.get_bridge_options"),
     get_interface_stats: defineCall("network.get_interface_stats"),
     get_network_info: defineCall("network.get_network_info"),
+    revert_bridge_handoff: defineCallWithRequest(
+      "network.revert_bridge_handoff",
+    ),
     set_ipv4: defineCallWithRequest("network.set_ipv4"),
     set_ipv4_manual: defineCallWithRequest("network.set_ipv4_manual"),
     set_ipv6: defineCallWithRequest("network.set_ipv6"),
     set_mtu: defineCallWithRequest("network.set_mtu"),
+    start_bridge_handoff: defineCallWithRequest("network.start_bridge_handoff"),
   },
   packages: {
     update: createTaskEndpoint("packages", "update", {
@@ -292,6 +302,7 @@ const linuxio = {
     force_off: defineCallWithRequest("virt.force_off"),
     get: defineCallWithRequest("virt.get"),
     list: defineCall("virt.list"),
+    networks: defineCall("virt.networks"),
     preflight: defineCallWithRequest("virt.preflight"),
     reboot: defineCallWithRequest("virt.reboot"),
     resume: defineCallWithRequest("virt.resume"),

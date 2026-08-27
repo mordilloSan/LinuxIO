@@ -40,14 +40,59 @@ type CommandRunner interface {
 }
 
 type Environment struct {
-	NetplanDir      string
-	NMConnectionDir string
-	NetworkdDir     string
-	IfupdownMain    string
-	IfupdownDir     string
-	IfcfgDir        string
-	Runner          CommandRunner
-	WriteFile       func(path string, data []byte, mode fs.FileMode) error
+	NetplanDir          string
+	NMConnectionDir     string
+	NetworkdDir         string
+	IfupdownMain        string
+	IfupdownDir         string
+	IfcfgDir            string
+	Runner              CommandRunner
+	WriteFile           func(path string, data []byte, mode fs.FileMode) error
+	RemoveFile          func(path string) error
+	ReadFile            func(path string) ([]byte, error)
+	InterfaceProbes     func(ctx context.Context) ([]InterfaceProbe, error)
+	ManagerForInterface func(ctx context.Context, iface string) (string, error)
+	VerifyBridge        func(ctx context.Context, bridge, member string) (bool, error)
+	RemoveBridge        func(name string) error
+	// VerifyBridgeHandoff is an optional runtime verification seam. The
+	// default verifier checks the bridge/member links, MAC, and addresses.
+	VerifyBridgeHandoff func(ctx context.Context, state *BridgeHandoffState) (bool, error)
+}
+
+// InterfaceProbe is the read-only host state needed before creating a bridge.
+// It is deliberately small so bridge preflights cannot accidentally become a
+// second network inventory implementation.
+type InterfaceProbe struct {
+	Name         string
+	MAC          string
+	Ethernet     bool
+	Loopback     bool
+	Wireless     bool
+	Bridge       bool
+	Master       string
+	Addresses    []string
+	DefaultRoute bool
+}
+
+// BridgeHandoffPlan is the explicit, risky operation that moves a host's
+// management L3 configuration from Member to Name. ConsoleAcknowledged is
+// deliberately part of the plan so callers cannot accidentally omit the
+// out-of-band recovery acknowledgement.
+type BridgeHandoffPlan struct {
+	Name                string `json:"name"`
+	Member              string `json:"member"`
+	ConsoleAcknowledged bool   `json:"consoleAcknowledged"`
+}
+
+// BridgeHandoffState maps a user operation to the native rollback transaction
+// owned by NetworkManager or Netplan.
+type BridgeHandoffState struct {
+	Plan                 BridgeHandoffPlan `json:"plan"`
+	Backend              string            `json:"backend"`
+	Handle               string            `json:"handle,omitempty"`
+	MemberMAC            string            `json:"memberMac"`
+	OriginalAddresses    []string          `json:"originalAddresses,omitempty"`
+	OriginalDefaultRoute bool              `json:"originalDefaultRoute"`
 }
 
 func DefaultEnvironment() Environment {
@@ -60,6 +105,7 @@ func DefaultEnvironment() Environment {
 		IfcfgDir:        "/etc/sysconfig/network-scripts",
 		Runner:          ExecRunner{},
 		WriteFile:       utils.WriteFileAtomic,
+		RemoveFile:      os.Remove,
 	}
 }
 

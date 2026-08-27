@@ -21,6 +21,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import PathPickerField from "@/components/ui/PathPickerField";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -184,10 +185,24 @@ export default function CreateVMDialog({
   const [cloudInitUsername, setCloudInitUsername] = useState("linuxio");
   const [cloudInitPassword, setCloudInitPassword] = useState("");
   const [cloudInitSSHKey, setCloudInitSSHKey] = useState("");
+  const [network, setNetwork] = useState("default");
+  const networksQuery = useQuery({
+    ...linuxio.virt.networks,
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
+  const networks = networksQuery.data ?? [];
+  const hostBridges = networks.filter(
+    (candidate) => candidate.type === "bridge",
+  );
+  const activeHostBridges = hostBridges.filter((candidate) => candidate.active);
   const usesISO = sourceType === "iso";
   const usesCloudInit = Boolean(
     imagePresetId && CLOUD_INIT_IMAGE_PRESETS.has(imagePresetId),
   );
+  // Available networks drive selection readiness, and create revalidates the
+  // choice server-side. Keep the full host/source preflight independent of the
+  // dropdown so changing networks does not repeat every host probe.
   const preflight = useQuery({
     ...linuxio.virt.preflight({
       imagePresetId,
@@ -222,6 +237,11 @@ export default function CreateVMDialog({
     setSourceType(preset.sourceType);
     setCreateMode("image");
     setImagePresetId(preset.imagePresetId);
+    setNetwork(
+      preset.bridgedPreferred && activeHostBridges.length === 1
+        ? activeHostBridges[0].name
+        : "default",
+    );
   };
 
   const applyCreateMode = (mode: VMCreateMode) => {
@@ -237,6 +257,7 @@ export default function CreateVMDialog({
     setStart(true);
     setSourceType("iso");
     setImagePresetId(undefined);
+    setNetwork("default");
   };
 
   const markCustom = () => setSelectedPreset("custom");
@@ -264,11 +285,32 @@ export default function CreateVMDialog({
     parsedDiskGB >= minimumDiskGB &&
     (!usesISO || (isoPathProvided && isoPathHasISOExtension)) &&
     (!usesCloudInit || (cloudInitUsernameValid && cloudInitAuthProvided));
-  const hasBlockingPreflightErrors = (preflight.data?.errors ?? []).length > 0;
+  const selectedNetwork = networks.find(
+    (candidate) => candidate.name === network,
+  );
+  const networkAvailable =
+    network === "default"
+      ? selectedNetwork?.type === "libvirt"
+      : selectedNetwork?.type === "bridge" && selectedNetwork.active;
+  // The base preflight still describes the optional default NAT network.
+  // Those messages do not apply when the VM will attach to a host bridge.
+  const isSelectedNetworkMessage = (message: string) =>
+    network === "default" ||
+    !message.toLowerCase().includes("default nat network");
+  const preflightWarnings = (preflight.data?.warnings ?? []).filter(
+    isSelectedNetworkMessage,
+  );
+  const preflightErrors = (preflight.data?.errors ?? []).filter(
+    isSelectedNetworkMessage,
+  );
+  const hasBlockingPreflightErrors = preflightErrors.length > 0;
   const isBusy = isCreating || createISOFolderMutation.isPending;
   const canSubmit =
     fieldsValid &&
+    networkAvailable &&
     !isBusy &&
+    !networksQuery.isPending &&
+    !networksQuery.isError &&
     !preflight.isLoading &&
     !preflight.isLoadingError &&
     !hasBlockingPreflightErrors;
@@ -315,7 +357,7 @@ export default function CreateVMDialog({
       diskGB: parsedDiskGB,
       memoryMB: parsedMemoryMB,
       name: name.trim(),
-      network: "default",
+      network,
       sourceType,
       start,
       vcpus: parsedVCPUs,
@@ -468,6 +510,36 @@ export default function CreateVMDialog({
               type="number"
               value={diskGB}
             />
+            <AppSelect
+              disabled={
+                isBusy || networksQuery.isPending || networksQuery.isError
+              }
+              fullWidth
+              label="Network"
+              onChange={(event) => setNetwork(event.target.value)}
+              value={network}
+            >
+              <option value="default">NAT (default)</option>
+              {hostBridges.map((bridge) => (
+                <option
+                  disabled={!bridge.active}
+                  key={bridge.name}
+                  value={bridge.name}
+                >
+                  {bridge.name}
+                  {!bridge.active ? " (inactive)" : ""}
+                </option>
+              ))}
+            </AppSelect>
+            {networksQuery.isError ? (
+              <AppAlert severity="error" style={wideGridItemStyle}>
+                Unable to load the available VM networks.
+              </AppAlert>
+            ) : !networksQuery.isPending && !networkAvailable ? (
+              <AppAlert severity="error" style={wideGridItemStyle}>
+                The selected VM network is unavailable.
+              </AppAlert>
+            ) : null}
             {usesISO ? (
               <PathPickerField
                 browsePath={`${managedISOPath}/`}
@@ -626,22 +698,25 @@ export default function CreateVMDialog({
             </AppAlert>
           ) : preflight.data ? (
             <>
-              <PreflightSummary preflight={preflight.data} />
-              {(preflight.data.warnings ?? []).length > 0 && (
+              <PreflightSummary
+                preflight={preflight.data}
+                showDefaultNetwork={network === "default"}
+              />
+              {preflightWarnings.length > 0 && (
                 <AppAlert severity="warning">
                   <AppAlertTitle>Preflight Warnings</AppAlertTitle>
                   <ul style={messageListStyle}>
-                    {(preflight.data.warnings ?? []).map((warning) => (
+                    {preflightWarnings.map((warning) => (
                       <li key={warning}>{warning}</li>
                     ))}
                   </ul>
                 </AppAlert>
               )}
-              {(preflight.data.errors ?? []).length > 0 && (
+              {preflightErrors.length > 0 && (
                 <AppAlert severity="error">
                   <AppAlertTitle>Preflight Errors</AppAlertTitle>
                   <ul style={messageListStyle}>
-                    {(preflight.data.errors ?? []).map((error) => (
+                    {preflightErrors.map((error) => (
                       <li key={error}>{error}</li>
                     ))}
                   </ul>

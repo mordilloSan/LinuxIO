@@ -105,7 +105,7 @@ export default function VMListTable({
         cell: ({ row }) => {
           const addresses = vmIPAddresses(row.original);
           if (addresses.length === 0) {
-            return <span style={mutedCellStyle}>No lease</span>;
+            return <span style={mutedCellStyle}>Unavailable</span>;
           }
           return addresses.join(", ");
         },

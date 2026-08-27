@@ -130,6 +130,8 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		"input: [request: AutoUpdateOptions]; request: AutoUpdateOptions;",
 		`export type AutoUpdateBackend =`,
 		`"mintupdate-automation"`,
+		`export type NetworkBridgeHandoffState =`,
+		`| "awaiting_confirmation"`,
 		"export interface AutoUpdateOptionSupport",
 		"can_configure: boolean;",
 		"create: { input: [request: VMCreateRequest]; request: VMCreateRequest; result: VirtualMachine; progress: TaskProgress<VMCreateProgress> };",

@@ -32,6 +32,7 @@ export const IMAGE_PRESETS = [
     sourceType: "imagePreset",
     start: true,
     vcpus: "2",
+    bridgedPreferred: true,
   },
   {
     diskGB: "20",
@@ -43,6 +44,7 @@ export const IMAGE_PRESETS = [
     sourceType: "imagePreset",
     start: true,
     vcpus: "2",
+    bridgedPreferred: false,
   },
   {
     diskGB: "24",
@@ -54,6 +56,7 @@ export const IMAGE_PRESETS = [
     sourceType: "imagePreset",
     start: true,
     vcpus: "2",
+    bridgedPreferred: false,
   },
   {
     diskGB: "24",
@@ -65,6 +68,7 @@ export const IMAGE_PRESETS = [
     sourceType: "imagePreset",
     start: true,
     vcpus: "2",
+    bridgedPreferred: false,
   },
 ] as const;
 
@@ -110,6 +114,19 @@ export function formatDisk(diskGB: number): string {
 
 export function vmIPAddresses(vm: VirtualMachine): string[] {
   return (vm.nics ?? []).flatMap((nic) => nic.ipAddresses ?? []);
+}
+
+export function formatAttachmentType(type: string | undefined): string {
+  switch (type) {
+    case "nat":
+      return "NAT";
+    case "bridge":
+      return "Bridge";
+    case "network":
+      return "Network";
+    default:
+      return "Unknown";
+  }
 }
 
 export function normalizeState(state: string): string {
