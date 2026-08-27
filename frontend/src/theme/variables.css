@@ -4,9 +4,6 @@
     "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol";
-  /* Spacing scale, in px: the sizes theme.spacing(n) produced for the
-     multipliers the app actually uses (n × 4). Off-scale sizes (3, 5, 10,
-     18px) are drift, not steps; snap them when touching a file. */
   --app-space-2: 2px;
   --app-space-4: 4px;
   --app-space-6: 6px;

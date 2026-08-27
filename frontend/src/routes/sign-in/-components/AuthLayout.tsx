@@ -1,16 +1,19 @@
 import type { ReactNode } from "react";
 
-import { AppThemeProvider, useAppMediaQuery } from "@/theme";
-import authTheme from "@/theme/authTheme";
+import buildAppTheme, { AppThemeProvider, useAppMediaQuery } from "@/theme";
 import { up } from "@/theme/breakpoints";
 
 interface AuthLayoutProps {
   children: ReactNode;
 }
 
+// No user config exists before sign-in, so the route renders the default
+// dark theme; the signed-in shell replaces it once the config loads.
+const AUTH_THEME = buildAppTheme("DARK");
+
 const AuthLayout = ({ children }: AuthLayoutProps) => {
   return (
-    <AppThemeProvider value={authTheme}>
+    <AppThemeProvider value={AUTH_THEME}>
       <AuthContent>{children}</AuthContent>
     </AppThemeProvider>
   );

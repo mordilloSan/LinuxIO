@@ -207,11 +207,15 @@ function ThemeColorsSection() {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(1.5),
+        gap: "var(--app-space-6)",
       }}
     >
       <div
-        style={{ display: "flex", alignItems: "center", gap: theme.spacing(1) }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--app-space-4)",
+        }}
       >
         <div style={{ flexGrow: 1 }}>
           <AppTypography fontWeight={600} variant="body1">
@@ -284,7 +288,7 @@ function ThemeColorsSection() {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1),
+          gap: "var(--app-space-4)",
         }}
       >
         {entries.map(({ key, label, description, effectiveColor }) => {
@@ -297,7 +301,7 @@ function ThemeColorsSection() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                padding: theme.spacing(1.5),
+                padding: "var(--app-space-6)",
                 ...(isOverridden && {
                   border: `1px solid ${theme.palette.primary.main}`,
                 }),
@@ -316,7 +320,7 @@ function ThemeColorsSection() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: theme.spacing(0.5),
+                  gap: "var(--app-space-2)",
                 }}
               >
                 {isOverridden && (
@@ -387,7 +391,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: theme.spacing(0.75),
+        gap: "var(--app-space-4)",
         flexShrink: 0,
       }}
     >
@@ -424,7 +428,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             ? alpha(theme.palette.text.primary, 0.04)
             : "transparent",
           border: `1px solid ${borderColor}`,
-          borderRadius: theme.shape.borderRadius,
+          borderRadius: "var(--app-radius-base)",
           outline: "none",
           textTransform: "lowercase",
           textAlign: "center",
@@ -448,7 +452,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             height: 28,
             minWidth: 28,
             padding: 0,
-            borderRadius: theme.shape.borderRadius,
+            borderRadius: "var(--app-radius-base)",
             backgroundColor: normalized,
             border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
             boxSizing: "border-box",

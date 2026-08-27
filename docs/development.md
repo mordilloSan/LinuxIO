@@ -198,7 +198,8 @@ follows:
   `ensure-deadcode`, `ensure-govulncheck`, `setup`, `update-deps`
 - frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
-  `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`
+  `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,
+  `update-frontend-screenshots`
 - backend checks: `golint`, `golint-only`, `test-backend`, `deadcode`,
   `deadcode-only`, `check-backend`, `test-auth`, `test-auth-protocol`,
   `test-auth-pam`, `test-updater`, `test-docker-update-integration`,

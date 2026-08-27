@@ -57,7 +57,7 @@ const LoginPage = () => {
       <div
         className="login-paper panel"
         style={{
-          borderRadius: "calc(var(--app-radius-base) * 4)",
+          borderRadius: 64,
           backgroundColor:
             "color-mix(in srgb, var(--app-palette-background-default), transparent 10%)",
           backgroundImage:

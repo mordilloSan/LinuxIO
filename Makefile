@@ -532,7 +532,7 @@ update-deps: ensure-node ensure-go
 	@echo "✅ Go dependencies updated to latest!"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
-.PHONY: lint tsc lint-ci golint test check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend deadcode deadcode-only ci-frontend-deps
+.PHONY: lint tsc lint-ci golint test check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
 lint: ensure-node setup
 	@$(MAKE) --no-print-directory lint-only
 
@@ -714,6 +714,14 @@ test-frontend-browser: ensure-node setup
 	@echo "🌐 Running frontend browser tests..."
 	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts
 	@echo "✅ Frontend browser tests passed!"
+
+# Rewrites the screenshot baselines src/test/browser/styling-gallery.spec.ts
+# compares against. Run after a deliberate visual change, then review the PNG
+# diff in git; the gallery does not need the production build.
+update-frontend-screenshots: ensure-node setup
+	@echo "📸 Rewriting frontend screenshot baselines..."
+	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts --update-snapshots=all src/test/browser/styling-gallery.spec.ts
+	@echo "✅ Screenshot baselines updated!"
 
 test-frontend-only:
 	@set -uo pipefail; \

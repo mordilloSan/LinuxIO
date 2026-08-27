@@ -5,6 +5,7 @@ import {
   createRouter,
   Outlet,
   RouterProvider,
+  useLocation,
 } from "@tanstack/react-router";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
@@ -28,6 +29,10 @@ const VirtualGridPage = lazy(() => import("./routes/VirtualGridPage"));
 const VirtualExpansionTablePage = lazy(
   () => import("./routes/VirtualExpansionTablePage"),
 );
+const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
+
+const DARK_THEME = buildAppTheme("DARK");
+const LIGHT_THEME = buildAppTheme("LIGHT");
 
 const tabs = [
   { label: "Users", to: "/accounts" },
@@ -40,8 +45,15 @@ const waitForPendingState = () =>
   });
 
 function RootLayout() {
+  // The styling gallery is photographed in both schemes; everything else
+  // runs dark. The provider writes the scheme to :root, so it is chosen here
+  // rather than by nesting a second provider under this one.
+  const { pathname } = useLocation();
+  const theme = pathname.startsWith("/styling/light")
+    ? LIGHT_THEME
+    : DARK_THEME;
   return (
-    <AppThemeProvider value={buildAppTheme("DARK")}>
+    <AppThemeProvider value={theme}>
       <Outlet />
     </AppThemeProvider>
   );
@@ -110,6 +122,16 @@ const virtualGridRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "grids/virtual",
 });
+const stylingDarkRoute = createRoute({
+  component: StylingGalleryPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/dark",
+});
+const stylingLightRoute = createRoute({
+  component: StylingGalleryPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light",
+});
 const accountsIndexRoute = createRoute({
   component: UsersPage,
   getParentRoute: () => accountsRoute,
@@ -142,6 +164,8 @@ const routeTree = rootRoute.addChildren([
   virtualExpansionRoute,
   virtualFileBrowserRoute,
   virtualGridRoute,
+  stylingDarkRoute,
+  stylingLightRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

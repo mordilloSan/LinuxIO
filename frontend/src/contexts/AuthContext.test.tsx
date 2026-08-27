@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { act, render, screen, waitFor } from "@/test/render";
-import { consumeSigninNotice } from "@/utils/signinNotice";
+import { readSigninNotice } from "@/utils/signinNotice";
 
 const apiMocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -394,7 +394,7 @@ describe("AuthContext", () => {
     );
     // Involuntary expiry leaves a one-shot notice for the sign-in screen,
     // instead of a toast that the redirect would discard.
-    expect(consumeSigninNotice()).toBe("expired");
+    expect(readSigninNotice()).toBe("expired");
     expect(localStorage.getItem("auth_username")).toBeNull();
     expect(localStorage.getItem("auth_privileged")).toBeNull();
     expect(sessionStorage.getItem("update_info")).toBeNull();
@@ -433,7 +433,7 @@ describe("AuthContext", () => {
     await waitFor(() =>
       expect(screen.getByText("none:false:false:null")).toBeInTheDocument(),
     );
-    expect(consumeSigninNotice()).toBe("expired");
+    expect(readSigninNotice()).toBe("expired");
     expect(sessionStorage.getItem("update_info")).toBeNull();
     expect(sessionStorage.getItem("update_info_checked")).toBeNull();
     expect(localStorage.getItem("session_expired")).toBeNull();
