@@ -27,7 +27,6 @@ interface UnitInfoPanelProps {
 const labelStyle: CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.06em",
-  fontSize: "0.6rem",
   color: "var(--app-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
@@ -51,7 +50,9 @@ export const DetailRow = ({
       alignItems: "baseline",
     }}
   >
-    <span style={labelStyle}>{label}</span>
+    <AppTypography component="span" style={labelStyle} variant="caption">
+      {label}
+    </AppTypography>
     <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
   </div>
 );

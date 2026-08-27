@@ -2,8 +2,6 @@ import type { CSSProperties } from "react";
 
 import "./tab-selector.css";
 
-import { type AppTheme, useAppTheme } from "@/theme";
-
 interface TabOption<TValue extends string> {
   label: string;
   value: TValue;
@@ -18,12 +16,12 @@ interface TabSelectorProps<TValue extends string> {
 
 // Shared by TabSelector and RoutedTabContainer's own tab strip so the two
 // implementations of the same `tab-selector` class can never drift apart.
-export const getTabSelectorThemeVars = (theme: AppTheme): CSSProperties =>
+export const getTabSelectorThemeVars = (): CSSProperties =>
   ({
-    "--tab-selector-active-bg": theme.palette.primary.main,
-    "--tab-selector-active-color": theme.palette.primary.contrastText,
-    "--tab-selector-hover": theme.palette.action.hover,
-    "--tab-selector-text": theme.palette.text.secondary,
+    "--tab-selector-active-bg": "var(--app-palette-primary-main)",
+    "--tab-selector-active-color": "var(--app-palette-primary-contrast-text)",
+    "--tab-selector-hover": "var(--app-palette-action-hover)",
+    "--tab-selector-text": "var(--app-palette-text-secondary)",
   }) as CSSProperties;
 
 const TabSelector = <TValue extends string>({
@@ -33,13 +31,11 @@ const TabSelector = <TValue extends string>({
   className,
   style,
 }: TabSelectorProps<TValue>) => {
-  const theme = useAppTheme();
-
   return (
     <div
       className={["tab-selector", className].filter(Boolean).join(" ")}
       style={{
-        ...getTabSelectorThemeVars(theme),
+        ...getTabSelectorThemeVars(),
         ...style,
       }}
     >

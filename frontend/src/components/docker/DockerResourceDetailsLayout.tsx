@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import {
   DETAIL_PANEL_GAP,
   EASING_STANDARD,
@@ -29,8 +30,7 @@ const DockerResourceDetailsLayout = ({
   summary,
   title,
 }: DockerResourceDetailsLayoutProps) => {
-  const theme = useAppTheme();
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const isCompactLayout = useAppMediaQuery(down("md"));
   const transitionDuration = TRANSITION_DURATION_SLOW_MS / 1000;
 
   return (
@@ -94,7 +94,7 @@ const DockerResourceDetailsLayout = ({
               display: "flex",
               flex: 1,
               flexDirection: "column",
-              gap: theme.spacing(1.25),
+              gap: "var(--app-space-4)",
               minHeight: 0,
               minWidth: 0,
               overflowY: "auto",
@@ -105,7 +105,7 @@ const DockerResourceDetailsLayout = ({
               style={{
                 alignItems: "flex-start",
                 display: "flex",
-                gap: theme.spacing(1),
+                gap: "var(--app-space-4)",
                 justifyContent: "space-between",
                 minWidth: 0,
               }}
@@ -113,7 +113,6 @@ const DockerResourceDetailsLayout = ({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <AppTypography
                   component="div"
-                  fontSize="0.875rem"
                   fontWeight={700}
                   noWrap
                   title={title}
@@ -124,7 +123,6 @@ const DockerResourceDetailsLayout = ({
                 <AppTypography
                   color="text.secondary"
                   component="div"
-                  fontSize="0.7rem"
                   noWrap
                   variant="caption"
                 >

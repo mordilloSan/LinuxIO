@@ -3,7 +3,6 @@ import { useState, type SubmitEventHandler } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { mixWithTransparency } from "@/theme/surfaces";
 
 import GeneralDialog from "../dialog/GeneralDialog";
@@ -45,7 +44,6 @@ const CompressFormatDialog = ({
   onClose,
   onConfirm,
 }: CompressFormatDialogProps) => {
-  const theme = useAppTheme();
   const [selected, setSelected] = useState<CompressFormat>("zip");
 
   const handleSubmit: SubmitEventHandler<HTMLFormElement> = (event) => {
@@ -59,10 +57,10 @@ const CompressFormatDialog = ({
       <form
         onSubmit={handleSubmit}
         style={{
-          padding: theme.spacing(4),
+          padding: "var(--app-space-16)",
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(3),
+          gap: "var(--app-space-12)",
         }}
       >
         <AppTypography fontWeight={600} variant="h6">
@@ -73,7 +71,7 @@ const CompressFormatDialog = ({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: theme.spacing(1.5),
+            gap: "var(--app-space-6)",
           }}
         >
           {FORMAT_OPTIONS.map((opt) => {
@@ -87,12 +85,15 @@ const CompressFormatDialog = ({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: theme.spacing(2),
-                  padding: theme.spacing(2),
-                  borderRadius: 12,
-                  border: `2px solid ${isSelected ? theme.palette.primary.main : theme.palette.divider}`,
+                  gap: "var(--app-space-8)",
+                  padding: "var(--app-space-8)",
+                  borderRadius: "var(--app-radius-lg)",
+                  border: `2px solid ${isSelected ? "var(--app-palette-primary-main)" : "var(--app-palette-divider)"}`,
                   background: isSelected
-                    ? mixWithTransparency(theme.palette.primary.main, 0.1)
+                    ? mixWithTransparency(
+                        "var(--app-palette-primary-main)",
+                        0.1,
+                      )
                     : "transparent",
                   cursor: "pointer",
                   color: "inherit",
@@ -109,8 +110,8 @@ const CompressFormatDialog = ({
                   style={{
                     flexShrink: 0,
                     color: isSelected
-                      ? theme.palette.primary.main
-                      : theme.palette.text.secondary,
+                      ? "var(--app-palette-primary-main)"
+                      : "var(--app-palette-text-secondary)",
                   }}
                   width={28}
                 />
@@ -119,27 +120,28 @@ const CompressFormatDialog = ({
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: theme.spacing(1),
+                      gap: "var(--app-space-4)",
                     }}
                   >
                     <AppTypography fontWeight={600} variant="body1">
                       {opt.label}
                     </AppTypography>
                     {opt.badge && (
-                      <span
+                      <AppTypography
+                        component="span"
                         style={{
-                          fontSize: "0.65rem",
                           fontWeight: 700,
                           letterSpacing: "0.04em",
-                          textTransform: "uppercase",
                           padding: "1px 6px",
                           borderRadius: 4,
-                          background: theme.palette.success.main,
-                          color: theme.palette.success.contrastText,
+                          background: "var(--app-palette-success-main)",
+                          color: "var(--app-palette-success-contrast-text)",
+                          textTransform: "uppercase",
                         }}
+                        variant="caption"
                       >
                         {opt.badge}
-                      </span>
+                      </AppTypography>
                     )}
                   </div>
                   <AppTypography color="text.secondary" variant="body2">
@@ -150,7 +152,10 @@ const CompressFormatDialog = ({
                   <Icon
                     height={20}
                     icon="mdi:check-circle"
-                    style={{ flexShrink: 0, color: theme.palette.primary.main }}
+                    style={{
+                      flexShrink: 0,
+                      color: "var(--app-palette-primary-main)",
+                    }}
                     width={20}
                   />
                 )}
@@ -162,9 +167,9 @@ const CompressFormatDialog = ({
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             justifyContent: "flex-end",
-            marginTop: theme.spacing(1),
+            marginTop: "var(--app-space-4)",
           }}
         >
           <AppButton

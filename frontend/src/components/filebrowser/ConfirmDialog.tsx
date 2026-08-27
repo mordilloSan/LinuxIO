@@ -4,7 +4,6 @@ import type { TaskProgress } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
@@ -35,8 +34,6 @@ const ConfirmDialog = ({
   isPending = false,
   progress,
 }: ConfirmDialogProps) => {
-  const theme = useAppTheme();
-
   const handleConfirm: SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     if (!isPending) onConfirm();
@@ -76,10 +73,10 @@ const ConfirmDialog = ({
         onKeyDown={handleKeyDown}
         onSubmit={handleConfirm}
         style={{
-          padding: theme.spacing(4),
+          padding: "var(--app-space-16)",
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(3),
+          gap: "var(--app-space-12)",
           alignItems: "center",
           textAlign: "center",
         }}
@@ -90,7 +87,7 @@ const ConfirmDialog = ({
 
         <AppTypography
           color="text.secondary"
-          style={{ marginTop: theme.spacing(2) }}
+          style={{ marginTop: "var(--app-space-8)" }}
           variant="body1"
         >
           {message}
@@ -110,10 +107,10 @@ const ConfirmDialog = ({
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             justifyContent: "center",
             width: "100%",
-            marginTop: theme.spacing(2),
+            marginTop: "var(--app-space-8)",
           }}
         >
           <AppButton

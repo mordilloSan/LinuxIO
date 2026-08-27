@@ -3,7 +3,6 @@ import { useState, type CSSProperties } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { getSubtleDividerColor } from "@/theme/surfaces";
 
 export type SortField = "name" | "size" | "modTime";
@@ -16,7 +15,6 @@ export interface SortBarProps {
 }
 
 const SortBar = ({ sortField, sortOrder, onSortChange }: SortBarProps) => {
-  const theme = useAppTheme();
   const [hoveredField, setHoveredField] = useState<SortField | null>(null);
   const [focusedField, setFocusedField] = useState<SortField | null>(null);
   // Allow numeric columns to shrink on smaller widths while keeping alignment in sync with rows
@@ -83,14 +81,14 @@ const SortBar = ({ sortField, sortOrder, onSortChange }: SortBarProps) => {
       style={{ ...columnStyle, ...style }}
     >
       <AppTypography
+        fontWeight={500}
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: style?.justifyContent,
-          fontSize: "0.9rem",
           width: "100%",
         }}
-        variant="h6"
+        variant="body2"
       >
         {label}
         {renderSortIcon(field)}
@@ -103,9 +101,9 @@ const SortBar = ({ sortField, sortOrder, onSortChange }: SortBarProps) => {
       style={{
         display: "grid",
         gridTemplateColumns: columnTemplate,
-        backgroundColor: theme.fileBrowser.surface,
-        border: `1px solid ${getSubtleDividerColor(theme)}`,
-        borderRadius: 8,
+        backgroundColor: "var(--app-file-browser-surface)",
+        border: `1px solid ${getSubtleDividerColor()}`,
+        borderRadius: "var(--app-radius-md)",
       }}
     >
       {renderSortButton("name", "Name")}

@@ -1,6 +1,5 @@
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
-import { useAppTheme } from "@/theme";
 
 interface DockerIconProps {
   alt?: string;
@@ -17,7 +16,6 @@ const DockerIcon = ({
   size = 24,
   alt = "icon",
 }: DockerIconProps) => {
-  const theme = useAppTheme();
   const { iconUri, isLoading, isError } = useDockerIcon(identifier);
 
   // No identifier provided
@@ -45,7 +43,7 @@ const DockerIcon = ({
           width: size,
           height: size,
           borderRadius: "50%",
-          backgroundColor: theme.palette.action.hover,
+          backgroundColor: "var(--app-palette-action-hover)",
           flexShrink: 0,
         }}
       />

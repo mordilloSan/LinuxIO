@@ -1,7 +1,7 @@
 .app-navbar {
   position: sticky;
   top: 0;
-  z-index: 1100;
+  z-index: var(--app-z-navbar);
   background: var(--app-header-background);
   color: var(--app-header-color);
 }

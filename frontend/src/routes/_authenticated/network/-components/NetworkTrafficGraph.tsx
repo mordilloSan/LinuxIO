@@ -34,7 +34,9 @@ export const centerZeroRange = ({ max, min }: { max: number; min: number }) => {
 };
 
 export interface NetworkTrafficSeries {
-  color: string;
+  /* Which theme chart colour draws the line. The canvas needs the resolved
+     colour, so the graph reads it from the theme; callers stay on CSS vars. */
+  colorKey: "rx" | "tx";
   label: string;
   /**
    * Persistent buffer from the live series store, in kB/s. The owner feeds it
@@ -50,7 +52,8 @@ interface NetworkTrafficGraphProps {
 const NetworkTrafficGraph = ({ series }: NetworkTrafficGraphProps) => {
   const theme = useAppTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartNeutral = theme.chart.neutral;
+  const chartColors = theme.chart;
+  const chartNeutral = chartColors.neutral;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -87,7 +90,7 @@ const NetworkTrafficGraph = ({ series }: NetworkTrafficGraphProps) => {
       // not to zero, so the positive series would tint the whole negative
       // half and read as traffic that isn't there.
       chart.addTimeSeries(entry.series, {
-        strokeStyle: entry.color,
+        strokeStyle: chartColors[entry.colorKey],
         lineWidth: 1.5,
       });
     }
@@ -95,7 +98,7 @@ const NetworkTrafficGraph = ({ series }: NetworkTrafficGraphProps) => {
     chart.streamTo(canvas, STREAM_DELAY_MS);
 
     return () => chart.stop();
-  }, [chartNeutral, series]);
+  }, [chartColors, chartNeutral, series]);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -124,7 +127,7 @@ const NetworkTrafficGraph = ({ series }: NetworkTrafficGraphProps) => {
             const prefix = value < 0 ? "−" : "+";
             return [
               {
-                color: entry.color,
+                color: theme.chart[entry.colorKey],
                 value: `${prefix}${formatThroughput(Math.abs(value) * 1024)}`,
                 label: entry.label,
               },

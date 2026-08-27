@@ -3,7 +3,6 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 interface PowerStatesTabProps {
   power: DiskPowerData;
@@ -30,19 +29,20 @@ const powerStateColumns: AppVirtualTableColumnDef<PowerStateRow>[] = [
   {
     accessorKey: "description",
     header: "Description",
-    meta: {
-      cellStyle: { fontSize: "0.75rem" },
-    },
+    cell: ({ row }) => (
+      <AppTypography variant="caption">
+        {row.original.description}
+      </AppTypography>
+    ),
   },
 ];
 
 export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
-  const theme = useAppTheme();
   return (
     <>
       <div
         style={{
-          marginBottom: theme.spacing(3),
+          marginBottom: "var(--app-space-12)",
         }}
       >
         <AppTypography gutterBottom variant="subtitle2">
@@ -51,7 +51,7 @@ export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             alignItems: "center",
           }}
         >

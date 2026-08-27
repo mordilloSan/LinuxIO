@@ -33,7 +33,8 @@ import {
   type ReorderableSurfaceDndProps,
 } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import {
   CARD_GRID_SIZE_DENSE,
   DASHBOARD_CARD_SPACING,
@@ -167,9 +168,8 @@ const ContainerList = ({
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
 }: ContainerListProps) => {
-  const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const isCompactLayout = useAppMediaQuery(down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const selectedContainerId =
@@ -518,7 +518,7 @@ const ContainerList = ({
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(3),
+              gap: "var(--app-space-12)",
             }}
           >
             <motion.div

@@ -1,0 +1,22 @@
+/* Background ring for the circular gauges. GREY_TOKENS[300]/[700] from
+   @/theme/colors have no --app-* variable equivalent (they're a raw grey
+   scale, not part of the themed palette), so the two shades are mirrored
+   here directly. */
+.gauge-track {
+  stroke: #e0e0e0;
+}
+
+:root[data-app-color-scheme="dark"] .gauge-track {
+  stroke: #616161;
+}
+
+/* Large numeric readout in the center of a gauge. Mirrors
+   --app-palette-grey-900 / --app-palette-grey-100, which are already
+   mode-invariant tokens equal to GREY_TOKENS[900]/[100]. */
+.gauge-value-text {
+  color: var(--app-palette-grey-900);
+}
+
+:root[data-app-color-scheme="dark"] .gauge-value-text {
+  color: var(--app-palette-grey-100);
+}

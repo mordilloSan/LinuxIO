@@ -20,9 +20,11 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import {
   DETAIL_PANEL_GAP,
   TRANSITION_DURATION_SLOW_MS,
@@ -101,7 +103,9 @@ export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
             width={15}
           />
         )}
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{label}</span>
+        <AppTypography component="span" fontWeight={500} variant="caption">
+          {label}
+        </AppTypography>
       </div>
     </DetailRow>
   );
@@ -134,12 +138,11 @@ export function UnitStatusRows({
     <>
       <DetailRow label="Status" noBorder>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span
-            style={{
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              color: statusColor,
-            }}
+          <AppTypography
+            color={statusColor}
+            component="span"
+            fontWeight={600}
+            variant="body2"
           >
             {isActive ? (activeLabel ?? activeState) : activeState}
             {subState && subState !== activeState && (
@@ -153,24 +156,25 @@ export function UnitStatusRows({
                 ({subState})
               </span>
             )}
-          </span>
+          </AppTypography>
           {/*
             Units without a transition timestamp keep the line as an invisible
             spacer: dropping it outright makes their card a line shorter than
             its neighbours, which is what made the grid look ragged.
           */}
-          <span
+          <AppTypography
             aria-hidden={timestamp === "—" ? true : undefined}
+            color="text.secondary"
+            component="span"
             style={{
-              fontSize: "0.7rem",
-              color: "var(--app-palette-text-secondary)",
               visibility: timestamp === "—" ? "hidden" : undefined,
             }}
+            variant="caption"
           >
             {timestamp === "—"
               ? " "
               : `${isActive ? "Active" : "Inactive"} since ${timestamp}`}
-          </span>
+          </AppTypography>
         </div>
       </DetailRow>
       <AutoStartRow unitFileState={unitFileState} />
@@ -405,8 +409,7 @@ export function UnitTableView<T extends RowData>({
   onSelect,
   emptyMessage,
 }: UnitTableViewProps<T>) {
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useAppMediaQuery(down("sm"));
   const activeColumns = isMobile ? mobileColumns : desktopColumns;
   const columns = useMemo<AppVirtualTableColumnDef<T>[]>(() => {
     const renderedCellCache = new Map<
@@ -480,9 +483,8 @@ export function UnitCardsView<T extends UnitListItem>({
   renderBottomPanel,
   emptyMessage,
 }: UnitCardsViewProps<T>) {
-  const theme = useAppTheme();
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const isCompactLayout = useAppMediaQuery(down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
 
   if (!expandedItem) {
@@ -514,7 +516,7 @@ export function UnitCardsView<T extends UnitListItem>({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(3),
+        gap: "var(--app-space-12)",
       }}
     >
       <motion.div

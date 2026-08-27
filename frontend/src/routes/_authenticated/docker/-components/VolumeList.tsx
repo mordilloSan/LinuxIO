@@ -26,7 +26,6 @@ import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
@@ -209,7 +208,6 @@ const DeleteVolumeDialog = ({
   volumeNames,
   onSuccess,
 }: DeleteVolumeDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteVolume, isPending: isDeleting } = useCallMutation(
@@ -256,8 +254,8 @@ const DeleteVolumeDialog = ({
           style={{
             display: "flex",
             flexWrap: "wrap",
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
+            marginTop: "var(--app-space-8)",
+            marginBottom: "var(--app-space-4)",
           }}
         >
           {volumeNames.map((name) => (
@@ -305,7 +303,6 @@ const VolumeList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: VolumeListProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const focusedVolumeName = searchParams.volume;
@@ -410,12 +407,7 @@ const VolumeList = ({
         accessorKey: "Driver",
         header: "Driver",
         cell: ({ row }) => (
-          <Chip
-            label={row.original.Driver}
-            size="small"
-            style={{ fontSize: "0.75rem" }}
-            variant="soft"
-          />
+          <Chip label={row.original.Driver} size="xsmall" variant="soft" />
         ),
         meta: {
           align: "left",
@@ -517,7 +509,7 @@ const VolumeList = ({
               actions={
                 <AppActionIconButton
                   ariaLabel={`Delete volume ${focusedVolume.Name}`}
-                  color={theme.palette.error.main}
+                  color="var(--app-palette-error-main)"
                   icon="mdi:delete"
                   iconSize={18}
                   label="Delete volume"
@@ -555,8 +547,8 @@ const VolumeList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">

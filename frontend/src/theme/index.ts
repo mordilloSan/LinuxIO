@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import type { ConfigThemeColorsByModePayload as ThemeColorsByMode } from "@/api";
-import breakpoints from "@/theme/breakpoints";
+import breakpoints, { between, down, up } from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
   getContrastText,
@@ -23,7 +23,7 @@ import {
   TRANSITION_DURATION_MEDIUM_MS,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
-import { getFrostedCardShadow } from "@/theme/surfaces";
+import { getFrostedCardShadow, getSurfaceCssVariables } from "@/theme/surfaces";
 import variants from "@/theme/variants";
 import type { EffectiveUISettings } from "@/types/config";
 import { alpha, darken, lighten } from "@/utils/color";
@@ -243,16 +243,7 @@ function createSpacing(...values: SpacingInput[]) {
 }
 
 function createBreakpoints() {
-  const values = breakpoints.values;
-
-  return {
-    values,
-    up: (key: BreakpointKey) => `@media (min-width:${values[key]}px)`,
-    down: (key: BreakpointKey) =>
-      `@media (max-width:${Math.max(values[key] - 0.05, 0)}px)`,
-    between: (start: BreakpointKey, end: BreakpointKey) =>
-      `@media (min-width:${values[start]}px) and (max-width:${Math.max(values[end] - 0.05, 0)}px)`,
-  };
+  return { values: breakpoints.values, up, down, between };
 }
 
 function createTransitions() {
@@ -629,6 +620,19 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-sidebar-item-grad-end": theme.palette.primary.main,
     "--app-sidebar-item-active-color": theme.palette.primary.contrastText,
     "--app-panel-background": theme.palette.background.paper,
+    ...getSurfaceCssVariables(theme),
+    "--app-chart-rx": theme.chart.rx,
+    "--app-chart-tx": theme.chart.tx,
+    "--app-chart-neutral": theme.chart.neutral,
+    "--app-code-block-background": theme.codeBlock.background,
+    "--app-code-block-color": theme.codeBlock.color,
+    "--app-file-browser-surface": theme.fileBrowser.surface,
+    "--app-file-browser-chrome": theme.fileBrowser.chrome,
+    "--app-file-browser-breadcrumb-background":
+      theme.fileBrowser.breadcrumbBackground,
+    "--app-file-browser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
+    "--app-footer-background": theme.footer.background,
+    "--app-footer-color": theme.footer.color,
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":
       theme.palette.mode === "dark"

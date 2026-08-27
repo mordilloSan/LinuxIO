@@ -9,7 +9,8 @@ import AppAlert from "@/components/ui/AppAlert";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useStreamMessageChannel } from "@/hooks/useStreamMessageChannel";
-import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 
 import type { ConsoleSession } from "./vmShared";
 
@@ -19,26 +20,26 @@ const consolePaperStyle = (isMobile: boolean): CSSProperties => ({
   width: isMobile ? "calc(100vw - 16px)" : "min(1200px, calc(100vw - 32px))",
 });
 
-const consoleHeaderStyle = (theme: AppTheme): CSSProperties => ({
+const consoleHeaderStyle: CSSProperties = {
   alignItems: "center",
-  borderBottom: `1px solid ${theme.palette.divider}`,
+  borderBottom: "1px solid var(--app-palette-divider)",
   display: "flex",
-  gap: theme.spacing(4),
+  gap: "var(--app-space-16)",
   justifyContent: "space-between",
-  padding: theme.spacing(3.5, 4),
-});
+  padding: "var(--app-space-16) var(--app-space-16)",
+};
 
-const consoleErrorStyle = (theme: AppTheme): CSSProperties => ({
-  margin: theme.spacing(3, 4, 0),
-});
+const consoleErrorStyle: CSSProperties = {
+  margin: "var(--app-space-12) var(--app-space-16) 0",
+};
 
-const consoleViewportStyle = (theme: AppTheme): CSSProperties => ({
-  background: theme.palette.common.black,
+const consoleViewportStyle: CSSProperties = {
+  background: "black",
   height: "calc(100% - 70px)",
   minHeight: 360,
   outline: "none",
   overflow: "hidden",
-});
+};
 
 export default function ConsoleDialog({
   onClose,
@@ -49,8 +50,7 @@ export default function ConsoleDialog({
   open: boolean;
   session: ConsoleSession;
 }) {
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useAppMediaQuery(down("sm"));
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const { stream, vm } = session;
   const [status, setStatus] = useState(stream ? "Connecting" : "Unavailable");
@@ -125,7 +125,7 @@ export default function ConsoleDialog({
       open={open}
       paperStyle={consolePaperStyle(isMobile)}
     >
-      <div style={consoleHeaderStyle(theme)}>
+      <div style={consoleHeaderStyle}>
         <div>
           <AppTypography component="h2" variant="h6">
             {vm.name}
@@ -139,11 +139,11 @@ export default function ConsoleDialog({
         </AppIconButton>
       </div>
       {error && (
-        <AppAlert severity="error" style={consoleErrorStyle(theme)}>
+        <AppAlert severity="error" style={consoleErrorStyle}>
           {error}
         </AppAlert>
       )}
-      <div ref={viewportRef} style={consoleViewportStyle(theme)} />
+      <div ref={viewportRef} style={consoleViewportStyle} />
     </GeneralDialog>
   );
 }

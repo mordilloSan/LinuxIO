@@ -2,13 +2,11 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 import CreateInterfaceButton from "./CreateInterfaceButton";
 import WireGuardDashboard from "./WireguardDashboard";
 
 const WireguardPage = () => {
-  const theme = useAppTheme();
   const { data: interfaces } = useSuspenseQuery({
     ...linuxio.wireguard.list_interfaces,
     refetchInterval: 10000,
@@ -20,7 +18,7 @@ const WireguardPage = () => {
         style={{
           display: "flex",
           alignItems: "center",
-          marginBottom: theme.spacing(2),
+          marginBottom: "var(--app-space-8)",
         }}
       >
         <AppTypography component="h1" variant="h4">

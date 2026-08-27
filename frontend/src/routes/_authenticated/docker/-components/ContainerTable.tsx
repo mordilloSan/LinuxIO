@@ -47,7 +47,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
 
 import {
@@ -350,7 +351,6 @@ function StackHeaderCell({
   header,
   onToggleStack,
 }: StackHeaderCellProps) {
-  const theme = useAppTheme();
   const summary = summarizeStack(header.containers);
 
   return (
@@ -391,7 +391,7 @@ function StackHeaderCell({
             role="img"
             style={{
               alignItems: "center",
-              color: theme.palette.warning.main,
+              color: "var(--app-palette-warning-main)",
               display: "flex",
             }}
           >
@@ -585,7 +585,6 @@ function NetworkCell({
 }: {
   networks: Array<[string, ContainerEndpoint]>;
 }) {
-  const theme = useAppTheme();
   const networkNamesText = networks
     .map(([networkName]) => networkName)
     .join(", ");
@@ -613,7 +612,7 @@ function NetworkCell({
         <span
           style={{
             marginLeft: 2,
-            color: theme.palette.text.disabled,
+            color: "var(--app-palette-text-disabled)",
           }}
         >
           +{networks.length - 1}
@@ -698,7 +697,6 @@ interface PortsCellProps {
 }
 
 function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
-  const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (ports.length === 0) {
@@ -728,18 +726,18 @@ function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
           >
-            <span style={{ color: theme.palette.text.primary }}>
+            <span style={{ color: "var(--app-palette-text-primary)" }}>
               {port.PrivatePort}/{port.Type}
             </span>
             <span
               style={{
-                color: theme.palette.text.disabled,
+                color: "var(--app-palette-text-disabled)",
                 marginInline: 2,
               }}
             >
               {"->"}
             </span>
-            <span style={{ color: theme.palette.text.secondary }}>
+            <span style={{ color: "var(--app-palette-text-secondary)" }}>
               {port.PublicPort ?? "-"}
             </span>
           </AppTypography>
@@ -760,18 +758,18 @@ function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
               >
-                <span style={{ color: theme.palette.text.primary }}>
+                <span style={{ color: "var(--app-palette-text-primary)" }}>
                   {port.PrivatePort}/{port.Type}
                 </span>
                 <span
                   style={{
-                    color: theme.palette.text.disabled,
+                    color: "var(--app-palette-text-disabled)",
                     marginInline: 2,
                   }}
                 >
                   {"->"}
                 </span>
-                <span style={{ color: theme.palette.text.secondary }}>
+                <span style={{ color: "var(--app-palette-text-secondary)" }}>
                   {port.PublicPort ?? "-"}
                 </span>
               </AppTypography>
@@ -802,7 +800,6 @@ function VolumesCell({
   mounts,
   onToggleExpanded,
 }: VolumesCellProps) {
-  const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (mounts.length === 0) {
@@ -830,18 +827,18 @@ function VolumesCell({
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
           >
-            <span style={{ color: theme.palette.text.primary }}>
+            <span style={{ color: "var(--app-palette-text-primary)" }}>
               {mount.Destination}
             </span>
             <span
               style={{
-                color: theme.palette.text.disabled,
+                color: "var(--app-palette-text-disabled)",
                 marginInline: 2,
               }}
             >
               {"->"}
             </span>
-            <span style={{ color: theme.palette.text.secondary }}>
+            <span style={{ color: "var(--app-palette-text-secondary)" }}>
               {mount.Source}
             </span>
           </AppTypography>
@@ -860,18 +857,18 @@ function VolumesCell({
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
               >
-                <span style={{ color: theme.palette.text.primary }}>
+                <span style={{ color: "var(--app-palette-text-primary)" }}>
                   {mount.Destination}
                 </span>
                 <span
                   style={{
-                    color: theme.palette.text.disabled,
+                    color: "var(--app-palette-text-disabled)",
                     marginInline: 2,
                   }}
                 >
                   {"->"}
                 </span>
-                <span style={{ color: theme.palette.text.secondary }}>
+                <span style={{ color: "var(--app-palette-text-secondary)" }}>
                   {mount.Source}
                 </span>
               </AppTypography>
@@ -1139,10 +1136,9 @@ const ContainerTable = ({
   onToggleStack,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: ContainerTableProps) => {
-  const theme = useAppTheme();
   // Same breakpoint the Version and Uptime columns hide at, so the strip
   // collapses exactly when Actions starts crowding the name.
-  const compactActions = useAppMediaQuery(theme.breakpoints.down("md"));
+  const compactActions = useAppMediaQuery(down("md"));
   const editMode = dnd?.editing ?? false;
   // Table mode keeps the same stack entries as card mode even while editing:
   // headers move whole blocks, while their visible member rows stay inert.

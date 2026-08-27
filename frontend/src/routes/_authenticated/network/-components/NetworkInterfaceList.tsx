@@ -20,7 +20,6 @@ import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppTheme } from "@/theme";
 import {
   CARD_PADDING_LG,
   DETAIL_PANEL_GAP,
@@ -78,7 +77,6 @@ const DETAIL_SUMMARY_ROW_MIN_HEIGHT = 300;
 const DETAIL_HISTORY_ROW_HEIGHT = 320;
 
 const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
-  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const { data: iface } = useQuery({
     ...linuxio.network.get_network_info,
@@ -136,10 +134,10 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
 
   const trafficSeries = useMemo(
     () => [
-      { color: theme.chart.tx, label: "Sent", series: txSeries },
-      { color: theme.chart.rx, label: "Received", series: rxInboundSeries },
+      { colorKey: "tx" as const, label: "Sent", series: txSeries },
+      { colorKey: "rx" as const, label: "Received", series: rxInboundSeries },
     ],
-    [rxInboundSeries, theme.chart.rx, theme.chart.tx, txSeries],
+    [rxInboundSeries, txSeries],
   );
 
   if (!iface) return null;
@@ -164,13 +162,13 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <TrafficLegend
-            color={theme.chart.tx}
+            color="var(--app-chart-tx)"
             label="Sent"
             sign="+"
             value={formatThroughput(iface.tx_speed)}
           />
           <TrafficLegend
-            color={theme.chart.rx}
+            color="var(--app-chart-rx)"
             label="Received"
             sign="−"
             value={formatThroughput(iface.rx_speed)}

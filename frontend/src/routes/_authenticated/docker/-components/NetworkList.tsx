@@ -30,7 +30,6 @@ import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
@@ -38,7 +37,8 @@ import {
   wrappableChipStyle,
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
-import { alpha } from "@/utils/color";
+
+import "./network-list.css";
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
@@ -152,7 +152,6 @@ const CreateNetworkDialog = ({
   onClose,
   existingNames,
 }: CreateNetworkDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const [networkName, setNetworkName] = useState("");
   const [driver, setDriver] = useState("bridge");
@@ -189,7 +188,7 @@ const CreateNetworkDialog = ({
     <GeneralDialog fullWidth maxWidth="xs" onClose={handleClose} open={open}>
       <AppDialogTitle>Create Network</AppDialogTitle>
       <AppDialogContent>
-        <div style={{ marginTop: theme.spacing(2) }}>
+        <div style={{ marginTop: "var(--app-space-8)" }}>
           <AppTextField
             autoFocus
             disabled={isCreating}
@@ -268,7 +267,6 @@ const DeleteNetworkDialog = ({
   networkIds,
   onSuccess,
 }: DeleteNetworkDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
@@ -319,8 +317,8 @@ const DeleteNetworkDialog = ({
           style={{
             display: "flex",
             flexWrap: "wrap",
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
+            marginTop: "var(--app-space-8)",
+            marginBottom: "var(--app-space-4)",
           }}
         >
           {networkNames.map((name) => (
@@ -362,7 +360,6 @@ const getNetworkId = (network: { Id: string }) => network.Id;
 const dockerRouteApi = getRouteApi("/_authenticated/docker/networks");
 
 const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
-  const theme = useAppTheme();
   return (
     <div className="expand-panel">
       <div>
@@ -567,6 +564,7 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
         {Object.entries(network.Containers ?? {}).length ? (
           <AppVirtualTable
             ariaLabel="Connected containers"
+            className="network-connected-table"
             columns={connectedContainerColumns}
             data={Object.entries(network.Containers ?? {}).map(
               ([id, info]) => ({
@@ -582,12 +580,6 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
             fillAvailable={false}
             getRowId={(container) => container.id}
             maxHeight={240}
-            style={{
-              backgroundColor: alpha(
-                theme.palette.text.primary,
-                theme.palette.mode === "dark" ? 0.2 : 0.08,
-              ),
-            }}
             variant="embedded"
           />
         ) : (
@@ -604,7 +596,6 @@ const NetworkList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: NetworkListProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const focusedNetworkId =
@@ -715,9 +706,12 @@ const NetworkList = ({
         header: "Driver",
         cell: ({ row }) => (
           <Chip
-            label={row.original.Driver}
+            label={
+              <AppTypography component="span" variant="caption">
+                {row.original.Driver}
+              </AppTypography>
+            }
             size="small"
-            style={{ fontSize: "0.75rem" }}
             variant="soft"
           />
         ),
@@ -881,7 +875,7 @@ const NetworkList = ({
               actions={
                 <AppActionIconButton
                   ariaLabel={`Delete network ${focusedNetwork.Name}`}
-                  color={theme.palette.error.main}
+                  color="var(--app-palette-error-main)"
                   icon="mdi:delete"
                   iconSize={18}
                   label="Delete network"
@@ -919,8 +913,8 @@ const NetworkList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">

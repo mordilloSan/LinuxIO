@@ -4,7 +4,6 @@ import type { Socket } from "@/api";
 import Chip from "@/components/ui/AppChip";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useAppTheme } from "@/theme";
 
 import UnitStatusDot from "./UnitStatusDot";
 import { UnitTableView } from "./UnitViews";
@@ -53,13 +52,11 @@ const mobileColumns = [
 const getSocketRowKey = (socket: Socket) => socket.name;
 
 function SocketListenAddresses({ socket }: { socket: Socket }) {
-  const theme = useAppTheme();
-
   return (
     <div
       style={{
         display: "flex",
-        gap: theme.spacing(0.5),
+        gap: "var(--app-space-2)",
         flexWrap: "wrap",
       }}
     >

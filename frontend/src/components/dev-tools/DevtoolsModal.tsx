@@ -2,8 +2,6 @@ import { Icon } from "@iconify/react";
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
-import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
 
 interface DevtoolsModalProps {
   children: ReactNode;
@@ -14,7 +12,6 @@ const INITIAL_WIDTH = 1000;
 const INITIAL_HEIGHT = 500;
 
 export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
-  const theme = useAppTheme();
   const [position, setPosition] = useState(() => ({
     x: Math.max(20, (window.innerWidth - INITIAL_WIDTH) / 2),
     y: Math.max(20, (window.innerHeight - INITIAL_HEIGHT) / 2),
@@ -71,7 +68,7 @@ export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
           left: 0,
           width: "100%",
           height: "100%",
-          backgroundColor: alpha(theme.palette.common.black, 0.5),
+          backgroundColor: "color-mix(in srgb, black, transparent 50%)",
           zIndex: 9997,
         }}
       />
@@ -89,10 +86,11 @@ export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
           maxWidth: "calc(100vw - 40px)",
           maxHeight: "calc(100vh - 40px)",
           zIndex: 9998,
-          borderRadius: 12,
+          borderRadius: "var(--app-radius-lg)",
           overflow: "hidden",
-          boxShadow: `0 25px 50px -12px ${alpha(theme.palette.common.black, 0.5)}`,
-          backgroundColor: theme.palette.background.paper,
+          boxShadow:
+            "0 25px 50px -12px color-mix(in srgb, black, transparent 50%)",
+          backgroundColor: "var(--app-palette-background-paper)",
           display: "flex",
           flexDirection: "column",
           resize: "both",
@@ -123,9 +121,8 @@ export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
               right: 6,
               background: "transparent",
               border: "none",
-              color: theme.palette.text.secondary,
+              color: "var(--app-palette-text-secondary)",
               cursor: "pointer",
-              fontSize: 18,
               lineHeight: 1,
               padding: 2,
             }}

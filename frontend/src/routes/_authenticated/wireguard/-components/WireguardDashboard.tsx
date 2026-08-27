@@ -9,7 +9,6 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import {
   CARD_GRID_SIZE_STANDARD,
   EASING_STANDARD,
@@ -30,7 +29,6 @@ interface WireGuardDashboardProps {
 const getWireguardInterfaceId = (iface: WireGuardInterface) => iface.name;
 
 const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(WIREGUARD_TOAST_META);
   const [selectedInterface, setSelectedInterface] = useState<string | null>(
     null,
@@ -231,8 +229,8 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
                   >
                     <div
                       style={{
-                        marginTop: theme.spacing(4),
-                        marginBottom: theme.spacing(2),
+                        marginTop: "var(--app-space-16)",
+                        marginBottom: "var(--app-space-8)",
                       }}
                     >
                       <AppTypography gutterBottom variant="h5">

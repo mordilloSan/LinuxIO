@@ -10,7 +10,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import CreateVMDialog from "./CreateVMDialog";
@@ -24,7 +23,6 @@ interface VMPageProps {
 }
 
 const VMPage = ({ children }: VMPageProps) => {
-  const theme = useAppTheme();
   const navigate = vmRouteApi.useNavigate();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
@@ -118,7 +116,7 @@ const VMPage = ({ children }: VMPageProps) => {
 
   if (libvirtStatus !== "available") {
     return (
-      <div style={{ padding: theme.spacing(3) }}>
+      <div style={{ padding: "var(--app-space-12)" }}>
         <AppAlert severity={libvirtStatus === "unknown" ? "info" : "warning"}>
           <AppAlertTitle>
             {libvirtStatus === "unknown"

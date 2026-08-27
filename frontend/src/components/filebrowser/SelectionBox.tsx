@@ -1,4 +1,3 @@
-import { useAppTheme } from "@/theme";
 import { mixWithTransparency } from "@/theme/surfaces";
 
 interface SelectionBoxProps {
@@ -12,8 +11,6 @@ interface SelectionBoxProps {
  * Visual overlay for marquee selection box
  */
 const SelectionBox = ({ left, top, width, height }: SelectionBoxProps) => {
-  const theme = useAppTheme();
-
   return (
     <div
       style={{
@@ -22,7 +19,7 @@ const SelectionBox = ({ left, top, width, height }: SelectionBoxProps) => {
         top: `${top}px`,
         width: `${width}px`,
         height: `${height}px`,
-        border: `2px solid ${theme.palette.primary.main}`,
+        border: "2px solid var(--app-palette-primary-main)",
         backgroundColor: mixWithTransparency(
           "var(--app-palette-primary-main)",
           0.1,

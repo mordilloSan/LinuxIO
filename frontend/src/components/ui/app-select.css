@@ -201,12 +201,12 @@
   top: calc(100% + 2px);
   left: 0;
   min-width: 100%;
-  z-index: 1300;
+  z-index: var(--app-z-dialog);
 }
 
 .app-select__dropdown--portal {
   position: fixed;
-  z-index: 1300;
+  z-index: var(--app-z-dialog);
   background-color: color-mix(in srgb, var(--app-palette-background-paper), transparent 22%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);

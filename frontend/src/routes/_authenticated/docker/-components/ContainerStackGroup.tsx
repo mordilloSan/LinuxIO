@@ -9,7 +9,6 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_LG } from "@/theme/constants";
 
 import {
@@ -94,7 +93,6 @@ export function ContainerStackSummaryCard({
   onExpand,
   project,
 }: ContainerStackSummaryCardProps) {
-  const theme = useAppTheme();
   const summary = summarizeStack(containers);
   const displayState = getStackDisplayState(summary);
 
@@ -129,7 +127,7 @@ export function ContainerStackSummaryCard({
               role="img"
               style={{
                 alignItems: "center",
-                color: theme.palette.warning.main,
+                color: "var(--app-palette-warning-main)",
                 display: "flex",
               }}
             >
@@ -191,10 +189,9 @@ export function ContainerStackSummaryCard({
                 marginLeft: 4,
                 marginRight: 0.4,
                 marginBottom: 2,
-                fontSize: "1.05rem",
               }}
               title={project}
-              variant="subtitle1"
+              variant="h5"
             >
               {project}
             </AppTypography>

@@ -2,9 +2,7 @@ import type { CSSProperties } from "react";
 
 import type { AppDialogProps } from "@/components/ui/AppDialog";
 import { AppDialog } from "@/components/ui/AppDialog";
-import { useAppTheme } from "@/theme";
 import { getDialogSurfaceStyles } from "@/theme/surfaces";
-import { alpha } from "@/utils/color";
 
 interface GeneralDialogProps extends AppDialogProps {
   /** Extra styles merged onto the paper */
@@ -16,16 +14,15 @@ const GeneralDialog = ({
   paperStyle,
   ...dialogProps
 }: GeneralDialogProps) => {
-  const theme = useAppTheme();
-
   return (
     <AppDialog
       {...dialogProps}
       backdropStyle={{
-        backgroundColor: alpha(theme.dialog.backdrop, 0.7),
+        backgroundColor:
+          "color-mix(in srgb, var(--app-dialog-backdrop), transparent 30%)",
       }}
       paperStyle={{
-        ...getDialogSurfaceStyles(theme),
+        ...getDialogSurfaceStyles(),
         overflow: "hidden",
         ...paperStyle,
       }}

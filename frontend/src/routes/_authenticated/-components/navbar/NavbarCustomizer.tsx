@@ -8,14 +8,13 @@ import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useAppTheme } from "@/theme";
 import { COLOR_TOKENS } from "@/theme/colors";
 import { iconSize } from "@/theme/constants";
-import { alpha } from "@/utils/color";
+
+import "./NavbarCustomizer.css";
 
 function NavbarColorCustomizer() {
   const [primaryColor, setPrimaryColor] = useConfigValue("primaryColor");
-  const theme = useAppTheme();
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
@@ -43,7 +42,7 @@ function NavbarColorCustomizer() {
         onClose={() => setAnchorEl(null)}
         open={open}
         paperStyle={{
-          padding: theme.spacing(2),
+          padding: "var(--app-space-8)",
         }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
@@ -55,14 +54,15 @@ function NavbarColorCustomizer() {
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(1),
+            gap: "var(--app-space-4)",
             flexWrap: "wrap",
-            marginBottom: theme.spacing(1),
+            marginBottom: "var(--app-space-4)",
           }}
         >
           {tokenSwatches.map(({ name, hex }) => (
             <AppButton
               aria-label={`Set color ${name}`}
+              className="navbar-color-swatch"
               color="inherit"
               key={name}
               onClick={() => setPrimaryColor(name)}
@@ -70,12 +70,8 @@ function NavbarColorCustomizer() {
                 minWidth: 28,
                 width: 28,
                 height: 28,
-                borderRadius: theme.shape.borderRadius,
+                borderRadius: "var(--app-radius-base)",
                 backgroundColor: hex,
-                border:
-                  theme.palette.mode === "dark"
-                    ? `1px solid ${alpha(theme.palette.common.white, 0.3)}`
-                    : `1px solid ${alpha(theme.palette.common.black, 0.1)}`,
                 cursor: "pointer",
                 boxShadow:
                   primaryColor?.toLowerCase() === name.toLowerCase()
@@ -92,8 +88,8 @@ function NavbarColorCustomizer() {
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(1),
-            marginTop: theme.spacing(2),
+            gap: "var(--app-space-4)",
+            marginTop: "var(--app-space-8)",
           }}
         >
           <AppButton
@@ -102,10 +98,10 @@ function NavbarColorCustomizer() {
             size="small"
             style={
               {
-                marginTop: theme.spacing(2),
+                marginTop: "var(--app-space-8)",
                 "--_btn-main": COLOR_TOKENS.blue,
                 "--_btn-dark": COLOR_TOKENS.blue,
-                "--_btn-contrast": theme.palette.common.white,
+                "--_btn-contrast": "white",
               } as CSSProperties
             }
             variant="outlined"

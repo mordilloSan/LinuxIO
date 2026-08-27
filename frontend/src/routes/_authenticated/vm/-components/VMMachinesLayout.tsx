@@ -9,7 +9,8 @@ import {
   useCallMutation,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import ConsoleDialog from "./ConsoleDialog";
@@ -34,8 +35,7 @@ const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
  */
 const VMMachinesLayout = () => {
   const queryClient = useQueryClient();
-  const theme = useAppTheme();
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const isCompactLayout = useAppMediaQuery(down("md"));
   const toast = useScopedToast(VM_TOAST);
   const navigate = vmMachinesRouteApi.useNavigate();
   // Both entries were already warmed by the /vm route loader; these observers
@@ -195,7 +195,7 @@ const VMMachinesLayout = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(4.5),
+          gap: "var(--app-space-16)",
           minHeight: 0,
         }}
       >
@@ -204,7 +204,7 @@ const VMMachinesLayout = () => {
           style={{
             alignItems: "stretch",
             display: "grid",
-            gap: theme.spacing(4.5),
+            gap: "var(--app-space-16)",
             gridTemplateColumns: isCompactLayout
               ? "1fr"
               : "minmax(0, 1fr) minmax(280px, 360px)",

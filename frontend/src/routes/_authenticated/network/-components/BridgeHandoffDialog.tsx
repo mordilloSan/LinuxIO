@@ -23,7 +23,6 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 
 import { defaultBridgeName, isBridgeNameValid } from "./CreateBridgeDialog";
 
@@ -72,7 +71,6 @@ interface BridgeHandoffDialogProps {
 }
 
 const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(NETWORK_TOAST_META);
   const { isOpen: muxIsOpen } = useStreamMux();
   const [member, setMember] = useState("");
@@ -267,8 +265,8 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
         <div
           style={{
             display: "grid",
-            gap: theme.spacing(2),
-            marginTop: theme.spacing(1),
+            gap: "var(--app-space-8)",
+            marginTop: "var(--app-space-4)",
           }}
         >
           {!operationId && (
@@ -344,7 +342,7 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
                 style={{
                   alignItems: "flex-start",
                   display: "flex",
-                  gap: theme.spacing(1),
+                  gap: "var(--app-space-4)",
                 }}
               >
                 <AppCheckbox

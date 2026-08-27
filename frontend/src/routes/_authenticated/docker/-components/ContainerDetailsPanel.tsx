@@ -8,7 +8,6 @@ import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { getContainerStatusColor } from "@/constants/statusColors";
-import { useAppTheme } from "@/theme";
 
 const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace("/", "") || container.Id.slice(0, 12);
@@ -42,7 +41,6 @@ const ContainerDetailsPanel = ({
   title,
   withHeader = true,
 }: ContainerDetailsPanelProps) => {
-  const theme = useAppTheme();
   const name = getContainerName(container);
   const displayState = getDisplayState(container);
   const headerTitle = title ?? name;
@@ -58,7 +56,7 @@ const ContainerDetailsPanel = ({
         flex: 1,
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(1.25),
+        gap: "var(--app-space-4)",
         overflowY: "auto",
       }}
     >
@@ -68,15 +66,14 @@ const ContainerDetailsPanel = ({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-start",
-            gap: theme.spacing(1),
-            marginBottom: theme.spacing(0.5),
+            gap: "var(--app-space-4)",
+            marginBottom: "var(--app-space-2)",
             minWidth: 0,
           }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <AppTypography
               component="div"
-              fontSize="0.875rem"
               fontWeight={700}
               noWrap
               title={headerTitle}
@@ -87,7 +84,6 @@ const ContainerDetailsPanel = ({
             <AppTypography
               color="text.secondary"
               component="div"
-              fontSize="0.7rem"
               noWrap
               variant="caption"
             >
@@ -99,7 +95,7 @@ const ContainerDetailsPanel = ({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing(0.75),
+                gap: "var(--app-space-4)",
                 flexShrink: 0,
               }}
             >
@@ -107,8 +103,7 @@ const ContainerDetailsPanel = ({
                 <Chip
                   color={getContainerStatusColor(displayState)}
                   label={displayState}
-                  size="small"
-                  style={{ fontSize: "0.75rem" }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}

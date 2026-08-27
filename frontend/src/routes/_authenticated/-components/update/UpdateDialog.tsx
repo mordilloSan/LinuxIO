@@ -12,7 +12,6 @@ import {
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 interface UpdateDialogProps {
   canClose: boolean;
   onClose?: () => void;
@@ -37,7 +36,6 @@ const UpdateDialog = ({
   onContinue,
   targetVersion,
 }: UpdateDialogProps) => {
-  const theme = useAppTheme();
   const outputId = useId();
   const outputEndRef = useRef<HTMLDivElement>(null);
   const [outputExpanded, setOutputExpanded] = useState(false);
@@ -71,7 +69,7 @@ const UpdateDialog = ({
         <div
           style={{
             display: "grid",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
           }}
         >
           {/* Success/Fail banner when complete */}
@@ -80,13 +78,13 @@ const UpdateDialog = ({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing(2),
-                padding: theme.spacing(2),
-                borderRadius: String(theme.shape.borderRadius),
+                gap: "var(--app-space-8)",
+                padding: "var(--app-space-8)",
+                borderRadius: "var(--app-radius-base)",
                 backgroundColor: updateSuccess
-                  ? theme.palette.success.main
-                  : theme.palette.error.main,
-                color: theme.palette.common.white,
+                  ? "var(--app-palette-success-main)"
+                  : "var(--app-palette-error-main)",
+                color: "white",
               }}
             >
               {updateSuccess ? (
@@ -172,7 +170,7 @@ const UpdateDialog = ({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  gap: theme.spacing(1),
+                  gap: "var(--app-space-4)",
                   padding: 0,
                   margin: 0,
                   border: 0,
@@ -209,23 +207,24 @@ const UpdateDialog = ({
                       maxHeight: 300,
                       overflowY: "auto",
                       backgroundColor: "var(--app-palette-grey-900)",
-                      color: "var(--app-palette-grey-100)",
                       padding: 8,
-                      fontFamily: "var(--app-font-mono)",
-                      fontSize: "0.875rem",
                     }}
                     variant="outlined"
                   >
                     {output.map((line, index) => (
-                      <div
+                      <AppTypography
+                        color="var(--app-palette-grey-100)"
+                        component="div"
                         key={index}
                         style={{
                           whiteSpace: "pre-wrap",
-                          marginBottom: theme.spacing(0.5),
+                          marginBottom: "var(--app-space-2)",
+                          fontFamily: "var(--app-font-mono)",
                         }}
+                        variant="body2"
                       >
                         {line}
-                      </div>
+                      </AppTypography>
                     ))}
                     <div ref={outputEndRef} />
                   </AppPaper>

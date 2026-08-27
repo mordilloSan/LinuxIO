@@ -39,7 +39,7 @@ describe("DockerImageCard", () => {
     const fullId = screen.getByText(image.id);
     expect(screen.getByText("Full ID:")).toHaveStyle("font-weight: 700");
     expect(fullId).toHaveStyle("font-family: var(--app-font-mono)");
-    expect(fullId).toHaveStyle("font-size: 12px");
+    expect(fullId).toHaveClass("app-typo--caption");
     expect(fullId.parentElement).toHaveClass("app-typo--nowrap");
     expect(screen.queryByText(/^ID:/)).toBeNull();
   });

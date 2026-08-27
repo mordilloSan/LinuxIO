@@ -3,7 +3,8 @@ import { memo, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import { HeaderActionSlotHost } from "@/contexts/HeaderActionSlotContext";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
 
@@ -18,8 +19,7 @@ interface NavbarProps {
 }
 
 const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
-  const theme = useAppTheme();
-  const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
+  const isDesktop = useAppMediaQuery(up("md"));
 
   return (
     <header

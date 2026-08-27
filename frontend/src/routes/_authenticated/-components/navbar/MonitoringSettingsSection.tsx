@@ -19,7 +19,6 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useAppTheme } from "@/theme";
 import { compactGoDuration, isGoDuration } from "@/utils/durations";
 
 import {
@@ -200,7 +199,6 @@ const getConfigSchemaError = (config: MonitoringConfig): string | null => {
 };
 
 const MonitoringSettingsSection = () => {
-  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const {
     isEnabled: monitoringEnabled,
@@ -343,7 +341,7 @@ const MonitoringSettingsSection = () => {
       indicator={
         <StatusDot
           absolute
-          color={theme.palette.success.main}
+          color="var(--app-palette-success-main)"
           style={{ top: 16, right: 12 }}
           tooltip="Agent healthy"
         />
@@ -368,7 +366,7 @@ const MonitoringSettingsSection = () => {
         </AppAlert>
       ) : agentStatus ? (
         <>
-          <SettingsGrid minColumnWidth={240} rowGap={1}>
+          <SettingsGrid minColumnWidth={240} rowGap="var(--app-space-4)">
             <>
               <StatusMetric label="Database" value={agentStatus.db_path} />
               <StatusMetric
@@ -377,15 +375,15 @@ const MonitoringSettingsSection = () => {
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: theme.spacing(0.5),
+                      gap: "var(--app-space-2)",
                     }}
                   >
                     Config
                     <StatusDot
                       color={
                         agentStatus.config.source === "loaded"
-                          ? theme.palette.success.main
-                          : theme.palette.warning.main
+                          ? "var(--app-palette-success-main)"
+                          : "var(--app-palette-warning-main)"
                       }
                       size={7}
                       tooltip={`Config ${agentStatus.config.source}`}
@@ -397,8 +395,8 @@ const MonitoringSettingsSection = () => {
             </>
           </SettingsGrid>
           {agentStatus.listeners?.length ? (
-            <div style={{ marginTop: theme.spacing(1.5) }}>
-              <SettingsGrid minColumnWidth={240} rowGap={1}>
+            <div style={{ marginTop: "var(--app-space-6)" }}>
+              <SettingsGrid minColumnWidth={240} rowGap="var(--app-space-4)">
                 {agentStatus.listeners.map((listener) => (
                   <StatusMetric
                     key={listener.name}
@@ -411,7 +409,7 @@ const MonitoringSettingsSection = () => {
           ) : null}
         </>
       ) : (
-        <div style={{ padding: theme.spacing(1) }}>
+        <div style={{ padding: "var(--app-space-4)" }}>
           <ComponentLoader />
         </div>
       )}
@@ -471,7 +469,7 @@ const MonitoringSettingsSection = () => {
   if (isLoading || !draft) {
     return (
       <SettingsSectionShell {...shellProps}>
-        <div style={{ padding: theme.spacing(3) }}>
+        <div style={{ padding: "var(--app-space-12)" }}>
           <ComponentLoader />
         </div>
       </SettingsSectionShell>
@@ -489,7 +487,7 @@ const MonitoringSettingsSection = () => {
           <AppAlertTitle>Restart required</AppAlertTitle>
           Some saved settings need the go-monitoring agent to restart before
           they fully apply.
-          <div style={{ marginTop: theme.spacing(1.25) }}>
+          <div style={{ marginTop: "var(--app-space-4)" }}>
             <AppButton
               disabled={busy}
               onClick={handleRestart}

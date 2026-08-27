@@ -10,7 +10,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { GAP_MD } from "@/theme/constants";
 export type DeleteOption = "containers" | "file" | "directory";
 interface DeleteStackDialogProps {
@@ -31,7 +30,6 @@ const DeleteStackDialog = ({
   workingDir,
   isLoading = false,
 }: DeleteStackDialogProps) => {
-  const theme = useAppTheme();
   const [deleteOption, setDeleteOption] = useState<DeleteOption>("containers");
 
   const deleteOptions: Array<{
@@ -81,20 +79,20 @@ const DeleteStackDialog = ({
       onClose={handleClose}
       open={open}
       paperStyle={{
-        backgroundColor: theme.palette.background.default,
+        backgroundColor: "var(--app-palette-background-default)",
       }}
     >
       <AppDialogTitle
         style={{
-          backgroundColor: theme.header.background,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           alignItems: "center",
           gap: 4,
         }}
       >
         <Icon
-          color={theme.palette.error.main}
+          color="var(--app-palette-error-main)"
           height={24}
           icon="mdi:delete"
           width={24}
@@ -123,8 +121,8 @@ const DeleteStackDialog = ({
             const isSelected = deleteOption === option.value;
             const accentColor =
               option.color === "error"
-                ? theme.palette.error.main
-                : theme.palette.primary.main;
+                ? "var(--app-palette-error-main)"
+                : "var(--app-palette-primary-main)";
 
             return (
               <AppButton
@@ -143,11 +141,11 @@ const DeleteStackDialog = ({
                   padding: "12px 14px",
                   borderRadius: 10,
                   border: `1px solid ${
-                    isSelected ? accentColor : theme.palette.divider
+                    isSelected ? accentColor : "var(--app-palette-divider)"
                   }`,
                   backgroundColor: isSelected
-                    ? theme.palette.action.selected
-                    : theme.palette.background.paper,
+                    ? "var(--app-palette-action-selected)"
+                    : "var(--app-palette-background-paper)",
                   cursor: isLoading ? "default" : "pointer",
                   textAlign: "left",
                 }}
@@ -221,7 +219,7 @@ const DeleteStackDialog = ({
       <AppDialogActions
         style={{
           padding: 8,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         <AppButton color="inherit" disabled={isLoading} onClick={handleClose}>

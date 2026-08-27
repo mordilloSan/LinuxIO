@@ -10,8 +10,9 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
+
+import "./log-dialog.css";
+
 interface LogDialogProps {
   error: string | null;
   /** Extra action buttons rendered before the live switch (e.g. copy, download). */
@@ -45,7 +46,6 @@ const LogDialog = ({
   onExited,
   maxWidth = "md",
 }: LogDialogProps) => {
-  const theme = useAppTheme();
   return (
     <GeneralDialog
       fullWidth
@@ -102,7 +102,7 @@ const LogDialog = ({
       <AppDialogContent
         style={{
           padding: 0,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         {error ? (
@@ -116,16 +116,15 @@ const LogDialog = ({
           </AppAlert>
         ) : (
           <div
-            className="custom-scrollbar"
+            className="custom-scrollbar log-dialog__log-box"
             ref={logsBoxRef}
             style={{
               position: "relative",
-              backgroundColor: theme.codeBlock.background,
-              color: theme.codeBlock.color,
-              padding: theme.spacing(2),
+              backgroundColor: "var(--app-code-block-background)",
+              color: "var(--app-code-block-color)",
+              padding: "var(--app-space-8)",
               overflow: "auto",
               fontFamily: "Fira Mono, monospace",
-              fontSize: "0.85rem",
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
               minHeight: 300,
@@ -137,7 +136,8 @@ const LogDialog = ({
                 style={{
                   position: "absolute",
                   inset: 0,
-                  background: alpha(theme.codeBlock.background, 0.85),
+                  background:
+                    "color-mix(in srgb, var(--app-code-block-background), transparent 15%)",
                   zIndex: 10,
                 }}
               >

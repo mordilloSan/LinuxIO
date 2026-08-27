@@ -5,7 +5,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 /**
  * Draft-form state shared by the daemon settings sections (Indexer,
@@ -82,13 +81,12 @@ export const SettingsSectionShell = ({
   onRefresh: () => void;
   children: ReactNode;
 }) => {
-  const theme = useAppTheme();
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(1.5),
+        gap: "var(--app-space-6)",
       }}
     >
       <div
@@ -96,7 +94,7 @@ export const SettingsSectionShell = ({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
         }}
       >
         <div>
@@ -131,20 +129,19 @@ export const SettingsSectionShell = ({
 export const SettingsGrid = ({
   children,
   minColumnWidth = 220,
-  rowGap = 1.5,
+  rowGap = "var(--app-space-6)",
 }: {
   children: ReactNode;
   minColumnWidth?: number;
-  rowGap?: number;
+  rowGap?: string;
 }) => {
-  const theme = useAppTheme();
   return (
     <div
       style={{
         display: "grid",
         gridTemplateColumns: `repeat(auto-fit, minmax(${minColumnWidth}px, 1fr))`,
-        columnGap: theme.spacing(1.5),
-        rowGap: theme.spacing(rowGap),
+        columnGap: "var(--app-space-6)",
+        rowGap,
       }}
     >
       {children}
@@ -168,14 +165,13 @@ export const SettingsSaveFooter = ({
   onReset: () => void;
   onSave: () => void;
 }) => {
-  const theme = useAppTheme();
   return (
     <div
       style={{
         display: "flex",
         justifyContent: "flex-end",
-        gap: theme.spacing(1.5),
-        paddingTop: theme.spacing(0.5),
+        gap: "var(--app-space-6)",
+        paddingTop: "var(--app-space-2)",
       }}
     >
       <AppButton disabled={!isDirty || busy} onClick={onReset}>

@@ -17,7 +17,6 @@ import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import AppGrid from "@/components/ui/AppGrid";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import { useAccessContext, useCapability } from "@/hooks/useCapabilities";
-import { useAppTheme } from "@/theme";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize, formatThroughput } from "@/utils/formaters";
 
@@ -215,22 +214,20 @@ const useContainerDetailHistory = ({
 };
 
 const ContainerCPULive = (props: ContainerDetailLiveProps) => {
-  const theme = useAppTheme();
   const { formatTimestamp, message, range, samples } =
     useContainerDetailHistory(props);
-  const cpuColor = theme.palette.primary.main;
   const series = useMemo(
     () => [
       {
         label: "CPU",
-        color: cpuColor,
+        color: "var(--app-palette-primary-main)",
         points: samples.map(({ sample, t }) => ({
           t,
           v: sample?.cpu_percent ?? null,
         })),
       },
     ],
-    [cpuColor, samples],
+    [samples],
   );
 
   return (
@@ -247,22 +244,20 @@ const ContainerCPULive = (props: ContainerDetailLiveProps) => {
 };
 
 const ContainerMemoryLive = (props: ContainerDetailLiveProps) => {
-  const theme = useAppTheme();
   const { formatTimestamp, message, range, samples } =
     useContainerDetailHistory(props);
-  const memoryColor = theme.palette.primary.main;
   const series = useMemo(
     () => [
       {
         label: "Memory",
-        color: memoryColor,
+        color: "var(--app-palette-primary-main)",
         points: samples.map(({ sample, t }) => ({
           t,
           v: sample ? sample.memory_mb * 1024 * 1024 : null,
         })),
       },
     ],
-    [memoryColor, samples],
+    [samples],
   );
 
   return (
@@ -278,16 +273,13 @@ const ContainerMemoryLive = (props: ContainerDetailLiveProps) => {
 };
 
 const ContainerNetworkLive = (props: ContainerDetailLiveProps) => {
-  const theme = useAppTheme();
   const { formatTimestamp, message, range, samples } =
     useContainerDetailHistory(props);
-  const rxColor = theme.chart.rx;
-  const txColor = theme.chart.tx;
   const series = useMemo(
     () => [
       {
         label: "Sent",
-        color: txColor,
+        color: "var(--app-chart-tx)",
         points: samples.map(({ sample, t }) => ({
           t,
           v: sample?.sent_bytes_per_sec ?? null,
@@ -295,14 +287,14 @@ const ContainerNetworkLive = (props: ContainerDetailLiveProps) => {
       },
       {
         label: "Received",
-        color: rxColor,
+        color: "var(--app-chart-rx)",
         points: samples.map(({ sample, t }) => ({
           t,
           v: sample?.recv_bytes_per_sec ?? null,
         })),
       },
     ],
-    [rxColor, samples, txColor],
+    [samples],
   );
 
   return (
@@ -318,16 +310,13 @@ const ContainerNetworkLive = (props: ContainerDetailLiveProps) => {
 };
 
 const ContainerBlockIOLive = (props: ContainerDetailLiveProps) => {
-  const theme = useAppTheme();
   const { formatTimestamp, message, range, samples } =
     useContainerDetailHistory(props);
-  const readColor = theme.chart.rx;
-  const writeColor = theme.chart.tx;
   const series = useMemo(
     () => [
       {
         label: "Read",
-        color: readColor,
+        color: "var(--app-chart-rx)",
         points: samples.map(({ sample, t }) => ({
           t,
           v: sample?.read_bytes_per_sec ?? null,
@@ -335,14 +324,14 @@ const ContainerBlockIOLive = (props: ContainerDetailLiveProps) => {
       },
       {
         label: "Write",
-        color: writeColor,
+        color: "var(--app-chart-tx)",
         points: samples.map(({ sample, t }) => ({
           t,
           v: sample?.write_bytes_per_sec ?? null,
         })),
       },
     ],
-    [readColor, samples, writeColor],
+    [samples],
   );
 
   // Say so rather than drawing a flat zero line the container never had.

@@ -6,7 +6,6 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -75,7 +74,6 @@ const DriveCard = ({
   onClick,
   children,
 }: DriveCardProps) => {
-  const theme = useAppTheme();
   const temperature = getTemperature(smart);
   const detailsId = useId();
 
@@ -130,7 +128,7 @@ const DriveCard = ({
       >
         <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
           <Icon
-            color={theme.palette.primary.main}
+            color="var(--app-palette-primary-main)"
             icon={transport === "nvme" ? "mdi:harddisk" : "mdi:harddisk-plus"}
             width={32}
           />

@@ -16,7 +16,6 @@ import {
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 
 const DASHBOARD_TOAST_META = { label: "Open dashboard", to: "/" } as const;
 
@@ -52,7 +51,6 @@ interface Props {
 }
 
 const SetDateTimeDialog = ({ open, onClose }: Props) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(DASHBOARD_TOAST_META);
 
   const {
@@ -255,7 +253,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
           style={{
             display: showSettingsLoader || settingsError ? "none" : "flex",
             flexDirection: "column",
-            gap: theme.spacing(4),
+            gap: "var(--app-space-16)",
           }}
         >
           <AppAutocomplete
@@ -299,8 +297,8 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: theme.spacing(1),
-                    marginBottom: theme.spacing(1),
+                    gap: "var(--app-space-4)",
+                    marginBottom: "var(--app-space-4)",
                   }}
                 >
                   <AppTextField
@@ -315,7 +313,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
                   <AppIconButton
                     aria-label="Add NTP server"
                     onClick={addServer}
-                    style={{ marginTop: i === 0 ? theme.spacing(1) : 0 }}
+                    style={{ marginTop: i === 0 ? "var(--app-space-4)" : 0 }}
                     title="Add server"
                   >
                     <Icon icon="mdi:plus" width={18} />
@@ -323,7 +321,7 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
                   <AppIconButton
                     aria-label="Remove NTP server"
                     onClick={() => removeServer(i)}
-                    style={{ marginTop: i === 0 ? theme.spacing(1) : 0 }}
+                    style={{ marginTop: i === 0 ? "var(--app-space-4)" : 0 }}
                     title="Remove server"
                   >
                     <Icon icon="mdi:close" width={18} />

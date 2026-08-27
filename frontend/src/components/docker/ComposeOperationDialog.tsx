@@ -23,7 +23,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { TASK_TYPE_DOCKER_COMPOSE } from "@/constants/backgroundTaskTypes";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 
 import { type ComposeTask, mergeTask } from "./composeProgress";
 import DockerComposeProgress from "./DockerComposeProgress";
@@ -43,7 +42,6 @@ const ComposeOperationDialog = ({
   projectName,
   composePath,
 }: ComposeOperationDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const [output, setOutput] = useState<string[]>([]);
   const [tasks, setTasks] = useState<Map<string, ComposeTask>>(new Map());
@@ -222,7 +220,7 @@ const ComposeOperationDialog = ({
       onClose={handleClose}
       open={open}
       paperStyle={{
-        backgroundColor: theme.palette.background.default,
+        backgroundColor: "var(--app-palette-background-default)",
         maxHeight: "80vh",
       }}
       slotProps={{
@@ -233,8 +231,8 @@ const ComposeOperationDialog = ({
     >
       <AppDialogTitle
         style={{
-          backgroundColor: theme.header.background,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -244,7 +242,7 @@ const ComposeOperationDialog = ({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: theme.spacing(1),
+            gap: "var(--app-space-4)",
           }}
         >
           <AppTypography variant="h6">
@@ -256,14 +254,14 @@ const ComposeOperationDialog = ({
             <AppCircularProgress size={20} />
           ) : error ? (
             <Icon
-              color={theme.palette.error.main}
+              color="var(--app-palette-error-main)"
               height={24}
               icon="mdi:alert-circle"
               width={24}
             />
           ) : (
             <Icon
-              color={theme.palette.success.main}
+              color="var(--app-palette-success-main)"
               height={24}
               icon="mdi:check-circle"
               width={24}
@@ -306,7 +304,7 @@ const ComposeOperationDialog = ({
             output.length === 0 && (
               <AppTypography
                 color="text.secondary"
-                style={{ padding: theme.spacing(2) }}
+                style={{ padding: "var(--app-space-8)" }}
               >
                 Starting operation...
               </AppTypography>
@@ -316,7 +314,7 @@ const ComposeOperationDialog = ({
           {error && (
             <AppTypography
               color="error"
-              style={{ padding: theme.spacing(2), display: "block" }}
+              style={{ padding: "var(--app-space-8)", display: "block" }}
             >
               Error: {error}
             </AppTypography>
@@ -351,11 +349,11 @@ const ComposeOperationDialog = ({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "flex-start",
-                  gap: theme.spacing(0.5),
+                  gap: "var(--app-space-2)",
                   font: "inherit",
                   userSelect: "none",
-                  padding: theme.spacing(1, 2),
-                  borderTop: `1px solid ${theme.palette.divider}`,
+                  padding: "var(--app-space-4) var(--app-space-8)",
+                  borderTop: "1px solid var(--app-palette-divider)",
                   textAlign: "left",
                   width: "100%",
                 }}
@@ -371,10 +369,7 @@ const ComposeOperationDialog = ({
                   icon="mdi:chevron-right"
                   width={18}
                 />
-                <AppTypography
-                  color="text.secondary"
-                  style={{ fontSize: "0.8rem" }}
-                >
+                <AppTypography color="text.secondary" variant="body2">
                   {showLog ? "Hide raw log" : "Show raw log"}
                 </AppTypography>
               </AppButton>
@@ -387,8 +382,8 @@ const ComposeOperationDialog = ({
                 id="compose-raw-log"
                 ref={outputBoxRef}
                 style={{
-                  backgroundColor: theme.codeBlock.background,
-                  color: theme.codeBlock.color,
+                  backgroundColor: "var(--app-code-block-background)",
+                  color: "var(--app-code-block-color)",
                 }}
               >
                 <div className="compose-log__lines">

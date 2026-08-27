@@ -14,7 +14,6 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 
 const NETWORK_TOAST_META = {
   label: "Open network",
@@ -45,7 +44,6 @@ const candidateReason = (candidate: NetworkBridgeCandidate): string => {
 };
 
 const CreateBridgeDialog = ({ open, onClose }: CreateBridgeDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(NETWORK_TOAST_META);
   const [member, setMember] = useState("");
   const [bridgeName, setBridgeName] = useState("");
@@ -122,8 +120,8 @@ const CreateBridgeDialog = ({ open, onClose }: CreateBridgeDialogProps) => {
         <div
           style={{
             display: "grid",
-            gap: theme.spacing(2),
-            marginTop: theme.spacing(1),
+            gap: "var(--app-space-8)",
+            marginTop: "var(--app-space-4)",
           }}
         >
           {optionsQuery.isPending && (

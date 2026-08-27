@@ -16,6 +16,7 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
+import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -155,8 +156,7 @@ function MemoryModulesTable() {
         <Chip
           color={row.original.state === "Present" ? "success" : "default"}
           label={row.original.state}
-          size="small"
-          style={{ height: 22, fontSize: "0.75rem" }}
+          size="xsmall"
           variant="soft"
         />
       ),
@@ -215,13 +215,15 @@ function PciDevicesTable() {
     {
       accessorKey: "slot",
       header: "Slot",
-      cell: ({ row }) => row.original.slot || "—",
-      meta: {
-        cellStyle: {
-          fontFamily: "var(--app-font-mono)",
-          fontSize: "0.8rem",
-        },
-      },
+      cell: ({ row }) => (
+        <AppTypography
+          component="span"
+          style={{ fontFamily: "var(--app-font-mono)" }}
+          variant="body2"
+        >
+          {row.original.slot || "—"}
+        </AppTypography>
+      ),
     },
   ];
 

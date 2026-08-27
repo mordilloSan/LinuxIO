@@ -1,0 +1,7 @@
+.navbar-color-swatch {
+  border: 1px solid color-mix(in srgb, black, transparent 90%);
+}
+
+:root[data-app-color-scheme="dark"] .navbar-color-swatch {
+  border: 1px solid color-mix(in srgb, white, transparent 70%);
+}

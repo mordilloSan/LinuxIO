@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Timer } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import { formatUsec } from "./unitFormatters";
@@ -41,24 +42,24 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
   return (
     <>
       <DetailRow label="Load">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {timer.load_state}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Unit">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {info?.Unit ?? timer.unit ?? "—"}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Next">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {formatUsec(info?.NextElapseUSec ?? timer.next_elapse_usec)}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Last">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {formatUsec(info?.LastTriggerUSec ?? timer.last_trigger_usec)}
-        </span>
+        </AppTypography>
       </DetailRow>
     </>
   );

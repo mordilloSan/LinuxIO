@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import SelectableCard from "@/components/cards/SelectableCard";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_SM, GAP_MD, GAP_SM } from "@/theme/constants";
 
 export interface DockerResourceCardProps {
@@ -31,8 +30,6 @@ const DockerResourceCard = ({
   subtitle,
   title,
 }: DockerResourceCardProps) => {
-  const theme = useAppTheme();
-
   return (
     <SelectableCard label={label} onOpen={onOpen}>
       <FrostedCard
@@ -56,7 +53,7 @@ const DockerResourceCard = ({
         <CardIconHeader
           icon={
             <Icon
-              color={theme.palette.primary.main}
+              color="var(--app-palette-primary-main)"
               height={28}
               icon={icon}
               width={28}

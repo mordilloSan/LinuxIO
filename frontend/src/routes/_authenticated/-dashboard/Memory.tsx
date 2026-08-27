@@ -3,7 +3,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { linuxio, type MemoryInfoResponse } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
-import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 import DashboardStatRows from "./DashboardStatRows";
@@ -56,7 +55,6 @@ const MemoryStats = () => {
 };
 
 const MemoryGauge = () => {
-  const theme = useAppTheme();
   const { data: ramUsagePercentage } = useSuspenseQuery({
     ...linuxio.system.get_memory_info,
     refetchInterval: REFETCH_INTERVAL_MS,
@@ -65,11 +63,6 @@ const MemoryGauge = () => {
 
   return (
     <GradientCircularGauge
-      gradientColors={[
-        theme.chart.tx,
-        theme.palette.warning.main,
-        theme.palette.error.main,
-      ]}
       showPercentage={true}
       size={108}
       thickness={9.8}

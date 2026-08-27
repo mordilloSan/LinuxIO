@@ -4,7 +4,6 @@ import { Icon } from "@iconify/react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { REORDER_HOLD_MS } from "@/constants/reorder";
-import { useAppTheme } from "@/theme";
 import { cardBorderRadius } from "@/theme/constants";
 
 import "./FrostedCard.css";
@@ -28,7 +27,6 @@ const SortableCard = ({
   id,
   pending = false,
 }: SortableCardProps) => {
-  const theme = useAppTheme();
   const {
     attributes,
     listeners,
@@ -59,7 +57,7 @@ const SortableCard = ({
     // Declared on the wrapper rather than on the ring so that whatever the card
     // chooses to animate for the hold — the ring, its own accent line — reads
     // the same timing and colour by inheritance.
-    "--reorder-hold-color": theme.palette.primary.main,
+    "--reorder-hold-color": "var(--app-palette-primary-main)",
     "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
   } as CSSProperties;
 
@@ -91,14 +89,14 @@ const SortableCard = ({
               alignItems: "center",
               justifyContent: "center",
               borderRadius: cardBorderRadius,
-              "--sc-hover-bg": theme.palette.action.hover,
+              "--sc-hover-bg": "var(--app-palette-action-hover)",
             } as CSSProperties
           }
         >
           <Icon
             height={40}
             icon="mdi:drag"
-            style={{ color: theme.palette.text.secondary, opacity: 0.7 }}
+            style={{ color: "var(--app-palette-text-secondary)", opacity: 0.7 }}
             width={40}
           />
         </div>

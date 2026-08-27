@@ -5,7 +5,8 @@ import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 
 import FileBrowserHeaderActions from "./FileBrowserHeaderActions";
 import IndexerDialog from "./IndexerDialog";
@@ -46,8 +47,7 @@ const FileBrowserHeader = ({
   searchQuery = "",
   onSearchChange = noopSearchChange,
 }: FileBrowserHeaderProps) => {
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useAppMediaQuery(down("sm"));
   const isBrowsing = !showQuickSave;
 
   return (
@@ -67,7 +67,7 @@ const FileBrowserHeader = ({
             : undefined,
           gap: isBrowsing ? 6 : undefined,
           alignItems: "center",
-          paddingInline: theme.spacing(2),
+          paddingInline: "var(--app-space-8)",
           minHeight: 64,
         }}
       >
@@ -84,8 +84,8 @@ const FileBrowserHeader = ({
           >
             {isDirty && (
               <AppTypography
+                color="var(--app-palette-primary-main)"
                 style={{
-                  color: theme.palette.primary.main,
                   fontWeight: 600,
                   display: "flex",
                   alignItems: "center",

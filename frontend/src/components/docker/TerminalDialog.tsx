@@ -77,9 +77,11 @@ const TerminalDialog = ({
     terminalRef,
     writeData,
   } = useXtermStreamTerminal({
+    // xterm's theme option takes resolved colours, not CSS variables.
     background: theme.palette.background.default,
     enabled: open && availableShells.length > 0 && !!activeShell && isOpen,
     focusDelayMs: 200,
+    // xterm's theme option takes resolved colours, not CSS variables.
     foreground: theme.palette.text.primary,
     onKeyDown: (event) => {
       if (event.key === "Escape") {
@@ -154,7 +156,7 @@ const TerminalDialog = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
           }}
         >
           <span>
@@ -182,14 +184,14 @@ const TerminalDialog = ({
           maxHeight: 600,
           fontFamily: "Fira Mono, monospace",
           padding: 0,
-          background: theme.palette.background.default,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          background: "var(--app-palette-background-default)",
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         {loadingShells ? (
           <div
             style={{
-              padding: theme.spacing(3),
+              padding: "var(--app-space-12)",
               textAlign: "center",
             }}
           >
@@ -198,8 +200,8 @@ const TerminalDialog = ({
         ) : hasFetchedShells && availableShells.length === 0 ? (
           <div
             style={{
-              padding: theme.spacing(3),
-              color: theme.palette.error.main,
+              padding: "var(--app-space-12)",
+              color: "var(--app-palette-error-main)",
               textAlign: "center",
             }}
           >
@@ -216,7 +218,7 @@ const TerminalDialog = ({
               width: "100%",
               minHeight: 350,
               height: 420,
-              background: theme.palette.background.default,
+              background: "var(--app-palette-background-default)",
             }}
             tabIndex={0}
           />

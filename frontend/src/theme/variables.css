@@ -4,6 +4,30 @@
     "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol";
+  /* Spacing scale, in px: the sizes theme.spacing(n) produced for the
+     multipliers the app actually uses (n × 4). Off-scale sizes (3, 5, 10,
+     18px) are drift, not steps; snap them when touching a file. */
+  --app-space-2: 2px;
+  --app-space-4: 4px;
+  --app-space-6: 6px;
+  --app-space-8: 8px;
+  --app-space-12: 12px;
+  --app-space-16: 16px;
+  --app-space-20: 20px;
+  --app-space-24: 24px;
+  --app-space-32: 32px;
+  --app-space-48: 48px;
+  /* Corner radii. --app-radius-base (4px) is written by AppThemeProvider. */
+  --app-radius-md: 8px;
+  --app-radius-lg: 12px;
+  --app-radius-card: 16px;
+  --app-radius-pill: 999px;
+  /* Stacking tiers for anything that escapes normal flow. Stacking inside a
+     component (1, 2, 5, 10) is local to that component and stays a literal. */
+  --app-z-navbar: 1100;
+  --app-z-sidebar: 1200;
+  --app-z-dialog: 1300;
+  --app-z-tooltip: 1500;
   /* Shared chrome for lightweight floating surfaces. Keep dock labels,
      tooltips, and popovers visually aligned without imposing tooltip-sized
      typography or padding on richer panel content. */

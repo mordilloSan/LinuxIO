@@ -9,9 +9,6 @@ import {
 } from "react";
 
 import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
-import type { AppTheme } from "@/theme";
-import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
 
 import "./app-chip.css";
 
@@ -25,7 +22,7 @@ type AppChipColor =
   | "info"
   | (string & {});
 
-type AppChipSize = "small" | "medium";
+type AppChipSize = "xsmall" | "small" | "medium";
 type AppChipVariant = "filled" | "outlined" | "soft";
 
 type NativeChipProps = Omit<
@@ -61,26 +58,18 @@ const getPlainText = (node: ReactNode): string => {
   return "";
 };
 
-const getPaletteColor = (theme: AppTheme, color: AppChipColor) => {
-  switch (color) {
-    case "primary":
-      return theme.palette.primary.main;
-    case "secondary":
-      return theme.palette.secondary.main;
-    case "success":
-      return theme.palette.success.main;
-    case "error":
-      return theme.palette.error.main;
-    case "warning":
-      return theme.palette.warning.main;
-    case "info":
-      return theme.palette.info.main;
-    case "default":
-      return theme.palette.text.secondary;
-    default:
-      return color;
-  }
-};
+// Palette names become an app-chip--<name> class that app-chip.css maps to
+// the matching --app-palette-* variable; any other string is a literal colour
+// and is passed through as --app-chip-color.
+const PALETTE_COLORS = new Set<string>([
+  "default",
+  "primary",
+  "secondary",
+  "success",
+  "error",
+  "warning",
+  "info",
+]);
 
 const AppChip = ({
   ref,
@@ -99,17 +88,14 @@ const AppChip = ({
   tabIndex,
   ...nativeProps
 }: AppChipProps) => {
-  const theme = useAppTheme();
   const isInsideTooltip = useIsInsideAppTooltip();
-  const chipColor = getPaletteColor(theme, color);
-  const isDefaultColor = color === "default";
-  const isOutlined = variant === "outlined";
-  const isSoft = variant === "soft";
+  const isPaletteColor = PALETTE_COLORS.has(color);
   const isInteractive = Boolean(onClick || onDelete);
   const chipClassName = [
     "app-chip",
     `app-chip--${size}`,
     `app-chip--${variant}`,
+    isPaletteColor && `app-chip--${color}`,
     disabled && "app-chip--disabled",
     isInteractive && "app-chip--interactive",
     className,
@@ -154,49 +140,9 @@ const AppChip = ({
       ref={ref}
       role={isInteractive ? "button" : nativeProps.role}
       style={
-        {
-          "--app-chip-color": chipColor,
-          "--app-chip-background": isOutlined
-            ? "transparent"
-            : isSoft
-              ? alpha(chipColor, isDefaultColor ? 0.06 : 0.13)
-              : alpha(
-                  chipColor,
-                  isDefaultColor
-                    ? theme.palette.mode === "dark"
-                      ? 0.06
-                      : 0.03
-                    : theme.palette.mode === "dark"
-                      ? 0.2
-                      : 0.14,
-                ),
-          "--app-chip-border": isOutlined
-            ? alpha(
-                chipColor,
-                color === "default"
-                  ? theme.palette.mode === "dark"
-                    ? 0.5
-                    : 0.32
-                  : 0.7,
-              )
-            : isSoft
-              ? alpha(chipColor, isDefaultColor ? 0.18 : 0.33)
-              : alpha(
-                  chipColor,
-                  isDefaultColor
-                    ? 1
-                    : theme.palette.mode === "dark"
-                      ? 0.42
-                      : 0.28,
-                ),
-          "--app-chip-font-family": theme.typography.fontFamily,
-          "--app-chip-font-size": "0.8125rem",
-          "--app-chip-font-weight": isSoft
-            ? 600
-            : theme.typography.fontWeightRegular,
-          "--app-chip-line-height": 1.5,
-          ...style,
-        } as CSSProperties
+        isPaletteColor
+          ? style
+          : ({ "--app-chip-color": color, ...style } as CSSProperties)
       }
       tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
       title={showTruncatedTooltip ? undefined : title}

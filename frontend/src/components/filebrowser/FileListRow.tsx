@@ -16,7 +16,6 @@ import FileIcon from "@/components/filebrowser/FileIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
-import { useAppTheme } from "@/theme";
 import {
   getFileEntryBackground,
   getFileEntryHoverBackground,
@@ -84,7 +83,6 @@ const FileListRow = memo<FileListRowProps>(
     borderRadius,
     disableHover = false,
   }) => {
-    const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -203,8 +201,8 @@ const FileListRow = memo<FileListRowProps>(
     );
 
     const baseBg = useMemo(
-      () => getFileEntryBackground(theme, { hidden, selected }),
-      [hidden, selected, theme],
+      () => getFileEntryBackground({ hidden, selected }),
+      [hidden, selected],
     );
 
     const hoverBg = useMemo(
@@ -212,7 +210,7 @@ const FileListRow = memo<FileListRowProps>(
       [baseBg],
     );
 
-    const resolvedBorderRadius = borderRadius ?? theme.shape.borderRadius;
+    const resolvedBorderRadius = borderRadius ?? "var(--app-radius-base)";
 
     return (
       <div
@@ -238,20 +236,21 @@ const FileListRow = memo<FileListRowProps>(
         }
       >
         {/* Name and Icon */}
-        <div
+        <AppTypography
+          color="text.primary"
+          component="div"
+          fontWeight={500}
           style={{
             display: "flex",
             alignItems: "center",
-            gap: theme.spacing(1.5),
-            padding: theme.spacing(1.5, 2),
-            fontWeight: 500,
-            fontSize: "0.9375rem",
+            gap: "var(--app-space-6)",
+            padding: "var(--app-space-6) var(--app-space-8)",
             overflow: "hidden",
-            color: theme.palette.text.primary,
             opacity: hidden ? 0.5 : undefined,
             minWidth: 0,
             minHeight: FILE_LIST_ROW_MIN_HEIGHT,
           }}
+          variant="body1"
         >
           <div style={{ flexShrink: 0 }}>
             <FileIcon
@@ -274,12 +273,13 @@ const FileListRow = memo<FileListRowProps>(
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing(1),
+                gap: "var(--app-space-4)",
                 overflow: "hidden",
               }}
             >
               {isRenaming ? (
                 <input
+                  className="file-row-rename-input"
                   disabled={isRenamePending}
                   onBlur={isRenamePending ? undefined : handleRenameBlur}
                   onChange={(e) => setRenameValue(e.target.value)}
@@ -288,9 +288,7 @@ const FileListRow = memo<FileListRowProps>(
                   onKeyDown={handleRenameKeyDown}
                   ref={inputRef}
                   style={{
-                    fontSize: "0.9375rem",
-                    fontWeight: 500,
-                    color: theme.palette.text.primary,
+                    color: "var(--app-palette-text-primary)",
                     background: "transparent",
                     border: "none",
                     padding: 0,
@@ -328,13 +326,13 @@ const FileListRow = memo<FileListRowProps>(
                 </>
               )}
               {showFullPath && (
-                <span
+                <AppTypography
+                  component="span"
                   style={{
-                    fontSize: "0.65rem",
                     fontWeight: 600,
                     color: isDirectory
-                      ? theme.palette.primary.main
-                      : theme.palette.text.secondary,
+                      ? "var(--app-palette-primary-main)"
+                      : "var(--app-palette-text-secondary)",
                     backgroundColor: isDirectory
                       ? mixWithTransparency(
                           "var(--app-palette-primary-main)",
@@ -346,66 +344,68 @@ const FileListRow = memo<FileListRowProps>(
                         ),
                     padding: "2px 6px",
                     borderRadius: "4px",
-                    textTransform: "uppercase",
                     letterSpacing: "0.5px",
                     flexShrink: 0,
+                    textTransform: "uppercase",
                   }}
+                  variant="caption"
                 >
                   {isDirectory ? "Folder" : "File"}
-                </span>
+                </AppTypography>
               )}
             </div>
             {showFullPath && path && (
               <AppTypography
                 component="div"
                 color="text.secondary"
-                fontSize="0.75rem"
                 noWrap
                 style={{
                   opacity: 0.7,
                   marginTop: "2px",
                 }}
                 title={path}
-                variant="body2"
+                variant="caption"
               >
                 {path.replace(/\/[^/]*$/, "") || "/"}
               </AppTypography>
             )}
           </div>
-        </div>
+        </AppTypography>
         {/* Size */}
-        <div
+        <AppTypography
+          color="text.secondary"
+          component="div"
           style={{
-            padding: theme.spacing(1.5, 2),
-            fontSize: "0.875rem",
-            color: theme.palette.text.secondary,
+            padding: "var(--app-space-6) var(--app-space-8)",
             opacity: hidden ? 0.5 : undefined,
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-start",
           }}
           title={effectiveSizeError?.message}
+          variant="body2"
         >
           {effectiveSizeLoading ? (
             <span className="file-size-pending">—</span>
           ) : (
             formattedSize
           )}
-        </div>
+        </AppTypography>
         {/* Modified Date */}
-        <div
+        <AppTypography
+          color="text.secondary"
+          component="div"
           style={{
-            padding: theme.spacing(1.5, 2),
-            fontSize: "0.875rem",
-            color: theme.palette.text.secondary,
+            padding: "var(--app-space-6) var(--app-space-8)",
             opacity: hidden ? 0.5 : undefined,
             display: "flex",
             justifyContent: "center",
             textAlign: "center",
           }}
+          variant="body2"
         >
           {formattedDate}
-        </div>
+        </AppTypography>
       </div>
     );
   },

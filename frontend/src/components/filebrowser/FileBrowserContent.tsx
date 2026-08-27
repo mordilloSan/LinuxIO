@@ -10,7 +10,6 @@ import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import SortBar from "@/components/filebrowser/SortBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useAppTheme } from "@/theme";
 import type {
   FileItem,
   FileResource,
@@ -96,8 +95,6 @@ const FileBrowserContent = ({
   listing,
   surface,
 }: FileBrowserContentProps) => {
-  const theme = useAppTheme();
-
   return (
     <div
       {...allowContextMenuProps}
@@ -134,8 +131,8 @@ const FileBrowserContent = ({
 
       <div
         style={{
-          paddingLeft: chrome.editingPath ? 0 : theme.spacing(2),
-          paddingRight: chrome.editingPath ? 0 : theme.spacing(2),
+          paddingLeft: chrome.editingPath ? 0 : "var(--app-space-8)",
+          paddingRight: chrome.editingPath ? 0 : "var(--app-space-8)",
           flex: 1,
           minHeight: 0,
           display: "flex",
@@ -151,8 +148,8 @@ const FileBrowserContent = ({
         )}
         <div
           style={{
-            paddingLeft: chrome.editingPath ? 0 : theme.spacing(2),
-            paddingRight: chrome.editingPath ? 0 : theme.spacing(2),
+            paddingLeft: chrome.editingPath ? 0 : "var(--app-space-8)",
+            paddingRight: chrome.editingPath ? 0 : "var(--app-space-8)",
             flex: 1,
             minHeight: 0,
             display: "flex",

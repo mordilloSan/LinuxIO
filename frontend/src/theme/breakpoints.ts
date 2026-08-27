@@ -18,4 +18,15 @@ const breakpoints = {
   },
 };
 
+export type BreakpointKey = keyof typeof breakpoints.values;
+
+/* Media-query strings for useAppMediaQuery. Pure functions of the scale, so a
+   component can size itself without subscribing to the theme. */
+export const up = (key: BreakpointKey) =>
+  `@media (min-width:${breakpoints.values[key]}px)`;
+export const down = (key: BreakpointKey) =>
+  `@media (max-width:${Math.max(breakpoints.values[key] - 0.05, 0)}px)`;
+export const between = (start: BreakpointKey, end: BreakpointKey) =>
+  `@media (min-width:${breakpoints.values[start]}px) and (max-width:${Math.max(breakpoints.values[end] - 0.05, 0)}px)`;
+
 export default breakpoints;

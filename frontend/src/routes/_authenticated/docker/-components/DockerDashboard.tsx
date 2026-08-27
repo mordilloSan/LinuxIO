@@ -20,7 +20,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useAppTheme } from "@/theme";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -102,7 +101,6 @@ interface DockerDashboardProps {
 const DockerDashboard = ({
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: DockerDashboardProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const [
     { data: rawContainers },
@@ -562,7 +560,7 @@ const DockerDashboard = ({
                       <DockerSectionCard
                         icon={
                           <Icon
-                            color={theme.palette.primary.main}
+                            color="var(--app-palette-primary-main)"
                             height={28}
                             icon="ph:cpu"
                             width={28}
@@ -572,7 +570,7 @@ const DockerDashboard = ({
                         title="CPU"
                       >
                         <MetricBar
-                          color={theme.palette.primary.main}
+                          color="var(--app-palette-primary-main)"
                           label="CPU"
                           percent={Math.min(totalCpu, 100)}
                           rightLabel={`${totalCpu.toFixed(1)}%`}
@@ -589,7 +587,7 @@ const DockerDashboard = ({
                       <DockerSectionCard
                         icon={
                           <Icon
-                            color={theme.palette.primary.main}
+                            color="var(--app-palette-primary-main)"
                             height={28}
                             icon="la:memory"
                             width={28}
@@ -599,7 +597,7 @@ const DockerDashboard = ({
                         title="Memory"
                       >
                         <MetricBar
-                          color={theme.palette.primary.main}
+                          color="var(--app-palette-primary-main)"
                           label="Memory"
                           percent={totalMemPercent}
                           rightLabel={formatFileSize(totalMemUsage)}
@@ -617,7 +615,7 @@ const DockerDashboard = ({
                         <DockerSectionCard
                           icon={
                             <Icon
-                              color={theme.palette.primary.main}
+                              color="var(--app-palette-primary-main)"
                               height={28}
                               icon="mdi:harddisk"
                               width={28}
@@ -627,7 +625,7 @@ const DockerDashboard = ({
                           title="Disk Usage"
                         >
                           <MetricBar
-                            color={theme.palette.primary.main}
+                            color="var(--app-palette-primary-main)"
                             label="Disk (Docker)"
                             percent={Math.min(
                               (dockerInfo.disk_used / dockerInfo.disk_total) *
@@ -652,7 +650,7 @@ const DockerDashboard = ({
                     fullHeight
                     icon={
                       <Icon
-                        color={theme.palette.primary.main}
+                        color="var(--app-palette-primary-main)"
                         height={28}
                         icon="mdi:tag"
                         width={28}
@@ -683,7 +681,7 @@ const DockerDashboard = ({
                     fullHeight
                     icon={
                       <Icon
-                        color={theme.palette.primary.main}
+                        color="var(--app-palette-primary-main)"
                         height={28}
                         icon="mdi:monitor"
                         width={28}
@@ -714,7 +712,7 @@ const DockerDashboard = ({
                     fullHeight
                     icon={
                       <Icon
-                        color={theme.palette.primary.main}
+                        color="var(--app-palette-primary-main)"
                         height={28}
                         icon="mdi:wrench"
                         width={28}
@@ -764,7 +762,7 @@ const DockerDashboard = ({
                 footerText={`${containers.length} containers`}
                 icon={
                   <Icon
-                    color={theme.palette.primary.main}
+                    color="var(--app-palette-primary-main)"
                     height={28}
                     icon="mdi:cube-outline"
                     width={28}
@@ -777,8 +775,8 @@ const DockerDashboard = ({
                     onChange={(e) =>
                       setContainerSort(e.target.value as typeof containerSort)
                     }
+                    size="small"
                     style={{
-                      fontSize: "0.75rem",
                       color: "var(--app-palette-text-secondary)",
                       lineHeight: 1.4,
                     }}
@@ -816,7 +814,7 @@ const DockerDashboard = ({
                 footerText={`${images.length} images`}
                 icon={
                   <Icon
-                    color={theme.palette.primary.main}
+                    color="var(--app-palette-primary-main)"
                     height={28}
                     icon="mdi:layers"
                     width={28}
@@ -829,8 +827,8 @@ const DockerDashboard = ({
                     onChange={(e) =>
                       setImageSort(e.target.value as typeof imageSort)
                     }
+                    size="small"
                     style={{
-                      fontSize: "0.75rem",
                       color: "var(--app-palette-text-secondary)",
                       lineHeight: 1.4,
                     }}

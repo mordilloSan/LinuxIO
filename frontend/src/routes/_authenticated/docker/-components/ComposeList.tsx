@@ -37,7 +37,8 @@ import {
 } from "@/constants/statusColors";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 import { CARD_GRID_SIZE_DENSE } from "@/theme/constants";
 
 import "./compose-list.css";
@@ -261,8 +262,7 @@ const ComposeList = ({
   );
   const [terminalContainer, setTerminalContainer] =
     useState<ContainerInfo | null>(null);
-  const theme = useAppTheme();
-  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const isSmallUp = useAppMediaQuery(up("sm"));
   const surface = useReorderableSurface({
     getId: getComposeProjectId,
     items: projects,
@@ -353,10 +353,9 @@ const ComposeList = ({
                   color={statusColor}
                   label={project.status}
                   labelStyle={{ paddingInline: 12 }}
-                  size="small"
+                  size="xsmall"
                   style={{
                     textTransform: "capitalize",
-                    fontSize: "0.68rem",
                   }}
                   variant="soft"
                 />
@@ -384,7 +383,7 @@ const ComposeList = ({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing(1.5),
+                gap: "var(--app-space-6)",
               }}
             >
               <DockerIcon
@@ -405,8 +404,7 @@ const ComposeList = ({
                 <Chip
                   color="warning"
                   label="Update"
-                  size="small"
-                  style={{ fontSize: "0.68rem" }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -495,7 +493,6 @@ const ComposeList = ({
               noWrap
               style={{
                 maxWidth: 600,
-                fontSize: "0.85rem",
                 color: "var(--app-palette-text-secondary)",
               }}
               title={location}
@@ -526,7 +523,7 @@ const ComposeList = ({
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
-                gap: isSmallUp ? theme.spacing(0.5) : 0,
+                gap: isSmallUp ? "var(--app-space-2)" : 0,
               }}
             >
               {onEdit && project.config_files.length > 0 && (
@@ -589,7 +586,7 @@ const ComposeList = ({
         },
       },
     ],
-    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop, theme],
+    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop],
   );
 
   const expandedContainerColumns = useMemo<
@@ -632,8 +629,8 @@ const ComposeList = ({
                   <Chip
                     color="warning"
                     label="Update"
-                    size="small"
-                    style={{ fontSize: "0.68rem", marginTop: 2 }}
+                    size="xsmall"
+                    style={{ marginTop: 2 }}
                     variant="soft"
                   />
                 )}
@@ -900,8 +897,8 @@ const ComposeList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">

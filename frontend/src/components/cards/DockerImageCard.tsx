@@ -83,15 +83,14 @@ const DockerImageCard = ({
         variant="body2"
       >
         <span style={{ fontWeight: 700 }}>Full ID: </span>
-        <span
-          style={{
-            color: "var(--app-palette-text-secondary)",
-            fontFamily: "var(--app-font-mono)",
-            fontSize: "0.75rem",
-          }}
+        <AppTypography
+          color="text.secondary"
+          component="span"
+          style={{ fontFamily: "var(--app-font-mono)" }}
+          variant="caption"
         >
           {image.id}
-        </span>
+        </AppTypography>
       </AppTypography>
     </DockerResourceCard>
   );

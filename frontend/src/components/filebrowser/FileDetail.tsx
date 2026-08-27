@@ -7,7 +7,6 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
-import { useAppTheme } from "@/theme";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
 import type { FileResource, ResourceStatData } from "../../types/filebrowser";
@@ -20,12 +19,11 @@ interface FileDetailProps {
   statData?: ResourceStatData | null;
 }
 const DetailRow = ({ label, value }: { label: string; value: ReactNode }) => {
-  const theme = useAppTheme();
   return (
     <div
       style={{
         display: "flex",
-        gap: theme.spacing(2),
+        gap: "var(--app-space-8)",
       }}
     >
       <AppTypography
@@ -58,7 +56,6 @@ const FileDetail = ({
   statData,
   isLoadingStat,
 }: FileDetailProps) => {
-  const theme = useAppTheme();
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";
 
@@ -80,7 +77,7 @@ const FileDetail = ({
     return (
       <AppPaper
         style={{
-          borderRadius: 8,
+          borderRadius: "var(--app-radius-md)",
           padding: 12,
         }}
         variant="outlined"
@@ -108,7 +105,7 @@ const FileDetail = ({
   return (
     <AppPaper
       style={{
-        borderRadius: 8,
+        borderRadius: "var(--app-radius-md)",
         display: "flex",
         flexDirection: "column",
         padding: 12,
@@ -121,12 +118,12 @@ const FileDetail = ({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: theme.spacing(2),
+          gap: "var(--app-space-8)",
         }}
       >
         <div
           style={{
-            color: theme.palette.primary.main,
+            color: "var(--app-palette-primary-main)",
             display: "flex",
           }}
         >
@@ -144,8 +141,8 @@ const FileDetail = ({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: theme.spacing(1),
-              marginTop: theme.spacing(0.5),
+              gap: "var(--app-space-4)",
+              marginTop: "var(--app-space-2)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">
@@ -160,7 +157,7 @@ const FileDetail = ({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: theme.spacing(0.5),
+                    gap: "var(--app-space-2)",
                   }}
                 >
                   <Icon height={16} icon="mdi:eye-off" width={16} />
@@ -181,7 +178,7 @@ const FileDetail = ({
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
         }}
       >
         <DetailRow label="Path" value={resource.path} />
@@ -195,7 +192,7 @@ const FileDetail = ({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: theme.spacing(1),
+                  gap: "var(--app-space-4)",
                 }}
               >
                 <AppCircularProgress size={16} />
@@ -225,7 +222,7 @@ const FileDetail = ({
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(1.5),
+              gap: "var(--app-space-6)",
             }}
           >
             <DetailRow label="Mode" value={statData.mode} />
@@ -242,7 +239,7 @@ const FileDetail = ({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: theme.spacing(1),
+              gap: "var(--app-space-4)",
             }}
           >
             <AppCircularProgress size={16} />
@@ -260,7 +257,7 @@ const FileDetail = ({
           <div
             style={{
               display: "flex",
-              gap: theme.spacing(1),
+              gap: "var(--app-space-4)",
             }}
           >
             <AppButton

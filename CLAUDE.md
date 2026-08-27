@@ -21,6 +21,7 @@
   TanStack Router search or path parameters, and transient UI state locally.
   Reuse generated query options and route helpers, preserving their invalidation
   and cancellation paths. Treat memoization as an optimization, not a default.
+- In the frontend, style through the shared `components/ui` components and the `--app-*` CSS variables `AppThemeProvider` writes to `:root` (`theme/variables.css`, `theme/index.ts`). Outside `components/ui` and `theme/`, code does not call `useAppTheme()`, compute colours with `alpha()`/`darken()`/`lighten()`, branch on `palette.mode`, or set hex colours or `fontSize` inline; `theme/styling-boundary.test.ts` lists the few files that must hand a browser API a resolved colour (canvas charts, xterm, ace, colour editors) and fails on any new one.
 - The backend targets Linux; do not add portability layers without a concrete
   requirement. Prefer Go APIs and existing D-Bus or service abstractions over
   shell commands. When a subprocess is necessary, use the existing

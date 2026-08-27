@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Socket } from "@/api";
 import { linuxio } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import {
@@ -41,24 +42,24 @@ const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
   return (
     <>
       <DetailRow label="Load">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {socket.load_state}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Listen">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {listen.length > 0 ? listen.join(", ") : "—"}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Connections">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {String(info?.NConnections ?? socket.n_connections)}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Accepted">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {String(info?.NAccepted ?? socket.n_accepted)}
-        </span>
+        </AppTypography>
       </DetailRow>
     </>
   );

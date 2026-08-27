@@ -12,7 +12,6 @@ import {
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 import type { ValidationResult } from "./ComposeValidationFeedback";
 import ComposeValidationFeedback from "./ComposeValidationFeedback";
@@ -53,7 +52,6 @@ const ComposeEditorDialog = ({
   onSave,
   onValidate,
 }: ComposeEditorDialogProps) => {
-  const theme = useAppTheme();
   const editorRef = useRef<FileEditorHandle>(null);
   const envEditorRef = useRef<FileEditorHandle>(null);
   const [stackName, setStackName] = useState(initialStackName);
@@ -206,15 +204,15 @@ const ComposeEditorDialog = ({
     <>
       <AppFullscreenDialog
         contentStyle={{
-          backgroundColor: theme.palette.background.default,
+          backgroundColor: "var(--app-palette-background-default)",
         }}
         onClose={handleClose}
         open={open}
       >
         <AppDialogTitle
           style={{
-            backgroundColor: theme.header.background,
-            borderBottom: `1px solid ${theme.palette.divider}`,
+            backgroundColor: "var(--app-header-background)",
+            borderBottom: "1px solid var(--app-palette-divider)",
           }}
         >
           <div
@@ -301,7 +299,7 @@ const ComposeEditorDialog = ({
                 <div
                   style={{
                     padding: "4px 12px",
-                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    borderBottom: "1px solid var(--app-palette-divider)",
                     flexShrink: 0,
                   }}
                 >
@@ -325,7 +323,7 @@ const ComposeEditorDialog = ({
               <div
                 style={{
                   width: 1,
-                  backgroundColor: theme.palette.divider,
+                  backgroundColor: "var(--app-palette-divider)",
                   flexShrink: 0,
                 }}
               />
@@ -340,7 +338,7 @@ const ComposeEditorDialog = ({
                 <div
                   style={{
                     padding: "4px 12px",
-                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    borderBottom: "1px solid var(--app-palette-divider)",
                     flexShrink: 0,
                   }}
                 >
@@ -374,8 +372,8 @@ const ComposeEditorDialog = ({
 
         <AppDialogActions
           style={{
-            backgroundColor: theme.header.background,
-            borderTop: `1px solid ${theme.palette.divider}`,
+            backgroundColor: "var(--app-header-background)",
+            borderTop: "1px solid var(--app-palette-divider)",
             padding: 8,
           }}
         >

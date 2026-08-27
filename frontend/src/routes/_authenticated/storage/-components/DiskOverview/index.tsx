@@ -23,7 +23,6 @@ import { TASK_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundTaskTypes";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 import {
@@ -84,7 +83,6 @@ const DriveDetails = ({
   smartmontoolsAvailable,
   smartmontoolsReason,
 }: DriveDetailsProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(STORAGE_TOAST_META);
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
@@ -246,7 +244,7 @@ const DriveDetails = ({
 
         <div
           style={{
-            borderBottom: `1px solid ${theme.palette.divider}`,
+            borderBottom: "1px solid var(--app-palette-divider)",
           }}
         >
           <TabSelector

@@ -1,5 +1,3 @@
-import type { AppTheme } from "@/theme";
-
 /**
  * NetworkManager-style device states, as reported by
  * `network.get_network_info`. Shared by the interface list card's status dot
@@ -16,14 +14,11 @@ export const getNetworkStateLabel = (state: number): string => {
   return "Unknown";
 };
 
-export const getNetworkStateColor = (
-  state: number,
-  theme: AppTheme,
-): string => {
-  if (state === 100) return theme.palette.success.main;
-  if (state >= 40 && state <= 90) return theme.palette.warning.main;
-  if (state === 30 || state === 120) return theme.palette.error.main;
-  return theme.palette.text.disabled;
+export const getNetworkStateColor = (state: number): string => {
+  if (state === 100) return "var(--app-palette-success-main)";
+  if (state >= 40 && state <= 90) return "var(--app-palette-warning-main)";
+  if (state === 30 || state === 120) return "var(--app-palette-error-main)";
+  return "var(--app-palette-text-disabled)";
 };
 
 /**

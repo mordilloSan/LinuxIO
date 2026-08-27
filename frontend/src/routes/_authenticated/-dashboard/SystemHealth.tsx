@@ -26,7 +26,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
-import { useAppTheme } from "@/theme";
 import { GAP_MD } from "@/theme/constants";
 
 const HEALTH_REFETCH_MS = 50000;
@@ -105,7 +104,6 @@ interface FailedLoginsProps {
 }
 
 const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
-  const theme = useAppTheme();
   const { user: currentUser } = useAuth();
 
   const { data: health } = useSuspenseQuery({
@@ -126,8 +124,8 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     items.push({
       icon: "mdi:cog-sync-outline",
       color: health.failedServicesCount
-        ? theme.palette.text.secondary
-        : theme.palette.success.main,
+        ? "var(--app-palette-text-secondary)"
+        : "var(--app-palette-success-main)",
       text: `${pluralize(health.runningServicesCount, "service", "services")} running`,
       to: "/services",
     });
@@ -137,7 +135,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     const failed = health.failedServices?.[0];
     items.push({
       icon: "mdi:alert-circle",
-      color: theme.palette.error.main,
+      color: "var(--app-palette-error-main)",
       text: `${pluralize(health.failedServicesCount, "service has", "services have")} failed`,
       to: "/services",
       serviceSearch: failed ? { service: failed } : undefined,
@@ -148,12 +146,12 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   if (failedLoginAlert) {
     items.push({
       icon: "mdi:account-alert-outline",
-      color: theme.palette.error.main,
+      color: "var(--app-palette-error-main)",
       text: `${pluralize(failedLoginAlert.count, "failed login attempt", "failed login attempts")}\nbefore this session`,
       onClick: onOpenFailedLogins,
       detail: failedLoginDetail(failedLoginAlert.latestEvent),
-      textColor: "#fff",
-      detailColor: "rgba(255, 255, 255, 0.72)",
+      textColor: "white",
+      detailColor: "color-mix(in srgb, white, transparent 28%)",
       spaceBefore: true,
       iconStyle: { transform: "translateY(-6px)" },
       secondaryAction: {
@@ -175,7 +173,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   if (!health?.upToDate) {
     items.push({
       icon: "mdi:package-up",
-      color: theme.palette.warning.main,
+      color: "var(--app-palette-warning-main)",
       text: `${pluralize(health.updatesAvailable, "update", "updates")} available`,
       to: "/updates",
       spaceBefore: true,
@@ -184,7 +182,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   } else if (health) {
     items.push({
       icon: "mdi:check-circle",
-      color: theme.palette.success.main,
+      color: "var(--app-palette-success-main)",
       text: "System is up to date",
       to: "/updates",
       spaceBefore: true,
@@ -196,7 +194,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     const bootId = health.uncleanShutdownBootId;
     items.push({
       icon: "mdi:alert-outline",
-      color: theme.palette.warning.main,
+      color: "var(--app-palette-warning-main)",
       text: "Unclean shutdown",
       to: "/logs",
       secondaryAction: bootId
@@ -243,7 +241,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     ].filter(Boolean);
     items.push({
       icon: "mdi:account-clock-outline",
-      color: theme.palette.text.primary,
+      color: "var(--app-palette-text-primary)",
       text: `Last login: ${displayTime}`,
       to: "/accounts",
       accountSearch: accountDetailSearch(
@@ -261,7 +259,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: theme.spacing(1),
+          gap: "var(--app-space-4)",
         }}
       >
         <Icon
@@ -277,7 +275,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
             style={{
               color:
                 item.textColor ??
-                (item.color === theme.palette.text.secondary
+                (item.color === "var(--app-palette-text-secondary)"
                   ? undefined
                   : item.color),
               whiteSpace: "pre-line",
@@ -289,7 +287,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
           {item.detail ? (
             <AppTypography
               style={{
-                color: item.detailColor ?? theme.palette.text.secondary,
+                color: item.detailColor ?? "var(--app-palette-text-secondary)",
                 display: "block",
                 marginTop: -2,
                 lineHeight: 1.2,
@@ -356,7 +354,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
         {content}
         {item.secondaryAction?.icon ? (
-          <span style={{ marginLeft: theme.spacing(0.5), flexShrink: 0 }}>
+          <span style={{ marginLeft: "var(--app-space-2)", flexShrink: 0 }}>
             <AppActionIconButton
               ariaLabel={
                 item.secondaryAction.ariaLabel ?? item.secondaryAction.label
@@ -377,9 +375,8 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
             onClick={item.secondaryAction.onClick}
             size="small"
             style={{
-              marginLeft: theme.spacing(1),
-              color: theme.palette.text.secondary,
-              fontSize: "0.75rem",
+              marginLeft: "var(--app-space-4)",
+              color: "var(--app-palette-text-secondary)",
               minWidth: 0,
               opacity: item.secondaryAction.disabled ? 0.5 : 1,
               padding: 0,
@@ -394,7 +391,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     );
 
     const spacing = item.spaceBefore
-      ? { marginTop: theme.spacing(1) }
+      ? { marginTop: "var(--app-space-4)" }
       : undefined;
 
     return (
@@ -435,7 +432,6 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
 };
 
 const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
-  const theme = useAppTheme();
   const navigate = useNavigate();
 
   const { data: health } = useSuspenseQuery({
@@ -445,19 +441,19 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
 
   const failedLoginAlert = health?.failedLoginAlert;
 
-  let statusColor = theme.palette.success.dark;
+  let statusColor = "var(--app-palette-success-dark)";
   let iconName = "mdi:shield-check-outline";
   let iconLink: HealthRoute = "/updates";
 
   if (health?.failedServicesCount) {
-    statusColor = theme.palette.error.main;
+    statusColor = "var(--app-palette-error-main)";
     iconName = "mdi:shield-alert-outline";
     iconLink = "/services";
   } else if (failedLoginAlert) {
-    statusColor = theme.palette.warning.main;
+    statusColor = "var(--app-palette-warning-main)";
     iconName = "mdi:shield-alert-outline";
   } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
-    statusColor = theme.palette.warning.main;
+    statusColor = "var(--app-palette-warning-main)";
     iconName = "mdi:shield-alert-outline";
     iconLink = health?.uncleanShutdown ? "/logs" : "/updates";
   }
@@ -492,8 +488,6 @@ interface FailedLoginsDialogProps {
 }
 
 const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
-  const theme = useAppTheme();
-
   const { data: health } = useSuspenseQuery({
     ...linuxio.system.get_health_summary,
     refetchInterval: HEALTH_REFETCH_MS,
@@ -525,7 +519,7 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: theme.spacing(1),
+        gap: "var(--app-space-4)",
       }}
     >
       <AppSkeleton height={18} variant="circular" width={18} />
@@ -543,11 +537,11 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
           display: "flex",
           alignItems: "center",
           gap: 8,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          borderBottom: "1px solid var(--app-palette-divider)",
         }}
       >
         <Icon
-          color={theme.palette.warning.main}
+          color="var(--app-palette-warning-main)"
           height={22}
           icon="mdi:account-alert-outline"
           width={22}
@@ -585,7 +579,6 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
                 <AppTypography
                   color="text.secondary"
                   key={label}
-                  style={{ fontSize: "0.65rem" }}
                   variant="overline"
                 >
                   {label}
@@ -615,8 +608,7 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
                   <Chip
                     color="error"
                     label="Failed"
-                    size="small"
-                    style={{ fontSize: "0.7rem" }}
+                    size="xsmall"
                     variant="soft"
                   />
                 </div>
@@ -629,7 +621,7 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
       <AppDialogActions
         style={{
           padding: 8,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         <AppButton color="inherit" onClick={onClose}>

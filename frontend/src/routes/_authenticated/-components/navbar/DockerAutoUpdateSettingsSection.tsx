@@ -17,7 +17,6 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useAppTheme } from "@/theme";
 import { GAP_MD } from "@/theme/constants";
 
 import {
@@ -37,7 +36,6 @@ const DockerAutoUpdateSettingsSection = ({
   dockerUpdatesEnabled = true,
   dockerUpdatesReason,
 }: DockerAutoUpdateSettingsSectionProps) => {
-  const theme = useAppTheme();
   const [draftOverrides, setDraftOverrides] =
     useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);
   const [containerNamesOverride, setContainerNamesOverride] = useState<
@@ -143,7 +141,7 @@ const DockerAutoUpdateSettingsSection = ({
   return (
     <div
       aria-busy={saving}
-      style={{ display: "grid", gap: theme.spacing(1.5) }}
+      style={{ display: "grid", gap: "var(--app-space-6)" }}
     >
       {loading && (
         <div
@@ -173,8 +171,8 @@ const DockerAutoUpdateSettingsSection = ({
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: theme.spacing(1),
-              marginTop: theme.spacing(1),
+              gap: "var(--app-space-4)",
+              marginTop: "var(--app-space-4)",
             }}
           >
             {blockedReasons.map(({ name, reason }) => (
@@ -184,7 +182,7 @@ const DockerAutoUpdateSettingsSection = ({
                   alignItems: "center",
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: theme.spacing(1),
+                  gap: "var(--app-space-4)",
                 }}
               >
                 <AppChip
@@ -214,7 +212,7 @@ const DockerAutoUpdateSettingsSection = ({
           alignItems: "center",
           display: loading ? "none" : "flex",
           flexWrap: "wrap",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
           justifyContent: "space-between",
           minHeight: 66,
           padding: 14,
@@ -225,14 +223,14 @@ const DockerAutoUpdateSettingsSection = ({
             style={{
               alignItems: "center",
               display: "flex",
-              gap: theme.spacing(0.75),
+              gap: "var(--app-space-4)",
             }}
           >
             <StatusDot
               color={
                 currentOptions.enabled
-                  ? theme.palette.success.main
-                  : theme.palette.text.disabled
+                  ? "var(--app-palette-success-main)"
+                  : "var(--app-palette-text-disabled)"
               }
               size={8}
             />
@@ -250,7 +248,7 @@ const DockerAutoUpdateSettingsSection = ({
             style={{
               display: "block",
               lineHeight: 1.35,
-              marginLeft: theme.spacing(1.75),
+              marginLeft: "var(--app-space-8)",
               marginTop: 3,
             }}
             variant="caption"
@@ -267,7 +265,7 @@ const DockerAutoUpdateSettingsSection = ({
             alignItems: "center",
             display: "flex",
             flexWrap: "wrap",
-            gap: theme.spacing(1),
+            gap: "var(--app-space-4)",
           }}
         >
           <AppChip
@@ -299,7 +297,7 @@ const DockerAutoUpdateSettingsSection = ({
         aria-label="Stopped container update settings"
         style={{
           display: loading ? "none" : "grid",
-          gap: theme.spacing(2),
+          gap: "var(--app-space-8)",
           padding: 14,
         }}
       >
@@ -307,11 +305,11 @@ const DockerAutoUpdateSettingsSection = ({
           style={{
             alignItems: "center",
             display: "flex",
-            gap: theme.spacing(1),
+            gap: "var(--app-space-4)",
           }}
         >
           <Icon
-            color={theme.palette.primary.main}
+            color="var(--app-palette-primary-main)"
             height={19}
             icon="mdi:power-sleep"
             width={19}
@@ -326,7 +324,7 @@ const DockerAutoUpdateSettingsSection = ({
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: theme.spacing(1.5) }}>
+        <div style={{ display: "grid", gap: "var(--app-space-6)" }}>
           <div style={{ alignItems: "center", display: "flex", gap: GAP_MD }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <AppTypography variant="body2">
@@ -388,7 +386,7 @@ const DockerAutoUpdateSettingsSection = ({
         aria-label="Edit container update policy"
         style={{
           display: loading ? "none" : "grid",
-          gap: theme.spacing(3),
+          gap: "var(--app-space-12)",
           padding: 14,
         }}
       >
@@ -396,11 +394,11 @@ const DockerAutoUpdateSettingsSection = ({
           style={{
             alignItems: "center",
             display: "flex",
-            gap: theme.spacing(1),
+            gap: "var(--app-space-4)",
           }}
         >
           <Icon
-            color={theme.palette.primary.main}
+            color="var(--app-palette-primary-main)"
             height={19}
             icon="mdi:tune-variant"
             width={19}
@@ -445,7 +443,7 @@ const DockerAutoUpdateSettingsSection = ({
         <div
           style={{
             display: "grid",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
           }}
         >
@@ -489,13 +487,13 @@ const DockerAutoUpdateSettingsSection = ({
         style={{
           alignItems: "center",
           display: loading ? "none" : "flex",
-          gap: theme.spacing(1),
+          gap: "var(--app-space-4)",
           minHeight: 66,
           padding: 14,
         }}
       >
         <Icon
-          color={theme.palette.primary.main}
+          color="var(--app-palette-primary-main)"
           height={19}
           icon="mdi:image-remove-outline"
           width={19}
@@ -525,7 +523,7 @@ const DockerAutoUpdateSettingsSection = ({
         <FrostedCard
           style={{
             display: "grid",
-            gap: theme.spacing(1.25),
+            gap: "var(--app-space-4)",
             padding: 14,
           }}
         >
@@ -539,7 +537,7 @@ const DockerAutoUpdateSettingsSection = ({
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: theme.spacing(1),
+              gap: "var(--app-space-4)",
             }}
           >
             {missingNames.map((name) => (
@@ -558,9 +556,9 @@ const DockerAutoUpdateSettingsSection = ({
       <div
         style={{
           display: "flex",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
           justifyContent: "flex-end",
-          paddingTop: theme.spacing(0.5),
+          paddingTop: "var(--app-space-2)",
         }}
       >
         <AppButton disabled={!dirty || saving} onClick={reset}>

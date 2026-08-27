@@ -21,7 +21,6 @@ import PathPickerField from "@/components/ui/PathPickerField";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig, useDockerSettings } from "@/hooks/useConfig";
-import { useAppTheme } from "@/theme";
 import { ensureTrailingSlash } from "@/utils/path";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
@@ -78,7 +77,6 @@ const validateDraftFolders = (
 };
 
 const DockerSettingsSection = () => {
-  const theme = useAppTheme();
   const { privileged } = useAuth();
   const { updateConfig } = useConfig();
   const dockerSettings = useDockerSettings();
@@ -269,9 +267,9 @@ const DockerSettingsSection = () => {
     flexShrink: 0,
     width: 36,
     height: 36,
-    borderRadius: 8,
-    background: theme.palette.action.hover,
-    color: theme.palette.primary.main,
+    borderRadius: "var(--app-radius-md)",
+    background: "var(--app-palette-action-hover)",
+    color: "var(--app-palette-primary-main)",
   };
 
   return (
@@ -280,7 +278,7 @@ const DockerSettingsSection = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
         }}
       >
         <div>
@@ -298,7 +296,7 @@ const DockerSettingsSection = () => {
               style={{
                 display: "flex",
                 alignItems: "flex-start",
-                gap: theme.spacing(1.5),
+                gap: "var(--app-space-6)",
               }}
             >
               <div style={folderIconStyle}>
@@ -346,7 +344,7 @@ const DockerSettingsSection = () => {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: theme.spacing(1.5),
+            gap: "var(--app-space-6)",
             opacity: privileged ? 1 : 0.72,
             padding: 12,
           }}
@@ -355,7 +353,7 @@ const DockerSettingsSection = () => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: theme.spacing(1.5),
+              gap: "var(--app-space-6)",
               minWidth: 0,
             }}
           >
@@ -391,7 +389,7 @@ const DockerSettingsSection = () => {
               alignItems: "center",
               borderRadius: "inherit",
               display: "flex",
-              gap: theme.spacing(1.5),
+              gap: "var(--app-space-6)",
               justifyContent: "flex-start",
               minWidth: 0,
               opacity: isSaving ? 0.65 : 1,
@@ -417,8 +415,8 @@ const DockerSettingsSection = () => {
           style={{
             display: "flex",
             justifyContent: "flex-end",
-            gap: theme.spacing(1.5),
-            paddingTop: theme.spacing(0.5),
+            gap: "var(--app-space-6)",
+            paddingTop: "var(--app-space-2)",
           }}
         >
           <AppButton disabled={!isDirty || isSaving} onClick={handleReset}>
@@ -438,8 +436,8 @@ const DockerSettingsSection = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1.5),
-          marginTop: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
+          marginTop: "var(--app-space-6)",
         }}
       >
         <div>

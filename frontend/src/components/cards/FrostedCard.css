@@ -1,6 +1,33 @@
+/* The frosted surface. Colour, gradient, blur and shadow are theme variables
+   written once by AppThemeProvider (getFrostedCardCssVariables in
+   theme/surfaces.ts), so the card reads nothing from the theme in JS.
+   --fc-accent and --fc-lift-shadow are the two knobs consumers reach for
+   inline (a selected card takes its line to full strength, or holds the lift
+   shadow). */
+.frosted-card {
+  --fc-accent: var(--app-palette-primary-main);
+  --fc-lift-shadow: var(--app-card-lift-shadow);
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--app-radius-card);
+  background-color: var(--app-card-background);
+  background-image: var(--app-card-gradient);
+  backdrop-filter: var(--app-card-blur);
+  box-shadow: var(--app-card-shadow);
+}
+
+/* The accent line along the bottom of a card. Its width is fixed: the line is
+   the hold-to-reorder indicator, and that gesture is expressed purely as the
+   line brightening (see .sc-hold below). Animating the width too moves the
+   card's own box mid-gesture and needs margin compensation to hide it, which
+   was tried and dropped. */
+.accent-card {
+  border-bottom: 3px solid
+    color-mix(in srgb, var(--fc-accent), transparent 70%);
+}
+
 /* Geometry and timing come from .hover-lift; these cards are large enough that
-   scaling them reads as a wobble, so they lift only. The shadow needs
-   !important to beat the frosted base style, which is applied inline. */
+   scaling them reads as a wobble, so they lift only. */
 .fc-hover-lift {
   --hover-lift-y: -4px;
   --hover-lift-scale: 1;
@@ -8,7 +35,7 @@
 }
 
 .fc-hover-lift:hover {
-  box-shadow: var(--fc-lift-shadow) !important;
+  box-shadow: var(--fc-lift-shadow);
 }
 
 /* Accent cards that do not lift get the same easing on the line — .hover-lift

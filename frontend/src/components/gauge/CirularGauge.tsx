@@ -1,5 +1,8 @@
 import { useMemo } from "react";
 
+import "./CirularGauge.css";
+
+import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
 import { GREY_TOKENS as grey } from "@/theme/colors";
 
@@ -69,8 +72,6 @@ export const MultiValueCircularGauge = ({
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
-  const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
 
   const total = useMemo(
     () => values.reduce((sum, item) => sum + Math.max(0, item.value), 0),
@@ -128,11 +129,11 @@ export const MultiValueCircularGauge = ({
     >
       <svg height={size} width={size}>
         <circle
+          className="gauge-track"
           cx={center}
           cy={center}
           fill="none"
           r={radius}
-          stroke={isDark ? grey[700] : grey[300]}
           strokeWidth={thickness}
         />
         {segments.map((segment, index) => (
@@ -164,16 +165,17 @@ export const MultiValueCircularGauge = ({
           flexDirection: "column",
         }}
       >
-        <div
-          style={{
-            fontSize: "1.5rem",
-            fontWeight: "bold",
-            color: isDark ? grey[100] : grey[900],
-          }}
+        <AppTypography
+          className="gauge-value-text"
+          component="div"
+          fontWeight="bold"
+          variant="h3"
         >
           {Math.round(total)}
-        </div>
-        <div style={{ fontSize: "0.75rem", color: grey[500] }}>Total</div>
+        </AppTypography>
+        <AppTypography color={grey[500]} variant="caption">
+          Total
+        </AppTypography>
       </div>
     </div>
   );
@@ -203,10 +205,10 @@ export const GradientCircularGauge = ({
   const center = size / 2;
 
   const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
-  const backgroundColor = isDark ? grey[700] : grey[300];
   // Create multiple segments for smooth gradient effect
   const segments = useMemo(() => {
+    // interpolateColor() parses real hex strings, so the gauge resolves its
+    // gradient from the theme in JS rather than through --app-* variables.
     const resolvedGradientColors = gradientColors ?? [
       theme.chart.tx,
       theme.palette.warning.main,
@@ -244,11 +246,11 @@ export const GradientCircularGauge = ({
     >
       <svg height={size} width={size}>
         <circle
+          className="gauge-track"
           cx={center}
           cy={center}
           fill="none"
           r={radius}
-          stroke={backgroundColor}
           strokeWidth={thickness}
         />
         {segments.map((segment, index) => (
@@ -279,15 +281,14 @@ export const GradientCircularGauge = ({
             justifyContent: "center",
           }}
         >
-          <div
-            style={{
-              fontSize: "1rem",
-              fontWeight: "bold",
-              color: isDark ? grey[100] : grey[900],
-            }}
+          <AppTypography
+            className="gauge-value-text"
+            component="div"
+            fontWeight="bold"
+            variant="body1"
           >
             {Math.round(pct)}%
-          </div>
+          </AppTypography>
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 .app-sidebar-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1190;
+  z-index: calc(var(--app-z-sidebar) - 10);
   min-width: 0;
   padding: 0;
   border-radius: 0;
@@ -19,7 +19,7 @@
 .app-sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  z-index: 1200;
+  z-index: var(--app-z-sidebar);
   display: flex;
   flex-direction: column;
   width: var(--sidebar-width, 200px);

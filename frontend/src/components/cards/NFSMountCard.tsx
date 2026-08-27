@@ -51,7 +51,6 @@ const NFSMountSource = memo(function NFSMountSource({
       style={{
         marginBottom: 4,
         fontFamily: "var(--app-font-mono)",
-        fontSize: "0.8rem",
         lineHeight: 1.3,
       }}
       variant="body2"

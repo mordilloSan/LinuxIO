@@ -1,11 +1,11 @@
 .app-action-icon-button {
-  color: var(--ab-color);
+  color: var(--ab-color, var(--app-palette-text-secondary));
   margin-inline: 0.4px;
   transition: color 0.2s;
 }
 
-.app-action-icon-button:hover {
-  color: var(--ab-hover-color);
+.app-action-icon-button:hover:not(:disabled) {
+  color: var(--app-palette-text-primary);
 }
 
 /* The designed Tab-navigation ring, matching .app-btn / .app-icon-btn. */

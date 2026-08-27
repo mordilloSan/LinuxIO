@@ -7,10 +7,9 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
+import AppTypography from "@/components/ui/AppTypography";
 import { useLogStream } from "@/hooks/useLogStream";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_LG } from "@/theme/constants";
-import { alpha } from "@/utils/color";
 
 interface UnitLogsCardProps {
   /** Stream factory; defaults to the systemd service log stream for `unitName`. */
@@ -28,7 +27,6 @@ const UnitLogsLiveContent = ({
   createStream,
   titleContent,
 }: UnitLogsLiveContentProps) => {
-  const theme = useAppTheme();
   const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef } =
     useLogStream({
       open: true,
@@ -70,8 +68,8 @@ const UnitLogsLiveContent = ({
           // viewport's own bounds when the card is content-sized.
           flex: 1,
           minHeight: 0,
-          backgroundColor: theme.codeBlock.background,
-          color: theme.codeBlock.color,
+          backgroundColor: "var(--app-code-block-background)",
+          color: "var(--app-code-block-color)",
           borderRadius: 4,
           overflow: "hidden",
         }}
@@ -81,7 +79,8 @@ const UnitLogsLiveContent = ({
             style={{
               position: "absolute",
               inset: 0,
-              background: alpha(theme.codeBlock.background, 0.85),
+              background:
+                "color-mix(in srgb, var(--app-code-block-background), transparent 15%)",
               zIndex: 10,
             }}
           >
@@ -93,34 +92,34 @@ const UnitLogsLiveContent = ({
             {error}
           </div>
         )}
-        <div
+        <AppTypography
           className="custom-scrollbar"
+          component="div"
           ref={logsBoxRef}
           style={{
             flex: 1,
             padding: 16,
             overflow: "auto",
             fontFamily: "Fira Mono, monospace",
-            fontSize: "0.8rem",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
             minHeight: 120,
             maxHeight: 340,
           }}
+          variant="body2"
         >
           {!isLoading &&
             !error &&
             (logs || (
-              <span
-                style={{
-                  color: "var(--app-palette-text-secondary)",
-                  fontSize: "0.75rem",
-                }}
+              <AppTypography
+                color="text.secondary"
+                component="span"
+                variant="caption"
               >
                 No logs available.
-              </span>
+              </AppTypography>
             ))}
-        </div>
+        </AppTypography>
       </div>
     </>
   );
@@ -155,7 +154,9 @@ const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => (
             icon="mdi:console"
             width={20}
           />
-          <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</span>
+          <AppTypography component="span" fontWeight={600} variant="body2">
+            {title}
+          </AppTypography>
         </div>
       }
     />

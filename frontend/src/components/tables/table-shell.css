@@ -1,0 +1,33 @@
+.app-dt {
+  --app-dt-selected-bg: color-mix(
+    in srgb,
+    var(--app-palette-primary-main),
+    transparent 90%
+  );
+  --app-dt-alt-bg: color-mix(
+    in srgb,
+    var(--app-palette-text-primary),
+    transparent 95%
+  );
+}
+
+:root[data-app-color-scheme="dark"] .app-dt {
+  --app-dt-selected-bg: color-mix(
+    in srgb,
+    var(--app-palette-primary-main),
+    transparent 85%
+  );
+  --app-dt-alt-bg: color-mix(
+    in srgb,
+    var(--app-palette-text-primary),
+    transparent 96%
+  );
+}
+
+.app-dt.app-dt--embedded {
+  --app-dt-alt-bg: transparent;
+}
+
+:root[data-app-color-scheme="dark"] .app-dt.app-dt--embedded {
+  --app-dt-alt-bg: transparent;
+}

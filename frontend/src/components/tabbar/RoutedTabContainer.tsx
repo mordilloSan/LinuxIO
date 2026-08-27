@@ -15,7 +15,8 @@ import { createPortal } from "react-dom";
 
 import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
 import type { FileRouteTypes } from "@/routeTree.gen";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import { iconSize } from "@/theme/constants";
 
 import { getTabSelectorThemeVars } from "./TabSelector";
@@ -238,8 +239,7 @@ const TabSelector = memo(function TabSelector({
   hasSlotSearch = false,
   searchHostMountRef,
 }: TabSelectorProps) {
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useAppMediaQuery(down("sm"));
   const headerActionSlot = useHeaderActionSlot();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
@@ -368,7 +368,7 @@ const TabSelector = memo(function TabSelector({
   return (
     <div
       className={`tab-selector tab-container__selector${isMobile ? " tab-selector--mobile" : ""}`}
-      style={getTabSelectorThemeVars(theme)}
+      style={getTabSelectorThemeVars()}
     >
       <div className="tab-selector__scroller custom-scrollbar">
         <div aria-label="Tabs" className="tab-selector__pills" role="tablist">

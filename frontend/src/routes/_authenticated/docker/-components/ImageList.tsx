@@ -26,7 +26,6 @@ import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
@@ -140,7 +139,6 @@ const DeleteImageDialog = ({
   images,
   onSuccess,
 }: DeleteImageDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
   const { mutateAsync: deleteImage, isPending: isDeleting } = useCallMutation(
@@ -193,8 +191,8 @@ const DeleteImageDialog = ({
           style={{
             display: "flex",
             flexWrap: "wrap",
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
+            marginTop: "var(--app-space-8)",
+            marginBottom: "var(--app-space-4)",
           }}
         >
           {images.map((image) => (
@@ -244,7 +242,6 @@ const ImageList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: ImageListProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const focusedImageId =
@@ -394,8 +391,7 @@ const ImageList = ({
             {row.original.repos.length > 1 && (
               <Chip
                 label={`+${row.original.repos.length - 1}`}
-                size="small"
-                style={{ fontSize: "0.68rem" }}
+                size="xsmall"
                 title={row.original.repos.slice(1).join(", ")}
                 variant="soft"
               />
@@ -411,13 +407,7 @@ const ImageList = ({
         cell: ({ row }) => (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {row.original.tags.map((tag) => (
-              <Chip
-                key={tag}
-                label={tag}
-                size="small"
-                style={{ fontSize: "0.75rem" }}
-                variant="soft"
-              />
+              <Chip key={tag} label={tag} size="xsmall" variant="soft" />
             ))}
           </div>
         ),
@@ -440,15 +430,14 @@ const ImageList = ({
             variant="body2"
           >
             <span style={{ fontWeight: 700 }}>Full ID: </span>
-            <span
-              style={{
-                color: "var(--app-palette-text-secondary)",
-                fontFamily: "var(--app-font-mono)",
-                fontSize: "0.75rem",
-              }}
+            <AppTypography
+              color="text.secondary"
+              component="span"
+              style={{ fontFamily: "var(--app-font-mono)" }}
+              variant="caption"
             >
               {row.original.id}
-            </span>
+            </AppTypography>
           </AppTypography>
         ),
         meta: {
@@ -474,13 +463,7 @@ const ImageList = ({
         accessorKey: "created",
         header: "Created",
         cell: ({ row }) => (
-          <AppTypography
-            style={{
-              fontSize: "0.85rem",
-              ...responsiveTextStyles,
-            }}
-            variant="body2"
-          >
+          <AppTypography style={responsiveTextStyles} variant="body2">
             {row.original.created}
           </AppTypography>
         ),
@@ -539,7 +522,7 @@ const ImageList = ({
               actions={
                 <AppActionIconButton
                   ariaLabel={`Delete image ${focusedImage.repo}`}
-                  color={theme.palette.error.main}
+                  color="var(--app-palette-error-main)"
                   icon="mdi:delete"
                   iconSize={18}
                   label="Delete image"
@@ -574,8 +557,8 @@ const ImageList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">

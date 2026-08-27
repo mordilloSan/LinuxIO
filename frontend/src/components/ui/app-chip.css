@@ -1,4 +1,12 @@
+/* One colour drives the chip: --app-chip-color, a palette variable picked by
+   the app-chip--<name> class (or a literal set inline for custom colours).
+   Background and border are that colour mixed toward transparent; the
+   variant/mode rules below only set how far (--_chip-bg-t, --_chip-border-t
+   are the transparent shares). Base values are filled, light, non-default. */
 .app-chip {
+  --app-chip-color: var(--app-palette-text-secondary);
+  --_chip-bg-t: 86%;
+  --_chip-border-t: 72%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6,14 +14,19 @@
   max-width: 100%;
   height: var(--app-chip-height);
   padding: 0;
-  border: 1px solid var(--app-chip-border);
-  border-radius: 999px;
-  background-color: var(--app-chip-background);
+  border: 1px solid
+    color-mix(in srgb, var(--app-chip-color), transparent var(--_chip-border-t));
+  border-radius: var(--app-radius-pill);
+  background-color: color-mix(
+    in srgb,
+    var(--app-chip-color),
+    transparent var(--_chip-bg-t)
+  );
   color: var(--app-chip-color);
-  font-family: var(--app-chip-font-family);
-  font-size: var(--app-chip-font-size);
-  font-weight: var(--app-chip-font-weight);
-  line-height: var(--app-chip-line-height);
+  font-family: var(--app-font-family);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.5;
   opacity: 1;
   text-align: center;
   vertical-align: middle;
@@ -26,6 +39,79 @@
     color 150ms ease,
     opacity 150ms ease,
     box-shadow 150ms ease;
+}
+
+.app-chip--primary {
+  --app-chip-color: var(--app-palette-primary-main);
+}
+
+.app-chip--secondary {
+  --app-chip-color: var(--app-palette-secondary-main);
+}
+
+.app-chip--success {
+  --app-chip-color: var(--app-palette-success-main);
+}
+
+.app-chip--error {
+  --app-chip-color: var(--app-palette-error-main);
+}
+
+.app-chip--warning {
+  --app-chip-color: var(--app-palette-warning-main);
+}
+
+.app-chip--info {
+  --app-chip-color: var(--app-palette-info-main);
+}
+
+/* filled */
+.app-chip--filled.app-chip--default {
+  --_chip-bg-t: 97%;
+  --_chip-border-t: 0%;
+}
+
+:root[data-app-color-scheme="dark"] .app-chip--filled {
+  --_chip-bg-t: 80%;
+  --_chip-border-t: 58%;
+}
+
+:root[data-app-color-scheme="dark"] .app-chip--filled.app-chip--default {
+  --_chip-bg-t: 94%;
+  --_chip-border-t: 0%;
+}
+
+/* soft */
+.app-chip--soft {
+  --_chip-bg-t: 87%;
+  --_chip-border-t: 67%;
+  font-weight: 600;
+}
+
+.app-chip--soft.app-chip--default {
+  --_chip-bg-t: 94%;
+  --_chip-border-t: 82%;
+}
+
+/* outlined */
+.app-chip--outlined {
+  --_chip-bg-t: 100%;
+  --_chip-border-t: 30%;
+}
+
+.app-chip--outlined.app-chip--default {
+  --_chip-border-t: 68%;
+}
+
+:root[data-app-color-scheme="dark"] .app-chip--outlined.app-chip--default {
+  --_chip-border-t: 50%;
+}
+
+/* Dense tag chips inside table rows and card metadata: caption-sized text. */
+.app-chip--xsmall {
+  --app-chip-height: 20px;
+  --app-chip-label-padding-x: 6px;
+  font-size: 0.6964rem;
 }
 
 .app-chip--small {

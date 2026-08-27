@@ -1,6 +1,5 @@
 import type { VMPreflight } from "@/api";
 import AppChip from "@/components/ui/AppChip";
-import { useAppTheme } from "@/theme";
 
 export default function PreflightSummary({
   preflight,
@@ -9,7 +8,6 @@ export default function PreflightSummary({
   preflight?: VMPreflight;
   showDefaultNetwork?: boolean;
 }) {
-  const theme = useAppTheme();
   const checks = [
     ["KVM", preflight?.kvmPresent],
     ["QEMU", preflight?.qemuPresent],
@@ -30,7 +28,7 @@ export default function PreflightSummary({
         alignItems: "center",
         display: "flex",
         flexWrap: "wrap",
-        gap: theme.spacing(2),
+        gap: "var(--app-space-8)",
       }}
     >
       {checks.map(([label, ok]) => (

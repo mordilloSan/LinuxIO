@@ -30,7 +30,6 @@ import type {
 } from "@/hooks/filebrowser/useFileConflicts";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
-import { useAppTheme } from "@/theme";
 import type {
   FileResource,
   MultiStatsItem,
@@ -80,14 +79,12 @@ interface FileDropOverlayProps {
 }
 
 export const FileDropOverlay = ({ normalizedPath }: FileDropOverlayProps) => {
-  const theme = useAppTheme();
-
   return (
     <div
       style={{
         position: "absolute",
         inset: 0,
-        border: `2px dashed ${theme.palette.primary.main}`,
+        border: "2px dashed var(--app-palette-primary-main)",
         backgroundColor: "rgba(var(--app-palette-primary-mainChannel) / 0.08)",
         zIndex: 5,
         display: "flex",
@@ -95,7 +92,7 @@ export const FileDropOverlay = ({ normalizedPath }: FileDropOverlayProps) => {
         alignItems: "center",
         justifyContent: "center",
         pointerEvents: "none",
-        gap: theme.spacing(1),
+        gap: "var(--app-space-4)",
       }}
     >
       <AppTypography variant="h6">Drop to upload</AppTypography>
@@ -145,11 +142,11 @@ export const FileBrowserEditorDialog = ({
   showQuickSave,
   viewMode,
 }: FileBrowserEditorDialogProps) => {
-  const theme = useAppTheme();
-
   return (
     <AppFullscreenDialog
-      contentStyle={{ backgroundColor: theme.palette.background.default }}
+      contentStyle={{
+        backgroundColor: "var(--app-palette-background-default)",
+      }}
       onClose={onCloseEditor}
       open={Boolean(editingPath)}
     >
@@ -249,8 +246,6 @@ export const FileBrowserDetailsDialog = ({
   shouldShowDetailLoader,
   statData,
 }: FileBrowserDetailsDialogProps) => {
-  const theme = useAppTheme();
-
   return (
     <FileBrowserDialog
       fullWidth
@@ -276,7 +271,7 @@ export const FileBrowserDetailsDialog = ({
       <AppDialogContent
         style={{
           minHeight: 200,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         {shouldShowDetailLoader && <ComponentLoader />}
@@ -342,8 +337,6 @@ export const FileBrowserUploadDialog = ({
   uploadEntries,
   uploadSummary,
 }: FileBrowserUploadDialogProps) => {
-  const theme = useAppTheme();
-
   return (
     <FileBrowserDialog
       disableEscapeKeyDown={isUploadProcessing}
@@ -354,7 +347,7 @@ export const FileBrowserUploadDialog = ({
     >
       <AppDialogTitle>Upload files or folders</AppDialogTitle>
       <AppDialogContent
-        style={{ borderTop: `1px solid ${theme.palette.divider}` }}
+        style={{ borderTop: "1px solid var(--app-palette-divider)" }}
       >
         <AppTypography color="text.secondary" variant="body2">
           Items will be uploaded to {normalizedPath}
@@ -362,8 +355,8 @@ export const FileBrowserUploadDialog = ({
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(1.5),
-            marginTop: theme.spacing(2),
+            gap: "var(--app-space-6)",
+            marginTop: "var(--app-space-8)",
             flexWrap: "wrap",
           }}
         >
@@ -457,7 +450,6 @@ export const FileBrowserConflictDialog = ({
   onResolve,
   prompt,
 }: FileBrowserConflictDialogProps) => {
-  const theme = useAppTheme();
   // Decisions are stored together with the prompt they belong to, so a new
   // prompt implicitly starts from the safe default (skip everything) — no
   // effect-based state reset needed.
@@ -510,7 +502,7 @@ export const FileBrowserConflictDialog = ({
         {conflicts.length === 1 ? "s" : ""}
       </AppDialogTitle>
       <AppDialogContent
-        style={{ borderTop: `1px solid ${theme.palette.divider}` }}
+        style={{ borderTop: "1px solid var(--app-palette-divider)" }}
       >
         <AppTypography style={{ marginBottom: 8 }} variant="body2">
           Choose what to do with each item in {prompt?.destination}. Skipped

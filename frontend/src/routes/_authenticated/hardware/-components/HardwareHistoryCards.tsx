@@ -22,7 +22,6 @@ import {
 } from "@/components/charts/HistoryCard";
 import AppSelect from "@/components/ui/AppSelect";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useAppTheme } from "@/theme";
 import { formatThroughput } from "@/utils/formaters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
@@ -62,7 +61,6 @@ const getGpuDriverSummary = (gpu: GpuDevice | undefined): string => {
 // ─── Info cards ───────────────────────────────────────────────────────────────
 
 export const MotherboardInfoCard = () => {
-  const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
       { ...linuxio.system.get_motherboard_info, ...hardwareStableQueryOptions },
@@ -72,7 +70,7 @@ export const MotherboardInfoCard = () => {
 
   return (
     <HardwareCard
-      accentColor={theme.palette.primary.main}
+      accentColor="var(--app-palette-primary-main)"
       avatarIcon="bi:motherboard"
       rows={[
         {
@@ -106,7 +104,6 @@ export const MotherboardInfoCard = () => {
 };
 
 export const CPUDetailsCard = () => {
-  const theme = useAppTheme();
   const [{ data: cpuInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
       { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
@@ -116,7 +113,7 @@ export const CPUDetailsCard = () => {
 
   return (
     <HardwareCard
-      accentColor={theme.palette.primary.main}
+      accentColor="var(--app-palette-primary-main)"
       avatarIcon="ph:cpu"
       rows={[
         {
@@ -147,7 +144,6 @@ export const CPUDetailsCard = () => {
 };
 
 export const BIOSInfoCard = () => {
-  const theme = useAppTheme();
   const [{ data: motherboardInfo }, { data: systemInfo }] = useSuspenseQueries({
     queries: [
       { ...linuxio.system.get_motherboard_info, ...hardwareStableQueryOptions },
@@ -157,7 +153,7 @@ export const BIOSInfoCard = () => {
 
   return (
     <HardwareCard
-      accentColor={theme.palette.warning.main}
+      accentColor="var(--app-palette-warning-main)"
       avatarIcon="mdi:chip"
       rows={[
         {
@@ -189,7 +185,6 @@ export const BIOSInfoCard = () => {
 };
 
 export const GPUInfoCard = () => {
-  const theme = useAppTheme();
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
   const { data: gpus } = useSuspenseQuery({
     ...linuxio.system.get_gpu_info,
@@ -208,7 +203,7 @@ export const GPUInfoCard = () => {
 
   return (
     <HardwareCard
-      accentColor={theme.palette.primary.main}
+      accentColor="var(--app-palette-primary-main)"
       actions={
         gpuCount > 1 ? (
           <AppSelect
@@ -218,9 +213,8 @@ export const GPUInfoCard = () => {
             style={{
               ["--app-select-input-font-size" as string]: "0.72rem",
               width: 190,
-              color: theme.palette.text.secondary,
-              fontSize: "0.78rem",
-              lineHeight: theme.typography.body2.lineHeight,
+              color: "var(--app-palette-text-secondary)",
+              lineHeight: 1.43,
             }}
             value={selectedValue}
             variant="standard"
@@ -284,7 +278,6 @@ const stackBandColor = (index: number, count: number): string => {
 };
 
 const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
-  const theme = useAppTheme();
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -328,14 +321,14 @@ const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
     return [
       {
         label: "CPU",
-        color: theme.palette.primary.main,
+        color: "var(--app-palette-primary-main)",
         points: points.map((point) => ({
           t: point.captured_at_ms,
           v: point.usage_percent,
         })),
       },
     ];
-  }, [coreCount, data, theme.palette.primary.main]);
+  }, [coreCount, data]);
 
   const formatCoreValue = useMemo(
     () =>
@@ -361,7 +354,6 @@ const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
 };
 
 const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
-  const theme = useAppTheme();
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -375,9 +367,9 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
     placeholderData: (previous) => previous,
   });
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
-  const zfsColor = theme.palette.success.main;
-  const dockerColor = theme.chart.rx;
-  const buffersColor = theme.chart.tx;
+  const zfsColor = "var(--app-palette-success-main)";
+  const dockerColor = "var(--app-chart-rx)";
+  const buffersColor = "var(--app-chart-tx)";
   const series = useMemo(() => {
     const points = data ?? [];
     const hasDocker = points.some((point) => (point.docker_used_gb ?? 0) > 0);
@@ -404,7 +396,7 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
     // Bottom-up bands; the agent already excludes cache and ZFS ARC from
     // "used", and Docker containers are carved out of it here.
     const memorySeries = [
-      layer("Apps", theme.palette.primary.main, (point) =>
+      layer("Apps", "var(--app-palette-primary-main)", (point) =>
         hasDocker ? point.used_gb - (point.docker_used_gb ?? 0) : point.used_gb,
       ),
     ];
@@ -424,7 +416,7 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
       );
     }
     return memorySeries;
-  }, [buffersColor, data, dockerColor, theme.palette.primary.main, zfsColor]);
+  }, [buffersColor, data, dockerColor, zfsColor]);
 
   return (
     <HistoryCardBody message={message}>
@@ -442,7 +434,6 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
 };
 
 const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
-  const theme = useAppTheme();
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -457,8 +448,8 @@ const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
-  const readColor = theme.chart.rx;
-  const writeColor = theme.chart.tx;
+  const readColor = "var(--app-chart-rx)";
+  const writeColor = "var(--app-chart-tx)";
   const series = useMemo(
     () => [
       {
@@ -494,7 +485,6 @@ const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
 };
 
 const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
-  const theme = useAppTheme();
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
@@ -509,8 +499,8 @@ const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   });
 
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
-  const rxColor = theme.chart.rx;
-  const txColor = theme.chart.tx;
+  const rxColor = "var(--app-chart-rx)";
+  const txColor = "var(--app-chart-tx)";
   const series = useMemo(
     () => [
       {

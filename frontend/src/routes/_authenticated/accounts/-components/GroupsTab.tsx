@@ -129,12 +129,7 @@ const GroupsTab = ({
                 {group.name}
               </AppTypography>
               {group.isSystem && (
-                <Chip
-                  label="system"
-                  size="small"
-                  style={{ fontSize: "0.65rem", height: 20 }}
-                  variant="soft"
-                />
+                <Chip label="system" size="xsmall" variant="soft" />
               )}
             </div>
           );
@@ -170,8 +165,7 @@ const GroupsTab = ({
                     <Chip
                       key={member}
                       label={member}
-                      size="small"
-                      style={{ fontSize: "0.7rem" }}
+                      size="xsmall"
                       variant="soft"
                     />
                   ))
@@ -183,8 +177,7 @@ const GroupsTab = ({
               {group.members.length > 3 && (
                 <Chip
                   label={`+${group.members.length - 3}`}
-                  size="small"
-                  style={{ fontSize: "0.7rem" }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}

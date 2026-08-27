@@ -145,6 +145,8 @@ const FileEditor = ({
   const normalizedState = stateForSource(editorState, filePath, initialContent);
   const { content, isDirty } = normalizedState;
   const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
+  // The ace theme is chosen from the colour scheme here; nothing else in
+  // this file reads the theme.
   const theme = useAppTheme();
   const isDarkMode = theme.palette.mode === "dark";
   const language = getLanguageMode(fileName);

@@ -20,7 +20,7 @@ const nativeControlExceptions: ReviewedException[] = [
   {
     file: "components/cards/FileCard.tsx",
     pattern:
-      /<input\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
+      /<input\s+className="file-card-rename-input"\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
     reason: "inline file rename input",
     protects: "rename editing, commit, cancel, and propagation isolation",
   },
@@ -39,7 +39,7 @@ const nativeControlExceptions: ReviewedException[] = [
   {
     file: "components/filebrowser/FileListRow.tsx",
     pattern:
-      /<input\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
+      /<input\s+className="file-row-rename-input"\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
     reason: "inline file rename input",
     protects: "rename editing, commit, cancel, and propagation isolation",
   },

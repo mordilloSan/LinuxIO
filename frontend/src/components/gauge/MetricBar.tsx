@@ -1,10 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import "./MetricBar.css";
+
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
 
 interface MetricBarProps {
   color: string;
@@ -23,8 +23,6 @@ const MetricBar = ({
   rightLabel,
   icon,
 }: MetricBarProps) => {
-  const theme = useAppTheme();
-
   return (
     <AppTooltip title={tooltip ?? ""}>
       <div style={{ width: "100%", marginBottom: 4 }}>
@@ -63,16 +61,13 @@ const MetricBar = ({
           </AppTypography>
         </div>
         <AppLinearProgress
+          className="metric-bar-track"
           style={
             {
               width: "100%",
               height: 7,
               borderRadius: 4,
               overflow: "hidden",
-              backgroundColor: alpha(
-                theme.chart.neutral,
-                theme.palette.mode === "dark" ? 0.18 : 0.12,
-              ),
               "--_lp-color": color,
             } as CSSProperties
           }

@@ -16,7 +16,6 @@ import {
 } from "@/components/charts/HistoryCard";
 import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useAppTheme } from "@/theme";
 import { formatThroughput } from "@/utils/formaters";
 
 /**
@@ -68,7 +67,6 @@ const NetworkTrafficHistoryLive = ({
   name: string;
   rangeId: HistoryRangeId;
 }) => {
-  const theme = useAppTheme();
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
   const { isEnabled, reason } = useCapability("monitoringAvailable");
@@ -79,11 +77,13 @@ const NetworkTrafficHistoryLive = ({
     placeholderData: (previous) => previous,
   });
 
-  const txColor = theme.chart.tx;
-  const rxColor = theme.chart.rx;
   const series = useMemo(
-    () => networkHistorySeries(data, name, { rx: rxColor, tx: txColor }),
-    [data, name, rxColor, txColor],
+    () =>
+      networkHistorySeries(data, name, {
+        rx: "var(--app-chart-rx)",
+        tx: "var(--app-chart-tx)",
+      }),
+    [data, name],
   );
 
   const message = historyCardMessage(

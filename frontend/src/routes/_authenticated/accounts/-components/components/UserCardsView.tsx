@@ -7,7 +7,8 @@ import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import {
   CARD_GRID_SIZE_STANDARD,
   EASING_STANDARD,
@@ -50,8 +51,7 @@ const UserCardsView = ({
   onToggleLock,
   pendingLockActions,
 }: UserCardsViewProps) => {
-  const theme = useAppTheme();
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const isCompactLayout = useAppMediaQuery(down("md"));
   const enterFromSide = {
     opacity: 0,
     x: isCompactLayout ? 0 : 40,

@@ -240,11 +240,7 @@ const UsersTab = ({
                 <Chip
                   color="primary"
                   label="Your account"
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -252,11 +248,7 @@ const UsersTab = ({
                 <Chip
                   color="warning"
                   label="locked"
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -346,22 +338,14 @@ const UsersTab = ({
                         )
                       : group
                   }
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               ))}
               {groups.length > 3 && (
                 <Chip
                   label={`+${groups.length - 3}`}
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}

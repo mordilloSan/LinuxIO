@@ -75,12 +75,12 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
           style={{
             position: "fixed",
             inset: 0,
-            zIndex: 1301,
+            zIndex: "calc(var(--app-z-dialog) + 1)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             padding: "24px",
-            color: "#fff",
+            color: "white",
             background: "rgba(0, 0, 0, 0.52)",
             backdropFilter: "blur(16px)",
           }}

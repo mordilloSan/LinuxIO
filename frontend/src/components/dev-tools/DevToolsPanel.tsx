@@ -8,8 +8,7 @@ import "./devtools.css";
 import { DevtoolsModal } from "@/components/dev-tools/DevtoolsModal";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
-import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
+import AppTypography from "@/components/ui/AppTypography";
 
 interface DevToolsPanelProps {
   isOpen: boolean;
@@ -28,7 +27,6 @@ export const DevToolsPanel = ({
   onClose,
   onToggleWebVitals,
 }: DevToolsPanelProps) => {
-  const theme = useAppTheme();
   // Check if update notification is currently shown
   const shown = !!sessionStorage.getItem("dev_update_forced");
   const [isDevtoolsOpen, setIsDevtoolsOpen] = useState(false);
@@ -66,12 +64,12 @@ export const DevToolsPanel = ({
           bottom: 60,
           right: 20,
           zIndex: 9999,
-          color: theme.palette.common.white,
+          color: "white",
           padding: "12px 16px",
-          borderRadius: 8,
-          boxShadow: `0 4px 6px ${alpha(theme.palette.common.black, 0.3)}`,
-          backgroundColor: alpha(theme.palette.background.paper, 0.92),
-          fontSize: 14,
+          borderRadius: "var(--app-radius-md)",
+          boxShadow: "0 4px 6px color-mix(in srgb, black, transparent 70%)",
+          backgroundColor:
+            "color-mix(in srgb, var(--app-palette-background-paper), transparent 8%)",
           display: "flex",
           flexDirection: "column",
           gap: 8,
@@ -80,23 +78,29 @@ export const DevToolsPanel = ({
       >
         <div
           style={{
-            fontWeight: "bold",
             marginBottom: 4,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
           }}
         >
-          <span> Dev Tools</span>
+          <AppTypography
+            color="white"
+            component="span"
+            fontWeight={700}
+            variant="body1"
+          >
+            {" "}
+            Dev Tools
+          </AppTypography>
           <AppIconButton
             aria-label="Close developer tools"
             onClick={onClose}
             style={{
               background: "transparent",
               border: "none",
-              color: theme.palette.common.white,
+              color: "white",
               cursor: "pointer",
-              fontSize: 18,
               padding: 0,
               marginLeft: 8,
             }}

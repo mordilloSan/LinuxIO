@@ -3,9 +3,7 @@ import { memo } from "react";
 
 import "./FileIcon.css";
 
-import { useAppTheme } from "@/theme";
 import { FILE_TYPE_COLORS } from "@/theme/colors";
-import { alpha } from "@/utils/color";
 
 import { getIconForType } from "./fileIconUtils";
 
@@ -19,14 +17,13 @@ interface FileIconProps {
   size?: number;
 }
 
-const getIconColor = (
-  filename: string | undefined,
-  defaultColor: string,
-): string => {
-  if (!filename) return defaultColor;
+// Returns undefined when the extension has no dedicated color, so the caller
+// falls back to the CSS-driven default (currentColor via .file-icon--default-color).
+const getIconColor = (filename: string | undefined): string | undefined => {
+  if (!filename) return undefined;
 
   const lastDotIndex = filename.lastIndexOf(".");
-  if (lastDotIndex === -1) return defaultColor;
+  if (lastDotIndex === -1) return undefined;
 
   const ext = filename.slice(lastDotIndex + 1).toLowerCase();
 
@@ -102,8 +99,8 @@ const getIconColor = (
     return FILE_TYPE_COLORS.executable;
   }
 
-  // Default
-  return defaultColor;
+  // Default: let the CSS-driven fallback color apply.
+  return undefined;
 };
 
 const FileIcon = memo(
@@ -115,18 +112,19 @@ const FileIcon = memo(
     size = 70,
     isSymlink = false,
   }: FileIconProps) => {
-    const theme = useAppTheme();
     const iconName = isDirectory ? "mdi:folder" : getIconForType(filename);
-    const defaultIconColor =
-      theme.palette.mode === "dark"
-        ? theme.palette.common.white
-        : alpha(theme.palette.common.black, 0.6);
     const iconColor = isDirectory
-      ? theme.palette.primary.main
-      : getIconColor(filename, defaultIconColor);
+      ? "var(--app-palette-primary-main)"
+      : getIconColor(filename);
     const wrapperOpacity = hidden ? 0.25 : 1;
 
-    const wrapperClass = ["file-icon", className].filter(Boolean).join(" ");
+    const wrapperClass = [
+      "file-icon",
+      !isDirectory && iconColor === undefined && "file-icon--default-color",
+      className,
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     if (!isSymlink) {
       return (
@@ -160,11 +158,12 @@ const FileIcon = memo(
           icon="mdi:link"
           style={{
             position: "absolute",
-            color: theme.palette.text.secondary,
+            color: "var(--app-palette-text-secondary)",
             bottom: isDirectory ? "20%" : "10%",
             right: isDirectory ? "10%" : "15%",
             transform: "rotate(-45deg)",
-            filter: `drop-shadow(0px 1px 2px ${alpha(theme.palette.common.black, 0.5)})`,
+            filter:
+              "drop-shadow(0px 1px 2px color-mix(in srgb, black, transparent 50%))",
           }}
           width={size * 0.35}
         />

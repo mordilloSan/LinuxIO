@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
-import { useAppTheme } from "@/theme";
 
 interface CreateInterfaceDialogProps {
   availableNICs: { name: string; label: string }[];
@@ -59,7 +58,6 @@ const CreateInterfaceDialog = ({
   dns,
   setDns,
 }: CreateInterfaceDialogProps) => {
-  const theme = useAppTheme();
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
   const portTaken = port && existingPorts.some((p) => Number(port) === p);
   const cidrTaken =
@@ -72,7 +70,7 @@ const CreateInterfaceDialog = ({
     <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>Create New Interface</AppDialogTitle>
       <AppDialogContent>
-        <div style={{ marginTop: theme.spacing(2) }}>
+        <div style={{ marginTop: "var(--app-space-8)" }}>
           <AppTextField
             disabled={loading}
             error={!!nameTaken}

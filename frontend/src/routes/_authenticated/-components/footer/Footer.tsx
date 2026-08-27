@@ -3,14 +3,11 @@ import { memo } from "react";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
-import { useAppTheme } from "@/theme";
 
 import DevToolsButton from "./DevToolsButton";
 import { NavbarNotificationsDropdown } from "../navbar/NavbarNotificationsDropdown";
 
 function Footer() {
-  const theme = useAppTheme();
-
   const { data } = useQuery({
     ...linuxio.control.version,
     staleTime: CACHE_TTL_MS.FIVE_MINUTES,
@@ -21,7 +18,7 @@ function Footer() {
     <footer
       style={{
         width: "100%",
-        background: theme.footer?.background || theme.palette.background.paper,
+        background: "var(--app-footer-background)",
         position: "relative",
         zIndex: 1300,
       }}

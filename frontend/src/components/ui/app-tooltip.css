@@ -29,7 +29,7 @@
    surface, divider border, 8px radius, fade + short slide toward rest. */
 .app-tooltip {
   position: fixed;
-  z-index: 1500;
+  z-index: var(--app-z-tooltip);
   box-sizing: border-box;
   /* max-content keeps a short tooltip hugging its text — the reason this rule
      used to say nowrap — while max-width still caps a long one. nowrap plus a

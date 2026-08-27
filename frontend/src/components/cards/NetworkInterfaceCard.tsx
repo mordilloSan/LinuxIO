@@ -11,7 +11,6 @@ import {
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_SM } from "@/theme/constants";
 
 const getInterfaceIcon = (type?: string) => {
@@ -79,7 +78,6 @@ const NetworkInterfaceCardContent = ({
   onToggle,
   type,
 }: NetworkInterfaceCardProps) => {
-  const theme = useAppTheme();
   const handleToggle = useCallback(() => onToggle(name), [name, onToggle]);
   const { data: rawInterface } = useQuery({
     ...linuxio.network.get_network_info,
@@ -90,13 +88,12 @@ const NetworkInterfaceCardContent = ({
   if (!rawInterface) return null;
 
   const iface = { ...rawInterface, type };
-  const primaryColor = theme.palette.primary.main;
 
   return (
     <>
       <StatusDot
         absolute
-        color={getNetworkStateColor(iface.state, theme)}
+        color={getNetworkStateColor(iface.state)}
         size={10}
         style={{ top: 16, right: 8 }}
         tooltip={getNetworkStateLabel(iface.state)}
@@ -119,7 +116,10 @@ const NetworkInterfaceCardContent = ({
           width: "100%",
         }}
       >
-        <NetworkInterfaceIcon color={primaryColor} type={type} />
+        <NetworkInterfaceIcon
+          color="var(--app-palette-primary-main)"
+          type={type}
+        />
         <div style={{ flexGrow: 1 }}>
           <NetworkInterfaceTitle name={name} />
           <AppTypography color="text.secondary" noWrap variant="body2">

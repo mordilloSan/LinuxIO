@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 export interface ValidationError {
   column?: number;
@@ -28,8 +27,6 @@ const ComposeValidationFeedback = ({
   validation,
   isValidating = false,
 }: ComposeValidationFeedbackProps) => {
-  const theme = useAppTheme();
-
   // Track which validation result has been dismissed. When a new validation
   // arrives (different object reference), visible resets automatically without
   // any synchronous setState in the effect body.
@@ -79,7 +76,7 @@ const ComposeValidationFeedback = ({
   const warnings = validation.errors.filter((e) => e.type === "warning");
 
   return (
-    <div style={{ marginBottom: theme.spacing(2) }}>
+    <div style={{ marginBottom: "var(--app-space-8)" }}>
       {errors.length > 0 && (
         <AppCollapse in={visible}>
           <AppAlert
@@ -92,7 +89,7 @@ const ComposeValidationFeedback = ({
               <div
                 key={index}
                 style={{
-                  marginTop: index > 0 ? theme.spacing(1) : 0,
+                  marginTop: index > 0 ? "var(--app-space-4)" : 0,
                 }}
               >
                 <AppTypography variant="body2">
@@ -122,7 +119,7 @@ const ComposeValidationFeedback = ({
               <div
                 key={index}
                 style={{
-                  marginTop: index > 0 ? theme.spacing(1) : 0,
+                  marginTop: index > 0 ? "var(--app-space-4)" : 0,
                 }}
               >
                 <AppTypography variant="body2">

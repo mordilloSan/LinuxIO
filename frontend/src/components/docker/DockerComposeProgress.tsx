@@ -6,7 +6,6 @@ import "./docker-compose-progress.css";
 import AppButton from "@/components/ui/AppButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 import {
@@ -27,7 +26,6 @@ const isError = (t: ComposeTask) => t.status === "Error";
 // LayerRow renders a single pull layer: short id, current action, a determinate
 // bar (Docker gives us `percent`), and a humanized size while downloading.
 const LayerRow = ({ task }: { task: ComposeTask }) => {
-  const theme = useAppTheme();
   const done = isDone(task);
   const showSize = !done && !!task.total && task.total > 0;
 
@@ -36,8 +34,8 @@ const LayerRow = ({ task }: { task: ComposeTask }) => {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: theme.spacing(1),
-        padding: `${theme.spacing(0.25)} 0`,
+        gap: "var(--app-space-4)",
+        padding: "var(--app-space-2) 0",
       }}
     >
       <AppTypography
@@ -47,10 +45,10 @@ const LayerRow = ({ task }: { task: ComposeTask }) => {
           width: 96,
           flexShrink: 0,
           fontFamily: "var(--app-font-mono)",
-          fontSize: "0.75rem",
         }}
         title={task.id}
         tooltipOnlyWhenTruncated={false}
+        variant="caption"
       >
         {shortId(task.id)}
       </AppTypography>
@@ -59,9 +57,9 @@ const LayerRow = ({ task }: { task: ComposeTask }) => {
         style={{
           width: 150,
           flexShrink: 0,
-          fontSize: "0.8rem",
         }}
         title={task.text}
+        variant="body2"
       >
         {task.text}
       </AppTypography>
@@ -79,9 +77,9 @@ const LayerRow = ({ task }: { task: ComposeTask }) => {
           width: 130,
           flexShrink: 0,
           textAlign: "right",
-          fontSize: "0.75rem",
           fontVariantNumeric: "tabular-nums",
         }}
+        variant="caption"
       >
         {done
           ? "✓"
@@ -115,7 +113,6 @@ const GroupHeader = ({
   controlsId,
   onToggle,
 }: GroupHeaderProps) => {
-  const theme = useAppTheme();
   const done = isDone(task);
 
   const headerStyle: CSSProperties = {
@@ -127,9 +124,9 @@ const GroupHeader = ({
     // AppButton centres its content; without the summary bar's flex:1 there is
     // nothing left to push this row against its left edge.
     justifyContent: "flex-start",
-    gap: theme.spacing(1),
-    marginBottom: expanded && hasLayers ? theme.spacing(1.5) : 0,
-    marginTop: first ? 0 : theme.spacing(2.5),
+    gap: "var(--app-space-4)",
+    marginBottom: expanded && hasLayers ? "var(--app-space-6)" : 0,
+    marginTop: first ? 0 : "var(--app-space-8)",
     padding: 0,
     textAlign: "left",
     userSelect: "none",
@@ -140,7 +137,7 @@ const GroupHeader = ({
     <>
       {hasLayers ? (
         <Icon
-          color={theme.palette.text.secondary}
+          color="var(--app-palette-text-secondary)"
           height={18}
           icon={expanded ? "mdi:chevron-down" : "mdi:chevron-right"}
           width={18}
@@ -150,14 +147,14 @@ const GroupHeader = ({
       )}
       {done ? (
         <Icon
-          color={theme.palette.success.main}
+          color="var(--app-palette-success-main)"
           height={16}
           icon="mdi:check-circle"
           width={16}
         />
       ) : isError(task) ? (
         <Icon
-          color={theme.palette.error.main}
+          color="var(--app-palette-error-main)"
           height={16}
           icon="mdi:alert-circle"
           width={16}
@@ -165,16 +162,16 @@ const GroupHeader = ({
       ) : (
         <Icon
           className="compose-progress__spin"
-          color={theme.palette.text.secondary}
+          color="var(--app-palette-text-secondary)"
           height={16}
           icon="mdi:loading"
           width={16}
         />
       )}
-      <AppTypography style={{ fontWeight: 600, fontSize: "0.85rem" }}>
+      <AppTypography fontWeight={600} variant="body2">
         {prettyId(task.id)}
       </AppTypography>
-      <AppTypography color="text.secondary" style={{ fontSize: "0.8rem" }}>
+      <AppTypography color="text.secondary" variant="body2">
         {task.text}
       </AppTypography>
 
@@ -182,7 +179,13 @@ const GroupHeader = ({
           summary bar retires with the work it was tracking. */}
       {!expanded && !done && percent !== null && (
         <>
-          <div style={{ flex: 1, minWidth: 80, marginLeft: theme.spacing(1) }}>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 80,
+              marginLeft: "var(--app-space-4)",
+            }}
+          >
             <AppLinearProgress
               color={percent >= 100 ? "success" : "primary"}
               value={percent}
@@ -195,9 +198,9 @@ const GroupHeader = ({
               width: 40,
               flexShrink: 0,
               textAlign: "right",
-              fontSize: "0.75rem",
               fontVariantNumeric: "tabular-nums",
             }}
+            variant="caption"
           >
             {percent}%
           </AppTypography>
@@ -225,7 +228,6 @@ const GroupHeader = ({
 };
 
 const DockerComposeProgress = ({ tasks }: DockerComposeProgressProps) => {
-  const theme = useAppTheme();
   // Per-group user override of expansion. Absent => collapsed by default; the
   // user expands a section on demand.
   const [collapsedOverride, setCollapsedOverride] = useState<
@@ -257,7 +259,7 @@ const DockerComposeProgress = ({ tasks }: DockerComposeProgressProps) => {
     });
 
   return (
-    <div style={{ padding: theme.spacing(2) }}>
+    <div style={{ padding: "var(--app-space-8)" }}>
       {groups.map((g, index) => {
         const layers = layersByParent.get(g.id) ?? [];
         const groupPercent =

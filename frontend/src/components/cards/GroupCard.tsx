@@ -9,7 +9,6 @@ import {
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_MD, GAP_SM } from "@/theme/constants";
 
 export interface GroupCardProps {
@@ -19,13 +18,12 @@ export interface GroupCardProps {
 }
 
 const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
-  const theme = useAppTheme();
   const isRoot = group.name === "root";
   const isProtected = isRoot || group.isSystem;
 
   const accentColor = group.isSystem
-    ? theme.palette.text.secondary
-    : theme.palette.primary.main;
+    ? "var(--app-palette-text-secondary)"
+    : "var(--app-palette-primary-main)";
 
   const icon = group.isSystem ? "mdi:account-cog" : "mdi:account-group";
 
@@ -50,18 +48,12 @@ const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
               <Chip
                 key={`${group.name}-${member}`}
                 label={member}
-                size="small"
-                style={{ fontSize: "0.65rem", height: 20 }}
+                size="xsmall"
                 variant="soft"
               />
             ))}
             {overflow > 0 && (
-              <Chip
-                label={`+${overflow}`}
-                size="small"
-                style={{ fontSize: "0.65rem", height: 20 }}
-                variant="soft"
-              />
+              <Chip label={`+${overflow}`} size="xsmall" variant="soft" />
             )}
           </div>
         ) : (
@@ -141,7 +133,7 @@ const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
             onClick={onEditMembers}
           />
           <AppActionIconButton
-            color={isProtected ? undefined : theme.palette.error.main}
+            color={isProtected ? undefined : "var(--app-palette-error-main)"}
             disabled={isProtected}
             icon="mdi:delete"
             iconSize={18}

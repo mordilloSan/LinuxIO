@@ -2,11 +2,10 @@
  * Applies alpha transparency to a CSS color string.
  * Supports hex (#rgb, #rrggbb, #rrggbbaa), rgb(), rgba(), and hsl() formats.
  *
- * Anything it doesn't recognize — a `var(...)` reference included — falls
- * through the last branch and comes back unchanged, opacity silently
- * dropped. For a CSS variable input, reach for mixWithTransparency in
- * theme/surfaces.ts instead, which mixes through color-mix and so still
- * works on values it can't parse.
+ * Anything it doesn't recognize — a `var(...)` reference included — is mixed
+ * toward transparent with color-mix instead, so a CSS variable input still
+ * gets the requested opacity (at the cost of a string the browser resolves
+ * rather than a literal rgba()).
  */
 export function alpha(color: string, opacity: number): string {
   const clamped = Math.min(1, Math.max(0, opacity));
@@ -43,7 +42,7 @@ export function alpha(color: string, opacity: number): string {
     return `hsla(${hslMatch[1]}, ${hslMatch[2]}, ${hslMatch[3]}, ${clamped})`;
   }
 
-  return color;
+  return `color-mix(in srgb, ${color}, transparent ${Math.round((1 - clamped) * 100)}%)`;
 }
 
 type RgbColor = {

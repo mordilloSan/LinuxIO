@@ -6,7 +6,6 @@ import { WebVitalsFooterStats } from "@/components/dev-tools/WebVitalsFooterStat
 import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { shadowSm } from "@/theme/constants";
 import {
   readPersistedState,
@@ -21,7 +20,6 @@ const isBoolean = (value: unknown): value is boolean =>
   typeof value === "boolean";
 
 const DevToolsButton = () => {
-  const theme = useAppTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [isWebVitalsVisible, setIsWebVitalsVisible] = useState(
     () => readPersistedState(WEB_VITALS_STORAGE_KEY, isBoolean) ?? false,
@@ -51,7 +49,7 @@ const DevToolsButton = () => {
               <Icon
                 height={16}
                 icon="mdi:wrench"
-                style={{ color: theme.palette.primary.main }}
+                style={{ color: "var(--app-palette-primary-main)" }}
                 width={16}
               />
             }
@@ -60,7 +58,7 @@ const DevToolsButton = () => {
                 gap: 3,
                 border: "1px solid",
                 borderColor: isOpen
-                  ? theme.palette.primary.main
+                  ? "var(--app-palette-primary-main)"
                   : "transparent",
                 borderRadius: 4,
                 padding: 4,
@@ -69,7 +67,7 @@ const DevToolsButton = () => {
                 minWidth: 90,
                 transition:
                   "background-color 0.2s, border-color 0.2s, box-shadow 0.2s",
-                "--devtools-hover-border": theme.palette.primary.main,
+                "--devtools-hover-border": "var(--app-palette-primary-main)",
                 "--devtools-hover-shadow": shadowSm,
               } as CSSProperties
             }

@@ -6,12 +6,12 @@ import {
   resolveDockAccentGradient,
   sampleDockAccentColor,
 } from "@/routes/_authenticated/-components/dock/dockPalette";
+import { useAppTheme } from "@/theme";
 import { lighten, toHexColor } from "@/utils/color";
 
 import "./dock-accent-gradient-editor.css";
 
 interface DockAccentGradientEditorProps {
-  accent: string;
   onChange: (value: ConfigDockAccentGradient) => void;
   value?: ConfigDockAccentGradient;
 }
@@ -32,10 +32,11 @@ function completeGradient(
 }
 
 function DockAccentGradientEditor({
-  accent,
   onChange,
   value,
 }: DockAccentGradientEditorProps) {
+  // The editor's hex math needs the resolved accent colour, not a var().
+  const accent = useAppTheme().palette.primary.main;
   const stored = completeGradient(value);
   const resolved = resolveDockAccentGradient(accent, stored);
   const startInputColor =

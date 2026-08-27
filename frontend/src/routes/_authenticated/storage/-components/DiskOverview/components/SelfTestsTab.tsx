@@ -4,7 +4,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 import { getSmartNumber, getSmartString } from "../utils";
 
@@ -126,7 +125,6 @@ export const SelfTestsTab = ({
   smartmontoolsAvailable,
   smartmontoolsReason,
 }: SelfTestsTabProps) => {
-  const theme = useAppTheme();
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
   const displayPercent =
     percentage !== undefined ? Math.max(0, Math.min(100, percentage)) : 0;
@@ -139,7 +137,7 @@ export const SelfTestsTab = ({
     <>
       <div
         style={{
-          marginBottom: theme.spacing(3),
+          marginBottom: "var(--app-space-12)",
         }}
       >
         <AppTypography gutterBottom variant="subtitle2">
@@ -148,7 +146,7 @@ export const SelfTestsTab = ({
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             alignItems: "center",
           }}
         >
@@ -188,10 +186,10 @@ export const SelfTestsTab = ({
         {startPending !== null && (
           <div
             style={{
-              marginTop: theme.spacing(1.5),
+              marginTop: "var(--app-space-6)",
               display: "flex",
               alignItems: "center",
-              gap: theme.spacing(1.5),
+              gap: "var(--app-space-6)",
             }}
           >
             <AppLinearProgress

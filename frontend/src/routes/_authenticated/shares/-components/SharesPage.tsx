@@ -431,7 +431,6 @@ const NFSOptionsDropdown = ({
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                fontSize: "0.85rem",
                 color: "inherit",
                 textAlign: "left",
               }}
@@ -442,12 +441,16 @@ const NFSOptionsDropdown = ({
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
-                  backgroundColor: options[key] ? "#00E676" : "#9e9e9e",
+                  backgroundColor: options[key]
+                    ? "var(--app-palette-success-main)"
+                    : "var(--app-palette-text-disabled)",
                   flexShrink: 0,
                   transition: "background-color 150ms ease",
                 }}
               />
-              <span>{label}</span>
+              <AppTypography component="span" variant="body2">
+                {label}
+              </AppTypography>
             </AppButton>
           ))}
         </div>

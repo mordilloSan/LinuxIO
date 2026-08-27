@@ -16,7 +16,6 @@ import {
 } from "@/components/filebrowser/DirectoryRows";
 import SelectionBox from "@/components/filebrowser/SelectionBox";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
-import { useAppTheme } from "@/theme";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
 import { stripTrailingSlash } from "@/utils/path";
 
@@ -243,7 +242,6 @@ const VirtualDirectoryItems = ({
 }: VirtualDirectoryItemsProps) => {
   "use no memo";
 
-  const theme = useAppTheme();
   const horizontalPadding = viewMode === "card" ? CARD_PADDING : 0;
   const rowGap = viewMode === "card" ? CARD_GAP : LIST_GAP;
 
@@ -370,7 +368,7 @@ const VirtualDirectoryItems = ({
                   style={{
                     display: viewMode === "list" ? "flex" : "grid",
                     flexDirection: viewMode === "list" ? "column" : undefined,
-                    gap: viewMode === "list" ? theme.spacing(0.25) : CARD_GAP,
+                    gap: viewMode === "list" ? 1 : CARD_GAP,
                     gridTemplateColumns:
                       viewMode === "card"
                         ? `repeat(${columnCount}, minmax(0, 1fr))`

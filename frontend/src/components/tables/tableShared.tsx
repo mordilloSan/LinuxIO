@@ -48,18 +48,20 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { REORDER_HOLD_MS } from "@/constants/reorder";
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import {
   EASING_STANDARD_CSS,
   TABLE_ROW_MIN_HEIGHT,
   TRANSITION_DURATION_STANDARD_MS,
   shadowSm,
 } from "@/theme/constants";
-import { alpha } from "@/utils/color";
 import {
   readPersistedState,
   writePersistedState,
 } from "@/utils/persistedState";
+
+import "./table-shell.css";
 
 // The table layer below AppVirtualTable: chrome, header, cells, and the gesture
 // contract from `docs/table-row-gestures.md`. Like the app-dt__* CSS, nothing
@@ -321,16 +323,10 @@ export function AppTableShell({
   style,
   variant,
 }: AppTableShellProps) {
-  const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
   const isEmbedded = variant === "embedded";
   const headRowBg = isEmbedded
     ? "transparent"
-    : alpha(theme.palette.text.primary, 0.08);
-  const selectedBg = alpha(theme.palette.primary.main, isDark ? 0.15 : 0.1);
-  const altBg = isEmbedded
-    ? "transparent"
-    : alpha(theme.palette.text.primary, isDark ? 0.04 : 0.05);
+    : "color-mix(in srgb, var(--app-palette-text-primary), transparent 92%)";
 
   return (
     <div
@@ -347,12 +343,10 @@ export function AppTableShell({
       role="table"
       style={
         {
-          "--app-dt-alt-bg": altBg,
           "--app-dt-grid": gridTemplate,
           "--app-dt-head-bg": headRowBg,
           "--app-dt-row-min-height": `${TABLE_ROW_MIN_HEIGHT}px`,
-          "--app-dt-selected-bg": selectedBg,
-          "--reorder-hold-color": theme.palette.primary.main,
+          "--reorder-hold-color": "var(--app-palette-primary-main)",
           "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
           boxShadow: isEmbedded ? "none" : shadowSm,
           height: height ?? (fillAvailable ? "100%" : undefined),
@@ -462,11 +456,10 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
   renderExpandedContent,
   sorting,
 }: UseAppTableInstanceOptions<TData, TDnd>) {
-  const theme = useAppTheme();
-  const belowSm = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const belowMd = useAppMediaQuery(theme.breakpoints.down("md"));
-  const belowLg = useAppMediaQuery(theme.breakpoints.down("lg"));
-  const belowXl = useAppMediaQuery(theme.breakpoints.down("xl"));
+  const belowSm = useAppMediaQuery(down("sm"));
+  const belowMd = useAppMediaQuery(down("md"));
+  const belowLg = useAppMediaQuery(down("lg"));
+  const belowXl = useAppMediaQuery(down("xl"));
   // The lazy initializer reads storage once, so the key is fixed for the
   // life of the table — a key that changes identity mid-flight is a bug at
   // the call site, not a supported way to swap stores.

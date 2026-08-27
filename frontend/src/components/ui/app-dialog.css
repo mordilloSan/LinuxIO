@@ -14,7 +14,7 @@ body.dialog-open #root {
 .app-dialog-root {
   position: fixed;
   inset: 0;
-  z-index: 1300;
+  z-index: var(--app-z-dialog);
   display: flex;
   align-items: center;
   justify-content: center;

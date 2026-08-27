@@ -1,14 +1,16 @@
+import AppTypography from "@/components/ui/AppTypography";
+
 const EmptyState = () => {
   return (
-    <div
-      style={{
-        padding: "32px",
-        textAlign: "center",
-        fontSize: "16px",
-      }}
+    <AppTypography
+      align="center"
+      component="div"
+      fontWeight={400}
+      style={{ padding: 32 }}
+      variant="h6"
     >
       This folder is empty.
-    </div>
+    </AppTypography>
   );
 };
 

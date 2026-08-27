@@ -9,7 +9,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 
 const ACCOUNTS_TOAST_META = {
   label: "Open accounts",
@@ -29,7 +28,6 @@ const DeleteUserDialog = ({
   usernames,
   onSuccess,
 }: DeleteUserDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
@@ -73,8 +71,8 @@ const DeleteUserDialog = ({
         </AppDialogContentText>
         <div
           style={{
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
+            marginTop: "var(--app-space-8)",
+            marginBottom: "var(--app-space-4)",
           }}
         >
           {usernames.map((name) => (

@@ -7,7 +7,6 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 interface PackageChunkRow {
   id: string;
@@ -33,7 +32,6 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
   date,
   upgrades,
 }: PackageHistoryTableProps) {
-  const theme = useAppTheme();
   const data = useMemo(
     () =>
       chunkArray(upgrades, 5).map((chunk, index) => ({
@@ -52,22 +50,22 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
           if (!pkg) return null;
 
           return (
-            <span
+            <AppTypography
+              color="text.secondary"
+              component="span"
               style={{
-                color: "var(--app-palette-text-secondary)",
-                fontFamily: theme.typography.fontFamily,
-                fontSize: "0.85rem",
                 overflowWrap: "break-word",
                 wordBreak: "break-word",
               }}
+              variant="body2"
             >
               {pkg.package}
-            </span>
+            </AppTypography>
           );
         },
         meta: { width: "20%" },
       })),
-    [theme.typography.fontFamily],
+    [],
   );
 
   return (
@@ -92,7 +90,6 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
 });
 
 const UpdateHistory = () => {
-  const theme = useAppTheme();
   const { data: rows } = useSuspenseQuery(linuxio.updates.get_update_history);
 
   const columns: AppVirtualTableColumnDef<(typeof rows)[number]>[] = [
@@ -105,7 +102,7 @@ const UpdateHistory = () => {
           style={{
             display: "flex",
             alignItems: "center",
-            color: theme.palette.primary.main,
+            color: "var(--app-palette-primary-main)",
           }}
         >
           <Icon height={20} icon="mdi:history" width={20} />

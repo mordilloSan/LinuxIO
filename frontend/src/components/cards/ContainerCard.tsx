@@ -13,7 +13,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_LG } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -26,12 +25,12 @@ const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 const getStatusColor = (container: ContainerInfo) => {
   const status = container.Status.toLowerCase();
-  if (status.includes("unhealthy")) return "warning.main";
-  if (status.includes("healthy")) return "success.main";
-  if (container.State === "running") return "success.main";
+  if (status.includes("unhealthy")) return "var(--app-palette-warning-main)";
+  if (status.includes("healthy")) return "var(--app-palette-success-main)";
+  if (container.State === "running") return "var(--app-palette-success-main)";
   if (container.State === "exited" || container.State === "dead")
-    return "error.main";
-  return "warning.main";
+    return "var(--app-palette-error-main)";
+  return "var(--app-palette-warning-main)";
 };
 
 const getStatusTooltip = (container: ContainerInfo) => {
@@ -42,12 +41,6 @@ const getStatusTooltip = (container: ContainerInfo) => {
   if (container.State === "exited") return "Stopped";
   if (container.State === "dead") return "Dead";
   return "Unhealthy / Starting";
-};
-
-/** Resolve a MUI palette path like "success.main" to an actual color string. */
-const resolveColor = (palette: any, path: string): string => {
-  const [group, key] = path.split(".") as [string, string];
-  return palette[group]?.[key];
 };
 
 interface ContainerCardProps {
@@ -100,7 +93,6 @@ const ContainerCardBody = ({
   onSelect,
   selected,
 }: ContainerCardBodyProps) => {
-  const theme = useAppTheme();
   const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
 
   // dialogs
@@ -206,7 +198,7 @@ const ContainerCardBody = ({
   const memPercent =
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
-  const statusColor = resolveColor(theme.palette, getStatusColor(container));
+  const statusColor = getStatusColor(container);
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (
     <div
@@ -417,7 +409,6 @@ const ContainerCardBody = ({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <AppTypography
                     component="div"
-                    fontSize="0.875rem"
                     fontWeight="bold"
                     noWrap
                     title={name}
@@ -429,7 +420,6 @@ const ContainerCardBody = ({
                   <AppTypography
                     color="text.secondary"
                     component="div"
-                    fontSize="0.7rem"
                     noWrap
                     style={{ marginTop: 2 }}
                     title={container.Image}
@@ -454,7 +444,7 @@ const ContainerCardBody = ({
                       role="img"
                       style={{
                         alignItems: "center",
-                        color: theme.palette.warning.main,
+                        color: "var(--app-palette-warning-main)",
                         display: "flex",
                       }}
                     >
@@ -474,7 +464,7 @@ const ContainerCardBody = ({
               flex: 1,
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(1.25),
+              gap: "var(--app-space-4)",
               minWidth: 0,
               contain: "inline-size",
             }}
@@ -505,7 +495,7 @@ const ContainerCardBody = ({
                   role="img"
                   style={{
                     alignItems: "center",
-                    color: theme.palette.warning.main,
+                    color: "var(--app-palette-warning-main)",
                     display: "flex",
                   }}
                 >
@@ -563,11 +553,10 @@ const ContainerCardBody = ({
                     marginLeft: 4,
                     marginRight: 0.4,
                     marginBottom: 2,
-                    fontSize: "1.05rem",
                   }}
                   title={name}
                   toastMeta={DOCKER_TOAST_META}
-                  variant="subtitle1"
+                  variant="h5"
                 >
                   {name}
                 </AppTypography>
@@ -698,7 +687,7 @@ const ContainerCardBody = ({
                     style={{ fontVariantNumeric: "tabular-nums" }}
                     variant="caption"
                   >
-                    <span style={{ color: theme.palette.text.primary }}>
+                    <span style={{ color: "var(--app-palette-text-primary)" }}>
                       CPU
                     </span>
                     {" - "}
@@ -711,7 +700,7 @@ const ContainerCardBody = ({
                     style={{ fontVariantNumeric: "tabular-nums" }}
                     variant="caption"
                   >
-                    <span style={{ color: theme.palette.text.primary }}>
+                    <span style={{ color: "var(--app-palette-text-primary)" }}>
                       MEM
                     </span>
                     {" - "}
@@ -722,14 +711,14 @@ const ContainerCardBody = ({
             ) : (
               <>
                 <MetricBar
-                  color={theme.palette.primary.main}
+                  color="var(--app-palette-primary-main)"
                   label="CPU"
                   percent={cpuPercent}
                   rightLabel={`${cpuPercent.toFixed(1)}%`}
                   tooltip="CPU Usage"
                 />
                 <MetricBar
-                  color={theme.palette.primary.main}
+                  color="var(--app-palette-primary-main)"
                   label="MEM"
                   percent={memPercent}
                   rightLabel={formatFileSize(memUsage)}
