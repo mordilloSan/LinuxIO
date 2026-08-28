@@ -134,6 +134,7 @@ const MainLayout = () => {
              * in a gap above the header while it is stuck.
              */}
             <div
+              data-app-route-content
               style={
                 {
                   width: "100%",

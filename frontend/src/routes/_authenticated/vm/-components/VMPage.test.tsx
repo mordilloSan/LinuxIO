@@ -1234,7 +1234,9 @@ describe("Virtual Machines page", () => {
       });
     });
 
-    expect(await screen.findByText(/has no VNC unix socket/i)).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText(/has no VNC unix socket/i)).toBeVisible(),
+    );
     expect(screen.getByText("Unavailable")).toBeVisible();
   });
 });

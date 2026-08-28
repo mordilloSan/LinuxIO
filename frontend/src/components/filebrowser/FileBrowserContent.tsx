@@ -147,6 +147,7 @@ const FileBrowserContent = ({
           />
         )}
         <div
+          data-app-view-mode-content
           style={{
             paddingLeft: chrome.editingPath ? 0 : "var(--app-space-8)",
             paddingRight: chrome.editingPath ? 0 : "var(--app-space-8)",

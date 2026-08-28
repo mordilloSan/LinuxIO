@@ -361,34 +361,7 @@ a {
   opacity: 1 !important;
 }
 
-@keyframes app-view-mode-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes app-view-mode-in {
-  from {
-    opacity: 0;
-  }
-}
-
-::view-transition-old(root) {
-  animation: app-view-mode-out var(--app-transition-duration-fast)
-    var(--app-easing-standard) both;
-}
-
-::view-transition-new(root) {
-  animation: app-view-mode-in var(--app-transition-duration-fast)
-    var(--app-easing-decelerate) both;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 0.01ms !important;
-  }
-
   *,
   *::before,
   *::after {

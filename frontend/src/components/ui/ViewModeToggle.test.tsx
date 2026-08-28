@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
-import { render, screen } from "@/test/render";
+import { render, screen, waitFor } from "@/test/render";
 
 vi.mock("@iconify/react", () => ({
   Icon: ({ icon }: { icon: string }) => (
@@ -9,9 +9,16 @@ vi.mock("@iconify/react", () => ({
   ),
 }));
 
+const motionMocks = vi.hoisted(() => ({ animate: vi.fn() }));
+
+vi.mock("motion/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("motion/react")>()),
+  animate: motionMocks.animate,
+}));
+
 describe("ViewModeToggle", () => {
   afterEach(() => {
-    Reflect.deleteProperty(document, "startViewTransition");
+    motionMocks.animate.mockReset();
   });
 
   it.each([
@@ -45,26 +52,35 @@ describe("ViewModeToggle", () => {
     },
   );
 
-  it("updates the view inside a browser view transition", async () => {
+  it("animates the route content after changing views", async () => {
     const onViewModeChange = vi.fn();
-    const startViewTransition = vi.fn((update: () => void) => update());
-    Object.defineProperty(document, "startViewTransition", {
-      configurable: true,
-      value: startViewTransition,
-    });
     const { user } = render(
-      <ViewModeToggle
-        alternateMode="table"
-        onViewModeChange={onViewModeChange}
-        viewMode="table"
-      />,
+      <>
+        <div data-app-route-content>
+          <div data-app-view-mode-content data-testid="view-mode-content" />
+        </div>
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={onViewModeChange}
+          viewMode="table"
+        />
+      </>,
     );
 
-    await user.click(
-      screen.getByRole("button", { name: "Switch to card view" }),
-    );
+    const button = screen.getByRole("button", {
+      name: "Switch to card view",
+    });
+    const content = screen.getByTestId("view-mode-content");
+    await user.click(button);
 
-    expect(startViewTransition).toHaveBeenCalledOnce();
     expect(onViewModeChange).toHaveBeenCalledWith("card");
+    expect(content.style.opacity).toBe("0");
+    await waitFor(() =>
+      expect(motionMocks.animate).toHaveBeenCalledWith(
+        content,
+        { opacity: [0, 1], y: [6, 0] },
+        { duration: 0.2, ease: [0, 0, 0.2, 1] },
+      ),
+    );
   });
 });

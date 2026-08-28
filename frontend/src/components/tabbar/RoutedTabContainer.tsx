@@ -398,7 +398,9 @@ const TabSelector = memo(function TabSelector({
 const TabPanel = ({ children }: { children: ReactNode }) => (
   <div className="tab-container__panels">
     <div className="tab-panel">
-      <div className="tab-panel__content">{children}</div>
+      <div className="tab-panel__content" data-app-view-mode-content>
+        {children}
+      </div>
     </div>
   </div>
 );
