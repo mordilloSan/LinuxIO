@@ -23,6 +23,7 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { getUsageColor } from "@/constants/statusColors";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
@@ -637,13 +638,7 @@ const CIFSMounts = ({ onMountCreateHandler }: CIFSMountsProps) => {
           return mount.mounted ? (
             <div style={{ width: "100%" }}>
               <AppLinearProgress
-                color={
-                  mount.usedPct > 90
-                    ? "error"
-                    : mount.usedPct > 70
-                      ? "warning"
-                      : "primary"
-                }
+                color={getUsageColor(mount.usedPct)}
                 style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
                 value={mount.usedPct}
                 variant="determinate"

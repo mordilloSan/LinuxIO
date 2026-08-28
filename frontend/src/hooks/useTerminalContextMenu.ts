@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { encodeString, type Stream } from "@/api";
+import { copyToClipboard } from "@/utils/clipboard";
 
 export interface TerminalContextMenuPosition {
   mouseX: number;
@@ -71,10 +72,7 @@ export function useTerminalContextMenu({
   );
 
   const handleCopy = useCallback(() => {
-    const selection = terminalRef.current?.getSelection();
-    if (selection) {
-      void navigator.clipboard.writeText(selection);
-    }
+    void copyToClipboard(terminalRef.current?.getSelection() ?? "");
     handleCloseContextMenu();
   }, [handleCloseContextMenu, terminalRef]);
 

@@ -9,6 +9,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { getUsageColor } from "@/constants/statusColors";
 import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -334,13 +335,7 @@ const FilesystemCard = ({
           {filesystem.device} ({filesystem.fstype})
         </AppTypography>
         <AppLinearProgress
-          color={
-            filesystem.usedPercent > 90
-              ? "error"
-              : filesystem.usedPercent > 70
-                ? "warning"
-                : "primary"
-          }
+          color={getUsageColor(filesystem.usedPercent)}
           style={{
             height: 8,
             borderRadius: 4,

@@ -27,6 +27,7 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { getUsageColor } from "@/constants/statusColors";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { DASHBOARD_CARD_GAP, GAP_MD } from "@/theme/constants";
@@ -77,12 +78,6 @@ const dialogStackStyle: CSSProperties = {
 
 const monospaceStyle: CSSProperties = {
   fontFamily: "var(--app-font-mono)",
-};
-
-const getUsageColor = (usedPct: number): "primary" | "warning" | "error" => {
-  if (usedPct > 90) return "error";
-  if (usedPct > 70) return "warning";
-  return "primary";
 };
 
 const CreateLVDialog = ({

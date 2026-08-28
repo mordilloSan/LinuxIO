@@ -15,6 +15,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import type { ToastMeta } from "@/types/navigation";
+import { copyToClipboard } from "@/utils/clipboard";
 import { isTabNavigationActive } from "@/utils/tabNavigation";
 import "./app-tooltip.css";
 
@@ -215,7 +216,7 @@ const AppTooltip = ({
     if (!copyText || !refreshCopyAvailability()) return;
 
     try {
-      await navigator.clipboard.writeText(copyText);
+      await copyToClipboard(copyText);
       toast.success(
         copySuccessMessage,
         toastMeta ? { meta: toastMeta } : undefined,

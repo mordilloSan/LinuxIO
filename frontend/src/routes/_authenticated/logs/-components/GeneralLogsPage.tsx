@@ -31,6 +31,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import { copyToClipboard } from "@/utils/clipboard";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 // A fixed first page replaces the old "Lines" selector. Older entries are
@@ -1121,7 +1122,7 @@ const GeneralLogsPage = () => {
           `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${log.message}`,
       )
       .join("\n");
-    void navigator.clipboard.writeText(text);
+    void copyToClipboard(text);
   };
 
   const handleDownload = () => {

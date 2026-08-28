@@ -3,13 +3,12 @@ import { useCallback, useState } from "react";
 
 import { type CPUInfoResponse, linuxio } from "@/api";
 import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
 
 import DashboardStatRows from "./DashboardStatRows";
 import ProcessorGraph from "./ProcessorGraph";
 import { formatSensorLabel } from "./sensors";
-
-const REFETCH_INTERVAL_MS = 1000;
 
 const formatLoadAverage = (loadAverage?: {
   load1: number;
@@ -58,7 +57,7 @@ const CpuTempBadge = () => {
 
   const { data: badge } = useSuspenseQuery({
     ...linuxio.system.get_cpu_info,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectBadge,
   });
 
@@ -83,7 +82,7 @@ const CpuTempBadge = () => {
 const CpuStats = () => {
   const { data: CPUInfo } = useSuspenseQuery({
     ...linuxio.system.get_cpu_info,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
   });
 
   const averageCpuUsage = selectAverageUsage(CPUInfo);
@@ -113,7 +112,7 @@ const CpuStats = () => {
 const CpuUsageGraph = () => {
   const { data: usage } = useSuspenseQuery({
     ...linuxio.system.get_cpu_info,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectAverageUsage,
   });
 

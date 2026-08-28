@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { decodeString, encodeString, type Stream } from "@/api";
+import { copyToClipboard } from "@/utils/clipboard";
 
 type TerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
 type ReadyCleanup = (() => void) | void;
@@ -33,13 +34,6 @@ export interface UseXtermStreamTerminalResult {
   fitAndResize: () => void;
   terminalRef: RefObject<Terminal | null>;
   writeData: (data: Uint8Array) => void;
-}
-
-function copySelection(terminal: Terminal) {
-  const selection = terminal.getSelection();
-  if (selection) {
-    void navigator.clipboard.writeText(selection);
-  }
 }
 
 function isCopyShortcut(event: KeyboardEvent) {
@@ -115,7 +109,7 @@ export function useXtermStreamTerminal({
       if (isCopyShortcut(event)) {
         event.preventDefault();
         event.stopPropagation();
-        copySelection(terminal);
+        void copyToClipboard(terminal.getSelection());
         return false;
       }
 

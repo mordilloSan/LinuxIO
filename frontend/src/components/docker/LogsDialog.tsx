@@ -7,6 +7,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import { useLogStream } from "@/hooks/useLogStream";
+import { copyToClipboard } from "@/utils/clipboard";
 
 const LOG_LINE_OPTIONS = [
   { value: "50", label: "50" },
@@ -60,7 +61,7 @@ const LogsDialog = ({
   }, [logs, search]);
 
   const handleCopy = () => {
-    if (filtered) void navigator.clipboard.writeText(filtered);
+    void copyToClipboard(filtered);
   };
 
   const handleDownload = () => {

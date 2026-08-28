@@ -6,6 +6,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import Chip from "@/components/ui/AppChip";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
+import { getUsageColor } from "@/constants/statusColors";
 import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -94,13 +95,7 @@ const NFSMountCardLiveContent = ({
       {mount.mounted ? (
         <div style={{ width: "100%", marginBottom: 4 }}>
           <AppLinearProgress
-            color={
-              mount.usedPct > 90
-                ? "error"
-                : mount.usedPct > 70
-                  ? "warning"
-                  : "primary"
-            }
+            color={getUsageColor(mount.usedPct)}
             style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
             value={mount.usedPct}
             variant="determinate"

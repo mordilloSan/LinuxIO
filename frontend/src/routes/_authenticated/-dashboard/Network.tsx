@@ -7,11 +7,10 @@ import DashboardCard, {
   CardStatusDot,
 } from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 
 import DashboardStatRows from "./DashboardStatRows";
 import NetworkGraph from "./NetworkGraph";
-
-const REFETCH_INTERVAL_MS = 1000;
 
 const filterInterfaces = (interfaces: InterfaceStats[]): InterfaceStats[] =>
   interfaces.filter(
@@ -52,7 +51,7 @@ const NetworkHeader = ({
 
   const { data: header } = useSuspenseQuery({
     ...linuxio.network.get_interface_stats,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectHeader,
   });
 
@@ -86,7 +85,7 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
 
   const { data: details } = useSuspenseQuery({
     ...linuxio.network.get_interface_stats,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectDetails,
   });
 
@@ -125,7 +124,7 @@ const NetworkGraphPane = ({ selected }: InterfaceSelectionProps) => {
 
   const { data: throughput } = useSuspenseQuery({
     ...linuxio.network.get_interface_stats,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectThroughput,
   });
 

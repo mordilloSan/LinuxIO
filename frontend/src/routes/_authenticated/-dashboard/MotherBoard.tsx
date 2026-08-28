@@ -3,12 +3,11 @@ import { useCallback, useState } from "react";
 
 import { linuxio, type MotherboardInfo } from "@/api";
 import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
+import { DASHBOARD_REFETCH_SLOW_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
 
 import DashboardStatRows from "./DashboardStatRows";
 import { formatSensorLabel } from "./sensors";
-
-const REFETCH_INTERVAL_MS = 50000;
 
 const MotherboardTempBadge = () => {
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
@@ -42,7 +41,7 @@ const MotherboardTempBadge = () => {
 
   const { data: badge } = useQuery({
     ...linuxio.system.get_motherboard_info,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_SLOW_MS,
     select: selectBadge,
   });
 
@@ -67,7 +66,7 @@ const MotherboardTempBadge = () => {
 const MotherboardStats = () => {
   const { data: motherboardInfo } = useQuery({
     ...linuxio.system.get_motherboard_info,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_SLOW_MS,
   });
 
   const board = [

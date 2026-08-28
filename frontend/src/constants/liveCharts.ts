@@ -13,3 +13,8 @@ export const LIVE_MILLIS_PER_PIXEL = 50;
 export const LIVE_BACKFILL_WINDOW_MS = 90_000;
 /** Buffers idle longer than this are cleared and re-seeded instead. */
 export const LIVE_STALE_AFTER_MS = 20_000;
+
+/** Dashboard card polling: live gauges, memory, and slow-changing sensors. */
+export const DASHBOARD_REFETCH_FAST_MS = 1000;
+export const DASHBOARD_REFETCH_MEMORY_MS = 2000;
+export const DASHBOARD_REFETCH_SLOW_MS = 50_000;
