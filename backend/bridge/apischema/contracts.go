@@ -188,10 +188,6 @@ type DeleteStackRequest struct {
 	DeleteDirectory bool   `json:"deleteDirectory"`
 }
 
-type ContentRequest struct {
-	Content string `json:"content"`
-}
-
 type ValidateComposeRequest struct {
 	Content    string `json:"content"`
 	EnvContent string `json:"envContent,omitempty"`

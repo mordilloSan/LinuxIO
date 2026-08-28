@@ -551,10 +551,6 @@ export interface ContainerPort {
   Type: string;
 }
 
-export interface ContentRequest {
-  content: string;
-}
-
 export interface CountProgress {
   processed: number;
   total: number;
@@ -3820,11 +3816,9 @@ export interface LinuxIOStreamSchema {
   "control.app_update": AppUpdateRequest;
   "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
-  "docker.normalize_compose": ContentRequest;
   "filebrowser.download_stream": PathRequest;
   "logs.general.follow": GeneralLogsFollowRequest;
   "logs.service.follow": ServiceLogsFollowRequest;
-  "system.get_services": void;
   "tasks.data": TaskDataRequest;
   "tasks.events": void;
   "tasks.watch": TaskIDRequest;

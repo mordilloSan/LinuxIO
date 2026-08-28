@@ -47,11 +47,6 @@ func (h dockerHandlers) handleValidateCompose(ctx context.Context, req apischema
 	return ValidateComposeFile(ctx, req.Content, req.EnvContent, req.WorkingDir)
 }
 
-func (h dockerHandlers) handleNormalizeCompose(ctx context.Context, req apischema.ContentRequest) error {
-	_, err := NormalizeComposeFile(ctx, req.Content)
-	return err
-}
-
 func (h dockerHandlers) handleGetComposeFilePath(ctx context.Context, req apischema.StackNameRequest) (apischema.ComposeFilePathResponse, error) {
 	return GetComposeFilePath(ctx, h.rt.Username(), h.rt.Store, req.StackName)
 }
