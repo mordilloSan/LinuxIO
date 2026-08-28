@@ -19,7 +19,6 @@ import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import { useBackgroundTaskState } from "@/hooks/backgroundTasks/useBackgroundTaskState";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
-import { useAppTheme } from "@/theme";
 import { iconSize as iconSizes } from "@/theme/constants";
 
 const MAX_RECENT_TOASTS = 5;
@@ -216,7 +215,7 @@ const TransferItem = memo(function TransferItem({
         <div className="app-navbar-notifications__meta">
           <AppTooltip arrow placement="top" title={detailText}>
             <AppLinearProgress
-              style={{ height: 4, borderRadius: 999 }}
+              style={{ height: 4, borderRadius: "var(--app-radius-pill)" }}
               value={transfer.progress}
               variant={isIndeterminate ? "indeterminate" : "determinate"}
             />
@@ -242,7 +241,6 @@ const TransferItem = memo(function TransferItem({
 // --- Main component ---
 
 export function NavbarNotificationsDropdown() {
-  const theme = useAppTheme();
   const ref = useRef<HTMLButtonElement>(null);
   const iconSize = iconSizes.md;
 
@@ -415,36 +413,36 @@ export function NavbarNotificationsDropdown() {
           icon: (
             <Icon height={iconSize} icon="mdi:check-circle" width={iconSize} />
           ),
-          color: theme.palette.success.main,
+          color: "var(--app-palette-success-main)",
         };
       case "error":
         return {
           icon: (
             <Icon height={iconSize} icon="mdi:close-circle" width={iconSize} />
           ),
-          color: theme.palette.error.main,
+          color: "var(--app-palette-error-main)",
         };
       case "warning":
         return {
           icon: <Icon height={iconSize} icon="mdi:alert" width={iconSize} />,
-          color: theme.palette.warning.main,
+          color: "var(--app-palette-warning-main)",
         };
       case "info":
         return {
           icon: (
             <Icon height={iconSize} icon="mdi:information" width={iconSize} />
           ),
-          color: theme.palette.info.main,
+          color: "var(--app-palette-info-main)",
         };
       case "loading":
         return {
           icon: <Icon height={iconSize} icon="mdi:loading" width={iconSize} />,
-          color: theme.palette.text.secondary,
+          color: "var(--app-palette-text-secondary)",
         };
       default:
         return {
           icon: <Icon height={iconSize} icon="mdi:bell" width={iconSize} />,
-          color: theme.palette.text.secondary,
+          color: "var(--app-palette-text-secondary)",
         };
     }
   };
@@ -458,13 +456,13 @@ export function NavbarNotificationsDropdown() {
             icon: (
               <Icon height={iconSize} icon="mdi:download" width={iconSize} />
             ),
-            color: theme.palette.info.main,
+            color: "var(--app-palette-info-main)",
           };
         case "upload":
         case "extraction":
           return {
             icon: <Icon height={iconSize} icon="mdi:upload" width={iconSize} />,
-            color: theme.palette.info.main,
+            color: "var(--app-palette-info-main)",
           };
         case "indexer":
         case "copy":
@@ -474,18 +472,18 @@ export function NavbarNotificationsDropdown() {
             icon: (
               <Icon height={iconSize} icon="mdi:folder-sync" width={iconSize} />
             ),
-            color: theme.palette.info.main,
+            color: "var(--app-palette-info-main)",
           };
         default:
           return {
             icon: (
               <Icon height={iconSize} icon="mdi:loading" width={iconSize} />
             ),
-            color: theme.palette.text.secondary,
+            color: "var(--app-palette-text-secondary)",
           };
       }
     },
-    [iconSize, theme.palette.info.main, theme.palette.text.secondary],
+    [iconSize],
   );
 
   const totalItems =
@@ -664,7 +662,7 @@ export function NavbarNotificationsDropdown() {
                     >
                       <div
                         className="app-navbar-notifications__icon"
-                        style={tileStyle(theme.palette.success.main)}
+                        style={tileStyle("var(--app-palette-success-main)")}
                       >
                         <Icon
                           height={iconSize}

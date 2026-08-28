@@ -1,6 +1,5 @@
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
@@ -19,8 +18,6 @@ const UnsavedChangesDialog = ({
   onSaveAndExit,
   isSaving = false,
 }: UnsavedChangesDialogProps) => {
-  const theme = useAppTheme();
-
   return (
     <FileBrowserDialog
       fullWidth
@@ -30,31 +27,23 @@ const UnsavedChangesDialog = ({
     >
       <div
         style={{
-          padding: theme.spacing(4),
+          padding: "var(--app-space-16)",
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(3),
+          gap: "var(--app-space-12)",
           alignItems: "center",
           textAlign: "center",
         }}
       >
         {/* Title */}
-        <AppTypography
-          fontWeight={600}
-          style={{
-            color: theme.palette.text.primary,
-          }}
-          variant="h5"
-        >
+        <AppTypography color="text.primary" fontWeight={600} variant="h5">
           Unsaved Changes
         </AppTypography>
 
         {/* Message */}
         <AppTypography
-          style={{
-            marginTop: 8,
-            color: theme.palette.text.secondary,
-          }}
+          color="text.secondary"
+          style={{ marginTop: 8 }}
           variant="body1"
         >
           You have unsaved changes in the editor. What would you like to do?
@@ -64,10 +53,10 @@ const UnsavedChangesDialog = ({
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             justifyContent: "center",
             width: "100%",
-            marginTop: theme.spacing(2),
+            marginTop: "var(--app-space-8)",
           }}
         >
           <AppButton

@@ -5,7 +5,8 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinkButton from "@/components/ui/AppLinkButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 import type { UpdateInfo } from "@/types/auth";
 
 import UpdateDialog from "./UpdateDialog";
@@ -16,8 +17,7 @@ interface UpdateBannerProps {
 }
 
 const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
-  const theme = useAppTheme();
-  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const isSmallUp = useAppMediaQuery(up("sm"));
   const {
     startUpdate,
     resetUpdate,
@@ -93,7 +93,7 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
         className="app-alert--centered"
         severity="info"
         style={{
-          borderRadius: 16,
+          borderRadius: "var(--app-radius-card)",
           alignItems: "center",
           backgroundColor: "var(--update-banner-bg)",
           color: "var(--update-banner-color)",
@@ -104,7 +104,7 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             width: "100%",
             flexWrap: isSmallUp ? "nowrap" : "wrap",
           }}
@@ -122,7 +122,7 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: theme.spacing(1),
+              gap: "var(--app-space-4)",
             }}
           >
             <AppButton

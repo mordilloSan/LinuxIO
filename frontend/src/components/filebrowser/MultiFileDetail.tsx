@@ -5,7 +5,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { mixWithTransparency } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -54,13 +53,11 @@ const DetailRow = ({
   value: ReactNode;
   isLoading?: boolean;
 }) => {
-  const theme = useAppTheme();
-
   return (
     <div
       style={{
         display: "flex",
-        gap: theme.spacing(2),
+        gap: "var(--app-space-8)",
       }}
     >
       <AppTypography
@@ -102,11 +99,6 @@ const MultiFileItemRow = ({
   item: MultiFileDetailItem;
   onDownload: (path: string) => void;
 }) => {
-  const theme = useAppTheme();
-  const baseBorderRadius =
-    typeof theme.shape.borderRadius === "number"
-      ? theme.shape.borderRadius
-      : Number.parseFloat(theme.shape.borderRadius);
   const isDir = item.type === "directory";
   const isLoading = item.isLoading ?? false;
   const [hovered, setHovered] = useState(false);
@@ -132,12 +124,12 @@ const MultiFileItemRow = ({
         border: "1px solid",
         borderColor: hovered
           ? mixWithTransparency("var(--app-palette-primary-main)", 0.4)
-          : theme.palette.divider,
-        borderRadius: baseBorderRadius * 1.5,
-        padding: theme.spacing(1.5),
+          : "var(--app-palette-divider)",
+        borderRadius: "calc(var(--app-radius-base) * 1.5)",
+        padding: "var(--app-space-6)",
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(0.5),
+        gap: "var(--app-space-2)",
         backgroundColor: hovered
           ? mixWithTransparency("var(--app-palette-primary-main)", 0.05)
           : "transparent",
@@ -151,7 +143,7 @@ const MultiFileItemRow = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          gap: theme.spacing(2),
+          gap: "var(--app-space-8)",
         }}
       >
         <div>
@@ -185,8 +177,6 @@ const MultiFileDetail = ({
   totalSize,
   isLoadingDetails,
 }: MultiFileDetailProps) => {
-  const theme = useAppTheme();
-
   if (!multiItems?.length) {
     return null;
   }
@@ -194,7 +184,7 @@ const MultiFileDetail = ({
   return (
     <AppPaper
       style={{
-        borderRadius: 8,
+        borderRadius: "var(--app-radius-md)",
         display: "flex",
         flexDirection: "column",
         padding: 12,
@@ -207,7 +197,7 @@ const MultiFileDetail = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          gap: theme.spacing(2),
+          gap: "var(--app-space-8)",
         }}
       >
         <div>
@@ -227,7 +217,7 @@ const MultiFileDetail = ({
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
         }}
       >
         <DetailRow
@@ -248,14 +238,14 @@ const MultiFileDetail = ({
         style={{
           maxHeight: 360,
           overflowY: "auto",
-          paddingRight: theme.spacing(1),
+          paddingRight: "var(--app-space-4)",
         }}
       >
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: theme.spacing(1),
+            gap: "var(--app-space-4)",
           }}
         >
           {multiItems.map((item) => {

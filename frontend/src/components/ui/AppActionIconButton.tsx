@@ -4,7 +4,6 @@ import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { useAppTheme } from "@/theme";
 
 import "./app-action-icon-button.css";
 
@@ -42,7 +41,6 @@ export default function AppActionIconButton({
   size = "small",
   tooltip,
 }: AppActionIconButtonProps) {
-  const theme = useAppTheme();
   const isDisabled = disabled || loading;
   const accessibleLabel = ariaLabel ?? labelToAria(label) ?? icon;
   const showTooltip = tooltip === undefined ? label !== undefined : tooltip;
@@ -58,10 +56,7 @@ export default function AppActionIconButton({
       size={size}
       style={
         {
-          "--ab-color": color ?? theme.palette.text.secondary,
-          "--ab-hover-color": isDisabled
-            ? (color ?? theme.palette.text.secondary)
-            : theme.palette.text.primary,
+          "--ab-color": color,
           height: buttonHeight,
           opacity: disabled && !loading ? 0.45 : 1,
           width: buttonWidth,

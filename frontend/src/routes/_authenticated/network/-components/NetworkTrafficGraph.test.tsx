@@ -2,8 +2,12 @@ import type { TimeSeries } from "smoothie";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render, waitFor } from "@/test/render";
+import buildAppTheme from "@/theme";
 
 import NetworkTrafficGraph, { centerZeroRange } from "./NetworkTrafficGraph";
+
+// The test renderer mounts the DARK theme; the canvas draws its resolved chart colours.
+const chartColors = buildAppTheme("DARK").chart;
 
 const mocks = vi.hoisted(() => ({
   addTimeSeries: vi.fn(),
@@ -46,8 +50,8 @@ describe("NetworkTrafficGraph", () => {
     render(
       <NetworkTrafficGraph
         series={[
-          { color: "#00ff00", label: "Sent", series: sent },
-          { color: "#ff0000", label: "Received", series: received },
+          { colorKey: "tx", label: "Sent", series: sent },
+          { colorKey: "rx", label: "Received", series: received },
         ]}
       />,
     );
@@ -58,16 +62,16 @@ describe("NetworkTrafficGraph", () => {
     expect(mocks.addTimeSeries).toHaveBeenNthCalledWith(
       1,
       sent,
-      expect.objectContaining({ strokeStyle: "#00ff00" }),
+      expect.objectContaining({ strokeStyle: chartColors.tx }),
     );
     expect(mocks.addTimeSeries).toHaveBeenNthCalledWith(
       2,
       received,
-      expect.objectContaining({ strokeStyle: "#ff0000" }),
+      expect.objectContaining({ strokeStyle: chartColors.rx }),
     );
     expect(mocks.rowsAt?.(timestamp)).toEqual([
-      { color: "#00ff00", label: "Sent", value: "+4.0 kB/s" },
-      { color: "#ff0000", label: "Received", value: "−3.0 kB/s" },
+      { color: chartColors.tx, label: "Sent", value: "+4.0 kB/s" },
+      { color: chartColors.rx, label: "Received", value: "−3.0 kB/s" },
     ]);
     // Filling to the canvas floor would tint the received half with sent
     // traffic, so the mirrored series are drawn as lines only.
@@ -81,7 +85,7 @@ describe("NetworkTrafficGraph", () => {
       <NetworkTrafficGraph
         series={[
           {
-            color: "#00ff00",
+            colorKey: "tx",
             label: "Sent",
             series: { data: [] } as unknown as TimeSeries,
           },

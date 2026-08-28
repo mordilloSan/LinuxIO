@@ -1,24 +1,26 @@
 import type { ReactNode } from "react";
 
-import { AppThemeProvider, useAppMediaQuery, useAppTheme } from "@/theme";
-import authTheme from "@/theme/authTheme";
-import { alpha } from "@/utils/color";
+import buildAppTheme, { AppThemeProvider, useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 
 interface AuthLayoutProps {
   children: ReactNode;
 }
 
+// No user config exists before sign-in, so the route renders the default
+// dark theme; the signed-in shell replaces it once the config loads.
+const AUTH_THEME = buildAppTheme("DARK");
+
 const AuthLayout = ({ children }: AuthLayoutProps) => {
   return (
-    <AppThemeProvider value={authTheme}>
+    <AppThemeProvider value={AUTH_THEME}>
       <AuthContent>{children}</AuthContent>
     </AppThemeProvider>
   );
 };
 
 const AuthContent = ({ children }: AuthLayoutProps) => {
-  const theme = useAppTheme();
-  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const isSmallUp = useAppMediaQuery(up("sm"));
 
   return (
     <div
@@ -30,11 +32,14 @@ const AuthContent = ({ children }: AuthLayoutProps) => {
         position: "relative",
         overflowX: "hidden",
         overflowY: "auto",
-        paddingLeft: isSmallUp ? theme.spacing(4) : theme.spacing(2),
-        paddingRight: isSmallUp ? theme.spacing(4) : theme.spacing(2),
-        paddingTop: isSmallUp ? theme.spacing(8) : theme.spacing(6),
-        paddingBottom: isSmallUp ? theme.spacing(8) : theme.spacing(6),
-        backgroundImage: `radial-gradient(900px 420px at 12% 8%, ${alpha(theme.palette.primary.main, 0.25)}, ${alpha(theme.palette.background.default, 0)} 60%), radial-gradient(800px 360px at 90% 0%, ${alpha(theme.palette.primary.light, 0.2)}, ${alpha(theme.palette.background.default, 0)} 60%), linear-gradient(160deg, ${alpha(theme.palette.background.default, 0.92)} 0%, ${theme.palette.background.default} 45%, ${alpha(theme.palette.background.default, 0.72)} 100%)`,
+        paddingLeft: isSmallUp ? "var(--app-space-16)" : "var(--app-space-8)",
+        paddingRight: isSmallUp ? "var(--app-space-16)" : "var(--app-space-8)",
+        paddingTop: isSmallUp ? "var(--app-space-32)" : "var(--app-space-24)",
+        paddingBottom: isSmallUp
+          ? "var(--app-space-32)"
+          : "var(--app-space-24)",
+        backgroundImage:
+          "radial-gradient(900px 420px at 12% 8%, color-mix(in srgb, var(--app-palette-primary-main), transparent 75%), color-mix(in srgb, var(--app-palette-background-default), transparent 100%) 60%), radial-gradient(800px 360px at 90% 0%, color-mix(in srgb, var(--accent-soft), transparent 80%), color-mix(in srgb, var(--app-palette-background-default), transparent 100%) 60%), linear-gradient(160deg, color-mix(in srgb, var(--app-palette-background-default), transparent 8%) 0%, var(--app-palette-background-default) 45%, color-mix(in srgb, var(--app-palette-background-default), transparent 28%) 100%)",
       }}
     >
       <div
@@ -54,7 +59,8 @@ const AuthContent = ({ children }: AuthLayoutProps) => {
             width: 420,
             height: 420,
             borderRadius: "50%",
-            background: `radial-gradient(circle at 30% 30%, ${alpha(theme.palette.primary.main, 0.35)}, ${alpha(theme.palette.primary.main, 0)} 70%)`,
+            background:
+              "radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--app-palette-primary-main), transparent 65%), color-mix(in srgb, var(--app-palette-primary-main), transparent 100%) 70%)",
             opacity: 0.9,
           }}
         />
@@ -66,7 +72,8 @@ const AuthContent = ({ children }: AuthLayoutProps) => {
             width: 460,
             height: 460,
             borderRadius: "50%",
-            background: `radial-gradient(circle at 70% 40%, ${alpha(theme.palette.primary.dark, 0.3)}, ${alpha(theme.palette.primary.dark, 0)} 70%)`,
+            background:
+              "radial-gradient(circle at 70% 40%, color-mix(in srgb, var(--app-palette-primary-dark), transparent 70%), color-mix(in srgb, var(--app-palette-primary-dark), transparent 100%) 70%)",
             opacity: 0.8,
           }}
         />

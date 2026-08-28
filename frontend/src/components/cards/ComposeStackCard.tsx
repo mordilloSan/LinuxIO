@@ -150,8 +150,7 @@ const ComposeStackCard = ({
           <Chip
             color="warning"
             label="Update available"
-            size="small"
-            style={{ fontSize: "0.68rem" }}
+            size="xsmall"
             variant="soft"
           />
         )}
@@ -178,11 +177,8 @@ const ComposeStackCard = ({
         <Chip
           color={getStatusColor(project.status)}
           label={project.status}
-          size="small"
-          style={{
-            textTransform: "capitalize",
-            fontSize: "0.65rem",
-          }}
+          size="xsmall"
+          style={{ textTransform: "capitalize" }}
           labelStyle={{ paddingInline: 6 }}
           variant="soft"
         />

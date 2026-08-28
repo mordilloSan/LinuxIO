@@ -21,10 +21,13 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
+import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
 import { ensureTrailingSlash } from "@/utils/path";
 
@@ -48,30 +51,27 @@ import {
   parentDirectory,
 } from "./vmShared";
 
-const createModeStyle = (theme: AppTheme, isMobile: boolean): CSSProperties =>
+const createModeStyle = (isMobile: boolean): CSSProperties =>
   isMobile
     ? {
         display: "grid",
-        gap: theme.spacing(2),
+        gap: "var(--app-space-8)",
         gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        marginBottom: theme.spacing(3),
+        marginBottom: "var(--app-space-12)",
       }
     : {
         display: "inline-flex",
-        gap: theme.spacing(2),
-        marginBottom: theme.spacing(3),
+        gap: "var(--app-space-8)",
+        marginBottom: "var(--app-space-12)",
       };
 
-const presetGroupStyle = (
-  theme: AppTheme,
-  isMobile: boolean,
-): CSSProperties => ({
+const presetGroupStyle = (isMobile: boolean): CSSProperties => ({
   display: "grid",
-  gap: theme.spacing(2),
+  gap: "var(--app-space-8)",
   gridTemplateColumns: isMobile
     ? "1fr"
     : "repeat(auto-fit, minmax(180px, 1fr))",
-  marginBottom: theme.spacing(4),
+  marginBottom: "var(--app-space-16)",
 });
 
 const presetButtonStyle: CSSProperties = {
@@ -83,17 +83,9 @@ const presetButtonStyle: CSSProperties = {
   padding: "8px 10px",
 };
 
-const presetMetaStyle: CSSProperties = {
-  color: "inherit",
-  fontSize: "0.72rem",
-  fontWeight: 400,
-  lineHeight: 1.35,
-  opacity: 0.74,
-};
-
-const formGridStyle = (theme: AppTheme, isMobile: boolean): CSSProperties => ({
+const formGridStyle = (isMobile: boolean): CSSProperties => ({
   display: "grid",
-  gap: theme.spacing(4),
+  gap: "var(--app-space-16)",
   gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
 });
 
@@ -101,48 +93,48 @@ const wideGridItemStyle: CSSProperties = {
   gridColumn: "1 / -1",
 };
 
-const checkboxLineStyle = (theme: AppTheme): CSSProperties => ({
+const checkboxLineStyle: CSSProperties = {
   alignItems: "center",
   display: "inline-flex",
-  gap: theme.spacing(2),
-  margin: theme.spacing(3.5, 0),
-});
+  gap: "var(--app-space-8)",
+  margin: "var(--app-space-16) 0",
+};
 
-const managedPathsStyle = (theme: AppTheme): CSSProperties => ({
+const managedPathsStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
-  gap: theme.spacing(2),
-  margin: theme.spacing(0.5, 0, 3),
-});
+  gap: "var(--app-space-8)",
+  margin: "var(--app-space-2) 0 var(--app-space-12)",
+};
 
-const managedPathChipStyle = (theme: AppTheme): CSSProperties => ({
+const managedPathChipStyle: CSSProperties = {
   alignItems: "center",
-  border: `1px solid ${theme.palette.divider}`,
+  border: "1px solid var(--app-palette-divider)",
   borderRadius: 6,
-  color: theme.palette.text.secondary,
+  color: "var(--app-palette-text-secondary)",
   display: "inline-flex",
-  gap: theme.spacing(2),
+  gap: "var(--app-space-8)",
   minWidth: 0,
-  padding: theme.spacing(1.5, 2),
-});
+  padding: "var(--app-space-6) var(--app-space-8)",
+};
 
-const createProgressStyle = (theme: AppTheme): CSSProperties => ({
-  border: `1px solid ${theme.palette.divider}`,
+const createProgressStyle: CSSProperties = {
+  border: "1px solid var(--app-palette-divider)",
   borderRadius: 6,
   display: "flex",
   flexDirection: "column",
-  gap: theme.spacing(2),
-  marginBottom: theme.spacing(3),
-  padding: theme.spacing(2.5),
-});
+  gap: "var(--app-space-8)",
+  marginBottom: "var(--app-space-12)",
+  padding: "var(--app-space-8)",
+};
 
-const createProgressHeaderStyle = (theme: AppTheme): CSSProperties => ({
+const createProgressHeaderStyle: CSSProperties = {
   alignItems: "center",
   display: "flex",
-  gap: theme.spacing(3),
+  gap: "var(--app-space-12)",
   justifyContent: "space-between",
   minWidth: 0,
-});
+};
 
 const messageListStyle: CSSProperties = {
   margin: 0,
@@ -166,8 +158,7 @@ export default function CreateVMDialog({
   onCreate: (request: VMCreateRequest) => void;
   open: boolean;
 }) {
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useAppMediaQuery(down("sm"));
   const toast = useScopedToast(VM_TOAST);
   const [name, setName] = useState("");
   const [vcpus, setVCPUs] = useState("2");
@@ -184,10 +175,24 @@ export default function CreateVMDialog({
   const [cloudInitUsername, setCloudInitUsername] = useState("linuxio");
   const [cloudInitPassword, setCloudInitPassword] = useState("");
   const [cloudInitSSHKey, setCloudInitSSHKey] = useState("");
+  const [network, setNetwork] = useState("default");
+  const networksQuery = useQuery({
+    ...linuxio.virt.networks,
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
+  const networks = networksQuery.data ?? [];
+  const hostBridges = networks.filter(
+    (candidate) => candidate.type === "bridge",
+  );
+  const activeHostBridges = hostBridges.filter((candidate) => candidate.active);
   const usesISO = sourceType === "iso";
   const usesCloudInit = Boolean(
     imagePresetId && CLOUD_INIT_IMAGE_PRESETS.has(imagePresetId),
   );
+  // Available networks drive selection readiness, and create revalidates the
+  // choice server-side. Keep the full host/source preflight independent of the
+  // dropdown so changing networks does not repeat every host probe.
   const preflight = useQuery({
     ...linuxio.virt.preflight({
       imagePresetId,
@@ -222,6 +227,11 @@ export default function CreateVMDialog({
     setSourceType(preset.sourceType);
     setCreateMode("image");
     setImagePresetId(preset.imagePresetId);
+    setNetwork(
+      preset.bridgedPreferred && activeHostBridges.length === 1
+        ? activeHostBridges[0].name
+        : "default",
+    );
   };
 
   const applyCreateMode = (mode: VMCreateMode) => {
@@ -237,6 +247,7 @@ export default function CreateVMDialog({
     setStart(true);
     setSourceType("iso");
     setImagePresetId(undefined);
+    setNetwork("default");
   };
 
   const markCustom = () => setSelectedPreset("custom");
@@ -264,11 +275,32 @@ export default function CreateVMDialog({
     parsedDiskGB >= minimumDiskGB &&
     (!usesISO || (isoPathProvided && isoPathHasISOExtension)) &&
     (!usesCloudInit || (cloudInitUsernameValid && cloudInitAuthProvided));
-  const hasBlockingPreflightErrors = (preflight.data?.errors ?? []).length > 0;
+  const selectedNetwork = networks.find(
+    (candidate) => candidate.name === network,
+  );
+  const networkAvailable =
+    network === "default"
+      ? selectedNetwork?.type === "libvirt"
+      : selectedNetwork?.type === "bridge" && selectedNetwork.active;
+  // The base preflight still describes the optional default NAT network.
+  // Those messages do not apply when the VM will attach to a host bridge.
+  const isSelectedNetworkMessage = (message: string) =>
+    network === "default" ||
+    !message.toLowerCase().includes("default nat network");
+  const preflightWarnings = (preflight.data?.warnings ?? []).filter(
+    isSelectedNetworkMessage,
+  );
+  const preflightErrors = (preflight.data?.errors ?? []).filter(
+    isSelectedNetworkMessage,
+  );
+  const hasBlockingPreflightErrors = preflightErrors.length > 0;
   const isBusy = isCreating || createISOFolderMutation.isPending;
   const canSubmit =
     fieldsValid &&
+    networkAvailable &&
     !isBusy &&
+    !networksQuery.isPending &&
+    !networksQuery.isError &&
     !preflight.isLoading &&
     !preflight.isLoadingError &&
     !hasBlockingPreflightErrors;
@@ -315,7 +347,7 @@ export default function CreateVMDialog({
       diskGB: parsedDiskGB,
       memoryMB: parsedMemoryMB,
       name: name.trim(),
-      network: "default",
+      network,
       sourceType,
       start,
       vcpus: parsedVCPUs,
@@ -355,7 +387,7 @@ export default function CreateVMDialog({
           <div
             aria-label="VM source"
             role="tablist"
-            style={createModeStyle(theme, isMobile)}
+            style={createModeStyle(isMobile)}
           >
             <AppButton
               aria-selected={createMode === "iso"}
@@ -380,7 +412,7 @@ export default function CreateVMDialog({
             <div
               aria-label="VM preset"
               role="radiogroup"
-              style={presetGroupStyle(theme, isMobile)}
+              style={presetGroupStyle(isMobile)}
             >
               {IMAGE_PRESETS.map((preset) => (
                 <AppButton
@@ -395,11 +427,17 @@ export default function CreateVMDialog({
                   }
                 >
                   <span>{preset.label}</span>
-                  <small style={presetMetaStyle}>
+                  <AppTypography
+                    color="inherit"
+                    component="small"
+                    fontWeight={400}
+                    style={{ lineHeight: 1.35, opacity: 0.74 }}
+                    variant="caption"
+                  >
                     {preset.vcpus} CPU /{" "}
                     {Number.parseInt(preset.memoryMB, 10) / 1024} GB /{" "}
                     {preset.diskGB} GB
-                  </small>
+                  </AppTypography>
                 </AppButton>
               ))}
               {selectedPreset === "custom" && (
@@ -411,12 +449,20 @@ export default function CreateVMDialog({
                   variant="contained"
                 >
                   <span>Custom</span>
-                  <small style={presetMetaStyle}>Manual sizing</small>
+                  <AppTypography
+                    color="inherit"
+                    component="small"
+                    fontWeight={400}
+                    style={{ lineHeight: 1.35, opacity: 0.74 }}
+                    variant="caption"
+                  >
+                    Manual sizing
+                  </AppTypography>
                 </AppButton>
               )}
             </div>
           ) : null}
-          <div style={formGridStyle(theme, isMobile)}>
+          <div style={formGridStyle(isMobile)}>
             <AppTextField
               autoFocus
               error={name.length > 0 && !nameValid}
@@ -468,6 +514,36 @@ export default function CreateVMDialog({
               type="number"
               value={diskGB}
             />
+            <AppSelect
+              disabled={
+                isBusy || networksQuery.isPending || networksQuery.isError
+              }
+              fullWidth
+              label="Network"
+              onChange={(event) => setNetwork(event.target.value)}
+              value={network}
+            >
+              <option value="default">NAT (default)</option>
+              {hostBridges.map((bridge) => (
+                <option
+                  disabled={!bridge.active}
+                  key={bridge.name}
+                  value={bridge.name}
+                >
+                  {bridge.name}
+                  {!bridge.active ? " (inactive)" : ""}
+                </option>
+              ))}
+            </AppSelect>
+            {networksQuery.isError ? (
+              <AppAlert severity="error" style={wideGridItemStyle}>
+                Unable to load the available VM networks.
+              </AppAlert>
+            ) : !networksQuery.isPending && !networkAvailable ? (
+              <AppAlert severity="error" style={wideGridItemStyle}>
+                The selected VM network is unavailable.
+              </AppAlert>
+            ) : null}
             {usesISO ? (
               <PathPickerField
                 browsePath={`${managedISOPath}/`}
@@ -538,7 +614,7 @@ export default function CreateVMDialog({
               </>
             ) : null}
           </div>
-          <label style={checkboxLineStyle(theme)}>
+          <label style={checkboxLineStyle}>
             <AppCheckbox
               checked={start}
               onChange={(_, checked) => {
@@ -548,26 +624,26 @@ export default function CreateVMDialog({
             />
             <span>Start after creation</span>
           </label>
-          <div aria-label="Managed VM paths" style={managedPathsStyle(theme)}>
+          <div aria-label="Managed VM paths" style={managedPathsStyle}>
             {usesISO ? (
-              <span style={managedPathChipStyle(theme)}>
+              <span style={managedPathChipStyle}>
                 ISO folder{" "}
                 <code
                   style={{
                     ...wrappingCodeStyle,
-                    color: theme.palette.text.primary,
+                    color: "var(--app-palette-text-primary)",
                   }}
                 >
                   {managedISOPath}
                 </code>
               </span>
             ) : (
-              <span style={managedPathChipStyle(theme)}>
+              <span style={managedPathChipStyle}>
                 Image folder{" "}
                 <code
                   style={{
                     ...wrappingCodeStyle,
-                    color: theme.palette.text.primary,
+                    color: "var(--app-palette-text-primary)",
                   }}
                 >
                   {managedCloudPath}
@@ -579,13 +655,13 @@ export default function CreateVMDialog({
             <div
               aria-live="polite"
               style={{
-                ...createProgressStyle(theme),
+                ...createProgressStyle,
                 ...(createProgress.phase === "error" && {
-                  borderColor: theme.palette.error.main,
+                  borderColor: "var(--app-palette-error-main)",
                 }),
               }}
             >
-              <div style={createProgressHeaderStyle(theme)}>
+              <div style={createProgressHeaderStyle}>
                 <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                   {createProgress.message || "Starting VM create task"}
                 </span>
@@ -607,7 +683,7 @@ export default function CreateVMDialog({
                 <code
                   style={{
                     ...wrappingCodeStyle,
-                    color: theme.palette.text.secondary,
+                    color: "var(--app-palette-text-secondary)",
                   }}
                 >
                   {createProgress.path}
@@ -616,7 +692,7 @@ export default function CreateVMDialog({
             </div>
           ) : null}
           {preflight.isLoading ? (
-            <div style={{ padding: theme.spacing(2) }}>
+            <div style={{ padding: "var(--app-space-8)" }}>
               <ComponentLoader />
             </div>
           ) : preflight.isLoadingError ? (
@@ -626,22 +702,25 @@ export default function CreateVMDialog({
             </AppAlert>
           ) : preflight.data ? (
             <>
-              <PreflightSummary preflight={preflight.data} />
-              {(preflight.data.warnings ?? []).length > 0 && (
+              <PreflightSummary
+                preflight={preflight.data}
+                showDefaultNetwork={network === "default"}
+              />
+              {preflightWarnings.length > 0 && (
                 <AppAlert severity="warning">
                   <AppAlertTitle>Preflight Warnings</AppAlertTitle>
                   <ul style={messageListStyle}>
-                    {(preflight.data.warnings ?? []).map((warning) => (
+                    {preflightWarnings.map((warning) => (
                       <li key={warning}>{warning}</li>
                     ))}
                   </ul>
                 </AppAlert>
               )}
-              {(preflight.data.errors ?? []).length > 0 && (
+              {preflightErrors.length > 0 && (
                 <AppAlert severity="error">
                   <AppAlertTitle>Preflight Errors</AppAlertTitle>
                   <ul style={messageListStyle}>
-                    {(preflight.data.errors ?? []).map((error) => (
+                    {preflightErrors.map((error) => (
                       <li key={error}>{error}</li>
                     ))}
                   </ul>

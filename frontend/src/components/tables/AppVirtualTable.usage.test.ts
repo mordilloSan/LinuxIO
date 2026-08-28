@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const srcRoot = path.resolve(process.cwd(), "src");
-const tableTagPattern = /<AppDataTable\b[\s\S]*?\/>/g;
+const tableTagPattern = /<AppVirtualTable\b[\s\S]*?\/>/g;
 
 function listTsxFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -32,7 +32,7 @@ function hasExplicitViewportStrategy(tag: string) {
   return Boolean(fillAvailable && !/=/.test(fillAvailable[0]));
 }
 
-describe("AppDataTable usage", () => {
+describe("AppVirtualTable usage", () => {
   it("declares the viewport strategy at every call site", () => {
     const violations = listTsxFiles(srcRoot).flatMap((filePath) => {
       const source = fs.readFileSync(filePath, "utf8");

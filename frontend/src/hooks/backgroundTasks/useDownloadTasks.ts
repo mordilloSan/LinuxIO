@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -40,17 +40,39 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
     releaseDownloadLabelBase,
   } = runtime;
 
-  const updateDownload = useCallback(
-    (
-      id: string,
-      updates: Partial<Omit<Download, "id" | "abortController">>,
-    ) => {
-      setDownloads((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, ...updates } : d)),
-      );
-    },
-    [],
-  );
+  // Progress frames arrive far faster than the UI needs to repaint (a fast
+  // download can push hundreds a second); coalesce them into one setState
+  // per animation frame instead of one per frame received.
+  const pendingProgressRef = useRef<
+    Map<string, Partial<Omit<Download, "id" | "abortController">>>
+  >(new Map());
+  const progressFrameRef = useRef<number | null>(null);
+
+  const flushDownloadProgress = useCallback(() => {
+    if (progressFrameRef.current !== null) {
+      window.cancelAnimationFrame(progressFrameRef.current);
+      progressFrameRef.current = null;
+    }
+    const pending = pendingProgressRef.current;
+    if (pending.size === 0) return;
+    pendingProgressRef.current = new Map();
+    setDownloads((prev) =>
+      prev.map((d) => {
+        const patch = pending.get(d.id);
+        return patch ? { ...d, ...patch } : d;
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (progressFrameRef.current !== null) {
+        window.cancelAnimationFrame(progressFrameRef.current);
+        progressFrameRef.current = null;
+      }
+      pendingProgressRef.current.clear();
+    };
+  }, []);
 
   const hideDownload = useCallback(
     (id: string) => {
@@ -178,14 +200,21 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
             const detail = progress.detail;
             const phase = progress.phase ?? detail?.phase;
             if (phase === "waiting_for_client") handoffToBrowser();
-            if (browserDownloadStarted) return;
+            if (browserDownloadStarted) {
+              // The item is about to be (or already was) hidden; drop any
+              // queued frame instead of flushing a render for a row that's
+              // gone, and let the flush before terminal handling below cover
+              // any completion event still racing in.
+              pendingProgressRef.current.delete(reqId);
+              return;
+            }
             if (!detail) return;
             const speed = getTaskSpeed(detail.bytes);
             const phaseLabel =
               phase === "preparing" ? "Preparing" : "Compressing";
             const percentage = progress.percentage ?? detail.pct;
             const indeterminate = detail.indeterminate === true;
-            updateDownload(reqId, {
+            pendingProgressRef.current.set(reqId, {
               progress: percentage,
               label: formatDownloadLabel(
                 phaseLabel,
@@ -196,13 +225,23 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
               total: detail.total,
               ...(speed !== undefined && { speed }),
             });
+            if (progressFrameRef.current === null) {
+              progressFrameRef.current = window.requestAnimationFrame(
+                flushDownloadProgress,
+              );
+            }
           },
           onSuccess: () => {
+            // Flush any queued progress before the terminal update so a task
+            // never briefly shows stale progress (or none) after completion,
+            // and so a late rAF can't fire after removal and re-add it.
+            flushDownloadProgress();
             recordTransferRate(reqId, undefined);
             removeDownload(reqId);
           },
           onError: (error) => {
             if (!abortController.signal.aborted) {
+              flushDownloadProgress();
               console.debug("Download task watch failed", error);
               if (!browserDownloadStarted) {
                 toast.error(
@@ -240,6 +279,7 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
     [
       activeFileTransferTaskIdsRef,
       allocateDownloadLabelBase,
+      flushDownloadProgress,
       pendingLocalTaskKeysRef,
       primeTransferRate,
       recordTransferRate,
@@ -248,7 +288,6 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
       removeDownload,
       runStreamResult,
       streamRefsRef,
-      updateDownload,
     ],
   );
 

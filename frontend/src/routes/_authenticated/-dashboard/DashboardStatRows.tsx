@@ -3,7 +3,6 @@ import type { CSSProperties, ReactNode } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 export interface DashboardStatRow {
   label: string;
@@ -23,8 +22,6 @@ const DashboardStatRows = ({
   containerStyle,
   rows,
 }: DashboardStatRowsProps) => {
-  const theme = useAppTheme();
-
   return (
     <div
       style={{
@@ -52,13 +49,13 @@ const DashboardStatRows = ({
             display: "flex",
             alignItems: "baseline",
             justifyContent: "flex-start",
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
+            paddingTop: "var(--app-space-2)",
+            paddingBottom: "var(--app-space-2)",
             borderBottom:
               index === items.length - 1
                 ? "none"
                 : "1px solid var(--app-palette-divider)",
-            gap: theme.spacing(1),
+            gap: "var(--app-space-4)",
             cursor: onEdit ? "pointer" : undefined,
             ...customRowStyle,
           };
@@ -69,7 +66,6 @@ const DashboardStatRows = ({
                 style={{
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
-                  fontSize: "0.62rem",
                   flexShrink: 0,
                 }}
                 variant="caption"
@@ -90,7 +86,7 @@ const DashboardStatRows = ({
                   height={13}
                   icon="mdi:pencil-outline"
                   style={{
-                    color: theme.palette.text.secondary,
+                    color: "var(--app-palette-text-secondary)",
                     flexShrink: 0,
                     alignSelf: "center",
                     opacity: 0.7,

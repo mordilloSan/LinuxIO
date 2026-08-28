@@ -5,7 +5,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import { CARD_PADDING_LG, TRANSITION_SLOW_CSS } from "@/theme/constants";
+import { CARD_PADDING_LG } from "@/theme/constants";
 
 export interface UnitListItem {
   active_state: string;
@@ -58,7 +58,8 @@ function UnitCard<T extends UnitListItem>({
       hoverLift={!isSelected}
       style={{
         ...(isSelected ? selectedCardStyle : cardStyle),
-        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
+        transition:
+          "transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border-color var(--app-transition-duration-fast) var(--app-easing-standard)",
       }}
     >
       <AppButton

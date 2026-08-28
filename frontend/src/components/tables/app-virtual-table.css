@@ -1,5 +1,5 @@
 /* The app-dt__* classes and --app-dt-* custom properties: table chrome,
-   header, cells, and rows. Loaded by AppDataTable. */
+   header, cells, and rows. Loaded by AppVirtualTable. */
 
 .app-dt {
   display: flex;

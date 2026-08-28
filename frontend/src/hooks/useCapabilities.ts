@@ -83,6 +83,20 @@ export const useCapabilityState = (): CapabilityState => {
   return data ?? emptyCapabilityState;
 };
 
+/**
+ * The latest raw scan (availability plus per-capability error text) from the
+ * same cache entry, for surfaces that show scan details rather than gate on
+ * them.
+ */
+export const useCapabilitiesResponse = (): Partial<CapabilitiesResponse> => {
+  const userId = useConfigUserId();
+  const { data } = useQuery<Partial<CapabilitiesResponse>>({
+    queryKey: capabilitiesQueryKey(userId),
+    enabled: false,
+  });
+  return data ?? {};
+};
+
 export const useAccessContext = (): AccessContext => {
   const { privileged } = useAuth();
   const capabilities = useCapabilityState();

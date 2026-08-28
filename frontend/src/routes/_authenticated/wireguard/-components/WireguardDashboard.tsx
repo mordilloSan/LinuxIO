@@ -1,5 +1,12 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 
 import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
@@ -9,11 +16,12 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import {
   CARD_GRID_SIZE_STANDARD,
+  EASING_DECELERATE,
   EASING_STANDARD,
-  TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_DURATION_FAST_MS,
+  TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
 import InterfaceDetails from "./InterfaceClients";
@@ -28,12 +36,25 @@ interface WireGuardDashboardProps {
 }
 
 const getWireguardInterfaceId = (iface: WireGuardInterface) => iface.name;
+const wireguardRouteApi = getRouteApi("/_authenticated/wireguard");
 
 const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(WIREGUARD_TOAST_META);
-  const [selectedInterface, setSelectedInterface] = useState<string | null>(
-    null,
+  // Selection lives in ?iface= so it deep-links and survives reloads, like
+  // the network page.
+  const selectedInterface = wireguardRouteApi.useSearch({
+    select: (search) =>
+      typeof search.iface === "string" ? search.iface : null,
+  });
+  const navigate = wireguardRouteApi.useNavigate();
+  const setSelectedInterface = useCallback(
+    (name: string | null) => {
+      void navigate({
+        to: ".",
+        search: (previous) => ({ ...previous, iface: name ?? undefined }),
+      });
+    },
+    [navigate],
   );
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, WireguardInterfaceAction>
@@ -215,24 +236,31 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
             size={CARD_GRID_SIZE_STANDARD}
             surface={surface}
           />
-          <AnimatePresence>
+          <AnimatePresence initial={false}>
             {selectedInterface && (
               <AppGrid container spacing={3}>
                 <AppGrid size={{ xs: 12 }}>
                   <motion.div
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{
+                      opacity: 0,
+                      y: -12,
+                      transition: {
+                        duration: TRANSITION_DURATION_FAST_MS / 1000,
+                        ease: EASING_DECELERATE,
+                      },
+                    }}
+                    initial={{ opacity: 0, y: 12 }}
                     layout
                     transition={{
-                      duration: TRANSITION_DURATION_SLOW_MS / 1000,
+                      duration: TRANSITION_DURATION_STANDARD_MS / 1000,
                       ease: EASING_STANDARD,
                     }}
                   >
                     <div
                       style={{
-                        marginTop: theme.spacing(4),
-                        marginBottom: theme.spacing(2),
+                        marginTop: "var(--app-space-16)",
+                        marginBottom: "var(--app-space-8)",
                       }}
                     >
                       <AppTypography gutterBottom variant="h5">

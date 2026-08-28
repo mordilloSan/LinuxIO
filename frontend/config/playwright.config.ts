@@ -11,6 +11,9 @@ const baseURL = "http://127.0.0.1:4174";
 export default defineConfig({
   expect: {
     timeout: 5_000,
+    // Same Chromium, same fonts, same machine class: anything past a few
+    // anti-aliasing pixels is a real change.
+    toHaveScreenshot: { maxDiffPixelRatio: 0.001 },
   },
   forbidOnly: Boolean(process.env.CI),
   fullyParallel: false,
@@ -22,6 +25,8 @@ export default defineConfig({
     },
   ],
   reporter: "list",
+  snapshotPathTemplate:
+    "{testDir}/__screenshots__/{testFileName}/{arg}-{projectName}-{platform}{ext}",
   retries: process.env.CI ? 1 : 0,
   testDir: path.join(frontendRoot, "src/test/browser"),
   timeout: 20_000,

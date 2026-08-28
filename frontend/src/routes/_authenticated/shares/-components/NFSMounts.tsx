@@ -1,13 +1,8 @@
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NFSMount, useCallMutation } from "@/api";
-import NFSMountCard from "@/components/cards/NFSMountCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -20,7 +15,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
-import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
@@ -29,11 +23,9 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
-import { formatFileSize } from "@/utils/formaters";
+
+import ProtocolMountList from "./ProtocolMountList";
 
 const STORAGE_TOAST_META = {
   label: "Open storage",
@@ -250,100 +242,6 @@ function getNFSOptionValue(options: string[], keys: string[]): string {
   }
   return "";
 }
-
-const MountEntryActions = ({
-  mount,
-  pendingActionByMountpoint,
-  onEdit,
-  onMount,
-  onUnmount,
-  onRemove,
-  nfsClientAvailable,
-  nfsReason,
-  stopPropagation = false,
-}: {
-  mount: NFSMount;
-  pendingActionByMountpoint: ReadonlyMap<string, PendingMountAction>;
-  onEdit: (mount: NFSMount) => void;
-  onMount: (mount: NFSMount) => void;
-  onUnmount: (mount: NFSMount) => void;
-  onRemove: (mount: NFSMount) => void;
-  nfsClientAvailable: boolean;
-  nfsReason: string;
-  stopPropagation?: boolean;
-}) => {
-  const wrapClick =
-    (handler: (mount: NFSMount) => void) =>
-    (event: MouseEvent<HTMLButtonElement>) => {
-      if (stopPropagation) {
-        event.stopPropagation();
-      }
-      handler(mount);
-    };
-
-  const pendingAction = pendingActionByMountpoint.get(mount.mountpoint);
-  const isPending = Boolean(pendingAction);
-  const mountActionColor = mount.mounted
-    ? "var(--app-palette-success-main)"
-    : "var(--app-palette-text-secondary)";
-  const mountActionDisabled = !mount.mounted && !nfsClientAvailable;
-  const mountActionLabel = mount.mounted ? "Unmount entry" : "Mount entry";
-  const mountActionTitle = mountActionDisabled
-    ? nfsReason
-    : pendingAction
-      ? pendingAction === "mount"
-        ? "Mounting..."
-        : "Unmounting..."
-      : mountActionLabel;
-
-  return (
-    <div
-      aria-busy={isPending}
-      aria-label={`Actions for ${mount.mountpoint}`}
-      role="group"
-      style={{
-        display: "flex",
-        gap: 2,
-        alignItems: "center",
-        justifyContent: "flex-end",
-        flexShrink: 0,
-      }}
-    >
-      <AppActionIconButton
-        ariaLabel="Edit entry"
-        color="var(--app-palette-primary-main)"
-        icon="mdi:pencil-outline"
-        iconSize={18}
-        label="Edit entry"
-        disabled={isPending}
-        onClick={wrapClick(onEdit)}
-      />
-      <AppActionIconButton
-        ariaLabel={
-          pendingAction
-            ? `${pendingAction === "mount" ? "Mounting" : "Unmounting"} ${mount.mountpoint}`
-            : mountActionLabel
-        }
-        color={mountActionColor}
-        disabled={isPending || mountActionDisabled}
-        icon={mount.mounted ? "mdi:link-variant" : "mdi:link-variant-off"}
-        iconSize={18}
-        label={mountActionTitle}
-        loading={isPending}
-        onClick={wrapClick(mount.mounted ? onUnmount : onMount)}
-      />
-      <AppActionIconButton
-        ariaLabel="Remove entry"
-        color="var(--app-palette-error-main)"
-        icon="mdi:trash-can-outline"
-        iconSize={18}
-        label="Remove entry"
-        disabled={isPending}
-        onClick={wrapClick(onRemove)}
-      />
-    </div>
-  );
-};
 
 const MountNFSDialog = ({ open, onClose }: MountNFSDialogProps) => {
   const [server, setServer] = useState("");
@@ -842,336 +740,12 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
     </>
   );
 };
-const selectNFSMountIdentities = (mounts: NFSMount[]) =>
-  mounts.map((mount) => mount.mountpoint);
-
-interface NFSMountActionProps {
-  pendingActionByMountpoint: ReadonlyMap<string, PendingMountAction>;
-  nfsClientAvailable: boolean;
-  nfsReason: string;
-  onEdit: (mount: NFSMount) => void;
-  onMount: (mount: NFSMount) => void;
-  onRemove: (mount: NFSMount) => void;
-  onUnmount: (mount: NFSMount) => void;
-}
-
-type PendingMountAction = "mount" | "unmount";
-
-interface NFSMountTableProps extends NFSMountActionProps {
-  search: string;
-}
 
 const NFS_SURFACE_ID = "shares.mounts.nfs";
-const identity = (mountpoint: string) => mountpoint;
-const getNFSMountId = (mount: NFSMount) => mount.mountpoint;
-
-const NFSMountCardGrid = ({
-  pendingActionByMountpoint,
-  nfsClientAvailable,
-  nfsReason,
-  onEdit,
-  onMount,
-  onRemove,
-  onUnmount,
-}: NFSMountActionProps) => {
-  const { data: mountpoints } = useSuspenseQuery({
-    ...linuxio.storage.list_nfs_mounts,
-    refetchInterval: 10000,
-    select: selectNFSMountIdentities,
-  });
-  // Cards and rows key the same surface: both identify a mount by mountpoint,
-  // so a manual order set in one view shows up in the other.
-  const surface = useReorderableSurface({
-    getId: identity,
-    items: mountpoints,
-    surface: NFS_SURFACE_ID,
-  });
-
-  if (mountpoints.length === 0) {
-    return (
-      <div style={{ textAlign: "center", paddingBlock: 16 }}>
-        <AppTypography color="text.secondary" variant="body2">
-          No NFS entries found. Click Mount NFS to add one.
-        </AppTypography>
-      </div>
-    );
-  }
-
-  const renderActions = (mount: NFSMount) => (
-    <MountEntryActions
-      mount={mount}
-      pendingActionByMountpoint={pendingActionByMountpoint}
-      nfsClientAvailable={nfsClientAvailable}
-      nfsReason={nfsReason}
-      onEdit={onEdit}
-      onMount={onMount}
-      onRemove={onRemove}
-      onUnmount={onUnmount}
-    />
-  );
-
-  return (
-    <ReorderableCardGrid
-      fillAvailable={false}
-      getId={identity}
-      renderItem={(mountpoint) => (
-        <NFSMountCard actions={renderActions} mountpoint={mountpoint} />
-      )}
-      size={CARD_GRID_SIZE_STANDARD}
-      surface={surface}
-    />
-  );
-};
-
-const NFSMountTable = ({
-  pendingActionByMountpoint,
-  nfsClientAvailable,
-  nfsReason,
-  onEdit,
-  onMount,
-  onRemove,
-  onUnmount,
-  search,
-}: NFSMountTableProps) => {
-  const { data: mounts } = useSuspenseQuery({
-    ...linuxio.storage.list_nfs_mounts,
-    refetchInterval: 10000,
-  });
-  const mountsList = Array.isArray(mounts) ? mounts : [];
-  const normalizedSearch = search.toLowerCase();
-  const surface = useReorderableSurface({
-    getId: getNFSMountId,
-    items: mountsList,
-    surface: NFS_SURFACE_ID,
-  });
-  const tableDnd = useReorderableTableDnd<NFSMount, NFSMount>({
-    handleAriaLabel: "Reorder NFS mount",
-    surface,
-  });
-  const filtered = surface.items.filter(
-    (mount) =>
-      mount.source.toLowerCase().includes(normalizedSearch) ||
-      mount.mountpoint.toLowerCase().includes(normalizedSearch) ||
-      getMountStatusLabel(mount).toLowerCase().includes(normalizedSearch),
-  );
-  const columns = useMemo<AppDataTableColumnDef<NFSMount>[]>(
-    () => [
-      {
-        accessorKey: "source",
-        header: "NFS Share",
-        cell: ({ row }) => (
-          <AppTypography
-            style={{ fontFamily: "var(--app-font-mono)" }}
-            variant="body2"
-          >
-            {row.original.source}
-          </AppTypography>
-        ),
-        meta: {
-          align: "left",
-          getCellRenderKey: (row) => {
-            const mount = row as NFSMount;
-            return [mount.mountpoint, mount.source];
-          },
-        },
-      },
-      {
-        accessorKey: "mountpoint",
-        header: "Mount Point",
-        cell: ({ row }) => (
-          <AppTypography
-            style={{ fontFamily: "var(--app-font-mono)" }}
-            variant="body2"
-          >
-            {row.original.mountpoint}
-          </AppTypography>
-        ),
-        meta: {
-          align: "left",
-          getCellRenderKey: (row) => (row as NFSMount).mountpoint,
-        },
-      },
-      {
-        id: "status",
-        header: "Status",
-        accessorFn: (mount) =>
-          `${getMountStatusLabel(mount)} ${getPersistenceLabel(mount)}`,
-        cell: ({ row }) => {
-          const mount = row.original;
-          return (
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              <Chip
-                label={getMountStatusLabel(mount)}
-                size="small"
-                variant="soft"
-              />
-              <Chip
-                label={getPersistenceLabel(mount)}
-                size="small"
-                variant="soft"
-              />
-            </div>
-          );
-        },
-        meta: {
-          align: "left",
-          getCellRenderKey: (row) => {
-            const mount = row as NFSMount;
-            return [
-              mount.mountpoint,
-              getMountStatusLabel(mount),
-              getPersistenceLabel(mount),
-            ];
-          },
-          width: "160px",
-        },
-      },
-      {
-        accessorKey: "usedPct",
-        header: "Usage",
-        cell: ({ row }) => {
-          const mount = row.original;
-          return mount.mounted ? (
-            <div style={{ width: "100%" }}>
-              <AppLinearProgress
-                color={
-                  mount.usedPct > 90
-                    ? "error"
-                    : mount.usedPct > 70
-                      ? "warning"
-                      : "primary"
-                }
-                style={{ height: 6, borderRadius: 3, marginBottom: 2 }}
-                value={mount.usedPct}
-                variant="determinate"
-              />
-              <AppTypography color="text.secondary" variant="caption">
-                {formatFileSize(mount.used)} / {formatFileSize(mount.size)}
-              </AppTypography>
-            </div>
-          ) : (
-            <AppTypography color="text.secondary" variant="caption">
-              Not mounted
-            </AppTypography>
-          );
-        },
-        meta: {
-          align: "left",
-          getCellRenderKey: (row) => {
-            const mount = row as NFSMount;
-            return [
-              mount.mountpoint,
-              mount.mounted,
-              mount.usedPct,
-              mount.used,
-              mount.size,
-            ];
-          },
-          hideBelow: "sm",
-          width: "200px",
-        },
-      },
-      {
-        id: "actions",
-        header: "Actions",
-        enableSorting: false,
-        cell: ({ row }) => (
-          <MountEntryActions
-            mount={row.original}
-            pendingActionByMountpoint={pendingActionByMountpoint}
-            nfsClientAvailable={nfsClientAvailable}
-            nfsReason={nfsReason}
-            onEdit={onEdit}
-            onMount={onMount}
-            onRemove={onRemove}
-            onUnmount={onUnmount}
-            stopPropagation
-          />
-        ),
-        meta: {
-          align: "right",
-          getCellRenderKey: (row) => {
-            const mount = row as NFSMount;
-            return [
-              mount.mountpoint,
-              mount.mounted,
-              pendingActionByMountpoint.get(mount.mountpoint),
-              nfsClientAvailable,
-              nfsReason,
-            ];
-          },
-          width: "160px",
-        },
-      },
-    ],
-    [
-      nfsClientAvailable,
-      nfsReason,
-      onEdit,
-      onMount,
-      onRemove,
-      onUnmount,
-      pendingActionByMountpoint,
-    ],
-  );
-
-  return (
-    <AppDataTable
-      dnd={tableDnd}
-      ariaLabel="NFS mounts"
-      columns={columns}
-      data={filtered}
-      emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
-      fillAvailable={false}
-      getRowId={(mount) => mount.mountpoint}
-      maxHeight={400}
-      persistExpandedKey="nfs-mounts"
-      renderExpandedContent={({ original: mount }) => (
-        <div className="expand-panel">
-          <AppTypography gutterBottom variant="subtitle2">
-            <strong>Status:</strong> {getMountStatusLabel(mount)} /{" "}
-            {getPersistenceLabel(mount)}
-          </AppTypography>
-          <div>
-            <AppTypography gutterBottom variant="subtitle2">
-              <strong>Options:</strong>
-            </AppTypography>
-            <div className="expand-panel__chips">
-              {mount.options && mount.options.length > 0 ? (
-                mount.options.map((option, index) => (
-                  <Chip
-                    key={index}
-                    label={option}
-                    size="small"
-                    variant="soft"
-                  />
-                ))
-              ) : (
-                <AppTypography color="text.secondary" variant="body2">
-                  (no options)
-                </AppTypography>
-              )}
-            </div>
-          </div>
-          <AppTypography gutterBottom variant="subtitle2">
-            <strong>Filesystem Type:</strong> {mount.fsType}
-          </AppTypography>
-          {mount.mounted ? (
-            <AppTypography gutterBottom variant="subtitle2">
-              <strong>Storage:</strong> {formatFileSize(mount.used)} used of{" "}
-              {formatFileSize(mount.size)} ({mount.usedPct.toFixed(1)}% used,{" "}
-              {formatFileSize(mount.free)} free)
-            </AppTypography>
-          ) : (
-            <AppTypography gutterBottom variant="subtitle2">
-              <strong>Storage:</strong> Not currently mounted
-            </AppTypography>
-          )}
-        </div>
-      )}
-    />
-  );
-};
+const getNFSChips = (mount: NFSMount) => [
+  getMountStatusLabel(mount),
+  getPersistenceLabel(mount),
+];
 
 const NFSMounts = ({
   onMountCreateHandler,
@@ -1181,14 +755,10 @@ const NFSMounts = ({
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsClientAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";
-  const [search] = useState("");
   const [mountDialogOpen, setMountDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<NFSMount | null>(null);
-  const [pendingActionByMountpoint, setPendingActionByMountpoint] = useState<
-    ReadonlyMap<string, PendingMountAction>
-  >(() => new Map());
   const mountExistingEntry = useCallMutation(linuxio.storage.mount_nfs, {
     success: "NFS entry mounted",
     warning: (result) => result.warning,
@@ -1216,44 +786,6 @@ const NFSMounts = ({
   }, [nfsUnavailable, nfsReason, toast]);
   useRegisterCreateHandler(onMountCreateHandler, handleMountNFS);
 
-  const runMountAction = (
-    mountpoint: string,
-    action: PendingMountAction,
-    run: () => Promise<unknown>,
-  ) => {
-    if (pendingActionByMountpoint.has(mountpoint)) return;
-
-    setPendingActionByMountpoint((current) =>
-      new Map(current).set(mountpoint, action),
-    );
-    void run()
-      .catch(() => undefined)
-      .finally(() => {
-        setPendingActionByMountpoint((current) => {
-          if (current.get(mountpoint) !== action) return current;
-          const next = new Map(current);
-          next.delete(mountpoint);
-          return next;
-        });
-      });
-  };
-
-  const handleUnmount = (mount: NFSMount) => {
-    runMountAction(mount.mountpoint, "unmount", () =>
-      unmountEntry.mutateAsync({
-        mountpoint: mount.mountpoint,
-        removeFstab: "false",
-      }),
-    );
-  };
-  const handleEdit = (mount: NFSMount) => {
-    setSelectedMount(mount);
-    setEditDialogOpen(true);
-  };
-  const handleRemove = (mount: NFSMount) => {
-    setSelectedMount(mount);
-    setRemoveDialogOpen(true);
-  };
   const handleMountExisting = (mount: NFSMount) => {
     if (nfsUnavailable) {
       toast.error(nfsReason);
@@ -1263,24 +795,13 @@ const NFSMounts = ({
       toast.error("This NFS entry is missing its server or export path");
       return;
     }
-    runMountAction(mount.mountpoint, "mount", () =>
-      mountExistingEntry.mutateAsync({
-        server: mount.server,
-        exportPath: mount.exportPath,
-        mountpoint: mount.mountpoint,
-        options: buildMountOptionsFromEntry(mount),
-        persist: mount.inFstab ? "true" : "false",
-      }),
-    );
-  };
-  const actionProps: NFSMountActionProps = {
-    pendingActionByMountpoint,
-    nfsClientAvailable: !nfsUnavailable,
-    nfsReason,
-    onEdit: handleEdit,
-    onMount: handleMountExisting,
-    onRemove: handleRemove,
-    onUnmount: handleUnmount,
+    return mountExistingEntry.mutateAsync({
+      server: mount.server,
+      exportPath: mount.exportPath,
+      mountpoint: mount.mountpoint,
+      options: buildMountOptionsFromEntry(mount),
+      persist: mount.inFstab ? "true" : "false",
+    });
   };
 
   return (
@@ -1295,11 +816,33 @@ const NFSMounts = ({
         <AppAlert severity="warning">{nfsReason}</AppAlert>
       ) : null}
 
-      {viewMode === "card" ? (
-        <NFSMountCardGrid {...actionProps} />
-      ) : (
-        <NFSMountTable {...actionProps} search={search} />
-      )}
+      <ProtocolMountList
+        ariaLabel="NFS mounts"
+        chips={getNFSChips}
+        emptyMessage="No NFS entries found. Click 'Mount NFS' to add one."
+        listQueryOptions={linuxio.storage.list_nfs_mounts}
+        mountUnavailableReason={nfsUnavailable ? nfsReason : undefined}
+        onEdit={(mount) => {
+          setSelectedMount(mount);
+          setEditDialogOpen(true);
+        }}
+        onMount={handleMountExisting}
+        onRemove={(mount) => {
+          setSelectedMount(mount);
+          setRemoveDialogOpen(true);
+        }}
+        onUnmount={(mount) =>
+          unmountEntry.mutateAsync({
+            mountpoint: mount.mountpoint,
+            removeFstab: "false",
+          })
+        }
+        persistExpandedKey="nfs-mounts"
+        reorderAriaLabel="Reorder NFS mount"
+        sourceHeader="NFS Share"
+        surfaceId={NFS_SURFACE_ID}
+        viewMode={viewMode}
+      />
 
       <MountNFSDialog
         onClose={() => setMountDialogOpen(false)}

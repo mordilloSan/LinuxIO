@@ -68,12 +68,23 @@ const mocks = vi.hoisted(() => {
     vcpus: 2,
   };
   const beta = { ...alpha, name: "beta", state: "shut off", uuid: "vm-beta" };
+  const networks = [
+    {
+      active: true,
+      name: "default",
+      type: "libvirt",
+    },
+    { active: true, name: "br0", type: "bridge" },
+    { active: false, name: "br-down", type: "bridge" },
+  ];
 
   return {
     alpha,
     beta,
     managedISOPath,
     listVMs: [alpha],
+    networksCalls: 0,
+    networks,
     mutations: {
       forceOff: vi.fn(),
       reboot: vi.fn(),
@@ -85,6 +96,7 @@ const mocks = vi.hoisted(() => {
     openVMConsoleStream: vi.fn(),
     readyPreflight,
     preflight: readyPreflight,
+    preflightRequests: [] as object[],
     routeNavigate: vi.fn(),
     // Detail selection is a path param on /vm/machines/$name.
     routeParams: { name: "alpha" },
@@ -334,10 +346,21 @@ vi.mock("@/api", async (importOriginal) => {
         list: callDescriptor("virt.list", ["linuxio", "virt", "list"], () =>
           Promise.resolve(mocks.listVMs),
         ),
+        networks: callDescriptor(
+          "virt.networks",
+          ["linuxio", "virt", "networks"],
+          () => {
+            mocks.networksCalls += 1;
+            return Promise.resolve(mocks.networks);
+          },
+        ),
         preflight: requestCall(
           "virt.preflight",
-          () => ["linuxio", "virt", "preflight"],
-          () => Promise.resolve(mocks.preflight),
+          (request: object) => ["linuxio", "virt", "preflight", request],
+          (request: object) => {
+            mocks.preflightRequests.push(request);
+            return Promise.resolve(mocks.preflight);
+          },
         ),
         reboot: Object.assign(mocks.mutations.reboot, {
           route: "virt.reboot",
@@ -429,8 +452,12 @@ function fakeTaskSnapshot(id: string, type: string) {
 async function renderVMPage(
   libvirtAvailable = true,
   queryClient = createTestQueryClient(),
+  seedNetworks = true,
 ) {
   queryClient.setQueryData(linuxio.virt.list.queryKey, mocks.listVMs);
+  if (seedNetworks) {
+    queryClient.setQueryData(linuxio.virt.networks.queryKey, mocks.networks);
+  }
   queryClient.setQueryData(
     linuxio.virt.preflight({}).queryKey,
     mocks.preflight,
@@ -473,6 +500,8 @@ beforeEach(() => {
     firmware: { ...mocks.readyPreflight.firmware },
     warnings: [],
   };
+  mocks.networksCalls = 0;
+  mocks.preflightRequests = [];
   mocks.routeNavigate.mockReset();
   mocks.routeParams = { name: "alpha" };
   mocks.resourceGet.mockReset();
@@ -705,7 +734,7 @@ describe("Virtual Machines page", () => {
     });
   });
 
-  it("keeps the delete dialog synced with the live VM list", async () => {
+  it("keeps the delete payload stable when the live VM list changes", async () => {
     const { queryClient, user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -736,6 +765,17 @@ describe("Virtual Machines page", () => {
       queryClient.setQueryData(linuxio.virt.list.queryKey, []);
     });
 
+    expect(
+      within(screen.getByRole("dialog")).getByText(
+        "/var/lib/libvirt/images/refreshed-alpha.qcow2",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
@@ -889,6 +929,105 @@ describe("Virtual Machines page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("lists host bridges and disables inactive bridges", async () => {
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("combobox", { name: "Network" }));
+
+    expect(screen.getByRole("option", { name: "br0" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "br-down (inactive)" }),
+    ).toHaveClass("app-select__option--disabled");
+  });
+
+  it("loads selectable networks only when the create dialog opens", async () => {
+    const { user } = await renderVMPage(true, createTestQueryClient(), false);
+
+    expect(mocks.networksCalls).toBe(0);
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+
+    await waitFor(() => expect(mocks.networksCalls).toBe(1));
+    expect(
+      within(screen.getByRole("dialog")).getByRole("combobox", {
+        name: "Network",
+      }),
+    ).toBeEnabled();
+  });
+
+  it("does not repeat full host preflight when the network changes", async () => {
+    const { user } = await renderVMPage();
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+
+    await waitFor(() => expect(mocks.preflightRequests).toHaveLength(1));
+    expect(mocks.preflightRequests[0]).not.toHaveProperty("network");
+
+    await user.click(within(dialog).getByRole("combobox", { name: "Network" }));
+    await user.click(screen.getByRole("option", { name: "br0" }));
+
+    expect(mocks.preflightRequests).toHaveLength(1);
+  });
+
+  it("hides default-network status when a host bridge is selected", async () => {
+    mocks.preflight = {
+      ...mocks.readyPreflight,
+      defaultNetworkActive: false,
+      defaultNetworkExists: false,
+      firmware: { ...mocks.readyPreflight.firmware },
+      warnings: ["default NAT network is missing"],
+    };
+    const { user } = await renderVMPage();
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+
+    await waitFor(() =>
+      expect(within(dialog).getByText("default network")).toBeVisible(),
+    );
+    expect(
+      within(dialog).getByText("default NAT network is missing"),
+    ).toBeVisible();
+
+    await user.click(within(dialog).getByRole("combobox", { name: "Network" }));
+    await user.click(screen.getByRole("option", { name: "br0" }));
+
+    expect(within(dialog).queryByText("default network")).toBeNull();
+    expect(
+      within(dialog).queryByText("default NAT network is missing"),
+    ).toBeNull();
+    expect(within(dialog).getByText("KVM")).toBeVisible();
+  });
+
+  it("submits a manually selected bridge", async () => {
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("combobox", { name: "Network" }));
+    await user.click(screen.getByRole("option", { name: "br0" }));
+    await user.type(within(dialog).getByLabelText(/name/i), "bridged");
+    await user.type(
+      within(dialog).getByLabelText(/iso path/i),
+      "/isos/bridged.iso",
+    );
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("button", { name: "Create" }),
+      ).toBeEnabled(),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(mocks.virtCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "bridged",
+          network: "br0",
+        }),
+      );
+    });
+  });
+
   it("creates a Home Assistant OS VM from the image preset", async () => {
     const { user } = await renderVMPage();
 
@@ -899,6 +1038,9 @@ describe("Virtual Machines page", () => {
     await user.click(
       within(dialog).getByRole("radio", { name: /home assistant os/i }),
     );
+    expect(
+      within(dialog).getByRole("combobox", { name: "Network" }),
+    ).toHaveTextContent("br0");
     expect(
       within(dialog).queryByLabelText(/iso path/i),
     ).not.toBeInTheDocument();
@@ -912,7 +1054,7 @@ describe("Virtual Machines page", () => {
         imagePresetId: "home-assistant-os",
         memoryMB: 4096,
         name: "homeassistant",
-        network: "default",
+        network: "br0",
         sourceType: "imagePreset",
         start: true,
         vcpus: 2,
@@ -1103,7 +1245,9 @@ describe("Virtual Machines page", () => {
       });
     });
 
-    expect(await screen.findByText(/has no VNC unix socket/i)).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText(/has no VNC unix socket/i)).toBeVisible(),
+    );
     expect(screen.getByText("Unavailable")).toBeVisible();
   });
 });

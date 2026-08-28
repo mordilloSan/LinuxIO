@@ -1,3 +1,4 @@
+import { MotionConfig } from "motion/react";
 import {
   createContext,
   createElement,
@@ -10,26 +11,16 @@ import {
 } from "react";
 
 import type { ConfigThemeColorsByModePayload as ThemeColorsByMode } from "@/api";
-import breakpoints from "@/theme/breakpoints";
 import {
   COLOR_TOKENS,
   getContrastText,
   resolvePrimaryColor,
 } from "@/theme/colors";
-import {
-  EASING_STANDARD_CSS,
-  MOTION_CSS_VARS,
-  TRANSITION_DURATION_FAST_MS,
-  TRANSITION_DURATION_MEDIUM_MS,
-  TRANSITION_DURATION_STANDARD_MS,
-} from "@/theme/constants";
-import { getFrostedCardShadow } from "@/theme/surfaces";
+import { MOTION_CSS_VARS } from "@/theme/constants";
+import { getFrostedCardShadow, getSurfaceCssVariables } from "@/theme/surfaces";
 import variants from "@/theme/variants";
 import type { EffectiveUISettings } from "@/types/config";
 import { alpha, darken, lighten } from "@/utils/color";
-
-type BreakpointKey = keyof typeof breakpoints.values;
-type SpacingInput = number | string;
 
 interface AppPaletteColor {
   contrastText: string;
@@ -38,48 +29,13 @@ interface AppPaletteColor {
   main: string;
 }
 
-interface AppTypographyVariant {
-  fontSize: string;
-  fontWeight: number;
-  letterSpacing?: string;
-  lineHeight: number;
-}
-
-export interface AppTypography {
-  body1: AppTypographyVariant;
-  body2: AppTypographyVariant;
-  button: {
-    textTransform: "none";
-    fontWeight: number;
-  };
-  caption: AppTypographyVariant;
-  fontFamily: string;
-  fontFamilyMono: string;
-  fontSize: number;
-  fontWeightBold: number;
-  fontWeightLight: number;
-  fontWeightMedium: number;
-  fontWeightRegular: number;
-  h1: AppTypographyVariant;
-  h2: AppTypographyVariant;
-  h3: AppTypographyVariant;
-  h4: AppTypographyVariant;
-  h5: AppTypographyVariant;
-  h6: AppTypographyVariant;
-  overline: AppTypographyVariant & { textTransform: "uppercase" };
-  pxToRem: (value: number) => string;
-  subtitle1: AppTypographyVariant;
-  subtitle2: AppTypographyVariant;
-}
-
+/* What the theme still is in JS: the generator input for the --app-*
+   variables AppThemeProvider writes, plus the resolved colours the few
+   canvas/xterm/ace/colour-editor consumers must read as values. Spacing,
+   radii, typography variants, transitions and breakpoints live in CSS
+   (theme/variables.css, components/ui/*.css, MOTION_CSS_VARS) and in
+   theme/breakpoints.ts. */
 export interface AppTheme {
-  alpha: typeof alpha;
-  breakpoints: {
-    values: Record<BreakpointKey, number>;
-    up: (key: BreakpointKey) => string;
-    down: (key: BreakpointKey) => string;
-    between: (start: BreakpointKey, end: BreakpointKey) => string;
-  };
   card: {
     background: string;
   };
@@ -93,7 +49,6 @@ export interface AppTheme {
     color: string;
   };
   colorScheme: "light" | "dark";
-  darken: typeof darken;
   dialog: {
     border: string;
     glow: string;
@@ -116,7 +71,6 @@ export interface AppTheme {
       background: string;
     };
   };
-  lighten: typeof lighten;
   name: string;
   palette: {
     mode: "light" | "dark";
@@ -167,22 +121,10 @@ export interface AppTheme {
       background: string;
     };
   };
-  spacing: (...values: SpacingInput[]) => string;
-  transitions: {
-    easing: {
-      easeInOut: string;
-    };
-    duration: {
-      shortest: number;
-      standard: number;
-      leavingScreen: number;
-    };
-    create: (
-      properties: string | string[],
-      options?: { duration?: number; easing?: string },
-    ) => string;
+  typography: {
+    fontFamily: string;
+    fontFamilyMono: string;
   };
-  typography: AppTypography;
 }
 
 interface AppThemeProviderProps {
@@ -227,115 +169,6 @@ const DEFAULT_STATUS_PALETTE = {
   success: "#2ecc71",
   info: COLOR_TOKENS.blue,
 };
-
-function createSpacing(...values: SpacingInput[]) {
-  if (values.length === 0) {
-    return "0px";
-  }
-
-  return values
-    .map((value) =>
-      typeof value === "number"
-        ? `${Math.round(value * BASE_SPACING_UNIT * 1000) / 1000}px`
-        : value,
-    )
-    .join(" ");
-}
-
-function createBreakpoints() {
-  const values = breakpoints.values;
-
-  return {
-    values,
-    up: (key: BreakpointKey) => `@media (min-width:${values[key]}px)`,
-    down: (key: BreakpointKey) =>
-      `@media (max-width:${Math.max(values[key] - 0.05, 0)}px)`,
-    between: (start: BreakpointKey, end: BreakpointKey) =>
-      `@media (min-width:${values[start]}px) and (max-width:${Math.max(values[end] - 0.05, 0)}px)`,
-  };
-}
-
-function createTransitions() {
-  const easing = {
-    easeInOut: EASING_STANDARD_CSS,
-  } as const;
-
-  const duration = {
-    shortest: TRANSITION_DURATION_FAST_MS,
-    standard: TRANSITION_DURATION_STANDARD_MS,
-    leavingScreen: TRANSITION_DURATION_MEDIUM_MS,
-  } as const;
-
-  return {
-    easing,
-    duration,
-    create: (
-      properties: string | string[],
-      options?: { duration?: number; easing?: string },
-    ) => {
-      const props = Array.isArray(properties) ? properties : [properties];
-      const resolvedDuration = options?.duration ?? duration.standard;
-      const resolvedEasing = options?.easing ?? easing.easeInOut;
-
-      return props
-        .map(
-          (property) => `${property} ${resolvedDuration}ms ${resolvedEasing}`,
-        )
-        .join(", ");
-    },
-  };
-}
-
-function pxToRem(value: number, baseFontSize: number) {
-  return `${value / baseFontSize}rem`;
-}
-
-function createTypography(
-  fontFamily = FONT_FAMILY,
-  fontSize = 13,
-): AppTypography {
-  const makeVariant = (
-    px: number,
-    fontWeight: number,
-    lineHeight: number,
-    letterSpacing?: string,
-  ): AppTypographyVariant => ({
-    fontSize: pxToRem(px, fontSize),
-    fontWeight,
-    lineHeight,
-    ...(letterSpacing ? { letterSpacing } : {}),
-  });
-
-  return {
-    fontFamily,
-    fontFamilyMono: FONT_FAMILY_MONO,
-    fontSize,
-    fontWeightLight: 300,
-    fontWeightRegular: 400,
-    fontWeightMedium: 500,
-    fontWeightBold: 600,
-    h1: makeVariant(26, 600, 1.25),
-    h2: makeVariant(22.75, 600, 1.25),
-    h3: makeVariant(19.5, 600, 1.25),
-    h4: makeVariant(14.625, 500, 1.25),
-    h5: makeVariant(13.8125, 500, 1.25),
-    h6: makeVariant(13, 500, 1.25),
-    body1: makeVariant(13, 400, 1.5),
-    body2: makeVariant(11.375, 400, 1.43),
-    caption: makeVariant(9.75, 400, 1.66),
-    subtitle1: makeVariant(13, 400, 1.75),
-    subtitle2: makeVariant(11.375, 500, 1.57),
-    overline: {
-      ...makeVariant(9.75, 400, 2.66),
-      textTransform: "uppercase",
-    },
-    button: {
-      textTransform: "none",
-      fontWeight: 500,
-    },
-    pxToRem: (value: number) => pxToRem(value, fontSize),
-  };
-}
 
 function createPaletteColor(main: string): AppPaletteColor {
   return {
@@ -536,22 +369,13 @@ export function buildAppTheme(
     config.themeColors,
   );
 
-  const transitions = createTransitions();
-  const typography = createTypography();
-
   return {
     ...resolved,
     colorScheme: resolved.palette.mode,
     shape: {
       borderRadius: 4,
     },
-    spacing: createSpacing,
-    breakpoints: createBreakpoints(),
-    transitions,
-    typography,
-    alpha,
-    lighten,
-    darken,
+    typography: { fontFamily: FONT_FAMILY, fontFamilyMono: FONT_FAMILY_MONO },
   };
 }
 
@@ -629,6 +453,19 @@ function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-sidebar-item-grad-end": theme.palette.primary.main,
     "--app-sidebar-item-active-color": theme.palette.primary.contrastText,
     "--app-panel-background": theme.palette.background.paper,
+    ...getSurfaceCssVariables(theme),
+    "--app-chart-rx": theme.chart.rx,
+    "--app-chart-tx": theme.chart.tx,
+    "--app-chart-neutral": theme.chart.neutral,
+    "--app-code-block-background": theme.codeBlock.background,
+    "--app-code-block-color": theme.codeBlock.color,
+    "--app-file-browser-surface": theme.fileBrowser.surface,
+    "--app-file-browser-chrome": theme.fileBrowser.chrome,
+    "--app-file-browser-breadcrumb-background":
+      theme.fileBrowser.breadcrumbBackground,
+    "--app-file-browser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
+    "--app-footer-background": theme.footer.background,
+    "--app-footer-color": theme.footer.color,
     "--update-banner-bg": theme.palette.mode === "dark" ? "#000" : "#e3f2fd",
     "--update-banner-color":
       theme.palette.mode === "dark"
@@ -652,12 +489,34 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
 
   useInsertionEffect(() => {
     const root = document.documentElement;
+    const transitionBlocker = document.createElement("style");
+    transitionBlocker.textContent =
+      "*,*::before,*::after{transition:none !important}";
+    document.head.append(transitionBlocker);
+
     root.dataset.appTheme = value.name.toLowerCase();
     root.dataset.appColorScheme = value.colorScheme;
-
     applyCssVariables(root, cssVariables);
+
+    void document.body.offsetHeight;
+    let removeFrame = 0;
+    const paintFrame = window.requestAnimationFrame(() => {
+      removeFrame = window.requestAnimationFrame(() => {
+        transitionBlocker.remove();
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(paintFrame);
+      window.cancelAnimationFrame(removeFrame);
+      transitionBlocker.remove();
+    };
   }, [cssVariables, value]);
-  return createElement(APP_THEME_CONTEXT.Provider, { value }, children);
+  return createElement(
+    MotionConfig,
+    { reducedMotion: "user" },
+    createElement(APP_THEME_CONTEXT.Provider, { value }, children),
+  );
 }
 
 export function useAppTheme() {

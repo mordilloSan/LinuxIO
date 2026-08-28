@@ -7,7 +7,7 @@ import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
-import { useAppTheme } from "@/theme";
+import { getDedupedPorts } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formaters";
 
 export type ContainerInfoSection =
@@ -27,22 +27,6 @@ const formatUptime = (createdUnix: number) => {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
-};
-
-const getPorts = (container: ContainerInfo) => {
-  const seen = new Set<string>();
-  return (container.Ports ?? [])
-    .filter((port) => {
-      const key = port.PublicPort
-        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
-        : `${port.PrivatePort}/${port.Type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort(
-      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
-    );
 };
 
 const formatPort = (port: ContainerPort) =>
@@ -66,11 +50,10 @@ const emptyText = (text: string) => (
 const TruncatedValue = ({ text }: { text: string }) => (
   <AppTypography
     component="div"
-    fontSize="0.75rem"
     fontWeight={500}
     noWrap
     title={text}
-    variant="body2"
+    variant="caption"
   >
     {text}
   </AppTypography>
@@ -90,9 +73,7 @@ const ContainerInfoSections = ({
   container,
   sections,
 }: ContainerInfoSectionsProps) => {
-  const theme = useAppTheme();
-
-  const ports = useMemo(() => getPorts(container), [container]);
+  const ports = useMemo(() => getDedupedPorts(container), [container]);
   const networks = useMemo(
     () => Object.entries(container.NetworkSettings?.Networks ?? {}),
     [container.NetworkSettings],
@@ -115,25 +96,16 @@ const ContainerInfoSections = ({
   const sectionStyle: CSSProperties = {
     display: "flex",
     flexDirection: "column",
-    gap: theme.spacing(1),
+    gap: "var(--app-space-4)",
     minWidth: 0,
   };
 
-  const valueStyle: CSSProperties = {
-    fontSize: "0.75rem",
-    fontWeight: 500,
-  };
   const networkLabelStyle: CSSProperties = {
     textTransform: "uppercase",
     letterSpacing: "0.06em",
-    fontSize: "0.6rem",
-    color: "var(--app-palette-text-secondary)",
     flexShrink: 1,
     minWidth: 0,
     maxWidth: "60%",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   };
   const renderSection = (section: ContainerInfoSection): ReactNode => {
     switch (section) {
@@ -149,9 +121,13 @@ const ContainerInfoSections = ({
                 <TruncatedValue text={container.Image} />
               </DetailRow>
               <DetailRow label="Uptime">
-                <span style={valueStyle}>
+                <AppTypography
+                  component="span"
+                  fontWeight={500}
+                  variant="caption"
+                >
                   {formatUptime(container.Created)}
-                </span>
+                </AppTypography>
               </DetailRow>
             </div>
           </div>
@@ -161,20 +137,20 @@ const ContainerInfoSections = ({
           <div style={sectionStyle}>
             <SectionTitle>Monitoring</SectionTitle>
             <MetricBar
-              color={theme.palette.primary.main}
+              color="var(--app-palette-primary-main)"
               label="CPU"
               percent={cpuPercent}
               rightLabel={`${cpuPercent.toFixed(1)}%`}
               tooltip="CPU Usage"
             />
             <MetricBar
-              color={theme.palette.primary.main}
+              color="var(--app-palette-primary-main)"
               label="MEM"
               percent={memPercent}
               rightLabel={formatFileSize(memUsage)}
               tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
             />
-            <AppDivider style={{ marginBlock: theme.spacing(1) }} />
+            <AppDivider style={{ marginBlock: "var(--app-space-4)" }} />
             <InfoRow label="Net In">
               {formatFileSize(metrics?.net_input)}
             </InfoRow>
@@ -206,11 +182,7 @@ const ContainerInfoSections = ({
                   <Chip
                     key={`${port.PrivatePort}-${port.PublicPort ?? "private"}-${port.Type}`}
                     label={formatPort(port)}
-                    size="small"
-                    style={{
-                      fontFamily: "var(--app-font-mono)",
-                      fontSize: "0.72rem",
-                    }}
+                    size="xsmall"
                     variant="soft"
                   />
                 ))}
@@ -238,14 +210,27 @@ const ContainerInfoSections = ({
                           ? undefined
                           : "1px solid var(--app-palette-divider)",
                       alignItems: "baseline",
-                      gap: theme.spacing(2),
+                      gap: "var(--app-space-8)",
                       minWidth: 0,
                     }}
                   >
-                    <span style={networkLabelStyle} title={networkName}>
+                    <AppTypography
+                      color="text.secondary"
+                      component="span"
+                      noWrap
+                      style={networkLabelStyle}
+                      title={networkName}
+                      variant="caption"
+                    >
                       {networkName}
-                    </span>
-                    <span style={valueStyle}>{endpoint.IPAddress || "-"}</span>
+                    </AppTypography>
+                    <AppTypography
+                      component="span"
+                      fontWeight={500}
+                      variant="caption"
+                    >
+                      {endpoint.IPAddress || "-"}
+                    </AppTypography>
                   </div>
                 ))}
               </div>

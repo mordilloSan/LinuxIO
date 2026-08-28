@@ -14,7 +14,6 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useAppTheme } from "@/theme";
 import { cardHeight } from "@/theme/constants";
 
 import "./dashboard-card.css";
@@ -60,11 +59,13 @@ export const DASHBOARD_CARD_LAYOUT = {
 
 /** Colored header dot indicating whether the card's data source is reachable. */
 export const CardStatusDot = ({ online }: { online: boolean }) => {
-  const theme = useAppTheme();
-
   return (
     <StatusDot
-      color={online ? theme.palette.success.main : theme.palette.error.main}
+      color={
+        online
+          ? "var(--app-palette-success-main)"
+          : "var(--app-palette-error-main)"
+      }
       style={{ marginBottom: 2 }}
       tooltip={online ? "Connected" : "Disconnected"}
     />
@@ -83,8 +84,6 @@ export const CardHeaderSelect = ({
   options,
   value,
 }: CardHeaderSelectProps) => {
-  const theme = useAppTheme();
-
   if (options.length === 0) return null;
 
   const handleSelectionChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -100,8 +99,10 @@ export const CardHeaderSelect = ({
         {
           marginLeft: 0,
           marginBottom: 2,
-          color: theme.palette.text.secondary,
-          lineHeight: theme.typography.body2.lineHeight,
+          color: "var(--app-palette-text-secondary)",
+          // Mirrors app-typo--body2's line-height (app-typography.css); no
+          // CSS variable exists for it yet.
+          lineHeight: 1.43,
           "--app-select-input-font-size": "0.75rem",
         } as CSSProperties
       }
@@ -153,7 +154,6 @@ export const CardBadge = ({
   selected,
   text,
 }: CardBadgeProps) => {
-  const theme = useAppTheme();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const menuId = useId();
 
@@ -167,7 +167,7 @@ export const CardBadge = ({
         }}
       >
         <Icon
-          color={theme.palette.primary.main}
+          color="var(--app-palette-primary-main)"
           height="24px"
           icon={icon}
           width="24px"
@@ -278,8 +278,7 @@ const DashboardCard = ({
   headerExtras,
   contentLayout = "equal",
 }: DashboardCardProps) => {
-  const theme = useAppTheme();
-  const primaryColor = theme.palette.primary.main;
+  const primaryColor = "var(--app-palette-primary-main)";
 
   const [statsFlex, stats2Flex]: [number | string, number | string] = (() => {
     if (contentLayout === "equal") return [1, 1];

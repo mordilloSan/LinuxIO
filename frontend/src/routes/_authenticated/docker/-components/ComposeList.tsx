@@ -1,14 +1,6 @@
 import { Icon } from "@iconify/react";
 import { getRouteApi } from "@tanstack/react-router";
-import {
-  lazy,
-  memo,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import {
   linuxio,
@@ -23,11 +15,10 @@ import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetai
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -35,10 +26,17 @@ import {
   getComposeStatusColor,
   getContainerStatusColor,
 } from "@/constants/statusColors";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 import { CARD_GRID_SIZE_DENSE } from "@/theme/constants";
+import {
+  getContainerDisplayState,
+  getContainerName,
+  getDedupedPorts,
+} from "@/utils/dockerContainer";
 
 import "./compose-list.css";
 
@@ -59,37 +57,8 @@ interface ComposeListProps {
   viewMode?: "table" | "card";
 }
 
-const getContainerName = (container: ContainerInfo) =>
-  container.Names?.[0]?.replace(/^\//, "") || container.Id.slice(0, 12);
-
 const getContainerServiceName = (container: ContainerInfo) =>
   container.Labels?.["com.docker.compose.service"] || "-";
-
-const getContainerDisplayState = (container: ContainerInfo) => {
-  const status = container.Status.toLowerCase();
-  if (status.includes("unhealthy")) return "Unhealthy";
-  if (status.includes("healthy")) return "Healthy";
-  if (container.State === "running") return "Running";
-  if (container.State === "exited") return "Stopped";
-  if (container.State === "dead") return "Dead";
-  return container.State || "Unknown";
-};
-
-const getDedupedContainerPorts = (container: ContainerInfo) => {
-  const seen = new Set<string>();
-  return (container.Ports ?? [])
-    .filter((port) => {
-      const key = port.PublicPort
-        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
-        : `${port.PrivatePort}/${port.Type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort(
-      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
-    );
-};
 
 const formatContainerPort = (port: ContainerPort) =>
   port.PublicPort
@@ -105,6 +74,13 @@ const getTotalContainers = (project: ComposeProject) => {
 };
 
 const getComposeProjectId = (project: ComposeProject) => project.name;
+
+// Hoisted so AppVirtualTable's row comparator (which compares
+// `getRowAttributes` by reference) sees a stable function instead of a new
+// closure on every renderStackContainers call.
+const getComposeContainerRowAttributes = () => ({
+  className: "compose-container-row",
+});
 
 interface ComposeContainerActionsProps {
   container: ContainerInfo;
@@ -259,10 +235,11 @@ const ComposeList = ({
   const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(
     null,
   );
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [terminalContainer, setTerminalContainer] =
     useState<ContainerInfo | null>(null);
-  const theme = useAppTheme();
-  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
+  const isSmallUp = useAppMediaQuery(up("sm"));
   const surface = useReorderableSurface({
     getId: getComposeProjectId,
     items: projects,
@@ -285,33 +262,12 @@ const ComposeList = ({
     surface,
   });
   const orderedProjects = surface.items;
-  const focusedProject = useMemo(
-    () =>
-      orderedProjects.find((project) => project.name === focusedProjectName) ??
-      null,
-    [focusedProjectName, orderedProjects],
-  );
-
-  useEffect(() => {
-    if (focusedProjectName && !focusedProject) updateFocusedProject(null);
-  }, [focusedProject, focusedProjectName, updateFocusedProject]);
-
-  useEffect(() => {
-    if (!focusedProject) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      updateFocusedProject(null);
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focusedProject, updateFocusedProject]);
+  const focusedProject = useFocusedResourceParam({
+    focusedId: focusedProjectName,
+    getId: getComposeProjectId,
+    items: orderedProjects,
+    onClear: () => updateFocusedProject(null),
+  });
   const filtered = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     if (!normalizedSearch) return orderedProjects;
@@ -331,7 +287,7 @@ const ComposeList = ({
     );
   }, [projects]);
 
-  const columns = useMemo<AppDataTableColumnDef<ComposeProject>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<ComposeProject>[]>(
     () => [
       {
         id: "status",
@@ -353,10 +309,9 @@ const ComposeList = ({
                   color={statusColor}
                   label={project.status}
                   labelStyle={{ paddingInline: 12 }}
-                  size="small"
+                  size="xsmall"
                   style={{
                     textTransform: "capitalize",
-                    fontSize: "0.68rem",
                   }}
                   variant="soft"
                 />
@@ -384,7 +339,7 @@ const ComposeList = ({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing(1.5),
+                gap: "var(--app-space-6)",
               }}
             >
               <DockerIcon
@@ -405,8 +360,7 @@ const ComposeList = ({
                 <Chip
                   color="warning"
                   label="Update"
-                  size="small"
-                  style={{ fontSize: "0.68rem" }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -495,7 +449,6 @@ const ComposeList = ({
               noWrap
               style={{
                 maxWidth: 600,
-                fontSize: "0.85rem",
                 color: "var(--app-palette-text-secondary)",
               }}
               title={location}
@@ -526,7 +479,7 @@ const ComposeList = ({
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
-                gap: isSmallUp ? theme.spacing(0.5) : 0,
+                gap: isSmallUp ? "var(--app-space-2)" : 0,
               }}
             >
               {onEdit && project.config_files.length > 0 && (
@@ -589,11 +542,11 @@ const ComposeList = ({
         },
       },
     ],
-    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop, theme],
+    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop],
   );
 
   const expandedContainerColumns = useMemo<
-    AppDataTableColumnDef<ContainerInfo>[]
+    AppVirtualTableColumnDef<ContainerInfo>[]
   >(
     () => [
       {
@@ -632,8 +585,8 @@ const ComposeList = ({
                   <Chip
                     color="warning"
                     label="Update"
-                    size="small"
-                    style={{ fontSize: "0.68rem", marginTop: 2 }}
+                    size="xsmall"
+                    style={{ marginTop: 2 }}
                     variant="soft"
                   />
                 )}
@@ -735,7 +688,7 @@ const ComposeList = ({
         id: "ports",
         header: "Ports",
         cell: ({ row }) => {
-          const ports = getDedupedContainerPorts(row.original);
+          const ports = getDedupedPorts(row.original);
           const portsText =
             ports.length > 0 ? ports.map(formatContainerPort).join(", ") : "-";
 
@@ -755,7 +708,7 @@ const ComposeList = ({
             const container = row as ContainerInfo;
             return [
               container.Id,
-              getDedupedContainerPorts(container)
+              getDedupedPorts(container)
                 .map(formatContainerPort)
                 .join("\u0000"),
             ];
@@ -774,8 +727,14 @@ const ComposeList = ({
             <ComposeContainerActions
               container={container}
               disabled={isLoading}
-              onOpenLogs={setLogsContainer}
-              onOpenTerminal={setTerminalContainer}
+              onOpenLogs={(container) => {
+                setLogsContainer(container);
+                setLogsDialogOpen(true);
+              }}
+              onOpenTerminal={(container) => {
+                setTerminalContainer(container);
+                setTerminalDialogOpen(true);
+              }}
             />
           );
         },
@@ -803,7 +762,7 @@ const ComposeList = ({
       const containers = containersByProject.get(project.name) ?? [];
 
       return (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel={`Containers in ${project.name}`}
           className="compose-expanded-table"
           columns={expandedContainerColumns}
@@ -812,7 +771,7 @@ const ComposeList = ({
           emptyMessage="No containers found for this stack."
           enableSorting={false}
           fillAvailable={false}
-          getRowAttributes={() => ({ className: "compose-container-row" })}
+          getRowAttributes={getComposeContainerRowAttributes}
           getRowId={(container) => container.Id}
           maxHeight={260}
           variant="embedded"
@@ -837,16 +796,18 @@ const ComposeList = ({
         <LogsDialog
           containerId={logsContainer.Id}
           containerName={getContainerName(logsContainer)}
-          onClose={() => setLogsContainer(null)}
-          open={!!logsContainer}
+          onClose={() => setLogsDialogOpen(false)}
+          onExited={() => setLogsContainer(null)}
+          open={logsDialogOpen}
         />
       )}
       {terminalContainer && (
         <TerminalDialog
           containerId={terminalContainer.Id}
           containerName={getContainerName(terminalContainer)}
-          onClose={() => setTerminalContainer(null)}
-          open={!!terminalContainer}
+          onClose={() => setTerminalDialogOpen(false)}
+          onExited={() => setTerminalContainer(null)}
+          open={terminalDialogOpen}
         />
       )}
     </Suspense>
@@ -900,8 +861,8 @@ const ComposeList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">
@@ -948,7 +909,7 @@ const ComposeList = ({
       }}
     >
       {searchControl}
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel="Docker compose stacks"
         columns={columns}
         data={filtered}

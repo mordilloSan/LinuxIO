@@ -30,6 +30,8 @@ import buildAppTheme, { AppThemeProvider } from "@/theme";
 import type { AuthContextType } from "@/types/auth";
 import type { ConfigContextType, EffectiveAppSettings } from "@/types/config";
 
+const TEST_THEME = buildAppTheme("DARK");
+
 export function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -199,9 +201,7 @@ export function render(
       <QueryClientProvider client={queryClient}>
         <AuthContext.Provider value={authValue}>
           <ConfigContext.Provider value={configValue}>
-            <AppThemeProvider value={buildAppTheme("DARK")}>
-              {children}
-            </AppThemeProvider>
+            <AppThemeProvider value={TEST_THEME}>{children}</AppThemeProvider>
           </ConfigContext.Provider>
         </AuthContext.Provider>
       </QueryClientProvider>
@@ -256,7 +256,7 @@ export function createTanStackRouterWrapper({
         <QueryClientProvider client={queryClient}>
           <AuthContext.Provider value={authValue}>
             <ConfigContext.Provider value={createConfigContextValue()}>
-              <AppThemeProvider value={buildAppTheme("DARK")}>
+              <AppThemeProvider value={TEST_THEME}>
                 <RouterProvider router={router} />
               </AppThemeProvider>
             </ConfigContext.Provider>

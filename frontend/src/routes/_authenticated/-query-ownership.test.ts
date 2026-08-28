@@ -139,6 +139,18 @@ describe("targeted route query ownership", () => {
     );
   });
 
+  it("keeps reconnect-sensitive handoff status in its owning dialog", () => {
+    const networkRoute = readRouteSource("network/route.tsx");
+    const handoffDialog = readRouteSource(
+      "network/-components/BridgeHandoffDialog.tsx",
+    );
+
+    expect(networkRoute).not.toContain("get_bridge_handoff");
+    expect(handoffDialog).toContain("get_bridge_handoff");
+    expect(handoffDialog).toContain("refetchInterval");
+    expect(handoffDialog).toContain("muxIsOpen");
+  });
+
   it("keeps progressive hardware histories out of the route loader", () => {
     const route = readRouteSource("hardware/route.tsx");
     const cards = readRouteSource(
@@ -169,6 +181,18 @@ describe("targeted route query ownership", () => {
     );
   });
 
+  it("loads bridge options only while the create dialog is open", () => {
+    const route = readRouteSource("network/route.tsx");
+    const dialog = readRouteSource(
+      "network/-components/CreateBridgeDialog.tsx",
+    );
+
+    expect(route).not.toContain("linuxio.network.get_bridge_options");
+    expect(dialog).toMatch(
+      /\.\.\.linuxio\.network\.get_bridge_options,\s*enabled: open,/,
+    );
+  });
+
   it("enables the logs service query only for status-backed filters", () => {
     const logs = readRouteSource("logs/-components/GeneralLogsPage.tsx");
 
@@ -179,6 +203,8 @@ describe("targeted route query ownership", () => {
 
   it("keeps VM child observers on the parent polling cadence", () => {
     const page = readRouteSource("vm/-components/VMPage.tsx");
+    const route = readRouteSource("vm/route.tsx");
+    const createDialog = readRouteSource("vm/-components/CreateVMDialog.tsx");
     const childObserverCounts = [
       ["vm/-components/VMDashboardPage.tsx", 2],
       ["vm/-components/VMImagesPage.tsx", 1],
@@ -187,10 +213,29 @@ describe("targeted route query ownership", () => {
     ] as const;
 
     expect(page.match(/refetchInterval:/g)).toHaveLength(2);
+    expect(page).not.toContain("linuxio.virt.networks");
+    expect(route).not.toContain("linuxio.virt.networks");
+    expect(createDialog).toMatch(
+      /\.\.\.linuxio\.virt\.networks,\s*enabled: open,/,
+    );
+    expect(createDialog).toContain("refetchInterval: open ? 30000 : false");
     for (const [relativePath, observerCount] of childObserverCounts) {
       const child = readRouteSource(relativePath);
       expect(child).not.toContain("refetchInterval");
       expect(child.match(/refetchOnMount: false/g)).toHaveLength(observerCount);
     }
+  });
+
+  it("keeps the Docker dashboard child observer on the parent polling cadence", () => {
+    const page = readRouteSource("docker/-components/DockerDashboardPage.tsx");
+    const dashboard = readRouteSource("docker/-components/DockerDashboard.tsx");
+
+    expect(page.match(/refetchInterval: 5000/g)).toHaveLength(1);
+    // The child observes the parent's list_containers cache; its other
+    // queries (images, networks, volumes, info) poll on their own cadence.
+    expect(dashboard).toMatch(
+      /\.\.\.linuxio\.docker\.list_containers, refetchOnMount: false \}/,
+    );
+    expect(dashboard).not.toMatch(/list_containers[^}]*refetchInterval/);
   });
 });

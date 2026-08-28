@@ -6,11 +6,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
-import {
-  CARD_PADDING_SM,
-  TRANSITION_SLOW_CSS,
-  GAP_SM,
-} from "@/theme/constants";
+import { CARD_PADDING_SM, GAP_SM } from "@/theme/constants";
 
 export interface LVMSectionCardProps {
   accent: string;
@@ -82,7 +78,8 @@ const LVMSectionCard = ({
                   icon="mdi:chevron-down"
                   style={{
                     transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
-                    transition: `transform ${TRANSITION_SLOW_CSS}`,
+                    transition:
+                      "transform var(--app-transition-duration-fast) var(--app-easing-standard)",
                   }}
                   width={22}
                 />

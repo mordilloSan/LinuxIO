@@ -9,7 +9,6 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useAppTheme } from "@/theme";
 
 /**
  * "default" is the original settings-panel stack (body2 label, single-line
@@ -35,7 +34,6 @@ export const StatusMetric = ({
   value: ReactNode;
   variant?: "compact" | "default" | "stat";
 }) => {
-  const theme = useAppTheme();
   const isStat = variant === "stat";
   const title =
     typeof value === "string" || typeof value === "number"
@@ -44,11 +42,7 @@ export const StatusMetric = ({
   const detailTitle = typeof detail === "string" ? detail : undefined;
 
   const valueNode = isStat ? (
-    <AppTypography
-      fontWeight={700}
-      style={{ fontSize: "1.35rem", lineHeight: 1.2 }}
-      variant="body2"
-    >
+    <AppTypography fontWeight={700} variant="h3">
       {value}
     </AppTypography>
   ) : (
@@ -69,7 +63,7 @@ export const StatusMetric = ({
           ? {
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(2),
+              gap: "var(--app-space-8)",
               minWidth: 0,
             }
           : { minWidth: 0 }
@@ -79,7 +73,7 @@ export const StatusMetric = ({
         <div
           style={{
             alignItems: "center",
-            color: theme.palette.primary.main,
+            color: "var(--app-palette-primary-main)",
             display: "inline-flex",
           }}
         >
@@ -155,10 +149,9 @@ export const SectionCard = ({
   defaultCollapsed?: boolean;
   children: ReactNode;
 }) => {
-  const theme = useAppTheme();
   const contentId = useId();
   const [expanded, setExpanded] = useState(!defaultCollapsed);
-  const headerGap = subtitle ? 2.75 : 1.5;
+  const headerGap = subtitle ? "var(--app-space-12)" : "var(--app-space-6)";
   const content = collapsible ? (
     <AppCollapse in={expanded} unmountOnExit>
       {children}
@@ -174,8 +167,8 @@ export const SectionCard = ({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: theme.spacing(1.5),
-          marginBottom: expanded || !collapsible ? theme.spacing(headerGap) : 0,
+          gap: "var(--app-space-6)",
+          marginBottom: expanded || !collapsible ? headerGap : 0,
         }}
       >
         <div
@@ -185,9 +178,9 @@ export const SectionCard = ({
             justifyContent: "center",
             width: 36,
             height: 36,
-            borderRadius: 8,
-            background: theme.palette.action.hover,
-            color: theme.palette.primary.main,
+            borderRadius: "var(--app-radius-md)",
+            background: "var(--app-palette-action-hover)",
+            color: "var(--app-palette-primary-main)",
             flexShrink: 0,
           }}
         >
@@ -198,7 +191,7 @@ export const SectionCard = ({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: theme.spacing(1),
+              gap: "var(--app-space-4)",
             }}
           >
             <AppTypography component="h3" fontWeight={600} variant="body2">
@@ -248,7 +241,6 @@ export const ToggleCard = ({
   disabled: boolean;
   onChange: (checked: boolean) => void;
 }) => {
-  const theme = useAppTheme();
   return (
     <FrostedCard
       // A single label paired with a single control is the settings-row shape,
@@ -260,7 +252,7 @@ export const ToggleCard = ({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: theme.spacing(1.5),
+        gap: "var(--app-space-6)",
         minHeight: 62,
         padding: 12,
       }}

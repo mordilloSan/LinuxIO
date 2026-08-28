@@ -9,7 +9,6 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 
 const ACCOUNTS_TOAST_META = {
   label: "Open accounts",
@@ -19,6 +18,7 @@ const ACCOUNTS_TOAST_META = {
 interface DeleteGroupDialogProps {
   groupNames: string[];
   onClose: () => void;
+  onExited?: () => void;
   onSuccess: () => void;
   open: boolean;
 }
@@ -26,10 +26,10 @@ interface DeleteGroupDialogProps {
 const DeleteGroupDialog = ({
   open,
   onClose,
+  onExited,
   groupNames,
   onSuccess,
 }: DeleteGroupDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
 
   // Configless: this is a batch flow — the caller owns aggregation and toasts.
@@ -62,7 +62,13 @@ const DeleteGroupDialog = ({
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>
         Delete Group{groupNames.length > 1 ? "s" : ""}
       </AppDialogTitle>
@@ -73,8 +79,8 @@ const DeleteGroupDialog = ({
         </AppDialogContentText>
         <div
           style={{
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
+            marginTop: "var(--app-space-8)",
+            marginBottom: "var(--app-space-4)",
           }}
         >
           {groupNames.map((name) => (

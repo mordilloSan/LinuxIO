@@ -16,7 +16,14 @@ export default defineConfig(async ({ command }): Promise<UserConfig> => {
 
   const plugins: PluginOption[] = [
     tanstackRouter({ autoCodeSplitting: true, target: "react" }),
-    react(isBuild ? { compiler: { target: "19" } } : undefined),
+    react(
+      isBuild
+        ? {
+            compiler: { target: "19" },
+            exclude: /\/[^/]*Virtual[^/]*\.tsx$/,
+          }
+        : undefined,
+    ),
   ];
   if (isBuild) {
     plugins.push(

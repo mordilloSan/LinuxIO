@@ -33,7 +33,29 @@ describe("filebrowser state hooks", () => {
       mode: "0644",
       pathLabel: "old.txt",
     });
+    expect(result.current.permissionsDialogOpen).toBe(true);
     expect(result.current.actions).toBe(initialActions);
+  });
+
+  it("retains permission data until the dialog exit completes", () => {
+    const { result } = renderHook(() => useFileDialogs());
+
+    act(() =>
+      result.current.actions.openPermissions({
+        isDirectory: false,
+        mode: "0644",
+        pathLabel: "old.txt",
+        paths: ["/tmp/old.txt"],
+        selectionCount: 1,
+      }),
+    );
+    act(() => result.current.actions.closePermissions());
+
+    expect(result.current.permissionsDialogOpen).toBe(false);
+    expect(result.current.permissionsDialog).not.toBeNull();
+
+    act(() => result.current.actions.clearPermissions());
+    expect(result.current.permissionsDialog).toBeNull();
   });
 
   it("closes the delete dialog and clears the pending paths together", () => {

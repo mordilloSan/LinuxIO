@@ -5,8 +5,8 @@ import { type AccountGroup, linuxio } from "@/api";
 import GroupCard from "@/components/cards/GroupCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -112,7 +112,7 @@ const GroupsTab = ({
   // Stable column defs: cells render through flexRender, so a rebuilt array
   // remounts every cell subtree — including on the press that arms a
   // reorder hold. See docs/table-row-gestures.md.
-  const columns = useMemo<AppDataTableColumnDef<AccountGroup>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<AccountGroup>[]>(
     () => [
       {
         accessorKey: "name",
@@ -129,12 +129,7 @@ const GroupsTab = ({
                 {group.name}
               </AppTypography>
               {group.isSystem && (
-                <Chip
-                  label="system"
-                  size="small"
-                  style={{ fontSize: "0.65rem", height: 20 }}
-                  variant="soft"
-                />
+                <Chip label="system" size="xsmall" variant="soft" />
               )}
             </div>
           );
@@ -170,8 +165,7 @@ const GroupsTab = ({
                     <Chip
                       key={member}
                       label={member}
-                      size="small"
-                      style={{ fontSize: "0.7rem" }}
+                      size="xsmall"
                       variant="soft"
                     />
                   ))
@@ -183,8 +177,7 @@ const GroupsTab = ({
               {group.members.length > 3 && (
                 <Chip
                   label={`+${group.members.length - 3}`}
-                  size="small"
-                  style={{ fontSize: "0.7rem" }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -280,7 +273,7 @@ const GroupsTab = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Groups"
           columns={columns}
           data={filtered}
@@ -301,10 +294,8 @@ const GroupsTab = ({
       {selectedGroup && (
         <EditGroupMembersDialog
           group={selectedGroup}
-          onClose={() => {
-            setEditMembersDialogOpen(false);
-            setSelectedGroup(null);
-          }}
+          onClose={() => setEditMembersDialogOpen(false)}
+          onExited={() => setSelectedGroup(null)}
           open={editMembersDialogOpen}
         />
       )}
@@ -312,14 +303,9 @@ const GroupsTab = ({
       {groupToDelete && (
         <DeleteGroupDialog
           groupNames={[groupToDelete.name]}
-          onClose={() => {
-            setDeleteDialogOpen(false);
-            setGroupToDelete(null);
-          }}
-          onSuccess={() => {
-            setDeleteDialogOpen(false);
-            setGroupToDelete(null);
-          }}
+          onClose={() => setDeleteDialogOpen(false)}
+          onExited={() => setGroupToDelete(null)}
+          onSuccess={() => setDeleteDialogOpen(false)}
           open={deleteDialogOpen}
         />
       )}

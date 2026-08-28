@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import buildAppTheme from "@/theme";
-
 import {
   getNetworkCarrierLabel,
   getNetworkStateColor,
   getNetworkStateLabel,
   getNetworkStateSummary,
 } from "./networkInterfaceState";
-
-const theme = buildAppTheme("DARK");
 
 describe("network interface state", () => {
   it("names every device state the bridge can report", () => {
@@ -24,10 +20,10 @@ describe("network interface state", () => {
   });
 
   it("colours connected, in-flight and failed states apart", () => {
-    expect(getNetworkStateColor(100, theme)).toBe(theme.palette.success.main);
-    expect(getNetworkStateColor(70, theme)).toBe(theme.palette.warning.main);
-    expect(getNetworkStateColor(120, theme)).toBe(theme.palette.error.main);
-    expect(getNetworkStateColor(10, theme)).toBe(theme.palette.text.disabled);
+    expect(getNetworkStateColor(100)).toBe("var(--app-palette-success-main)");
+    expect(getNetworkStateColor(70)).toBe("var(--app-palette-warning-main)");
+    expect(getNetworkStateColor(120)).toBe("var(--app-palette-error-main)");
+    expect(getNetworkStateColor(10)).toBe("var(--app-palette-text-disabled)");
   });
 
   it("keeps an absent carrier reading distinct from a down one", () => {

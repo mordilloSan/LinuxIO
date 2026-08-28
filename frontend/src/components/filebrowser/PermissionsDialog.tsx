@@ -3,8 +3,8 @@ import { useCallback, useState } from "react";
 
 import { type CountProgress, linuxio, type TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 
 import AppCheckbox from "../ui/AppCheckbox";
 
@@ -30,6 +31,7 @@ interface PermissionsDialogProps {
     owner?: string,
     group?: string,
   ) => void;
+  onExited?: () => void;
   open: boolean;
   owner?: string;
   pathLabel: string;
@@ -143,6 +145,7 @@ const PermissionsDialog = ({
   group,
   onClose,
   onConfirm,
+  onExited,
   isPending = false,
   progress,
 }: PermissionsDialogProps) => {
@@ -157,6 +160,8 @@ const PermissionsDialog = ({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
+      setPermissions(parseMode(currentMode));
+      setRecursive(false);
       setOwnerInput(owner || "");
       setGroupInput(group || "");
     }
@@ -192,9 +197,8 @@ const PermissionsDialog = ({
     const nextGroup = groupInput.trim() || undefined;
     if (!isPending) onConfirm(mode, recursive, nextOwner, nextGroup);
   }, [groupInput, isPending, onConfirm, ownerInput, permissions, recursive]);
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
-  const permissionColumns: AppDataTableColumnDef<PermissionMatrixRow>[] = [
+  const isMobile = useAppMediaQuery(down("sm"));
+  const permissionColumns: AppVirtualTableColumnDef<PermissionMatrixRow>[] = [
     {
       accessorKey: "label",
       header: "",
@@ -204,7 +208,7 @@ const PermissionsDialog = ({
         </AppTypography>
       ),
     },
-    ...permissionFlags.map<AppDataTableColumnDef<PermissionMatrixRow>>(
+    ...permissionFlags.map<AppVirtualTableColumnDef<PermissionMatrixRow>>(
       (flag) => ({
         id: flag,
         header: flag[0].toUpperCase() + flag.slice(1),
@@ -239,10 +243,10 @@ const PermissionsDialog = ({
       aria-busy={isPending || undefined}
       disableEscapeKeyDown={isPending}
       fullWidth
-      key={open ? `${currentMode}-${owner}-${group}` : "closed"}
       maxWidth="sm"
       onClose={isPending ? undefined : onClose}
       open={open}
+      slotProps={{ transition: { onExited } }}
     >
       <AppDialogTitle
         style={{
@@ -275,9 +279,9 @@ const PermissionsDialog = ({
           style={{
             display: "grid",
             gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-            gap: theme.spacing(2),
-            marginBottom: theme.spacing(3),
-            marginTop: theme.spacing(1),
+            gap: "var(--app-space-8)",
+            marginBottom: "var(--app-space-12)",
+            marginTop: "var(--app-space-4)",
           }}
         >
           <AppAutocomplete
@@ -311,7 +315,7 @@ const PermissionsDialog = ({
           />
         </div>
 
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="File permissions matrix"
           columns={permissionColumns}
           data={permissionRows}
@@ -326,7 +330,7 @@ const PermissionsDialog = ({
         {isDirectory && (
           <div
             style={{
-              marginTop: theme.spacing(2),
+              marginTop: "var(--app-space-8)",
             }}
           >
             <AppFormControlLabel
@@ -347,7 +351,7 @@ const PermissionsDialog = ({
           aria-live="polite"
           color="text.secondary"
           role="status"
-          style={{ paddingInline: theme.spacing(3) }}
+          style={{ paddingInline: "var(--app-space-12)" }}
           variant="body2"
         >
           {progress?.message ?? progress?.phase ?? "Changing permissions"}

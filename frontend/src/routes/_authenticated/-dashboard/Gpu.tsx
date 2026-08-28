@@ -5,7 +5,6 @@ import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import {
   formatGpuPercent,
   getGpuType,
@@ -14,7 +13,6 @@ import {
 } from "@/utils/gpu";
 
 const GpuStats = () => {
-  const theme = useAppTheme();
   const { data: gpus } = useSuspenseQuery({
     ...linuxio.system.get_gpu_info,
     refetchInterval: 2_000,
@@ -34,7 +32,7 @@ const GpuStats = () => {
         display: "flex",
         flexDirection: "column",
         width: "100%",
-        gap: theme.spacing(1.5),
+        gap: "var(--app-space-6)",
       }}
     >
       {gpus.map((gpu, idx) => (
@@ -53,7 +51,7 @@ const GpuStats = () => {
               display: "flex",
               alignItems: "flex-start",
               justifyContent: "space-between",
-              gap: theme.spacing(1),
+              gap: "var(--app-space-4)",
               marginBottom: 12,
             }}
           >
@@ -86,7 +84,7 @@ const GpuStats = () => {
 
           {hasGpuValue(gpu.utilization_percent) && (
             <MetricBar
-              color={theme.palette.primary.main}
+              color="var(--app-palette-primary-main)"
               label="GPU Load"
               percent={gpu.utilization_percent}
               rightLabel={formatGpuPercent(gpu.utilization_percent)}

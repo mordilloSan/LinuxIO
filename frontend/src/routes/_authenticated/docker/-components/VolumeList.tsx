@@ -1,32 +1,23 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { type DockerVolume, linuxio, useCallMutation } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
+import BatchDeleteDialog from "@/components/docker/BatchDeleteDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
-import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogContentText,
-  AppDialogTitle,
-  OVERLAY_ROOT_SELECTOR,
-} from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
@@ -197,115 +188,12 @@ interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-interface DeleteVolumeDialogProps {
-  onClose: () => void;
-  onSuccess: () => void;
-  open: boolean;
-  volumeNames: string[];
-}
-const DeleteVolumeDialog = ({
-  open,
-  onClose,
-  volumeNames,
-  onSuccess,
-}: DeleteVolumeDialogProps) => {
-  const theme = useAppTheme();
-  const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteVolume, isPending: isDeleting } = useCallMutation(
-    linuxio.docker.delete_volume,
-  );
-  const handleDelete = async () => {
-    // Delete volumes sequentially
-    const failures: string[] = [];
-    for (const name of volumeNames) {
-      try {
-        await deleteVolume({ name });
-      } catch {
-        failures.push(name);
-      }
-    }
-    if (failures.length > 0) {
-      toast.error(
-        `Failed to delete ${failures.length} of ${volumeNames.length} volume${volumeNames.length === 1 ? "" : "s"}`,
-      );
-    } else {
-      const successMessage =
-        volumeNames.length === 1
-          ? `Volume "${volumeNames[0]}" deleted successfully`
-          : `${volumeNames.length} volumes deleted successfully`;
-      toast.success(successMessage);
-    }
-    onSuccess();
-    handleClose();
-  };
-  const handleClose = () => {
-    onClose();
-  };
-  return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
-      <AppDialogTitle>
-        Delete Volume{volumeNames.length > 1 ? "s" : ""}
-      </AppDialogTitle>
-      <AppDialogContent>
-        <AppDialogContentText>
-          Are you sure you want to delete the following volume
-          {volumeNames.length > 1 ? "s" : ""}?
-        </AppDialogContentText>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
-          }}
-        >
-          {volumeNames.map((name) => (
-            <Chip
-              key={name}
-              label={name}
-              size="small"
-              style={{
-                marginRight: 4,
-                marginBottom: 4,
-              }}
-              variant="soft"
-            />
-          ))}
-        </div>
-        <AppDialogContentText
-          style={{
-            marginTop: 8,
-            color: "var(--app-palette-warning-main)",
-          }}
-        >
-          This action cannot be undone. Volumes in use by containers cannot be
-          deleted.
-        </AppDialogContentText>
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton disabled={isDeleting} onClick={handleClose}>
-          Cancel
-        </AppButton>
-        <AppButton
-          color="error"
-          disabled={isDeleting}
-          onClick={handleDelete}
-          variant="contained"
-        >
-          {isDeleting ? "Deleting..." : "Delete"}
-        </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
-  );
-};
 const getVolumeId = (volume: { Name: string }) => volume.Name;
 
 const VolumeList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: VolumeListProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const focusedVolumeName = searchParams.volume;
@@ -320,11 +208,6 @@ const VolumeList = ({
 
   // Ensure volumes is an array (handle null/undefined from API)
   const volumesList = rawVolumes;
-  const focusedVolume = useMemo(
-    () =>
-      volumesList.find((volume) => volume.Name === focusedVolumeName) ?? null,
-    [focusedVolumeName, volumesList],
-  );
   const updateFocusedVolume = useCallback(
     (name: string | null) => {
       void navigate({
@@ -334,25 +217,12 @@ const VolumeList = ({
     },
     [navigate],
   );
-  useEffect(() => {
-    if (focusedVolumeName && !focusedVolume) updateFocusedVolume(null);
-  }, [focusedVolume, focusedVolumeName, updateFocusedVolume]);
-  useEffect(() => {
-    if (!focusedVolume) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      updateFocusedVolume(null);
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focusedVolume, updateFocusedVolume]);
+  const focusedVolume = useFocusedResourceParam({
+    focusedId: focusedVolumeName,
+    getId: getVolumeId,
+    items: volumesList,
+    onClear: () => updateFocusedVolume(null),
+  });
 
   // Create volume handler
   const handleCreateVolume = useCallback(() => {
@@ -377,6 +247,10 @@ const VolumeList = ({
       vol.Mountpoint?.toLowerCase().includes(search.toLowerCase()),
   );
 
+  // Configless: this is a batch flow — the dialog owns aggregation and toasts.
+  const { mutateAsync: deleteVolume } = useCallMutation(
+    linuxio.docker.delete_volume,
+  );
   const handleDeleteSuccess = () => {
     updateFocusedVolume(null);
   };
@@ -388,7 +262,9 @@ const VolumeList = ({
 
   // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
   // remounts every cell subtree on the press that arms the reorder hold.
-  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
+  const columns = useMemo<
+    AppVirtualTableColumnDef<(typeof filtered)[number]>[]
+  >(
     () => [
       {
         accessorKey: "Name",
@@ -408,12 +284,7 @@ const VolumeList = ({
         accessorKey: "Driver",
         header: "Driver",
         cell: ({ row }) => (
-          <Chip
-            label={row.original.Driver}
-            size="small"
-            style={{ fontSize: "0.75rem" }}
-            variant="soft"
-          />
+          <Chip label={row.original.Driver} size="xsmall" variant="soft" />
         ),
         meta: {
           align: "left",
@@ -515,7 +386,7 @@ const VolumeList = ({
               actions={
                 <AppActionIconButton
                   ariaLabel={`Delete volume ${focusedVolume.Name}`}
-                  color={theme.palette.error.main}
+                  color="var(--app-palette-error-main)"
                   icon="mdi:delete"
                   iconSize={18}
                   label="Delete volume"
@@ -553,8 +424,8 @@ const VolumeList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">
@@ -563,7 +434,7 @@ const VolumeList = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Docker volumes"
           columns={columns}
           data={filtered}
@@ -576,11 +447,18 @@ const VolumeList = ({
         />
       )}
 
-      <DeleteVolumeDialog
+      <BatchDeleteDialog
+        items={
+          focusedVolume
+            ? [{ key: focusedVolume.Name, label: focusedVolume.Name }]
+            : []
+        }
+        noun="volume"
         onClose={() => setDeleteDialogOpen(false)}
+        onDeleteOne={(item) => deleteVolume({ name: item.key })}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
-        volumeNames={focusedVolume ? [focusedVolume.Name] : []}
+        warning="Volumes in use by containers cannot be deleted."
       />
     </div>
   );

@@ -21,11 +21,11 @@ import PathPickerField from "@/components/ui/PathPickerField";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfig, useDockerSettings } from "@/hooks/useConfig";
-import { useAppTheme } from "@/theme";
 import { ensureTrailingSlash } from "@/utils/path";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
+import { useSettingsDraft } from "./SettingsSectionForm";
 import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
 
 const normalizePathInput = (value: string): string => {
@@ -78,7 +78,6 @@ const validateDraftFolders = (
 };
 
 const DockerSettingsSection = () => {
-  const theme = useAppTheme();
   const { privileged } = useAuth();
   const { updateConfig } = useConfig();
   const dockerSettings = useDockerSettings();
@@ -113,11 +112,26 @@ const DockerSettingsSection = () => {
     () => normalizeFolderList(dockerFolders),
     [dockerFolders],
   );
-  const configuredFoldersKey = configuredFolders.join("\n");
-
-  const [drafts, setDrafts] = useState<string[]>(
-    configuredFolders.length > 0 ? configuredFolders : [""],
+  // The saved list always shows at least one (empty) row.
+  const savedFolders = useMemo(
+    () => ({
+      folders: configuredFolders.length > 0 ? configuredFolders : [""],
+    }),
+    [configuredFolders],
   );
+  const {
+    draft: folderDraft,
+    isDirty,
+    patchKey,
+    reset,
+  } = useSettingsDraft<{ folders: string[] }, object>(
+    savedFolders,
+    undefined,
+    (draft, saved) =>
+      areStringListsEqual(draft.folders.map(normalizePathInput), saved.folders),
+  );
+  const drafts = folderDraft?.folders ?? savedFolders.folders;
+  const setDrafts = (next: string[]) => patchKey("folders", next);
   const [errorTexts, setErrorTexts] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -126,22 +140,6 @@ const DockerSettingsSection = () => {
 
   const createPromptResolverRef = useRef<((confirmed: boolean) => void) | null>(
     null,
-  );
-
-  const [prevConfiguredFoldersKey, setPrevConfiguredFoldersKey] =
-    useState(configuredFoldersKey);
-  if (configuredFoldersKey !== prevConfiguredFoldersKey) {
-    setPrevConfiguredFoldersKey(configuredFoldersKey);
-    setDrafts(configuredFolders.length > 0 ? configuredFolders : [""]);
-    setErrorTexts([]);
-  }
-
-  const draftFolders = useMemo(() => drafts.map(normalizePathInput), [drafts]);
-  const configuredComparisonFolders =
-    configuredFolders.length > 0 ? configuredFolders : [""];
-  const isDirty = !areStringListsEqual(
-    draftFolders,
-    configuredComparisonFolders,
   );
 
   const resolveCreatePrompt = useCallback((confirmed: boolean) => {
@@ -176,28 +174,26 @@ const DockerSettingsSection = () => {
     [],
   );
 
-  const handleReset = useCallback(() => {
-    setDrafts(configuredFolders.length > 0 ? configuredFolders : [""]);
+  const handleReset = () => {
+    reset();
     setErrorTexts([]);
-  }, [configuredFolders]);
+  };
 
-  const handleAddFolder = useCallback(() => {
-    setDrafts((prev) => [...prev, ""]);
-  }, []);
+  const handleAddFolder = () => setDrafts([...drafts, ""]);
 
-  const handleRemoveFolder = useCallback((index: number) => {
-    setDrafts((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  const handleRemoveFolder = (index: number) => {
+    setDrafts(drafts.filter((_, itemIndex) => itemIndex !== index));
     setErrorTexts((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
-  }, []);
+  };
 
-  const handleDraftChange = useCallback((index: number, value: string) => {
-    setDrafts((prev) =>
-      prev.map((item, itemIndex) => (itemIndex === index ? value : item)),
+  const handleDraftChange = (index: number, value: string) => {
+    setDrafts(
+      drafts.map((item, itemIndex) => (itemIndex === index ? value : item)),
     );
     setErrorTexts((prev) =>
       prev.map((item, itemIndex) => (itemIndex === index ? "" : item)),
     );
-  }, []);
+  };
 
   const handleSave = useCallback(async () => {
     const { folders, errors } = validateDraftFolders(drafts);
@@ -240,7 +236,7 @@ const DockerSettingsSection = () => {
           }
 
           setDockerFolders(folders);
-          setDrafts(folders);
+          reset();
           toast.success("Docker folders saved.");
         } catch (error: unknown) {
           const message =
@@ -258,6 +254,7 @@ const DockerSettingsSection = () => {
     askCreatePrompt,
     createDockerFolder,
     drafts,
+    reset,
     setDockerFolders,
     validateDockerFolder,
   ]);
@@ -269,9 +266,9 @@ const DockerSettingsSection = () => {
     flexShrink: 0,
     width: 36,
     height: 36,
-    borderRadius: 8,
-    background: theme.palette.action.hover,
-    color: theme.palette.primary.main,
+    borderRadius: "var(--app-radius-md)",
+    background: "var(--app-palette-action-hover)",
+    color: "var(--app-palette-primary-main)",
   };
 
   return (
@@ -280,7 +277,7 @@ const DockerSettingsSection = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
         }}
       >
         <div>
@@ -298,7 +295,7 @@ const DockerSettingsSection = () => {
               style={{
                 display: "flex",
                 alignItems: "flex-start",
-                gap: theme.spacing(1.5),
+                gap: "var(--app-space-6)",
               }}
             >
               <div style={folderIconStyle}>
@@ -346,7 +343,7 @@ const DockerSettingsSection = () => {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: theme.spacing(1.5),
+            gap: "var(--app-space-6)",
             opacity: privileged ? 1 : 0.72,
             padding: 12,
           }}
@@ -355,7 +352,7 @@ const DockerSettingsSection = () => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: theme.spacing(1.5),
+              gap: "var(--app-space-6)",
               minWidth: 0,
             }}
           >
@@ -391,7 +388,7 @@ const DockerSettingsSection = () => {
               alignItems: "center",
               borderRadius: "inherit",
               display: "flex",
-              gap: theme.spacing(1.5),
+              gap: "var(--app-space-6)",
               justifyContent: "flex-start",
               minWidth: 0,
               opacity: isSaving ? 0.65 : 1,
@@ -417,8 +414,8 @@ const DockerSettingsSection = () => {
           style={{
             display: "flex",
             justifyContent: "flex-end",
-            gap: theme.spacing(1.5),
-            paddingTop: theme.spacing(0.5),
+            gap: "var(--app-space-6)",
+            paddingTop: "var(--app-space-2)",
           }}
         >
           <AppButton disabled={!isDirty || isSaving} onClick={handleReset}>
@@ -438,8 +435,8 @@ const DockerSettingsSection = () => {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1.5),
-          marginTop: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
+          marginTop: "var(--app-space-6)",
         }}
       >
         <div>

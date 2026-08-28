@@ -12,8 +12,9 @@ import {
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
+
+import "./stack-setup-dialog.css";
+
 interface StackSetupDialogProps {
   defaultWorkingDir?: string;
   onClose: () => void;
@@ -26,7 +27,6 @@ const StackSetupDialog = ({
   onConfirm,
   defaultWorkingDir,
 }: StackSetupDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const [stackName, setStackName] = useState("");
   const [workingDir, setWorkingDir] = useState("");
@@ -132,13 +132,13 @@ const StackSetupDialog = ({
       onClose={onClose}
       open={open}
       paperStyle={{
-        backgroundColor: theme.palette.background.default,
+        backgroundColor: "var(--app-palette-background-default)",
       }}
     >
       <AppDialogTitle
         style={{
-          backgroundColor: theme.header.background,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderBottom: "1px solid var(--app-palette-divider)",
         }}
       >
         <AppTypography variant="h6">
@@ -155,7 +155,7 @@ const StackSetupDialog = ({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: theme.spacing(3),
+            gap: "var(--app-space-12)",
           }}
         >
           <AppTextField
@@ -186,13 +186,10 @@ const StackSetupDialog = ({
           />
 
           <div
+            className="stack-setup-dialog__file-location"
             style={{
-              backgroundColor: alpha(
-                theme.palette.text.primary,
-                theme.palette.mode === "dark" ? 0.05 : 0.02,
-              ),
-              borderRadius: theme.shape.borderRadius,
-              padding: theme.spacing(2),
+              borderRadius: "var(--app-radius-base)",
+              padding: "var(--app-space-8)",
             }}
           >
             <AppTypography color="text.secondary" variant="caption">
@@ -208,8 +205,8 @@ const StackSetupDialog = ({
 
       <AppDialogActions
         style={{
-          backgroundColor: theme.header.background,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderTop: "1px solid var(--app-palette-divider)",
           padding: 8,
         }}
       >

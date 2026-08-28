@@ -22,7 +22,6 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NoRequest, float64]("system.get_uptime", apischema.RetrySafe()).Handle(handleGetUptime),
 		apischema.Call[apischema.NoRequest, []apischema.FilesystemInfo]("system.get_fs_info", apischema.RetrySafe()).Handle(handleGetFilesystemInfo),
 		apischema.Call[apischema.NoRequest, []apischema.ProcessInfo]("system.get_processes", apischema.RetrySafe()).Handle(handleGetProcesses),
-		apischema.Call[apischema.NoRequest, apischema.NoResponse]("system.get_services", apischema.NoEndpoint()).HandleVoid(handleGetServices),
 		apischema.Call[apischema.NoRequest, []apischema.GpuDevice]("system.get_gpu_info", apischema.RetrySafe()).Handle(handleGetGPUInfo),
 		apischema.Call[apischema.NoRequest, *apischema.UpdatesFastResponse]("system.get_updates_fast").Handle(handleGetUpdatesFast),
 		apischema.Call[apischema.NoRequest, apischema.DiskThroughputResponse]("system.get_disk_throughput").Handle(handleGetDiskThroughput),
@@ -85,11 +84,6 @@ func handleGetFilesystemInfo(ctx context.Context, _ apischema.NoRequest) ([]apis
 func handleGetProcesses(ctx context.Context, _ apischema.NoRequest) ([]apischema.ProcessInfo, error) {
 	result, err := FetchProcesses(ctx)
 	return result, err
-}
-
-func handleGetServices(ctx context.Context, _ apischema.NoRequest) error {
-	_, err := FetchServices(ctx)
-	return err
 }
 
 func handleGetGPUInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.GpuDevice, error) {

@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"encoding/json"
 	stdnet "net"
 	"strings"
@@ -10,7 +11,73 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
+	bridgeruntime "github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
+
+type fakeBridgeHandoffService struct {
+	uid       uint32
+	operation string
+}
+
+func (f *fakeBridgeHandoffService) Start(_ context.Context, uid uint32, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
+	f.uid = uid
+	f.operation = req.OperationID
+	return apischema.NetworkBridgeHandoffStatus{OperationID: req.OperationID, State: apischema.NetworkBridgeHandoffApplying}, nil
+}
+
+func (f *fakeBridgeHandoffService) Status(_ context.Context, uid uint32, operationID string) (apischema.NetworkBridgeHandoffStatus, error) {
+	f.uid = uid
+	f.operation = operationID
+	return apischema.NetworkBridgeHandoffStatus{OperationID: operationID, State: apischema.NetworkBridgeHandoffAwaitingConfirmation}, nil
+}
+
+func (f *fakeBridgeHandoffService) Confirm(_ context.Context, uid uint32, operationID string) (apischema.NetworkBridgeHandoffStatus, error) {
+	f.uid = uid
+	f.operation = operationID
+	return apischema.NetworkBridgeHandoffStatus{OperationID: operationID, State: apischema.NetworkBridgeHandoffConfirmed}, nil
+}
+
+func (f *fakeBridgeHandoffService) Revert(_ context.Context, uid uint32, operationID string) (apischema.NetworkBridgeHandoffStatus, error) {
+	f.uid = uid
+	f.operation = operationID
+	return apischema.NetworkBridgeHandoffStatus{OperationID: operationID, State: apischema.NetworkBridgeHandoffReverted}, nil
+}
+
+func TestValidateHandoffStartRequiresConsoleAcknowledgement(t *testing.T) {
+	req := apischema.NetworkBridgeHandoffRequest{
+		OperationID: "00000000-0000-4000-8000-000000000001",
+		Name:        "br-eth0",
+		Member:      "eth0",
+	}
+	if err := validateHandoffStartRequest(req); err == nil {
+		t.Fatal("expected the console acknowledgement to be required")
+	}
+	req.ConsoleAcknowledged = true
+	if err := validateHandoffStartRequest(req); err != nil {
+		t.Fatalf("valid handoff request rejected: %v", err)
+	}
+}
+
+func TestNetworkHandlersPassSessionUIDToHandoffAdapter(t *testing.T) {
+	fake := &fakeBridgeHandoffService{}
+	h := networkHandlers{
+		rt:      bridgeruntime.Runtime{Session: &session.Session{User: session.User{UID: 1007}}},
+		handoff: validatingBridgeHandoffService{inner: fake},
+	}
+	req := apischema.NetworkBridgeHandoffRequest{
+		OperationID:         "00000000-0000-4000-8000-000000000002",
+		Name:                "br-eth0",
+		Member:              "eth0",
+		ConsoleAcknowledged: true,
+	}
+	if _, err := h.handleStartBridgeHandoff(context.Background(), req); err != nil {
+		t.Fatalf("start handoff: %v", err)
+	}
+	if fake.uid != 1007 || fake.operation != req.OperationID {
+		t.Fatalf("adapter received uid=%d operation=%q", fake.uid, fake.operation)
+	}
+}
 
 func TestMergeConfiguredStatePrefersManualConfiguredValues(t *testing.T) {
 	liveMethod := "unknown"
@@ -79,6 +146,39 @@ func TestMergeConfiguredStateKeepsLiveMethodWhenBackendHasNone(t *testing.T) {
 
 	if info.IPv4Method == nil || *info.IPv4Method != "unknown" {
 		t.Fatalf("expected the live method to survive, got %v", info.IPv4Method)
+	}
+}
+
+func TestMapBridgeOptionsPreservesCandidatesAndHostWarnings(t *testing.T) {
+	options := networkbackend.BridgeOptions{
+		Candidates: []networkbackend.BridgeCandidate{{
+			Name:            "enp2s0",
+			MAC:             "52:54:00:00:00:01",
+			Backend:         "systemd-networkd",
+			Eligible:        false,
+			Reasons:         []string{"interface has an address"},
+			HandoffEligible: true,
+			HandoffReasons:  []string{"handoff warning"},
+		}},
+		Warnings: []string{"firewall inspection unavailable"},
+	}
+
+	got := mapBridgeOptions(options)
+	if len(got.Candidates) != 1 {
+		t.Fatalf("candidate count = %d, want 1", len(got.Candidates))
+	}
+	candidate := got.Candidates[0]
+	if candidate.Name != "enp2s0" || candidate.MAC != "52:54:00:00:00:01" || candidate.Backend != "systemd-networkd" {
+		t.Fatalf("candidate identity = %+v", candidate)
+	}
+	if candidate.Eligible || len(candidate.Reasons) != 1 {
+		t.Fatalf("candidate safety fields = %+v", candidate)
+	}
+	if !candidate.HandoffEligible || candidate.HandoffReasons == nil {
+		t.Fatalf("candidate handoff fields = %+v", candidate)
+	}
+	if len(got.Warnings) != 1 || got.Warnings[0] != "firewall inspection unavailable" {
+		t.Fatalf("options warnings = %v", got.Warnings)
 	}
 }
 

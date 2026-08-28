@@ -1,7 +1,7 @@
 .app-navbar {
   position: sticky;
   top: 0;
-  z-index: 1100;
+  z-index: var(--app-z-navbar);
   background: var(--app-header-background);
   color: var(--app-header-color);
 }
@@ -92,7 +92,9 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-  transition: max-width 300ms ease, opacity 300ms ease;
+  transition:
+    max-width var(--app-transition-duration-fast) var(--app-easing-standard),
+    opacity var(--app-transition-duration-fast) var(--app-easing-standard);
 }
 
 .app-navbar-notifications__peek-copy {

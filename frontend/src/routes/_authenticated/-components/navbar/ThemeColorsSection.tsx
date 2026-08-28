@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ConfigThemeColorsByModePayload as ThemeColorsByMode,
@@ -13,6 +13,11 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useConfigValue } from "@/hooks/useConfig";
 import { buildAppTheme, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
+
+// Trailing debounce for saves driven by the native colour picker. Long enough
+// to coalesce a drag into a few RPCs, short enough that the app previews the
+// colour (via the optimistic config cache) while the picker is still open.
+const PICKER_SAVE_DEBOUNCE_MS = 250;
 
 function toInputColor(color: string): string {
   const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(color);
@@ -207,11 +212,15 @@ function ThemeColorsSection() {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: theme.spacing(1.5),
+        gap: "var(--app-space-6)",
       }}
     >
       <div
-        style={{ display: "flex", alignItems: "center", gap: theme.spacing(1) }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--app-space-4)",
+        }}
       >
         <div style={{ flexGrow: 1 }}>
           <AppTypography fontWeight={600} variant="body1">
@@ -252,7 +261,7 @@ function ThemeColorsSection() {
                 fontFamily: "inherit",
                 lineHeight: "normal",
                 minWidth: 0,
-                transition: "background 120ms ease, color 120ms ease",
+                transition: "background-color 120ms ease, color 120ms ease",
               }}
             >
               {m === "light" ? "Light" : "Dark"}
@@ -284,7 +293,7 @@ function ThemeColorsSection() {
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(1),
+          gap: "var(--app-space-4)",
         }}
       >
         {entries.map(({ key, label, description, effectiveColor }) => {
@@ -297,7 +306,7 @@ function ThemeColorsSection() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                padding: theme.spacing(1.5),
+                padding: "var(--app-space-6)",
                 ...(isOverridden && {
                   border: `1px solid ${theme.palette.primary.main}`,
                 }),
@@ -316,7 +325,7 @@ function ThemeColorsSection() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: theme.spacing(0.5),
+                  gap: "var(--app-space-2)",
                 }}
               >
                 {isOverridden && (
@@ -357,9 +366,45 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
 
   const [draft, setDraft] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
+  // The picker's live value while a save is pending, so the swatch and the
+  // controlled colour input track the pointer between debounced saves.
+  const [previewOverride, setPreviewOverride] = useState<string | null>(null);
+  const previewColor = previewOverride ?? normalized;
+
+  // The native colour picker fires per pointer movement (Chromium fires
+  // "change" per tick as well, so there is no reliable commit event). Every
+  // tick reschedules one trailing save; the last tick is always followed by
+  // silence, so the final pick lands within PICKER_SAVE_DEBOUNCE_MS. The
+  // pending save carries its own onChange so an unmount can flush it.
+  const pendingSaveRef = useRef<{
+    timer: number;
+    value: string;
+    save: (value: string) => void;
+  } | null>(null);
+  const schedulePickerSave = (value: string) => {
+    if (pendingSaveRef.current) {
+      window.clearTimeout(pendingSaveRef.current.timer);
+    }
+    const timer = window.setTimeout(() => {
+      pendingSaveRef.current = null;
+      setPreviewOverride(null);
+      onChange(value);
+    }, PICKER_SAVE_DEBOUNCE_MS);
+    pendingSaveRef.current = { timer, value, save: onChange };
+  };
+  useEffect(
+    () => () => {
+      const pending = pendingSaveRef.current;
+      if (!pending) return;
+      pendingSaveRef.current = null;
+      window.clearTimeout(pending.timer);
+      pending.save(pending.value);
+    },
+    [],
+  );
 
   const focused = draft !== null;
-  const displayValue = focused ? draft : normalized;
+  const displayValue = focused ? draft : previewColor;
   const draftValid = focused ? parseHexInput(draft) != null : true;
   const showAffordance = hovered || focused;
 
@@ -387,7 +432,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: theme.spacing(0.75),
+        gap: "var(--app-space-4)",
         flexShrink: 0,
       }}
     >
@@ -424,13 +469,13 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             ? alpha(theme.palette.text.primary, 0.04)
             : "transparent",
           border: `1px solid ${borderColor}`,
-          borderRadius: theme.shape.borderRadius,
+          borderRadius: "var(--app-radius-base)",
           outline: "none",
           textTransform: "lowercase",
           textAlign: "center",
           boxSizing: "border-box",
           transition:
-            "border-color 120ms ease, background 120ms ease, color 120ms ease",
+            "border-color 120ms ease, background-color 120ms ease, color 120ms ease",
         }}
         type="text"
         value={displayValue}
@@ -448,8 +493,8 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             height: 28,
             minWidth: 28,
             padding: 0,
-            borderRadius: theme.shape.borderRadius,
-            backgroundColor: normalized,
+            borderRadius: "var(--app-radius-base)",
+            backgroundColor: previewColor,
             border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
             boxSizing: "border-box",
             cursor: "pointer",
@@ -457,7 +502,10 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         />
         <input
           aria-hidden="true"
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            setPreviewOverride(e.target.value);
+            schedulePickerSave(e.target.value);
+          }}
           ref={colorInputRef}
           style={{
             position: "fixed",
@@ -470,7 +518,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
           }}
           tabIndex={-1}
           type="color"
-          value={normalized}
+          value={previewColor}
         />
       </div>
     </div>

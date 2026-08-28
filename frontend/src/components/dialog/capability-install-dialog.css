@@ -22,7 +22,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  transition: flex-grow var(--app-transition-duration-slow)
+  transition: flex-grow var(--app-transition-duration-fast)
     var(--app-easing-decelerate);
 }
 
@@ -44,9 +44,9 @@
   min-height: var(--capability-install-output-toggle-height);
   position: relative;
   transition:
-    flex-grow var(--app-transition-duration-slow)
+    flex-grow var(--app-transition-duration-fast)
       var(--app-easing-decelerate),
-    min-height var(--app-transition-duration-slow)
+    min-height var(--app-transition-duration-fast)
       var(--app-easing-decelerate);
 }
 
@@ -76,7 +76,7 @@
 
 .capability-install-dialog__chevron {
   flex-shrink: 0;
-  transition: transform var(--app-transition-duration-slow)
+  transition: transform var(--app-transition-duration-fast)
     var(--app-easing-decelerate);
 }
 

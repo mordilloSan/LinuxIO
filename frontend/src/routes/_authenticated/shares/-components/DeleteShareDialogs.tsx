@@ -20,6 +20,7 @@ const SHARES_TOAST_META = { label: "Open shares", to: "/shares" } as const;
 
 interface DeleteNFSShareDialogProps {
   onClose: () => void;
+  onExited?: () => void;
   onSuccess: () => void;
   open: boolean;
   share: NFSExport | null;
@@ -28,6 +29,7 @@ interface DeleteNFSShareDialogProps {
 export const DeleteNFSShareDialog = ({
   open,
   onClose,
+  onExited,
   share,
   onSuccess,
 }: DeleteNFSShareDialogProps) => {
@@ -46,7 +48,13 @@ export const DeleteNFSShareDialog = ({
   );
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>Remove NFS Export</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
@@ -88,6 +96,7 @@ export const DeleteNFSShareDialog = ({
 
 interface DeleteSambaShareDialogProps {
   onClose: () => void;
+  onExited?: () => void;
   onSuccess: () => void;
   open: boolean;
   share: SambaShare | null;
@@ -96,6 +105,7 @@ interface DeleteSambaShareDialogProps {
 export const DeleteSambaShareDialog = ({
   open,
   onClose,
+  onExited,
   share,
   onSuccess,
 }: DeleteSambaShareDialogProps) => {
@@ -114,7 +124,13 @@ export const DeleteSambaShareDialog = ({
   );
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>Remove Samba Share</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>

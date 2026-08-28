@@ -3,7 +3,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { linuxio, type FilesystemInfo } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
-import { useAppTheme } from "@/theme";
 import { formatFileSize } from "@/utils/formaters";
 
 const isRelevantMount = (fs: FilesystemInfo): boolean => {
@@ -26,7 +25,6 @@ const FsStats = () => {
     ...linuxio.system.get_fs_info,
     refetchInterval: 2000,
   });
-  const theme = useAppTheme();
 
   const renderFsProgressBars = () => {
     if (!fsInfo || fsInfo.length === 0) {
@@ -41,7 +39,7 @@ const FsStats = () => {
         return (
           <div key={index}>
             <MetricBar
-              color={theme.palette.primary.main}
+              color="var(--app-palette-primary-main)"
               label={fs.mountpoint}
               percent={usedPercent}
               rightLabel={
@@ -66,7 +64,7 @@ const FsStats = () => {
         maxHeight: 110,
         overflowX: "hidden",
         overflowY: "auto",
-        paddingRight: theme.spacing(0.5),
+        paddingRight: "var(--app-space-2)",
         width: "100%",
       }}
     >

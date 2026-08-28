@@ -1,0 +1,15 @@
+.network-connected-table {
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-text-primary),
+    transparent 92%
+  );
+}
+
+:root[data-app-color-scheme="dark"] .network-connected-table {
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-text-primary),
+    transparent 80%
+  );
+}

@@ -144,8 +144,7 @@ const WireguardPeerStatus = ({
         color={getWireguardStatusColor(isOnline ? "Active" : "Inactive")}
         label={isOnline ? "Online" : "Offline"}
         labelStyle={{ paddingInline: 6 }}
-        size="small"
-        style={{ fontSize: "0.65rem" }}
+        size="xsmall"
         variant="soft"
       />
     </AppTooltip>
@@ -172,7 +171,6 @@ const WireguardPeerStats = ({
         style={{
           display: "block",
           fontFamily: "var(--app-font-mono)",
-          fontSize: "0.8rem",
           marginTop: 2,
         }}
         title={allowedIps}

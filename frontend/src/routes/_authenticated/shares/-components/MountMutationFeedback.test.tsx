@@ -221,7 +221,9 @@ describe("mount mutation feedback", () => {
       screen.getByRole("group", { name: "Actions for /mnt/share-b" }),
     );
 
-    const mountButton = alphaActions.getByRole("button", { name: "Mount" });
+    const mountButton = alphaActions.getByRole("button", {
+      name: "Mount entry",
+    });
     expect(mountButton).toBeEnabled();
     await view.user.click(mountButton);
 
@@ -246,14 +248,16 @@ describe("mount mutation feedback", () => {
     expect(
       within(
         screen.getByRole("group", { name: "Actions for /mnt/share-a" }),
-      ).getByRole("button", { name: "Edit options" }),
+      ).getByRole("button", { name: "Edit entry" }),
     ).toBeDisabled();
-    expect(betaActions.getByRole("button", { name: "Unmount" })).toBeEnabled();
+    expect(
+      betaActions.getByRole("button", { name: "Unmount entry" }),
+    ).toBeEnabled();
 
     await view.user.click(
       within(
         screen.getByRole("group", { name: "Actions for /mnt/share-b" }),
-      ).getByRole("button", { name: "Unmount" }),
+      ).getByRole("button", { name: "Unmount entry" }),
     );
     expect(
       within(

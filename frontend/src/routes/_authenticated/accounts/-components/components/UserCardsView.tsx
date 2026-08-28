@@ -7,11 +7,12 @@ import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import {
   CARD_GRID_SIZE_STANDARD,
   EASING_STANDARD,
-  TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
 import {
@@ -50,16 +51,13 @@ const UserCardsView = ({
   onToggleLock,
   pendingLockActions,
 }: UserCardsViewProps) => {
-  const theme = useAppTheme();
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const isCompactLayout = useAppMediaQuery(down("md"));
   const enterFromSide = {
     opacity: 0,
     x: isCompactLayout ? 0 : 40,
     y: isCompactLayout ? 20 : 0,
   };
-  // Same beat as the other isolate-on-select views (docker containers,
-  // services, network): 0.6s/EASING_STANDARD, panels staggered in 0.04s steps.
-  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
 
   if (users.length === 0) {
     return (
@@ -103,8 +101,8 @@ const UserCardsView = ({
       initial={{ opacity: 0, y: 14 }}
       spacing={2.5}
       transition={{
-        duration: slowTransitionDurationSeconds,
-        delay: 0.04,
+        duration: transitionDuration,
+        delay: 0,
         ease: EASING_STANDARD,
       }}
     >
@@ -127,8 +125,8 @@ const UserCardsView = ({
         size={{ xs: 12, md: 6, lg: 4 }}
         style={{ display: "flex" }}
         transition={{
-          duration: slowTransitionDurationSeconds,
-          delay: 0.08,
+          duration: transitionDuration,
+          delay: 0.1,
           ease: EASING_STANDARD,
         }}
       >
@@ -141,8 +139,8 @@ const UserCardsView = ({
         size={{ xs: 12, md: 6, lg: 4 }}
         style={{ display: "flex" }}
         transition={{
-          duration: slowTransitionDurationSeconds,
-          delay: 0.12,
+          duration: transitionDuration,
+          delay: 0.2,
           ease: EASING_STANDARD,
         }}
       >
@@ -159,8 +157,8 @@ const UserCardsView = ({
         size={{ xs: 12, lg: 8 }}
         style={{ display: "flex" }}
         transition={{
-          duration: slowTransitionDurationSeconds,
-          delay: 0.16,
+          duration: transitionDuration,
+          delay: 0.3,
           ease: EASING_STANDARD,
         }}
       >
@@ -173,8 +171,8 @@ const UserCardsView = ({
         size={{ xs: 12, lg: 4 }}
         style={{ display: "flex" }}
         transition={{
-          duration: slowTransitionDurationSeconds,
-          delay: 0.2,
+          duration: transitionDuration,
+          delay: 0.4,
           ease: EASING_STANDARD,
         }}
       >

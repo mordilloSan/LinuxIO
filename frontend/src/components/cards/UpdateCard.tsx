@@ -121,7 +121,11 @@ const UpdateCard = ({
       </div>
 
       <AppCollapse in={isExpanded} unmountOnExit>
-        <div style={{ whiteSpace: "pre-wrap", fontSize: 14, marginTop: 16 }}>
+        <AppTypography
+          component="div"
+          style={{ whiteSpace: "pre-wrap", marginTop: 16 }}
+          variant="body1"
+        >
           {isLoadingChangelog ? (
             <div
               style={{
@@ -138,7 +142,7 @@ const UpdateCard = ({
               {changelog || "Loading..."}
             </AppTypography>
           )}
-        </div>
+        </AppTypography>
       </AppCollapse>
     </FrostedCard>
   );

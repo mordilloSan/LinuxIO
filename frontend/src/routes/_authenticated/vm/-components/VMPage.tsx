@@ -10,7 +10,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import CreateVMDialog from "./CreateVMDialog";
@@ -24,7 +23,6 @@ interface VMPageProps {
 }
 
 const VMPage = ({ children }: VMPageProps) => {
-  const theme = useAppTheme();
   const navigate = vmRouteApi.useNavigate();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
@@ -34,8 +32,9 @@ const VMPage = ({ children }: VMPageProps) => {
     null,
   );
   // This layout stays mounted for the whole VMs section, so it owns the poll
-  // cadence for both entries. Child routes observe the same keys with no
-  // interval of their own and inherit this freshness.
+  // cadence for shared VM data. Child routes observe the same keys with no
+  // interval of their own and inherit this freshness. The create dialog owns
+  // the available-network query because nothing else consumes it.
   const [listQuery, preflightQuery] = useSuspenseQueries({
     queries: [
       { ...linuxio.virt.list, refetchInterval: 5000 },
@@ -117,7 +116,7 @@ const VMPage = ({ children }: VMPageProps) => {
 
   if (libvirtStatus !== "available") {
     return (
-      <div style={{ padding: theme.spacing(3) }}>
+      <div style={{ padding: "var(--app-space-12)" }}>
         <AppAlert severity={libvirtStatus === "unknown" ? "info" : "warning"}>
           <AppAlertTitle>
             {libvirtStatus === "unknown"
@@ -137,18 +136,16 @@ const VMPage = ({ children }: VMPageProps) => {
         {children ?? <Outlet />}
       </RoutedTabLayout>
 
-      {createOpen && (
-        <CreateVMDialog
-          createProgress={createProgress}
-          isCreating={createMutation.isPending}
-          onClose={() => {
-            setCreateOpen(false);
-            setCreateProgress(null);
-          }}
-          onCreate={(request) => createMutation.mutate(request)}
-          open={createOpen}
-        />
-      )}
+      <CreateVMDialog
+        createProgress={createProgress}
+        isCreating={createMutation.isPending}
+        onClose={() => {
+          setCreateOpen(false);
+          setCreateProgress(null);
+        }}
+        onCreate={(request) => createMutation.mutate(request)}
+        open={createOpen}
+      />
     </>
   );
 };

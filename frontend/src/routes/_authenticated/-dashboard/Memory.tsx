@@ -3,12 +3,10 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { linuxio, type MemoryInfoResponse } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
-import { useAppTheme } from "@/theme";
+import { DASHBOARD_REFETCH_MEMORY_MS } from "@/constants/liveCharts";
 import { formatFileSize } from "@/utils/formaters";
 
 import DashboardStatRows from "./DashboardStatRows";
-
-const REFETCH_INTERVAL_MS = 2000;
 
 const calculatePercentage = (used: number, total: number) =>
   ((used / total) * 100).toFixed(2);
@@ -23,7 +21,7 @@ const selectRamUsagePercent = (memoryData: MemoryInfoResponse): number =>
 const MemoryStats = () => {
   const { data: memoryData } = useSuspenseQuery({
     ...linuxio.system.get_memory_info,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_MEMORY_MS,
   });
 
   const swapUsed = Math.max(
@@ -56,20 +54,14 @@ const MemoryStats = () => {
 };
 
 const MemoryGauge = () => {
-  const theme = useAppTheme();
   const { data: ramUsagePercentage } = useSuspenseQuery({
     ...linuxio.system.get_memory_info,
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_REFETCH_MEMORY_MS,
     select: selectRamUsagePercent,
   });
 
   return (
     <GradientCircularGauge
-      gradientColors={[
-        theme.chart.tx,
-        theme.palette.warning.main,
-        theme.palette.error.main,
-      ]}
       showPercentage={true}
       size={108}
       thickness={9.8}

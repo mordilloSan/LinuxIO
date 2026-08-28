@@ -50,11 +50,26 @@ func Preflight(ctx context.Context, req apischema.VMPreflightRequest) (apischema
 		out.Warnings = append(out.Warnings, "OVMF firmware not found; VM creation will fall back to BIOS")
 	}
 	collectSourcePreflight(req, &out)
+	requestedNetwork := strings.TrimSpace(req.Network)
+	networkName := normalizeVMNetwork(requestedNetwork)
+	if requestedNetwork != "" {
+		if networkErr := validateVMNetworkName(requestedNetwork); networkErr != nil {
+			out.Errors = append(out.Errors, networkErr.Error())
+		}
+	}
 
 	connErr := withLibvirtConn(ctx, func(conn libvirtConn) error {
 		out.LibvirtReachable = true
 		checkDefaultStoragePool(conn, &out)
-		checkDefaultNetwork(conn, &out)
+		if requestedNetwork == "" {
+			checkDefaultNetworkOptional(conn, &out)
+		} else if validateVMNetworkName(requestedNetwork) == nil {
+			if networkName == defaultNetworkName {
+				checkDefaultNetwork(conn, &out)
+			} else if bridgeErr := validateNetworkSelection(ctx, conn, networkName); bridgeErr != nil {
+				out.Errors = append(out.Errors, bridgeErr.Error())
+			}
+		}
 		return nil
 	})
 	if connErr != nil {
@@ -144,13 +159,25 @@ func checkDefaultStoragePool(conn libvirtConn, out *apischema.VMPreflight) {
 }
 
 func checkDefaultNetwork(conn libvirtConn, out *apischema.VMPreflight) {
+	checkDefaultNetworkWithRequirement(conn, out, true)
+}
+
+func checkDefaultNetworkOptional(conn libvirtConn, out *apischema.VMPreflight) {
+	checkDefaultNetworkWithRequirement(conn, out, false)
+}
+
+func checkDefaultNetworkWithRequirement(conn libvirtConn, out *apischema.VMPreflight, required bool) {
 	network, lookupErr := conn.NetworkLookupByName(defaultNetworkName)
 	if lookupErr != nil {
 		if !isNetworkMissing(lookupErr) {
 			out.Errors = append(out.Errors, fmt.Sprintf("default NAT network lookup failed: %v", lookupErr))
 			return
 		}
-		out.Errors = append(out.Errors, "default NAT network is missing")
+		if required {
+			out.Errors = append(out.Errors, "default NAT network is missing")
+		} else {
+			out.Warnings = append(out.Warnings, "default NAT network is missing")
+		}
 		return
 	}
 	out.DefaultNetworkExists = true
@@ -162,7 +189,7 @@ func checkDefaultNetwork(conn libvirtConn, out *apischema.VMPreflight) {
 	out.Warnings = append(out.Warnings, "default NAT network exists but is inactive; create will try to start it")
 }
 
-func preflightReadyForCreate(p apischema.VMPreflight, sourceType apischema.VMSourceType) error {
+func preflightReadyForNetwork(p apischema.VMPreflight, sourceType apischema.VMSourceType, network string) error {
 	if !p.LibvirtReachable {
 		return conflictf("libvirt is not reachable")
 	}
@@ -172,7 +199,7 @@ func preflightReadyForCreate(p apischema.VMPreflight, sourceType apischema.VMSou
 	if !p.QemuPresent {
 		return conflictf("qemu-system-x86_64 is unavailable")
 	}
-	if !p.DefaultNetworkExists {
+	if normalizeVMNetwork(network) == defaultNetworkName && !p.DefaultNetworkExists {
 		return conflictf("default NAT network is missing")
 	}
 	if normalizedVMSourceType(sourceType) == vmSourceTypeISO && !p.ISOReadable {

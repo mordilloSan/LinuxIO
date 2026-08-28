@@ -8,7 +8,6 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography, {
   type AppTypographyProps,
 } from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { GAP_MD } from "@/theme/constants";
 export interface IndexerStat {
   label: string;
@@ -59,8 +58,7 @@ const IndexerStatusDialog = ({
   summaryTitle,
   summaryStats = [],
 }: IndexerStatusDialogProps) => {
-  const theme = useAppTheme();
-  const sectionBackground = theme.codeBlock.background;
+  const sectionBackground = "var(--app-code-block-background)";
   const hasProgressStats = showProgressStats && progressStats.length > 0;
   const hasDetails = detailSections.length > 0;
   const hasSummary = Boolean(summaryTitle) && summaryStats.length > 0;
@@ -78,8 +76,8 @@ const IndexerStatusDialog = ({
     >
       <AppDialogTitle
         style={{
-          backgroundColor: theme.header.background,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -101,7 +99,7 @@ const IndexerStatusDialog = ({
           )}
           {!isRunning && success && (
             <Icon
-              color={theme.palette.success.main}
+              color="var(--app-palette-success-main)"
               height={24}
               icon="mdi:check-circle"
               width={24}
@@ -109,7 +107,7 @@ const IndexerStatusDialog = ({
           )}
           {!isRunning && error && (
             <Icon
-              color={theme.palette.error.main}
+              color="var(--app-palette-error-main)"
               height={24}
               icon="mdi:alert-circle"
               width={24}

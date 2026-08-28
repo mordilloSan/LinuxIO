@@ -18,13 +18,7 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useAppTheme } from "@/theme";
-import {
-  CARD_PADDING_LG,
-  CARD_PADDING_MD,
-  GAP_SM,
-  TRANSITION_SLOW_CSS,
-} from "@/theme/constants";
+import { CARD_PADDING_LG, CARD_PADDING_MD, GAP_SM } from "@/theme/constants";
 
 function formatLastLogin(
   lastLogin: string,
@@ -53,8 +47,6 @@ function getUserIcon(user: AccountUser): string {
 const selectedRowLabelStyle: CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.06em",
-  fontSize: "0.6rem",
-  color: "var(--app-palette-text-secondary)",
   flexShrink: 0,
   width: 90,
 };
@@ -123,8 +115,7 @@ const CompactGroupChips = ({
           <Chip
             key={`measure-${username}-${group}`}
             label={group}
-            size="small"
-            style={{ fontSize: "0.65rem", height: 20 }}
+            size="xsmall"
             variant="soft"
           />
         ))}
@@ -142,16 +133,16 @@ const CompactGroupChips = ({
             color={idx === 0 ? "primary" : "default"}
             key={`${username}-${group}`}
             label={group}
-            size="small"
-            style={{ fontSize: "0.65rem", height: 20, flexShrink: 0 }}
+            size="xsmall"
+            style={{ flexShrink: 0 }}
             variant="soft"
           />
         ))}
         {hiddenCount > 0 && (
           <Chip
             label={`+${hiddenCount}`}
-            size="small"
-            style={{ fontSize: "0.65rem", height: 20, flexShrink: 0 }}
+            size="xsmall"
+            style={{ flexShrink: 0 }}
             variant="soft"
           />
         )}
@@ -180,9 +171,18 @@ const SelectedSummaryRows = ({ rows }: { rows: SummaryRow[] }) => (
           alignItems: "baseline",
         }}
       >
-        <span style={selectedRowLabelStyle}>{label}</span>
+        <AppTypography
+          color="text.secondary"
+          component="span"
+          style={selectedRowLabelStyle}
+          variant="caption"
+        >
+          {label}
+        </AppTypography>
         <div style={{ flex: 1, minWidth: 0, textAlign: "right" }}>
-          <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{value}</span>
+          <AppTypography component="span" fontWeight={500} variant="caption">
+            {value}
+          </AppTypography>
         </div>
       </div>
     ))}
@@ -212,20 +212,19 @@ const UserCard = ({
   onToggleLock,
   pendingLockAction,
 }: UserCardProps) => {
-  const theme = useAppTheme();
   const isCurrentUser = user.username === currentUsername;
   const isProtected = user.username === "root" || isCurrentUser;
   const lockLabel = user.isLocked ? "Unlock" : "Lock";
 
   const accentColor = user.isLocked
-    ? theme.palette.warning.main
-    : theme.palette.primary.main;
+    ? "var(--app-palette-warning-main)"
+    : "var(--app-palette-primary-main)";
 
   const statusColor = user.isLocked
-    ? theme.palette.warning.main
+    ? "var(--app-palette-warning-main)"
     : isCurrentUser
-      ? theme.palette.success.main
-      : theme.palette.text.disabled;
+      ? "var(--app-palette-success-main)"
+      : "var(--app-palette-text-disabled)";
 
   const statusTooltip = user.isLocked
     ? "Locked"
@@ -257,10 +256,10 @@ const UserCard = ({
         height: "100%",
         position: "relative",
         width: isSelected ? "100%" : undefined,
-        // This card, UnitCard, and WireguardInterfaceCard all settle their
-        // border at TRANSITION_SLOW_CSS so the three expand-in-place cards
-        // read as one speed.
-        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
+        // This card, UnitCard, and WireguardInterfaceCard settle their accent
+        // line at the same speed so the expand-in-place cards read as one set.
+        transition:
+          "transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border-color var(--app-transition-duration-fast) var(--app-easing-standard)",
         // The line itself comes from `accent` above. Opening a user isolates the
         // card outside the grid, where it can no longer be held to reorder — so
         // the line stands down with the lift.
@@ -344,8 +343,7 @@ const UserCard = ({
                 <Chip
                   color="primary"
                   label="Your account"
-                  size="small"
-                  style={{ fontSize: "0.65rem", height: 20 }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -353,18 +351,12 @@ const UserCard = ({
                 <Chip
                   color="warning"
                   label="Locked"
-                  size="small"
-                  style={{ fontSize: "0.65rem", height: 20 }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
               {user.isSystem && !isCurrentUser && (
-                <Chip
-                  label="System"
-                  size="small"
-                  style={{ fontSize: "0.65rem", height: 20 }}
-                  variant="soft"
-                />
+                <Chip label="System" size="xsmall" variant="soft" />
               )}
             </div>
           )}
@@ -429,7 +421,6 @@ const UserCard = ({
             color="text.secondary"
             style={{
               letterSpacing: "0.06em",
-              fontSize: "0.62rem",
               display: "block",
               marginBottom: 4,
             }}
@@ -454,8 +445,7 @@ const UserCard = ({
                   color={idx === 0 ? "primary" : "default"}
                   key={`${user.username}-${group}`}
                   label={group}
-                  size="small"
-                  style={{ fontSize: "0.65rem", height: 20 }}
+                  size="xsmall"
                   variant="soft"
                 />
               ))}

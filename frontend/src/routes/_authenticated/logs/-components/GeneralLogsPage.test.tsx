@@ -69,7 +69,7 @@ vi.mock("@/hooks/useLiveStream", () => ({
   }),
 }));
 
-vi.mock("@/components/tables/AppDataTable", () => ({
+vi.mock("@/components/tables/AppVirtualTable", () => ({
   default: ({
     data,
     onScroll,
@@ -103,13 +103,13 @@ vi.mock("@/components/tables/AppDataTable", () => ({
   ),
 }));
 
-const journalEntry = (cursor: string, timestamp: number) =>
+const journalEntry = (cursor: string, timestamp: number, identifier = "test") =>
   JSON.stringify({
     __CURSOR: cursor,
     __REALTIME_TIMESTAMP: String(timestamp),
     MESSAGE: cursor,
     PRIORITY: "6",
-    SYSLOG_IDENTIFIER: "test",
+    SYSLOG_IDENTIFIER: identifier,
   });
 
 describe("GeneralLogsPage cursor pagination", () => {
@@ -191,6 +191,33 @@ describe("GeneralLogsPage cursor pagination", () => {
         "new,old,older-1,older-2",
       ),
     );
+  });
+
+  it("offers every streamed identifier, sorted, as a filter option", async () => {
+    render(<GeneralLogsPage />, { queryClient });
+    await waitFor(() => expect(mocks.streamOptions).not.toBeNull());
+    act(() => {
+      mocks.streamOptions?.onText(
+        `${journalEntry("a", 1_000_000, "zeta")}\n${journalEntry("b", 2_000_000, "alpha")}\n`,
+      );
+    });
+    const scrollElement = await screen.findByTestId("logs-scroll");
+    await waitFor(() =>
+      expect(scrollElement).toHaveAttribute("data-row-ids", "b,a"),
+    );
+
+    fireEvent.focus(screen.getByPlaceholderText("All"));
+    const optionText = () =>
+      screen.getAllByRole("option").map((option) => option.textContent);
+    await waitFor(() => expect(optionText()).toEqual(["alpha", "zeta"]));
+
+    // A later flush with one new identifier (and one repeat) grows the list.
+    act(() => {
+      mocks.streamOptions?.onText(
+        `${journalEntry("c", 3_000_000, "alpha")}\n${journalEntry("d", 4_000_000, "mid")}\n`,
+      );
+    });
+    await waitFor(() => expect(optionText()).toEqual(["alpha", "mid", "zeta"]));
   });
 
   it("resumes live mode strictly after the newest buffered cursor", async () => {

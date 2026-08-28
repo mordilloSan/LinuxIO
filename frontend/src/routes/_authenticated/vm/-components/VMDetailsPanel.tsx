@@ -4,7 +4,8 @@ import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { type AppTheme, useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 
 import {
   formatDisk,
@@ -13,68 +14,62 @@ import {
   stateChipColor,
 } from "./vmShared";
 
-const detailPanelStyle = (theme: AppTheme): CSSProperties => ({
+const detailPanelStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: theme.spacing(4),
+  gap: "var(--app-space-16)",
   minWidth: 0,
-  padding: theme.spacing(4),
-});
+  padding: "var(--app-space-16)",
+};
 
-const detailPanelEmptyStyle = (theme: AppTheme): CSSProperties => ({
-  ...detailPanelStyle(theme),
+const detailPanelEmptyStyle: CSSProperties = {
+  ...detailPanelStyle,
   alignItems: "center",
   justifyContent: "center",
   minHeight: 220,
-});
+};
 
-const detailHeaderStyle = (theme: AppTheme): CSSProperties => ({
+const detailHeaderStyle: CSSProperties = {
   alignItems: "center",
   display: "flex",
-  gap: theme.spacing(4),
+  gap: "var(--app-space-16)",
   justifyContent: "space-between",
-});
+};
 
-const statGridStyle = (theme: AppTheme, isMobile: boolean): CSSProperties => ({
+const statGridStyle = (isMobile: boolean): CSSProperties => ({
   display: "grid",
-  gap: theme.spacing(2.5),
+  gap: "var(--app-space-8)",
   gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
 });
 
-const statItemStyle = (theme: AppTheme): CSSProperties => ({
-  border: `1px solid ${theme.palette.divider}`,
+const statItemStyle: CSSProperties = {
+  border: "1px solid var(--app-palette-divider)",
   borderRadius: 6,
-  padding: theme.spacing(2.5),
-});
+  padding: "var(--app-space-8)",
+};
 
-const statLabelStyle = (theme: AppTheme): CSSProperties => ({
-  color: theme.palette.text.secondary,
-  display: "block",
-  fontSize: "0.75rem",
-});
-
-const detailSectionStyle = (theme: AppTheme): CSSProperties => ({
+const detailSectionStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: theme.spacing(2),
-});
+  gap: "var(--app-space-8)",
+};
 
-const tokenListStyle = (theme: AppTheme): CSSProperties => ({
+const tokenListStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
-  gap: theme.spacing(2),
-});
+  gap: "var(--app-space-8)",
+};
 
-const tokenStyle = (theme: AppTheme): CSSProperties => ({
-  border: `1px solid ${theme.palette.divider}`,
+const tokenStyle: CSSProperties = {
+  border: "1px solid var(--app-palette-divider)",
   borderRadius: 6,
   display: "flex",
   flexDirection: "column",
   gap: 2,
   maxWidth: "100%",
   minWidth: 110,
-  padding: theme.spacing(2),
-});
+  padding: "var(--app-space-8)",
+};
 
 const wrappingCodeStyle: CSSProperties = {
   overflowWrap: "anywhere",
@@ -88,12 +83,11 @@ const wrappingCodeStyle: CSSProperties = {
  * renders here in the parent layout's outlet.
  */
 export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useAppMediaQuery(down("sm"));
 
   if (!vm) {
     return (
-      <FrostedCard style={detailPanelEmptyStyle(theme)}>
+      <FrostedCard style={detailPanelEmptyStyle}>
         <AppTypography color="text.secondary" variant="body2">
           Select a VM
         </AppTypography>
@@ -102,8 +96,8 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
   }
 
   return (
-    <FrostedCard style={detailPanelStyle(theme)}>
-      <div style={detailHeaderStyle(theme)}>
+    <FrostedCard style={detailPanelStyle}>
+      <div style={detailHeaderStyle}>
         <div style={{ minWidth: 0 }}>
           <AppTypography component="h2" variant="h6">
             {vm.name}
@@ -119,31 +113,55 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
           variant="soft"
         />
       </div>
-      <div style={statGridStyle(theme, isMobile)}>
-        <div style={statItemStyle(theme)}>
-          <span style={statLabelStyle(theme)}>vCPUs</span>
+      <div style={statGridStyle(isMobile)}>
+        <div style={statItemStyle}>
+          <AppTypography
+            color="text.secondary"
+            component="span"
+            variant="caption"
+          >
+            vCPUs
+          </AppTypography>
           <strong style={{ display: "block", marginTop: 4 }}>{vm.vcpus}</strong>
         </div>
-        <div style={statItemStyle(theme)}>
-          <span style={statLabelStyle(theme)}>Memory</span>
+        <div style={statItemStyle}>
+          <AppTypography
+            color="text.secondary"
+            component="span"
+            variant="caption"
+          >
+            Memory
+          </AppTypography>
           <strong style={{ display: "block", marginTop: 4 }}>
             {formatMemory(vm.memoryMB)}
           </strong>
         </div>
-        <div style={statItemStyle(theme)}>
-          <span style={statLabelStyle(theme)}>Disk</span>
+        <div style={statItemStyle}>
+          <AppTypography
+            color="text.secondary"
+            component="span"
+            variant="caption"
+          >
+            Disk
+          </AppTypography>
           <strong style={{ display: "block", marginTop: 4 }}>
             {formatDisk(vm.diskGB)}
           </strong>
         </div>
-        <div style={statItemStyle(theme)}>
-          <span style={statLabelStyle(theme)}>Autostart</span>
+        <div style={statItemStyle}>
+          <AppTypography
+            color="text.secondary"
+            component="span"
+            variant="caption"
+          >
+            Autostart
+          </AppTypography>
           <strong style={{ display: "block", marginTop: 4 }}>
             {vm.autostart ? "On" : "Off"}
           </strong>
         </div>
       </div>
-      <div style={detailSectionStyle(theme)}>
+      <div style={detailSectionStyle}>
         <AppTypography component="h3" variant="subtitle2">
           Disks
         </AppTypography>
@@ -152,24 +170,25 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             No disks reported.
           </AppTypography>
         ) : (
-          <div style={tokenListStyle(theme)}>
+          <div style={tokenListStyle}>
             {(vm.disks ?? []).map((disk) => (
-              <span
-                key={`${disk.target}-${disk.path}`}
-                style={tokenStyle(theme)}
-              >
+              <span key={`${disk.target}-${disk.path}`} style={tokenStyle}>
                 <code style={wrappingCodeStyle}>
                   {disk.target || disk.device}
                 </code>
-                <small style={statLabelStyle(theme)}>
+                <AppTypography
+                  color="text.secondary"
+                  component="small"
+                  variant="caption"
+                >
                   {disk.owned ? "managed" : "external"}
-                </small>
+                </AppTypography>
               </span>
             ))}
           </div>
         )}
       </div>
-      <div style={detailSectionStyle(theme)}>
+      <div style={detailSectionStyle}>
         <AppTypography component="h3" variant="subtitle2">
           Network
         </AppTypography>
@@ -178,24 +197,39 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             No interfaces reported.
           </AppTypography>
         ) : (
-          <div style={tokenListStyle(theme)}>
+          <div style={tokenListStyle}>
             {(vm.nics ?? []).map((nic, index) => (
-              <span key={`${nic.mac}-${index}`} style={tokenStyle(theme)}>
+              <span key={`${nic.mac}-${index}`} style={tokenStyle}>
                 <code style={wrappingCodeStyle}>
                   {nic.network || "network"}
                 </code>
                 {(nic.ipAddresses ?? []).length === 0 ? (
-                  <small style={statLabelStyle(theme)}>No IP lease yet</small>
+                  <AppTypography
+                    color="text.secondary"
+                    component="small"
+                    variant="caption"
+                  >
+                    No IP lease yet
+                  </AppTypography>
                 ) : (
                   (nic.ipAddresses ?? []).map((ip) => (
-                    <small key={ip} style={statLabelStyle(theme)}>
+                    <AppTypography
+                      color="text.secondary"
+                      component="small"
+                      key={ip}
+                      variant="caption"
+                    >
                       {ip}
-                    </small>
+                    </AppTypography>
                   ))
                 )}
-                <small style={statLabelStyle(theme)}>
+                <AppTypography
+                  color="text.secondary"
+                  component="small"
+                  variant="caption"
+                >
                   {nic.mac || nic.model || "virtio"}
-                </small>
+                </AppTypography>
               </span>
             ))}
           </div>

@@ -1,7 +1,6 @@
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 interface ComposePostSaveDialogProps {
   isExecuting?: boolean;
@@ -22,8 +21,6 @@ const ComposePostSaveDialog = ({
   onDoNothing,
   isExecuting = false,
 }: ComposePostSaveDialogProps) => {
-  const theme = useAppTheme();
-
   const getActionLabel = () => {
     if (stackState === "running") {
       return isExecuting ? "Restarting..." : "Restart Stack";
@@ -53,15 +50,15 @@ const ComposePostSaveDialog = ({
       onClose={onDoNothing}
       open={open}
       paperStyle={{
-        backgroundColor: theme.header.background,
+        backgroundColor: "var(--app-header-background)",
       }}
     >
       <div
         style={{
-          padding: theme.spacing(4),
+          padding: "var(--app-space-16)",
           display: "flex",
           flexDirection: "column",
-          gap: theme.spacing(3),
+          gap: "var(--app-space-12)",
           alignItems: "center",
           textAlign: "center",
         }}
@@ -70,7 +67,7 @@ const ComposePostSaveDialog = ({
         <AppTypography
           fontWeight={600}
           style={{
-            color: theme.palette.text.primary,
+            color: "var(--app-palette-text-primary)",
           }}
           variant="h5"
         >
@@ -80,8 +77,8 @@ const ComposePostSaveDialog = ({
         {/* Message */}
         <AppTypography
           style={{
-            marginTop: theme.spacing(2),
-            color: theme.palette.text.secondary,
+            marginTop: "var(--app-space-8)",
+            color: "var(--app-palette-text-secondary)",
             whiteSpace: "pre-line",
           }}
           variant="body1"
@@ -93,10 +90,10 @@ const ComposePostSaveDialog = ({
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             justifyContent: "center",
             width: "100%",
-            marginTop: theme.spacing(2),
+            marginTop: "var(--app-space-8)",
           }}
         >
           <AppButton
@@ -108,7 +105,7 @@ const ComposePostSaveDialog = ({
               paddingBlock: 6,
               fontWeight: 600,
               letterSpacing: "0.5px",
-              color: theme.palette.text.secondary,
+              color: "var(--app-palette-text-secondary)",
             }}
           >
             Do Nothing

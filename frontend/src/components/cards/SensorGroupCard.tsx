@@ -8,9 +8,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_MD } from "@/theme/constants";
-import { alpha } from "@/utils/color";
 
 import {
   formatFanSensorValue,
@@ -116,7 +114,6 @@ const selectSensorGroup =
   };
 
 const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
-  const theme = useAppTheme();
   const selectGroup = useMemo(
     () => selectSensorGroup({ adapter, sourceIndex }),
     [adapter, sourceIndex],
@@ -153,9 +150,9 @@ const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
           {temps.map((r, i) => (
             <MetricBar
               color={getTempColor(r.value, {
-                success: theme.palette.success.main,
-                warning: theme.palette.warning.main,
-                error: theme.palette.error.main,
+                success: "var(--app-palette-success-main)",
+                warning: "var(--app-palette-warning-main)",
+                error: "var(--app-palette-error-main)",
               })}
               key={`temp-${i}`}
               label={getSensorDisplayLabel(r)}
@@ -188,8 +185,8 @@ const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
                 <Icon
                   color={
                     r.value > 0
-                      ? theme.palette.info.main
-                      : alpha(theme.palette.text.secondary, 0.4)
+                      ? "var(--app-palette-info-main)"
+                      : "color-mix(in srgb, var(--app-palette-text-secondary), transparent 60%)"
                   }
                   height={14}
                   icon="mdi:fan"
@@ -225,7 +222,7 @@ const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <Icon
-                  color={theme.palette.success.main}
+                  color="var(--app-palette-success-main)"
                   height={14}
                   icon="mdi:flash"
                   width={14}
@@ -263,8 +260,7 @@ const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
             <Chip
               color={sensorChipColor(r)}
               label={formatSensorValue(r)}
-              size="small"
-              style={{ height: 20, fontSize: "0.65rem" }}
+              size="xsmall"
               variant="soft"
             />
           </div>
@@ -278,8 +274,6 @@ export const SensorGroupCardShell = ({
   sourceIndex,
   visibleReadingCount,
 }: SensorGroupCardProps) => {
-  const theme = useAppTheme();
-
   return (
     <FrostedCard
       accent
@@ -289,7 +283,7 @@ export const SensorGroupCardShell = ({
       <CardIconHeader
         icon={
           <Icon
-            color={theme.palette.primary.main}
+            color="var(--app-palette-primary-main)"
             height={24}
             icon="mdi:chip"
             width={24}

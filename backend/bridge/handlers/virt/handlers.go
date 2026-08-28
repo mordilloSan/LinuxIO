@@ -12,6 +12,7 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 
 func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
+		apischema.Call[apischema.NoRequest, []apischema.VMNetwork]("virt.networks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleNetworks),
 		apischema.Call[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.RetrySafe(), apischema.Privileged()).Handle(handleList),
 		apischema.Call[apischema.NameRequest, apischema.VirtualMachine]("virt.get", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGet),
 		apischema.Call[apischema.VMPreflightRequest, apischema.VMPreflight]("virt.preflight", apischema.RetrySafe(), apischema.Privileged()).Handle(handlePreflight),
@@ -35,6 +36,10 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 func handleList(ctx context.Context, _ apischema.NoRequest) ([]apischema.VirtualMachine, error) {
 	return ListVMs(ctx)
+}
+
+func handleNetworks(ctx context.Context, _ apischema.NoRequest) ([]apischema.VMNetwork, error) {
+	return ListVMNetworks(ctx)
 }
 
 func handleGet(ctx context.Context, req apischema.NameRequest) (apischema.VirtualMachine, error) {

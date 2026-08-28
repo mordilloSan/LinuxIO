@@ -57,3 +57,17 @@
 .file-row:hover:not(.hover-lift--disabled) {
   background-color: var(--file-row-bg-hover);
 }
+
+/* Rename input: matches the body1 AppTypography size the static name label
+   uses, since the native <input> can't become an AppTypography itself. */
+.file-row-rename-input {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* The card's rename field, sized like the body2 name it replaces. */
+.file-card-rename-input {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.2;
+}

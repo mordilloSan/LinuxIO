@@ -27,6 +27,7 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 	if err := validateCreateRequest(req); err != nil {
 		return libvirtxml.Domain{}, err
 	}
+	networkName := normalizeVMNetwork(req.Network)
 
 	metaDisks := []linuxioMetadataDisk{
 		{
@@ -112,6 +113,15 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 		})
 	}
 
+	interfaceSource := &libvirtxml.DomainInterfaceSource{
+		Network: &libvirtxml.DomainInterfaceSourceNetwork{Network: networkName},
+	}
+	if networkName != defaultNetworkName {
+		interfaceSource = &libvirtxml.DomainInterfaceSource{
+			Bridge: &libvirtxml.DomainInterfaceSourceBridge{Bridge: networkName},
+		}
+	}
+
 	domain := libvirtxml.Domain{
 		Type: "kvm",
 		Name: req.Name,
@@ -130,8 +140,14 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 			Disks: disks,
 			Interfaces: []libvirtxml.DomainInterface{
 				{
-					Source: &libvirtxml.DomainInterfaceSource{Network: &libvirtxml.DomainInterfaceSourceNetwork{Network: defaultNetworkName}},
+					Source: interfaceSource,
 					Model:  &libvirtxml.DomainInterfaceModel{Type: "virtio"},
+				},
+			},
+			Channels: []libvirtxml.DomainChannel{
+				{
+					Source: &libvirtxml.DomainChardevSource{UNIX: &libvirtxml.DomainChardevSourceUNIX{}},
+					Target: &libvirtxml.DomainChannelTarget{VirtIO: &libvirtxml.DomainChannelTargetVirtIO{Name: "org.qemu.guest_agent.0"}},
 				},
 			},
 			Graphics: []libvirtxml.DomainGraphic{
@@ -203,8 +219,8 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 			}
 		}
 	}
-	if req.Network != "" && req.Network != defaultNetworkName {
-		return badRequestf("v1 only supports the default libvirt network")
+	if err := validateVMNetworkName(req.Network); err != nil {
+		return err
 	}
 	return nil
 }
@@ -311,6 +327,14 @@ func mapNIC(nic libvirtxml.DomainInterface) apischema.VMNIC {
 	}
 	if nic.Source != nil && nic.Source.Network != nil {
 		out.Network = nic.Source.Network.Network
+		out.AttachmentType = "network"
+		if out.Network == defaultNetworkName {
+			out.AttachmentType = "nat"
+		}
+	}
+	if nic.Source != nil && nic.Source.Bridge != nil {
+		out.Network = nic.Source.Bridge.Bridge
+		out.AttachmentType = "bridge"
 	}
 	return out
 }

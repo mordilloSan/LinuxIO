@@ -7,7 +7,7 @@
  */
 .smoothie-chart-tooltip,
 .chart-tooltip-box {
-  z-index: 1500;
+  z-index: var(--app-z-tooltip);
   background: color-mix(
     in srgb,
     var(--app-palette-background-paper) 95%,

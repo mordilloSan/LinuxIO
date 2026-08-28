@@ -16,6 +16,7 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
 const ACCOUNTS_TOAST_META = {
@@ -26,12 +27,14 @@ const ACCOUNTS_TOAST_META = {
 interface EditGroupMembersDialogProps {
   group: AccountGroup;
   onClose: () => void;
+  onExited?: () => void;
   open: boolean;
 }
 
 const EditGroupMembersDialog = ({
   open,
   onClose,
+  onExited,
   group,
 }: EditGroupMembersDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
@@ -77,18 +80,19 @@ const EditGroupMembersDialog = ({
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
-      <AppDialogTitle
-        style={{
-          fontSize: "1rem",
-          fontWeight: 600,
-          padding: "12px 20px",
-          lineHeight: 1.4,
-        }}
-      >
-        Edit Group Members: {group.name}
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
+      <AppDialogTitle style={{ padding: "12px 20px" }}>
+        <AppTypography component="span" fontWeight={600} variant="h6">
+          Edit Group Members: {group.name}
+        </AppTypography>
       </AppDialogTitle>
-      <AppDialogContent style={{ padding: "12px 20px", fontSize: "0.85rem" }}>
+      <AppDialogContent style={{ padding: "12px 20px" }}>
         <div
           style={{
             display: "flex",
@@ -131,8 +135,7 @@ const EditGroupMembersDialog = ({
                       selectedMembers.filter((m) => m !== member),
                     )
                   }
-                  size="small"
-                  style={{ fontSize: "0.7rem", height: 22 }}
+                  size="xsmall"
                   variant="soft"
                 />
               ))}

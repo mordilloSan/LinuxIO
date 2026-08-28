@@ -34,7 +34,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { TASK_TYPE_DOCKER_UPDATE } from "@/constants/backgroundTaskTypes";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { createDockerContainerUpdateRequest } from "@/utils/dockerUpdates";
 
 import "./compose-operation-dialog.css";
@@ -110,15 +109,14 @@ function DockerUpdateOperationDialog({
   running: boolean;
   target: DockerUpdateTarget | null;
 }) {
-  const theme = useAppTheme();
   const [showDetails, setShowDetails] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
   const title = result?.containerName || target?.name || "Container";
   const outcomeColor = error
-    ? theme.palette.error.main
+    ? "var(--app-palette-error-main)"
     : result
-      ? theme.palette.success.main
-      : theme.palette.primary.main;
+      ? "var(--app-palette-success-main)"
+      : "var(--app-palette-primary-main)";
 
   const handleClose = (
     _event?: AppDialogCloseEvent,
@@ -139,16 +137,17 @@ function DockerUpdateOperationDialog({
       maxWidth="md"
       onClose={handleClose}
       open={open}
+      slotProps={{ transition: { onExited: () => setShowDetails(false) } }}
       paperStyle={{
-        backgroundColor: theme.palette.background.default,
+        backgroundColor: "var(--app-palette-background-default)",
         maxHeight: "80vh",
       }}
     >
       <AppDialogTitle
         style={{
           alignItems: "center",
-          backgroundColor: theme.header.background,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           justifyContent: "space-between",
         }}
@@ -209,7 +208,7 @@ function DockerUpdateOperationDialog({
               display: "flex",
               flexDirection: "column",
               gap: 8,
-              padding: theme.spacing(2),
+              padding: "var(--app-space-8)",
             }}
           >
             {events.length === 0 && running ? (
@@ -239,8 +238,8 @@ function DockerUpdateOperationDialog({
                       <Icon
                         color={
                           event.phase === "rolling_back"
-                            ? theme.palette.warning.main
-                            : theme.palette.text.secondary
+                            ? "var(--app-palette-warning-main)"
+                            : "var(--app-palette-text-secondary)"
                         }
                         height={20}
                         icon={phaseIcon(event.phase)}
@@ -266,11 +265,11 @@ function DockerUpdateOperationDialog({
             {result && (
               <div
                 style={{
-                  borderTop: `1px solid ${theme.palette.divider}`,
+                  borderTop: "1px solid var(--app-palette-divider)",
                   display: "grid",
                   gap: 6,
                   gridTemplateColumns: "max-content minmax(0, 1fr)",
-                  paddingTop: theme.spacing(2),
+                  paddingTop: "var(--app-space-8)",
                 }}
               >
                 <AppTypography color="text.secondary" variant="caption">
@@ -321,15 +320,15 @@ function DockerUpdateOperationDialog({
                 appearance: "none",
                 background: "none",
                 border: 0,
-                borderTop: `1px solid ${theme.palette.divider}`,
+                borderTop: "1px solid var(--app-palette-divider)",
                 color: "inherit",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "flex-start",
-                gap: theme.spacing(0.5),
+                gap: "var(--app-space-2)",
                 font: "inherit",
-                padding: theme.spacing(1, 2),
+                padding: "var(--app-space-4) var(--app-space-8)",
                 textAlign: "left",
                 userSelect: "none",
                 width: "100%",
@@ -342,10 +341,7 @@ function DockerUpdateOperationDialog({
                 icon="mdi:chevron-right"
                 width={18}
               />
-              <AppTypography
-                color="text.secondary"
-                style={{ fontSize: "0.8rem" }}
-              >
+              <AppTypography color="text.secondary" variant="body2">
                 {showDetails ? "Hide details" : "Show details"}
               </AppTypography>
             </AppButton>
@@ -356,8 +352,8 @@ function DockerUpdateOperationDialog({
                 id="docker-update-details"
                 ref={outputBoxRef}
                 style={{
-                  backgroundColor: theme.codeBlock.background,
-                  color: theme.codeBlock.color,
+                  backgroundColor: "var(--app-code-block-background)",
+                  color: "var(--app-code-block-color)",
                 }}
               >
                 <div className="compose-log__lines">
@@ -375,8 +371,8 @@ function DockerUpdateOperationDialog({
 
       <AppDialogActions
         style={{
-          backgroundColor: theme.header.background,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         <AppButton color="inherit" onClick={onClose}>
@@ -506,7 +502,6 @@ export function DockerUpdateOperationProvider({
     <DockerUpdateOperationContext.Provider value={value}>
       {children}
       <DockerUpdateOperationDialog
-        key={`${target?.id ?? "none"}:${open ? "open" : "closed"}`}
         error={error}
         events={events}
         onClose={handleClose}

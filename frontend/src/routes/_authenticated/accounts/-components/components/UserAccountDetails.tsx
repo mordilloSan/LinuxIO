@@ -40,7 +40,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 import { GAP_MD } from "@/theme/constants";
 
@@ -182,8 +182,6 @@ function sessionStatusTooltip(idle: string | undefined): string {
 }
 
 const activityChipStyle: CSSProperties = {
-  fontSize: "0.65rem",
-  height: 20,
   width: 65,
   minWidth: 65,
 };
@@ -218,16 +216,15 @@ const DetailText = ({
   color?: string;
   nowrap?: boolean;
 }) => (
-  <span
-    style={{
-      fontSize: "0.75rem",
-      fontWeight: 500,
-      color,
-      whiteSpace: nowrap ? "nowrap" : undefined,
-    }}
+  <AppTypography
+    color={color}
+    component="span"
+    fontWeight={500}
+    noWrap={nowrap}
+    variant="caption"
   >
     {children}
-  </span>
+  </AppTypography>
 );
 
 interface ActivityHeader {
@@ -314,7 +311,6 @@ const ActivitySection = ({
           key={header.label}
           onClick={header.onClick}
           style={{
-            fontSize: "0.65rem",
             cursor: header.onClick ? "pointer" : undefined,
             userSelect: header.onClick ? "none" : undefined,
           }}
@@ -342,15 +338,14 @@ const ActivityEmpty = ({ children }: { children: ReactNode }) => (
 );
 
 export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
-  const theme = useAppTheme();
   const { data: details } = useAccountDetails(user.username);
 
   const adminColor = details?.admin.isAdmin
-    ? theme.palette.warning.main
-    : theme.palette.text.secondary;
+    ? "var(--app-palette-warning-main)"
+    : "var(--app-palette-text-secondary)";
   const securityIconColor = details?.admin.isAdmin
-    ? theme.palette.warning.main
-    : theme.palette.primary.main;
+    ? "var(--app-palette-warning-main)"
+    : "var(--app-palette-primary-main)";
 
   return (
     <FrostedCard
@@ -421,7 +416,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
               <DetailText
                 color={
                   details.failedLoginAttempts > 0
-                    ? theme.palette.warning.main
+                    ? "var(--app-palette-warning-main)"
                     : undefined
                 }
               >
@@ -448,18 +443,12 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
                   color="warning"
                   key={`${user.username}-${group}`}
                   label={group}
-                  size="small"
-                  style={{ fontSize: "0.65rem", height: 20 }}
+                  size="xsmall"
                   variant="soft"
                 />
               ))
             ) : (
-              <Chip
-                label="none"
-                size="small"
-                style={{ fontSize: "0.65rem", height: 20 }}
-                variant="soft"
-              />
+              <Chip label="none" size="xsmall" variant="soft" />
             )}
           </div>
         </div>
@@ -469,7 +458,9 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 };
 
 export const UserActivityCard = ({ username }: { username: string }) => {
-  const theme = useAppTheme();
+  const prefersReducedMotion = useAppMediaQuery(
+    "(prefers-reduced-motion: reduce)",
+  );
   const {
     selectedUserDetailsQueryOptions,
     selectedUserLoginsQueryOptions,
@@ -561,7 +552,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
     }
 
     row.scrollIntoView({
-      behavior: "smooth",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
       block: "center",
       inline: "nearest",
     });
@@ -587,6 +578,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
     dismissFailedLoginAlert,
     failedLoginAlertId,
     focusedLoginKey,
+    prefersReducedMotion,
   ]);
 
   return (
@@ -601,7 +593,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
           { label: "Status" },
         ]}
         icon="mdi:account-clock"
-        iconColor={theme.palette.primary.main}
+        iconColor="var(--app-palette-primary-main)"
         metaText={`${sessions.length} active ${sessions.length === 1 ? "session" : "sessions"}`}
         subtitle="Current authenticated sessions"
         title="Active sessions"
@@ -658,7 +650,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
                     <Chip
                       color={sessionStatusColor()}
                       label={sessionStatusLabel()}
-                      size="small"
+                      size="xsmall"
                       style={activityChipStyle}
                       variant="soft"
                     />
@@ -681,7 +673,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
           { label: "Result" },
         ]}
         icon="mdi:history"
-        iconColor={theme.palette.primary.main}
+        iconColor="var(--app-palette-primary-main)"
         metaText={`${logins.length} recent ${logins.length === 1 ? "event" : "events"}`}
         subtitle="Recent login events"
         title="Login history"
@@ -728,7 +720,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
                   <Chip
                     color={loginStatusColor(login)}
                     label={loginStatusLabel(login)}
-                    size="small"
+                    size="xsmall"
                     style={activityChipStyle}
                     variant="soft"
                   />
@@ -751,11 +743,11 @@ export const UserActivityCard = ({ username }: { username: string }) => {
             display: "flex",
             alignItems: "center",
             gap: 8,
-            borderBottom: `1px solid ${theme.palette.divider}`,
+            borderBottom: "1px solid var(--app-palette-divider)",
           }}
         >
           <Icon
-            color={theme.palette.error.main}
+            color="var(--app-palette-error-main)"
             height={22}
             icon="mdi:close-octagon"
             width={22}
@@ -799,7 +791,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
         <AppDialogActions
           style={{
             padding: 8,
-            borderTop: `1px solid ${theme.palette.divider}`,
+            borderTop: "1px solid var(--app-palette-divider)",
           }}
         >
           <AppButton
@@ -842,8 +834,6 @@ function sshStatus(ssh: AccountSSHAccess | undefined): string {
 }
 
 const HomeAndSSHCard = ({ details }: { details: AccountUserDetails }) => {
-  const theme = useAppTheme();
-
   return (
     <FrostedCard style={{ padding: 12, height: "100%", width: "100%" }}>
       <CardIconHeader
@@ -851,7 +841,7 @@ const HomeAndSSHCard = ({ details }: { details: AccountUserDetails }) => {
         headingVariant="compact"
         icon={
           <Icon
-            color={theme.palette.primary.main}
+            color="var(--app-palette-primary-main)"
             height={30}
             icon="mdi:home-lock"
             width={30}
@@ -909,7 +899,6 @@ const PROCESS_DEFAULT_DIRECTION: Record<ProcessSortField, SortDirection> = {
 const EMPTY_PROCESS_TOP: AccountUserProcess[] = [];
 
 const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
-  const theme = useAppTheme();
   const [sortField, setSortField] = useState<ProcessSortField>("cpu");
   const [sortDirection, setSortDirection] = useState<SortDirection>(
     PROCESS_DEFAULT_DIRECTION.cpu,
@@ -969,7 +958,7 @@ const ProcessCard = ({ details }: { details: AccountUserDetails }) => {
         headerFor("MEM", "memory"),
       ]}
       icon="mdi:application-cog"
-      iconColor={theme.palette.primary.main}
+      iconColor="var(--app-palette-primary-main)"
       metaText={metaText}
       subtitle="Current process's resource usage"
       title="Owned processes"

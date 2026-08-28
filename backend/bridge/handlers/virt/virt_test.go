@@ -79,6 +79,7 @@ func TestBuildDomainXML(t *testing.T) {
 		"/isos/debian.iso",
 		"<graphics type=\"vnc\" socket=\"/var/lib/libvirt/qemu/linuxio-test-vm.vnc\">",
 		"<listen type=\"socket\" socket=\"/var/lib/libvirt/qemu/linuxio-test-vm.vnc\"></listen>",
+		"org.qemu.guest_agent.0",
 		"<linuxio xmlns=\"https://linuxio.local/libvirt/v1\"><disk volume=\"linuxio-test-vm.qcow2\" path=\"/var/lib/libvirt/images/linuxio-test-vm.qcow2\" sizeGB=\"20\"></disk></linuxio>",
 	} {
 		if !strings.Contains(xmlDoc, want) {
@@ -221,7 +222,7 @@ func TestValidateCreateRequestRejectsInvalidInput(t *testing.T) {
 		{name: "too little memory", req: func() apischema.VMCreateRequest { r := valid; r.MemoryMB = 128; return r }()},
 		{name: "zero disk", req: func() apischema.VMCreateRequest { r := valid; r.DiskGB = 0; return r }()},
 		{name: "missing iso", req: func() apischema.VMCreateRequest { r := valid; r.ISOPath = ""; return r }()},
-		{name: "non default network", req: func() apischema.VMCreateRequest { r := valid; r.Network = "tenant"; return r }()},
+		{name: "malformed network", req: func() apischema.VMCreateRequest { r := valid; r.Network = "bad/name"; return r }()},
 		{name: "image preset disk too small", req: apischema.VMCreateRequest{Name: "haos", VCPUs: 2, MemoryMB: 2048, DiskGB: 8, SourceType: vmSourceTypeImagePreset, ImagePresetID: vmImagePresetHomeOS}},
 		{name: "cloud image without login", req: apischema.VMCreateRequest{Name: "debian", VCPUs: 2, MemoryMB: 2048, DiskGB: 12, SourceType: vmSourceTypeImagePreset, ImagePresetID: vmImagePresetDebian}},
 	}
@@ -358,21 +359,21 @@ func TestPreflightReadyForCreateRejectsMissingPrerequisites(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p := ready
 			tt.mut(&p)
-			err := preflightReadyForCreate(p, vmSourceTypeISO)
+			err := preflightReadyForNetwork(p, vmSourceTypeISO, defaultNetworkName)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("preflightReadyForCreate error = %v, want containing %q", err, tt.want)
 			}
 		})
 	}
-	if err := preflightReadyForCreate(ready, vmSourceTypeISO); err != nil {
+	if err := preflightReadyForNetwork(ready, vmSourceTypeISO, defaultNetworkName); err != nil {
 		t.Fatalf("preflightReadyForCreate ready = %v", err)
 	}
 	ready.DefaultPoolExists = false
-	if err := preflightReadyForCreate(ready, vmSourceTypeISO); err != nil {
+	if err := preflightReadyForNetwork(ready, vmSourceTypeISO, defaultNetworkName); err != nil {
 		t.Fatalf("preflightReadyForCreate without default pool = %v", err)
 	}
 	ready.ISOReadable = false
-	if err := preflightReadyForCreate(ready, vmSourceTypeImagePreset); err != nil {
+	if err := preflightReadyForNetwork(ready, vmSourceTypeImagePreset, defaultNetworkName); err != nil {
 		t.Fatalf("preflightReadyForCreate image preset without ISO = %v", err)
 	}
 }
@@ -1669,46 +1670,59 @@ func readyPreflight() apischema.VMPreflight {
 }
 
 type fakeConn struct {
-	domains                    map[string]libvirt.Domain
-	domainXML                  map[string]string
-	volumesByName              map[string]libvirt.StorageVol
-	volumesByPath              map[string]libvirt.StorageVol
-	deletedVolumes             []string
-	defineErr                  error
-	domainCreateErr            error
-	domainIsActiveErr          error
-	domainLookupErr            error
-	definedPoolXML             []string
-	domainCreateCount          int
-	domainDestroyCount         int
-	domainState                int32
-	networkActive              int32
-	networkActivateOnCreateErr bool
-	networkAutostart           int32
-	networkCreateCount         int
-	networkCreateErr           error
-	networkLeases              map[string][]libvirt.NetworkDhcpLease
-	networkLookupErr           error
-	poolActive                 int32
-	poolAutostart              int32
-	poolCreateCount            int
-	poolLookupErr              error
-	poolRefreshCount           int
-	storageVolLookupErr        error
-	storageVolPathLookupErr    error
-	undefineFlags              libvirt.DomainUndefineFlagsValues
+	domains                     map[string]libvirt.Domain
+	domainXML                   map[string]string
+	volumesByName               map[string]libvirt.StorageVol
+	volumesByPath               map[string]libvirt.StorageVol
+	deletedVolumes              []string
+	defineErr                   error
+	domainCreateErr             error
+	domainIsActiveErr           error
+	domainLookupErr             error
+	definedPoolXML              []string
+	domainCreateCount           int
+	domainDestroyCount          int
+	domainState                 int32
+	networkActive               int32
+	networkActivateOnCreateErr  bool
+	networkAutostart            int32
+	networkCreateCount          int
+	networkCreateErr            error
+	networkLeases               map[string][]libvirt.NetworkDhcpLease
+	networkLookupErr            error
+	libvirtNetworks             []libvirt.Network
+	networkXML                  map[string]string
+	networkActiveByName         map[string]int32
+	networkListErr              error
+	networkXMLReadErr           error
+	domainInterfaceAddresses    map[uint32][]libvirt.DomainInterface
+	domainInterfaceAddressErr   map[uint32]error
+	domainInterfaceAddressCalls map[uint32]int
+	poolActive                  int32
+	poolAutostart               int32
+	poolCreateCount             int
+	poolLookupErr               error
+	poolRefreshCount            int
+	storageVolLookupErr         error
+	storageVolPathLookupErr     error
+	undefineFlags               libvirt.DomainUndefineFlagsValues
 }
 
 func newFakeConn() *fakeConn {
 	return &fakeConn{
-		domains:       make(map[string]libvirt.Domain),
-		domainState:   int32(libvirt.DomainShutoff),
-		domainXML:     make(map[string]string),
-		networkActive: 1,
-		networkLeases: make(map[string][]libvirt.NetworkDhcpLease),
-		poolActive:    1,
-		volumesByName: make(map[string]libvirt.StorageVol),
-		volumesByPath: make(map[string]libvirt.StorageVol),
+		domains:                     make(map[string]libvirt.Domain),
+		domainState:                 int32(libvirt.DomainShutoff),
+		domainXML:                   make(map[string]string),
+		networkActive:               1,
+		networkLeases:               make(map[string][]libvirt.NetworkDhcpLease),
+		networkXML:                  make(map[string]string),
+		networkActiveByName:         make(map[string]int32),
+		domainInterfaceAddresses:    make(map[uint32][]libvirt.DomainInterface),
+		domainInterfaceAddressErr:   make(map[uint32]error),
+		domainInterfaceAddressCalls: make(map[uint32]int),
+		poolActive:                  1,
+		volumesByName:               make(map[string]libvirt.StorageVol),
+		volumesByPath:               make(map[string]libvirt.StorageVol),
 	}
 }
 
@@ -1800,6 +1814,13 @@ func (f *fakeConn) ConnectListAllDomains(int32, libvirt.ConnectListAllDomainsFla
 	}
 	return out, uint32(len(out)), nil
 }
+func (f *fakeConn) ConnectListAllNetworks(int32, libvirt.ConnectListAllNetworksFlags) ([]libvirt.Network, uint32, error) {
+	if f.networkListErr != nil {
+		return nil, 0, f.networkListErr
+	}
+	out := append([]libvirt.Network(nil), f.libvirtNetworks...)
+	return out, uint32(len(out)), nil
+}
 func (f *fakeConn) DomainCreate(domain libvirt.Domain) error {
 	if f.domainCreateErr != nil {
 		return f.domainCreateErr
@@ -1841,6 +1862,13 @@ func (f *fakeConn) DomainGetXMLDesc(domain libvirt.Domain, flags libvirt.DomainX
 		return "", errors.New("domain XML missing")
 	}
 	return xmlDoc, nil
+}
+func (f *fakeConn) DomainInterfaceAddresses(domain libvirt.Domain, source uint32, flags uint32) ([]libvirt.DomainInterface, error) {
+	f.domainInterfaceAddressCalls[source]++
+	if err := f.domainInterfaceAddressErr[source]; err != nil {
+		return nil, err
+	}
+	return f.domainInterfaceAddresses[source], nil
 }
 func (f *fakeConn) DomainIsActive(libvirt.Domain) (int32, error) {
 	if f.domainIsActiveErr != nil {
@@ -1900,7 +1928,20 @@ func (f *fakeConn) NetworkGetDhcpLeases(network libvirt.Network, mac libvirt.Opt
 	}
 	return out, uint32(len(out)), nil
 }
-func (f *fakeConn) NetworkIsActive(libvirt.Network) (int32, error) {
+func (f *fakeConn) NetworkGetXMLDesc(network libvirt.Network, _ uint32) (string, error) {
+	if f.networkXMLReadErr != nil {
+		return "", f.networkXMLReadErr
+	}
+	if xmlDoc, ok := f.networkXML[network.Name]; ok {
+		return xmlDoc, nil
+	}
+	return `<network><name>` + network.Name + `</name></network>`, nil
+}
+
+func (f *fakeConn) NetworkIsActive(network libvirt.Network) (int32, error) {
+	if active, ok := f.networkActiveByName[network.Name]; ok {
+		return active, nil
+	}
 	return f.networkActive, nil
 }
 func (f *fakeConn) NetworkLookupByName(name string) (libvirt.Network, error) {

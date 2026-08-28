@@ -18,7 +18,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
 import { useCapability } from "@/hooks/useCapabilities";
-import { type AppTheme, useAppTheme } from "@/theme";
 import { compactGoDuration, isGoDuration } from "@/utils/durations";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
@@ -253,39 +252,35 @@ const formatTimerState = (info: UnitInfo | undefined) => {
     : activeLabel;
 };
 
-const getTimerColor = (info: UnitInfo | undefined, theme: AppTheme) => {
+const getTimerColor = (info: UnitInfo | undefined) => {
   const activeState = (info?.ActiveState ?? "").toLowerCase();
   if (activeState === "active") {
-    return theme.palette.success.main;
+    return "var(--app-palette-success-main)";
   }
   if (activeState === "activating") {
-    return theme.palette.info.main;
+    return "var(--app-palette-info-main)";
   }
   if (activeState === "failed") {
-    return theme.palette.error.main;
+    return "var(--app-palette-error-main)";
   }
-  return theme.palette.warning.main;
+  return "var(--app-palette-warning-main)";
 };
 
-const getStatusColor = (
-  status: IndexerDaemonStatus | undefined,
-  theme: AppTheme,
-) => {
+const getStatusColor = (status: IndexerDaemonStatus | undefined) => {
   const normalizedStatus = status?.status ?? "unknown";
   if (status?.running || normalizedStatus === "indexing") {
-    return theme.palette.info.main;
+    return "var(--app-palette-info-main)";
   }
   if (normalizedStatus === "idle" || normalizedStatus === "ready") {
-    return theme.palette.success.main;
+    return "var(--app-palette-success-main)";
   }
   if (normalizedStatus === "error" || normalizedStatus === "failed") {
-    return theme.palette.error.main;
+    return "var(--app-palette-error-main)";
   }
-  return theme.palette.warning.main;
+  return "var(--app-palette-warning-main)";
 };
 
 const IndexerSettingsSection = () => {
-  const theme = useAppTheme();
   const queryClient = useQueryClient();
   const {
     isEnabled: indexerEnabled,
@@ -445,8 +440,8 @@ const IndexerSettingsSection = () => {
       className="indexer-status-grid"
       style={{
         display: "grid",
-        columnGap: theme.spacing(1.5),
-        rowGap: theme.spacing(1.5),
+        columnGap: "var(--app-space-6)",
+        rowGap: "var(--app-space-6)",
       }}
     >
       {children}
@@ -491,7 +486,7 @@ const IndexerSettingsSection = () => {
   if (isLoading || !draft) {
     return (
       <SettingsSectionShell {...shellProps}>
-        <div style={{ padding: theme.spacing(3) }}>
+        <div style={{ padding: "var(--app-space-12)" }}>
           <ComponentLoader />
         </div>
       </SettingsSectionShell>
@@ -524,7 +519,7 @@ const IndexerSettingsSection = () => {
           daemonStatus ? (
             <StatusDot
               absolute
-              color={getStatusColor(daemonStatus, theme)}
+              color={getStatusColor(daemonStatus)}
               style={{ top: 16, right: 12 }}
               tooltip={statusTooltip}
             />
@@ -575,13 +570,13 @@ const IndexerSettingsSection = () => {
               </>,
             )}
             {daemonStatus.warning ? (
-              <div style={{ marginTop: theme.spacing(1.5) }}>
+              <div style={{ marginTop: "var(--app-space-6)" }}>
                 <AppAlert severity="warning">{daemonStatus.warning}</AppAlert>
               </div>
             ) : null}
           </>
         ) : (
-          <div style={{ padding: theme.spacing(1) }}>
+          <div style={{ padding: "var(--app-space-4)" }}>
             <ComponentLoader />
           </div>
         )}
@@ -678,7 +673,7 @@ const IndexerSettingsSection = () => {
           timerInfo ? (
             <StatusDot
               absolute
-              color={getTimerColor(timerInfo, theme)}
+              color={getTimerColor(timerInfo)}
               style={{ top: 16, right: 12 }}
               tooltip={timerTooltip}
             />
@@ -732,14 +727,14 @@ const IndexerSettingsSection = () => {
           </>
         </SettingsGrid>
         {timerError ? (
-          <div style={{ marginTop: theme.spacing(1.5) }}>
+          <div style={{ marginTop: "var(--app-space-6)" }}>
             <AppAlert severity="warning">
               <AppAlertTitle>Timer unavailable</AppAlertTitle>
               {timerError.message}
             </AppAlert>
           </div>
         ) : !timerInfo ? (
-          <div style={{ padding: theme.spacing(1) }}>
+          <div style={{ padding: "var(--app-space-4)" }}>
             <ComponentLoader />
           </div>
         ) : null}
@@ -785,7 +780,7 @@ const IndexerSettingsSection = () => {
         subtitle="SQLite integrity checks, path, durability, and connection pool."
         title="Database"
       >
-        <SettingsGrid minColumnWidth={220} rowGap={2.75}>
+        <SettingsGrid minColumnWidth={220} rowGap="var(--app-space-12)">
           <>
             <AppTextField
               disabled={busy}
@@ -914,7 +909,7 @@ const IndexerSettingsSection = () => {
           </>
         </SettingsGrid>
         {draft.integrity_check === "off" ? (
-          <div style={{ marginTop: theme.spacing(1.5) }}>
+          <div style={{ marginTop: "var(--app-space-6)" }}>
             <AppAlert severity="warning">
               <AppAlertTitle>Integrity checks disabled</AppAlertTitle>
               Database corruption will not be checked before indexing and may

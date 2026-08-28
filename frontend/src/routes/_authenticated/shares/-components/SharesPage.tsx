@@ -20,9 +20,9 @@ import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabActions } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableProps } from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableProps } from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -73,14 +73,13 @@ interface ClientOptions {
   sync: boolean;
 }
 
-interface CreateFolderShareDialogProps {
+interface FolderShareDialogProps {
+  /** `null` creates a new share; a group edits that share. */
+  group: ShareGroup | null;
   onClose: () => void;
+  onExited?: () => void;
   onSuccess: () => void;
   open: boolean;
-}
-
-interface EditFolderShareDialogProps extends CreateFolderShareDialogProps {
-  group: ShareGroup | null;
 }
 
 const defaultNFSOptions: ClientOptions = {
@@ -112,7 +111,7 @@ const protocolSectionStyle: CSSProperties = {
   background: "rgba(255,255,255,0.03)",
 };
 
-const tableColumns: AppDataTableColumnDef<ShareGroup>[] = [
+const tableColumns: AppVirtualTableColumnDef<ShareGroup>[] = [
   {
     accessorKey: "name",
     header: "Name",
@@ -431,7 +430,6 @@ const NFSOptionsDropdown = ({
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                fontSize: "0.85rem",
                 color: "inherit",
                 textAlign: "left",
               }}
@@ -442,12 +440,16 @@ const NFSOptionsDropdown = ({
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
-                  backgroundColor: options[key] ? "#00E676" : "#9e9e9e",
+                  backgroundColor: options[key]
+                    ? "var(--app-palette-success-main)"
+                    : "var(--app-palette-text-disabled)",
                   flexShrink: 0,
                   transition: "background-color 150ms ease",
                 }}
               />
-              <span>{label}</span>
+              <AppTypography component="span" variant="body2">
+                {label}
+              </AppTypography>
             </AppButton>
           ))}
         </div>
@@ -456,262 +458,13 @@ const NFSOptionsDropdown = ({
   );
 };
 
-const CreateFolderShareDialog = ({
-  open,
-  onClose,
-  onSuccess,
-}: CreateFolderShareDialogProps) => {
-  const toast = useScopedToast({ label: "Open shares", to: "/shares" });
-  const { reason: nfsReason, status: nfsStatus } =
-    useCapability("nfsServerAvailable");
-  const nfsUnavailable = nfsStatus === "unavailable";
-  const { reason: sambaReason, status: sambaStatus } = useCapability(
-    "sambaServerAvailable",
-  );
-  const sambaUnavailable = sambaStatus === "unavailable";
-  const [path, setPath] = useState("");
-  const [sambaEnabled, setSambaEnabled] = useState(true);
-  const [nfsEnabled, setNFSEnabled] = useState(false);
-  const [sambaName, setSambaName] = useState("");
-  const [comment, setComment] = useState("");
-  const [sambaPublic, setSambaPublic] = useState(false);
-  const [nfsClients, setNFSClients] = useState("*");
-  const [nfsOptions, setNFSOptions] = useState<ClientOptions>({
-    ...defaultNFSOptions,
-  });
-  const [validationError, setValidationError] = useState<string | null>(null);
-
-  const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
-  const nfsCreate = useCallMutation(linuxio.shares.create_nfs_share);
-
-  const isPending = sambaCreate.isPending || nfsCreate.isPending;
-  const resolvedName = sambaName.trim() || inferShareName(path);
-  const effectiveSambaEnabled = sambaEnabled && !sambaUnavailable;
-
-  const handleClose = () => {
-    setPath("");
-    setSambaEnabled(true);
-    setNFSEnabled(false);
-    setSambaName("");
-    setComment("");
-    setSambaPublic(false);
-    setNFSClients("*");
-    setNFSOptions({ ...defaultNFSOptions });
-    setValidationError(null);
-    onClose();
-  };
-
-  const handleCreate = async () => {
-    const normalizedPath = normalizeSharePath(path.trim());
-    const parsedNFSClients = parseNFSClients(nfsClients, nfsOptions);
-
-    if (!normalizedPath) {
-      setValidationError("Folder path is required");
-      return;
-    }
-    if (!effectiveSambaEnabled && !nfsEnabled) {
-      setValidationError("Enable SMB and/or NFS for this folder share");
-      return;
-    }
-    if (effectiveSambaEnabled && !resolvedName) {
-      setValidationError("Share name is required when SMB is enabled");
-      return;
-    }
-    if (nfsEnabled && nfsUnavailable) {
-      setValidationError(nfsReason);
-      return;
-    }
-    if (nfsEnabled && parsedNFSClients.length === 0) {
-      setValidationError("At least one NFS client is required");
-      return;
-    }
-
-    setValidationError(null);
-
-    let createdAny = false;
-
-    try {
-      if (effectiveSambaEnabled) {
-        const sambaProperties: Record<string, string> = {
-          path: normalizedPath,
-          browseable: "yes",
-          "read only": "no",
-          "guest ok": sambaPublic ? "yes" : "no",
-        };
-        if (comment.trim()) {
-          sambaProperties["comment"] = comment.trim();
-        }
-
-        await sambaCreate.mutateAsync({
-          name: resolvedName,
-          properties: sambaProperties,
-        });
-        createdAny = true;
-      }
-
-      if (nfsEnabled) {
-        await nfsCreate.mutateAsync({
-          path: normalizedPath,
-          clients: parsedNFSClients,
-        });
-        createdAny = true;
-      }
-
-      toast.success(`Folder share created for ${normalizedPath}`);
-      onSuccess();
-      handleClose();
-    } catch (error) {
-      const message = getMutationErrorMessage(
-        error,
-        "Failed to create folder share",
-      );
-
-      if (createdAny) {
-        toast.error(
-          `${message}. Some protocols may already have been created.`,
-        );
-        onSuccess();
-        handleClose();
-        return;
-      }
-
-      setValidationError(message);
-    }
-  };
-
-  return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
-      <AppDialogTitle>Add Folder Share</AppDialogTitle>
-      <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            marginTop: 8,
-          }}
-        >
-          <PathPickerField
-            label="Folder Path"
-            onChange={setPath}
-            value={path}
-          />
-
-          <div style={protocolSectionStyle}>
-            <AppFormControlLabel
-              control={
-                <AppCheckbox
-                  checked={effectiveSambaEnabled}
-                  onChange={(event) => setSambaEnabled(event.target.checked)}
-                />
-              }
-              disabled={sambaUnavailable}
-              label="Enable SMB"
-            />
-            {sambaUnavailable ? (
-              <AppAlert severity="warning">{sambaReason}</AppAlert>
-            ) : null}
-            {effectiveSambaEnabled ? (
-              <>
-                <AppTextField
-                  className="app-text-field--compact-copy"
-                  fullWidth
-                  label="Share Name"
-                  onChange={(event) => setSambaName(event.target.value)}
-                  placeholder={inferShareName(path)}
-                  size="small"
-                  value={sambaName}
-                />
-                <AppTextField
-                  className="app-text-field--compact-copy"
-                  fullWidth
-                  label="Comment"
-                  onChange={(event) => setComment(event.target.value)}
-                  placeholder="Optional description"
-                  size="small"
-                  value={comment}
-                />
-                <AppFormControlLabel
-                  control={
-                    <AppCheckbox
-                      checked={sambaPublic}
-                      onChange={(event) => setSambaPublic(event.target.checked)}
-                    />
-                  }
-                  label="Public SMB access"
-                />
-              </>
-            ) : null}
-          </div>
-
-          <div style={protocolSectionStyle}>
-            <AppFormControlLabel
-              control={
-                <AppCheckbox
-                  checked={nfsEnabled}
-                  onChange={(event) => setNFSEnabled(event.target.checked)}
-                />
-              }
-              disabled={nfsUnavailable}
-              label="Enable NFS"
-            />
-            {nfsUnavailable ? (
-              <AppAlert severity="warning">{nfsReason}</AppAlert>
-            ) : null}
-            {nfsEnabled ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  alignItems: "flex-start",
-                }}
-              >
-                <AppTextField
-                  fullWidth
-                  helperText="Use * for public access, or enter host/IP/CIDR values separated by commas."
-                  label="Allowed NFS Clients"
-                  onChange={(event) => setNFSClients(event.target.value)}
-                  placeholder="* or 192.168.1.0/24"
-                  size="small"
-                  style={{ flex: "2 1 260px" }}
-                  value={nfsClients}
-                />
-                <NFSOptionsDropdown
-                  onChange={setNFSOptions}
-                  options={nfsOptions}
-                />
-              </div>
-            ) : null}
-          </div>
-
-          {validationError ? (
-            <AppAlert severity="error">{validationError}</AppAlert>
-          ) : null}
-        </div>
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton disabled={isPending} onClick={handleClose}>
-          Cancel
-        </AppButton>
-        <AppButton
-          disabled={isPending}
-          onClick={handleCreate}
-          variant="contained"
-        >
-          {isPending ? "Creating..." : "Create Share"}
-        </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
-  );
-};
-
-const EditFolderShareDialog = ({
-  open,
-  onClose,
-  onSuccess,
+const FolderShareDialog = ({
   group,
-}: EditFolderShareDialogProps) => {
+  open,
+  onClose,
+  onExited,
+  onSuccess,
+}: FolderShareDialogProps) => {
   const toast = useScopedToast({ label: "Open shares", to: "/shares" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
@@ -720,11 +473,14 @@ const EditFolderShareDialog = ({
     "sambaServerAvailable",
   );
   const sambaUnavailable = sambaStatus === "unavailable";
-  const [sambaEnabled, setSambaEnabled] = useState(Boolean(group?.samba));
-  const [nfsEnabled, setNFSEnabled] = useState(Boolean(group?.nfs));
-  const [sambaName, setSambaName] = useState(
-    group?.samba?.name ?? inferShareName(group?.path ?? ""),
+  // Initialised from `group`; the caller keys this dialog by group id so a
+  // different share remounts it with fresh state.
+  const [path, setPath] = useState(group?.path ?? "");
+  const [sambaEnabled, setSambaEnabled] = useState(
+    group ? Boolean(group.samba) : true,
   );
+  const [nfsEnabled, setNFSEnabled] = useState(Boolean(group?.nfs));
+  const [sambaName, setSambaName] = useState(group?.samba?.name ?? "");
   const [comment, setComment] = useState(
     group?.samba?.properties["comment"] ?? group?.comment ?? "",
   );
@@ -756,18 +512,35 @@ const EditFolderShareDialog = ({
     nfsUpdate.isPending ||
     nfsDelete.isPending;
 
-  if (!group) {
-    return null;
-  }
-
-  const hasExistingSamba = Boolean(group.samba);
+  const hasExistingSamba = Boolean(group?.samba);
   const effectiveSambaEnabled =
     sambaEnabled && (!sambaUnavailable || hasExistingSamba);
 
+  const handleClose = () => {
+    if (!group) {
+      // Create mode is not keyed, so reset for the next open.
+      setPath("");
+      setSambaEnabled(true);
+      setNFSEnabled(false);
+      setSambaName("");
+      setComment("");
+      setSambaPublic(false);
+      setNFSClients("*");
+      setNFSOptions({ ...defaultNFSOptions });
+    }
+    setValidationError(null);
+    onClose();
+  };
+
   const handleSave = async () => {
-    const resolvedName = sambaName.trim() || inferShareName(group.path);
+    const normalizedPath = normalizeSharePath(path.trim());
+    const resolvedName = sambaName.trim() || inferShareName(normalizedPath);
     const parsedNFSClients = parseNFSClients(nfsClients, nfsOptions);
 
+    if (!normalizedPath) {
+      setValidationError("Folder path is required");
+      return;
+    }
     if (!effectiveSambaEnabled && !nfsEnabled) {
       setValidationError("Enable SMB and/or NFS for this folder share");
       return;
@@ -791,18 +564,19 @@ const EditFolderShareDialog = ({
 
     setValidationError(null);
 
+    const verb = group ? "updated" : "created";
     let changedAny = false;
 
     try {
       if (effectiveSambaEnabled) {
         const sambaProperties = buildFolderSambaProperties(
-          group.path,
+          normalizedPath,
           comment,
           sambaPublic,
-          group.samba?.properties,
+          group?.samba?.properties,
         );
 
-        if (group.samba) {
+        if (group?.samba) {
           await sambaUpdate.mutateAsync({
             oldName: group.samba.name,
             newName: resolvedName,
@@ -815,42 +589,42 @@ const EditFolderShareDialog = ({
           });
         }
         changedAny = true;
-      } else if (group.samba) {
+      } else if (group?.samba) {
         await sambaDelete.mutateAsync({ name: group.samba.name });
         changedAny = true;
       }
 
       if (nfsEnabled) {
-        if (group.nfs) {
+        if (group?.nfs) {
           await nfsUpdate.mutateAsync({
-            path: group.path,
+            path: normalizedPath,
             clients: parsedNFSClients,
           });
         } else {
           await nfsCreate.mutateAsync({
-            path: group.path,
+            path: normalizedPath,
             clients: parsedNFSClients,
           });
         }
         changedAny = true;
-      } else if (group.nfs) {
-        await nfsDelete.mutateAsync({ path: group.path });
+      } else if (group?.nfs) {
+        await nfsDelete.mutateAsync({ path: normalizedPath });
         changedAny = true;
       }
 
-      toast.success(`Folder share updated for ${group.path}`);
+      toast.success(`Folder share ${verb} for ${normalizedPath}`);
       onSuccess();
-      onClose();
+      handleClose();
     } catch (error) {
       const message = getMutationErrorMessage(
         error,
-        "Failed to update folder share",
+        `Failed to ${group ? "update" : "create"} folder share`,
       );
 
       if (changedAny) {
         toast.error(`${message}. Some changes may already have been applied.`);
         onSuccess();
-        onClose();
+        handleClose();
         return;
       }
 
@@ -859,8 +633,16 @@ const EditFolderShareDialog = ({
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
-      <AppDialogTitle>Edit Folder Share</AppDialogTitle>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
+      <AppDialogTitle>
+        {group ? "Edit Folder Share" : "Add Folder Share"}
+      </AppDialogTitle>
       <AppDialogContent>
         <div
           style={{
@@ -870,14 +652,22 @@ const EditFolderShareDialog = ({
             marginTop: 8,
           }}
         >
-          <AppTextField
-            disabled
-            fullWidth
-            label="Folder Path"
-            shrinkLabel
-            size="small"
-            value={group.path}
-          />
+          {group ? (
+            <AppTextField
+              disabled
+              fullWidth
+              label="Folder Path"
+              shrinkLabel
+              size="small"
+              value={group.path}
+            />
+          ) : (
+            <PathPickerField
+              label="Folder Path"
+              onChange={setPath}
+              value={path}
+            />
+          )}
 
           <div style={protocolSectionStyle}>
             <AppFormControlLabel
@@ -900,7 +690,7 @@ const EditFolderShareDialog = ({
                   fullWidth
                   label="Share Name"
                   onChange={(event) => setSambaName(event.target.value)}
-                  placeholder={inferShareName(group.path)}
+                  placeholder={inferShareName(path)}
                   size="small"
                   value={sambaName}
                 />
@@ -973,7 +763,7 @@ const EditFolderShareDialog = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton disabled={isPending} onClick={onClose}>
+        <AppButton disabled={isPending} onClick={handleClose}>
           Cancel
         </AppButton>
         <AppButton
@@ -981,7 +771,13 @@ const EditFolderShareDialog = ({
           onClick={handleSave}
           variant="contained"
         >
-          {isPending ? "Saving..." : "Save Share"}
+          {isPending
+            ? group
+              ? "Saving..."
+              : "Creating..."
+            : group
+              ? "Save Share"
+              : "Create Share"}
         </AppButton>
       </AppDialogActions>
     </GeneralDialog>
@@ -1055,7 +851,7 @@ const FolderShareCardActions = ({
 
 function renderExpandedContent(
   group: ShareGroup,
-  setEditingShare: (share: ShareGroup | null) => void,
+  setEditingShare: (share: ShareGroup) => void,
   setDeletingSamba: (share: SambaShare | null) => void,
   setDeletingNFS: (share: NFSExport | null) => void,
 ): ReactNode {
@@ -1159,10 +955,27 @@ function renderExpandedContent(
 
 const SharesPage = () => {
   const [viewMode, setViewMode] = useViewMode("shares");
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
+  const [deleteNFSDialogOpen, setDeleteNFSDialogOpen] = useState(false);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
+  const [deleteSambaDialogOpen, setDeleteSambaDialogOpen] = useState(false);
+
+  const openEditDialog = useCallback((share: ShareGroup) => {
+    setEditingShare(share);
+    setShareDialogOpen(true);
+  }, []);
+  const openDeleteNFSDialog = useCallback((share: NFSExport | null) => {
+    if (!share) return;
+    setDeletingNFS(share);
+    setDeleteNFSDialogOpen(true);
+  }, []);
+  const openDeleteSambaDialog = useCallback((share: SambaShare | null) => {
+    if (!share) return;
+    setDeletingSamba(share);
+    setDeleteSambaDialogOpen(true);
+  }, []);
 
   const { data: nfsShares, refetch: refetchNFS } = useSuspenseQuery({
     ...linuxio.shares.list_nfs_shares,
@@ -1191,16 +1004,16 @@ const SharesPage = () => {
     surface: sharesSurface,
   });
   const renderShareExpandedContent = useCallback<
-    NonNullable<AppDataTableProps<ShareGroup>["renderExpandedContent"]>
+    NonNullable<AppVirtualTableProps<ShareGroup>["renderExpandedContent"]>
   >(
     ({ original: group }) =>
       renderExpandedContent(
         group,
-        setEditingShare,
-        setDeletingSamba,
-        setDeletingNFS,
+        openEditDialog,
+        openDeleteSambaDialog,
+        openDeleteNFSDialog,
       ),
-    [],
+    [openDeleteNFSDialog, openDeleteSambaDialog, openEditDialog],
   );
 
   const sharesActions = (
@@ -1211,7 +1024,7 @@ const SharesPage = () => {
           icon="mdi:plus"
           iconSize={20}
           label="Add Share"
-          onClick={() => setCreateDialogOpen(true)}
+          onClick={() => setShareDialogOpen(true)}
         />
       }
       view={
@@ -1244,9 +1057,9 @@ const SharesPage = () => {
                 actions={
                   <FolderShareCardActions
                     group={group}
-                    onDeleteNFS={(share) => setDeletingNFS(share)}
-                    onDeleteSamba={(share) => setDeletingSamba(share)}
-                    onEditShare={(shareGroup) => setEditingShare(shareGroup)}
+                    onDeleteNFS={openDeleteNFSDialog}
+                    onDeleteSamba={openDeleteSambaDialog}
+                    onEditShare={openEditDialog}
                   />
                 }
                 comment={group.comment}
@@ -1266,7 +1079,7 @@ const SharesPage = () => {
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Folder shares"
           columns={tableColumns}
           data={sharesSurface.items}
@@ -1294,34 +1107,29 @@ const SharesPage = () => {
       <RoutedTabActions>{sharesActions}</RoutedTabActions>
       {content}
 
-      <CreateFolderShareDialog
-        onClose={() => setCreateDialogOpen(false)}
-        onSuccess={() => {
-          void refetchSamba();
-          void refetchNFS();
-        }}
-        open={createDialogOpen}
-      />
-      <EditFolderShareDialog
+      <FolderShareDialog
         group={editingShare}
-        key={editingShare?.id ?? "no-share"}
-        onClose={() => setEditingShare(null)}
+        key={editingShare?.id ?? "new-share"}
+        onClose={() => setShareDialogOpen(false)}
+        onExited={() => setEditingShare(null)}
         onSuccess={() => {
           void refetchSamba();
           void refetchNFS();
         }}
-        open={editingShare !== null}
+        open={shareDialogOpen}
       />
       <DeleteSambaShareDialog
-        onClose={() => setDeletingSamba(null)}
+        onClose={() => setDeleteSambaDialogOpen(false)}
+        onExited={() => setDeletingSamba(null)}
         onSuccess={() => refetchSamba()}
-        open={deletingSamba !== null}
+        open={deleteSambaDialogOpen}
         share={deletingSamba}
       />
       <DeleteNFSShareDialog
-        onClose={() => setDeletingNFS(null)}
+        onClose={() => setDeleteNFSDialogOpen(false)}
+        onExited={() => setDeletingNFS(null)}
         onSuccess={() => refetchNFS()}
-        open={deletingNFS !== null}
+        open={deleteNFSDialogOpen}
         share={deletingNFS}
       />
     </div>

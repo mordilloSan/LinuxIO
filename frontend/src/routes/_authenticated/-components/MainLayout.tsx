@@ -4,7 +4,8 @@ import type { CSSProperties } from "react";
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
 import "@/icons/icons";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 
 import Footer from "./footer/Footer";
 import Navbar from "./navbar/Navbar";
@@ -17,8 +18,7 @@ import { useUpdateInfo } from "./update/useUpdateInfo";
 
 const MainLayout = () => {
   const location = useLocation();
-  const theme = useAppTheme();
-  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const isSmallUp = useAppMediaQuery(up("sm"));
   const [navigationMode] = useConfigValue("navigationMode");
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
   const dockMode = isDesktop && navigationMode === "dock";
@@ -37,10 +37,12 @@ const MainLayout = () => {
    */
   const pageInsetBlockStart =
     location.pathname === "/" || location.pathname.includes("/filebrowser")
-      ? theme.spacing(0)
-      : theme.spacing(5);
+      ? "0"
+      : "var(--app-space-20)";
 
-  const pageInsetInline = isSmallUp ? theme.spacing(5) : theme.spacing(4);
+  const pageInsetInline = isSmallUp
+    ? "var(--app-space-20)"
+    : "var(--app-space-16)";
 
   const contentSpacing =
     location.pathname === "/"
@@ -56,7 +58,7 @@ const MainLayout = () => {
             paddingLeft: pageInsetInline,
             paddingRight: pageInsetInline,
             paddingTop: pageInsetBlockStart,
-            paddingBottom: theme.spacing(5),
+            paddingBottom: "var(--app-space-20)",
           };
 
   return (
@@ -86,10 +88,8 @@ const MainLayout = () => {
             flexDirection: "column",
             minHeight: 0,
             minWidth: 0,
-            transition: theme.transitions.create(["margin-left", "width"], {
-              easing: theme.transitions.easing.easeInOut,
-              duration: theme.transitions.duration.leavingScreen,
-            }),
+            transition:
+              "margin-left var(--app-transition-duration-fast) var(--app-easing-standard), width var(--app-transition-duration-fast) var(--app-easing-standard)",
             marginLeft:
               !dockMode && isDesktop ? `${sidebarWidth}px` : undefined,
             width:
@@ -109,7 +109,7 @@ const MainLayout = () => {
                 paddingLeft: pageInsetInline,
                 paddingRight: pageInsetInline,
                 paddingTop: 0,
-                paddingBottom: theme.spacing(1),
+                paddingBottom: "var(--app-space-4)",
               }}
             >
               <UpdateBanner onDismiss={dismissUpdate} updateInfo={updateInfo} />
@@ -123,7 +123,7 @@ const MainLayout = () => {
               minHeight: 0,
               minWidth: 0,
               overflow: "auto",
-              background: theme.palette.background.default,
+              background: "var(--app-palette-background-default)",
               position: "relative",
             }}
           >
@@ -134,6 +134,7 @@ const MainLayout = () => {
              * in a gap above the header while it is stuck.
              */}
             <div
+              data-app-route-content
               style={
                 {
                   width: "100%",

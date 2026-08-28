@@ -24,7 +24,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { StatusMetric } from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
-import { useAppTheme } from "@/theme";
 
 const UPDATES_TOAST_META = {
   label: "Open updates",
@@ -241,17 +240,15 @@ interface AutoUpdateRuntimeProps {
 }
 
 const AptServiceNote = () => {
-  const theme = useAppTheme();
-
   return (
     <div
       aria-label="About unattended-upgrades.service"
       style={{
-        background: theme.palette.action.hover,
-        borderLeft: `3px solid ${theme.palette.primary.main}`,
+        background: "var(--app-palette-action-hover)",
+        borderLeft: "3px solid var(--app-palette-primary-main)",
         borderRadius: 6,
-        marginTop: theme.spacing(2),
-        padding: theme.spacing(1, 1.25),
+        marginTop: "var(--app-space-8)",
+        padding: "var(--app-space-4) var(--app-space-4)",
       }}
     >
       <AppTypography fontWeight={600} variant="caption">
@@ -276,7 +273,6 @@ const AutoUpdateRuntime = ({
   serverState,
   timers,
 }: AutoUpdateRuntimeProps) => {
-  const theme = useAppTheme();
   const units = managedTimers(serverState, timers);
   const requiredUnits = units.filter(({ required }) => required);
   const unexpectedActiveUnits = units.filter(
@@ -299,10 +295,10 @@ const AutoUpdateRuntime = ({
           ? "Disabled"
           : "Needs attention";
   const schedulerColor = schedulerHealthy
-    ? theme.palette.success.main
+    ? "var(--app-palette-success-main)"
     : schedulerStopped || runtimeLoading
-      ? theme.palette.text.disabled
-      : theme.palette.warning.main;
+      ? "var(--app-palette-text-disabled)"
+      : "var(--app-palette-warning-main)";
   const nextRun = requiredUnits
     .map(({ timer }) => timer?.next_elapse_usec ?? 0)
     .filter((value) => value > 0)
@@ -324,7 +320,7 @@ const AutoUpdateRuntime = ({
             style={{
               alignItems: "center",
               display: "flex",
-              gap: theme.spacing(0.75),
+              gap: "var(--app-space-4)",
             }}
           >
             <StatusDot color={schedulerColor} size={9} />
@@ -337,7 +333,7 @@ const AutoUpdateRuntime = ({
             </AppTypography>
           </div>
         }
-        style={{ marginBottom: theme.spacing(2) }}
+        style={{ marginBottom: "var(--app-space-8)" }}
         subtitle="Live systemd timer state"
         title="Scheduler status"
       />
@@ -351,7 +347,7 @@ const AutoUpdateRuntime = ({
         <div
           style={{
             display: "grid",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
           }}
         >
@@ -365,8 +361,8 @@ const AutoUpdateRuntime = ({
                 monoDetail
                 statusColor={
                   active
-                    ? theme.palette.success.main
-                    : theme.palette.text.disabled
+                    ? "var(--app-palette-success-main)"
+                    : "var(--app-palette-text-disabled)"
                 }
                 value={`${active ? "Active" : "Inactive"}${!required ? " · not required" : ""}`}
                 variant="compact"
@@ -400,7 +396,6 @@ const SavedConfiguration = ({
   dirty: boolean;
   state: AutoUpdateState;
 }) => {
-  const theme = useAppTheme();
   const values = [
     {
       label: "Provider",
@@ -410,8 +405,8 @@ const SavedConfiguration = ({
       label: "Status",
       value: state.options.enabled ? "Enabled" : "Disabled",
       statusColor: state.options.enabled
-        ? theme.palette.success.main
-        : theme.palette.text.disabled,
+        ? "var(--app-palette-success-main)"
+        : "var(--app-palette-text-disabled)",
     },
     {
       label: "Schedule",
@@ -456,30 +451,30 @@ const SavedConfiguration = ({
               style={{
                 alignItems: "center",
                 display: "flex",
-                gap: theme.spacing(0.75),
+                gap: "var(--app-space-4)",
               }}
             >
-              <StatusDot color={theme.palette.warning.main} size={8} />
+              <StatusDot color="var(--app-palette-warning-main)" size={8} />
               <AppTypography color="warning" fontWeight={600} variant="caption">
                 Unsaved edits
               </AppTypography>
             </div>
           ) : (
             <StatusDot
-              color={theme.palette.success.main}
+              color="var(--app-palette-success-main)"
               size={9}
               tooltip="Configuration loaded"
             />
           )
         }
-        style={{ marginBottom: theme.spacing(2) }}
+        style={{ marginBottom: "var(--app-space-8)" }}
         subtitle="Settings currently applied on this server"
         title="Applied configuration"
       />
       <div
         style={{
           display: "grid",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
           gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
         }}
       >
@@ -506,10 +501,9 @@ const AutomaticUpdatesControl = ({
   disabled: boolean;
   onChange: (checked: boolean) => void;
 }) => {
-  const theme = useAppTheme();
   const statusColor = checked
-    ? theme.palette.success.main
-    : theme.palette.text.disabled;
+    ? "var(--app-palette-success-main)"
+    : "var(--app-palette-text-disabled)";
 
   return (
     <FrostedCard
@@ -521,7 +515,7 @@ const AutomaticUpdatesControl = ({
       style={{
         alignItems: "center",
         display: "flex",
-        gap: theme.spacing(1.5),
+        gap: "var(--app-space-6)",
         justifyContent: "space-between",
         minHeight: 66,
         padding: 14,
@@ -532,7 +526,7 @@ const AutomaticUpdatesControl = ({
           style={{
             alignItems: "center",
             display: "flex",
-            gap: theme.spacing(0.75),
+            gap: "var(--app-space-4)",
           }}
         >
           <StatusDot color={statusColor} size={8} />
@@ -550,7 +544,7 @@ const AutomaticUpdatesControl = ({
           style={{
             display: "block",
             lineHeight: 1.35,
-            marginLeft: theme.spacing(1.75),
+            marginLeft: "var(--app-space-8)",
             marginTop: 3,
           }}
           variant="caption"
@@ -578,7 +572,6 @@ const UpdateSettings = ({
   disablePadding = false,
   state,
 }: UpdateSettingsProps) => {
-  const theme = useAppTheme();
   const {
     loading,
     runtimeError,
@@ -602,7 +595,7 @@ const UpdateSettings = ({
       style={{
         padding: disablePadding ? 0 : 12,
         display: "grid",
-        gap: theme.spacing(1.5),
+        gap: "var(--app-space-6)",
       }}
     >
       <AutoUpdateRuntime
@@ -635,7 +628,7 @@ const UpdateSettings = ({
           headingVariant="section"
           icon={<Icon height={22} icon="mdi:tune-variant" width={22} />}
           iconTint
-          style={{ marginBottom: theme.spacing(2) }}
+          style={{ marginBottom: "var(--app-space-8)" }}
           subtitle="Choose what Linux installs and when it runs"
           title="Update policy"
         />
@@ -644,9 +637,9 @@ const UpdateSettings = ({
           style={{
             alignItems: "end",
             display: "grid",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
-            marginTop: theme.spacing(1),
+            marginTop: "var(--app-space-4)",
           }}
         >
           <AppSelect
@@ -724,16 +717,16 @@ const UpdateSettings = ({
           <div
             style={{
               alignItems: "center",
-              background: theme.palette.action.hover,
+              background: "var(--app-palette-action-hover)",
               borderRadius: 9,
               display: "flex",
-              gap: theme.spacing(1),
+              gap: "var(--app-space-4)",
               minHeight: 40,
-              padding: `0 ${theme.spacing(1.25)}`,
+              padding: "0 var(--app-space-4)",
             }}
           >
             <Icon
-              color={theme.palette.primary.main}
+              color="var(--app-palette-primary-main)"
               height={19}
               icon="mdi:download-outline"
               width={19}
@@ -772,7 +765,7 @@ const UpdateSettings = ({
 
         <div
           style={{
-            marginTop: theme.spacing(2.5),
+            marginTop: "var(--app-space-8)",
           }}
         >
           <AppTextField
@@ -803,12 +796,12 @@ const UpdateSettings = ({
       <div
         style={{
           alignItems: "center",
-          borderTop: `1px solid ${theme.palette.divider}`,
+          borderTop: "1px solid var(--app-palette-divider)",
           display: "flex",
           flexWrap: "wrap",
-          gap: theme.spacing(1),
+          gap: "var(--app-space-4)",
           justifyContent: "flex-end",
-          paddingTop: theme.spacing(1.5),
+          paddingTop: "var(--app-space-6)",
         }}
       >
         <AppButton

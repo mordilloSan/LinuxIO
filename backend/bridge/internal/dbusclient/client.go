@@ -158,6 +158,13 @@ func (s SystemSession) ObjectAt(path godbus.ObjectPath) godbus.BusObject {
 	return s.conn.Object(s.object.BusName, path)
 }
 
+// ObjectFor returns an object owned by another well-known name on the same
+// bus connection. It is useful for arbitration that must inspect multiple
+// services against one consistent bus snapshot.
+func (s SystemSession) ObjectFor(busName string, path godbus.ObjectPath) godbus.BusObject {
+	return s.conn.Object(busName, path)
+}
+
 // RequireAvailable verifies that this session's well-known bus name is active
 // or activatable on the same connection used by the session.
 func (s SystemSession) RequireAvailable() error {

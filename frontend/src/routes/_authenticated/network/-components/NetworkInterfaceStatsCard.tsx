@@ -5,7 +5,6 @@ import { linuxio, type NetworkInterface } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_LG, GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -65,7 +64,6 @@ export const networkInterfaceStatRows = (
 ];
 
 const NetworkInterfaceStatsCard = ({ name }: { name: string }) => {
-  const theme = useAppTheme();
   const { data: iface } = useQuery({
     ...linuxio.network.get_network_info,
     refetchOnMount: false,
@@ -87,7 +85,7 @@ const NetworkInterfaceStatsCard = ({ name }: { name: string }) => {
       <CardIconHeader
         icon={
           <Icon
-            color={theme.palette.primary.main}
+            color="var(--app-palette-primary-main)"
             height={22}
             icon="mdi:counter"
             width={22}
@@ -115,7 +113,9 @@ const NetworkInterfaceStatsCard = ({ name }: { name: string }) => {
             <AppTypography
               noWrap
               style={
-                row.warn ? { color: theme.palette.warning.main } : undefined
+                row.warn
+                  ? { color: "var(--app-palette-warning-main)" }
+                  : undefined
               }
               variant="body2"
             >

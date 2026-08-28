@@ -13,7 +13,6 @@ import {
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 export type CapabilityInstallOutputStream = "status" | "stderr" | "stdout";
 
@@ -55,7 +54,6 @@ const CapabilityInstallDialog = ({
   success,
   warning,
 }: CapabilityInstallDialogProps) => {
-  const theme = useAppTheme();
   const [showOutput, setShowOutput] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
 
@@ -70,12 +68,12 @@ const CapabilityInstallDialog = ({
 
   const progressVariant = percentage === null ? "indeterminate" : "determinate";
   const outcomeColor = error
-    ? theme.palette.error.main
+    ? "var(--app-palette-error-main)"
     : warning
-      ? theme.palette.warning.main
+      ? "var(--app-palette-warning-main)"
       : success
-        ? theme.palette.success.main
-        : theme.palette.primary.main;
+        ? "var(--app-palette-success-main)"
+        : "var(--app-palette-primary-main)";
 
   return (
     <GeneralDialog
@@ -85,7 +83,7 @@ const CapabilityInstallDialog = ({
       onClose={onClose}
       open={open}
       paperStyle={{
-        backgroundColor: theme.palette.background.default,
+        backgroundColor: "var(--app-palette-background-default)",
         maxHeight: "80vh",
       }}
       slotProps={{
@@ -102,8 +100,8 @@ const CapabilityInstallDialog = ({
       <AppDialogTitle
         style={{
           alignItems: "center",
-          backgroundColor: theme.header.background,
-          borderBottom: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           justifyContent: "space-between",
         }}
@@ -234,8 +232,8 @@ const CapabilityInstallDialog = ({
               id="capability-install-output"
               ref={outputBoxRef}
               style={{
-                backgroundColor: theme.codeBlock.background,
-                color: theme.codeBlock.color,
+                backgroundColor: "var(--app-code-block-background)",
+                color: "var(--app-code-block-color)",
               }}
             >
               <div className="capability-install-dialog__output-lines">
@@ -267,8 +265,8 @@ const CapabilityInstallDialog = ({
 
       <AppDialogActions
         style={{
-          backgroundColor: theme.header.background,
-          borderTop: `1px solid ${theme.palette.divider}`,
+          backgroundColor: "var(--app-header-background)",
+          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         <AppButton color="inherit" onClick={onClose}>

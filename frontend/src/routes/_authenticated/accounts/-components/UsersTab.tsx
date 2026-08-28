@@ -11,8 +11,8 @@ import {
 import { type AccountUser, linuxio, useCallMutation } from "@/api";
 import type { UserLockAction } from "@/components/cards/UserCard";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -213,7 +213,7 @@ const UsersTab = ({
   // Stable column defs: cells render through flexRender, so a rebuilt array
   // remounts every cell subtree — including on the press that arms a
   // reorder hold. See docs/table-row-gestures.md.
-  const columns = useMemo<AppDataTableColumnDef<AccountUser>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<AccountUser>[]>(
     () => [
       {
         accessorKey: "username",
@@ -240,11 +240,7 @@ const UsersTab = ({
                 <Chip
                   color="primary"
                   label="Your account"
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -252,11 +248,7 @@ const UsersTab = ({
                 <Chip
                   color="warning"
                   label="locked"
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -346,22 +338,14 @@ const UsersTab = ({
                         )
                       : group
                   }
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               ))}
               {groups.length > 3 && (
                 <Chip
                   label={`+${groups.length - 3}`}
-                  size="small"
-                  style={{
-                    fontSize: "0.65rem",
-                    height: 20,
-                  }}
+                  size="xsmall"
                   variant="soft"
                 />
               )}
@@ -477,7 +461,7 @@ const UsersTab = ({
           users={filtered}
         />
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Users"
           columns={columns}
           data={filtered}
@@ -500,18 +484,14 @@ const UsersTab = ({
       {dialogUser && (
         <>
           <EditUserDialog
-            onClose={() => {
-              setEditDialogOpen(false);
-              setDialogUser(null);
-            }}
+            onClose={() => setEditDialogOpen(false)}
+            onExited={() => setDialogUser(null)}
             open={editDialogOpen}
             user={dialogUser}
           />
           <ChangePasswordDialog
-            onClose={() => {
-              setPasswordDialogOpen(false);
-              setDialogUser(null);
-            }}
+            onClose={() => setPasswordDialogOpen(false)}
+            onExited={() => setDialogUser(null)}
             open={passwordDialogOpen}
             username={dialogUser.username}
           />

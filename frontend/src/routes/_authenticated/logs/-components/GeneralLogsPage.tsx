@@ -16,8 +16,8 @@ import {
 
 import { CACHE_TTL_MS, linuxio, openChannel, useStreamMux } from "@/api";
 import PageLoader from "@/components/loaders/PageLoader";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -31,7 +31,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
-import { useAppTheme } from "@/theme";
+import { copyToClipboard } from "@/utils/clipboard";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 // A fixed first page replaces the old "Lines" selector. Older entries are
@@ -322,6 +322,20 @@ const parseLogEntry = (jsonStr: string): LogEntry | null => {
 
 const getLogRowId = (row: LogEntry) => row.id;
 
+// Returns `current` unchanged when `entries` add no identifier, so the
+// dependent sort only reruns when the set actually grows.
+const addIdentifiers = (
+  current: ReadonlySet<string>,
+  entries: LogEntry[],
+): ReadonlySet<string> => {
+  let next: Set<string> | null = null;
+  for (const { identifier } of entries) {
+    if (current.has(identifier) || next?.has(identifier)) continue;
+    (next ??= new Set(current)).add(identifier);
+  }
+  return next ?? current;
+};
+
 const prependUniqueLogs = (
   current: LogEntry[],
   incomingNewestFirst: LogEntry[],
@@ -370,7 +384,6 @@ const LogEntryDetails = ({
   log: LogEntry;
   onAddFieldFilter: (filter: string) => void;
 }) => {
-  const theme = useAppTheme();
   const { data: fullEntry, isError } = useQuery({
     ...linuxio.logs.general_entry({ cursor: log.cursor ?? "" }),
     enabled: log.cursor !== null,
@@ -392,8 +405,8 @@ const LogEntryDetails = ({
                 key={filter}
                 label={`${key}=${value}`}
                 onClick={() => onAddFieldFilter(filter)}
-                size="small"
-                style={{ fontSize: "0.7rem", maxWidth: 360 }}
+                size="xsmall"
+                style={{ maxWidth: 360 }}
                 title={`Filter to entries where ${key}=${value}`}
                 variant="soft"
               />
@@ -408,16 +421,15 @@ const LogEntryDetails = ({
         <AppPaper
           style={{
             padding: 8,
-            backgroundColor: theme.codeBlock.background,
+            backgroundColor: "var(--app-code-block-background)",
             fontFamily: "var(--app-font-mono)",
-            fontSize: "0.85rem",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             maxWidth: "100%",
             overflowX: "auto",
           }}
         >
-          {log.message}
+          <AppTypography variant="body2">{log.message}</AppTypography>
         </AppPaper>
       </div>
 
@@ -427,11 +439,7 @@ const LogEntryDetails = ({
             <b>Raw Journal Entry:</b>
           </AppTypography>
           {isError && (
-            <AppTypography
-              color="text.secondary"
-              style={{ fontSize: "0.75rem" }}
-              variant="body2"
-            >
+            <AppTypography color="text.secondary" variant="caption">
               Full entry unavailable — showing streamed fields only.
             </AppTypography>
           )}
@@ -439,25 +447,26 @@ const LogEntryDetails = ({
             className="custom-scrollbar"
             style={{
               padding: 8,
-              backgroundColor: theme.codeBlock.background,
+              backgroundColor: "var(--app-code-block-background)",
               fontFamily: "var(--app-font-mono)",
-              fontSize: "0.75rem",
               maxHeight: 300,
               overflowY: "auto",
               maxWidth: "100%",
               overflowX: "auto",
             }}
           >
-            <pre
+            <AppTypography
+              component="pre"
               style={{
                 margin: 0,
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
                 overflowWrap: "anywhere",
               }}
+              variant="caption"
             >
               {JSON.stringify(entry, null, 2)}
-            </pre>
+            </AppTypography>
           </AppPaper>
         </div>
       )}
@@ -466,10 +475,16 @@ const LogEntryDetails = ({
 };
 
 const GeneralLogsPage = () => {
-  const theme = useAppTheme();
   const navigate = useNavigate();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  // Identifiers seen since the last resetBuffer. Grow-only on purpose: an
+  // identifier whose rows the ring has since trimmed is still a valid exact
+  // backend filter, and this keeps each flush O(new rows) instead of a full
+  // buffer rescan. Updated alongside every setLogs below.
+  const [identifierSet, setIdentifierSet] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [search, setSearch] = useState("");
   const [timePeriod, setTimePeriod] = useState("24h");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -539,12 +554,10 @@ const GeneralLogsPage = () => {
     }
   }, []);
 
-  // Get unique identifiers from logs
-  const uniqueIdentifiers = useMemo(() => {
-    const identifiers = new Set<string>();
-    logs.forEach((log) => identifiers.add(log.identifier));
-    return Array.from(identifiers).sort();
-  }, [logs]);
+  const uniqueIdentifiers = useMemo(
+    () => Array.from(identifierSet).sort(),
+    [identifierSet],
+  );
 
   // Current systemd unit states, used by the unit-status filter below.
   const unitStatusNeedsServices =
@@ -610,6 +623,7 @@ const GeneralLogsPage = () => {
       setLogs((prev) =>
         prependUniqueLogs(prev, reversed, bufferLimitRef.current),
       );
+      setIdentifierSet((prev) => addIdentifiers(prev, reversed));
     });
   }, []);
 
@@ -796,6 +810,7 @@ const GeneralLogsPage = () => {
     clearLoadingFallbackTimer();
     closeStream();
     setLogs([]);
+    setIdentifierSet(new Set());
     pendingLogsRef.current = [];
     hasBufferedDataRef.current = false;
     newestCursorRef.current = null;
@@ -964,6 +979,7 @@ const GeneralLogsPage = () => {
             );
             return merged;
           });
+          setIdentifierSet((prev) => addIdentifiers(prev, olderLogs));
           setDisplayLimit((current) => current + DISPLAY_CHUNK);
           setHasMoreOlder(page.hasMore && olderLogs.length > 0);
         } catch (loadError) {
@@ -1004,23 +1020,27 @@ const GeneralLogsPage = () => {
   }, [closeStream, clearReconnectTimer, clearLoadingFallbackTimer]);
 
   const filteredLogs = useMemo(() => {
-    let filtered = logs;
-
     // Use the live input for substring matching so typing reflects immediately.
-    // Run unconditionally: when applied filter is exact and matches the live
-    // input, this is idempotent. When the user is mid-edit over an exact
-    // value, this narrows the visible set right away instead of waiting for
-    // the debounce + re-stream.
-    const liveTrimmed = identifierInput.trim();
-    if (liveTrimmed) {
-      const pattern = liveTrimmed.toLowerCase();
-      filtered = filtered.filter((log) =>
-        log.identifier.toLowerCase().includes(pattern),
-      );
-    }
+    // Applied unconditionally: when the applied filter is exact and matches
+    // the live input, this is idempotent. When the user is mid-edit over an
+    // exact value, this narrows the visible set right away instead of waiting
+    // for the debounce + re-stream.
+    const identifierPattern = identifierInput.trim().toLowerCase() || null;
+    const statusActive = unitStatusFilter !== "all";
+    const searchNeedle = search.trim().toLowerCase() || null;
+    if (!identifierPattern && !statusActive && !searchNeedle) return logs;
 
-    if (unitStatusFilter !== "all") {
-      filtered = filtered.filter((log) => {
+    // One pass over the buffer with an early exit per active filter, instead
+    // of three chained .filter() passes on every live flush.
+    return logs.filter((log) => {
+      if (
+        identifierPattern &&
+        !log.identifier.toLowerCase().includes(identifierPattern)
+      ) {
+        return false;
+      }
+
+      if (statusActive) {
         // _SYSTEMD_UNIT is the trusted source-process unit; UNIT is set by
         // systemd[1] when it logs *about* a unit (e.g. "Started foo.service").
         // Check both so manager-emitted entries about a failed/running unit
@@ -1031,28 +1051,26 @@ const GeneralLogsPage = () => {
           typeof raw?._SYSTEMD_UNIT === "string" ? raw._SYSTEMD_UNIT : "";
         const aboutUnit = typeof raw?.UNIT === "string" ? raw.UNIT : "";
         if (unitStatusFilter === "no_unit") {
-          return systemdUnit === "" && aboutUnit === "";
+          if (systemdUnit !== "" || aboutUnit !== "") return false;
+        } else if (
+          matchingUnitNames !== null &&
+          !matchingUnitNames.has(systemdUnit) &&
+          !matchingUnitNames.has(aboutUnit)
+        ) {
+          return false;
         }
-        if (matchingUnitNames === null) {
-          return true;
-        }
-        return (
-          matchingUnitNames.has(systemdUnit) || matchingUnitNames.has(aboutUnit)
-        );
-      });
-    }
+      }
 
-    const trimmed = search.trim();
-    if (trimmed) {
-      const needle = trimmed.toLowerCase();
-      filtered = filtered.filter(
-        (log) =>
-          log.message.toLowerCase().includes(needle) ||
-          log.identifier.toLowerCase().includes(needle),
-      );
-    }
+      if (
+        searchNeedle &&
+        !log.message.toLowerCase().includes(searchNeedle) &&
+        !log.identifier.toLowerCase().includes(searchNeedle)
+      ) {
+        return false;
+      }
 
-    return filtered;
+      return true;
+    });
   }, [logs, search, identifierInput, unitStatusFilter, matchingUnitNames]);
 
   // Cap what we actually feed the table. Copy/Download still use the full
@@ -1104,7 +1122,7 @@ const GeneralLogsPage = () => {
           `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${log.message}`,
       )
       .join("\n");
-    void navigator.clipboard.writeText(text);
+    void copyToClipboard(text);
   };
 
   const handleDownload = () => {
@@ -1167,7 +1185,7 @@ const GeneralLogsPage = () => {
   // Memoized so cell component identities stay stable across flushes — a
   // fresh cell function per render remounts every visible cell in dev, where
   // the React Compiler doesn't run.
-  const columns = useMemo<AppDataTableColumnDef<LogEntry>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<LogEntry>[]>(
     () => [
       {
         id: "severityIcon",
@@ -1189,8 +1207,7 @@ const GeneralLogsPage = () => {
           <Chip
             color={getPriorityColor(row.original.priority)}
             label={getPriorityLabel(row.original.priority)}
-            size="small"
-            style={{ fontSize: "0.7rem" }}
+            size="xsmall"
             variant="soft"
           />
         ),
@@ -1217,10 +1234,7 @@ const GeneralLogsPage = () => {
                 noWrap
                 onClick={(event) => handleIdentifierClick(log, event)}
                 role="link"
-                style={{
-                  fontSize: "0.85rem",
-                  display: "inline-block",
-                }}
+                style={{ display: "inline-block" }}
                 tabIndex={0}
                 title={log.identifier}
                 variant="body2"
@@ -1229,12 +1243,7 @@ const GeneralLogsPage = () => {
               </AppTypography>
             </AppTooltip>
           ) : (
-            <AppTypography
-              noWrap
-              style={{ fontSize: "0.85rem" }}
-              title={log.identifier}
-              variant="body2"
-            >
+            <AppTypography noWrap title={log.identifier} variant="body2">
               {log.identifier}
             </AppTypography>
           );
@@ -1251,12 +1260,7 @@ const GeneralLogsPage = () => {
         accessorKey: "timestamp",
         header: "Timestamp",
         cell: ({ row }) => (
-          <AppTypography
-            noWrap
-            style={{ fontSize: "0.83rem" }}
-            title={row.original.timestamp}
-            variant="body2"
-          >
+          <AppTypography noWrap title={row.original.timestamp} variant="body2">
             {row.original.timestamp}
           </AppTypography>
         ),
@@ -1272,12 +1276,7 @@ const GeneralLogsPage = () => {
         accessorKey: "message",
         header: "Message",
         cell: ({ row }) => (
-          <AppTypography
-            color="text.secondary"
-            noWrap
-            style={{ fontSize: "0.75rem" }}
-            variant="body2"
-          >
+          <AppTypography color="text.secondary" noWrap variant="caption">
             {row.original.message}
           </AppTypography>
         ),
@@ -1317,10 +1316,10 @@ const GeneralLogsPage = () => {
       <div
         style={{
           display: "flex",
-          gap: theme.spacing(2),
+          gap: "var(--app-space-8)",
           flexWrap: "wrap",
           alignItems: "center",
-          marginBottom: theme.spacing(2),
+          marginBottom: "var(--app-space-8)",
         }}
       >
         <AppSelect
@@ -1462,15 +1461,11 @@ const GeneralLogsPage = () => {
             display: "flex",
             flexWrap: "wrap",
             alignItems: "center",
-            gap: theme.spacing(1),
-            marginBottom: theme.spacing(2),
+            gap: "var(--app-space-4)",
+            marginBottom: "var(--app-space-8)",
           }}
         >
-          <AppTypography
-            color="text.secondary"
-            style={{ fontSize: "0.8rem" }}
-            variant="body2"
-          >
+          <AppTypography color="text.secondary" variant="body2">
             Field filters:
           </AppTypography>
           {fieldFilters.map((filter) => (
@@ -1479,8 +1474,8 @@ const GeneralLogsPage = () => {
               key={filter}
               label={filter}
               onDelete={() => removeFieldFilter(filter)}
-              size="small"
-              style={{ fontSize: "0.7rem", maxWidth: 360 }}
+              size="xsmall"
+              style={{ maxWidth: 360 }}
               variant="soft"
             />
           ))}
@@ -1505,7 +1500,7 @@ const GeneralLogsPage = () => {
       )}
 
       {!isLoading && !error && (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="General logs"
           columns={columns}
           data={displayedLogs}

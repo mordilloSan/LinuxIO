@@ -21,25 +21,6 @@ export const formatGpuBytes = (value?: number | null): string => {
   return `${(value / 1024 ** 4).toFixed(2)} TiB`;
 };
 
-export const formatGpuWatts = (value?: number | null): string =>
-  typeof value === "number" && Number.isFinite(value) ? `${value} W` : "—";
-
-export const formatGpuTemperature = (value?: number | null): string =>
-  typeof value === "number" && Number.isFinite(value) ? `${value}°C` : "—";
-
-export const formatGpuClock = (value?: number | null): string =>
-  typeof value === "number" && Number.isFinite(value) ? `${value} MHz` : "—";
-
-export const formatGpuDisplays = (gpu: GpuDevice): string => {
-  if (gpu.display_names && gpu.display_names.length > 0) {
-    return gpu.display_names.join(", ");
-  }
-  if (typeof gpu.connected_displays === "number") {
-    return `${gpu.connected_displays} connected`;
-  }
-  return "—";
-};
-
 const normalizeGpuVendorId = (vendorId?: string | null): string =>
   vendorId?.trim().toLowerCase().replace(/^0x/, "") ?? "";
 

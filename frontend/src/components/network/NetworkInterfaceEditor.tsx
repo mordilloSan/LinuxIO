@@ -14,7 +14,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_LG, GAP_MD, GAP_SM } from "@/theme/constants";
 
 import {
@@ -131,7 +130,6 @@ const isCurrentSession = (
   session.sourceIpv4Method === iface.ipv4_method;
 
 const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(NETWORK_TOAST_META);
 
   // Compute sane defaults from iface — stabilised on the actual values,
@@ -383,7 +381,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               }}
             >
               <StatusDot
-                color={getNetworkStateColor(iface.state, theme)}
+                color={getNetworkStateColor(iface.state)}
                 size={8}
                 tooltip={getNetworkStateSummary(iface)}
               />

@@ -9,7 +9,7 @@ TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
 fail() {
-    echo "FAIL: $*" >&2
+    echo "❌ $*" >&2
     exit 1
 }
 
@@ -143,7 +143,7 @@ run_test() {
     local name="$1"
     shift
     "$@"
-    echo "PASS: ${name}"
+    printf '   \033[1;32m✓\033[0m %s\n' "${name}"
 }
 
 run_test "Debian and RHEL package mappings" test_package_mappings
@@ -151,4 +151,4 @@ run_test "mandatory dependency failures are fatal" test_mandatory_failure
 run_test "mandatory-only CLI behavior" test_cli_mode
 run_test "help text" test_help
 run_test "obsolete development updater is removed" test_obsolete_dev_updater_is_removed
-echo "All install-dependencies fixture tests passed."
+printf '\033[1;32m%s\033[0m\n' "✅ All install-dependencies fixture tests passed!"

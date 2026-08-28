@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
 import * as core from "@/api/linuxio-core";
-import type { AppDataTableDndOptions } from "@/components/tables/AppDataTable";
+import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import { act, render, screen, waitFor, within } from "@/test/render";
 
 import type { ContainerTableRow } from "./containerStacks";
@@ -141,7 +141,7 @@ function StatefulStackTable({ containers }: { containers: ContainerInfo[] }) {
   );
 }
 
-const reorderDnd: AppDataTableDndOptions<ContainerTableRow> = {
+const reorderDnd: AppVirtualTableDndOptions<ContainerTableRow> = {
   contextProps: {} as never,
   editing: true,
   getItemId: (row) => row.id,

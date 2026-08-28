@@ -21,6 +21,10 @@ This is the canonical guide for LinuxIO's **frontend routing** — how URLs map 
   transition. Components read the same data with `useSuspenseQuery`.
 - Page-level tabs are real child routes, so each one gets its own URL, loader,
   and code-split chunk.
+- A transient, connection-sensitive operation (for example a network handoff)
+  keeps its client operation ID in the owning dialog and polls its retry-safe
+  status call only while the request transport is open. It should not become a
+  route loader or a durable-task screen merely to survive a reconnect.
 
 ## Route File Conventions
 
@@ -418,10 +422,11 @@ re-renders only for the data it actually reads. Observer options still matter:
 when the parent owns polling, children set `refetchOnMount: false` so mounting a
 tab does not add a stale-query refetch outside that cadence.
 
-`/vm` is the worked example. Its loader warms `virt.list` and `virt.preflight`;
-`VMPage` observes both (it owns the poll cadence for the section, since it stays
-mounted throughout), and each child observes only what it needs — `VMImagesPage`
-takes preflight alone, so the 5-second list poll does not re-render it:
+`/vm` is the worked example. Its loader warms `virt.list`, `virt.networks`, and
+`virt.preflight`; `VMPage` observes all three (it owns the poll cadence for the
+section, since it stays mounted throughout), and each child observes only what
+it needs — `VMImagesPage` takes preflight alone, so the 5-second list poll does
+not re-render it:
 
 ```tsx
 const { data: preflight } = useSuspenseQuery({
@@ -447,6 +452,10 @@ loader: (loaderArgs) =>
     linuxio.network.get_network_info,
   ]),
 ```
+
+Bridge candidates are workflow-scoped rather than route-scoped. The create
+dialog observes `network.get_bridge_options` with `enabled: open`, so ordinary
+network-page navigation does not perform manager and firewall preflights.
 
 Deferred dashboard widgets — `_authenticated/index.tsx`:
 

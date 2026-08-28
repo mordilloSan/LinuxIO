@@ -1,9 +1,8 @@
 import type { DiskPowerData } from "@/api";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 interface PowerStatesTabProps {
   power: DiskPowerData;
@@ -11,7 +10,7 @@ interface PowerStatesTabProps {
 
 type PowerStateRow = DiskPowerData["states"][number];
 
-const powerStateColumns: AppDataTableColumnDef<PowerStateRow>[] = [
+const powerStateColumns: AppVirtualTableColumnDef<PowerStateRow>[] = [
   {
     accessorKey: "state",
     header: "State",
@@ -30,19 +29,20 @@ const powerStateColumns: AppDataTableColumnDef<PowerStateRow>[] = [
   {
     accessorKey: "description",
     header: "Description",
-    meta: {
-      cellStyle: { fontSize: "0.75rem" },
-    },
+    cell: ({ row }) => (
+      <AppTypography variant="caption">
+        {row.original.description}
+      </AppTypography>
+    ),
   },
 ];
 
 export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
-  const theme = useAppTheme();
   return (
     <>
       <div
         style={{
-          marginBottom: theme.spacing(3),
+          marginBottom: "var(--app-space-12)",
         }}
       >
         <AppTypography gutterBottom variant="subtitle2">
@@ -51,7 +51,7 @@ export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
         <div
           style={{
             display: "flex",
-            gap: theme.spacing(2),
+            gap: "var(--app-space-8)",
             alignItems: "center",
           }}
         >
@@ -69,7 +69,7 @@ export const PowerStatesTab = ({ power }: PowerStatesTabProps) => {
       <AppTypography gutterBottom variant="subtitle2">
         Supported Power States
       </AppTypography>
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel="Supported drive power states"
         columns={powerStateColumns}
         data={power.states}

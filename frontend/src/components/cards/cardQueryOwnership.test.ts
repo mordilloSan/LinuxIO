@@ -379,25 +379,26 @@ const hookContracts: HookContract[] = [
     hooks: { useQuery: 1 },
   },
 
-  // Active NFS view polling and the selected card cache observer.
+  // Active mount-list view polling (NFS and SMB share one generic list) and
+  // the selected card cache observer.
   {
-    file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-    name: "NFSMounts",
+    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    name: "ProtocolMountList",
   },
   {
-    file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-    name: "NFSMountCardGrid",
+    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    name: "MountCardGrid",
     hooks: { useSuspenseQuery: 1 },
   },
   {
-    file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-    name: "NFSMountTable",
+    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    name: "MountTable",
     hooks: { useSuspenseQuery: 1 },
   },
-  { file: "components/cards/NFSMountCard.tsx", name: "NFSMountCard" },
+  { file: "components/cards/MountCard.tsx", name: "MountCard" },
   {
-    file: "components/cards/NFSMountCard.tsx",
-    name: "NFSMountCardLiveContent",
+    file: "components/cards/MountCard.tsx",
+    name: "MountCardLiveContent",
     hooks: { useQuery: 1 },
   },
 
@@ -541,16 +542,16 @@ const selectContracts: SelectContract[] = [
     select: "selectGroup",
   },
   {
-    file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-    name: "NFSMountCardGrid",
+    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    name: "MountCardGrid",
     hook: "useSuspenseQuery",
-    select: "selectNFSMountIdentities",
+    select: "selectMountIdentities",
   },
   {
-    file: "components/cards/NFSMountCard.tsx",
-    name: "NFSMountCardLiveContent",
+    file: "components/cards/MountCard.tsx",
+    name: "MountCardLiveContent",
     hook: "useQuery",
-    select: "selectNFSMount",
+    select: "selectMount",
   },
 ];
 
@@ -647,19 +648,19 @@ const edgeContracts: EdgeContract[] = [
     renders: ["UnitLogsCard"],
   },
   {
-    file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-    name: "NFSMounts",
-    renders: ["NFSMountCardGrid", "NFSMountTable"],
+    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    name: "ProtocolMountList",
+    renders: ["MountCardGrid", "MountTable"],
   },
   {
-    file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-    name: "NFSMountCardGrid",
-    renders: ["NFSMountCard"],
+    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    name: "MountCardGrid",
+    renders: ["MountCard"],
   },
   {
-    file: "components/cards/NFSMountCard.tsx",
-    name: "NFSMountCard",
-    renders: ["FrostedCard", "NFSMountCardLiveContent"],
+    file: "components/cards/MountCard.tsx",
+    name: "MountCard",
+    renders: ["FrostedCard", "MountCardLiveContent"],
   },
   {
     file: "components/cards/UnitInfoPanelCard.tsx",
@@ -758,8 +759,8 @@ describe("card query ownership", () => {
         name: "SensorGroupCardLive",
       },
       {
-        file: "components/cards/NFSMountCard.tsx",
-        name: "NFSMountCardLiveContent",
+        file: "components/cards/MountCard.tsx",
+        name: "MountCardLiveContent",
       },
       {
         file: dockerContainerCardFile,
@@ -809,12 +810,12 @@ describe("card query ownership", () => {
         name: "NetworkTrafficHistoryLive",
       },
       {
-        file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-        name: "NFSMountCardGrid",
+        file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+        name: "MountCardGrid",
       },
       {
-        file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-        name: "NFSMountTable",
+        file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+        name: "MountTable",
       },
       {
         file: "components/cards/UnitInfoPanelCard.tsx",
@@ -869,8 +870,8 @@ describe("card query ownership", () => {
         excludes: ["...group"],
       },
       {
-        file: "routes/_authenticated/shares/-components/NFSMounts.tsx",
-        name: "selectNFSMountIdentities",
+        file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+        name: "selectMountIdentities",
         includes: ["mount.mountpoint"],
         excludes: ["...mount", "usedPct", "mounted", "source"],
       },

@@ -2,7 +2,7 @@
 
 One row-interaction contract for every data table in the app. It lives in the
 one table primitive —
-[`AppDataTable`](../frontend/src/components/tables/AppDataTable.tsx) —
+[`AppVirtualTable`](../frontend/src/components/tables/AppVirtualTable.tsx) —
 so a table declares which gestures it supports and gets the behaviour, the
 guards and the animations for free. Do not re-implement any of this in a route
 component.

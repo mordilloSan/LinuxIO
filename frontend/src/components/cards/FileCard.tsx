@@ -15,7 +15,6 @@ import FileIcon from "@/components/filebrowser/FileIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_SM } from "@/theme/constants";
 import {
   getFileEntryBackground,
@@ -73,7 +72,6 @@ const FileCard = memo<FileCardProps>(
     onCancelRename,
     disableHover = false,
   }) => {
-    const theme = useAppTheme();
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -153,15 +151,9 @@ const FileCard = memo<FileCardProps>(
       return date.toLocaleDateString("en-GB");
     }, [modTime]);
 
-    const baseBg = useMemo(
-      () => getFileEntryBackground(theme, { hidden, selected }),
-      [hidden, selected, theme],
-    );
+    const baseBg = getFileEntryBackground({ hidden, selected });
 
-    const baseBorderColor = useMemo(
-      () => getSubtleDividerColor(theme),
-      [theme],
-    );
+    const baseBorderColor = getSubtleDividerColor();
 
     const borderColor = useMemo(() => {
       if (selected) {
@@ -208,7 +200,7 @@ const FileCard = memo<FileCardProps>(
         style={{
           display: "flex",
           alignItems: "center",
-          gap: theme.spacing(1.5),
+          gap: "var(--app-space-6)",
           padding: CARD_PADDING_SM,
           border: "3px solid",
           borderColor: borderColor,
@@ -240,10 +232,11 @@ const FileCard = memo<FileCardProps>(
               style={{
                 alignItems: "center",
                 display: "flex",
-                gap: theme.spacing(1),
+                gap: "var(--app-space-4)",
               }}
             >
               <input
+                className="file-card-rename-input"
                 disabled={isRenamePending}
                 onBlur={isRenamePending ? undefined : handleRenameBlur}
                 onChange={(e) => setRenameValue(e.target.value)}
@@ -255,11 +248,8 @@ const FileCard = memo<FileCardProps>(
                   background: "transparent",
                   border: "none",
                   boxSizing: "border-box",
-                  color: theme.palette.text.primary,
+                  color: "var(--app-palette-text-primary)",
                   flex: 1,
-                  fontSize: "0.90rem",
-                  fontWeight: 400,
-                  lineHeight: 1.2,
                   minWidth: 0,
                   outline: "none",
                   padding: 0,
@@ -283,7 +273,6 @@ const FileCard = memo<FileCardProps>(
             <AppTypography
               component="div"
               color="text.primary"
-              fontSize="0.90rem"
               fontWeight={400}
               noWrap
               style={{
@@ -291,7 +280,7 @@ const FileCard = memo<FileCardProps>(
                 opacity: 1,
               }}
               title={name}
-              variant="body1"
+              variant="body2"
             >
               {name}
             </AppTypography>
@@ -304,7 +293,6 @@ const FileCard = memo<FileCardProps>(
                 <AppTypography
                   component="div"
                   color="text.secondary"
-                  fontSize="0.75rem"
                   noWrap
                   style={{
                     opacity: 0.7,
@@ -312,7 +300,7 @@ const FileCard = memo<FileCardProps>(
                     marginTop: "2px",
                   }}
                   title={path}
-                  variant="body2"
+                  variant="caption"
                 >
                   {path.replace(/\/[^/]*$/, "") || "/"}
                 </AppTypography>
@@ -321,11 +309,11 @@ const FileCard = memo<FileCardProps>(
           )}
 
           {/* Size line (middle) */}
-          <div
+          <AppTypography
+            component="div"
+            color="text.secondary"
             style={{
-              fontSize: "0.90rem",
-              color: theme.palette.text.secondary,
-              gap: theme.spacing(0.5),
+              gap: "var(--app-space-2)",
               lineHeight: 1.2,
               opacity: metadataOpacity,
               display: "flex",
@@ -333,6 +321,7 @@ const FileCard = memo<FileCardProps>(
               height: "1.2em",
             }}
             title={effectiveSizeError?.message}
+            variant="body2"
           >
             {effectiveSizeLoading &&
             (effectiveSize === undefined || effectiveSize === 0) ? (
@@ -342,19 +331,20 @@ const FileCard = memo<FileCardProps>(
             ) : (
               "—"
             )}
-          </div>
+          </AppTypography>
 
-          <div
+          <AppTypography
+            component="div"
+            color="text.secondary"
             style={{
-              fontSize: "0.90rem",
-              color: theme.palette.text.secondary,
-              gap: theme.spacing(0.5),
+              gap: "var(--app-space-2)",
               lineHeight: 1.2,
               opacity: metadataOpacity,
             }}
+            variant="body2"
           >
             {formattedDate}
-          </div>
+          </AppTypography>
         </div>
       </div>
     );

@@ -1,6 +1,15 @@
 export { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 
+/** Progress-bar colour for a fill percentage: >90 error, >70 warning. */
+export const getUsageColor = (
+  usedPct: number,
+): "primary" | "warning" | "error" => {
+  if (usedPct > 90) return "error";
+  if (usedPct > 70) return "warning";
+  return "primary";
+};
+
 export const getContainerStatusColor = (state: string): string => {
   if (state === "Healthy" || state === "Running") {
     return SEMANTIC_STATUS_COLORS.success;

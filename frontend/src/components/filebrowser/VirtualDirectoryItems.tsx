@@ -10,13 +10,12 @@ import {
 } from "react";
 
 import type { SubfolderData } from "@/api";
-import SelectionBox from "@/components/filebrowser/SelectionBox";
 import {
   DirectoryItem,
   SectionHeader,
-} from "@/components/filebrowser/VirtualDirectoryRows";
+} from "@/components/filebrowser/DirectoryRows";
+import SelectionBox from "@/components/filebrowser/SelectionBox";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
-import { useAppTheme } from "@/theme";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
 import { stripTrailingSlash } from "@/utils/path";
 
@@ -214,7 +213,7 @@ export function getDirectoryRevealRowIndex(
 // React Compiler skips this whole module: TanStack Virtual's `useVirtualizer()`
 // returns unstable functions it refuses to memoize, and the bail is file-wide.
 // Manual memoization here stays load-bearing, and anything memo-worthy belongs
-// in VirtualDirectoryRows.tsx rather than in this file.
+// in DirectoryRows.tsx rather than in this file.
 const VirtualDirectoryItems = ({
   containerRef,
   cutPaths,
@@ -243,7 +242,6 @@ const VirtualDirectoryItems = ({
 }: VirtualDirectoryItemsProps) => {
   "use no memo";
 
-  const theme = useAppTheme();
   const horizontalPadding = viewMode === "card" ? CARD_PADDING : 0;
   const rowGap = viewMode === "card" ? CARD_GAP : LIST_GAP;
 
@@ -370,7 +368,7 @@ const VirtualDirectoryItems = ({
                   style={{
                     display: viewMode === "list" ? "flex" : "grid",
                     flexDirection: viewMode === "list" ? "column" : undefined,
-                    gap: viewMode === "list" ? theme.spacing(0.25) : CARD_GAP,
+                    gap: viewMode === "list" ? 1 : CARD_GAP,
                     gridTemplateColumns:
                       viewMode === "card"
                         ? `repeat(${columnCount}, minmax(0, 1fr))`

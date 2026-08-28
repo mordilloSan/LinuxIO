@@ -1,0 +1,15 @@
+.stack-setup-dialog__file-location {
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-text-primary),
+    transparent 98%
+  );
+}
+
+:root[data-app-color-scheme="dark"] .stack-setup-dialog__file-location {
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-text-primary),
+    transparent 95%
+  );
+}

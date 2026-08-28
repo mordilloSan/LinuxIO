@@ -51,7 +51,7 @@
 }
 
 .container-table__stack-chevron {
-  transition: transform var(--app-transition-duration-slow)
+  transition: transform var(--app-transition-duration-fast)
     var(--app-easing-standard);
 }
 

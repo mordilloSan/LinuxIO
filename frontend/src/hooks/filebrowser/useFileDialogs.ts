@@ -17,6 +17,7 @@ interface DialogsState {
   detailTarget: string[] | null;
   pendingDeletePaths: string[];
   permissionsDialog: PermissionsDialogState | null;
+  permissionsDialogOpen: boolean;
 }
 
 type DialogsEvent =
@@ -26,6 +27,7 @@ type DialogsEvent =
   | { type: "closeDelete" }
   | { type: "closeDetails" }
   | { type: "closePermissions" }
+  | { type: "clearPermissions" }
   | { type: "openCreateFile" }
   | { type: "openCreateFolder" }
   | { dialog: PermissionsDialogState; type: "openPermissions" }
@@ -39,6 +41,7 @@ const initialDialogsState: DialogsState = {
   detailTarget: null,
   pendingDeletePaths: [],
   permissionsDialog: null,
+  permissionsDialogOpen: false,
 };
 
 function dialogsReducer(
@@ -57,13 +60,19 @@ function dialogsReducer(
     case "closeDetails":
       return { ...state, detailTarget: null };
     case "closePermissions":
+      return { ...state, permissionsDialogOpen: false };
+    case "clearPermissions":
       return { ...state, permissionsDialog: null };
     case "openCreateFile":
       return { ...state, createFileDialog: true };
     case "openCreateFolder":
       return { ...state, createFolderDialog: true };
     case "openPermissions":
-      return { ...state, permissionsDialog: event.dialog };
+      return {
+        ...state,
+        permissionsDialog: event.dialog,
+        permissionsDialogOpen: true,
+      };
     case "requestDelete":
       return { ...state, deleteDialog: true, pendingDeletePaths: event.paths };
     case "showDetails":
@@ -78,6 +87,7 @@ interface DialogsActions {
   closeDelete: () => void;
   closeDetails: () => void;
   closePermissions: () => void;
+  clearPermissions: () => void;
   openCreateFile: () => void;
   openCreateFolder: () => void;
   openPermissions: (dialog: PermissionsDialogState) => void;
@@ -105,6 +115,7 @@ export const useFileDialogs = (): DialogsSlice => {
       closeDelete: () => dispatch({ type: "closeDelete" }),
       closeDetails: () => dispatch({ type: "closeDetails" }),
       closePermissions: () => dispatch({ type: "closePermissions" }),
+      clearPermissions: () => dispatch({ type: "clearPermissions" }),
       openCreateFile: () => dispatch({ type: "openCreateFile" }),
       openCreateFolder: () => dispatch({ type: "openCreateFolder" }),
       openPermissions: (dialog) =>

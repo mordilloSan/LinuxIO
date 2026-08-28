@@ -8,16 +8,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import {
-  memo,
-  Suspense,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, Suspense, useCallback, useMemo, useRef, useState } from "react";
 
 import { linuxio, openChannel, type ContainerInfo } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
@@ -27,19 +18,20 @@ import { RoutedTabSearch } from "@/components/tabbar";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import {
   useReorderableSurface,
   type ReorderableSurface,
   type ReorderableSurfaceDndProps,
 } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import {
   CARD_GRID_SIZE_DENSE,
   DASHBOARD_CARD_SPACING,
   DETAIL_PANEL_GAP,
   EASING_STANDARD,
-  TRANSITION_DURATION_SLOW_MS,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
@@ -167,9 +159,8 @@ const ContainerList = ({
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
 }: ContainerListProps) => {
-  const theme = useAppTheme();
-  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
-  const isCompactLayout = useAppMediaQuery(theme.breakpoints.down("md"));
+  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
+  const isCompactLayout = useAppMediaQuery(down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const selectedContainerId =
@@ -386,34 +377,12 @@ const ContainerList = ({
         : CARD_GRID_SIZE_DENSE,
     [collapsedStacks],
   );
-  const selectedContainer = useMemo(
-    () =>
-      orderedContainers.find(
-        (container) => container.Id === selectedContainerId,
-      ) ?? null,
-    [orderedContainers, selectedContainerId],
-  );
-
-  const clearSelectedContainer = useEffectEvent(() => {
-    updateSelectedContainer(null);
+  const selectedContainer = useFocusedResourceParam({
+    focusedId: selectedContainerId,
+    getId: getContainerId,
+    items: orderedContainers,
+    onClear: () => updateSelectedContainer(null),
   });
-
-  useEffect(() => {
-    if (selectedContainerId && !selectedContainer) {
-      clearSelectedContainer();
-    }
-  }, [selectedContainer, selectedContainerId]);
-
-  useEffect(() => {
-    if (!selectedContainer) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" || event.key === "Esc") {
-        updateSelectedContainer(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedContainer, updateSelectedContainer]);
 
   const handleSelectContainer = (containerId: string) => {
     updateSelectedContainer(
@@ -510,7 +479,7 @@ const ContainerList = ({
         <motion.div
           layout="position"
           transition={{
-            duration: slowTransitionDurationSeconds,
+            duration: transitionDuration,
             ease: EASING_STANDARD,
           }}
         >
@@ -518,7 +487,7 @@ const ContainerList = ({
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: theme.spacing(3),
+              gap: "var(--app-space-12)",
             }}
           >
             <motion.div
@@ -533,8 +502,8 @@ const ContainerList = ({
                 gap: DETAIL_PANEL_GAP,
               }}
               transition={{
-                duration: slowTransitionDurationSeconds,
-                delay: 0.04,
+                duration: transitionDuration,
+                delay: 0,
                 ease: EASING_STANDARD,
               }}
             >
@@ -546,8 +515,8 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: slowTransitionDurationSeconds,
-                  delay: 0.04,
+                  duration: transitionDuration,
+                  delay: 0,
                   ease: EASING_STANDARD,
                 }}
               >
@@ -566,8 +535,8 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: slowTransitionDurationSeconds,
-                  delay: 0.08,
+                  duration: transitionDuration,
+                  delay: 0.1,
                   ease: EASING_STANDARD,
                 }}
               >
@@ -591,8 +560,8 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: slowTransitionDurationSeconds,
-                  delay: 0.12,
+                  duration: transitionDuration,
+                  delay: 0.2,
                   ease: EASING_STANDARD,
                 }}
               >
@@ -606,8 +575,8 @@ const ContainerList = ({
               animate={{ opacity: 1, y: 0 }}
               initial={{ opacity: 0, y: 18 }}
               transition={{
-                duration: slowTransitionDurationSeconds,
-                delay: 0.16,
+                duration: transitionDuration,
+                delay: 0.3,
                 ease: EASING_STANDARD,
               }}
             >
@@ -620,8 +589,8 @@ const ContainerList = ({
               animate={{ opacity: 1, y: 0 }}
               initial={{ opacity: 0, y: 20 }}
               transition={{
-                duration: slowTransitionDurationSeconds,
-                delay: 0.2,
+                duration: transitionDuration,
+                delay: 0.4,
                 ease: EASING_STANDARD,
               }}
             >
@@ -684,7 +653,7 @@ const ContainerList = ({
           minHeight: 0,
         }}
         transition={{
-          duration: slowTransitionDurationSeconds,
+          duration: transitionDuration,
           ease: EASING_STANDARD,
         }}
       >

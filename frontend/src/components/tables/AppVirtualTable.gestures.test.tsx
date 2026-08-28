@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -33,7 +33,7 @@ const renderStatus = vi.fn(
 );
 const getRowAttributes = vi.fn(() => ({}));
 
-const tableColumns: AppDataTableColumnDef<TableRow>[] = [
+const tableColumns: AppVirtualTableColumnDef<TableRow>[] = [
   {
     id: "name",
     header: "Name",
@@ -74,7 +74,7 @@ function TestTable({
   onRowDoubleClick,
   selectedRowId,
 }: {
-  columns?: AppDataTableColumnDef<TableRow>[];
+  columns?: AppVirtualTableColumnDef<TableRow>[];
   data?: TableRow[];
   expandedContent?: (row: { original: TableRow }) => ReactNode;
   onClearSelection?: () => void;
@@ -83,7 +83,7 @@ function TestTable({
   selectedRowId?: string;
 }) {
   return (
-    <AppDataTable
+    <AppVirtualTable
       columns={columns}
       data={data}
       fillAvailable
@@ -100,7 +100,7 @@ function TestTable({
 
 function SelectableTable() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const columns: AppDataTableColumnDef<SelectableRow>[] = [
+  const columns: AppVirtualTableColumnDef<SelectableRow>[] = [
     {
       id: "select",
       header: "Select",
@@ -136,7 +136,7 @@ function SelectableTable() {
   ];
 
   return (
-    <AppDataTable
+    <AppVirtualTable
       ariaLabel="Selectable rows"
       columns={columns}
       data={rows}
@@ -160,7 +160,7 @@ function ReorderableSelectableTable() {
     surface: "test.rows",
   });
   const dnd = useReorderableTableDnd<TableRow, TableRow>({ surface });
-  const columns: AppDataTableColumnDef<TableRow>[] = [
+  const columns: AppVirtualTableColumnDef<TableRow>[] = [
     {
       id: "select",
       header: "Select",
@@ -187,7 +187,7 @@ function ReorderableSelectableTable() {
   return (
     <>
       <div data-testid="selected-count">{selected.size}</div>
-      <AppDataTable
+      <AppVirtualTable
         columns={columns}
         data={tableRows}
         dnd={dnd}
@@ -203,7 +203,7 @@ function ReorderableSelectableTable() {
 
 // The row gestures from docs/table-row-gestures.md, exercised against the one
 // table primitive.
-describe("AppDataTable gestures", () => {
+describe("AppVirtualTable gestures", () => {
   beforeEach(() => {
     getRowAttributes.mockClear();
     renderName.mockClear();
@@ -250,7 +250,7 @@ describe("AppDataTable gestures", () => {
   it("updates index-sensitive cells when stable rows are reordered", () => {
     // Per the column-meta contract, an explicit render key must include the
     // row index when the renderer reads its position.
-    const indexedColumns: AppDataTableColumnDef<TableRow>[] = [
+    const indexedColumns: AppVirtualTableColumnDef<TableRow>[] = [
       {
         id: "name",
         header: "Name",
@@ -297,7 +297,7 @@ describe("AppDataTable gestures", () => {
 
   it("leaves clicks on row controls to the control", async () => {
     const onControlClick = vi.fn();
-    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
+    const columnsWithAction: AppVirtualTableColumnDef<TableRow>[] = [
       tableColumns[0],
       {
         id: "action",
@@ -485,7 +485,7 @@ describe("AppDataTable gestures", () => {
   });
 
   it("leaves the word selection alone on a control inside the row", () => {
-    const columnsWithAction: AppDataTableColumnDef<TableRow>[] = [
+    const columnsWithAction: AppVirtualTableColumnDef<TableRow>[] = [
       tableColumns[0],
       {
         id: "action",

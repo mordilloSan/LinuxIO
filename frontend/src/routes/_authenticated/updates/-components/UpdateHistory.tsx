@@ -3,11 +3,10 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { memo, useMemo } from "react";
 
 import { linuxio, type UpdateHistoryRow } from "@/api";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 interface PackageChunkRow {
   id: string;
@@ -33,7 +32,6 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
   date,
   upgrades,
 }: PackageHistoryTableProps) {
-  const theme = useAppTheme();
   const data = useMemo(
     () =>
       chunkArray(upgrades, 5).map((chunk, index) => ({
@@ -42,7 +40,7 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
       })),
     [upgrades],
   );
-  const columns = useMemo<AppDataTableColumnDef<PackageChunkRow>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<PackageChunkRow>[]>(
     () =>
       Array.from({ length: 5 }, (_, index) => ({
         id: `package-${index}`,
@@ -52,22 +50,22 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
           if (!pkg) return null;
 
           return (
-            <span
+            <AppTypography
+              color="text.secondary"
+              component="span"
               style={{
-                color: "var(--app-palette-text-secondary)",
-                fontFamily: theme.typography.fontFamily,
-                fontSize: "0.85rem",
                 overflowWrap: "break-word",
                 wordBreak: "break-word",
               }}
+              variant="body2"
             >
               {pkg.package}
-            </span>
+            </AppTypography>
           );
         },
         meta: { width: "20%" },
       })),
-    [theme.typography.fontFamily],
+    [],
   );
 
   return (
@@ -75,7 +73,7 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
       <AppTypography gutterBottom variant="subtitle2">
         <b>Packages Installed:</b>
       </AppTypography>
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel={`Packages installed on ${date}`}
         columns={columns}
         data={data}
@@ -92,10 +90,9 @@ const PackageHistoryTable = memo(function PackageHistoryTable({
 });
 
 const UpdateHistory = () => {
-  const theme = useAppTheme();
   const { data: rows } = useSuspenseQuery(linuxio.updates.get_update_history);
 
-  const columns: AppDataTableColumnDef<(typeof rows)[number]>[] = [
+  const columns: AppVirtualTableColumnDef<(typeof rows)[number]>[] = [
     {
       id: "history",
       header: "",
@@ -105,7 +102,7 @@ const UpdateHistory = () => {
           style={{
             display: "flex",
             alignItems: "center",
-            color: theme.palette.primary.main,
+            color: "var(--app-palette-primary-main)",
           }}
         >
           <Icon height={20} icon="mdi:history" width={20} />
@@ -156,7 +153,7 @@ const UpdateHistory = () => {
     },
   ];
   return (
-    <AppDataTable
+    <AppVirtualTable
       ariaLabel="Update history"
       columns={columns}
       data={rows}

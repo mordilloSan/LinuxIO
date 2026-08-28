@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 
+import "./CirularGauge.css";
+
+import AppTypography from "@/components/ui/AppTypography";
 import { useAppTheme } from "@/theme";
-import { GREY_TOKENS as grey } from "@/theme/colors";
 
 // Utility functions
 function clamp(n: number, min: number, max: number) {
@@ -53,135 +55,6 @@ function getColorForPercentage(pct: number, colors: string[]): string {
 // ============================================
 // 1. Multi-Value Circular Gauge
 // ============================================
-interface MultiValueGaugeProps {
-  gap?: number;
-  size?: number;
-  thickness?: number;
-  values: { value: number; color: string; label?: string }[];
-}
-
-export const MultiValueCircularGauge = ({
-  values,
-  size = 120,
-  thickness = 8,
-  gap = 2,
-}: MultiValueGaugeProps) => {
-  const radius = (size - thickness) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const center = size / 2;
-  const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
-
-  const total = useMemo(
-    () => values.reduce((sum, item) => sum + Math.max(0, item.value), 0),
-    [values],
-  );
-
-  const segments = useMemo(() => {
-    const totalGapDegrees = gap * Math.max(0, values.length - 1);
-    const availableDegrees = 360 - totalGapDegrees;
-
-    // Precompute degrees and percentages per item
-    const data = values.map((item) => {
-      const clamped = Math.max(0, item.value);
-      const percentage = total > 0 ? (clamped / total) * 100 : 0;
-      const degrees = (percentage / 100) * availableDegrees;
-      return { item, percentage, degrees };
-    });
-
-    // Build segments with an immutable running offset (no reassignments)
-    interface Seg {
-      color: string;
-      label?: string;
-      percentage: number;
-      rotation: number;
-      strokeDasharray: string;
-      value: number;
-    }
-
-    const result = data.reduce(
-      (acc, { item, percentage, degrees }) => {
-        const rotation = acc.offset - 90;
-        const strokeDasharray = `${(degrees / 360) * circumference} ${circumference}`;
-        acc.list.push({
-          ...item,
-          percentage: Math.round(percentage),
-          strokeDasharray,
-          rotation,
-        });
-        return { list: acc.list, offset: acc.offset + degrees + gap };
-      },
-      { list: [] as Seg[], offset: 0 },
-    );
-
-    return result.list;
-  }, [values, total, circumference, gap]);
-
-  return (
-    <div
-      style={{
-        position: "relative",
-        display: "inline-flex",
-        width: size,
-        height: size,
-      }}
-    >
-      <svg height={size} width={size}>
-        <circle
-          cx={center}
-          cy={center}
-          fill="none"
-          r={radius}
-          stroke={isDark ? grey[700] : grey[300]}
-          strokeWidth={thickness}
-        />
-        {segments.map((segment, index) => (
-          <circle
-            cx={center}
-            cy={center}
-            fill="none"
-            key={index}
-            r={radius}
-            stroke={segment.color}
-            strokeDasharray={segment.strokeDasharray}
-            strokeLinecap="round"
-            strokeWidth={thickness}
-            style={{ transition: "stroke-dasharray 0.3s ease" }}
-            transform={`rotate(${segment.rotation} ${center} ${center})`}
-          />
-        ))}
-      </svg>
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "1.5rem",
-            fontWeight: "bold",
-            color: isDark ? grey[100] : grey[900],
-          }}
-        >
-          {Math.round(total)}
-        </div>
-        <div style={{ fontSize: "0.75rem", color: grey[500] }}>Total</div>
-      </div>
-    </div>
-  );
-};
-
-// ============================================
-// 2. Gradient Circular Gauge (Arc-based)
-// ============================================
 interface GradientGaugeProps {
   gradientColors?: string[];
   showPercentage?: boolean;
@@ -203,10 +76,10 @@ export const GradientCircularGauge = ({
   const center = size / 2;
 
   const theme = useAppTheme();
-  const isDark = theme.palette.mode === "dark";
-  const backgroundColor = isDark ? grey[700] : grey[300];
   // Create multiple segments for smooth gradient effect
   const segments = useMemo(() => {
+    // interpolateColor() parses real hex strings, so the gauge resolves its
+    // gradient from the theme in JS rather than through --app-* variables.
     const resolvedGradientColors = gradientColors ?? [
       theme.chart.tx,
       theme.palette.warning.main,
@@ -244,11 +117,11 @@ export const GradientCircularGauge = ({
     >
       <svg height={size} width={size}>
         <circle
+          className="gauge-track"
           cx={center}
           cy={center}
           fill="none"
           r={radius}
-          stroke={backgroundColor}
           strokeWidth={thickness}
         />
         {segments.map((segment, index) => (
@@ -279,15 +152,14 @@ export const GradientCircularGauge = ({
             justifyContent: "center",
           }}
         >
-          <div
-            style={{
-              fontSize: "1rem",
-              fontWeight: "bold",
-              color: isDark ? grey[100] : grey[900],
-            }}
+          <AppTypography
+            className="gauge-value-text"
+            component="div"
+            fontWeight="bold"
+            variant="body1"
           >
             {Math.round(pct)}%
-          </div>
+          </AppTypography>
         </div>
       )}
     </div>

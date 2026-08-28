@@ -4,6 +4,27 @@
     "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol";
+  --app-space-2: 2px;
+  --app-space-4: 4px;
+  --app-space-6: 6px;
+  --app-space-8: 8px;
+  --app-space-12: 12px;
+  --app-space-16: 16px;
+  --app-space-20: 20px;
+  --app-space-24: 24px;
+  --app-space-32: 32px;
+  --app-space-48: 48px;
+  /* Corner radii. --app-radius-base (4px) is written by AppThemeProvider. */
+  --app-radius-md: 8px;
+  --app-radius-lg: 12px;
+  --app-radius-card: 16px;
+  --app-radius-pill: 999px;
+  /* Stacking tiers for anything that escapes normal flow. Stacking inside a
+     component (1, 2, 5, 10) is local to that component and stays a literal. */
+  --app-z-navbar: 1100;
+  --app-z-sidebar: 1200;
+  --app-z-dialog: 1300;
+  --app-z-tooltip: 1500;
   /* Shared chrome for lightweight floating surfaces. Keep dock labels,
      tooltips, and popovers visually aligned without imposing tooltip-sized
      typography or padding on richer panel content. */
@@ -299,7 +320,8 @@ a {
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
-  transition: background-color 0.3s;
+  transition: background-color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
 }
 
 .custom-scrollbar::-webkit-scrollbar-track,
@@ -331,9 +353,43 @@ a {
 
 .xterm .scrollbar.fade {
   opacity: 0 !important;
-  transition: opacity 0.3s !important;
+  transition: opacity var(--app-transition-duration-fast)
+    var(--app-easing-standard) !important;
 }
 
 .xterm:hover .scrollbar.fade {
   opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* Loading motion communicates ongoing work rather than decoration. */
+  .app-circular-progress,
+  .app-circular-progress__circle {
+    animation-duration: 1.4s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .app-linear-progress--indeterminate .app-linear-progress__bar {
+    animation-duration: 2.1s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .capability-manager__spin {
+    animation-duration: 900ms !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .compose-progress__spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

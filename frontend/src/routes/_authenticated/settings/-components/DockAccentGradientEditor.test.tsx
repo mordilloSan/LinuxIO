@@ -1,30 +1,32 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { resolveDockAccentGradient } from "@/routes/_authenticated/-components/dock/dockPalette";
 import { fireEvent, render, screen } from "@/test/render";
+import buildAppTheme from "@/theme";
+import { toHexColor } from "@/utils/color";
 
 import DockAccentGradientEditor from "./DockAccentGradientEditor";
 
 describe("DockAccentGradientEditor", () => {
   it("names both color endpoints and marks the kept palette tiles", () => {
-    render(
-      <DockAccentGradientEditor
-        accent="#2196f3"
-        onChange={() => {}}
-        value={{
-          startColor: "",
-          endColor: "",
-          rangeStart: 10,
-          rangeEnd: 90,
-        }}
-      />,
-    );
+    const value = {
+      startColor: "",
+      endColor: "",
+      rangeStart: 10,
+      rangeEnd: 90,
+    };
+    render(<DockAccentGradientEditor onChange={() => {}} value={value} />);
 
+    // With no stored endpoints the editor shows the accent family derived
+    // from the rendered theme's primary colour.
+    const accent = buildAppTheme("DARK").palette.primary.main;
+    const family = resolveDockAccentGradient(accent, value);
     expect(
       screen.getByLabelText("Start color for the full dock gradient"),
-    ).toHaveValue("#21f3e7");
+    ).toHaveValue(toHexColor(family.startColor));
     expect(
       screen.getByLabelText("End color for the full dock gradient"),
-    ).toHaveValue("#212df3");
+    ).toHaveValue(toHexColor(family.endColor));
 
     const tiles = screen.getAllByRole("button", { name: /^Palette stop / });
     expect(tiles).toHaveLength(11);
@@ -46,7 +48,6 @@ describe("DockAccentGradientEditor", () => {
     const onChange = vi.fn();
     render(
       <DockAccentGradientEditor
-        accent="#2196f3"
         onChange={onChange}
         value={{
           startColor: "#ff0000",
@@ -73,7 +74,6 @@ describe("DockAccentGradientEditor", () => {
     const onChange = vi.fn();
     const { user } = render(
       <DockAccentGradientEditor
-        accent="#2196f3"
         onChange={onChange}
         value={{
           startColor: "#ff0000",
@@ -116,7 +116,6 @@ describe("DockAccentGradientEditor", () => {
     const onChange = vi.fn();
     const { user } = render(
       <DockAccentGradientEditor
-        accent="#2196f3"
         onChange={onChange}
         value={{
           startColor: "#ff0000",

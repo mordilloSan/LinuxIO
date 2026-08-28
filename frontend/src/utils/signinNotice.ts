@@ -38,10 +38,3 @@ export function clearSigninNotice(): void {
     /* ignore */
   }
 }
-
-/** Reads and clears the pending sign-in notice, so it shows exactly once. */
-export function consumeSigninNotice(): SigninNotice | null {
-  const notice = readSigninNotice();
-  clearSigninNotice();
-  return notice;
-}

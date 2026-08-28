@@ -5,7 +5,6 @@ import AppAlert from "@/components/ui/AppAlert";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 
 interface UpdateActionsProps {
   canCancel?: boolean;
@@ -30,8 +29,6 @@ const UpdateActions = ({
   onClearError,
   onCancel,
 }: UpdateActionsProps) => {
-  const theme = useAppTheme();
-
   // Both branches below are conditional, so an idle section rendered an empty
   // box whose bottom margin still pushed the package list down — the tab strip
   // owns that gap now (tab-container.css). Bail out instead of painting it.
@@ -61,7 +58,7 @@ const UpdateActions = ({
   };
 
   return (
-    <div style={{ marginBottom: theme.spacing(3) }}>
+    <div style={{ marginBottom: "var(--app-space-12)" }}>
       {/* Error Alert */}
       {error && (
         <AppAlert
@@ -86,13 +83,13 @@ const UpdateActions = ({
 
       {/* Progress Indicator */}
       {isUpdating && (
-        <div style={{ marginTop: theme.spacing(2) }}>
+        <div style={{ marginTop: "var(--app-space-8)" }}>
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: theme.spacing(1),
+              marginBottom: "var(--app-space-4)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">
@@ -102,7 +99,7 @@ const UpdateActions = ({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: theme.spacing(1),
+                gap: "var(--app-space-4)",
               }}
             >
               <AppTypography color="text.secondary" variant="body2">
@@ -124,7 +121,7 @@ const UpdateActions = ({
             variant="determinate"
           />
           {eventLog && eventLog.length > 0 && (
-            <div style={{ marginTop: theme.spacing(1) }}>
+            <div style={{ marginTop: "var(--app-space-4)" }}>
               {eventLog.map((line, index) => (
                 <AppTypography
                   color="text.secondary"

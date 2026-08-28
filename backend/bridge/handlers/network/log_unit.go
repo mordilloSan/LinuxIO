@@ -43,7 +43,7 @@ var (
 // resolveNetworkLogUnit returns the installed unit whose journal covers the
 // interface's stack, or "" when none of the candidates exist — the signal for
 // callers to offer no log view rather than tail a unit that cannot log.
-// Callers must hold networkMu.
+// Callers must hold networkStatsMu.
 func resolveNetworkLogUnit(configBackend string) string {
 	if unit, cached := networkLogUnitCache[configBackend]; cached {
 		return unit

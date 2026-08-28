@@ -2,61 +2,56 @@ import type { CSSProperties } from "react";
 
 import type { VMPreflight, VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { StatusMetric } from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
-import { type AppTheme, useAppTheme } from "@/theme";
-import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
+import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 
 import PreflightSummary from "./PreflightSummary";
 import {
   DEFAULT_MANAGED_CLOUD_PATH,
   DEFAULT_MANAGED_ISO_PATH,
   IMAGE_PRESETS,
+  formatAttachmentType,
   formatMemory,
   normalizeState,
   stateChipColor,
 } from "./vmShared";
 
-const tabPanelStyle = (theme: AppTheme): CSSProperties => ({
+const tabPanelStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: theme.spacing(4.5),
+  gap: "var(--app-space-16)",
   minHeight: 0,
-});
+};
 
-const cardGridStyle = (theme: AppTheme): CSSProperties => ({
+const cardGridStyle: CSSProperties = {
   display: "grid",
-  gap: theme.spacing(DASHBOARD_CARD_SPACING),
+  gap: DASHBOARD_CARD_GAP,
   gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-});
+};
 
 // Shared by the status-metric tiles and the image-path tiles — both are
 // "label + value" cards laid out identically. They lift like the dashboard's
 // tiles do: the tier is about being one thing in a grid, not about being
 // clickable, and none of the dashboard tiles are clickable either.
-const gridTileStyle = (theme: AppTheme): CSSProperties => ({
+const gridTileStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: theme.spacing(2),
+  gap: "var(--app-space-8)",
   minWidth: 0,
-  padding: theme.spacing(3.5),
-});
+  padding: "var(--app-space-16)",
+};
 
-const secondarySmallTextStyle = (theme: AppTheme): CSSProperties => ({
-  color: theme.palette.text.secondary,
-  fontSize: "0.75rem",
-});
-
-const preflightCardStyle = (theme: AppTheme): CSSProperties => ({
+const preflightCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: theme.spacing(2.5),
-  padding: theme.spacing(3),
-});
+  gap: "var(--app-space-8)",
+  padding: "var(--app-space-12)",
+};
 
 const tableCardStyle: CSSProperties = {
   minWidth: 0,
@@ -73,10 +68,8 @@ const wrappingCodeStyle: CSSProperties = {
 };
 
 export function VMPreflightCard({ preflight }: { preflight?: VMPreflight }) {
-  const theme = useAppTheme();
-
   return (
-    <FrostedCard style={preflightCardStyle(theme)}>
+    <FrostedCard style={preflightCardStyle}>
       <PreflightSummary preflight={preflight} />
       {preflight && (preflight.warnings ?? []).length > 0 && (
         <AppAlert severity="warning">
@@ -113,12 +106,11 @@ export function VMDashboardTab({
   const paused = vms.filter((vm) => vm.state === "paused").length;
   const totalMemoryMB = vms.reduce((sum, vm) => sum + vm.memoryMB, 0);
   const totalDiskGB = vms.reduce((sum, vm) => sum + vm.diskGB, 0);
-  const theme = useAppTheme();
 
   return (
-    <div style={tabPanelStyle(theme)}>
-      <div style={cardGridStyle(theme)}>
-        <FrostedCard hoverLift style={gridTileStyle(theme)}>
+    <div style={tabPanelStyle}>
+      <div style={cardGridStyle}>
+        <FrostedCard hoverLift style={gridTileStyle}>
           <StatusMetric
             detail={`${running} running, ${paused} paused`}
             icon="mdi:server"
@@ -127,7 +119,7 @@ export function VMDashboardTab({
             variant="stat"
           />
         </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle}>
           <StatusMetric
             detail={
               preflight?.defaultNetworkActive ? "default active" : "check"
@@ -138,7 +130,7 @@ export function VMDashboardTab({
             variant="stat"
           />
         </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle}>
           <StatusMetric
             detail={preflight?.defaultPoolActive ? "default active" : "check"}
             icon="mdi:database"
@@ -147,7 +139,7 @@ export function VMDashboardTab({
             variant="stat"
           />
         </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle}>
           <StatusMetric
             detail={`${totalDiskGB} GB provisioned`}
             icon="mdi:memory"
@@ -163,6 +155,7 @@ export function VMDashboardTab({
 }
 
 type VMNetworkRow = {
+  attachmentType: string;
   id: string;
   ips: string[];
   mac: string;
@@ -172,10 +165,65 @@ type VMNetworkRow = {
   vmName: string;
 };
 
+const vmNetworkColumns: AppVirtualTableColumnDef<VMNetworkRow>[] = [
+  {
+    accessorKey: "vmName",
+    header: "VM",
+    cell: ({ row }) => row.original.vmName,
+    meta: { width: "minmax(150px, 1fr)" },
+  },
+  {
+    accessorKey: "state",
+    header: "State",
+    cell: ({ row }) => (
+      <AppChip
+        color={stateChipColor(row.original.state)}
+        label={normalizeState(row.original.state)}
+        size="small"
+        variant="soft"
+      />
+    ),
+    meta: { width: "120px" },
+  },
+  {
+    accessorKey: "attachmentType",
+    header: "Attachment",
+    cell: ({ row }) => row.original.attachmentType,
+    meta: { width: "120px" },
+  },
+  {
+    accessorKey: "network",
+    header: "Network",
+    cell: ({ row }) => row.original.network,
+    meta: { width: "minmax(140px, 1fr)" },
+  },
+  {
+    id: "ipAddresses",
+    header: "IP",
+    cell: ({ row }) => {
+      if (row.original.ips.length === 0) {
+        return (
+          <span style={{ color: "var(--app-palette-text-secondary)" }}>
+            Unavailable
+          </span>
+        );
+      }
+      return row.original.ips.join(", ");
+    },
+    meta: { width: "minmax(180px, 1fr)" },
+  },
+  {
+    accessorKey: "mac",
+    header: "MAC",
+    cell: ({ row }) => row.original.mac,
+    meta: { width: "minmax(160px, 1fr)" },
+  },
+];
+
 export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
-  const theme = useAppTheme();
   const rows = vms.flatMap((vm) =>
     (vm.nics ?? []).map((nic, index) => ({
+      attachmentType: formatAttachmentType(nic.attachmentType),
       id: `${vm.name}-${nic.mac || index}`,
       ips: nic.ipAddresses ?? [],
       mac: nic.mac || "-",
@@ -186,61 +234,12 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
     })),
   );
 
-  const columns: AppDataTableColumnDef<VMNetworkRow>[] = [
-    {
-      accessorKey: "vmName",
-      header: "VM",
-      cell: ({ row }) => row.original.vmName,
-      meta: { width: "minmax(150px, 1fr)" },
-    },
-    {
-      accessorKey: "state",
-      header: "State",
-      cell: ({ row }) => (
-        <AppChip
-          color={stateChipColor(row.original.state)}
-          label={normalizeState(row.original.state)}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: { width: "120px" },
-    },
-    {
-      accessorKey: "network",
-      header: "Network",
-      cell: ({ row }) => row.original.network,
-      meta: { width: "minmax(140px, 1fr)" },
-    },
-    {
-      id: "ipAddresses",
-      header: "IP",
-      cell: ({ row }) => {
-        if (row.original.ips.length === 0) {
-          return (
-            <span style={{ color: theme.palette.text.secondary }}>
-              No lease
-            </span>
-          );
-        }
-        return row.original.ips.join(", ");
-      },
-      meta: { width: "minmax(180px, 1fr)" },
-    },
-    {
-      accessorKey: "mac",
-      header: "MAC",
-      cell: ({ row }) => row.original.mac,
-      meta: { width: "minmax(160px, 1fr)" },
-    },
-  ];
-
   return (
-    <div style={tabPanelStyle(theme)}>
+    <div style={tabPanelStyle}>
       <FrostedCard style={tableCardStyle}>
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Virtual machine networks"
-          columns={columns}
+          columns={vmNetworkColumns}
           data={rows}
           emptyMessage="No virtual network interfaces."
           enableSorting={false}
@@ -255,34 +254,39 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
 }
 
 export function VMImagesTab({ preflight }: { preflight?: VMPreflight }) {
-  const theme = useAppTheme();
   const isoPath = preflight?.managedPaths?.isos ?? DEFAULT_MANAGED_ISO_PATH;
   const cloudPath =
     preflight?.managedPaths?.cloudImages ?? DEFAULT_MANAGED_CLOUD_PATH;
 
   return (
-    <div style={tabPanelStyle(theme)}>
-      <div style={cardGridStyle(theme)}>
-        <FrostedCard hoverLift style={gridTileStyle(theme)}>
+    <div style={tabPanelStyle}>
+      <div style={cardGridStyle}>
+        <FrostedCard hoverLift style={gridTileStyle}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             ISO folder
           </AppTypography>
           <code style={wrappingCodeStyle}>{isoPath}</code>
         </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             Cloud image folder
           </AppTypography>
           <code style={wrappingCodeStyle}>{cloudPath}</code>
         </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle(theme)}>
+        <FrostedCard hoverLift style={gridTileStyle}>
           <AppTypography component="div" fontWeight={700} variant="body2">
             Custom installers
           </AppTypography>
-          <span style={secondarySmallTextStyle(theme)}>ISO installer</span>
+          <AppTypography
+            color="text.secondary"
+            component="span"
+            variant="caption"
+          >
+            ISO installer
+          </AppTypography>
         </FrostedCard>
         {IMAGE_PRESETS.map((preset) => (
-          <FrostedCard hoverLift key={preset.id} style={gridTileStyle(theme)}>
+          <FrostedCard hoverLift key={preset.id} style={gridTileStyle}>
             <div>
               <AppTypography component="div" fontWeight={700} variant="body2">
                 {preset.label}
@@ -291,18 +295,20 @@ export function VMImagesTab({ preflight }: { preflight?: VMPreflight }) {
                 Ready image
               </AppTypography>
             </div>
-            <div
+            <AppTypography
+              color="text.secondary"
+              component="div"
               style={{
-                ...secondarySmallTextStyle(theme),
                 display: "flex",
                 flexWrap: "wrap",
-                gap: theme.spacing(2),
+                gap: "var(--app-space-8)",
               }}
+              variant="caption"
             >
               <span>{preset.vcpus} CPU</span>
               <span>{Number.parseInt(preset.memoryMB, 10) / 1024} GB RAM</span>
               <span>{preset.diskGB} GB disk</span>
-            </div>
+            </AppTypography>
           </FrostedCard>
         ))}
       </div>

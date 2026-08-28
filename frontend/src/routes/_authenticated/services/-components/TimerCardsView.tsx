@@ -1,9 +1,8 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import type { Timer } from "@/api";
-import { linuxio } from "@/api";
+import type { Timer, UnitInfo } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import { formatUsec } from "./unitFormatters";
@@ -32,43 +31,46 @@ const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
   />
 );
 
-const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
-    refetchInterval: 2000,
-  });
-
+const TimerSelectedRows = ({
+  timer,
+  info,
+}: {
+  timer: Timer;
+  info: UnitInfo | undefined;
+}) => {
   return (
     <>
       <DetailRow label="Load">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {timer.load_state}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Unit">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {info?.Unit ?? timer.unit ?? "—"}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Next">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {formatUsec(info?.NextElapseUSec ?? timer.next_elapse_usec)}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Last">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {formatUsec(info?.LastTriggerUSec ?? timer.last_trigger_usec)}
-        </span>
+        </AppTypography>
       </DetailRow>
     </>
   );
 };
 
-const TimerActionsWrapper = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
-    refetchInterval: 2000,
-  });
+const TimerActionsWrapper = ({
+  timer,
+  info,
+}: {
+  timer: Timer;
+  info: UnitInfo | undefined;
+}) => {
   return (
     <UnitCardActions
       activeState={timer.active_state}
@@ -92,12 +94,16 @@ const TimerCardsView = ({
     items={timers}
     surface={surface}
     onExpand={onExpand}
-    renderActions={(timer) => <TimerActionsWrapper timer={timer} />}
+    renderActions={(timer, info) => (
+      <TimerActionsWrapper info={info} timer={timer} />
+    )}
     renderBottomPanel={(timer) => (
       <UnitLogsCard title="Timer Logs" unitName={timer.name} />
     )}
     renderDetailPanel={renderDetailPanel}
-    renderSelectedRows={(timer) => <TimerSelectedRows timer={timer} />}
+    renderSelectedRows={(timer, info) => (
+      <TimerSelectedRows info={info} timer={timer} />
+    )}
     renderSummaryRows={(timer) => <TimerSummaryRows timer={timer} />}
   />
 );

@@ -30,11 +30,17 @@ const ACCOUNTS_TOAST_META = {
 
 interface EditUserDialogProps {
   onClose: () => void;
+  onExited?: () => void;
   open: boolean;
   user: AccountUser;
 }
 
-const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
+const EditUserDialog = ({
+  open,
+  onClose,
+  onExited,
+  user,
+}: EditUserDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
   const { user: currentUser } = useAuth();
   const [fullName, setFullName] = useState(user.gecos);
@@ -100,7 +106,13 @@ const EditUserDialog = ({ open, onClose, user }: EditUserDialogProps) => {
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>Edit User: {user.username}</AppDialogTitle>
       <AppDialogContent>
         <div

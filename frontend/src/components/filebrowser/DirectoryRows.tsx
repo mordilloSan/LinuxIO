@@ -3,6 +3,7 @@ import { memo, type MouseEvent } from "react";
 import type { SubfolderData } from "@/api";
 import FileCard from "@/components/cards/FileCard";
 import FileListRow from "@/components/filebrowser/FileListRow";
+import AppTypography from "@/components/ui/AppTypography";
 import type { FileItem, ViewMode } from "@/types/filebrowser";
 
 export interface DirectoryItemProps {
@@ -29,22 +30,23 @@ export interface DirectoryItemProps {
 
 export const SectionHeader = memo<{ label: string; viewMode: ViewMode }>(
   ({ label, viewMode }) => (
-    <h6
+    <AppTypography
+      component="h6"
+      fontWeight={600}
       style={{
         color: "inherit",
-        fontSize: "15px",
-        fontWeight: 600,
         margin: viewMode === "list" ? "4px 0" : "4px 0",
         paddingLeft: "4px",
         paddingRight: "4px",
       }}
+      variant="subtitle1"
     >
       {label}
-    </h6>
+    </AppTypography>
   ),
 );
 
-SectionHeader.displayName = "VirtualDirectorySectionHeader";
+SectionHeader.displayName = "DirectorySectionHeader";
 
 export const DirectoryItem = memo<DirectoryItemProps>(
   ({
@@ -140,4 +142,4 @@ export const DirectoryItem = memo<DirectoryItemProps>(
   },
 );
 
-DirectoryItem.displayName = "VirtualDirectoryItem";
+DirectoryItem.displayName = "DirectoryItem";

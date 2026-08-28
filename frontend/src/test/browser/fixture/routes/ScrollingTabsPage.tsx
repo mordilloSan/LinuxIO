@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CSSProperties, ReactNode } from "react";
 
+import { uiConfigQueryKey } from "@/api/config-query";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
@@ -23,16 +25,28 @@ const items: FixtureItem[] = Array.from({ length: 60 }, (_, index) => ({
 
 const getItemId = (item: FixtureItem) => item.id;
 
-// ReorderableCardGrid reads a saved order through useConfigValue. The fixture
-// has no ConfigProvider and none of these tests touch reordering, so an empty
-// order and a no-op writer are the whole surface it needs.
+// ReorderableCardGrid reads a saved order through useConfigValue, which
+// subscribes to the config snapshot in the query cache (there is no
+// ConfigProvider here to load one). None of these tests touch reordering, so
+// a cache seeded with an empty order and a no-op writer are the whole surface
+// it needs.
+const queryClient = new QueryClient();
+queryClient.setQueryData(uiConfigQueryKey("anonymous"), {
+  layoutOrders: {},
+});
+
 const stubConfig = {
-  config: { appSettings: { layoutOrders: {} } },
+  isLoaded: true,
   setKey: () => {},
+  updateConfig: () => {},
 } as unknown as ConfigContextType;
 
 function StubConfigProvider({ children }: { children: ReactNode }) {
-  return <ConfigContext value={stubConfig}>{children}</ConfigContext>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ConfigContext value={stubConfig}>{children}</ConfigContext>
+    </QueryClientProvider>
+  );
 }
 
 function CardPanel() {

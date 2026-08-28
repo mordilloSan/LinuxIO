@@ -15,7 +15,6 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppTheme } from "@/theme";
 
 import DockerInfo from "./Docker";
 import DriveInfo from "./Drive";
@@ -112,7 +111,6 @@ const allCards: DashboardCardDefinition[] = [
 const getCardId = (card: DashboardCardDefinition) => card.id;
 
 const DashboardPage = () => {
-  const theme = useAppTheme();
   const { value: dockerAvailable } = useCapability("dockerAvailable");
   const [hiddenCards, setHiddenCards] = useConfigValue("hiddenCards");
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -149,7 +147,7 @@ const DashboardPage = () => {
         style={{
           display: "flex",
           justifyContent: "flex-end",
-          marginBottom: theme.spacing(1),
+          marginBottom: "var(--app-space-4)",
         }}
       >
         <AppTooltip title="Card visibility">
@@ -169,7 +167,7 @@ const DashboardPage = () => {
         onClose={() => setAnchorEl(null)}
         open={Boolean(anchorEl)}
         paperStyle={{
-          padding: theme.spacing(2),
+          padding: "var(--app-space-8)",
         }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >

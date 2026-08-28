@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 
-import { useAppTheme } from "@/theme";
-
 interface TabPanelProps {
   children?: ReactNode;
   index: number;
@@ -9,15 +7,13 @@ interface TabPanelProps {
 }
 
 export const TabPanel = ({ children, value, index }: TabPanelProps) => {
-  const theme = useAppTheme();
-
   return (
     <div
       hidden={value !== index}
       role="tabpanel"
       style={{
-        paddingTop: theme.spacing(2),
-        paddingBottom: theme.spacing(2),
+        paddingTop: "var(--app-space-8)",
+        paddingBottom: "var(--app-space-8)",
         display: value === index ? "block" : "none",
       }}
     >

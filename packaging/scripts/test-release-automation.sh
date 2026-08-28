@@ -186,6 +186,28 @@ test_open_pr_refreshes_existing_pr_body() {
   [[ ! -e "$body" ]] || fail 'open-pr unexpectedly created a new PR'
 }
 
+test_open_pr_accepts_prerelease_branch() {
+  local fixture origin bin_dir body output branch
+  fixture="$(new_git_fixture)"
+  origin="$fixture/origin.git"
+  git init --bare -q "$origin"
+  git -C "$fixture" branch -M main
+  git -C "$fixture" remote add origin "$origin"
+  git -C "$fixture" push -q -u origin main
+  git -C "$fixture" tag v0.1.0
+  branch=dev/v0.2.0-beta.1
+  git -C "$fixture" checkout -qb "$branch"
+  bin_dir="$fixture/bin"
+  body="$fixture/pr-body"
+  write_gh_open_pr_stub "$bin_dir" "$body"
+
+  output="$(cd "$fixture" && PATH="$bin_dir:$PATH" GH_STATE_FILE="$fixture/gh-state" \
+    GH_BODY_FILE="$body" make --no-print-directory open-pr REPO=owner/project)"
+  assert_contains 'does not exist yet - publishing' "$output"
+  [[ -s "$body" ]] || fail 'open-pr rejected a prerelease dev branch'
+  assert_contains 'v0.2.0-beta.1' "$(<"$body")"
+}
+
 test_open_pr_rejects_remote_query_failure() {
   local fixture bin_dir body output status branch
   fixture="$(new_git_fixture)"
@@ -316,12 +338,13 @@ if [[ "$1 $2" == 'pr list' ]]; then
   exit 0
 fi
 if [[ "$1 $2" == 'pr view' ]]; then
-  if [[ " $* " == *'headRefOid,mergedAt'* ]]; then
-    printf '%s\t2026-01-01T00:00:00Z\n' "${GH_RELEASE_HEAD:?}"
+  if [[ " $* " == *'baseRefName,headRefName,headRefOid'* ]]; then
+    printf 'main\tdev/v0.2.0\t%s\n' "${GH_RELEASE_HEAD:?}"
   fi
   exit 0
 fi
 if [[ "$1 $2" == 'run list' ]]; then
+  printf '%s\n' "$*" >"${GH_RUN_LIST_ARGS:?}"
   printf '12345\tcompleted\tsuccess\t2026-01-01T00:00:10Z\tmain\tpull_request\tRelease v0.2.0\n'
   exit 0
 fi
@@ -345,7 +368,7 @@ EOF
 }
 
 test_merge_resumes_after_merged_pr() {
-  local fixture bin_dir output head
+  local fixture bin_dir output head run_list_args
   fixture="$(new_merge_fixture)"
   printf 'change' >>"$fixture/fixture.txt"
   git -C "$fixture" add fixture.txt
@@ -357,13 +380,18 @@ test_merge_resumes_after_merged_pr() {
   git -C "$fixture" push -q origin main
   git -C "$fixture" checkout -q dev/v0.2.0
   bin_dir="$fixture/bin"
+  run_list_args="$fixture/run-list-args"
   write_gh_resume_stub "$bin_dir"
 
   output="$(cd "$fixture" && PATH="$bin_dir:$PATH" GH_RELEASE_HEAD="$head" \
+    GH_RUN_LIST_ARGS="$run_list_args" \
     make --no-print-directory merge-release REPO=owner/project 2>&1)"
   assert_contains 'already merged - resuming' "$output"
   assert_contains 'Branch cleanup complete' "$output"
   assert_contains 'releases/tag/v0.2.0' "$output"
+  [[ -s "$run_list_args" ]] || fail 'merge-release did not query the workflow run list'
+  assert_contains "--commit $head" "$(<"$run_list_args")"
+  assert_contains '--event pull_request' "$(<"$run_list_args")"
   git -C "$fixture" show-ref --verify --quiet refs/heads/dev/v0.2.0 \
     && fail 'resume left the local release branch behind'
   git -C "$fixture" ls-remote --exit-code --heads origin refs/heads/dev/v0.2.0 >/dev/null 2>&1 \
@@ -394,6 +422,7 @@ test_start_dev_fails_on_fetch_error() {
 test_changelog_delimiters
 test_open_pr_ignores_stale_tracking_ref_and_honors_repo
 test_open_pr_refreshes_existing_pr_body
+test_open_pr_accepts_prerelease_branch
 test_open_pr_rejects_remote_query_failure
 test_merge_checks_pr_pair_and_expected_head
 test_merge_aborts_without_confirmation

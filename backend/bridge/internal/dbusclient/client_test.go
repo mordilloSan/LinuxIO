@@ -215,6 +215,10 @@ func TestSystemObjectUseSession(t *testing.T) {
 	if err := owner.Export(service, godbus.ObjectPath("/org/example/Other"), "org.example.Test"); err != nil {
 		t.Fatalf("export other service: %v", err)
 	}
+	otherOwner := bus.OwnName(t, "org.example.Other")
+	if err := otherOwner.Export(service, godbus.ObjectPath("/org/example/CrossBus"), "org.example.Test"); err != nil {
+		t.Fatalf("export cross-bus service: %v", err)
+	}
 
 	obj := SystemObject{
 		Subsystem: "test",
@@ -224,6 +228,7 @@ func TestSystemObjectUseSession(t *testing.T) {
 
 	var got string
 	var other string
+	var crossBus string
 	err := obj.UseSession(context.Background(), func(session SystemSession) error {
 		if session.Context() == nil {
 			t.Fatalf("session context is nil")
@@ -231,9 +236,21 @@ func TestSystemObjectUseSession(t *testing.T) {
 		if err := session.CallStore("org.example.Test.Echo", CallPolicy{}, []any{"pong"}, &got); err != nil {
 			return err
 		}
-		return session.ObjectAt(godbus.ObjectPath("/org/example/Other")).
+		if err := session.ObjectAt(godbus.ObjectPath("/org/example/Other")).
 			CallWithContext(session.Context(), "org.example.Test.Echo", 0, "other").
-			Store(&other)
+			Store(&other); err != nil {
+			return err
+		}
+		state, err := session.BusNameState("org.example.Other")
+		if err != nil {
+			return err
+		}
+		if !state.Active {
+			t.Fatal("cross-bus owner is not active")
+		}
+		return session.ObjectFor("org.example.Other", godbus.ObjectPath("/org/example/CrossBus")).
+			CallWithContext(session.Context(), "org.example.Test.Echo", 0, "cross").
+			Store(&crossBus)
 	})
 	if err != nil {
 		t.Fatalf("UseSession: %v", err)
@@ -243,6 +260,9 @@ func TestSystemObjectUseSession(t *testing.T) {
 	}
 	if other != "other" {
 		t.Fatalf("other = %q, want other", other)
+	}
+	if crossBus != "cross" {
+		t.Fatalf("crossBus = %q, want cross", crossBus)
 	}
 }
 

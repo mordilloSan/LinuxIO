@@ -27,12 +27,9 @@ export const EASING_SPRING_CSS =
 export const TRANSITION_DURATION_FAST_MS = 150;
 export const TRANSITION_DURATION_MEDIUM_MS = 200;
 export const TRANSITION_DURATION_STANDARD_MS = 250;
-export const TRANSITION_DURATION_SLOW_MS = 600;
 /* Time for EASING_SPRING_CSS to reach ~98.5% of the way — past that the spring
    is still settling but the movement is no longer visible. */
 export const TRANSITION_DURATION_LIFT_MS = 320;
-export const TRANSITION_SLOW_CSS = `${TRANSITION_DURATION_SLOW_MS}ms ${EASING_STANDARD_CSS}`;
-
 export const MOTION_CSS_VARS: Record<string, string> = {
   "--app-easing-standard": EASING_STANDARD_CSS,
   "--app-easing-decelerate": EASING_DECELERATE_CSS,
@@ -44,7 +41,6 @@ export const MOTION_CSS_VARS: Record<string, string> = {
   "--app-transition-duration-lift": `${TRANSITION_DURATION_LIFT_MS}ms`,
   "--app-transition-duration-medium": `${TRANSITION_DURATION_MEDIUM_MS}ms`,
   "--app-transition-duration-standard": `${TRANSITION_DURATION_STANDARD_MS}ms`,
-  "--app-transition-duration-slow": `${TRANSITION_DURATION_SLOW_MS}ms`,
 };
 
 // Shadows
@@ -71,7 +67,7 @@ export const DASHBOARD_CARD_GAP = DASHBOARD_CARD_SPACING * GAP_XS;
 export const HOVER_LIFT_HEADROOM = 6;
 
 /* Sideways room a lifted card's shadow needs when a card grid scrolls inside
-   its own scrollport. `overflow: auto` clips, and getFrostedCardLiftShadow is
+   its own scrollport. `overflow: auto` clips, and --app-card-lift-shadow is
    `0 8px 24px` — a 24px blur reaches about half that far to each side before it
    is invisible, so an edge card would otherwise show a hard vertical cut along
    the scrollport wall on hover. There is no equivalent above, where the lift

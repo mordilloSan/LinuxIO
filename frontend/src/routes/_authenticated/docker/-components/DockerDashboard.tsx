@@ -9,19 +9,20 @@ import DockerSectionCard from "@/components/cards/DockerSectionCard";
 import DockerStatCard from "@/components/cards/DockerStatCard";
 import DockerIcon from "@/components/docker/DockerIcon";
 import MetricBar from "@/components/gauge/MetricBar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useAppTheme } from "@/theme";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
+import { getContainerName } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formaters";
 
 import { DockerMonitoringSection } from "./ContainerHistoryCards";
@@ -78,9 +79,6 @@ const dockerRouteApi = getRouteApi("/_authenticated/docker/");
 
 const getDockerResourceId = (resource: { Id: string }) => resource.Id;
 
-const getContainerDisplayName = (names?: string[]) =>
-  names?.[0]?.replace(/^\//, "") || "Unnamed";
-
 const getImageTagParts = (repoTags?: string[]) => {
   const fullTag = repoTags?.[0] ?? "<none>:<none>";
   const colonIdx = fullTag.lastIndexOf(":");
@@ -102,7 +100,6 @@ interface DockerDashboardProps {
 const DockerDashboard = ({
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: DockerDashboardProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const [
     { data: rawContainers },
@@ -112,7 +109,9 @@ const DockerDashboard = ({
     { data: dockerInfo },
   ] = useSuspenseQueries({
     queries: [
-      { ...linuxio.docker.list_containers, refetchInterval: 5000 },
+      // DockerDashboardPage (the parent) is the single polling owner for
+      // list_containers; this child only observes its cache.
+      { ...linuxio.docker.list_containers, refetchOnMount: false },
       { ...linuxio.docker.list_images, refetchInterval: 30000 },
       { ...linuxio.docker.list_networks, refetchInterval: 30000 },
       { ...linuxio.docker.list_volumes, refetchInterval: 30000 },
@@ -135,6 +134,7 @@ const DockerDashboard = ({
   const [sections, setDockerDashboardSections] = useConfigValue(
     "dockerDashboardSections",
   );
+  const [monitoringFilter, setMonitoringFilter] = useState("");
   const setSection = useCallback(
     (key: "overview" | "monitoring" | "daemon" | "resources") =>
       setDockerDashboardSections((prev) => {
@@ -231,7 +231,7 @@ const DockerDashboard = ({
   }, [images, imageSort]);
 
   const containerColumns = useMemo<
-    AppDataTableColumnDef<(typeof previewContainers)[number]>[]
+    AppVirtualTableColumnDef<(typeof previewContainers)[number]>[]
   >(
     () => [
       {
@@ -239,7 +239,7 @@ const DockerDashboard = ({
         header: "NAME",
         cell: ({ row }) => {
           const container = row.original;
-          const name = getContainerDisplayName(container.Names);
+          const name = getContainerName(container);
           return (
             <div
               style={{
@@ -346,7 +346,7 @@ const DockerDashboard = ({
     [stoppingContainerIds],
   );
   const imageColumns = useMemo<
-    AppDataTableColumnDef<(typeof previewImages)[number]>[]
+    AppVirtualTableColumnDef<(typeof previewImages)[number]>[]
   >(
     () => [
       {
@@ -523,6 +523,18 @@ const DockerDashboard = ({
 
       {/* ── Container Monitoring ────────────────────────────────────────── */}
       <SectionHeader
+        actions={
+          sections.monitoring ? (
+            <div style={{ width: 260 }}>
+              <AppHeaderSearch
+                aria-label="Filter containers in monitoring charts"
+                onChange={setMonitoringFilter}
+                placeholder="Filter containers…"
+                value={monitoringFilter}
+              />
+            </div>
+          ) : undefined
+        }
         controlsId="docker-monitoring-panel"
         expanded={sections.monitoring}
         onToggle={() => setSection("monitoring")}
@@ -530,7 +542,7 @@ const DockerDashboard = ({
       />
       <div id="docker-monitoring-panel">
         <AppCollapse in={sections.monitoring} unmountOnExit>
-          <DockerMonitoringSection />
+          <DockerMonitoringSection filter={monitoringFilter} />
         </AppCollapse>
       </div>
 
@@ -562,7 +574,7 @@ const DockerDashboard = ({
                       <DockerSectionCard
                         icon={
                           <Icon
-                            color={theme.palette.primary.main}
+                            color="var(--app-palette-primary-main)"
                             height={28}
                             icon="ph:cpu"
                             width={28}
@@ -572,7 +584,7 @@ const DockerDashboard = ({
                         title="CPU"
                       >
                         <MetricBar
-                          color={theme.palette.primary.main}
+                          color="var(--app-palette-primary-main)"
                           label="CPU"
                           percent={Math.min(totalCpu, 100)}
                           rightLabel={`${totalCpu.toFixed(1)}%`}
@@ -589,7 +601,7 @@ const DockerDashboard = ({
                       <DockerSectionCard
                         icon={
                           <Icon
-                            color={theme.palette.primary.main}
+                            color="var(--app-palette-primary-main)"
                             height={28}
                             icon="la:memory"
                             width={28}
@@ -599,7 +611,7 @@ const DockerDashboard = ({
                         title="Memory"
                       >
                         <MetricBar
-                          color={theme.palette.primary.main}
+                          color="var(--app-palette-primary-main)"
                           label="Memory"
                           percent={totalMemPercent}
                           rightLabel={formatFileSize(totalMemUsage)}
@@ -617,7 +629,7 @@ const DockerDashboard = ({
                         <DockerSectionCard
                           icon={
                             <Icon
-                              color={theme.palette.primary.main}
+                              color="var(--app-palette-primary-main)"
                               height={28}
                               icon="mdi:harddisk"
                               width={28}
@@ -627,7 +639,7 @@ const DockerDashboard = ({
                           title="Disk Usage"
                         >
                           <MetricBar
-                            color={theme.palette.primary.main}
+                            color="var(--app-palette-primary-main)"
                             label="Disk (Docker)"
                             percent={Math.min(
                               (dockerInfo.disk_used / dockerInfo.disk_total) *
@@ -652,7 +664,7 @@ const DockerDashboard = ({
                     fullHeight
                     icon={
                       <Icon
-                        color={theme.palette.primary.main}
+                        color="var(--app-palette-primary-main)"
                         height={28}
                         icon="mdi:tag"
                         width={28}
@@ -683,7 +695,7 @@ const DockerDashboard = ({
                     fullHeight
                     icon={
                       <Icon
-                        color={theme.palette.primary.main}
+                        color="var(--app-palette-primary-main)"
                         height={28}
                         icon="mdi:monitor"
                         width={28}
@@ -714,7 +726,7 @@ const DockerDashboard = ({
                     fullHeight
                     icon={
                       <Icon
-                        color={theme.palette.primary.main}
+                        color="var(--app-palette-primary-main)"
                         height={28}
                         icon="mdi:wrench"
                         width={28}
@@ -764,7 +776,7 @@ const DockerDashboard = ({
                 footerText={`${containers.length} containers`}
                 icon={
                   <Icon
-                    color={theme.palette.primary.main}
+                    color="var(--app-palette-primary-main)"
                     height={28}
                     icon="mdi:cube-outline"
                     width={28}
@@ -777,8 +789,8 @@ const DockerDashboard = ({
                     onChange={(e) =>
                       setContainerSort(e.target.value as typeof containerSort)
                     }
+                    size="small"
                     style={{
-                      fontSize: "0.75rem",
                       color: "var(--app-palette-text-secondary)",
                       lineHeight: 1.4,
                     }}
@@ -792,7 +804,7 @@ const DockerDashboard = ({
                 }
                 title="Containers"
               >
-                <AppDataTable
+                <AppVirtualTable
                   ariaLabel="Docker dashboard containers"
                   columns={containerColumns}
                   data={previewContainers}
@@ -816,7 +828,7 @@ const DockerDashboard = ({
                 footerText={`${images.length} images`}
                 icon={
                   <Icon
-                    color={theme.palette.primary.main}
+                    color="var(--app-palette-primary-main)"
                     height={28}
                     icon="mdi:layers"
                     width={28}
@@ -829,8 +841,8 @@ const DockerDashboard = ({
                     onChange={(e) =>
                       setImageSort(e.target.value as typeof imageSort)
                     }
+                    size="small"
                     style={{
-                      fontSize: "0.75rem",
                       color: "var(--app-palette-text-secondary)",
                       lineHeight: 1.4,
                     }}
@@ -845,7 +857,7 @@ const DockerDashboard = ({
                 }
                 title="Images"
               >
-                <AppDataTable
+                <AppVirtualTable
                   ariaLabel="Docker dashboard images"
                   columns={imageColumns}
                   data={previewImages}

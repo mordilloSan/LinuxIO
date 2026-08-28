@@ -1,0 +1,7 @@
+.app-linear-progress.metric-bar-track {
+  background-color: color-mix(in srgb, var(--app-chart-neutral), transparent 88%);
+}
+
+:root[data-app-color-scheme="dark"] .app-linear-progress.metric-bar-track {
+  background-color: color-mix(in srgb, var(--app-chart-neutral), transparent 82%);
+}

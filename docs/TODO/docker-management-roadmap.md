@@ -641,8 +641,7 @@ would create unsafe ambiguity.
 ## Deferred TODO — configurable table system
 
 Do not implement table customization as part of the phases above. It requires a
-shared `AppDataTable`/`AppVirtualDataTable` design rather than route-by-route
-preferences.
+shared `AppVirtualTable` design rather than route-by-route preferences.
 
 The later table-system plan must cover:
 

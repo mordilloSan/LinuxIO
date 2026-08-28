@@ -12,7 +12,8 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import DashboardStatRows from "./DashboardStatRows";
@@ -134,9 +135,8 @@ const DockerStats = () => {
 };
 
 const DockerContainers = () => {
-  const theme = useAppTheme();
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  const isSmallUp = useAppMediaQuery(theme.breakpoints.up("sm"));
+  const isSmallUp = useAppMediaQuery(up("sm"));
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuContainer, setMenuContainer] = useState<{
     id: string;
@@ -154,25 +154,22 @@ const DockerContainers = () => {
     id: string;
     name: string;
   } | null>(null);
-  const resolveStateColor = useCallback(
-    (state: string) => {
-      switch (state) {
-        case "running":
-        case "healthy":
-          return theme.palette.success.main;
-        case "exited":
-        case "unhealthy":
-          return theme.palette.error.main;
-        case "paused":
-          return theme.palette.warning.main;
-        case "restarting":
-          return theme.palette.info.main;
-        default:
-          return theme.palette.text.disabled;
-      }
-    },
-    [theme],
-  );
+  const resolveStateColor = useCallback((state: string) => {
+    switch (state) {
+      case "running":
+      case "healthy":
+        return "var(--app-palette-success-main)";
+      case "exited":
+      case "unhealthy":
+        return "var(--app-palette-error-main)";
+      case "paused":
+        return "var(--app-palette-warning-main)";
+      case "restarting":
+        return "var(--app-palette-info-main)";
+      default:
+        return "var(--app-palette-text-disabled)";
+    }
+  }, []);
   const { mutateAsync: startContainer } = useCallMutation(
     linuxio.docker.start_container,
   );
@@ -276,14 +273,14 @@ const DockerContainers = () => {
           gridTemplateColumns: isSmallUp
             ? "repeat(4, 36px)"
             : "repeat(3, 36px)",
-          columnGap: theme.spacing(4.5),
-          rowGap: theme.spacing(5),
+          columnGap: "var(--app-space-16)",
+          rowGap: "var(--app-space-20)",
           justifyContent: "center",
           width: "fit-content",
           maxHeight: 110,
           overflowX: "hidden",
           overflowY: "auto",
-          paddingRight: theme.spacing(0.5),
+          paddingRight: "var(--app-space-2)",
         }}
       >
         {containers.map((c) => {
@@ -303,21 +300,16 @@ const DockerContainers = () => {
                     textAlign: "center",
                   }}
                 >
-                  <AppTypography
-                    component="span"
-                    style={{
-                      fontSize: "0.8rem",
-                    }}
-                  >
+                  <AppTypography component="span" variant="body2">
                     {c.name}
                   </AppTypography>
                   <AppTypography
+                    color={
+                      progressLabel
+                        ? "var(--app-palette-info-main)"
+                        : statusColor
+                    }
                     component="span"
-                    style={{
-                      color: progressLabel
-                        ? theme.palette.info.main
-                        : statusColor,
-                    }}
                   >
                     {progressLabel ?? c.statusLabel}
                   </AppTypography>
@@ -368,7 +360,7 @@ const DockerContainers = () => {
                     position: "absolute",
                     bottom: 0,
                     right: 0,
-                    border: `1.5px solid ${theme.palette.background.paper}`,
+                    border: "1.5px solid var(--app-palette-background-paper)",
                   }}
                 />
               </div>

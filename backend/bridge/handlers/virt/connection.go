@@ -29,6 +29,7 @@ var validVMName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`)
 
 type libvirtConn interface {
 	ConnectListAllDomains(int32, libvirt.ConnectListAllDomainsFlags) ([]libvirt.Domain, uint32, error)
+	ConnectListAllNetworks(int32, libvirt.ConnectListAllNetworksFlags) ([]libvirt.Network, uint32, error)
 	DomainCreate(libvirt.Domain) error
 	DomainDefineXML(string) (libvirt.Domain, error)
 	DomainDestroy(libvirt.Domain) error
@@ -36,6 +37,7 @@ type libvirtConn interface {
 	DomainGetInfo(libvirt.Domain) (uint8, uint64, uint64, uint16, uint64, error)
 	DomainGetState(libvirt.Domain, uint32) (int32, int32, error)
 	DomainGetXMLDesc(libvirt.Domain, libvirt.DomainXMLFlags) (string, error)
+	DomainInterfaceAddresses(libvirt.Domain, uint32, uint32) ([]libvirt.DomainInterface, error)
 	DomainIsActive(libvirt.Domain) (int32, error)
 	DomainLookupByName(string) (libvirt.Domain, error)
 	DomainReboot(libvirt.Domain, libvirt.DomainRebootFlagValues) error
@@ -45,6 +47,7 @@ type libvirtConn interface {
 	DomainUndefineFlags(libvirt.Domain, libvirt.DomainUndefineFlagsValues) error
 	NetworkCreate(libvirt.Network) error
 	NetworkGetDhcpLeases(libvirt.Network, libvirt.OptString, int32, uint32) ([]libvirt.NetworkDhcpLease, uint32, error)
+	NetworkGetXMLDesc(libvirt.Network, uint32) (string, error)
 	NetworkIsActive(libvirt.Network) (int32, error)
 	NetworkLookupByName(string) (libvirt.Network, error)
 	NetworkSetAutostart(libvirt.Network, int32) error

@@ -7,17 +7,21 @@ import { defineConfig } from "vitest/config";
 
 const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(configDirectory, "..");
-const testModuleRE = [
+const compilerExcludeRE = [
   /\/node_modules\//,
   /\/src\/test\//,
   /\.(?:test|spec)\.[jt]sx?$/,
+  // Virtualized components use manual memoization because TanStack Virtual
+  // exposes functions the compiler cannot memoize safely. Their filenames
+  // include "Virtual" so Vitest can skip the redundant compiler transform.
+  /\/[^/]*Virtual[^/]*\.tsx$/,
 ];
 
 export default defineConfig({
   cacheDir: path.join(frontendRoot, "node_modules/.vite"),
   plugins: [
     tanstackRouter({ disableLogging: true, target: "react" }),
-    react({ compiler: { target: "19" }, exclude: testModuleRE }),
+    react({ compiler: { target: "19" }, exclude: compilerExcludeRE }),
   ],
   resolve: {
     alias: {

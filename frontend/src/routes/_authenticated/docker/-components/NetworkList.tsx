@@ -1,24 +1,23 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type DockerNetwork, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import BatchDeleteDialog from "@/components/docker/BatchDeleteDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
-  AppDialogContentText,
   AppDialogTitle,
-  OVERLAY_ROOT_SELECTOR,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -26,11 +25,11 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
@@ -38,7 +37,8 @@ import {
   wrappableChipStyle,
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
-import { alpha } from "@/utils/color";
+
+import "./network-list.css";
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
@@ -56,7 +56,7 @@ interface ConnectedContainerRow {
   name: string;
 }
 
-const connectedContainerColumns: AppDataTableColumnDef<ConnectedContainerRow>[] =
+const connectedContainerColumns: AppVirtualTableColumnDef<ConnectedContainerRow>[] =
   [
     {
       accessorKey: "name",
@@ -152,7 +152,6 @@ const CreateNetworkDialog = ({
   onClose,
   existingNames,
 }: CreateNetworkDialogProps) => {
-  const theme = useAppTheme();
   const toast = useScopedToast(DOCKER_TOAST_META);
   const [networkName, setNetworkName] = useState("");
   const [driver, setDriver] = useState("bridge");
@@ -189,7 +188,7 @@ const CreateNetworkDialog = ({
     <GeneralDialog fullWidth maxWidth="xs" onClose={handleClose} open={open}>
       <AppDialogTitle>Create Network</AppDialogTitle>
       <AppDialogContent>
-        <div style={{ marginTop: theme.spacing(2) }}>
+        <div style={{ marginTop: "var(--app-space-8)" }}>
           <AppTextField
             autoFocus
             disabled={isCreating}
@@ -253,116 +252,11 @@ const CreateNetworkDialog = ({
   );
 };
 
-interface DeleteNetworkDialogProps {
-  networkIds: string[];
-  networkNames: string[];
-  onClose: () => void;
-  onSuccess: () => void;
-  open: boolean;
-}
-
-const DeleteNetworkDialog = ({
-  open,
-  onClose,
-  networkNames,
-  networkIds,
-  onSuccess,
-}: DeleteNetworkDialogProps) => {
-  const theme = useAppTheme();
-  const toast = useScopedToast(DOCKER_TOAST_META);
-
-  // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteNetwork, isPending: isDeleting } = useCallMutation(
-    linuxio.docker.delete_network,
-  );
-
-  const handleDelete = async () => {
-    // Delete networks sequentially
-    const failures: string[] = [];
-    for (const [index, id] of networkIds.entries()) {
-      try {
-        await deleteNetwork({ id });
-      } catch {
-        failures.push(networkNames[index] ?? id);
-      }
-    }
-    if (failures.length > 0) {
-      toast.error(
-        `Failed to delete ${failures.length} of ${networkIds.length} network${networkIds.length === 1 ? "" : "s"}`,
-      );
-    } else {
-      const successMessage =
-        networkNames.length === 1
-          ? `Network "${networkNames[0]}" deleted successfully`
-          : `${networkNames.length} networks deleted successfully`;
-      toast.success(successMessage);
-    }
-    onSuccess();
-    handleClose();
-  };
-
-  const handleClose = () => {
-    onClose();
-  };
-
-  return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
-      <AppDialogTitle>
-        Delete Network{networkNames.length > 1 ? "s" : ""}
-      </AppDialogTitle>
-      <AppDialogContent>
-        <AppDialogContentText>
-          Are you sure you want to delete the following network
-          {networkNames.length > 1 ? "s" : ""}?
-        </AppDialogContentText>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
-          }}
-        >
-          {networkNames.map((name) => (
-            <Chip
-              key={name}
-              label={name}
-              size="small"
-              style={{ marginRight: 4, marginBottom: 4 }}
-              variant="soft"
-            />
-          ))}
-        </div>
-        <AppDialogContentText
-          style={{ marginTop: 8, color: "var(--app-palette-warning-main)" }}
-        >
-          This action cannot be undone. Networks with connected containers
-          cannot be deleted.
-        </AppDialogContentText>
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton disabled={isDeleting} onClick={handleClose}>
-          Cancel
-        </AppButton>
-        <AppButton
-          color="error"
-          disabled={isDeleting}
-          onClick={handleDelete}
-          variant="contained"
-        >
-          {isDeleting ? "Deleting..." : "Delete"}
-        </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
-  );
-};
-
 const getNetworkId = (network: { Id: string }) => network.Id;
 
 const dockerRouteApi = getRouteApi("/_authenticated/docker/networks");
 
 const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
-  const theme = useAppTheme();
   return (
     <div className="expand-panel">
       <div>
@@ -565,8 +459,9 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
           <b>Connected Containers:</b>
         </AppTypography>
         {Object.entries(network.Containers ?? {}).length ? (
-          <AppDataTable
+          <AppVirtualTable
             ariaLabel="Connected containers"
+            className="network-connected-table"
             columns={connectedContainerColumns}
             data={Object.entries(network.Containers ?? {}).map(
               ([id, info]) => ({
@@ -582,12 +477,6 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
             fillAvailable={false}
             getRowId={(container) => container.id}
             maxHeight={240}
-            style={{
-              backgroundColor: alpha(
-                theme.palette.text.primary,
-                theme.palette.mode === "dark" ? 0.2 : 0.08,
-              ),
-            }}
             variant="embedded"
           />
         ) : (
@@ -604,7 +493,6 @@ const NetworkList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: NetworkListProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const focusedNetworkId =
@@ -646,32 +534,12 @@ const NetworkList = ({
   const filtered = surface.items.filter((net) =>
     net.Name.toLowerCase().includes(search.toLowerCase()),
   );
-  const focusedNetwork = useMemo(
-    () =>
-      surface.items.find((network) => network.Id === focusedNetworkId) ?? null,
-    [focusedNetworkId, surface.items],
-  );
-
-  useEffect(() => {
-    if (focusedNetworkId && !focusedNetwork) updateFocusedNetwork(null);
-  }, [focusedNetwork, focusedNetworkId, updateFocusedNetwork]);
-
-  useEffect(() => {
-    if (!focusedNetwork) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      updateFocusedNetwork(null);
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focusedNetwork, updateFocusedNetwork]);
+  const focusedNetwork = useFocusedResourceParam({
+    focusedId: focusedNetworkId,
+    getId: getNetworkId,
+    items: surface.items,
+    onClear: () => updateFocusedNetwork(null),
+  });
 
   // Create network handler
   const handleCreateNetwork = useCallback(() => {
@@ -680,6 +548,10 @@ const NetworkList = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
+  // Configless: this is a batch flow — the dialog owns aggregation and toasts.
+  const { mutateAsync: deleteNetwork } = useCallMutation(
+    linuxio.docker.delete_network,
+  );
   const handleDeleteSuccess = () => {
     updateFocusedNetwork(null);
   };
@@ -692,7 +564,9 @@ const NetworkList = ({
 
   // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
   // remounts every cell subtree on the press that arms the reorder hold.
-  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
+  const columns = useMemo<
+    AppVirtualTableColumnDef<(typeof filtered)[number]>[]
+  >(
     () => [
       {
         accessorKey: "Name",
@@ -713,9 +587,12 @@ const NetworkList = ({
         header: "Driver",
         cell: ({ row }) => (
           <Chip
-            label={row.original.Driver}
+            label={
+              <AppTypography component="span" variant="caption">
+                {row.original.Driver}
+              </AppTypography>
+            }
             size="small"
-            style={{ fontSize: "0.75rem" }}
             variant="soft"
           />
         ),
@@ -879,7 +756,7 @@ const NetworkList = ({
               actions={
                 <AppActionIconButton
                   ariaLabel={`Delete network ${focusedNetwork.Name}`}
-                  color={theme.palette.error.main}
+                  color="var(--app-palette-error-main)"
                   icon="mdi:delete"
                   iconSize={18}
                   label="Delete network"
@@ -917,8 +794,8 @@ const NetworkList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">
@@ -927,7 +804,7 @@ const NetworkList = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Docker networks"
           columns={columns}
           data={filtered}
@@ -946,12 +823,18 @@ const NetworkList = ({
         open={createDialogOpen}
       />
 
-      <DeleteNetworkDialog
-        networkIds={focusedNetwork ? [focusedNetwork.Id] : []}
-        networkNames={focusedNetwork ? [focusedNetwork.Name] : []}
+      <BatchDeleteDialog
+        items={
+          focusedNetwork
+            ? [{ key: focusedNetwork.Id, label: focusedNetwork.Name }]
+            : []
+        }
+        noun="network"
         onClose={() => setDeleteDialogOpen(false)}
+        onDeleteOne={(item) => deleteNetwork({ id: item.key })}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
+        warning="Networks with connected containers cannot be deleted."
       />
     </div>
   );

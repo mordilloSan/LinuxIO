@@ -1,32 +1,23 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { type DockerImage, linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
+import BatchDeleteDialog from "@/components/docker/BatchDeleteDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
-import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogContentText,
-  AppDialogTitle,
-  OVERLAY_ROOT_SELECTOR,
-} from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppTheme } from "@/theme";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
@@ -123,119 +114,6 @@ interface ImageListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-interface DeleteImageTarget {
-  id: string;
-  label: string;
-  refs: string[];
-}
-interface DeleteImageDialogProps {
-  images: DeleteImageTarget[];
-  onClose: () => void;
-  onSuccess: () => void;
-  open: boolean;
-}
-const DeleteImageDialog = ({
-  open,
-  onClose,
-  images,
-  onSuccess,
-}: DeleteImageDialogProps) => {
-  const theme = useAppTheme();
-  const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteImage, isPending: isDeleting } = useCallMutation(
-    linuxio.docker.delete_image,
-  );
-  const handleDelete = async () => {
-    // Delete images sequentially
-    const failures: string[] = [];
-    for (const image of images) {
-      // A multi-tag image can't be removed by ID (Docker refuses without
-      // --force); removing each reference untags it, and the last one drops
-      // the image itself.
-      const targets = image.refs.length > 0 ? image.refs : [image.id];
-      try {
-        for (const target of targets) {
-          await deleteImage({ imageId: target });
-        }
-      } catch {
-        failures.push(image.label);
-      }
-    }
-    if (failures.length > 0) {
-      toast.error(
-        `Failed to delete ${failures.length} of ${images.length} image${images.length === 1 ? "" : "s"} (likely in use)`,
-      );
-    } else {
-      const successMessage =
-        images.length === 1
-          ? `Image "${images[0].label}" deleted successfully`
-          : `${images.length} images deleted successfully`;
-      toast.success(successMessage);
-    }
-    onSuccess();
-    handleClose();
-  };
-  const handleClose = () => {
-    onClose();
-  };
-  return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
-      <AppDialogTitle>
-        Delete Image{images.length > 1 ? "s" : ""}
-      </AppDialogTitle>
-      <AppDialogContent>
-        <AppDialogContentText>
-          Are you sure you want to delete the following image
-          {images.length > 1 ? "s" : ""}?
-        </AppDialogContentText>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            marginTop: theme.spacing(2),
-            marginBottom: theme.spacing(1),
-          }}
-        >
-          {images.map((image) => (
-            <Chip
-              key={image.id}
-              label={image.label}
-              size="small"
-              style={{
-                marginRight: 4,
-                marginBottom: 4,
-              }}
-              variant="soft"
-            />
-          ))}
-        </div>
-        <AppDialogContentText
-          style={{
-            marginTop: 8,
-            color: "var(--app-palette-warning-main)",
-          }}
-        >
-          This action cannot be undone. Images in use by containers cannot be
-          deleted.
-        </AppDialogContentText>
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton disabled={isDeleting} onClick={handleClose}>
-          Cancel
-        </AppButton>
-        <AppButton
-          color="error"
-          disabled={isDeleting}
-          onClick={handleDelete}
-          variant="contained"
-        >
-          {isDeleting ? "Deleting..." : "Delete"}
-        </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
-  );
-};
 const getImageRowId = (image: { id: string }) => image.id;
 
 const dockerRouteApi = getRouteApi("/_authenticated/docker/images");
@@ -244,7 +122,6 @@ const ImageList = ({
   onMountCreateHandler,
   viewMode = "table",
 }: ImageListProps) => {
-  const theme = useAppTheme();
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const focusedImageId =
@@ -339,34 +216,19 @@ const ImageList = ({
     },
     [navigate, surface.editMode],
   );
+  // Configless: this is a batch flow — the dialog owns aggregation and toasts.
+  const { mutateAsync: deleteImage } = useCallMutation(
+    linuxio.docker.delete_image,
+  );
   const handleDeleteSuccess = () => {
     clearFocusedImage();
   };
-  const focusedImage = useMemo(
-    () => orderedRows.find((image) => image.id === focusedImageId) ?? null,
-    [focusedImageId, orderedRows],
-  );
-
-  useEffect(() => {
-    if (focusedImageId && !focusedImage) clearFocusedImage();
-  }, [clearFocusedImage, focusedImage, focusedImageId]);
-
-  useEffect(() => {
-    if (!focusedImage) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      clearFocusedImage();
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [clearFocusedImage, focusedImage]);
+  const focusedImage = useFocusedResourceParam({
+    focusedId: focusedImageId,
+    getId: getImageRowId,
+    items: orderedRows,
+    onClear: clearFocusedImage,
+  });
   const handleImageRowClick = useCallback(
     ({ original: image }: { original: { id: string } }) =>
       handleOpenImage(image.id),
@@ -375,7 +237,9 @@ const ImageList = ({
 
   // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
   // remounts every cell subtree on the press that arms the reorder hold.
-  const columns = useMemo<AppDataTableColumnDef<(typeof filtered)[number]>[]>(
+  const columns = useMemo<
+    AppVirtualTableColumnDef<(typeof filtered)[number]>[]
+  >(
     () => [
       {
         accessorKey: "repo",
@@ -392,8 +256,7 @@ const ImageList = ({
             {row.original.repos.length > 1 && (
               <Chip
                 label={`+${row.original.repos.length - 1}`}
-                size="small"
-                style={{ fontSize: "0.68rem" }}
+                size="xsmall"
                 title={row.original.repos.slice(1).join(", ")}
                 variant="soft"
               />
@@ -409,13 +272,7 @@ const ImageList = ({
         cell: ({ row }) => (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {row.original.tags.map((tag) => (
-              <Chip
-                key={tag}
-                label={tag}
-                size="small"
-                style={{ fontSize: "0.75rem" }}
-                variant="soft"
-              />
+              <Chip key={tag} label={tag} size="xsmall" variant="soft" />
             ))}
           </div>
         ),
@@ -438,15 +295,14 @@ const ImageList = ({
             variant="body2"
           >
             <span style={{ fontWeight: 700 }}>Full ID: </span>
-            <span
-              style={{
-                color: "var(--app-palette-text-secondary)",
-                fontFamily: "var(--app-font-mono)",
-                fontSize: "0.75rem",
-              }}
+            <AppTypography
+              color="text.secondary"
+              component="span"
+              style={{ fontFamily: "var(--app-font-mono)" }}
+              variant="caption"
             >
               {row.original.id}
-            </span>
+            </AppTypography>
           </AppTypography>
         ),
         meta: {
@@ -472,13 +328,7 @@ const ImageList = ({
         accessorKey: "created",
         header: "Created",
         cell: ({ row }) => (
-          <AppTypography
-            style={{
-              fontSize: "0.85rem",
-              ...responsiveTextStyles,
-            }}
-            variant="body2"
-          >
+          <AppTypography style={responsiveTextStyles} variant="body2">
             {row.original.created}
           </AppTypography>
         ),
@@ -537,7 +387,7 @@ const ImageList = ({
               actions={
                 <AppActionIconButton
                   ariaLabel={`Delete image ${focusedImage.repo}`}
-                  color={theme.palette.error.main}
+                  color="var(--app-palette-error-main)"
                   icon="mdi:delete"
                   iconSize={18}
                   label="Delete image"
@@ -572,8 +422,8 @@ const ImageList = ({
           <div
             style={{
               textAlign: "center",
-              paddingTop: theme.spacing(4),
-              paddingBottom: theme.spacing(4),
+              paddingTop: "var(--app-space-16)",
+              paddingBottom: "var(--app-space-16)",
             }}
           >
             <AppTypography color="text.secondary" variant="body2">
@@ -582,7 +432,7 @@ const ImageList = ({
           </div>
         )
       ) : (
-        <AppDataTable
+        <AppVirtualTable
           ariaLabel="Docker images"
           columns={columns}
           data={filtered}
@@ -595,21 +445,34 @@ const ImageList = ({
         />
       )}
 
-      <DeleteImageDialog
-        images={
+      <BatchDeleteDialog
+        failureHint="(likely in use)"
+        items={
           focusedImage
             ? [
                 {
-                  id: focusedImage.id,
+                  key: focusedImage.id,
                   label: focusedImage.refs[0] ?? focusedImage.shortId,
                   refs: focusedImage.refs,
                 },
               ]
             : []
         }
+        noun="image"
         onClose={() => setDeleteDialogOpen(false)}
+        onDeleteOne={async (image) => {
+          // A multi-tag image can't be removed by ID (Docker refuses without
+          // --force); removing each reference untags it, and the last one
+          // drops the image itself.
+          for (const target of image.refs.length > 0
+            ? image.refs
+            : [image.key]) {
+            await deleteImage({ imageId: target });
+          }
+        }}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
+        warning="Images in use by containers cannot be deleted."
       />
     </div>
   );

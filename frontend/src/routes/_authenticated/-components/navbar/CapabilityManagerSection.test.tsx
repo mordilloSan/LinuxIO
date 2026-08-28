@@ -1,12 +1,6 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import type { QueryClient } from "@tanstack/react-query";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
-import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -17,7 +11,9 @@ import type {
   TaskProgress,
   TaskSnapshot,
 } from "@/api";
+import { capabilitiesQueryKey } from "@/api/capabilities";
 import type { CapabilityInstallOutputLine } from "@/components/dialog/CapabilityInstallDialog";
+import { createTestQueryClient, render } from "@/test/render";
 
 interface TaskStreamConfig {
   error?: (error: Error, variables: CapabilityRequest) => void;
@@ -41,6 +37,7 @@ interface RecoveryConfig {
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
+  queryClient: null as QueryClient | null,
   packageKitAvailable: true,
   recoveryConfig: null as RecoveryConfig | null,
   refreshCapabilities: vi.fn(),
@@ -48,29 +45,17 @@ const mocks = vi.hoisted(() => ({
   watch: vi.fn(),
 }));
 
-vi.mock("@/hooks/useAuth", () => ({
-  default: () => ({
-    refreshCapabilities: mocks.refreshCapabilities,
-  }),
-}));
-
-vi.mock("@/hooks/useCapabilities", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/hooks/useCapabilities")>();
-  const { emptyCapabilityState } =
-    await vi.importActual<typeof import("@/api/capabilities")>(
-      "@/api/capabilities",
-    );
-  return {
-    ...actual,
-    useCapabilityState: () => ({
-      ...emptyCapabilityState,
-      dockerAvailable: false,
-      lmSensorsAvailable: false,
-      packageKitAvailable: mocks.packageKitAvailable,
-    }),
-  };
+// Like the real refreshCapabilities, the mock writes the scan into the
+// per-user capability cache that the section reads. One stable identity, so
+// the section's mount effect runs once per mount like in the app.
+const refreshCapabilitiesIntoCache = vi.hoisted(() => async () => {
+  const data = await mocks.refreshCapabilities();
+  mocks.queryClient?.setQueryData(capabilitiesQueryKey("anonymous"), data);
+  return data;
 });
+vi.mock("@/hooks/useAuth", () => ({
+  default: () => ({ refreshCapabilities: refreshCapabilitiesIntoCache }),
+}));
 
 vi.mock("@/hooks/backgroundTasks/useActiveTaskRecovery", () => ({
   useActiveTaskRecovery: (config: RecoveryConfig) => {
@@ -204,13 +189,34 @@ const task = {
   updated_at: "2026-08-24T00:00:01Z",
 } satisfies TaskSnapshot;
 
+const renderSection = (options: { strictMode?: boolean } = {}) =>
+  render(<CapabilityManagerSection />, {
+    capabilities: {
+      dockerAvailable: false,
+      lmSensorsAvailable: false,
+      packageKitAvailable: mocks.packageKitAvailable,
+    },
+    queryClient: mocks.queryClient ?? undefined,
+    // React only replays mount effects when StrictMode wraps the whole newly
+    // placed tree, so it has to sit outside the provider wrapper.
+    reactStrictMode: options.strictMode,
+  });
+
 describe("CapabilityManagerSection", () => {
   beforeEach(() => {
+    mocks.queryClient = createTestQueryClient();
     mocks.mutate.mockReset();
     mocks.packageKitAvailable = true;
     mocks.recoveryConfig = null;
     mocks.refreshCapabilities.mockReset();
-    mocks.refreshCapabilities.mockResolvedValue({});
+    // The initial refresh must echo the seeded scan, as a real scan would.
+    mocks.refreshCapabilities.mockImplementation(() =>
+      Promise.resolve({
+        docker_available: false,
+        lm_sensors_available: false,
+        packagekit_available: mocks.packageKitAvailable,
+      }),
+    );
     mocks.taskConfig = null;
     mocks.watch.mockReset();
   });
@@ -223,11 +229,7 @@ describe("CapabilityManagerSection", () => {
       }),
     );
 
-    render(
-      <StrictMode>
-        <CapabilityManagerSection />
-      </StrictMode>,
-    );
+    renderSection({ strictMode: true });
 
     expect(mocks.refreshCapabilities).toHaveBeenCalledTimes(2);
 
@@ -247,7 +249,7 @@ describe("CapabilityManagerSection", () => {
     mocks.mutate.mockImplementation(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    render(<CapabilityManagerSection />);
+    renderSection();
 
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
 
@@ -284,7 +286,7 @@ describe("CapabilityManagerSection", () => {
   });
 
   it("closes without canceling and can reopen an active install", async () => {
-    render(<CapabilityManagerSection />);
+    renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
 
@@ -300,7 +302,7 @@ describe("CapabilityManagerSection", () => {
   });
 
   it("does not reopen a dismissed install after mux recovery, but View reopens it", async () => {
-    render(<CapabilityManagerSection />);
+    renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
 
@@ -325,7 +327,7 @@ describe("CapabilityManagerSection", () => {
   });
 
   it("does not carry an unbound dismissal past a task submission error", async () => {
-    render(<CapabilityManagerSection />);
+    renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
 
@@ -340,7 +342,7 @@ describe("CapabilityManagerSection", () => {
   });
 
   it("bounds retained output and marks a truncated history", async () => {
-    render(<CapabilityManagerSection />);
+    renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
 
@@ -378,7 +380,7 @@ describe("CapabilityManagerSection", () => {
   });
 
   it("shows terminal success, warning, and failure results", async () => {
-    const { unmount } = render(<CapabilityManagerSection />);
+    const { unmount } = renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
 
@@ -386,7 +388,7 @@ describe("CapabilityManagerSection", () => {
     expect(screen.getByText("Install succeeded")).toBeInTheDocument();
     unmount();
 
-    render(<CapabilityManagerSection />);
+    renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
     act(() =>
       mocks.taskConfig?.success?.(
@@ -406,7 +408,7 @@ describe("CapabilityManagerSection", () => {
   });
 
   it("surfaces a backend warning even when the capability is available", async () => {
-    render(<CapabilityManagerSection />);
+    renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Install lm-sensors" }));
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledOnce());
 
@@ -427,7 +429,7 @@ describe("CapabilityManagerSection", () => {
   });
 
   it("recovers an active task with an honest retained-output marker", async () => {
-    render(<CapabilityManagerSection />);
+    renderSection();
 
     act(() => mocks.recoveryConfig?.onRecover?.(task));
 
@@ -440,7 +442,7 @@ describe("CapabilityManagerSection", () => {
 
   it("keeps PackageKit-backed installs blocked when PackageKit is absent", () => {
     mocks.packageKitAvailable = false;
-    render(<CapabilityManagerSection />);
+    renderSection();
 
     expect(
       screen.getByRole("button", { name: "Install lm-sensors" }),

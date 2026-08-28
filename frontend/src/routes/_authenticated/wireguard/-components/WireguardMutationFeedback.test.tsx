@@ -14,6 +14,18 @@ import {
 import InterfaceClients from "./InterfaceClients";
 import WireGuardDashboard from "./WireguardDashboard";
 
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    getRouteApi: () => ({
+      useNavigate: () => vi.fn(),
+      useSearch: () => null,
+    }),
+  };
+});
+
 const originalCreateObjectURL = Object.getOwnPropertyDescriptor(
   window.URL,
   "createObjectURL",

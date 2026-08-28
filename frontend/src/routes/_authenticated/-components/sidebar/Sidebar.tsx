@@ -6,7 +6,6 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
-import { useAppTheme } from "@/theme";
 import { collapsedDrawerWidth, drawerWidth } from "@/theme/constants";
 
 import SidebarNavList from "./SidebarNavList";
@@ -19,7 +18,6 @@ export interface SidebarProps {
 }
 
 const Sidebar = ({ items }: SidebarProps) => {
-  const theme = useAppTheme();
   const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
     useSidebar();
   const canNavigate = useUpdateCanNavigate();
@@ -51,10 +49,8 @@ const Sidebar = ({ items }: SidebarProps) => {
   const sidebarStyle = {
     ["--sidebar-width" as string]: `${effectiveWidth}px`,
     width: effectiveWidth,
-    transition: theme.transitions.create(["transform", "width"], {
-      easing: theme.transitions.easing.easeInOut,
-      duration: theme.transitions.duration.standard,
-    }),
+    transition:
+      "transform var(--app-transition-duration-fast) var(--app-easing-standard), width var(--app-transition-duration-fast) var(--app-easing-standard)",
   } as CSSProperties;
 
   return (

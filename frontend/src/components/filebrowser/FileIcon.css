@@ -11,3 +11,14 @@
 .file-icon--symlink {
   position: relative;
 }
+
+/* Default (unmatched file type) icon color. Iconify's Icon renders its SVG
+   with fill="currentColor" when no `color` prop is passed, so this only takes
+   effect once FileIcon.tsx leaves iconColor undefined for that case. */
+.file-icon--default-color {
+  color: color-mix(in srgb, black, transparent 40%);
+}
+
+:root[data-app-color-scheme="dark"] .file-icon--default-color {
+  color: white;
+}

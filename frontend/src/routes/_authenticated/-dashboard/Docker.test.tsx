@@ -6,26 +6,38 @@ import { act, fireEvent, render, screen, waitFor } from "@/test/render";
 
 import DockerInfo from "./Docker";
 
-const queryData = vi.hoisted(() => ({
-  containers: [
-    {
-      Created: 1,
-      Id: "alpha-id",
-      Image: "alpine:latest",
-      Names: ["/alpha"],
-      State: "exited",
-      Status: "Exited",
+const queryData = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  return {
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
-    {
-      Created: 1,
-      Id: "beta-id",
-      Image: "alpine:latest",
-      Names: ["/beta"],
-      State: "running",
-      Status: "Up 1 minute",
+    // A poll result reaches subscribed components the way a query observer
+    // would; a parent re-render alone does not reach a hoisted child.
+    notify: () => {
+      for (const listener of listeners) listener();
     },
-  ],
-}));
+    containers: [
+      {
+        Created: 1,
+        Id: "alpha-id",
+        Image: "alpine:latest",
+        Names: ["/alpha"],
+        State: "exited",
+        Status: "Exited",
+      },
+      {
+        Created: 1,
+        Id: "beta-id",
+        Image: "alpine:latest",
+        Names: ["/beta"],
+        State: "running",
+        Status: "Up 1 minute",
+      },
+    ],
+  };
+});
 
 const allContainers = queryData.containers;
 
@@ -35,15 +47,18 @@ afterEach(() => {
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  const { useSyncExternalStore } = await import("react");
   return {
     ...actual,
     useSuspenseQuery: (options: {
       select?: (containers: typeof queryData.containers) => unknown;
-    }) => ({
-      data: options.select
-        ? options.select(queryData.containers)
-        : queryData.containers,
-    }),
+    }) => {
+      const containers = useSyncExternalStore(
+        queryData.subscribe,
+        () => queryData.containers,
+      );
+      return { data: options.select ? options.select(containers) : containers };
+    },
   };
 });
 
@@ -145,13 +160,13 @@ describe("dashboard Docker mutation feedback", () => {
   });
 
   it("drops an open menu when a poll removes the container it targets", () => {
-    const { rerender } = render(<DockerInfo />);
+    render(<DockerInfo />);
 
     fireEvent.contextMenu(screen.getByRole("group", { name: "alpha" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
     queryData.containers = allContainers.filter((c) => c.Id !== "alpha-id");
-    rerender(<DockerInfo />);
+    act(() => queryData.notify());
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(

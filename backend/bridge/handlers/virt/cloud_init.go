@@ -25,6 +25,7 @@ var (
 type cloudInitUserData struct {
 	Hostname      string               `yaml:"hostname"`
 	ManageEtcHost bool                 `yaml:"manage_etc_hosts"`
+	Packages      []string             `yaml:"packages,omitempty"`
 	Users         []any                `yaml:"users"`
 	SSHPWAuth     bool                 `yaml:"ssh_pwauth"`
 	Chpasswd      *cloudInitChpassword `yaml:"chpasswd,omitempty"`
@@ -154,6 +155,7 @@ func buildCloudInitUserData(req apischema.VMCreateRequest, preset vmImagePreset)
 	data := cloudInitUserData{
 		Hostname:      cloudInitHostname(req),
 		ManageEtcHost: true,
+		Packages:      []string{"qemu-guest-agent"},
 		Users:         []any{"default", user},
 		SSHPWAuth:     password != "",
 	}

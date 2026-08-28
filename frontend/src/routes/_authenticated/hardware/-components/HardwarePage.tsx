@@ -11,11 +11,12 @@ import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
+import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -124,59 +125,59 @@ function MemoryModulesTable() {
     ...linuxio.system.get_memory_modules,
     ...hardwareStableQueryOptions,
   });
-  const memoryColumns: AppDataTableColumnDef<(typeof memoryModules)[number]>[] =
-    [
-      {
-        accessorKey: "id",
-        header: "ID",
-        cell: ({ row }) => row.original.id || "—",
-      },
-      {
-        accessorKey: "technology",
-        header: "Technology",
-        cell: ({ row }) => row.original.technology,
-      },
-      {
-        accessorKey: "type",
-        header: "Type",
-        cell: ({ row }) => row.original.type,
-      },
-      {
-        accessorKey: "size",
-        header: "Size",
-        cell: ({ row }) => row.original.size,
-        meta: { align: "right" },
-      },
-      {
-        accessorKey: "state",
-        header: "State",
-        cell: ({ row }) => (
-          <Chip
-            color={row.original.state === "Present" ? "success" : "default"}
-            label={row.original.state}
-            size="small"
-            style={{ height: 22, fontSize: "0.75rem" }}
-            variant="soft"
-          />
-        ),
-      },
-      {
-        accessorKey: "rank",
-        header: "Rank",
-        cell: ({ row }) => row.original.rank,
-        meta: { align: "right" },
-      },
-      {
-        accessorKey: "speed",
-        header: "Speed",
-        cell: ({ row }) => row.original.speed,
-        meta: { align: "right" },
-      },
-    ];
+  const memoryColumns: AppVirtualTableColumnDef<
+    (typeof memoryModules)[number]
+  >[] = [
+    {
+      accessorKey: "id",
+      header: "ID",
+      cell: ({ row }) => row.original.id || "—",
+    },
+    {
+      accessorKey: "technology",
+      header: "Technology",
+      cell: ({ row }) => row.original.technology,
+    },
+    {
+      accessorKey: "type",
+      header: "Type",
+      cell: ({ row }) => row.original.type,
+    },
+    {
+      accessorKey: "size",
+      header: "Size",
+      cell: ({ row }) => row.original.size,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "state",
+      header: "State",
+      cell: ({ row }) => (
+        <Chip
+          color={row.original.state === "Present" ? "success" : "default"}
+          label={row.original.state}
+          size="xsmall"
+          variant="soft"
+        />
+      ),
+    },
+    {
+      accessorKey: "rank",
+      header: "Rank",
+      cell: ({ row }) => row.original.rank,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "speed",
+      header: "Speed",
+      cell: ({ row }) => row.original.speed,
+      meta: { align: "right" },
+    },
+  ];
 
   return (
     <HardwareTableCard>
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel="Memory modules"
         columns={memoryColumns}
         data={memoryModules}
@@ -195,7 +196,7 @@ function PciDevicesTable() {
     ...linuxio.system.get_pci_devices,
     ...hardwareStableQueryOptions,
   });
-  const pciColumns: AppDataTableColumnDef<(typeof pciDevices)[number]>[] = [
+  const pciColumns: AppVirtualTableColumnDef<(typeof pciDevices)[number]>[] = [
     {
       accessorKey: "class",
       header: "Class",
@@ -214,19 +215,21 @@ function PciDevicesTable() {
     {
       accessorKey: "slot",
       header: "Slot",
-      cell: ({ row }) => row.original.slot || "—",
-      meta: {
-        cellStyle: {
-          fontFamily: "var(--app-font-mono)",
-          fontSize: "0.8rem",
-        },
-      },
+      cell: ({ row }) => (
+        <AppTypography
+          component="span"
+          style={{ fontFamily: "var(--app-font-mono)" }}
+          variant="body2"
+        >
+          {row.original.slot || "—"}
+        </AppTypography>
+      ),
     },
   ];
 
   return (
     <HardwareTableCard>
-      <AppDataTable
+      <AppVirtualTable
         ariaLabel="PCI devices"
         columns={pciColumns}
         data={pciDevices}

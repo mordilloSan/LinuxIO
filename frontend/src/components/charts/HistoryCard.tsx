@@ -142,7 +142,7 @@ export const RangeSelect = ({
         opacity: 0.65,
         color: theme.palette.text.secondary,
         fontSize: "0.78rem",
-        lineHeight: theme.typography.body2.lineHeight,
+        lineHeight: 1.43, // app-typo--body2
       }}
       value={value}
       variant="standard"

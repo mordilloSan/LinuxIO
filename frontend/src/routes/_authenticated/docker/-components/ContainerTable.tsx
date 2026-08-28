@@ -23,17 +23,17 @@ import {
 } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
-import AppDataTable from "@/components/tables/AppDataTable";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type {
-  AppDataTableDndOptions,
-  AppDataTableRowAttributes,
-  AppDataTableRowRenderProps,
-} from "@/components/tables/AppDataTable";
+  AppVirtualTableDndOptions,
+  AppVirtualTableRowAttributes,
+  AppVirtualTableRowRenderProps,
+} from "@/components/tables/AppVirtualTable";
 import type {
-  AppDataTableCellRenderKey,
-  AppDataTableColumnDef,
+  AppVirtualTableCellRenderKey,
+  AppVirtualTableColumnDef,
   AppTableFeatures,
-} from "@/components/tables/AppDataTable.types";
+} from "@/components/tables/AppVirtualTable.types";
 import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
@@ -47,7 +47,13 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
+import {
+  getContainerDisplayState,
+  getContainerName,
+  getDedupedPorts,
+} from "@/utils/dockerContainer";
 import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
 
 import {
@@ -80,19 +86,6 @@ const ExpandedContainersContext = createContext<ReadonlySet<string>>(new Set());
 // check — once on click, once when the sweep returns, the second one landing
 // long after the pointer has moved back over the rows.
 const CheckingUpdatesContext = createContext(false);
-
-const getContainerName = (container: ContainerInfo) =>
-  container.Names?.[0]?.replace("/", "") || "Unnamed";
-
-const getDisplayState = (container: ContainerInfo) => {
-  const s = container.Status.toLowerCase();
-  if (s.includes("unhealthy")) return "Unhealthy";
-  if (s.includes("healthy")) return "Healthy";
-  if (container.State === "running") return "Running";
-  if (container.State === "exited") return "Stopped";
-  if (container.State === "dead") return "Dead";
-  return container.State;
-};
 
 const getImageVersion = (image: string) => {
   const noDigest = image.split("@")[0];
@@ -192,22 +185,6 @@ const formatUptime = (createdUnix: number) => {
   return `${m}m`;
 };
 
-const getDedupedPorts = (container: ContainerInfo) => {
-  const seen = new Set<string>();
-  return (container.Ports ?? [])
-    .filter((port) => {
-      const key = port.PublicPort
-        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
-        : `${port.PrivatePort}/${port.Type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort(
-      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
-    );
-};
-
 // A collapsed ports/volumes cell renders two entries plus a "+N more" caption,
 // which is exactly the height an untruncated three-entry list takes. Collapsing
 // only buys space from the fourth entry on, so three entries stay fully visible
@@ -305,8 +282,8 @@ const areContainerArraysEquivalent = (
 const asContainer = (row: unknown) => row as ContainerInfo;
 
 const containerCellRenderKey =
-  (getKey: (container: ContainerInfo) => AppDataTableCellRenderKey) =>
-  (row: unknown): AppDataTableCellRenderKey =>
+  (getKey: (container: ContainerInfo) => AppVirtualTableCellRenderKey) =>
+  (row: unknown): AppVirtualTableCellRenderKey =>
     isStackHeaderRow(row) ? [row.project] : getKey(asContainer(row));
 
 const getContainerTableRowId = (row: ContainerTableRow) =>
@@ -314,7 +291,7 @@ const getContainerTableRowId = (row: ContainerTableRow) =>
 
 function ContainerNameCell({ container }: { container: ContainerInfo }) {
   const name = getContainerName(container);
-  const displayState = getDisplayState(container);
+  const displayState = getContainerDisplayState(container);
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -350,7 +327,6 @@ function StackHeaderCell({
   header,
   onToggleStack,
 }: StackHeaderCellProps) {
-  const theme = useAppTheme();
   const summary = summarizeStack(header.containers);
 
   return (
@@ -391,7 +367,7 @@ function StackHeaderCell({
             role="img"
             style={{
               alignItems: "center",
-              color: theme.palette.warning.main,
+              color: "var(--app-palette-warning-main)",
               display: "flex",
             }}
           >
@@ -585,7 +561,6 @@ function NetworkCell({
 }: {
   networks: Array<[string, ContainerEndpoint]>;
 }) {
-  const theme = useAppTheme();
   const networkNamesText = networks
     .map(([networkName]) => networkName)
     .join(", ");
@@ -613,7 +588,7 @@ function NetworkCell({
         <span
           style={{
             marginLeft: 2,
-            color: theme.palette.text.disabled,
+            color: "var(--app-palette-text-disabled)",
           }}
         >
           +{networks.length - 1}
@@ -698,7 +673,6 @@ interface PortsCellProps {
 }
 
 function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
-  const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (ports.length === 0) {
@@ -728,18 +702,18 @@ function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
           >
-            <span style={{ color: theme.palette.text.primary }}>
+            <span style={{ color: "var(--app-palette-text-primary)" }}>
               {port.PrivatePort}/{port.Type}
             </span>
             <span
               style={{
-                color: theme.palette.text.disabled,
+                color: "var(--app-palette-text-disabled)",
                 marginInline: 2,
               }}
             >
               {"->"}
             </span>
-            <span style={{ color: theme.palette.text.secondary }}>
+            <span style={{ color: "var(--app-palette-text-secondary)" }}>
               {port.PublicPort ?? "-"}
             </span>
           </AppTypography>
@@ -760,18 +734,18 @@ function PortsCell({ containerId, onToggleExpanded, ports }: PortsCellProps) {
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
               >
-                <span style={{ color: theme.palette.text.primary }}>
+                <span style={{ color: "var(--app-palette-text-primary)" }}>
                   {port.PrivatePort}/{port.Type}
                 </span>
                 <span
                   style={{
-                    color: theme.palette.text.disabled,
+                    color: "var(--app-palette-text-disabled)",
                     marginInline: 2,
                   }}
                 >
                   {"->"}
                 </span>
-                <span style={{ color: theme.palette.text.secondary }}>
+                <span style={{ color: "var(--app-palette-text-secondary)" }}>
                   {port.PublicPort ?? "-"}
                 </span>
               </AppTypography>
@@ -802,7 +776,6 @@ function VolumesCell({
   mounts,
   onToggleExpanded,
 }: VolumesCellProps) {
-  const theme = useAppTheme();
   const expanded = useContext(ExpandedContainersContext).has(containerId);
 
   if (mounts.length === 0) {
@@ -830,18 +803,18 @@ function VolumesCell({
             toastMeta={DOCKER_TOAST_META}
             variant="body2"
           >
-            <span style={{ color: theme.palette.text.primary }}>
+            <span style={{ color: "var(--app-palette-text-primary)" }}>
               {mount.Destination}
             </span>
             <span
               style={{
-                color: theme.palette.text.disabled,
+                color: "var(--app-palette-text-disabled)",
                 marginInline: 2,
               }}
             >
               {"->"}
             </span>
-            <span style={{ color: theme.palette.text.secondary }}>
+            <span style={{ color: "var(--app-palette-text-secondary)" }}>
               {mount.Source}
             </span>
           </AppTypography>
@@ -860,18 +833,18 @@ function VolumesCell({
                 toastMeta={DOCKER_TOAST_META}
                 variant="body2"
               >
-                <span style={{ color: theme.palette.text.primary }}>
+                <span style={{ color: "var(--app-palette-text-primary)" }}>
                   {mount.Destination}
                 </span>
                 <span
                   style={{
-                    color: theme.palette.text.disabled,
+                    color: "var(--app-palette-text-disabled)",
                     marginInline: 2,
                   }}
                 >
                   {"->"}
                 </span>
-                <span style={{ color: theme.palette.text.secondary }}>
+                <span style={{ color: "var(--app-palette-text-secondary)" }}>
                   {mount.Source}
                 </span>
               </AppTypography>
@@ -1117,7 +1090,7 @@ interface ContainerTableProps {
   collapsedStackIds?: ReadonlySet<string>;
   containers: ContainerInfo[];
   /** Reorder wiring from `useReorderableTableDnd`; omit to lock the row order. */
-  dnd?: AppDataTableDndOptions<ContainerTableRow>;
+  dnd?: AppVirtualTableDndOptions<ContainerTableRow>;
   onSelectContainer?: (containerId: string) => void;
   onToggleStack?: (project: string) => void;
   stoppingContainerIds?: ReadonlySet<string>;
@@ -1139,10 +1112,9 @@ const ContainerTable = ({
   onToggleStack,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
 }: ContainerTableProps) => {
-  const theme = useAppTheme();
   // Same breakpoint the Version and Uptime columns hide at, so the strip
   // collapses exactly when Actions starts crowding the name.
-  const compactActions = useAppMediaQuery(theme.breakpoints.down("md"));
+  const compactActions = useAppMediaQuery(down("md"));
   const editMode = dnd?.editing ?? false;
   // Table mode keeps the same stack entries as card mode even while editing:
   // headers move whole blocks, while their visible member rows stay inert.
@@ -1226,7 +1198,7 @@ const ContainerTable = ({
   const getRowAttributes = useCallback(
     (
       row: Row<AppTableFeatures, ContainerTableRow>,
-    ): AppDataTableRowAttributes => ({
+    ): AppVirtualTableRowAttributes => ({
       className: !isStackHeaderRow(row.original)
         ? stackMemberRowClasses.get(row.original.Id)
         : undefined,
@@ -1239,7 +1211,7 @@ const ContainerTable = ({
       dragHandle,
       row,
       rowProps,
-    }: AppDataTableRowRenderProps<ContainerTableRow>) => {
+    }: AppVirtualTableRowRenderProps<ContainerTableRow>) => {
       const original = row.original;
       if (isStackHeaderRow(original)) {
         return (
@@ -1278,8 +1250,10 @@ const ContainerTable = ({
   const [logsTarget, setLogsTarget] = useState<ContainerDialogTarget | null>(
     null,
   );
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [terminalTarget, setTerminalTarget] =
     useState<ContainerDialogTarget | null>(null);
+  const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
   const toggleExpanded = useCallback((containerId: string) => {
     setExpandedContainerIds((previous) => {
       const next = new Set(previous);
@@ -1293,10 +1267,12 @@ const ContainerTable = ({
   }, []);
   const openLogs = useCallback((containerId: string, containerName: string) => {
     setLogsTarget({ id: containerId, name: containerName });
+    setLogsDialogOpen(true);
   }, []);
   const openTerminal = useCallback(
     (containerId: string, containerName: string) => {
       setTerminalTarget({ id: containerId, name: containerName });
+      setTerminalDialogOpen(true);
     },
     [],
   );
@@ -1314,7 +1290,7 @@ const ContainerTable = ({
     },
     [onSelectContainer, onToggleStack],
   );
-  const columns = useMemo<AppDataTableColumnDef<ContainerTableRow>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<ContainerTableRow>[]>(
     () => [
       {
         id: "name",
@@ -1327,7 +1303,7 @@ const ContainerTable = ({
           getCellRenderKey: containerCellRenderKey((container) => [
             container.Id,
             getContainerName(container),
-            getDisplayState(container),
+            getContainerDisplayState(container),
             container.icon,
           ]),
           width: "minmax(0, 1.6fr)",
@@ -1557,7 +1533,7 @@ const ContainerTable = ({
     <>
       <ExpandedContainersContext.Provider value={expandedContainerIds}>
         <CheckingUpdatesContext.Provider value={checkingUpdates}>
-          <AppDataTable
+          <AppVirtualTable
             ariaLabel="Docker containers"
             columns={columns}
             data={rows}
@@ -1584,16 +1560,18 @@ const ContainerTable = ({
           <LogsDialog
             containerId={logsTarget.id}
             containerName={logsTarget.name}
-            onClose={() => setLogsTarget(null)}
-            open
+            onClose={() => setLogsDialogOpen(false)}
+            onExited={() => setLogsTarget(null)}
+            open={logsDialogOpen}
           />
         )}
         {terminalTarget && (
           <TerminalDialog
             containerId={terminalTarget.id}
             containerName={terminalTarget.name}
-            onClose={() => setTerminalTarget(null)}
-            open
+            onClose={() => setTerminalDialogOpen(false)}
+            onExited={() => setTerminalTarget(null)}
+            open={terminalDialogOpen}
           />
         )}
       </Suspense>

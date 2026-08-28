@@ -20,7 +20,8 @@ import ThemeColorsSection from "@/routes/_authenticated/-components/navbar/Theme
 import UpdateSettings, {
   useUpdateSettingsState,
 } from "@/routes/_authenticated/updates/-components/UpdateSettings";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 import { getDialogSurfaceStyles } from "@/theme/surfaces";
 
 import DockAccentGradientEditor from "./DockAccentGradientEditor";
@@ -51,8 +52,7 @@ const NAVIGATION_MODE_OPTIONS: readonly {
 ];
 
 const SettingsPage = () => {
-  const theme = useAppTheme();
-  const isDesktop = useAppMediaQuery(theme.breakpoints.up("md"));
+  const isDesktop = useAppMediaQuery(up("md"));
   const { privileged } = useAuth();
   const [themeMode, setThemeMode] = useConfigValue("theme");
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
@@ -89,7 +89,7 @@ const SettingsPage = () => {
       );
 
   const sectionErrorFallback = (
-    <div style={{ padding: theme.spacing(1) }}>
+    <div style={{ padding: "var(--app-space-4)" }}>
       <AppTypography color="error">
         This settings section failed to render.
       </AppTypography>
@@ -98,10 +98,7 @@ const SettingsPage = () => {
 
   return (
     <div className="settings-page">
-      <div
-        className="settings-page__sheet"
-        style={getDialogSurfaceStyles(theme)}
-      >
+      <div className="settings-page__sheet" style={getDialogSurfaceStyles()}>
         <div className="settings-page__header">
           <AppTypography variant="h3">Settings</AppTypography>
         </div>
@@ -133,7 +130,7 @@ const SettingsPage = () => {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: theme.spacing(1.5),
+                  gap: "var(--app-space-6)",
                 }}
               >
                 <div>
@@ -151,7 +148,7 @@ const SettingsPage = () => {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    padding: theme.spacing(1.5),
+                    padding: "var(--app-space-6)",
                   }}
                 >
                   <div>
@@ -176,7 +173,7 @@ const SettingsPage = () => {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    padding: theme.spacing(1.5),
+                    padding: "var(--app-space-6)",
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -194,7 +191,7 @@ const SettingsPage = () => {
                       flexShrink: 0,
                       gridTemplateColumns: "max-content",
                       marginBottom: 0,
-                      marginLeft: theme.spacing(1.5),
+                      marginLeft: "var(--app-space-6)",
                       width: "max-content",
                     }}
                     value={themeMode}
@@ -212,7 +209,7 @@ const SettingsPage = () => {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    padding: theme.spacing(1.5),
+                    padding: "var(--app-space-6)",
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -230,7 +227,7 @@ const SettingsPage = () => {
                       flexShrink: 0,
                       gridTemplateColumns: "max-content",
                       marginBottom: 0,
-                      marginLeft: theme.spacing(1.5),
+                      marginLeft: "var(--app-space-6)",
                       width: "max-content",
                     }}
                     value={navigationValue}
@@ -244,7 +241,7 @@ const SettingsPage = () => {
                   // from under a drag in progress is worse than one that sits
                   // still, so the lift goes away while that editor is open.
                   hoverLift={dockColorMode !== "accent"}
-                  style={{ padding: theme.spacing(1.5) }}
+                  style={{ padding: "var(--app-space-6)" }}
                 >
                   <div className="settings-page__dock-colors-header">
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -273,7 +270,6 @@ const SettingsPage = () => {
 
                   {dockColorMode === "accent" ? (
                     <DockAccentGradientEditor
-                      accent={theme.palette.primary.main}
                       onChange={setDockAccentGradient}
                       value={dockAccentGradient}
                     />
@@ -286,7 +282,7 @@ const SettingsPage = () => {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: theme.spacing(1.5),
+                  gap: "var(--app-space-6)",
                 }}
               >
                 <div>

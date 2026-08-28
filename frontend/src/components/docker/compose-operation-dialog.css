@@ -16,7 +16,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  transition: flex-grow var(--app-transition-duration-slow)
+  transition: flex-grow var(--app-transition-duration-fast)
     var(--app-easing-decelerate);
 }
 
@@ -40,9 +40,9 @@
   flex: 0 0 auto;
   min-height: 0;
   transition:
-    flex-grow var(--app-transition-duration-slow)
+    flex-grow var(--app-transition-duration-fast)
       var(--app-easing-decelerate),
-    min-height var(--app-transition-duration-slow)
+    min-height var(--app-transition-duration-fast)
       var(--app-easing-decelerate);
 }
 
@@ -64,7 +64,7 @@
 
 .compose-log__chevron {
   flex-shrink: 0;
-  transition: transform var(--app-transition-duration-slow)
+  transition: transform var(--app-transition-duration-fast)
     var(--app-easing-decelerate);
 }
 

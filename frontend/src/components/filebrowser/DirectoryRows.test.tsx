@@ -19,7 +19,7 @@ vi.mock("@/components/cards/FileCard", () => ({
 }));
 
 const { DirectoryItem } =
-  await import("@/components/filebrowser/VirtualDirectoryRows");
+  await import("@/components/filebrowser/DirectoryRows");
 const { render, screen } = await import("@/test/render");
 
 const firstItem: FileItem = {
@@ -60,7 +60,7 @@ function Item({ item, selected }: { item: FileItem; selected: boolean }) {
   );
 }
 
-describe("VirtualDirectoryItem", () => {
+describe("DirectoryItem", () => {
   it("rerenders only the item whose derived selection state changed", () => {
     const view = render(
       <>

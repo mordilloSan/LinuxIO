@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
@@ -77,7 +77,9 @@ describe("DevToolsPanel", () => {
       screen.getByRole("button", { name: "Close development tools" }),
     );
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
 
     await user.click(
       screen.getByRole("button", { name: "Open TanStack Router Devtools" }),
@@ -87,7 +89,9 @@ describe("DevToolsPanel", () => {
       screen.getByRole("button", { name: "Open Tanstack Query Devtools" }),
     );
 
-    expect(screen.queryByTestId("router-devtools")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId("router-devtools")).not.toBeInTheDocument(),
+    );
     expect(screen.getByTestId("query-devtools")).toBeInTheDocument();
   });
 });

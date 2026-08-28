@@ -1,9 +1,8 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import type { Socket } from "@/api";
-import { linuxio } from "@/api";
+import type { Socket, UnitInfo } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 
 import {
@@ -31,44 +30,48 @@ const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
   />
 );
 
-const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
-    refetchInterval: 2000,
-  });
+const SocketSelectedRows = ({
+  socket,
+  info,
+}: {
+  socket: Socket;
+  info: UnitInfo | undefined;
+}) => {
   const listen = Array.isArray(info?.Listen) ? info.Listen : socket.listen;
 
   return (
     <>
       <DetailRow label="Load">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {socket.load_state}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Listen">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {listen.length > 0 ? listen.join(", ") : "—"}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Connections">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {String(info?.NConnections ?? socket.n_connections)}
-        </span>
+        </AppTypography>
       </DetailRow>
       <DetailRow label="Accepted">
-        <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+        <AppTypography component="span" fontWeight={500} variant="caption">
           {String(info?.NAccepted ?? socket.n_accepted)}
-        </span>
+        </AppTypography>
       </DetailRow>
     </>
   );
 };
 
-const SocketActionsWrapper = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
-    refetchInterval: 2000,
-  });
+const SocketActionsWrapper = ({
+  socket,
+  info,
+}: {
+  socket: Socket;
+  info: UnitInfo | undefined;
+}) => {
   return (
     <UnitCardActions
       activeState={socket.active_state}
@@ -92,12 +95,16 @@ const SocketCardsView = ({
     items={sockets}
     surface={surface}
     onExpand={onExpand}
-    renderActions={(socket) => <SocketActionsWrapper socket={socket} />}
+    renderActions={(socket, info) => (
+      <SocketActionsWrapper info={info} socket={socket} />
+    )}
     renderBottomPanel={(socket) => (
       <UnitLogsCard title="Socket Logs" unitName={socket.name} />
     )}
     renderDetailPanel={renderDetailPanel}
-    renderSelectedRows={(socket) => <SocketSelectedRows socket={socket} />}
+    renderSelectedRows={(socket, info) => (
+      <SocketSelectedRows info={info} socket={socket} />
+    )}
     renderSummaryRows={(socket) => <SocketSummaryRows socket={socket} />}
   />
 );

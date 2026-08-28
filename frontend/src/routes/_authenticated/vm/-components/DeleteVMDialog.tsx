@@ -13,23 +13,22 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import { type AppTheme, useAppTheme } from "@/theme";
 
-const checkboxLineStyle = (theme: AppTheme): CSSProperties => ({
+const checkboxLineStyle: CSSProperties = {
   alignItems: "center",
   display: "inline-flex",
-  gap: theme.spacing(2),
-  margin: theme.spacing(3.5, 0),
-});
+  gap: "var(--app-space-8)",
+  margin: "var(--app-space-16) 0",
+};
 
-const ownedDisksStyle = (theme: AppTheme): CSSProperties => ({
-  background: theme.codeBlock.background,
+const ownedDisksStyle: CSSProperties = {
+  background: "var(--app-code-block-background)",
   borderRadius: 6,
   display: "grid",
-  gap: theme.spacing(1.5),
-  marginTop: theme.spacing(2.5),
-  padding: theme.spacing(2.5),
-});
+  gap: "var(--app-space-6)",
+  marginTop: "var(--app-space-8)",
+  padding: "var(--app-space-8)",
+};
 
 const wrappingCodeStyle: CSSProperties = {
   overflowWrap: "anywhere",
@@ -39,26 +38,33 @@ export default function DeleteVMDialog({
   isDeleting,
   onClose,
   onDelete,
+  onExited,
   open,
   vm,
 }: {
   isDeleting: boolean;
   onClose: () => void;
   onDelete: (deleteDisks: boolean) => void;
+  onExited?: () => void;
   open: boolean;
   vm: VirtualMachine | null;
 }) {
-  const theme = useAppTheme();
   const [deleteDisks, setDeleteDisks] = useState(true);
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>Delete VM</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
           Delete {vm?.name ?? "this VM"} from libvirt.
         </AppDialogContentText>
-        <label style={checkboxLineStyle(theme)}>
+        <label style={checkboxLineStyle}>
           <AppCheckbox
             checked={deleteDisks}
             onChange={(_, checked) => setDeleteDisks(checked)}
@@ -66,7 +72,7 @@ export default function DeleteVMDialog({
           <span>Delete LinuxIO-managed disks</span>
         </label>
         {vm && vm.ownedDisks.length > 0 && (
-          <div style={ownedDisksStyle(theme)}>
+          <div style={ownedDisksStyle}>
             {vm.ownedDisks.map((disk) => (
               <code key={disk} style={wrappingCodeStyle}>
                 {disk}

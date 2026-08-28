@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQueries } from "@tanstack/react-query";
-import { useCallback, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
 import {
   linuxio,
@@ -12,8 +12,8 @@ import {
 import LVMMetricCard from "@/components/cards/LVMMetricCard";
 import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppDataTable from "@/components/tables/AppDataTable";
-import type { AppDataTableColumnDef } from "@/components/tables/AppDataTable.types";
+import AppVirtualTable from "@/components/tables/AppVirtualTable";
+import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -27,6 +27,7 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { getUsageColor } from "@/constants/statusColors";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { DASHBOARD_CARD_GAP, GAP_MD } from "@/theme/constants";
@@ -77,12 +78,6 @@ const dialogStackStyle: CSSProperties = {
 
 const monospaceStyle: CSSProperties = {
   fontFamily: "var(--app-font-mono)",
-};
-
-const getUsageColor = (usedPct: number): "primary" | "warning" | "error" => {
-  if (usedPct > 90) return "error";
-  if (usedPct > 70) return "warning";
-  return "primary";
 };
 
 const CreateLVDialog = ({
@@ -376,47 +371,46 @@ const DeleteLVDialog = ({
     </GeneralDialog>
   );
 };
+const pvColumns: AppVirtualTableColumnDef<PhysicalVolume>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => (
+      <AppTypography style={monospaceStyle} variant="body2">
+        {row.original.name}
+      </AppTypography>
+    ),
+  },
+  {
+    accessorKey: "vgName",
+    header: "Volume Group",
+    cell: ({ row }) => row.original.vgName || "-",
+  },
+  {
+    accessorKey: "size",
+    header: "Size",
+    cell: ({ row }) => formatFileSize(row.original.size),
+    meta: { align: "right" },
+  },
+  {
+    accessorKey: "free",
+    header: "Free",
+    cell: ({ row }) => formatFileSize(row.original.free),
+    meta: { align: "right" },
+  },
+  {
+    accessorKey: "format",
+    header: "Format",
+    cell: ({ row }) => (
+      <Chip label={row.original.format} size="small" variant="soft" />
+    ),
+  },
+];
 const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
-  const columns: AppDataTableColumnDef<PhysicalVolume>[] = [
-    {
-      accessorKey: "name",
-      header: "Name",
-      cell: ({ row }) => (
-        <AppTypography style={monospaceStyle} variant="body2">
-          {row.original.name}
-        </AppTypography>
-      ),
-    },
-    {
-      accessorKey: "vgName",
-      header: "Volume Group",
-      cell: ({ row }) => row.original.vgName || "-",
-    },
-    {
-      accessorKey: "size",
-      header: "Size",
-      cell: ({ row }) => formatFileSize(row.original.size),
-      meta: { align: "right" },
-    },
-    {
-      accessorKey: "free",
-      header: "Free",
-      cell: ({ row }) => formatFileSize(row.original.free),
-      meta: { align: "right" },
-    },
-    {
-      accessorKey: "format",
-      header: "Format",
-      cell: ({ row }) => (
-        <Chip label={row.original.format} size="small" variant="soft" />
-      ),
-    },
-  ];
-
   return (
-    <AppDataTable
+    <AppVirtualTable
       ariaLabel="LVM physical volumes"
-      columns={columns}
+      columns={pvColumns}
       data={data}
       density="compact"
       emptyMessage="No physical volumes found"
@@ -427,45 +421,44 @@ const PVTable = ({ data }: { data: PhysicalVolume[] }) => {
     />
   );
 };
+const vgColumns: AppVirtualTableColumnDef<VolumeGroup>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    cell: ({ row }) => (
+      <AppTypography fontWeight={600} variant="body2">
+        {row.original.name}
+      </AppTypography>
+    ),
+  },
+  {
+    accessorKey: "size",
+    header: "Size",
+    cell: ({ row }) => formatFileSize(row.original.size),
+    meta: { align: "right" },
+  },
+  {
+    accessorKey: "free",
+    header: "Free",
+    cell: ({ row }) => formatFileSize(row.original.free),
+    meta: { align: "right" },
+  },
+  {
+    accessorKey: "pvCount",
+    header: "PVs",
+    meta: { align: "right" },
+  },
+  {
+    accessorKey: "lvCount",
+    header: "LVs",
+    meta: { align: "right" },
+  },
+];
 const VGTable = ({ data }: { data: VolumeGroup[] }) => {
-  const columns: AppDataTableColumnDef<VolumeGroup>[] = [
-    {
-      accessorKey: "name",
-      header: "Name",
-      cell: ({ row }) => (
-        <AppTypography fontWeight={600} variant="body2">
-          {row.original.name}
-        </AppTypography>
-      ),
-    },
-    {
-      accessorKey: "size",
-      header: "Size",
-      cell: ({ row }) => formatFileSize(row.original.size),
-      meta: { align: "right" },
-    },
-    {
-      accessorKey: "free",
-      header: "Free",
-      cell: ({ row }) => formatFileSize(row.original.free),
-      meta: { align: "right" },
-    },
-    {
-      accessorKey: "pvCount",
-      header: "PVs",
-      meta: { align: "right" },
-    },
-    {
-      accessorKey: "lvCount",
-      header: "LVs",
-      meta: { align: "right" },
-    },
-  ];
-
   return (
-    <AppDataTable
+    <AppVirtualTable
       ariaLabel="LVM volume groups"
-      columns={columns}
+      columns={vgColumns}
       data={data}
       density="compact"
       emptyMessage="No volume groups found"
@@ -482,108 +475,111 @@ interface LVTableProps {
   onResize: (lv: LogicalVolume) => void;
 }
 const LVTable = ({ data, onResize, onDelete }: LVTableProps) => {
-  const columns: AppDataTableColumnDef<LogicalVolume>[] = [
-    {
-      accessorKey: "name",
-      header: "Name",
-      cell: ({ row }) => (
-        <div>
-          <AppTypography fontWeight={600} variant="body2">
-            {row.original.name}
-          </AppTypography>
-          <AppTypography
-            color="text.secondary"
-            style={monospaceStyle}
-            variant="caption"
-          >
-            {row.original.path}
-          </AppTypography>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "vgName",
-      header: "Volume Group",
-    },
-    {
-      accessorKey: "size",
-      header: "Size",
-      cell: ({ row }) => formatFileSize(row.original.size),
-      meta: { align: "right" },
-    },
-    {
-      accessorKey: "mountpoint",
-      header: "Mountpoint",
-      cell: ({ row }) =>
-        row.original.mountpoint ? (
-          <AppTypography style={monospaceStyle} variant="body2">
-            {row.original.mountpoint}
-          </AppTypography>
-        ) : (
-          <Chip label="Not mounted" size="small" variant="soft" />
-        ),
-    },
-    {
-      accessorKey: "usedPct",
-      header: "Usage",
-      cell: ({ row }) =>
-        row.original.mountpoint ? (
-          <div style={{ width: 100 }}>
-            <AppLinearProgress
-              color={getUsageColor(row.original.usedPct)}
-              style={{
-                borderRadius: 3,
-                height: 6,
-                marginBottom: 2,
-              }}
-              value={row.original.usedPct}
-              variant="determinate"
-            />
-            <AppTypography variant="caption">
-              {row.original.usedPct.toFixed(1)}%
+  const columns = useMemo<AppVirtualTableColumnDef<LogicalVolume>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Name",
+        cell: ({ row }) => (
+          <div>
+            <AppTypography fontWeight={600} variant="body2">
+              {row.original.name}
+            </AppTypography>
+            <AppTypography
+              color="text.secondary"
+              style={monospaceStyle}
+              variant="caption"
+            >
+              {row.original.path}
             </AppTypography>
           </div>
-        ) : (
-          "-"
         ),
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 8,
-            justifyContent: "flex-end",
-          }}
-        >
-          <AppButton
-            onClick={() => onResize(row.original)}
-            size="small"
-            startIcon={<Icon height={18} icon="mdi:pencil" width={18} />}
-            variant="outlined"
+      },
+      {
+        accessorKey: "vgName",
+        header: "Volume Group",
+      },
+      {
+        accessorKey: "size",
+        header: "Size",
+        cell: ({ row }) => formatFileSize(row.original.size),
+        meta: { align: "right" },
+      },
+      {
+        accessorKey: "mountpoint",
+        header: "Mountpoint",
+        cell: ({ row }) =>
+          row.original.mountpoint ? (
+            <AppTypography style={monospaceStyle} variant="body2">
+              {row.original.mountpoint}
+            </AppTypography>
+          ) : (
+            <Chip label="Not mounted" size="small" variant="soft" />
+          ),
+      },
+      {
+        accessorKey: "usedPct",
+        header: "Usage",
+        cell: ({ row }) =>
+          row.original.mountpoint ? (
+            <div style={{ width: 100 }}>
+              <AppLinearProgress
+                color={getUsageColor(row.original.usedPct)}
+                style={{
+                  borderRadius: 3,
+                  height: 6,
+                  marginBottom: 2,
+                }}
+                value={row.original.usedPct}
+                variant="determinate"
+              />
+              <AppTypography variant="caption">
+                {row.original.usedPct.toFixed(1)}%
+              </AppTypography>
+            </div>
+          ) : (
+            "-"
+          ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              justifyContent: "flex-end",
+            }}
           >
-            Resize
-          </AppButton>
-          <AppButton
-            color="error"
-            onClick={() => onDelete(row.original)}
-            size="small"
-            startIcon={<Icon height={18} icon="mdi:delete" width={18} />}
-            variant="outlined"
-          >
-            Delete
-          </AppButton>
-        </div>
-      ),
-      meta: { align: "right", width: "minmax(180px, 220px)" },
-    },
-  ];
+            <AppButton
+              onClick={() => onResize(row.original)}
+              size="small"
+              startIcon={<Icon height={18} icon="mdi:pencil" width={18} />}
+              variant="outlined"
+            >
+              Resize
+            </AppButton>
+            <AppButton
+              color="error"
+              onClick={() => onDelete(row.original)}
+              size="small"
+              startIcon={<Icon height={18} icon="mdi:delete" width={18} />}
+              variant="outlined"
+            >
+              Delete
+            </AppButton>
+          </div>
+        ),
+        meta: { align: "right", width: "minmax(180px, 220px)" },
+      },
+    ],
+    [onDelete, onResize],
+  );
 
   return (
-    <AppDataTable
+    <AppVirtualTable
       ariaLabel="LVM logical volumes"
       columns={columns}
       data={data}

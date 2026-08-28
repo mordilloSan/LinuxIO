@@ -38,12 +38,13 @@ const QUERY_OPTIONS_REFERENCE = /\b[A-Za-z_$][\w$]*QueryOptions\b/g;
 
 // Route-context descriptors are intentionally opaque at the observer call.
 // This map connects each consumer-local option name back to the endpoint that
-// the route context resolves. The targeted query-ownership guard separately
+// the route context resolves — or the endpoints, where one generic observer is
+// rendered once per protocol and the loader must warm every one of them. The targeted query-ownership guard separately
 // verifies that these routes construct options only in context and that their
 // loaders consume `loaderArgs.context`.
 const ROUTE_CONTEXT_OBSERVER_ENDPOINTS: Record<
   string,
-  Record<string, string>
+  Record<string, string | string[]>
 > = {
   "/_authenticated/accounts/": {
     listUsersQueryOptions: "accounts.list_users",
@@ -59,6 +60,9 @@ const ROUTE_CONTEXT_OBSERVER_ENDPOINTS: Record<
   },
   "/_authenticated/services/timers": {
     listQueryOptions: "systemd.list_timers",
+  },
+  "/_authenticated/shares/mounts": {
+    listQueryOptions: ["storage.list_nfs_mounts", "storage.list_cifs_mounts"],
   },
   "/_authenticated/vm/machines/$name": {
     vmQueryOptions: "virt.get",
@@ -407,7 +411,7 @@ const routes: RouteNode[] = routeFiles.map((file) => {
     loaderEndpoints: [
       ...loaderEndpointsIn(code),
       ...routeContextEndpointsIn(code),
-      ...Object.values(ROUTE_CONTEXT_OBSERVER_ENDPOINTS[id] ?? {}),
+      ...Object.values(ROUTE_CONTEXT_OBSERVER_ENDPOINTS[id] ?? {}).flat(),
     ],
   };
 });
@@ -525,8 +529,9 @@ function scanRouteCoverage(): CoverageScan {
         const endpoints = new Set(site.endpoints);
         const contextEndpoints = ROUTE_CONTEXT_OBSERVER_ENDPOINTS[route.id];
         for (const reference of site.queryOptionReferences) {
-          const endpoint = contextEndpoints?.[reference];
-          if (endpoint) endpoints.add(endpoint);
+          for (const endpoint of [contextEndpoints?.[reference] ?? []].flat()) {
+            endpoints.add(endpoint);
+          }
         }
         if (endpoints.size === 0) emptySites.add(`${at} for ${route.id}`);
 
@@ -660,7 +665,7 @@ describe("suspense loader coverage guard", () => {
           sites.flatMap((site) => site.endpoints),
         ),
         ...Object.values(ROUTE_CONTEXT_OBSERVER_ENDPOINTS).flatMap(
-          (endpoints) => Object.values(endpoints),
+          (endpoints) => Object.values(endpoints).flat(),
         ),
       ]).size,
     ).toBeGreaterThan(40);

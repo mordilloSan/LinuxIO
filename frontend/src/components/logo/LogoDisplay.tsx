@@ -1,57 +1,51 @@
-import { useAppTheme } from "@/theme";
+import AppTypography from "@/components/ui/AppTypography";
 
 interface LogoDisplayProps {
   showText?: boolean;
 }
 
 const LogoDisplay = ({ showText = false }: LogoDisplayProps) => {
-  const theme = useAppTheme();
-  const dur = theme.transitions.duration.standard;
-
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        margin: 0,
-        fontFamily: theme.typography.fontFamily,
-        fontSize: "1.45rem",
-        fontWeight: 400,
-        lineHeight: 1.25,
-      }}
+    <AppTypography
+      component="div"
+      fontWeight={400}
+      style={{ display: "inline-flex", alignItems: "center", margin: 0 }}
+      variant="h3"
     >
       <span
         style={{
-          color: theme.palette.text.primary,
+          color: "var(--app-palette-text-primary)",
           display: "inline-block",
           whiteSpace: "nowrap",
           opacity: showText ? 1 : 0,
           marginRight: showText ? 8 : -50,
-          transition: `opacity ${dur}ms ease-in-out, margin-right ${dur}ms ease-in-out`,
+          transition:
+            "opacity var(--app-transition-duration-fast) var(--app-easing-standard), margin-right var(--app-transition-duration-fast) var(--app-easing-standard)",
         }}
       >
         Linux
       </span>
 
-      <span
+      <AppTypography
+        color="var(--app-palette-primary-main)"
+        component="span"
+        fontWeight={900}
         style={{
           width: 36,
           height: 36,
           borderRadius: "50%",
-          border: `3px solid ${theme.palette.primary.main}`,
+          border: "3px solid var(--app-palette-primary-main)",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          fontWeight: 900,
-          color: theme.palette.primary.main,
-          fontSize: "0.95rem",
           whiteSpace: "nowrap",
           boxSizing: "border-box",
         }}
+        variant="subtitle1"
       >
         i/O
-      </span>
-    </div>
+      </AppTypography>
+    </AppTypography>
   );
 };
 

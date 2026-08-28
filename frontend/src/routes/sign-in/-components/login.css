@@ -94,7 +94,8 @@
 .login-field .app-text-field__wrapper {
   border-radius: 28px;
   background-color: var(--lf-bg);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow var(--app-transition-duration-fast)
+    var(--app-easing-standard);
 }
 
 .login-field .app-text-field__label {
@@ -107,7 +108,8 @@
 
 .login-field .app-text-field__outline {
   border-color: var(--lf-border);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow var(--app-transition-duration-fast)
+    var(--app-easing-standard);
 }
 
 .login-field .app-text-field__wrapper:hover .app-text-field__outline {

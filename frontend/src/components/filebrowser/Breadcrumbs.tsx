@@ -2,7 +2,8 @@ import { useMemo, type CSSProperties } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import { HomeFilledIcon } from "@/icons/svg";
-import { useAppMediaQuery, useAppTheme } from "@/theme";
+import { useAppMediaQuery } from "@/theme";
+import { down } from "@/theme/breakpoints";
 import { getChromeSurfaceColor } from "@/theme/surfaces";
 import { isDirectoryPath } from "@/utils/path";
 
@@ -250,8 +251,7 @@ const FilebrowserBreadcrumbs = ({
   gallerySize = 4,
   onGallerySizeChange,
 }: FilebrowserBreadcrumbsProps) => {
-  const theme = useAppTheme();
-  const isMobile = useAppMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useAppMediaQuery(down("sm"));
   const normalizedPath = normalizePath(path);
 
   const breadcrumbs = useMemo(() => {
@@ -262,11 +262,11 @@ const FilebrowserBreadcrumbs = ({
   const handleHome = () => onNavigate("/");
   const cssVars = {
     "--linuxio-filebrowser-breadcrumb-bg":
-      theme.fileBrowser.breadcrumbBackground,
-    "--linuxio-filebrowser-breadcrumb-text": theme.fileBrowser.breadcrumbText,
+      "var(--app-file-browser-breadcrumb-background)",
+    "--linuxio-filebrowser-breadcrumb-text":
+      "var(--app-file-browser-breadcrumb-text)",
     "--linuxio-filebrowser-chrome-surface": getChromeSurfaceColor(
-      theme,
-      theme.fileBrowser.chrome,
+      "var(--app-file-browser-chrome)",
     ),
   } as CSSProperties;
 

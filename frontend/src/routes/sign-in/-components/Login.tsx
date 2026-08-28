@@ -12,8 +12,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
 import "./login.css";
 import useAuth from "@/hooks/useAuth";
-import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
 import {
   clearSigninNotice,
   readSigninNotice,
@@ -21,17 +19,20 @@ import {
   type SigninNotice,
 } from "@/utils/signinNotice";
 
-function LogIn() {
-  const theme = useAppTheme();
-  const fieldStyle = {
-    "--lf-bg": alpha(theme.palette.background.default, 0.65),
-    "--lf-border": alpha(theme.palette.text.secondary, 0.3),
-    "--lf-border-hover": alpha(theme.palette.text.secondary, 0.55),
-    "--lf-focus-color": theme.palette.primary.main,
-    "--lf-focus-shadow": alpha(theme.palette.primary.main, 0.28),
-    "--lf-label-color": theme.palette.text.secondary,
-  } as CSSProperties;
+const fieldStyle = {
+  "--lf-bg":
+    "color-mix(in srgb, var(--app-palette-background-default), transparent 35%)",
+  "--lf-border":
+    "color-mix(in srgb, var(--app-palette-text-secondary), transparent 70%)",
+  "--lf-border-hover":
+    "color-mix(in srgb, var(--app-palette-text-secondary), transparent 45%)",
+  "--lf-focus-color": "var(--app-palette-primary-main)",
+  "--lf-focus-shadow":
+    "color-mix(in srgb, var(--app-palette-primary-main), transparent 72%)",
+  "--lf-label-color": "var(--app-palette-text-secondary)",
+} as CSSProperties;
 
+function LogIn() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -51,13 +52,13 @@ function LogIn() {
     ? {
         message: error,
         severity: "warning" as const,
-        accent: theme.palette.warning.main,
+        accent: "var(--app-palette-warning-main)",
       }
     : notice
       ? {
           message: SIGNIN_NOTICE_MESSAGES[notice],
           severity: "info" as const,
-          accent: theme.palette.info.main,
+          accent: "var(--app-palette-info-main)",
         }
       : null;
 
@@ -91,10 +92,10 @@ function LogIn() {
           style={
             {
               "--login-reveal-delay": "60ms",
-              "--login-alert-bg": alpha(feedback.accent, 0.18),
-              "--login-alert-border": alpha(feedback.accent, 0.36),
+              "--login-alert-bg": `color-mix(in srgb, ${feedback.accent}, transparent 82%)`,
+              "--login-alert-border": `color-mix(in srgb, ${feedback.accent}, transparent 64%)`,
               "--login-alert-icon": feedback.accent,
-              "--login-alert-text": alpha(theme.palette.common.white, 0.92),
+              "--login-alert-text": "color-mix(in srgb, white, transparent 8%)",
               marginBottom: 16,
             } as CSSProperties
           }

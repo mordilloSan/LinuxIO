@@ -6,7 +6,6 @@ import {
 } from "react";
 
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { GAP_SM } from "@/theme/constants";
 
 // Bundles the handful of heading looks this header needs to reproduce:
@@ -93,7 +92,6 @@ const CardIconHeader = ({
   right,
   style,
 }: CardIconHeaderProps) => {
-  const theme = useAppTheme();
   const preset = HEADING_PRESETS[headingVariant];
 
   return (
@@ -117,15 +115,15 @@ const CardIconHeader = ({
           style={{
             width: 40,
             height: 40,
-            borderRadius: 8,
+            borderRadius: "var(--app-radius-md)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
             ...(iconTint
               ? {
-                  background: theme.palette.action.hover,
-                  color: theme.palette.primary.main,
+                  background: "var(--app-palette-action-hover)",
+                  color: "var(--app-palette-primary-main)",
                 }
               : {}),
           }}

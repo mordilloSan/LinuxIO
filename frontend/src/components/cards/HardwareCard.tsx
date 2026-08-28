@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppTheme } from "@/theme";
 import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
 
 export type SummaryRow = {
@@ -14,8 +13,6 @@ export type SummaryRow = {
 };
 
 export const SummaryRowsList = ({ rows }: { rows: SummaryRow[] }) => {
-  const theme = useAppTheme();
-
   return (
     <div
       style={{
@@ -32,9 +29,9 @@ export const SummaryRowsList = ({ rows }: { rows: SummaryRow[] }) => {
             display: "flex",
             alignItems: "baseline",
             justifyContent: "space-between",
-            gap: theme.spacing(1),
-            paddingTop: theme.spacing(0.5),
-            paddingBottom: theme.spacing(0.5),
+            gap: "var(--app-space-4)",
+            paddingTop: "var(--app-space-2)",
+            paddingBottom: "var(--app-space-2)",
             borderBottom:
               index === rows.length - 1
                 ? "none"
