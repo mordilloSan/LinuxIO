@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ConfigThemeColorsByModePayload as ThemeColorsByMode,
@@ -361,9 +361,28 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
 
   const [draft, setDraft] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
+  // While the native picker is dragged, the swatch previews the pointer's
+  // colour without saving; the override clears once the pick is committed
+  // and the saved colour takes over again.
+  const [previewOverride, setPreviewOverride] = useState<string | null>(null);
+  const previewColor = previewOverride ?? normalized;
+
+  // The native colour picker fires "input" continuously while it is dragged
+  // (React's onChange) and "change" once the pick is committed. Only the
+  // latter persists a config save.
+  useEffect(() => {
+    const el = colorInputRef.current;
+    if (!el) return;
+    const commit = (e: Event) => {
+      setPreviewOverride(null);
+      onChange((e.target as HTMLInputElement).value);
+    };
+    el.addEventListener("change", commit);
+    return () => el.removeEventListener("change", commit);
+  }, [onChange]);
 
   const focused = draft !== null;
-  const displayValue = focused ? draft : normalized;
+  const displayValue = focused ? draft : previewColor;
   const draftValid = focused ? parseHexInput(draft) != null : true;
   const showAffordance = hovered || focused;
 
@@ -453,7 +472,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
             minWidth: 28,
             padding: 0,
             borderRadius: "var(--app-radius-base)",
-            backgroundColor: normalized,
+            backgroundColor: previewColor,
             border: `1px solid ${alpha(theme.palette.text.secondary, 0.3)}`,
             boxSizing: "border-box",
             cursor: "pointer",
@@ -461,7 +480,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         />
         <input
           aria-hidden="true"
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => setPreviewOverride(e.target.value)}
           ref={colorInputRef}
           style={{
             position: "fixed",

@@ -1,8 +1,6 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { memo, type ReactNode } from "react";
 
-import type { Service } from "@/api";
-import { linuxio } from "@/api";
+import type { Service, UnitInfo } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { getServiceStatusColor } from "@/constants/statusColors";
@@ -36,11 +34,13 @@ const ServiceStatusRows = memo<{ service: Service }>(({ service }) => (
 ));
 ServiceStatusRows.displayName = "ServiceStatusRows";
 
-const ServiceInfoRows = ({ service }: { service: Service }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: service.name }),
-    refetchInterval: 2000,
-  });
+const ServiceInfoRows = ({
+  service,
+  info,
+}: {
+  service: Service;
+  info: UnitInfo | undefined;
+}) => {
   const mainPid = info?.MainPID ?? 0;
   const memory = formatBytes(info?.MemoryCurrent);
   const statusColor = getServiceStatusColor(service.active_state);
@@ -87,11 +87,13 @@ const ServiceInfoRows = ({ service }: { service: Service }) => {
   );
 };
 
-const ServiceActionsWrapper = ({ service }: { service: Service }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: service.name }),
-    refetchInterval: 2000,
-  });
+const ServiceActionsWrapper = ({
+  service,
+  info,
+}: {
+  service: Service;
+  info: UnitInfo | undefined;
+}) => {
   return (
     <UnitCardActions
       activeState={service.active_state}
@@ -115,12 +117,16 @@ const ServiceCardsView = ({
     items={services}
     surface={surface}
     onExpand={onExpand}
-    renderActions={(service) => <ServiceActionsWrapper service={service} />}
+    renderActions={(service, info) => (
+      <ServiceActionsWrapper info={info} service={service} />
+    )}
     renderBottomPanel={(service) => (
       <UnitLogsCard title="Service Logs" unitName={service.name} />
     )}
     renderDetailPanel={renderDetailPanel}
-    renderSelectedRows={(service) => <ServiceInfoRows service={service} />}
+    renderSelectedRows={(service, info) => (
+      <ServiceInfoRows info={info} service={service} />
+    )}
     renderSummaryRows={(service) => <ServiceStatusRows service={service} />}
   />
 );

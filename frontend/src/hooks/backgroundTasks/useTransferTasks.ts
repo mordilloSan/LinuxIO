@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -181,6 +181,16 @@ const DESCRIPTOR_BY_TASK_TYPE = new Map(
   Object.values(DESCRIPTORS).map((d) => [d.taskType, d]),
 );
 
+/** Latest progress queued for one transfer, applied on the next animation frame. */
+interface PendingTransferProgress {
+  descriptor: TransferDescriptor;
+  labelBase: string;
+  percent: number;
+  bytes?: number;
+  total?: number;
+  speed?: number;
+}
+
 function capitalize(noun: string): string {
   return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
@@ -209,6 +219,51 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const transfersRef = useLatestRef(transfers);
   const activeTransferIdsRef = useRef<Set<string>>(new Set());
+
+  // Progress frames arrive far faster than the UI needs to repaint (a fast
+  // transfer can push hundreds a second); coalesce them into one setState
+  // per animation frame instead of one per frame received.
+  const pendingProgressRef = useRef<Map<string, PendingTransferProgress>>(
+    new Map(),
+  );
+  const progressFrameRef = useRef<number | null>(null);
+
+  const flushTransferProgress = useCallback(() => {
+    if (progressFrameRef.current !== null) {
+      window.cancelAnimationFrame(progressFrameRef.current);
+      progressFrameRef.current = null;
+    }
+    const pending = pendingProgressRef.current;
+    if (pending.size === 0) return;
+    pendingProgressRef.current = new Map();
+    setTransfers((prev) =>
+      prev.map((item) => {
+        const entry = pending.get(item.id);
+        if (!entry) return item;
+        const next = Math.max(item.progress, entry.percent);
+        if (next === item.progress && entry.speed === undefined) return item;
+        return {
+          ...item,
+          progress: next,
+          label: progressLabel(entry.descriptor, entry.labelBase, next),
+          bytes: entry.bytes,
+          total: entry.total,
+          ...(entry.speed !== undefined && { speed: entry.speed }),
+        };
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (progressFrameRef.current !== null) {
+        window.cancelAnimationFrame(progressFrameRef.current);
+        progressFrameRef.current = null;
+      }
+      pendingProgressRef.current.clear();
+    };
+  }, []);
+
   const { run: runStreamResult } = useStreamResult();
   const {
     pendingLocalTaskKeysRef,
@@ -261,21 +316,19 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
           if (!detail) return;
           const percent = Math.min(99, progress.percentage ?? detail.pct);
           const speed = getSpeed(detail.bytes);
-          setTransfers((prev) =>
-            prev.map((item) => {
-              if (item.id !== id) return item;
-              const next = Math.max(item.progress, percent);
-              if (next === item.progress && speed === undefined) return item;
-              return {
-                ...item,
-                progress: next,
-                label: progressLabel(descriptor, labelBase, next),
-                bytes: detail.bytes,
-                total: detail.total,
-                ...(speed !== undefined && { speed }),
-              };
-            }),
-          );
+          pendingProgressRef.current.set(id, {
+            descriptor,
+            labelBase,
+            percent,
+            bytes: detail.bytes,
+            total: detail.total,
+            speed,
+          });
+          if (progressFrameRef.current === null) {
+            progressFrameRef.current = window.requestAnimationFrame(
+              flushTransferProgress,
+            );
+          }
         },
         onSuccess: () => {
           toast.success(`${descriptor.done} ${labelBase}`);
@@ -292,11 +345,15 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
           );
         },
         onFinally: () => {
+          // Flush any queued progress before the terminal update so a task
+          // never briefly shows stale progress (or none) after completion,
+          // and so a late rAF can't fire after removal and re-add it.
+          flushTransferProgress();
           removeTransfer(id);
         },
       });
     },
-    [removeTransfer, runStreamResult, streamRefsRef],
+    [flushTransferProgress, removeTransfer, runStreamResult, streamRefsRef],
   );
 
   /**

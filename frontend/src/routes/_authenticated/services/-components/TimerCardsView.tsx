@@ -1,8 +1,6 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import type { Timer } from "@/api";
-import { linuxio } from "@/api";
+import type { Timer, UnitInfo } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -33,12 +31,13 @@ const TimerSummaryRows = ({ timer }: { timer: Timer }) => (
   />
 );
 
-const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
-    refetchInterval: 2000,
-  });
-
+const TimerSelectedRows = ({
+  timer,
+  info,
+}: {
+  timer: Timer;
+  info: UnitInfo | undefined;
+}) => {
   return (
     <>
       <DetailRow label="Load">
@@ -65,11 +64,13 @@ const TimerSelectedRows = ({ timer }: { timer: Timer }) => {
   );
 };
 
-const TimerActionsWrapper = ({ timer }: { timer: Timer }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: timer.name }),
-    refetchInterval: 2000,
-  });
+const TimerActionsWrapper = ({
+  timer,
+  info,
+}: {
+  timer: Timer;
+  info: UnitInfo | undefined;
+}) => {
   return (
     <UnitCardActions
       activeState={timer.active_state}
@@ -93,12 +94,16 @@ const TimerCardsView = ({
     items={timers}
     surface={surface}
     onExpand={onExpand}
-    renderActions={(timer) => <TimerActionsWrapper timer={timer} />}
+    renderActions={(timer, info) => (
+      <TimerActionsWrapper info={info} timer={timer} />
+    )}
     renderBottomPanel={(timer) => (
       <UnitLogsCard title="Timer Logs" unitName={timer.name} />
     )}
     renderDetailPanel={renderDetailPanel}
-    renderSelectedRows={(timer) => <TimerSelectedRows timer={timer} />}
+    renderSelectedRows={(timer, info) => (
+      <TimerSelectedRows info={info} timer={timer} />
+    )}
     renderSummaryRows={(timer) => <TimerSummaryRows timer={timer} />}
   />
 );

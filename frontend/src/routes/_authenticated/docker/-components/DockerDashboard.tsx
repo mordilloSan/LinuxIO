@@ -110,7 +110,9 @@ const DockerDashboard = ({
     { data: dockerInfo },
   ] = useSuspenseQueries({
     queries: [
-      { ...linuxio.docker.list_containers, refetchInterval: 5000 },
+      // DockerDashboardPage (the parent) is the single polling owner for
+      // list_containers; this child only observes its cache.
+      { ...linuxio.docker.list_containers, refetchOnMount: false },
       { ...linuxio.docker.list_images, refetchInterval: 30000 },
       { ...linuxio.docker.list_networks, refetchInterval: 30000 },
       { ...linuxio.docker.list_volumes, refetchInterval: 30000 },

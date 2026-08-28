@@ -225,4 +225,17 @@ describe("targeted route query ownership", () => {
       expect(child.match(/refetchOnMount: false/g)).toHaveLength(observerCount);
     }
   });
+
+  it("keeps the Docker dashboard child observer on the parent polling cadence", () => {
+    const page = readRouteSource("docker/-components/DockerDashboardPage.tsx");
+    const dashboard = readRouteSource("docker/-components/DockerDashboard.tsx");
+
+    expect(page.match(/refetchInterval: 5000/g)).toHaveLength(1);
+    // The child observes the parent's list_containers cache; its other
+    // queries (images, networks, volumes, info) poll on their own cadence.
+    expect(dashboard).toMatch(
+      /\.\.\.linuxio\.docker\.list_containers, refetchOnMount: false \}/,
+    );
+    expect(dashboard).not.toMatch(/list_containers[^}]*refetchInterval/);
+  });
 });

@@ -1,6 +1,6 @@
 import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 
 import {
   linuxio,
@@ -13,7 +13,6 @@ import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
-import ConsoleDialog from "./ConsoleDialog";
 import DeleteVMDialog from "./DeleteVMDialog";
 import VMListTable from "./VMListTable";
 import {
@@ -23,6 +22,9 @@ import {
   normalizeVMDeleteResult,
 } from "./vmShared";
 import { VMPreflightCard } from "./VMTabs";
+
+// noVNC only loads once a console is opened, like the docker TerminalDialog.
+const ConsoleDialog = lazy(() => import("./ConsoleDialog"));
 
 const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
 
@@ -246,13 +248,15 @@ const VMMachinesLayout = () => {
           vm={deleteTarget}
         />
       )}
-      {consoleSession && (
-        <ConsoleDialog
-          onClose={() => setConsoleSession(null)}
-          open={Boolean(consoleSession)}
-          session={consoleSession}
-        />
-      )}
+      <Suspense fallback={null}>
+        {consoleSession && (
+          <ConsoleDialog
+            onClose={() => setConsoleSession(null)}
+            open={Boolean(consoleSession)}
+            session={consoleSession}
+          />
+        )}
+      </Suspense>
     </>
   );
 };

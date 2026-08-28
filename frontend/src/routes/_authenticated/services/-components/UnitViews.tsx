@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import type { RowData } from "@tanstack/react-table";
 import { motion } from "motion/react";
 import {
@@ -75,11 +76,49 @@ interface UnitCardsViewProps<T extends UnitListItem> {
   expanded: string | null;
   items: T[];
   onExpand: (name: string | null) => void;
-  renderActions?: (item: T) => ReactNode;
+  /** `info` is the shared `get_unit_info` result, fetched once per expanded card. */
+  renderActions?: (item: T, info: UnitInfo | undefined) => ReactNode;
   renderBottomPanel?: (item: T) => ReactNode;
   renderDetailPanel: (item: T) => ReactNode;
-  renderSelectedRows?: (item: T) => ReactNode;
+  renderSelectedRows?: (item: T, info: UnitInfo | undefined) => ReactNode;
   renderSummaryRows: (item: T) => ReactNode;
+}
+
+/**
+ * Mounted only for the single expanded card. Fetches `get_unit_info` once and
+ * hands the result to both `renderSelectedRows` and `renderActions`, instead
+ * of each render prop polling the same query key with its own observer.
+ */
+function ExpandedUnitCard<T extends UnitListItem>({
+  item,
+  onExpand,
+  renderSummaryRows,
+  renderSelectedRows,
+  renderActions,
+}: {
+  item: T;
+  onExpand: (name: string | null) => void;
+  renderActions?: (item: T, info: UnitInfo | undefined) => ReactNode;
+  renderSelectedRows?: (item: T, info: UnitInfo | undefined) => ReactNode;
+  renderSummaryRows: (item: T) => ReactNode;
+}) {
+  const { data: info } = useSuspenseQuery({
+    ...linuxio.systemd.get_unit_info({ unitName: item.name }),
+    refetchInterval: 2000,
+  });
+
+  return (
+    <UnitCard
+      isSelected={true}
+      item={item}
+      onExpand={onExpand}
+      renderActions={renderActions && ((i: T) => renderActions(i, info))}
+      renderSelectedRows={
+        renderSelectedRows && ((i: T) => renderSelectedRows(i, info))
+      }
+      renderSummaryRows={renderSummaryRows}
+    />
+  );
 }
 
 export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
@@ -486,6 +525,21 @@ export function UnitCardsView<T extends UnitListItem>({
   const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
   const isCompactLayout = useAppMediaQuery(down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
+  // Fed to ReorderableCardGrid's `virtualized` path, which hands it straight
+  // to AppVirtualGrid's hand-memoized row — that memo only holds if this
+  // callback keeps its identity across renders. Captures are surface.editMode
+  // (a primitive) and the onExpand/renderSummaryRows props, all stable.
+  const renderUnitCard = useCallback(
+    (item: T) => (
+      <UnitCard
+        isSelected={false}
+        item={item}
+        onExpand={surface.editMode ? noopExpand : onExpand}
+        renderSummaryRows={renderSummaryRows}
+      />
+    ),
+    [surface.editMode, onExpand, renderSummaryRows],
+  );
 
   if (!expandedItem) {
     return (
@@ -497,14 +551,7 @@ export function UnitCardsView<T extends UnitListItem>({
         getId={getUnitId}
         items={items}
         minItemWidth={UNIT_CARD_MIN_WIDTH}
-        renderItem={(item) => (
-          <UnitCard
-            isSelected={false}
-            item={item}
-            onExpand={surface.editMode ? noopExpand : onExpand}
-            renderSummaryRows={renderSummaryRows}
-          />
-        )}
+        renderItem={renderUnitCard}
         surface={surface}
         virtualized
       />
@@ -542,8 +589,7 @@ export function UnitCardsView<T extends UnitListItem>({
             display: "flex",
           }}
         >
-          <UnitCard
-            isSelected={true}
+          <ExpandedUnitCard
             item={expandedItem}
             onExpand={onExpand}
             renderActions={renderActions}

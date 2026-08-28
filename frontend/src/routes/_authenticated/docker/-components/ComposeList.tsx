@@ -107,6 +107,13 @@ const getTotalContainers = (project: ComposeProject) => {
 
 const getComposeProjectId = (project: ComposeProject) => project.name;
 
+// Hoisted so AppVirtualTable's row comparator (which compares
+// `getRowAttributes` by reference) sees a stable function instead of a new
+// closure on every renderStackContainers call.
+const getComposeContainerRowAttributes = () => ({
+  className: "compose-container-row",
+});
+
 interface ComposeContainerActionsProps {
   container: ContainerInfo;
   disabled: boolean;
@@ -809,7 +816,7 @@ const ComposeList = ({
           emptyMessage="No containers found for this stack."
           enableSorting={false}
           fillAvailable={false}
-          getRowAttributes={() => ({ className: "compose-container-row" })}
+          getRowAttributes={getComposeContainerRowAttributes}
           getRowId={(container) => container.Id}
           maxHeight={260}
           variant="embedded"

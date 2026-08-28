@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { memo, type MouseEventHandler } from "react";
+import { lazy, memo, Suspense, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import { HeaderActionSlotHost } from "@/contexts/HeaderActionSlotContext";
@@ -9,9 +9,12 @@ import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
 
 import NavbarUserDropdown from "./NavbarUserDropdown";
-import Dock from "../dock/Dock";
 
 import "./navbar.css";
+
+// The dock is opt-in (navigationMode: "dock") and carries the motion runtime;
+// sidebar users never download it.
+const Dock = lazy(() => import("../dock/Dock"));
 
 interface NavbarProps {
   dockMode: boolean;
@@ -39,7 +42,11 @@ const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
           </AppIconButton>
         )}
 
-        {dockMode ? <Dock /> : null}
+        {dockMode ? (
+          <Suspense fallback={null}>
+            <Dock />
+          </Suspense>
+        ) : null}
 
         {/* Power sits in the header corner in both navigation modes: it acts on
             the machine rather than the app, so it stays out of the dock's row

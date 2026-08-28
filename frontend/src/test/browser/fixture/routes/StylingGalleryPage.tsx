@@ -8,6 +8,9 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getDialogSurfaceStyles } from "@/theme/surfaces";
 
+// The gallery is photographed, so its icons come from the registered set
+// rather than a network fetch; the other fixture pages keep their own setup.
+import "@/icons/shell";
 import "@fontsource-variable/inter/wght.css";
 
 /*

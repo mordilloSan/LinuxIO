@@ -1,8 +1,6 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import type { Socket } from "@/api";
-import { linuxio } from "@/api";
+import type { Socket, UnitInfo } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import AppTypography from "@/components/ui/AppTypography";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -32,11 +30,13 @@ const SocketSummaryRows = ({ socket }: { socket: Socket }) => (
   />
 );
 
-const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
-    refetchInterval: 2000,
-  });
+const SocketSelectedRows = ({
+  socket,
+  info,
+}: {
+  socket: Socket;
+  info: UnitInfo | undefined;
+}) => {
   const listen = Array.isArray(info?.Listen) ? info.Listen : socket.listen;
 
   return (
@@ -65,11 +65,13 @@ const SocketSelectedRows = ({ socket }: { socket: Socket }) => {
   );
 };
 
-const SocketActionsWrapper = ({ socket }: { socket: Socket }) => {
-  const { data: info } = useSuspenseQuery({
-    ...linuxio.systemd.get_unit_info({ unitName: socket.name }),
-    refetchInterval: 2000,
-  });
+const SocketActionsWrapper = ({
+  socket,
+  info,
+}: {
+  socket: Socket;
+  info: UnitInfo | undefined;
+}) => {
   return (
     <UnitCardActions
       activeState={socket.active_state}
@@ -93,12 +95,16 @@ const SocketCardsView = ({
     items={sockets}
     surface={surface}
     onExpand={onExpand}
-    renderActions={(socket) => <SocketActionsWrapper socket={socket} />}
+    renderActions={(socket, info) => (
+      <SocketActionsWrapper info={info} socket={socket} />
+    )}
     renderBottomPanel={(socket) => (
       <UnitLogsCard title="Socket Logs" unitName={socket.name} />
     )}
     renderDetailPanel={renderDetailPanel}
-    renderSelectedRows={(socket) => <SocketSelectedRows socket={socket} />}
+    renderSelectedRows={(socket, info) => (
+      <SocketSelectedRows info={info} socket={socket} />
+    )}
     renderSummaryRows={(socket) => <SocketSummaryRows socket={socket} />}
   />
 );

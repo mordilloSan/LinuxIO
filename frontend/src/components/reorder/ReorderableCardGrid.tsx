@@ -1,7 +1,7 @@
 import { DndContext, DragOverlay, useDndMonitor } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import { motion } from "motion/react";
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 
 import SortableCard from "@/components/cards/SortableCard";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
@@ -157,14 +157,23 @@ function ReorderableCardGrid<TItem>({
 
   // The one place a card is armed for the hold gesture. Both layouts go through
   // it, so a route never wires SortableCard itself.
-  const renderSortableCard = (item: TItem, index: number) => (
-    <SortableCard
-      editMode={surface.editMode}
-      id={getId(item)}
-      pending={surface.pendingId === getId(item)}
-    >
-      {renderItem(item, index)}
-    </SortableCard>
+  //
+  // In the `virtualized` branch this is handed to AppVirtualGrid as
+  // `renderItem`, which is compiler-excluded and hand-memoizes each row: that
+  // memo only holds if this callback keeps its identity across renders. It
+  // depends only on the primitives `surface.editMode`/`surface.pendingId` plus
+  // `getId`/`renderItem` — callers must keep those two stable in turn.
+  const renderSortableCard = useCallback(
+    (item: TItem, index: number) => (
+      <SortableCard
+        editMode={surface.editMode}
+        id={getId(item)}
+        pending={surface.pendingId === getId(item)}
+      >
+        {renderItem(item, index)}
+      </SortableCard>
+    ),
+    [surface.editMode, surface.pendingId, getId, renderItem],
   );
 
   let body: ReactNode;

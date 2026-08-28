@@ -997,23 +997,27 @@ const GeneralLogsPage = () => {
   }, [closeStream, clearReconnectTimer, clearLoadingFallbackTimer]);
 
   const filteredLogs = useMemo(() => {
-    let filtered = logs;
-
     // Use the live input for substring matching so typing reflects immediately.
-    // Run unconditionally: when applied filter is exact and matches the live
-    // input, this is idempotent. When the user is mid-edit over an exact
-    // value, this narrows the visible set right away instead of waiting for
-    // the debounce + re-stream.
-    const liveTrimmed = identifierInput.trim();
-    if (liveTrimmed) {
-      const pattern = liveTrimmed.toLowerCase();
-      filtered = filtered.filter((log) =>
-        log.identifier.toLowerCase().includes(pattern),
-      );
-    }
+    // Applied unconditionally: when the applied filter is exact and matches
+    // the live input, this is idempotent. When the user is mid-edit over an
+    // exact value, this narrows the visible set right away instead of waiting
+    // for the debounce + re-stream.
+    const identifierPattern = identifierInput.trim().toLowerCase() || null;
+    const statusActive = unitStatusFilter !== "all";
+    const searchNeedle = search.trim().toLowerCase() || null;
+    if (!identifierPattern && !statusActive && !searchNeedle) return logs;
 
-    if (unitStatusFilter !== "all") {
-      filtered = filtered.filter((log) => {
+    // One pass over the buffer with an early exit per active filter, instead
+    // of three chained .filter() passes on every live flush.
+    return logs.filter((log) => {
+      if (
+        identifierPattern &&
+        !log.identifier.toLowerCase().includes(identifierPattern)
+      ) {
+        return false;
+      }
+
+      if (statusActive) {
         // _SYSTEMD_UNIT is the trusted source-process unit; UNIT is set by
         // systemd[1] when it logs *about* a unit (e.g. "Started foo.service").
         // Check both so manager-emitted entries about a failed/running unit
@@ -1024,28 +1028,26 @@ const GeneralLogsPage = () => {
           typeof raw?._SYSTEMD_UNIT === "string" ? raw._SYSTEMD_UNIT : "";
         const aboutUnit = typeof raw?.UNIT === "string" ? raw.UNIT : "";
         if (unitStatusFilter === "no_unit") {
-          return systemdUnit === "" && aboutUnit === "";
+          if (systemdUnit !== "" || aboutUnit !== "") return false;
+        } else if (
+          matchingUnitNames !== null &&
+          !matchingUnitNames.has(systemdUnit) &&
+          !matchingUnitNames.has(aboutUnit)
+        ) {
+          return false;
         }
-        if (matchingUnitNames === null) {
-          return true;
-        }
-        return (
-          matchingUnitNames.has(systemdUnit) || matchingUnitNames.has(aboutUnit)
-        );
-      });
-    }
+      }
 
-    const trimmed = search.trim();
-    if (trimmed) {
-      const needle = trimmed.toLowerCase();
-      filtered = filtered.filter(
-        (log) =>
-          log.message.toLowerCase().includes(needle) ||
-          log.identifier.toLowerCase().includes(needle),
-      );
-    }
+      if (
+        searchNeedle &&
+        !log.message.toLowerCase().includes(searchNeedle) &&
+        !log.identifier.toLowerCase().includes(searchNeedle)
+      ) {
+        return false;
+      }
 
-    return filtered;
+      return true;
+    });
   }, [logs, search, identifierInput, unitStatusFilter, matchingUnitNames]);
 
   // Cap what we actually feed the table. Copy/Download still use the full
