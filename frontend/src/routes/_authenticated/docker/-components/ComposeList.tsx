@@ -1,14 +1,6 @@
 import { Icon } from "@iconify/react";
 import { getRouteApi } from "@tanstack/react-router";
-import {
-  lazy,
-  memo,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import {
   linuxio,
@@ -27,7 +19,6 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -35,6 +26,7 @@ import {
   getComposeStatusColor,
   getContainerStatusColor,
 } from "@/constants/statusColors";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery } from "@/theme";
@@ -270,33 +262,12 @@ const ComposeList = ({
     surface,
   });
   const orderedProjects = surface.items;
-  const focusedProject = useMemo(
-    () =>
-      orderedProjects.find((project) => project.name === focusedProjectName) ??
-      null,
-    [focusedProjectName, orderedProjects],
-  );
-
-  useEffect(() => {
-    if (focusedProjectName && !focusedProject) updateFocusedProject(null);
-  }, [focusedProject, focusedProjectName, updateFocusedProject]);
-
-  useEffect(() => {
-    if (!focusedProject) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      updateFocusedProject(null);
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focusedProject, updateFocusedProject]);
+  const focusedProject = useFocusedResourceParam({
+    focusedId: focusedProjectName,
+    getId: getComposeProjectId,
+    items: orderedProjects,
+    onClear: () => updateFocusedProject(null),
+  });
   const filtered = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     if (!normalizedSearch) return orderedProjects;

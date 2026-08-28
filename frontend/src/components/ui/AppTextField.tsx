@@ -1,4 +1,5 @@
 import {
+  useId,
   useRef,
   useState,
   type ChangeEvent,
@@ -90,6 +91,8 @@ const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
   } = props;
 
   const [focused, setFocused] = useState(false);
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const hasValue = value !== undefined && value !== "";
@@ -149,7 +152,7 @@ const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
     autoComplete,
     disabled,
     name,
-    id,
+    id: inputId,
     onFocus: handleFocus,
     onBlur: handleBlur,
     onKeyDown,
@@ -167,7 +170,7 @@ const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
         <label
           className={`app-text-field__label ${labelShrunk ? "app-text-field__label--shrunk" : ""}`}
           data-shrink={labelShrunk ? "true" : "false"}
-          htmlFor={id}
+          htmlFor={inputId}
         >
           {labelText}
         </label>

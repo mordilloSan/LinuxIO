@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { type DockerImage, linuxio, useCallMutation } from "@/api";
 import DockerImageCard from "@/components/cards/DockerImageCard";
@@ -12,9 +12,9 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -223,31 +223,12 @@ const ImageList = ({
   const handleDeleteSuccess = () => {
     clearFocusedImage();
   };
-  const focusedImage = useMemo(
-    () => orderedRows.find((image) => image.id === focusedImageId) ?? null,
-    [focusedImageId, orderedRows],
-  );
-
-  useEffect(() => {
-    if (focusedImageId && !focusedImage) clearFocusedImage();
-  }, [clearFocusedImage, focusedImage, focusedImageId]);
-
-  useEffect(() => {
-    if (!focusedImage) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      clearFocusedImage();
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [clearFocusedImage, focusedImage]);
+  const focusedImage = useFocusedResourceParam({
+    focusedId: focusedImageId,
+    getId: getImageRowId,
+    items: orderedRows,
+    onClear: clearFocusedImage,
+  });
   const handleImageRowClick = useCallback(
     ({ original: image }: { original: { id: string } }) =>
       handleOpenImage(image.id),

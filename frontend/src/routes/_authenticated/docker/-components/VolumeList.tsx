@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { type DockerVolume, linuxio, useCallMutation } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
@@ -12,9 +12,9 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -208,11 +208,6 @@ const VolumeList = ({
 
   // Ensure volumes is an array (handle null/undefined from API)
   const volumesList = rawVolumes;
-  const focusedVolume = useMemo(
-    () =>
-      volumesList.find((volume) => volume.Name === focusedVolumeName) ?? null,
-    [focusedVolumeName, volumesList],
-  );
   const updateFocusedVolume = useCallback(
     (name: string | null) => {
       void navigate({
@@ -222,25 +217,12 @@ const VolumeList = ({
     },
     [navigate],
   );
-  useEffect(() => {
-    if (focusedVolumeName && !focusedVolume) updateFocusedVolume(null);
-  }, [focusedVolume, focusedVolumeName, updateFocusedVolume]);
-  useEffect(() => {
-    if (!focusedVolume) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      updateFocusedVolume(null);
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focusedVolume, updateFocusedVolume]);
+  const focusedVolume = useFocusedResourceParam({
+    focusedId: focusedVolumeName,
+    getId: getVolumeId,
+    items: volumesList,
+    onClear: () => updateFocusedVolume(null),
+  });
 
   // Create volume handler
   const handleCreateVolume = useCallback(() => {

@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, type DockerNetwork, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
@@ -18,7 +18,6 @@ import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
-  OVERLAY_ROOT_SELECTOR,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
@@ -26,6 +25,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -534,32 +534,12 @@ const NetworkList = ({
   const filtered = surface.items.filter((net) =>
     net.Name.toLowerCase().includes(search.toLowerCase()),
   );
-  const focusedNetwork = useMemo(
-    () =>
-      surface.items.find((network) => network.Id === focusedNetworkId) ?? null,
-    [focusedNetworkId, surface.items],
-  );
-
-  useEffect(() => {
-    if (focusedNetworkId && !focusedNetwork) updateFocusedNetwork(null);
-  }, [focusedNetwork, focusedNetworkId, updateFocusedNetwork]);
-
-  useEffect(() => {
-    if (!focusedNetwork) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      updateFocusedNetwork(null);
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [focusedNetwork, updateFocusedNetwork]);
+  const focusedNetwork = useFocusedResourceParam({
+    focusedId: focusedNetworkId,
+    getId: getNetworkId,
+    items: surface.items,
+    onClear: () => updateFocusedNetwork(null),
+  });
 
   // Create network handler
   const handleCreateNetwork = useCallback(() => {

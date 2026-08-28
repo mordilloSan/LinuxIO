@@ -8,16 +8,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import {
-  memo,
-  Suspense,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, Suspense, useCallback, useMemo, useRef, useState } from "react";
 
 import { linuxio, openChannel, type ContainerInfo } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
@@ -27,6 +18,7 @@ import { RoutedTabSearch } from "@/components/tabbar";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import {
   useReorderableSurface,
   type ReorderableSurface,
@@ -385,34 +377,12 @@ const ContainerList = ({
         : CARD_GRID_SIZE_DENSE,
     [collapsedStacks],
   );
-  const selectedContainer = useMemo(
-    () =>
-      orderedContainers.find(
-        (container) => container.Id === selectedContainerId,
-      ) ?? null,
-    [orderedContainers, selectedContainerId],
-  );
-
-  const clearSelectedContainer = useEffectEvent(() => {
-    updateSelectedContainer(null);
+  const selectedContainer = useFocusedResourceParam({
+    focusedId: selectedContainerId,
+    getId: getContainerId,
+    items: orderedContainers,
+    onClear: () => updateSelectedContainer(null),
   });
-
-  useEffect(() => {
-    if (selectedContainerId && !selectedContainer) {
-      clearSelectedContainer();
-    }
-  }, [selectedContainer, selectedContainerId]);
-
-  useEffect(() => {
-    if (!selectedContainer) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" || event.key === "Esc") {
-        updateSelectedContainer(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedContainer, updateSelectedContainer]);
 
   const handleSelectContainer = (containerId: string) => {
     updateSelectedContainer(
