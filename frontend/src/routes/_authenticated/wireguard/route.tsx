@@ -5,6 +5,7 @@ import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { WireguardIcon } from "@/icons/svg";
 import { requireAccess } from "@/routes/-auth";
 import { loadRouteQueries } from "@/routes/-loader";
+import { optionalString } from "@/routes/-search";
 
 import WireguardPage from "./-components/WireguardPage";
 
@@ -14,6 +15,7 @@ const access = {
 } satisfies AccessPolicy;
 
 export const Route = createFileRoute("/_authenticated/wireguard")({
+  validateSearch: (search) => optionalString(search, "iface"),
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [linuxio.wireguard.list_interfaces]),

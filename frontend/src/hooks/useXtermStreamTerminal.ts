@@ -181,10 +181,12 @@ export function useXtermStreamTerminal({
       return handleKeyDown(event, terminal);
     });
 
-    const handleResize = () => {
+    // Refit whenever the container itself changes size (dialog transitions,
+    // sidebar toggles, font loads), not only on window resize.
+    const resizeObserver = new ResizeObserver(() => {
       fitAndResize();
-    };
-    window.addEventListener("resize", handleResize);
+    });
+    resizeObserver.observe(containerRef.current);
 
     const focusTerminal = () => {
       if (!disposed) {
@@ -233,7 +235,7 @@ export function useXtermStreamTerminal({
 
       inputDisposable.dispose();
       readyCleanup?.();
-      window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
       terminal.dispose();
 
       if (terminalRef.current === terminal) {

@@ -63,10 +63,7 @@ function NetworkLayout() {
 }
 
 export const Route = createFileRoute("/_authenticated/network")({
-  validateSearch: (search) => ({
-    ...optionalString(search, "iface"),
-    ...optionalString(search, "tab"),
-  }),
+  validateSearch: (search) => optionalString(search, "iface"),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [linuxio.network.get_network_info]),
   component: NetworkLayout,

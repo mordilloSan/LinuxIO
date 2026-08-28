@@ -1,5 +1,12 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 
 import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
@@ -29,11 +36,25 @@ interface WireGuardDashboardProps {
 }
 
 const getWireguardInterfaceId = (iface: WireGuardInterface) => iface.name;
+const wireguardRouteApi = getRouteApi("/_authenticated/wireguard");
 
 const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);
-  const [selectedInterface, setSelectedInterface] = useState<string | null>(
-    null,
+  // Selection lives in ?iface= so it deep-links and survives reloads, like
+  // the network page.
+  const selectedInterface = wireguardRouteApi.useSearch({
+    select: (search) =>
+      typeof search.iface === "string" ? search.iface : null,
+  });
+  const navigate = wireguardRouteApi.useNavigate();
+  const setSelectedInterface = useCallback(
+    (name: string | null) => {
+      void navigate({
+        to: ".",
+        search: (previous) => ({ ...previous, iface: name ?? undefined }),
+      });
+    },
+    [navigate],
   );
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, WireguardInterfaceAction>
