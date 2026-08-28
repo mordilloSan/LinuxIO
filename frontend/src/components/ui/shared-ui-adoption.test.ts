@@ -7,85 +7,94 @@ const srcRoot = path.resolve(process.cwd(), "src");
 
 interface ReviewedException {
   file: string;
-  pattern: RegExp;
+  tag?: "button" | "input";
+  /** Attribute text that must appear somewhere in the element's opening tag. */
+  attribute: string;
   reason: string;
   protects: string;
 }
 
-// These are exact, stable patterns for native controls that are themselves
-// the specialized interaction (file/color inputs, rename fields, table sort,
-// and tabs). A new exception must name its file, pattern, rationale, and
-// protected behavior rather than increasing an opaque per-file count.
+// Native controls that are themselves the specialized interaction (file/color
+// inputs, rename fields, table sort, tabs). An exception is keyed on the file,
+// the tag, and one distinguishing attribute, so reordering or adding props does
+// not break it. A new exception must name its rationale and protected behavior
+// rather than increasing an opaque per-file count.
 const nativeControlExceptions: ReviewedException[] = [
   {
     file: "components/cards/FileCard.tsx",
-    pattern:
-      /<input\s+className="file-card-rename-input"\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
+    tag: "input",
+    attribute: 'className="file-card-rename-input"',
     reason: "inline file rename input",
     protects: "rename editing, commit, cancel, and propagation isolation",
   },
   {
     file: "components/filebrowser/Breadcrumbs.tsx",
-    pattern: /<input\s+className="linuxio-range-input"/,
+    tag: "input",
+    attribute: 'className="linuxio-range-input"',
     reason: "native gallery-size range control",
     protects: "continuous gallery-size adjustment",
   },
   {
     file: "components/filebrowser/FileBrowserPanels.tsx",
-    pattern: /<input\s+multiple[\s\S]{0,180}?type="file"/g,
+    tag: "input",
+    attribute: 'type="file"',
     reason: "hidden native file and directory inputs",
     protects: "browser file and directory picker behavior",
   },
   {
     file: "components/filebrowser/FileListRow.tsx",
-    pattern:
-      /<input\s+className="file-row-rename-input"\s+disabled=\{isRenamePending\}\s+onBlur=\{isRenamePending \? undefined : handleRenameBlur\}/,
+    tag: "input",
+    attribute: 'className="file-row-rename-input"',
     reason: "inline file rename input",
     protects: "rename editing, commit, cancel, and propagation isolation",
   },
   {
     file: "components/tabbar/TabSelector.tsx",
-    pattern: /<button\s+aria-selected=\{value === opt\.value\}/,
+    tag: "button",
+    attribute: "aria-selected=",
     reason: "native backing for a tablist",
     protects: "tab semantics and selected state",
   },
   {
     file: "components/tables/tableShared.tsx",
-    pattern: /<button\s+className="app-dt__sort-button"/,
+    tag: "button",
+    attribute: 'className="app-dt__sort-button"',
     reason: "table-library sort control",
     protects: "column sorting and table header semantics",
   },
   {
     file: "routes/_authenticated/docker/-components/ContainerTable.tsx",
-    pattern:
-      /<button\s+aria-expanded=\{expanded\}\s+className="container-table__stack-toggle"/,
+    tag: "button",
+    attribute: 'className="container-table__stack-toggle"',
     reason: 'the ports/volumes "+N more" count line is itself the row expander',
     protects:
       "caption-sized inline text and chevron that must sit in the stack's line box, which no shared button offers",
   },
   {
     file: "routes/_authenticated/-components/navbar/ThemeColorsSection.tsx",
-    pattern: /<input\s+aria-label=\{`Hex color for \$\{label\}`\}/,
+    tag: "input",
+    attribute: "Hex color for",
     reason: "compact hexadecimal color editor",
     protects: "direct keyboard color editing and validation",
   },
   {
     file: "routes/_authenticated/-components/navbar/ThemeColorsSection.tsx",
-    pattern: /<input\s+aria-hidden="true"[\s\S]{0,500}?type="color"/,
+    tag: "input",
+    attribute: 'type="color"',
     reason: "hidden native color picker input",
     protects: "native color-picker integration",
   },
   {
     file: "routes/_authenticated/settings/-components/DockAccentGradientEditor.tsx",
-    pattern:
-      /<input\s+aria-label="(?:Start|End) color for the full dock gradient"[\s\S]{0,300}?type="color"/,
+    tag: "input",
+    attribute: 'type="color"',
     reason: "visible dock gradient endpoint picker",
     protects: "native color selection with a direct visual swatch",
   },
   {
     file: "routes/_authenticated/settings/-components/DockAccentGradientEditor.tsx",
-    pattern:
-      /<button\s+aria-label=\{`Palette stop \$\{tile\.percent\}%`\}\s+aria-pressed=\{tile\.included\}/,
+    tag: "button",
+    attribute: "aria-pressed=",
     reason: "dock palette range tile",
     protects:
       "each gradient stop is a pressable swatch whose entire face is the color being chosen, which no shared button offers",
@@ -95,38 +104,31 @@ const nativeControlExceptions: ReviewedException[] = [
 const buttonRoleExceptions: ReviewedException[] = [
   {
     file: "routes/_authenticated/-components/navbar/NavbarNotificationsDropdown.tsx",
-    pattern: /role=\{isIndexer \? "button" : undefined\}/g,
+    attribute: 'role={isIndexer ? "button" : undefined}',
     reason: "specialized notification list item",
     protects: "existing tab, Enter/Space, focus, and indexer-detail behavior",
   },
 ];
 
-const knownClickableNonInteractive: ReviewedException[] = [
+// Negative guards: audited spots that used to be clickable non-interactive
+// elements and must stay migrated to shared controls.
+const knownClickableNonInteractive: { file: string; pattern: RegExp }[] = [
   {
     file: "routes/_authenticated/-dashboard/SystemOverview.tsx",
     pattern: /<div\b[^>]*\bonClick=\{onEdit\}/,
-    reason: "audited editable overview row",
-    protects: "row edit action must remain a named shared button",
   },
   {
     file: "components/docker/DockerComposeProgress.tsx",
     pattern: /<div\b[^>]*\bonClick=\{hasLayers \? onToggle : undefined\}/,
-    reason: "audited compose group disclosure",
-    protects: "group expansion must remain a shared disclosure button",
   },
   {
     file: "components/cards/DashboardCard.tsx",
     pattern: /<div\b[^>]*\bonClick=\{[\s\S]{0,200}?setIconTextMenuAnchor/,
-    reason: "audited dashboard option trigger",
-    protects: "option menu must remain a named shared menu trigger",
   },
   {
     file: "routes/_authenticated/-components/navbar/NavbarNotificationsDropdown.tsx",
     pattern:
       /<div\b[^>]*className="app-navbar-notifications__peek"[^>]*onClick=\{handlePeekClick\}/,
-    reason: "audited notification peek",
-    protects:
-      "peek remains a named shared button with native keyboard behavior",
   },
 ];
 
@@ -149,17 +151,33 @@ function relative(filePath: string) {
   return path.relative(srcRoot, filePath).replaceAll(path.sep, "/");
 }
 
-function isExactException(
+// The opening tag that contains `index`: from the `<` at or before it to the
+// first `>` outside of JSX expression braces.
+function openingTagAt(source: string, index: number) {
+  const start = source.lastIndexOf("<", index);
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+    else if (ch === ">" && depth === 0) return source.slice(start, i + 1);
+  }
+  return source.slice(start);
+}
+
+function isReviewedException(
   file: string,
   source: string,
   index: number,
   exceptions: ReviewedException[],
 ) {
-  return exceptions.some((exception) => {
-    if (exception.file !== file) return false;
-    exception.pattern.lastIndex = 0;
-    return exception.pattern.exec(source.slice(index))?.index === 0;
-  });
+  const tag = openingTagAt(source, index);
+  return exceptions.some(
+    (exception) =>
+      exception.file === file &&
+      (!exception.tag || tag.startsWith(`<${exception.tag}`)) &&
+      tag.includes(exception.attribute),
+  );
 }
 
 function collectUnreviewed(
@@ -173,7 +191,7 @@ function collectUnreviewed(
     const source = fs.readFileSync(filePath, "utf8");
     pattern.lastIndex = 0;
     return [...source.matchAll(pattern)].flatMap((match) => {
-      if (isExactException(file, source, match.index ?? 0, exceptions)) {
+      if (isReviewedException(file, source, match.index ?? 0, exceptions)) {
         return [];
       }
       const line = source.slice(0, match.index ?? 0).split("\n").length;
@@ -188,7 +206,7 @@ describe("shared UI adoption", () => {
       collectUnreviewed(
         /<(?:button|input|select|textarea)\b/g,
         nativeControlExceptions,
-        "uses an unreviewed native control; use a shared control or add a documented exact exception",
+        "uses an unreviewed native control; use a shared control or add a documented exception",
       ),
     ).toEqual([]);
   });
