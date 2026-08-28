@@ -8,8 +8,9 @@
   border-radius: 24px;
   background-color: var(--app-header-search-bg);
   transition:
-    background-color 0.2s,
-    box-shadow 0.2s;
+    background-color var(--app-transition-duration-fast)
+      var(--app-easing-standard),
+    box-shadow var(--app-transition-duration-fast) var(--app-easing-standard);
 }
 
 .app-header-search .app-text-field__outline {

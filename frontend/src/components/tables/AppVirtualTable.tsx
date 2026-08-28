@@ -48,6 +48,7 @@ import {
   useTableGestureKeys,
 } from "@/components/tables/tableShared";
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
+import { useAppMediaQuery } from "@/theme";
 import {
   TABLE_ROW_MIN_HEIGHT,
   TRANSITION_DURATION_STANDARD_MS,
@@ -710,6 +711,9 @@ function AppVirtualTable<TData extends RowData>({
 }: AppVirtualTableProps<TData>) {
   "use no memo";
 
+  const prefersReducedMotion = useAppMediaQuery(
+    "(prefers-reduced-motion: reduce)",
+  );
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = scrollElementRef ?? internalScrollRef;
   const expandedRowIdsRef = useRef<Set<string>>(new Set());
@@ -953,10 +957,11 @@ function AppVirtualTable<TData extends RowData>({
         detailAnimationFrameRefs.current.delete(rowId);
       }
 
-      const startSize =
-        detailSizesRef.current.get(rowId) ??
-        (expandedRowIdsRef.current.has(rowId) ? 0 : targetSize);
       const normalizedTargetSize = Math.max(0, Math.round(targetSize));
+      const startSize = prefersReducedMotion
+        ? normalizedTargetSize
+        : (detailSizesRef.current.get(rowId) ??
+          (expandedRowIdsRef.current.has(rowId) ? 0 : targetSize));
 
       if (startSize === normalizedTargetSize) {
         setDetailSize(rowId, normalizedTargetSize);
@@ -1008,7 +1013,7 @@ function AppVirtualTable<TData extends RowData>({
       const frame = window.requestAnimationFrame(step);
       detailAnimationFrameRefs.current.set(rowId, frame);
     },
-    [setDetailSize],
+    [prefersReducedMotion, setDetailSize],
   );
 
   const measureDetailContent = useCallback(

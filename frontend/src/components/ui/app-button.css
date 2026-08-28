@@ -27,13 +27,13 @@
 
   /* transitions */
   transition:
-    background-color var(--app-transition-duration-standard)
+    background-color var(--app-transition-duration-fast)
       var(--app-easing-standard),
-    box-shadow var(--app-transition-duration-standard)
+    box-shadow var(--app-transition-duration-fast)
       var(--app-easing-standard),
-    border-color var(--app-transition-duration-standard)
+    border-color var(--app-transition-duration-fast)
       var(--app-easing-standard),
-    color var(--app-transition-duration-standard) var(--app-easing-standard);
+    color var(--app-transition-duration-fast) var(--app-easing-standard);
 
   /* defaults — text variant */
   background-color: transparent;

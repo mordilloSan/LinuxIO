@@ -1,9 +1,10 @@
-import type { HTMLAttributes } from "react";
+import { AnimatePresence, motion, type Variants } from "motion/react";
 import {
   useEffect,
   useEffectEvent,
   useRef,
   type CSSProperties,
+  type HTMLAttributes,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -11,12 +12,56 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import {
+  EASING_DECELERATE,
+  TRANSITION_DURATION_FAST_MS,
+  TRANSITION_DURATION_STANDARD_MS,
+} from "@/theme/constants";
+
 import { acquireBodyScrollLock } from "./bodyScrollLock";
 import { useDialogFocusRestore } from "./useDialogFocusRestore";
 
 import "./app-dialog.css";
 
 let _openDialogCount = 0;
+
+const backdropVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      duration: TRANSITION_DURATION_STANDARD_MS / 1000,
+      ease: EASING_DECELERATE,
+    },
+  },
+  exit: {
+    opacity: 0,
+    transition: {
+      duration: TRANSITION_DURATION_FAST_MS / 1000,
+      ease: EASING_DECELERATE,
+    },
+  },
+} satisfies Variants;
+
+const dialogVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: TRANSITION_DURATION_STANDARD_MS / 1000,
+      ease: EASING_DECELERATE,
+    },
+  },
+  exit: {
+    opacity: 0,
+    y: -12,
+    transition: {
+      duration: TRANSITION_DURATION_FAST_MS / 1000,
+      ease: EASING_DECELERATE,
+    },
+  },
+} satisfies Variants;
 
 // Overlay portals that participate in the Escape stack: only the last one in
 // DOM order may close on Escape. Shared with AppFullscreenDialog and with
@@ -77,7 +122,6 @@ export const AppDialog = ({
 }: AppDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const prevOpen = useRef(open);
 
   useDialogFocusRestore(open);
 
@@ -95,24 +139,6 @@ export const AppDialog = ({
       _openDialogCount -= 1;
       if (_openDialogCount === 0) document.body.classList.remove("dialog-open");
     };
-  }, [open]);
-
-  // fire transition callbacks
-  const fireTransition = useEffectEvent((didOpen: boolean) => {
-    if (didOpen) {
-      slotProps?.transition?.onEntered?.();
-    } else {
-      slotProps?.transition?.onExited?.();
-    }
-  });
-
-  useEffect(() => {
-    if (open && !prevOpen.current) {
-      fireTransition(true);
-    } else if (!open && prevOpen.current) {
-      fireTransition(false);
-    }
-    prevOpen.current = open;
   }, [open]);
 
   // ESC key
@@ -169,8 +195,6 @@ export const AppDialog = ({
     }
   }, [open]);
 
-  if (!open) return null;
-
   const sizeClass = maxWidth ? `app-dialog--${maxWidth}` : "";
   const widthClass = fullWidth ? "app-dialog--fullwidth" : "";
 
@@ -193,36 +217,54 @@ export const AppDialog = ({
   };
 
   return createPortal(
-    <div
-      className="app-dialog-root"
-      // React synthetic events bubble through the React tree, so a dialog
-      // rendered inside e.g. a clickable card would still trigger that card's
-      // onClick / onMouseDown. Stop those at the portal root.
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      ref={rootRef}
-      role="presentation"
+    <AnimatePresence
+      initial={false}
+      onExitComplete={slotProps?.transition?.onExited}
     >
-      <div
-        aria-hidden
-        className="app-dialog__backdrop"
-        onClick={(e) => onClose?.(e, "backdropClick")}
-        style={mergedBackdropStyle}
-      />
-      <div
-        aria-busy={ariaBusy || undefined}
-        aria-modal="true"
-        className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
-        ref={dialogRef}
-        role="dialog"
-        style={style}
-        tabIndex={-1}
-      >
-        <div className={mergedPaperClass} style={mergedPaperStyle}>
-          {children}
-        </div>
-      </div>
-    </div>,
+      {open && (
+        <motion.div
+          animate="visible"
+          className="app-dialog-root"
+          exit="exit"
+          initial="hidden"
+          key="dialog"
+          // React synthetic events bubble through the React tree, so a dialog
+          // rendered inside e.g. a clickable card would still trigger that card's
+          // onClick / onMouseDown. Stop those at the portal root.
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          ref={rootRef}
+          role="presentation"
+        >
+          <motion.div
+            aria-hidden
+            className="app-dialog__backdrop"
+            onClick={(event) => onClose?.(event, "backdropClick")}
+            style={mergedBackdropStyle}
+            variants={backdropVariants}
+          />
+          <motion.div
+            aria-busy={ariaBusy || undefined}
+            aria-modal="true"
+            className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
+            onAnimationComplete={(definition) => {
+              if (definition === "visible") {
+                slotProps?.transition?.onEntered?.();
+              }
+            }}
+            ref={dialogRef}
+            role="dialog"
+            style={style}
+            tabIndex={-1}
+            variants={dialogVariants}
+          >
+            <div className={mergedPaperClass} style={mergedPaperStyle}>
+              {children}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
     document.body,
   );
 };

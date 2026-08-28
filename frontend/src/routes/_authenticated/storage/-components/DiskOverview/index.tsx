@@ -23,7 +23,12 @@ import { TASK_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundTaskTypes";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
+import {
+  EASING_DECELERATE,
+  TRANSITION_DURATION_FAST_MS,
+  TRANSITION_DURATION_STANDARD_MS,
+  DASHBOARD_CARD_SPACING,
+} from "@/theme/constants";
 
 import {
   DriveInfoTab,
@@ -523,7 +528,7 @@ const DiskOverview = () => {
               marginBottom: 16,
             }}
           >
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {drives.length === 0 ? (
                 <AppGrid
                   size={{
@@ -538,10 +543,17 @@ const DiskOverview = () => {
                 drives.map((drive) =>
                   expanded && expanded !== drive.name ? null : (
                     <AppGrid
-                      animate={{ opacity: 1, scale: 1 }}
+                      animate={{ opacity: 1, y: 0 }}
                       component={motion.div}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      initial={{ opacity: 0, scale: 0.95 }}
+                      exit={{
+                        opacity: 0,
+                        y: -12,
+                        transition: {
+                          duration: TRANSITION_DURATION_FAST_MS / 1000,
+                          ease: EASING_DECELERATE,
+                        },
+                      }}
+                      initial={{ opacity: 0, y: 12 }}
                       key={drive.name}
                       layout
                       size={{
@@ -550,7 +562,10 @@ const DiskOverview = () => {
                         md: expanded === drive.name ? 6 : 4,
                         lg: expanded === drive.name ? 4 : 3,
                       }}
-                      transition={{ duration: 0.2 }}
+                      transition={{
+                        duration: TRANSITION_DURATION_STANDARD_MS / 1000,
+                        ease: EASING_DECELERATE,
+                      }}
                     >
                       <DriveCard
                         expanded={expanded === drive.name}
@@ -592,7 +607,7 @@ const DiskOverview = () => {
             Filesystems
           </AppTypography>
           <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {relevantFS.length === 0 ? (
                 <AppGrid
                   size={{
@@ -608,10 +623,17 @@ const DiskOverview = () => {
                   selectedMountpoint &&
                   selectedMountpoint !== fs.mountpoint ? null : (
                     <AppGrid
-                      animate={{ opacity: 1, scale: 1 }}
+                      animate={{ opacity: 1, y: 0 }}
                       component={motion.div}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      initial={{ opacity: 0, scale: 0.95 }}
+                      exit={{
+                        opacity: 0,
+                        y: -12,
+                        transition: {
+                          duration: TRANSITION_DURATION_FAST_MS / 1000,
+                          ease: EASING_DECELERATE,
+                        },
+                      }}
+                      initial={{ opacity: 0, y: 12 }}
                       key={fs.mountpoint}
                       layout
                       size={{
@@ -620,7 +642,10 @@ const DiskOverview = () => {
                         md: selectedMountpoint === fs.mountpoint ? 8 : 4,
                         lg: selectedMountpoint === fs.mountpoint ? 6 : 4,
                       }}
-                      transition={{ duration: 0.2 }}
+                      transition={{
+                        duration: TRANSITION_DURATION_STANDARD_MS / 1000,
+                        ease: EASING_DECELERATE,
+                      }}
                     >
                       <FilesystemCard
                         backingDrive={(() => {

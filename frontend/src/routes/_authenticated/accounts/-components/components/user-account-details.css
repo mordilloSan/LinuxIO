@@ -180,3 +180,15 @@
     box-shadow: inset 3px 0 0 var(--app-palette-warning-main);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .account-activity-row--flash {
+    animation: none;
+    background-color: color-mix(
+      in srgb,
+      var(--app-palette-warning-main) 20%,
+      transparent
+    );
+    box-shadow: inset 3px 0 0 var(--app-palette-warning-main);
+  }
+}

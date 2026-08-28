@@ -18,12 +18,7 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import {
-  CARD_PADDING_LG,
-  CARD_PADDING_MD,
-  GAP_SM,
-  TRANSITION_SLOW_CSS,
-} from "@/theme/constants";
+import { CARD_PADDING_LG, CARD_PADDING_MD, GAP_SM } from "@/theme/constants";
 
 function formatLastLogin(
   lastLogin: string,
@@ -261,10 +256,10 @@ const UserCard = ({
         height: "100%",
         position: "relative",
         width: isSelected ? "100%" : undefined,
-        // This card, UnitCard, and WireguardInterfaceCard all settle their
-        // border at TRANSITION_SLOW_CSS so the three expand-in-place cards
-        // read as one speed.
-        transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
+        // This card, UnitCard, and WireguardInterfaceCard settle their accent
+        // line at the same speed so the expand-in-place cards read as one set.
+        transition:
+          "transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border-color var(--app-transition-duration-fast) var(--app-easing-standard)",
         // The line itself comes from `accent` above. Opening a user isolates the
         // card outside the grid, where it can no longer be held to reorder — so
         // the line stands down with the lift.

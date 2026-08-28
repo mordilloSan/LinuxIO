@@ -40,6 +40,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppMediaQuery } from "@/theme";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 import { GAP_MD } from "@/theme/constants";
 
@@ -457,6 +458,9 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 };
 
 export const UserActivityCard = ({ username }: { username: string }) => {
+  const prefersReducedMotion = useAppMediaQuery(
+    "(prefers-reduced-motion: reduce)",
+  );
   const {
     selectedUserDetailsQueryOptions,
     selectedUserLoginsQueryOptions,
@@ -548,7 +552,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
     }
 
     row.scrollIntoView({
-      behavior: "smooth",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
       block: "center",
       inline: "nearest",
     });
@@ -574,6 +578,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
     dismissFailedLoginAlert,
     failedLoginAlertId,
     focusedLoginKey,
+    prefersReducedMotion,
   ]);
 
   return (

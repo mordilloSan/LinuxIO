@@ -123,7 +123,8 @@ const AppHeaderSearch = ({
             color: isFocused
               ? theme.palette.primary.main
               : theme.palette.text.secondary,
-            transition: "color 0.2s",
+            transition:
+              "color var(--app-transition-duration-fast) var(--app-easing-standard)",
           }}
           width={20}
         />

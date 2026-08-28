@@ -89,7 +89,7 @@ const MainLayout = () => {
             minHeight: 0,
             minWidth: 0,
             transition:
-              "margin-left var(--app-transition-duration-medium) var(--app-easing-standard), width var(--app-transition-duration-medium) var(--app-easing-standard)",
+              "margin-left var(--app-transition-duration-fast) var(--app-easing-standard), width var(--app-transition-duration-fast) var(--app-easing-standard)",
             marginLeft:
               !dockMode && isDesktop ? `${sidebarWidth}px` : undefined,
             width:

@@ -320,7 +320,8 @@ a {
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
-  transition: background-color 0.3s;
+  transition: background-color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
 }
 
 .custom-scrollbar::-webkit-scrollbar-track,
@@ -352,9 +353,43 @@ a {
 
 .xterm .scrollbar.fade {
   opacity: 0 !important;
-  transition: opacity 0.3s !important;
+  transition: opacity var(--app-transition-duration-fast)
+    var(--app-easing-standard) !important;
 }
 
 .xterm:hover .scrollbar.fade {
   opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* Loading motion communicates ongoing work rather than decoration. */
+  .app-circular-progress,
+  .app-circular-progress__circle {
+    animation-duration: 1.4s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .app-linear-progress--indeterminate .app-linear-progress__bar {
+    animation-duration: 2.1s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .capability-manager__spin {
+    animation-duration: 900ms !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .compose-progress__spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

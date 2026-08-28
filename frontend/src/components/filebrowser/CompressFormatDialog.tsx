@@ -99,7 +99,8 @@ const CompressFormatDialog = ({
                   color: "inherit",
                   font: "inherit",
                   textAlign: "left",
-                  transition: "border-color 150ms ease, background 150ms ease",
+                  transition:
+                    "border-color 150ms ease, background-color 150ms ease",
                   width: "100%",
                 }}
                 type="button"

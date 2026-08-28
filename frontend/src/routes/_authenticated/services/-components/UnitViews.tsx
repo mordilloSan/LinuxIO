@@ -28,7 +28,7 @@ import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import {
   DETAIL_PANEL_GAP,
-  TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_DURATION_STANDARD_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
 
@@ -522,7 +522,7 @@ export function UnitCardsView<T extends UnitListItem>({
   renderBottomPanel,
   emptyMessage,
 }: UnitCardsViewProps<T>) {
-  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
   const isCompactLayout = useAppMediaQuery(down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
   // Fed to ReorderableCardGrid's `virtualized` path, which hands it straight
@@ -576,8 +576,8 @@ export function UnitCardsView<T extends UnitListItem>({
           gap: DETAIL_PANEL_GAP,
         }}
         transition={{
-          duration: slowTransitionDurationSeconds,
-          delay: 0.04,
+          duration: transitionDuration,
+          delay: 0,
           ease: EASING_STANDARD,
         }}
       >
@@ -611,8 +611,8 @@ export function UnitCardsView<T extends UnitListItem>({
             display: "flex",
           }}
           transition={{
-            duration: slowTransitionDurationSeconds,
-            delay: 0.08,
+            duration: transitionDuration,
+            delay: 0.1,
             ease: EASING_STANDARD,
           }}
         >
@@ -624,8 +624,8 @@ export function UnitCardsView<T extends UnitListItem>({
           animate={{ opacity: 1, y: 0 }}
           initial={{ opacity: 0, y: 20 }}
           transition={{
-            duration: slowTransitionDurationSeconds,
-            delay: 0.16,
+            duration: transitionDuration,
+            delay: 0.2,
             ease: EASING_STANDARD,
           }}
         >

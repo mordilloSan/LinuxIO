@@ -40,7 +40,6 @@ import {
   DASHBOARD_CARD_SPACING,
   DETAIL_PANEL_GAP,
   EASING_STANDARD,
-  TRANSITION_DURATION_SLOW_MS,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
@@ -168,7 +167,7 @@ const ContainerList = ({
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
 }: ContainerListProps) => {
-  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
   const isCompactLayout = useAppMediaQuery(down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
@@ -510,7 +509,7 @@ const ContainerList = ({
         <motion.div
           layout="position"
           transition={{
-            duration: slowTransitionDurationSeconds,
+            duration: transitionDuration,
             ease: EASING_STANDARD,
           }}
         >
@@ -533,8 +532,8 @@ const ContainerList = ({
                 gap: DETAIL_PANEL_GAP,
               }}
               transition={{
-                duration: slowTransitionDurationSeconds,
-                delay: 0.04,
+                duration: transitionDuration,
+                delay: 0,
                 ease: EASING_STANDARD,
               }}
             >
@@ -546,8 +545,8 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: slowTransitionDurationSeconds,
-                  delay: 0.04,
+                  duration: transitionDuration,
+                  delay: 0,
                   ease: EASING_STANDARD,
                 }}
               >
@@ -566,8 +565,8 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: slowTransitionDurationSeconds,
-                  delay: 0.08,
+                  duration: transitionDuration,
+                  delay: 0.1,
                   ease: EASING_STANDARD,
                 }}
               >
@@ -591,8 +590,8 @@ const ContainerList = ({
                   display: "flex",
                 }}
                 transition={{
-                  duration: slowTransitionDurationSeconds,
-                  delay: 0.12,
+                  duration: transitionDuration,
+                  delay: 0.2,
                   ease: EASING_STANDARD,
                 }}
               >
@@ -606,8 +605,8 @@ const ContainerList = ({
               animate={{ opacity: 1, y: 0 }}
               initial={{ opacity: 0, y: 18 }}
               transition={{
-                duration: slowTransitionDurationSeconds,
-                delay: 0.16,
+                duration: transitionDuration,
+                delay: 0.3,
                 ease: EASING_STANDARD,
               }}
             >
@@ -620,8 +619,8 @@ const ContainerList = ({
               animate={{ opacity: 1, y: 0 }}
               initial={{ opacity: 0, y: 20 }}
               transition={{
-                duration: slowTransitionDurationSeconds,
-                delay: 0.2,
+                duration: transitionDuration,
+                delay: 0.4,
                 ease: EASING_STANDARD,
               }}
             >
@@ -684,7 +683,7 @@ const ContainerList = ({
           minHeight: 0,
         }}
         transition={{
-          duration: slowTransitionDurationSeconds,
+          duration: transitionDuration,
           ease: EASING_STANDARD,
         }}
       >

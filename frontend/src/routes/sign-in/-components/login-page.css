@@ -9,7 +9,8 @@
   left: 50%;
   padding-inline: 8px;
   padding-block: 4.2px;
-  animation: login-float 4.5s ease-in-out infinite;
+  transform: translateX(-50%);
+  animation: login-float 4.5s ease-in-out;
 }
 
 @media (min-width: 770px) {

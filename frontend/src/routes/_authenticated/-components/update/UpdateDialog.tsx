@@ -12,6 +12,7 @@ import {
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
+import { useAppMediaQuery } from "@/theme";
 interface UpdateDialogProps {
   canClose: boolean;
   onClose?: () => void;
@@ -39,17 +40,20 @@ const UpdateDialog = ({
   const outputId = useId();
   const outputEndRef = useRef<HTMLDivElement>(null);
   const [outputExpanded, setOutputExpanded] = useState(false);
+  const prefersReducedMotion = useAppMediaQuery(
+    "(prefers-reduced-motion: reduce)",
+  );
 
   // Smooth scrolling is intentionally visible, so it does not need to block paint.
   useEffect(() => {
     if (!outputExpanded) return;
 
     outputEndRef.current?.scrollIntoView({
-      behavior: "smooth",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
     });
     // `output` intentionally retriggers scrolling as update lines render.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
-  }, [output, outputExpanded]);
+  }, [output, outputExpanded, prefersReducedMotion]);
   return (
     <GeneralDialog
       disableEscapeKeyDown={!canClose}

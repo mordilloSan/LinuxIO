@@ -1,3 +1,4 @@
+import { MotionConfig } from "motion/react";
 import {
   createContext,
   createElement,
@@ -488,12 +489,34 @@ export function AppThemeProvider({ children, value }: AppThemeProviderProps) {
 
   useInsertionEffect(() => {
     const root = document.documentElement;
+    const transitionBlocker = document.createElement("style");
+    transitionBlocker.textContent =
+      "*,*::before,*::after{transition:none !important}";
+    document.head.append(transitionBlocker);
+
     root.dataset.appTheme = value.name.toLowerCase();
     root.dataset.appColorScheme = value.colorScheme;
-
     applyCssVariables(root, cssVariables);
+
+    void document.body.offsetHeight;
+    let removeFrame = 0;
+    const paintFrame = window.requestAnimationFrame(() => {
+      removeFrame = window.requestAnimationFrame(() => {
+        transitionBlocker.remove();
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(paintFrame);
+      window.cancelAnimationFrame(removeFrame);
+      transitionBlocker.remove();
+    };
   }, [cssVariables, value]);
-  return createElement(APP_THEME_CONTEXT.Provider, { value }, children);
+  return createElement(
+    MotionConfig,
+    { reducedMotion: "user" },
+    createElement(APP_THEME_CONTEXT.Provider, { value }, children),
+  );
 }
 
 export function useAppTheme() {

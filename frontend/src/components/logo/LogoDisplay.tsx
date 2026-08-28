@@ -20,7 +20,7 @@ const LogoDisplay = ({ showText = false }: LogoDisplayProps) => {
           opacity: showText ? 1 : 0,
           marginRight: showText ? 8 : -50,
           transition:
-            "opacity var(--app-transition-duration-standard) ease-in-out, margin-right var(--app-transition-duration-standard) ease-in-out",
+            "opacity var(--app-transition-duration-fast) var(--app-easing-standard), margin-right var(--app-transition-duration-fast) var(--app-easing-standard)",
         }}
       >
         Linux

@@ -10,7 +10,7 @@ import { down } from "@/theme/breakpoints";
 import {
   DETAIL_PANEL_GAP,
   EASING_STANDARD,
-  TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
 interface DockerResourceDetailsLayoutProps {
@@ -31,7 +31,7 @@ const DockerResourceDetailsLayout = ({
   title,
 }: DockerResourceDetailsLayoutProps) => {
   const isCompactLayout = useAppMediaQuery(down("md"));
-  const transitionDuration = TRANSITION_DURATION_SLOW_MS / 1000;
+  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
 
   return (
     <motion.div
@@ -61,7 +61,7 @@ const DockerResourceDetailsLayout = ({
             width: isCompactLayout ? "100%" : undefined,
           }}
           transition={{
-            delay: 0.04,
+            delay: 0,
             duration: transitionDuration,
             ease: EASING_STANDARD,
           }}
@@ -83,7 +83,7 @@ const DockerResourceDetailsLayout = ({
             width: isCompactLayout ? "100%" : undefined,
           }}
           transition={{
-            delay: 0.08,
+            delay: 0.1,
             duration: transitionDuration,
             ease: EASING_STANDARD,
           }}

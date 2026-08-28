@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { TRANSITION_SLOW_CSS } from "@/theme/constants";
 import "./section-header.css";
 
 interface SectionHeaderProps {
@@ -66,7 +65,8 @@ const SectionHeader = ({
         height={24}
         icon="mdi:chevron-up"
         style={{
-          transition: `transform ${TRANSITION_SLOW_CSS}`,
+          transition:
+            "transform var(--app-transition-duration-fast) var(--app-easing-standard)",
           transform: expanded ? "rotate(0deg)" : "rotate(180deg)",
         }}
         width={24}

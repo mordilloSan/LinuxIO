@@ -23,7 +23,7 @@ import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import {
   CARD_PADDING_LG,
   DETAIL_PANEL_GAP,
-  TRANSITION_DURATION_SLOW_MS,
+  TRANSITION_DURATION_STANDARD_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
 import { formatThroughput } from "@/utils/formaters";
@@ -295,7 +295,7 @@ const NetworkInterfaceList = () => {
     [expanded, navigate],
   );
 
-  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
   const selectedIface = interfaces.find((iface) => iface.name === expanded);
   const surface = useReorderableSurface({
     getId: getNetworkInterfaceId,
@@ -327,8 +327,8 @@ const NetworkInterfaceList = () => {
             gridAutoRows: `minmax(${DETAIL_SUMMARY_ROW_MIN_HEIGHT}px, auto)`,
           }}
           transition={{
-            duration: slowTransitionDurationSeconds,
-            delay: 0.04,
+            duration: transitionDuration,
+            delay: 0,
             ease: EASING_STANDARD,
           }}
         >
@@ -353,8 +353,8 @@ const NetworkInterfaceList = () => {
             gridAutoRows: DETAIL_HISTORY_ROW_HEIGHT,
           }}
           transition={{
-            duration: slowTransitionDurationSeconds,
-            delay: 0.12,
+            duration: transitionDuration,
+            delay: 0.1,
             ease: EASING_STANDARD,
           }}
         >

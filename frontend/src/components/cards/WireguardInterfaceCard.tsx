@@ -11,11 +11,7 @@ import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import { getWireguardStatusColor } from "@/constants/statusColors";
-import {
-  CARD_PADDING_SM,
-  GAP_SM,
-  TRANSITION_SLOW_CSS,
-} from "@/theme/constants";
+import { CARD_PADDING_SM, GAP_SM } from "@/theme/constants";
 
 export type WireguardInterfaceAction =
   | "add-peer"
@@ -67,7 +63,6 @@ const InterfaceCard = ({
   return (
     <motion.div
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
       initial={{ opacity: 0, y: -20 }}
       layout
       transition={{ duration: 0.3 }}
@@ -88,7 +83,8 @@ const InterfaceCard = ({
             live because the affordance does.
           */
           ...(isSelected && { borderBottomColor: "var(--fc-accent)" }),
-          transition: `transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border ${TRANSITION_SLOW_CSS}`,
+          transition:
+            "transform var(--hover-lift-duration) var(--hover-lift-ease), box-shadow var(--hover-lift-duration) var(--hover-lift-ease), border-color var(--app-transition-duration-fast) var(--app-easing-standard)",
         }}
       >
         {/* Status chip top-right */}

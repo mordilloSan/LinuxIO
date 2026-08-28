@@ -40,7 +40,7 @@
   gap: 8px;
   overflow: hidden;
   transition:
-    border-color var(--app-transition-duration-medium)
+    border-color var(--app-transition-duration-fast)
       var(--app-easing-standard),
     border-width var(--app-transition-duration-fast) var(--app-easing-standard),
     padding var(--app-transition-duration-fast) var(--app-easing-standard);
@@ -94,7 +94,7 @@
   color: var(--app-palette-text-secondary);
   display: flex;
   align-items: center;
-  transition: transform var(--app-transition-duration-medium)
+  transition: transform var(--app-transition-duration-fast)
     var(--app-easing-standard);
 }
 

@@ -1,7 +1,8 @@
 .app-action-icon-button {
   color: var(--ab-color, var(--app-palette-text-secondary));
   margin-inline: 0.4px;
-  transition: color 0.2s;
+  transition: color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
 }
 
 .app-action-icon-button:hover:not(:disabled) {

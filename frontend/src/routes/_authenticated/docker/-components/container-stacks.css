@@ -70,7 +70,7 @@
 .container-stack__chevron {
   flex-shrink: 0;
   color: var(--app-palette-text-secondary);
-  transition: transform var(--app-transition-duration-slow)
+  transition: transform var(--app-transition-duration-fast)
     var(--app-easing-standard);
 }
 

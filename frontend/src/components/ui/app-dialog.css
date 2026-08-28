@@ -1,12 +1,13 @@
 /* ── background blur when any dialog is open ── */
 
 #root {
-  transition: filter var(--app-transition-duration-standard)
+  transition: filter var(--app-transition-duration-fast)
     var(--app-easing-decelerate);
 }
 
 body.dialog-open #root {
   filter: blur(4px);
+  transition-duration: var(--app-transition-duration-standard);
 }
 
 /* ── AppDialog ──────────────────────────────── */
@@ -26,17 +27,6 @@ body.dialog-open #root {
   position: fixed;
   inset: 0;
   background-color: var(--app-backdrop-overlay);
-  animation: app-dialog-fadein var(--app-transition-duration-standard)
-    var(--app-easing-decelerate);
-}
-
-@keyframes app-dialog-fadein {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 /* ── dialog ────────────────────────────────── */
@@ -49,8 +39,6 @@ body.dialog-open #root {
   outline: 0;
   display: flex;
   flex-direction: column;
-  animation: app-dialog-fadein var(--app-transition-duration-standard)
-    var(--app-easing-decelerate);
 }
 
 /* ── max-width variants ────────────────────── */

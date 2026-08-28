@@ -92,7 +92,9 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-  transition: max-width 300ms ease, opacity 300ms ease;
+  transition:
+    max-width var(--app-transition-duration-fast) var(--app-easing-standard),
+    opacity var(--app-transition-duration-fast) var(--app-easing-standard);
 }
 
 .app-navbar-notifications__peek-copy {

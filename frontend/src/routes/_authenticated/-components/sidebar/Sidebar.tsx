@@ -50,7 +50,7 @@ const Sidebar = ({ items }: SidebarProps) => {
     ["--sidebar-width" as string]: `${effectiveWidth}px`,
     width: effectiveWidth,
     transition:
-      "transform var(--app-transition-duration-standard) var(--app-easing-standard), width var(--app-transition-duration-standard) var(--app-easing-standard)",
+      "transform var(--app-transition-duration-fast) var(--app-easing-standard), width var(--app-transition-duration-fast) var(--app-easing-standard)",
   } as CSSProperties;
 
   return (

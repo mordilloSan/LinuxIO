@@ -256,7 +256,7 @@ function ThemeColorsSection() {
                 fontFamily: "inherit",
                 lineHeight: "normal",
                 minWidth: 0,
-                transition: "background 120ms ease, color 120ms ease",
+                transition: "background-color 120ms ease, color 120ms ease",
               }}
             >
               {m === "light" ? "Light" : "Dark"}
@@ -453,7 +453,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
           textAlign: "center",
           boxSizing: "border-box",
           transition:
-            "border-color 120ms ease, background 120ms ease, color 120ms ease",
+            "border-color 120ms ease, background-color 120ms ease, color 120ms ease",
         }}
         type="text"
         value={displayValue}

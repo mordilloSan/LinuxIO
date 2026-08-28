@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { useAppMediaQuery } from "@/theme";
 
 export interface IndexerDisplayStats {
   bytesIndexed: number;
@@ -12,8 +14,6 @@ interface UseAnimatedIndexerStatsOptions {
 }
 
 export const INDEXER_COUNTER_ANIMATION_DURATION_MS = 450;
-
-const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
 function normalizeCounter(value: number): number {
   if (!Number.isFinite(value)) {
@@ -67,35 +67,6 @@ function interpolateStats(
   };
 }
 
-function getPrefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(reducedMotionQuery).matches
-  );
-}
-
-function subscribeToReducedMotion(onStoreChange: () => void): () => void {
-  if (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function"
-  ) {
-    return () => {};
-  }
-
-  const mediaQuery = window.matchMedia(reducedMotionQuery);
-  mediaQuery.addEventListener("change", onStoreChange);
-  return () => mediaQuery.removeEventListener("change", onStoreChange);
-}
-
-function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(
-    subscribeToReducedMotion,
-    getPrefersReducedMotion,
-    () => false,
-  );
-}
-
 /**
  * Smoothly catches displayed counters up to the latest confirmed indexer SSE
  * sample. It never predicts work beyond that sample, keeping the underlying
@@ -110,7 +81,9 @@ export function useAnimatedIndexerStats(
   const displayedRef = useRef(displayed);
   const frameRef = useRef<number | null>(null);
   const previousTaskIDRef = useRef(taskId);
-  const prefersReducedMotion = usePrefersReducedMotion();
+  const prefersReducedMotion = useAppMediaQuery(
+    "(prefers-reduced-motion: reduce)",
+  );
 
   useEffect(() => {
     const target = normalizeStats({

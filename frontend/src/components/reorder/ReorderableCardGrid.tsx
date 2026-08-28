@@ -17,7 +17,7 @@ import {
 } from "@/theme/constants";
 
 const LAYOUT_TRANSITION = {
-  duration: TRANSITION_DURATION_STANDARD_MS / 500,
+  duration: TRANSITION_DURATION_STANDARD_MS / 1000,
   ease: EASING_STANDARD,
 };
 

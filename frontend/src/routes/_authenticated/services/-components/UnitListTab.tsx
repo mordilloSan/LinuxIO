@@ -16,8 +16,8 @@ import {
   type ReorderableSurface,
 } from "@/hooks/useReorderableSurface";
 import {
-  TRANSITION_DURATION_SLOW_MS,
   EASING_STANDARD,
+  TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
 import type { UnitListItem } from "./UnitViews";
@@ -66,7 +66,7 @@ function UnitListTab<T extends UnitListItem>({
   onSelectedChange,
   surfaceId,
 }: UnitListTabProps<T>) {
-  const slowTransitionDurationSeconds = TRANSITION_DURATION_SLOW_MS / 1000;
+  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
   const [search, setSearch] = useState("");
   const expanded = selected;
   const setExpanded = useCallback(
@@ -179,7 +179,7 @@ function UnitListTab<T extends UnitListItem>({
           minWidth: 0,
         }}
         transition={{
-          duration: slowTransitionDurationSeconds,
+          duration: transitionDuration,
           ease: EASING_STANDARD,
         }}
       >
