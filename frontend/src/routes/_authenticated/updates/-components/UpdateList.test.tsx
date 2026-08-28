@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Update } from "@/api";
 
+const query = vi.fn().mockResolvedValue(undefined);
+
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
@@ -12,6 +14,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       options.queryKey?.[1] === "updates"
         ? { data: undefined, isError: false, isLoading: false }
         : actual.useQuery(options as Parameters<typeof actual.useQuery>[0]),
+    useQueryClient: () => ({ query }),
   };
 });
 
@@ -39,16 +42,19 @@ vi.mock("@/api", async (importOriginal) => {
 vi.mock("@/components/cards/UpdateCard", () => ({
   default: ({
     isExpanded,
+    onPrefetchChangelog,
     onToggleChangelog,
     update,
   }: {
     isExpanded: boolean;
+    onPrefetchChangelog: () => void;
     onToggleChangelog: () => void;
     update: Update;
   }) => (
     <div>
       <button
         aria-label={`View Changelog ${update.package_id}`}
+        onMouseEnter={onPrefetchChangelog}
         onClick={onToggleChangelog}
         type="button"
       />
@@ -75,6 +81,30 @@ const update = (package_id: string): Update => ({
 });
 
 describe("UpdateList", () => {
+  it("prefetches a changelog when its action is hovered", async () => {
+    const { user } = render(
+      <UpdateList onUpdateClick={vi.fn()} updates={[update("alpha")]} />,
+    );
+
+    await user.hover(
+      screen.getByRole("button", { name: "View Changelog alpha" }),
+    );
+
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        meta: { silent: true },
+        queryKey: [
+          "linuxio",
+          "updates",
+          "get_update_detail",
+          { packageId: "alpha" },
+        ],
+        retry: false,
+        staleTime: 300_000,
+      }),
+    );
+  });
+
   it("keeps changelog expansion with its package when updates reorder", async () => {
     const { rerender, user } = render(
       <UpdateList

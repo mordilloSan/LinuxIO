@@ -14,6 +14,7 @@ export interface UpdateCardProps {
   isExpanded: boolean;
   isLoadingChangelog: boolean;
   isUpdating: boolean;
+  onPrefetchChangelog: () => void;
   onToggleChangelog: () => void;
   onUpdate: () => void;
   update: Update;
@@ -26,6 +27,7 @@ const UpdateCard = ({
   isCurrentPackage,
   changelog,
   isLoadingChangelog,
+  onPrefetchChangelog,
   onToggleChangelog,
   onUpdate,
 }: UpdateCardProps) => {
@@ -97,6 +99,7 @@ const UpdateCard = ({
       >
         <AppButton
           color="inherit"
+          onMouseEnter={onPrefetchChangelog}
           onClick={onToggleChangelog}
           size="small"
           variant="text"
