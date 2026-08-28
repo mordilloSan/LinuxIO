@@ -15,7 +15,6 @@ import {
 } from "@/components/charts/HistoryCard";
 import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import AppGrid from "@/components/ui/AppGrid";
-import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import { useAccessContext, useCapability } from "@/hooks/useCapabilities";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize, formatThroughput } from "@/utils/formaters";
@@ -106,28 +105,11 @@ const ContainerStackLive = ({
  * fades the containers you are not looking at instead of removing them, so the
  * top of the stack keeps reading as the true total.
  */
-export const DockerMonitoringSection = () => {
+export const DockerMonitoringSection = ({ filter }: { filter: string }) => {
   const [rangeId, setRangeId] = useState<HistoryRangeId>("1h");
-  const [filter, setFilter] = useState("");
 
   return (
     <HistoryHoverProvider>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          marginBottom: 8,
-        }}
-      >
-        <div style={{ maxWidth: 260, width: "100%" }}>
-          <AppHeaderSearch
-            aria-label="Filter containers in monitoring charts"
-            onChange={setFilter}
-            placeholder="Filter containers…"
-            value={filter}
-          />
-        </div>
-      </div>
       <AppGrid
         alignItems="stretch"
         container

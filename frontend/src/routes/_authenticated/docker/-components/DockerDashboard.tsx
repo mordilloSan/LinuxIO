@@ -15,6 +15,7 @@ import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
@@ -135,6 +136,7 @@ const DockerDashboard = ({
   const [sections, setDockerDashboardSections] = useConfigValue(
     "dockerDashboardSections",
   );
+  const [monitoringFilter, setMonitoringFilter] = useState("");
   const setSection = useCallback(
     (key: "overview" | "monitoring" | "daemon" | "resources") =>
       setDockerDashboardSections((prev) => {
@@ -523,6 +525,18 @@ const DockerDashboard = ({
 
       {/* ── Container Monitoring ────────────────────────────────────────── */}
       <SectionHeader
+        actions={
+          sections.monitoring ? (
+            <div style={{ width: 260 }}>
+              <AppHeaderSearch
+                aria-label="Filter containers in monitoring charts"
+                onChange={setMonitoringFilter}
+                placeholder="Filter containers…"
+                value={monitoringFilter}
+              />
+            </div>
+          ) : undefined
+        }
         controlsId="docker-monitoring-panel"
         expanded={sections.monitoring}
         onToggle={() => setSection("monitoring")}
@@ -530,7 +544,7 @@ const DockerDashboard = ({
       />
       <div id="docker-monitoring-panel">
         <AppCollapse in={sections.monitoring} unmountOnExit>
-          <DockerMonitoringSection />
+          <DockerMonitoringSection filter={monitoringFilter} />
         </AppCollapse>
       </div>
 

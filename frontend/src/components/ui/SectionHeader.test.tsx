@@ -37,4 +37,24 @@ describe("SectionHeader", () => {
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
+
+  it("renders actions outside the toggle button", () => {
+    const onToggle = vi.fn();
+    render(
+      <SectionHeader
+        actions={<input aria-label="Filter" />}
+        controlsId="section-panel"
+        expanded
+        onToggle={onToggle}
+        title="Services"
+      />,
+    );
+
+    const input = screen.getByLabelText("Filter");
+    expect(
+      screen.getByRole("button", { name: "Services" }),
+    ).not.toContainElement(input);
+    fireEvent.click(input);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
 });
