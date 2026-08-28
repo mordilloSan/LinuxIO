@@ -4,28 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { type DockerVolume, linuxio, useCallMutation } from "@/api";
 import VolumeCard from "@/components/cards/VolumeCard";
-import GeneralDialog from "@/components/dialog/GeneralDialog";
+import BatchDeleteDialog from "@/components/docker/BatchDeleteDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
-import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
-import {
-  AppDialogActions,
-  AppDialogContent,
-  AppDialogContentText,
-  AppDialogTitle,
-  OVERLAY_ROOT_SELECTOR,
-} from "@/components/ui/AppDialog";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
@@ -196,107 +188,6 @@ interface VolumeListProps {
   onMountCreateHandler?: (handler: () => void) => void;
   viewMode?: "table" | "card";
 }
-interface DeleteVolumeDialogProps {
-  onClose: () => void;
-  onSuccess: () => void;
-  open: boolean;
-  volumeNames: string[];
-}
-const DeleteVolumeDialog = ({
-  open,
-  onClose,
-  volumeNames,
-  onSuccess,
-}: DeleteVolumeDialogProps) => {
-  const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteVolume, isPending: isDeleting } = useCallMutation(
-    linuxio.docker.delete_volume,
-  );
-  const handleDelete = async () => {
-    // Delete volumes sequentially
-    const failures: string[] = [];
-    for (const name of volumeNames) {
-      try {
-        await deleteVolume({ name });
-      } catch {
-        failures.push(name);
-      }
-    }
-    if (failures.length > 0) {
-      toast.error(
-        `Failed to delete ${failures.length} of ${volumeNames.length} volume${volumeNames.length === 1 ? "" : "s"}`,
-      );
-    } else {
-      const successMessage =
-        volumeNames.length === 1
-          ? `Volume "${volumeNames[0]}" deleted successfully`
-          : `${volumeNames.length} volumes deleted successfully`;
-      toast.success(successMessage);
-    }
-    onSuccess();
-    handleClose();
-  };
-  const handleClose = () => {
-    onClose();
-  };
-  return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
-      <AppDialogTitle>
-        Delete Volume{volumeNames.length > 1 ? "s" : ""}
-      </AppDialogTitle>
-      <AppDialogContent>
-        <AppDialogContentText>
-          Are you sure you want to delete the following volume
-          {volumeNames.length > 1 ? "s" : ""}?
-        </AppDialogContentText>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            marginTop: "var(--app-space-8)",
-            marginBottom: "var(--app-space-4)",
-          }}
-        >
-          {volumeNames.map((name) => (
-            <Chip
-              key={name}
-              label={name}
-              size="small"
-              style={{
-                marginRight: 4,
-                marginBottom: 4,
-              }}
-              variant="soft"
-            />
-          ))}
-        </div>
-        <AppDialogContentText
-          style={{
-            marginTop: 8,
-            color: "var(--app-palette-warning-main)",
-          }}
-        >
-          This action cannot be undone. Volumes in use by containers cannot be
-          deleted.
-        </AppDialogContentText>
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton disabled={isDeleting} onClick={handleClose}>
-          Cancel
-        </AppButton>
-        <AppButton
-          color="error"
-          disabled={isDeleting}
-          onClick={handleDelete}
-          variant="contained"
-        >
-          {isDeleting ? "Deleting..." : "Delete"}
-        </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
-  );
-};
 const getVolumeId = (volume: { Name: string }) => volume.Name;
 
 const VolumeList = ({
@@ -374,6 +265,10 @@ const VolumeList = ({
       vol.Mountpoint?.toLowerCase().includes(search.toLowerCase()),
   );
 
+  // Configless: this is a batch flow — the dialog owns aggregation and toasts.
+  const { mutateAsync: deleteVolume } = useCallMutation(
+    linuxio.docker.delete_volume,
+  );
   const handleDeleteSuccess = () => {
     updateFocusedVolume(null);
   };
@@ -570,11 +465,18 @@ const VolumeList = ({
         />
       )}
 
-      <DeleteVolumeDialog
+      <BatchDeleteDialog
+        items={
+          focusedVolume
+            ? [{ key: focusedVolume.Name, label: focusedVolume.Name }]
+            : []
+        }
+        noun="volume"
         onClose={() => setDeleteDialogOpen(false)}
+        onDeleteOne={(item) => deleteVolume({ name: item.key })}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
-        volumeNames={focusedVolume ? [focusedVolume.Name] : []}
+        warning="Volumes in use by containers cannot be deleted."
       />
     </div>
   );

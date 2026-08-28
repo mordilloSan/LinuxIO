@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { linuxio, type DockerNetwork, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import BatchDeleteDialog from "@/components/docker/BatchDeleteDialog";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
@@ -16,7 +17,6 @@ import Chip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
-  AppDialogContentText,
   AppDialogTitle,
   OVERLAY_ROOT_SELECTOR,
 } from "@/components/ui/AppDialog";
@@ -246,109 +246,6 @@ const CreateNetworkDialog = ({
           variant="contained"
         >
           {isCreating ? "Creating..." : "Create"}
-        </AppButton>
-      </AppDialogActions>
-    </GeneralDialog>
-  );
-};
-
-interface DeleteNetworkDialogProps {
-  networkIds: string[];
-  networkNames: string[];
-  onClose: () => void;
-  onSuccess: () => void;
-  open: boolean;
-}
-
-const DeleteNetworkDialog = ({
-  open,
-  onClose,
-  networkNames,
-  networkIds,
-  onSuccess,
-}: DeleteNetworkDialogProps) => {
-  const toast = useScopedToast(DOCKER_TOAST_META);
-
-  // Configless: this is a batch flow — the caller owns aggregation and toasts.
-  const { mutateAsync: deleteNetwork, isPending: isDeleting } = useCallMutation(
-    linuxio.docker.delete_network,
-  );
-
-  const handleDelete = async () => {
-    // Delete networks sequentially
-    const failures: string[] = [];
-    for (const [index, id] of networkIds.entries()) {
-      try {
-        await deleteNetwork({ id });
-      } catch {
-        failures.push(networkNames[index] ?? id);
-      }
-    }
-    if (failures.length > 0) {
-      toast.error(
-        `Failed to delete ${failures.length} of ${networkIds.length} network${networkIds.length === 1 ? "" : "s"}`,
-      );
-    } else {
-      const successMessage =
-        networkNames.length === 1
-          ? `Network "${networkNames[0]}" deleted successfully`
-          : `${networkNames.length} networks deleted successfully`;
-      toast.success(successMessage);
-    }
-    onSuccess();
-    handleClose();
-  };
-
-  const handleClose = () => {
-    onClose();
-  };
-
-  return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
-      <AppDialogTitle>
-        Delete Network{networkNames.length > 1 ? "s" : ""}
-      </AppDialogTitle>
-      <AppDialogContent>
-        <AppDialogContentText>
-          Are you sure you want to delete the following network
-          {networkNames.length > 1 ? "s" : ""}?
-        </AppDialogContentText>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            marginTop: "var(--app-space-8)",
-            marginBottom: "var(--app-space-4)",
-          }}
-        >
-          {networkNames.map((name) => (
-            <Chip
-              key={name}
-              label={name}
-              size="small"
-              style={{ marginRight: 4, marginBottom: 4 }}
-              variant="soft"
-            />
-          ))}
-        </div>
-        <AppDialogContentText
-          style={{ marginTop: 8, color: "var(--app-palette-warning-main)" }}
-        >
-          This action cannot be undone. Networks with connected containers
-          cannot be deleted.
-        </AppDialogContentText>
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton disabled={isDeleting} onClick={handleClose}>
-          Cancel
-        </AppButton>
-        <AppButton
-          color="error"
-          disabled={isDeleting}
-          onClick={handleDelete}
-          variant="contained"
-        >
-          {isDeleting ? "Deleting..." : "Delete"}
         </AppButton>
       </AppDialogActions>
     </GeneralDialog>
@@ -671,6 +568,10 @@ const NetworkList = ({
 
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
+  // Configless: this is a batch flow — the dialog owns aggregation and toasts.
+  const { mutateAsync: deleteNetwork } = useCallMutation(
+    linuxio.docker.delete_network,
+  );
   const handleDeleteSuccess = () => {
     updateFocusedNetwork(null);
   };
@@ -942,12 +843,18 @@ const NetworkList = ({
         open={createDialogOpen}
       />
 
-      <DeleteNetworkDialog
-        networkIds={focusedNetwork ? [focusedNetwork.Id] : []}
-        networkNames={focusedNetwork ? [focusedNetwork.Name] : []}
+      <BatchDeleteDialog
+        items={
+          focusedNetwork
+            ? [{ key: focusedNetwork.Id, label: focusedNetwork.Name }]
+            : []
+        }
+        noun="network"
         onClose={() => setDeleteDialogOpen(false)}
+        onDeleteOne={(item) => deleteNetwork({ id: item.key })}
         onSuccess={handleDeleteSuccess}
         open={deleteDialogOpen}
+        warning="Networks with connected containers cannot be deleted."
       />
     </div>
   );
