@@ -165,6 +165,61 @@ type VMNetworkRow = {
   vmName: string;
 };
 
+const vmNetworkColumns: AppVirtualTableColumnDef<VMNetworkRow>[] = [
+  {
+    accessorKey: "vmName",
+    header: "VM",
+    cell: ({ row }) => row.original.vmName,
+    meta: { width: "minmax(150px, 1fr)" },
+  },
+  {
+    accessorKey: "state",
+    header: "State",
+    cell: ({ row }) => (
+      <AppChip
+        color={stateChipColor(row.original.state)}
+        label={normalizeState(row.original.state)}
+        size="small"
+        variant="soft"
+      />
+    ),
+    meta: { width: "120px" },
+  },
+  {
+    accessorKey: "attachmentType",
+    header: "Attachment",
+    cell: ({ row }) => row.original.attachmentType,
+    meta: { width: "120px" },
+  },
+  {
+    accessorKey: "network",
+    header: "Network",
+    cell: ({ row }) => row.original.network,
+    meta: { width: "minmax(140px, 1fr)" },
+  },
+  {
+    id: "ipAddresses",
+    header: "IP",
+    cell: ({ row }) => {
+      if (row.original.ips.length === 0) {
+        return (
+          <span style={{ color: "var(--app-palette-text-secondary)" }}>
+            Unavailable
+          </span>
+        );
+      }
+      return row.original.ips.join(", ");
+    },
+    meta: { width: "minmax(180px, 1fr)" },
+  },
+  {
+    accessorKey: "mac",
+    header: "MAC",
+    cell: ({ row }) => row.original.mac,
+    meta: { width: "minmax(160px, 1fr)" },
+  },
+];
+
 export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
   const rows = vms.flatMap((vm) =>
     (vm.nics ?? []).map((nic, index) => ({
@@ -179,67 +234,12 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
     })),
   );
 
-  const columns: AppVirtualTableColumnDef<VMNetworkRow>[] = [
-    {
-      accessorKey: "vmName",
-      header: "VM",
-      cell: ({ row }) => row.original.vmName,
-      meta: { width: "minmax(150px, 1fr)" },
-    },
-    {
-      accessorKey: "state",
-      header: "State",
-      cell: ({ row }) => (
-        <AppChip
-          color={stateChipColor(row.original.state)}
-          label={normalizeState(row.original.state)}
-          size="small"
-          variant="soft"
-        />
-      ),
-      meta: { width: "120px" },
-    },
-    {
-      accessorKey: "attachmentType",
-      header: "Attachment",
-      cell: ({ row }) => row.original.attachmentType,
-      meta: { width: "120px" },
-    },
-    {
-      accessorKey: "network",
-      header: "Network",
-      cell: ({ row }) => row.original.network,
-      meta: { width: "minmax(140px, 1fr)" },
-    },
-    {
-      id: "ipAddresses",
-      header: "IP",
-      cell: ({ row }) => {
-        if (row.original.ips.length === 0) {
-          return (
-            <span style={{ color: "var(--app-palette-text-secondary)" }}>
-              Unavailable
-            </span>
-          );
-        }
-        return row.original.ips.join(", ");
-      },
-      meta: { width: "minmax(180px, 1fr)" },
-    },
-    {
-      accessorKey: "mac",
-      header: "MAC",
-      cell: ({ row }) => row.original.mac,
-      meta: { width: "minmax(160px, 1fr)" },
-    },
-  ];
-
   return (
     <div style={tabPanelStyle}>
       <FrostedCard style={tableCardStyle}>
         <AppVirtualTable
           ariaLabel="Virtual machine networks"
-          columns={columns}
+          columns={vmNetworkColumns}
           data={rows}
           emptyMessage="No virtual network interfaces."
           enableSorting={false}
