@@ -734,7 +734,7 @@ describe("Virtual Machines page", () => {
     });
   });
 
-  it("keeps the delete dialog synced with the live VM list", async () => {
+  it("keeps the delete payload stable when the live VM list changes", async () => {
     const { queryClient, user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -765,6 +765,17 @@ describe("Virtual Machines page", () => {
       queryClient.setQueryData(linuxio.virt.list.queryKey, []);
     });
 
+    expect(
+      within(screen.getByRole("dialog")).getByText(
+        "/var/lib/libvirt/images/refreshed-alpha.qcow2",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );

@@ -18,6 +18,7 @@ const ACCOUNTS_TOAST_META = {
 
 interface ChangePasswordDialogProps {
   onClose: () => void;
+  onExited?: () => void;
   open: boolean;
   username: string;
 }
@@ -25,6 +26,7 @@ interface ChangePasswordDialogProps {
 const ChangePasswordDialog = ({
   open,
   onClose,
+  onExited,
   username,
 }: ChangePasswordDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
@@ -63,7 +65,13 @@ const ChangePasswordDialog = ({
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={handleClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>Change Password: {username}</AppDialogTitle>
       <AppDialogContent>
         <div

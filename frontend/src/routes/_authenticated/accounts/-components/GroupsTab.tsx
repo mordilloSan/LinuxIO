@@ -11,7 +11,6 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
-import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -69,8 +68,6 @@ const GroupsTab = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AccountGroup | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<AccountGroup | null>(null);
-  const editMembersDialog = useDialogPresence(selectedGroup);
-  const deleteGroupDialog = useDialogPresence(groupToDelete);
 
   const groupsList = Array.isArray(groups) ? groups : [];
 
@@ -294,30 +291,21 @@ const GroupsTab = ({
         open={createDialogOpen}
       />
 
-      {editMembersDialog.content && (
+      {selectedGroup && (
         <EditGroupMembersDialog
-          group={editMembersDialog.content}
-          onClose={() => {
-            setEditMembersDialogOpen(false);
-            setSelectedGroup(null);
-          }}
-          onExited={editMembersDialog.onExited}
+          group={selectedGroup}
+          onClose={() => setEditMembersDialogOpen(false)}
+          onExited={() => setSelectedGroup(null)}
           open={editMembersDialogOpen}
         />
       )}
 
-      {deleteGroupDialog.content && (
+      {groupToDelete && (
         <DeleteGroupDialog
-          groupNames={[deleteGroupDialog.content.name]}
-          onClose={() => {
-            setDeleteDialogOpen(false);
-            setGroupToDelete(null);
-          }}
-          onExited={deleteGroupDialog.onExited}
-          onSuccess={() => {
-            setDeleteDialogOpen(false);
-            setGroupToDelete(null);
-          }}
+          groupNames={[groupToDelete.name]}
+          onClose={() => setDeleteDialogOpen(false)}
+          onExited={() => setGroupToDelete(null)}
+          onSuccess={() => setDeleteDialogOpen(false)}
           open={deleteDialogOpen}
         />
       )}

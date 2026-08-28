@@ -54,6 +54,7 @@ export function useFileBrowserController(
     detailTarget,
     pendingDeletePaths,
     permissionsDialog,
+    permissionsDialogOpen,
   } = dialogs;
 
   // Editor slice: state plus a stable semantic-action API
@@ -468,13 +469,17 @@ export function useFileBrowserController(
       dialog: permissionsDialog,
       onClose: handleClosePermissionsDialog,
       onConfirm: handleConfirmPermissions,
+      onExited: dialogs.actions.clearPermissions,
+      open: permissionsDialogOpen,
       isPending: permissionsPending,
       progress: permissionsProgress,
     }),
     [
       handleClosePermissionsDialog,
       handleConfirmPermissions,
+      dialogs.actions.clearPermissions,
       permissionsDialog,
+      permissionsDialogOpen,
       permissionsPending,
       permissionsProgress,
     ],

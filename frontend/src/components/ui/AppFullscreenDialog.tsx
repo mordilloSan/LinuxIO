@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, type Variants } from "motion/react";
 import {
   useEffect,
   useEffectEvent,
@@ -7,11 +8,37 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import {
+  EASING_DECELERATE,
+  TRANSITION_DURATION_FAST_MS,
+  TRANSITION_DURATION_STANDARD_MS,
+} from "@/theme/constants";
+
 import { OVERLAY_ROOT_SELECTOR } from "./AppDialog";
 import { acquireBodyScrollLock } from "./bodyScrollLock";
 import { useDialogFocusRestore } from "./useDialogFocusRestore";
 
 import "./app-fullscreen-dialog.css";
+
+const fullscreenDialogVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: TRANSITION_DURATION_STANDARD_MS / 1000,
+      ease: EASING_DECELERATE,
+    },
+  },
+  exit: {
+    opacity: 0,
+    y: -12,
+    transition: {
+      duration: TRANSITION_DURATION_FAST_MS / 1000,
+      ease: EASING_DECELERATE,
+    },
+  },
+} satisfies Variants;
 
 export interface AppFullscreenDialogProps {
   children?: ReactNode;
@@ -21,6 +48,9 @@ export interface AppFullscreenDialogProps {
   disableEscapeKeyDown?: boolean;
   onClose?: () => void;
   open: boolean;
+  slotProps?: {
+    transition?: { onEntered?: () => void; onExited?: () => void };
+  };
   style?: CSSProperties;
 }
 
@@ -33,6 +63,7 @@ const AppFullscreenDialog = ({
   style,
   contentClassName,
   contentStyle,
+  slotProps,
 }: AppFullscreenDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -99,26 +130,36 @@ const AppFullscreenDialog = ({
     }
   }, [open]);
 
-  if (!open) {
-    return null;
-  }
-
   return createPortal(
-    <div
-      aria-modal="true"
-      className={`app-fullscreen-dialog-root ${className || ""}`.trim()}
-      ref={rootRef}
-      role="dialog"
-      style={style}
-      tabIndex={-1}
-    >
-      <div
-        className={`app-fullscreen-dialog__content ${contentClassName || ""}`.trim()}
-        style={contentStyle}
-      >
-        {children}
-      </div>
-    </div>,
+    <AnimatePresence onExitComplete={slotProps?.transition?.onExited}>
+      {open && (
+        <motion.div
+          animate="visible"
+          aria-modal="true"
+          className={`app-fullscreen-dialog-root ${className || ""}`.trim()}
+          exit="exit"
+          initial="hidden"
+          key="fullscreen-dialog"
+          onAnimationComplete={(definition) => {
+            if (definition === "visible") {
+              slotProps?.transition?.onEntered?.();
+            }
+          }}
+          ref={rootRef}
+          role="dialog"
+          style={style}
+          tabIndex={-1}
+          variants={fullscreenDialogVariants}
+        >
+          <div
+            className={`app-fullscreen-dialog__content ${contentClassName || ""}`.trim()}
+            style={contentStyle}
+          >
+            {children}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
     document.body,
   );
 };

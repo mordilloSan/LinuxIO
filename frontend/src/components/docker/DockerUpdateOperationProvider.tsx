@@ -137,6 +137,7 @@ function DockerUpdateOperationDialog({
       maxWidth="md"
       onClose={handleClose}
       open={open}
+      slotProps={{ transition: { onExited: () => setShowDetails(false) } }}
       paperStyle={{
         backgroundColor: "var(--app-palette-background-default)",
         maxHeight: "80vh",
@@ -501,7 +502,6 @@ export function DockerUpdateOperationProvider({
     <DockerUpdateOperationContext.Provider value={value}>
       {children}
       <DockerUpdateOperationDialog
-        key={`${target?.id ?? "none"}:${open ? "open" : "closed"}`}
         error={error}
         events={events}
         onClose={handleClose}

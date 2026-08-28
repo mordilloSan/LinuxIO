@@ -150,14 +150,12 @@ export default function CreateVMDialog({
   isCreating,
   onClose,
   onCreate,
-  onExited,
   open,
 }: {
   createProgress: VMCreateProgress | null;
   isCreating: boolean;
   onClose: () => void;
   onCreate: (request: VMCreateRequest) => void;
-  onExited?: () => void;
   open: boolean;
 }) {
   const isMobile = useAppMediaQuery(down("sm"));
@@ -382,7 +380,6 @@ export default function CreateVMDialog({
         }
       }}
       open={open}
-      slotProps={{ transition: { onExited } }}
     >
       <form onSubmit={handleSubmit}>
         <AppDialogTitle>Create VM</AppDialogTitle>

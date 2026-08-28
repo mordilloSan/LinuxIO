@@ -35,7 +35,6 @@ import {
   getComposeStatusColor,
   getContainerStatusColor,
 } from "@/constants/statusColors";
-import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery } from "@/theme";
@@ -268,10 +267,10 @@ const ComposeList = ({
   const [logsContainer, setLogsContainer] = useState<ContainerInfo | null>(
     null,
   );
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [terminalContainer, setTerminalContainer] =
     useState<ContainerInfo | null>(null);
-  const logsDialog = useDialogPresence(logsContainer);
-  const terminalDialog = useDialogPresence(terminalContainer);
+  const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
   const isSmallUp = useAppMediaQuery(up("sm"));
   const surface = useReorderableSurface({
     getId: getComposeProjectId,
@@ -781,8 +780,14 @@ const ComposeList = ({
             <ComposeContainerActions
               container={container}
               disabled={isLoading}
-              onOpenLogs={setLogsContainer}
-              onOpenTerminal={setTerminalContainer}
+              onOpenLogs={(container) => {
+                setLogsContainer(container);
+                setLogsDialogOpen(true);
+              }}
+              onOpenTerminal={(container) => {
+                setTerminalContainer(container);
+                setTerminalDialogOpen(true);
+              }}
             />
           );
         },
@@ -840,22 +845,22 @@ const ComposeList = ({
   );
   const containerDialogs = (
     <Suspense fallback={null}>
-      {logsDialog.content && (
+      {logsContainer && (
         <LogsDialog
-          containerId={logsDialog.content.Id}
-          containerName={getContainerName(logsDialog.content)}
-          onClose={() => setLogsContainer(null)}
-          onExited={logsDialog.onExited}
-          open={logsContainer !== null}
+          containerId={logsContainer.Id}
+          containerName={getContainerName(logsContainer)}
+          onClose={() => setLogsDialogOpen(false)}
+          onExited={() => setLogsContainer(null)}
+          open={logsDialogOpen}
         />
       )}
-      {terminalDialog.content && (
+      {terminalContainer && (
         <TerminalDialog
-          containerId={terminalDialog.content.Id}
-          containerName={getContainerName(terminalDialog.content)}
-          onClose={() => setTerminalContainer(null)}
-          onExited={terminalDialog.onExited}
-          open={terminalContainer !== null}
+          containerId={terminalContainer.Id}
+          containerName={getContainerName(terminalContainer)}
+          onClose={() => setTerminalDialogOpen(false)}
+          onExited={() => setTerminalContainer(null)}
+          open={terminalDialogOpen}
         />
       )}
     </Suspense>

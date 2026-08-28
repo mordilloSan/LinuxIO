@@ -15,7 +15,6 @@ import type {
 import type { PermissionsDialogState } from "@/hooks/filebrowser/useFileDialogs";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
-import { useDialogPresence } from "@/hooks/useDialogPresence";
 import type {
   FileResource,
   ResourceStatData,
@@ -122,6 +121,7 @@ export interface FileBrowserDeleteDialogProps {
 
 export interface FileBrowserPermissionsDialogProps {
   dialog: PermissionsDialogState | null;
+  onExited: () => void;
   onClose: () => void;
   onConfirm: (
     mode: string,
@@ -130,6 +130,7 @@ export interface FileBrowserPermissionsDialogProps {
     group?: string,
   ) => Promise<void> | void;
   isPending?: boolean;
+  open: boolean;
   progress?: TaskProgress<CountProgress> | null;
 }
 
@@ -187,8 +188,6 @@ const FileBrowserDialogs = ({
   permissions,
   upload,
 }: FileBrowserDialogsProps) => {
-  const permissionsPresence = useDialogPresence(permissions.dialog);
-
   return (
     <>
       <FileBrowserEditorDialog
@@ -296,20 +295,20 @@ const FileBrowserDialogs = ({
         title="Edit Unsupported File?"
       />
 
-      {permissionsPresence.content && (
+      {permissions.dialog && (
         <PermissionsDialog
-          currentMode={permissionsPresence.content.mode}
-          group={permissionsPresence.content.group}
-          isDirectory={permissionsPresence.content.isDirectory}
+          currentMode={permissions.dialog.mode}
+          group={permissions.dialog.group}
+          isDirectory={permissions.dialog.isDirectory}
           onClose={permissions.onClose}
           onConfirm={permissions.onConfirm}
-          onExited={permissionsPresence.onExited}
-          open={permissions.dialog !== null}
-          owner={permissionsPresence.content.owner}
-          pathLabel={permissionsPresence.content.pathLabel}
+          onExited={permissions.onExited}
+          open={permissions.open}
+          owner={permissions.dialog.owner}
+          pathLabel={permissions.dialog.pathLabel}
           isPending={permissions.isPending}
           progress={permissions.progress}
-          selectionCount={permissionsPresence.content.selectionCount}
+          selectionCount={permissions.dialog.selectionCount}
         />
       )}
 

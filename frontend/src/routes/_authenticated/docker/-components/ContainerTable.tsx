@@ -46,7 +46,6 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
-import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
@@ -1275,10 +1274,10 @@ const ContainerTable = ({
   const [logsTarget, setLogsTarget] = useState<ContainerDialogTarget | null>(
     null,
   );
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [terminalTarget, setTerminalTarget] =
     useState<ContainerDialogTarget | null>(null);
-  const logsDialog = useDialogPresence(logsTarget);
-  const terminalDialog = useDialogPresence(terminalTarget);
+  const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
   const toggleExpanded = useCallback((containerId: string) => {
     setExpandedContainerIds((previous) => {
       const next = new Set(previous);
@@ -1292,10 +1291,12 @@ const ContainerTable = ({
   }, []);
   const openLogs = useCallback((containerId: string, containerName: string) => {
     setLogsTarget({ id: containerId, name: containerName });
+    setLogsDialogOpen(true);
   }, []);
   const openTerminal = useCallback(
     (containerId: string, containerName: string) => {
       setTerminalTarget({ id: containerId, name: containerName });
+      setTerminalDialogOpen(true);
     },
     [],
   );
@@ -1579,22 +1580,22 @@ const ContainerTable = ({
         </CheckingUpdatesContext.Provider>
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
-        {logsDialog.content && (
+        {logsTarget && (
           <LogsDialog
-            containerId={logsDialog.content.id}
-            containerName={logsDialog.content.name}
-            onClose={() => setLogsTarget(null)}
-            onExited={logsDialog.onExited}
-            open={logsTarget !== null}
+            containerId={logsTarget.id}
+            containerName={logsTarget.name}
+            onClose={() => setLogsDialogOpen(false)}
+            onExited={() => setLogsTarget(null)}
+            open={logsDialogOpen}
           />
         )}
-        {terminalDialog.content && (
+        {terminalTarget && (
           <TerminalDialog
-            containerId={terminalDialog.content.id}
-            containerName={terminalDialog.content.name}
-            onClose={() => setTerminalTarget(null)}
-            onExited={terminalDialog.onExited}
-            open={terminalTarget !== null}
+            containerId={terminalTarget.id}
+            containerName={terminalTarget.name}
+            onClose={() => setTerminalDialogOpen(false)}
+            onExited={() => setTerminalTarget(null)}
+            open={terminalDialogOpen}
           />
         )}
       </Suspense>

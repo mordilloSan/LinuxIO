@@ -1,17 +1,25 @@
 import { Icon } from "@iconify/react";
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 
+import { AppDialog } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 
 interface DevtoolsModalProps {
   children: ReactNode;
   onClose: () => void;
+  onExited?: () => void;
+  open: boolean;
 }
 
 const INITIAL_WIDTH = 1000;
 const INITIAL_HEIGHT = 500;
 
-export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
+export function DevtoolsModal({
+  children,
+  onClose,
+  onExited,
+  open,
+}: DevtoolsModalProps) {
   const [position, setPosition] = useState(() => ({
     x: Math.max(20, (window.innerWidth - INITIAL_WIDTH) / 2),
     y: Math.max(20, (window.innerHeight - INITIAL_HEIGHT) / 2),
@@ -58,89 +66,78 @@ export function DevtoolsModal({ children, onClose }: DevtoolsModalProps) {
   };
 
   return (
-    <>
+    <AppDialog
+      aria-label="Development tools"
+      maxWidth={false}
+      onClose={onClose}
+      open={open}
+      paperStyle={{
+        borderRadius: "var(--app-radius-lg)",
+        height: "100%",
+        overflow: "hidden",
+        width: "100%",
+      }}
+      style={{
+        display: "flex",
+        height: `${INITIAL_HEIGHT}px`,
+        left: `${position.x}px`,
+        margin: 0,
+        maxHeight: "calc(100vh - 40px)",
+        maxWidth: "calc(100vw - 40px)",
+        minHeight: "240px",
+        minWidth: "320px",
+        overflow: "hidden",
+        position: "fixed",
+        resize: "both",
+        top: `${position.y}px`,
+        width: `${INITIAL_WIDTH}px`,
+      }}
+      slotProps={{ transition: { onExited } }}
+    >
       <div
-        aria-hidden="true"
-        onClick={onClose}
+        aria-label="Drag development tools"
+        onPointerCancel={handleDragEnd}
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
         style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          backgroundColor: "color-mix(in srgb, black, transparent 50%)",
-          zIndex: 9997,
-        }}
-      />
-      <div
-        aria-label="Development tools"
-        role="dialog"
-        style={{
-          position: "fixed",
-          top: `${position.y}px`,
-          left: `${position.x}px`,
-          width: `${INITIAL_WIDTH}px`,
-          height: `${INITIAL_HEIGHT}px`,
-          minWidth: "320px",
-          minHeight: "240px",
-          maxWidth: "calc(100vw - 40px)",
-          maxHeight: "calc(100vh - 40px)",
-          zIndex: 9998,
-          borderRadius: "var(--app-radius-lg)",
-          overflow: "hidden",
-          boxShadow:
-            "0 25px 50px -12px color-mix(in srgb, black, transparent 50%)",
-          backgroundColor: "var(--app-palette-background-paper)",
-          display: "flex",
-          flexDirection: "column",
-          resize: "both",
+          cursor: "grab",
+          flexShrink: 0,
+          height: 28,
+          position: "relative",
+          touchAction: "none",
+          userSelect: "none",
         }}
       >
-        <div
-          aria-label="Drag development tools"
-          onPointerCancel={handleDragEnd}
-          onPointerDown={handleDragStart}
-          onPointerMove={handleDragMove}
-          onPointerUp={handleDragEnd}
+        <AppIconButton
+          aria-label="Close development tools"
+          onClick={onClose}
+          onPointerDown={(event) => event.stopPropagation()}
           style={{
-            cursor: "grab",
-            flexShrink: 0,
-            height: 28,
-            position: "relative",
-            touchAction: "none",
-            userSelect: "none",
+            position: "absolute",
+            top: 4,
+            right: 6,
+            background: "transparent",
+            border: "none",
+            color: "var(--app-palette-text-secondary)",
+            cursor: "pointer",
+            lineHeight: 1,
+            padding: 2,
           }}
+          type="button"
         >
-          <AppIconButton
-            aria-label="Close development tools"
-            onClick={onClose}
-            onPointerDown={(event) => event.stopPropagation()}
-            style={{
-              position: "absolute",
-              top: 4,
-              right: 6,
-              background: "transparent",
-              border: "none",
-              color: "var(--app-palette-text-secondary)",
-              cursor: "pointer",
-              lineHeight: 1,
-              padding: 2,
-            }}
-            type="button"
-          >
-            <Icon height={18} icon="mdi:close" width={18} />
-          </AppIconButton>
-        </div>
-        {/* `custom-scrollbar-nested` reaches the devtools' own scroll panes,
-            which are library-owned DOM we cannot put a class on. */}
-        <div
-          className="custom-scrollbar custom-scrollbar-nested"
-          data-testid="devtools-modal-content"
-          style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "auto" }}
-        >
-          {children}
-        </div>
+          <Icon height={18} icon="mdi:close" width={18} />
+        </AppIconButton>
       </div>
-    </>
+      {/* `custom-scrollbar-nested` reaches the devtools' own scroll panes,
+            which are library-owned DOM we cannot put a class on. */}
+      <div
+        className="custom-scrollbar custom-scrollbar-nested"
+        data-testid="devtools-modal-content"
+        style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "auto" }}
+      >
+        {children}
+      </div>
+    </AppDialog>
   );
 }

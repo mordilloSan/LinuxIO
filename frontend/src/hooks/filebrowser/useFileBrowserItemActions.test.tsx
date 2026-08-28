@@ -62,6 +62,7 @@ function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
   return {
     actions: {
       clearPendingDelete: vi.fn(),
+      clearPermissions: vi.fn(),
       closeCreateFile: vi.fn(),
       closeCreateFolder: vi.fn(),
       closeDelete: vi.fn(),
@@ -79,6 +80,7 @@ function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
     detailTarget: null,
     pendingDeletePaths: [],
     permissionsDialog: null,
+    permissionsDialogOpen: false,
     ...overrides,
   };
 }

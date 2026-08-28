@@ -81,6 +81,7 @@ interface CreateFolderShareDialogProps {
 
 interface EditFolderShareDialogProps extends CreateFolderShareDialogProps {
   group: ShareGroup | null;
+  onExited?: () => void;
 }
 
 const defaultNFSOptions: ClientOptions = {
@@ -712,6 +713,7 @@ const CreateFolderShareDialog = ({
 const EditFolderShareDialog = ({
   open,
   onClose,
+  onExited,
   onSuccess,
   group,
 }: EditFolderShareDialogProps) => {
@@ -862,7 +864,13 @@ const EditFolderShareDialog = ({
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>Edit Folder Share</AppDialogTitle>
       <AppDialogContent>
         <div
@@ -1058,7 +1066,7 @@ const FolderShareCardActions = ({
 
 function renderExpandedContent(
   group: ShareGroup,
-  setEditingShare: (share: ShareGroup | null) => void,
+  setEditingShare: (share: ShareGroup) => void,
   setDeletingSamba: (share: SambaShare | null) => void,
   setDeletingNFS: (share: NFSExport | null) => void,
 ): ReactNode {
@@ -1164,8 +1172,26 @@ const SharesPage = () => {
   const [viewMode, setViewMode] = useViewMode("shares");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingShare, setEditingShare] = useState<ShareGroup | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deletingNFS, setDeletingNFS] = useState<NFSExport | null>(null);
+  const [deleteNFSDialogOpen, setDeleteNFSDialogOpen] = useState(false);
   const [deletingSamba, setDeletingSamba] = useState<SambaShare | null>(null);
+  const [deleteSambaDialogOpen, setDeleteSambaDialogOpen] = useState(false);
+
+  const openEditDialog = useCallback((share: ShareGroup) => {
+    setEditingShare(share);
+    setEditDialogOpen(true);
+  }, []);
+  const openDeleteNFSDialog = useCallback((share: NFSExport | null) => {
+    if (!share) return;
+    setDeletingNFS(share);
+    setDeleteNFSDialogOpen(true);
+  }, []);
+  const openDeleteSambaDialog = useCallback((share: SambaShare | null) => {
+    if (!share) return;
+    setDeletingSamba(share);
+    setDeleteSambaDialogOpen(true);
+  }, []);
 
   const { data: nfsShares, refetch: refetchNFS } = useSuspenseQuery({
     ...linuxio.shares.list_nfs_shares,
@@ -1199,11 +1225,11 @@ const SharesPage = () => {
     ({ original: group }) =>
       renderExpandedContent(
         group,
-        setEditingShare,
-        setDeletingSamba,
-        setDeletingNFS,
+        openEditDialog,
+        openDeleteSambaDialog,
+        openDeleteNFSDialog,
       ),
-    [],
+    [openDeleteNFSDialog, openDeleteSambaDialog, openEditDialog],
   );
 
   const sharesActions = (
@@ -1247,9 +1273,9 @@ const SharesPage = () => {
                 actions={
                   <FolderShareCardActions
                     group={group}
-                    onDeleteNFS={(share) => setDeletingNFS(share)}
-                    onDeleteSamba={(share) => setDeletingSamba(share)}
-                    onEditShare={(shareGroup) => setEditingShare(shareGroup)}
+                    onDeleteNFS={openDeleteNFSDialog}
+                    onDeleteSamba={openDeleteSambaDialog}
+                    onEditShare={openEditDialog}
                   />
                 }
                 comment={group.comment}
@@ -1308,23 +1334,26 @@ const SharesPage = () => {
       <EditFolderShareDialog
         group={editingShare}
         key={editingShare?.id ?? "no-share"}
-        onClose={() => setEditingShare(null)}
+        onClose={() => setEditDialogOpen(false)}
+        onExited={() => setEditingShare(null)}
         onSuccess={() => {
           void refetchSamba();
           void refetchNFS();
         }}
-        open={editingShare !== null}
+        open={editDialogOpen}
       />
       <DeleteSambaShareDialog
-        onClose={() => setDeletingSamba(null)}
+        onClose={() => setDeleteSambaDialogOpen(false)}
+        onExited={() => setDeletingSamba(null)}
         onSuccess={() => refetchSamba()}
-        open={deletingSamba !== null}
+        open={deleteSambaDialogOpen}
         share={deletingSamba}
       />
       <DeleteNFSShareDialog
-        onClose={() => setDeletingNFS(null)}
+        onClose={() => setDeleteNFSDialogOpen(false)}
+        onExited={() => setDeletingNFS(null)}
         onSuccess={() => refetchNFS()}
-        open={deletingNFS !== null}
+        open={deleteNFSDialogOpen}
         share={deletingNFS}
       />
     </div>

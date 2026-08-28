@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   dialogs: {
     actions: {
       clearPendingDelete: vi.fn(),
+      clearPermissions: vi.fn(),
       closeCreateFile: vi.fn(),
       closeCreateFolder: vi.fn(),
       closeDelete: vi.fn(),
@@ -46,6 +47,7 @@ const mocks = vi.hoisted(() => ({
     detailTarget: ["/srv/projects/readme.md"],
     pendingDeletePaths: ["/srv/projects/readme.md"],
     permissionsDialog: null,
+    permissionsDialogOpen: false,
   },
   dragAndDrop: {
     handleDragEnter: vi.fn(),

@@ -484,18 +484,14 @@ const UsersTab = ({
       {dialogUser && (
         <>
           <EditUserDialog
-            onClose={() => {
-              setEditDialogOpen(false);
-              setDialogUser(null);
-            }}
+            onClose={() => setEditDialogOpen(false)}
+            onExited={() => setDialogUser(null)}
             open={editDialogOpen}
             user={dialogUser}
           />
           <ChangePasswordDialog
-            onClose={() => {
-              setPasswordDialogOpen(false);
-              setDialogUser(null);
-            }}
+            onClose={() => setPasswordDialogOpen(false)}
+            onExited={() => setDialogUser(null)}
             open={passwordDialogOpen}
             username={dialogUser.username}
           />

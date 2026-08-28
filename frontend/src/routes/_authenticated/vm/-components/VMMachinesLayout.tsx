@@ -8,7 +8,6 @@ import {
   type VirtualMachine,
   useCallMutation,
 } from "@/api";
-import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
@@ -59,16 +58,17 @@ const VMMachinesLayout = () => {
   // Selecting a row navigates asynchronously, so deriving this from
   // selectedName could delete the previously selected machine.
   const [deleteTargetName, setDeleteTargetName] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   // Deleting undefines the domain before disk cleanup finishes, so the polled
-  // list can drop the row mid-action; this snapshot keeps the dialog mounted
-  // until the mutation settles.
+  // list can drop the row mid-action; this snapshot keeps the dialog content
+  // stable until its exit animation completes.
   const [pendingDeleteVM, setPendingDeleteVM] = useState<VirtualMachine | null>(
     null,
   );
   const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
     null,
   );
-  const consoleDialog = useDialogPresence(consoleSession);
+  const [consoleDialogOpen, setConsoleDialogOpen] = useState(false);
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, VMAction>
   >(() => new Map());
@@ -99,8 +99,7 @@ const VMMachinesLayout = () => {
           ? ` Removed ${deleteResult.removed.length} disk(s).`
           : "";
       toast.success(`Deleted ${request.name}.${diskText}`);
-      setDeleteTargetName(null);
-      setPendingDeleteVM(null);
+      setDeleteDialogOpen(false);
       queryClient.removeQueries({
         queryKey: linuxio.virt.get({ name: request.name }).queryKey,
       });
@@ -112,12 +111,9 @@ const VMMachinesLayout = () => {
     },
     error: (error) => {
       toast.error(getMutationErrorMessage(error, "Failed to delete VM"));
-      setPendingDeleteVM(null);
     },
   });
-  const deleteTarget =
-    liveDeleteTarget ?? (deleteMutation.isPending ? pendingDeleteVM : null);
-  const deleteDialog = useDialogPresence(deleteTarget);
+  const deleteTarget = liveDeleteTarget ?? pendingDeleteVM;
   const startMutation = useCallMutation(
     linuxio.virt.start,
     actionConfig("VM started", "Failed to start VM"),
@@ -220,13 +216,16 @@ const VMMachinesLayout = () => {
             effectiveSelectedName={selectedName}
             onDelete={(vm) => {
               setDeleteTargetName(vm.name);
+              setPendingDeleteVM(vm);
+              setDeleteDialogOpen(true);
             }}
-            onOpenConsole={(vm) =>
+            onOpenConsole={(vm) => {
               setConsoleSession({
                 stream: openVMConsoleStream(vm.name),
                 vm,
-              })
-            }
+              });
+              setConsoleDialogOpen(true);
+            }}
             onRunAction={runAction}
             onSelect={setSelectedName}
             pendingActions={pendingActions}
@@ -236,33 +235,31 @@ const VMMachinesLayout = () => {
         </div>
       </div>
 
-      {deleteDialog.content && (
+      {deleteTarget && (
         <DeleteVMDialog
           isDeleting={deleteMutation.isPending}
-          onClose={() => {
+          onClose={() => setDeleteDialogOpen(false)}
+          onDelete={(deleteDisks) => {
+            deleteMutation.mutate({
+              deleteDisks,
+              name: deleteTarget.name,
+            });
+          }}
+          onExited={() => {
             setDeleteTargetName(null);
             setPendingDeleteVM(null);
           }}
-          onDelete={(deleteDisks) => {
-            if (!deleteDialog.content) return;
-            setPendingDeleteVM(deleteDialog.content);
-            deleteMutation.mutate({
-              deleteDisks,
-              name: deleteDialog.content.name,
-            });
-          }}
-          onExited={deleteDialog.onExited}
-          open={deleteTarget !== null}
-          vm={deleteDialog.content}
+          open={deleteDialogOpen}
+          vm={deleteTarget}
         />
       )}
       <Suspense fallback={null}>
-        {consoleDialog.content && (
+        {consoleSession && (
           <ConsoleDialog
-            onClose={() => setConsoleSession(null)}
-            onExited={consoleDialog.onExited}
-            open={consoleSession !== null}
-            session={consoleDialog.content}
+            onClose={() => setConsoleDialogOpen(false)}
+            onExited={() => setConsoleSession(null)}
+            open={consoleDialogOpen}
+            session={consoleSession}
           />
         )}
       </Suspense>

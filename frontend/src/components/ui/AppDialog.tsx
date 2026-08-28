@@ -77,6 +77,7 @@ export type AppDialogCloseEvent =
   | MouseEvent<HTMLDivElement>;
 
 export interface AppDialogProps {
+  "aria-label"?: string;
   /** Reports an in-flight action owned by the mounted dialog. */
   "aria-busy"?: boolean;
   /** Styles applied to the backdrop overlay */
@@ -106,6 +107,7 @@ export interface AppDialogProps {
 }
 
 export const AppDialog = ({
+  "aria-label": ariaLabel,
   "aria-busy": ariaBusy,
   open,
   onClose,
@@ -241,6 +243,7 @@ export const AppDialog = ({
             variants={backdropVariants}
           />
           <motion.div
+            aria-label={ariaLabel}
             aria-busy={ariaBusy || undefined}
             aria-modal="true"
             className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
