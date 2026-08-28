@@ -40,6 +40,11 @@ import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery } from "@/theme";
 import { up } from "@/theme/breakpoints";
 import { CARD_GRID_SIZE_DENSE } from "@/theme/constants";
+import {
+  getContainerDisplayState,
+  getContainerName,
+  getDedupedPorts,
+} from "@/utils/dockerContainer";
 
 import "./compose-list.css";
 
@@ -60,37 +65,8 @@ interface ComposeListProps {
   viewMode?: "table" | "card";
 }
 
-const getContainerName = (container: ContainerInfo) =>
-  container.Names?.[0]?.replace(/^\//, "") || container.Id.slice(0, 12);
-
 const getContainerServiceName = (container: ContainerInfo) =>
   container.Labels?.["com.docker.compose.service"] || "-";
-
-const getContainerDisplayState = (container: ContainerInfo) => {
-  const status = container.Status.toLowerCase();
-  if (status.includes("unhealthy")) return "Unhealthy";
-  if (status.includes("healthy")) return "Healthy";
-  if (container.State === "running") return "Running";
-  if (container.State === "exited") return "Stopped";
-  if (container.State === "dead") return "Dead";
-  return container.State || "Unknown";
-};
-
-const getDedupedContainerPorts = (container: ContainerInfo) => {
-  const seen = new Set<string>();
-  return (container.Ports ?? [])
-    .filter((port) => {
-      const key = port.PublicPort
-        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
-        : `${port.PrivatePort}/${port.Type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort(
-      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
-    );
-};
 
 const formatContainerPort = (port: ContainerPort) =>
   port.PublicPort
@@ -741,7 +717,7 @@ const ComposeList = ({
         id: "ports",
         header: "Ports",
         cell: ({ row }) => {
-          const ports = getDedupedContainerPorts(row.original);
+          const ports = getDedupedPorts(row.original);
           const portsText =
             ports.length > 0 ? ports.map(formatContainerPort).join(", ") : "-";
 
@@ -761,7 +737,7 @@ const ComposeList = ({
             const container = row as ContainerInfo;
             return [
               container.Id,
-              getDedupedContainerPorts(container)
+              getDedupedPorts(container)
                 .map(formatContainerPort)
                 .join("\u0000"),
             ];

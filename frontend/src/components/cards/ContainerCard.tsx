@@ -13,7 +13,9 @@ import AppButton from "@/components/ui/AppButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import { getContainerStatusColor } from "@/constants/statusColors";
 import { CARD_PADDING_LG } from "@/theme/constants";
+import { getContainerDisplayState } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formaters";
 
 import AppCircularProgress from "../ui/AppCircularProgress";
@@ -22,26 +24,6 @@ const LogsDialog = lazy(() => import("@/components/docker/LogsDialog"));
 const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
-
-const getStatusColor = (container: ContainerInfo) => {
-  const status = container.Status.toLowerCase();
-  if (status.includes("unhealthy")) return "var(--app-palette-warning-main)";
-  if (status.includes("healthy")) return "var(--app-palette-success-main)";
-  if (container.State === "running") return "var(--app-palette-success-main)";
-  if (container.State === "exited" || container.State === "dead")
-    return "var(--app-palette-error-main)";
-  return "var(--app-palette-warning-main)";
-};
-
-const getStatusTooltip = (container: ContainerInfo) => {
-  const status = container.Status.toLowerCase();
-  if (status.includes("unhealthy")) return "Unhealthy";
-  if (status.includes("healthy")) return "Healthy";
-  if (container.State === "running") return "Running";
-  if (container.State === "exited") return "Stopped";
-  if (container.State === "dead") return "Dead";
-  return "Unhealthy / Starting";
-};
 
 interface ContainerCardProps {
   actionPending?: boolean;
@@ -198,7 +180,9 @@ const ContainerCardBody = ({
   const memPercent =
     memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
 
-  const statusColor = getStatusColor(container);
+  const statusColor = getContainerStatusColor(
+    getContainerDisplayState(container),
+  );
   // Service-style action buttons, shown in the selected card.
   const selectedActions = (
     <div
@@ -505,7 +489,7 @@ const ContainerCardBody = ({
             )}
             <StatusDot
               color={statusColor}
-              tooltip={getStatusTooltip(container)}
+              tooltip={getContainerDisplayState(container)}
             />
           </div>
 

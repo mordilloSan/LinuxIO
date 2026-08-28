@@ -8,19 +8,10 @@ import Chip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { getContainerStatusColor } from "@/constants/statusColors";
-
-const getContainerName = (container: ContainerInfo) =>
-  container.Names?.[0]?.replace("/", "") || container.Id.slice(0, 12);
-
-const getDisplayState = (container: ContainerInfo) => {
-  const status = container.Status.toLowerCase();
-  if (status.includes("unhealthy")) return "Unhealthy";
-  if (status.includes("healthy")) return "Healthy";
-  if (container.State === "running") return "Running";
-  if (container.State === "exited") return "Stopped";
-  if (container.State === "dead") return "Dead";
-  return container.State || "Unknown";
-};
+import {
+  getContainerDisplayState,
+  getContainerName,
+} from "@/utils/dockerContainer";
 
 interface ContainerDetailsPanelProps {
   container: ContainerInfo;
@@ -42,7 +33,7 @@ const ContainerDetailsPanel = ({
   withHeader = true,
 }: ContainerDetailsPanelProps) => {
   const name = getContainerName(container);
-  const displayState = getDisplayState(container);
+  const displayState = getContainerDisplayState(container);
   const headerTitle = title ?? name;
 
   return (

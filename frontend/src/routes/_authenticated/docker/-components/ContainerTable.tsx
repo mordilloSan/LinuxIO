@@ -49,6 +49,11 @@ import { getContainerStatusColor } from "@/constants/statusColors";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
+import {
+  getContainerDisplayState,
+  getContainerName,
+  getDedupedPorts,
+} from "@/utils/dockerContainer";
 import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
 
 import {
@@ -81,19 +86,6 @@ const ExpandedContainersContext = createContext<ReadonlySet<string>>(new Set());
 // check — once on click, once when the sweep returns, the second one landing
 // long after the pointer has moved back over the rows.
 const CheckingUpdatesContext = createContext(false);
-
-const getContainerName = (container: ContainerInfo) =>
-  container.Names?.[0]?.replace("/", "") || "Unnamed";
-
-const getDisplayState = (container: ContainerInfo) => {
-  const s = container.Status.toLowerCase();
-  if (s.includes("unhealthy")) return "Unhealthy";
-  if (s.includes("healthy")) return "Healthy";
-  if (container.State === "running") return "Running";
-  if (container.State === "exited") return "Stopped";
-  if (container.State === "dead") return "Dead";
-  return container.State;
-};
 
 const getImageVersion = (image: string) => {
   const noDigest = image.split("@")[0];
@@ -191,22 +183,6 @@ const formatUptime = (createdUnix: number) => {
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
-};
-
-const getDedupedPorts = (container: ContainerInfo) => {
-  const seen = new Set<string>();
-  return (container.Ports ?? [])
-    .filter((port) => {
-      const key = port.PublicPort
-        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
-        : `${port.PrivatePort}/${port.Type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort(
-      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
-    );
 };
 
 // A collapsed ports/volumes cell renders two entries plus a "+N more" caption,
@@ -315,7 +291,7 @@ const getContainerTableRowId = (row: ContainerTableRow) =>
 
 function ContainerNameCell({ container }: { container: ContainerInfo }) {
   const name = getContainerName(container);
-  const displayState = getDisplayState(container);
+  const displayState = getContainerDisplayState(container);
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1327,7 +1303,7 @@ const ContainerTable = ({
           getCellRenderKey: containerCellRenderKey((container) => [
             container.Id,
             getContainerName(container),
-            getDisplayState(container),
+            getContainerDisplayState(container),
             container.icon,
           ]),
           width: "minmax(0, 1.6fr)",

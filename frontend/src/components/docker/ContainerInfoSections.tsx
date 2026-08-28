@@ -7,6 +7,7 @@ import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
+import { getDedupedPorts } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formaters";
 
 export type ContainerInfoSection =
@@ -26,22 +27,6 @@ const formatUptime = (createdUnix: number) => {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
-};
-
-const getPorts = (container: ContainerInfo) => {
-  const seen = new Set<string>();
-  return (container.Ports ?? [])
-    .filter((port) => {
-      const key = port.PublicPort
-        ? `${port.PrivatePort}/${port.Type}:${port.PublicPort}`
-        : `${port.PrivatePort}/${port.Type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort(
-      (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
-    );
 };
 
 const formatPort = (port: ContainerPort) =>
@@ -88,7 +73,7 @@ const ContainerInfoSections = ({
   container,
   sections,
 }: ContainerInfoSectionsProps) => {
-  const ports = useMemo(() => getPorts(container), [container]);
+  const ports = useMemo(() => getDedupedPorts(container), [container]);
   const networks = useMemo(
     () => Object.entries(container.NetworkSettings?.Networks ?? {}),
     [container.NetworkSettings],

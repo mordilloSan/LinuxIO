@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 
-import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
 import PruneDialog, {
   type PruneOptions,
 } from "@/components/docker/PruneDialog";
@@ -9,14 +9,12 @@ import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { getContainerName } from "@/utils/dockerContainer";
 
 import DockerDashboard from "./DockerDashboard";
 import { useDockerUpdateCheck } from "./useDockerUpdateCheck";
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
-
-const getContainerName = (container: ContainerInfo) =>
-  container.Names?.[0]?.replace("/", "") || "Unnamed";
 
 const DockerDashboardPage = () => {
   const toast = useScopedToast(DOCKER_TOAST_META);

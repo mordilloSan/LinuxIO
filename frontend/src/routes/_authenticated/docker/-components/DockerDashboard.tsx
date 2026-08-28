@@ -22,6 +22,7 @@ import InfoRow from "@/components/ui/InfoRow";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useConfigValue } from "@/hooks/useConfig";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
+import { getContainerName } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formaters";
 
 import { DockerMonitoringSection } from "./ContainerHistoryCards";
@@ -77,9 +78,6 @@ const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 const dockerRouteApi = getRouteApi("/_authenticated/docker/");
 
 const getDockerResourceId = (resource: { Id: string }) => resource.Id;
-
-const getContainerDisplayName = (names?: string[]) =>
-  names?.[0]?.replace(/^\//, "") || "Unnamed";
 
 const getImageTagParts = (repoTags?: string[]) => {
   const fullTag = repoTags?.[0] ?? "<none>:<none>";
@@ -241,7 +239,7 @@ const DockerDashboard = ({
         header: "NAME",
         cell: ({ row }) => {
           const container = row.original;
-          const name = getContainerDisplayName(container.Names);
+          const name = getContainerName(container);
           return (
             <div
               style={{
