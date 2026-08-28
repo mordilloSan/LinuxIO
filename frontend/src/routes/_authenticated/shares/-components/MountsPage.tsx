@@ -25,7 +25,7 @@ const MountsPage = () => {
   const [mountSMBHandler, setMountSMBHandler] = useState<(() => void) | null>(
     null,
   );
-  const [nfsView, setNfsView] = useViewMode("shares.mounts");
+  const [mountsView, setMountsView] = useViewMode("shares.mounts");
 
   const actions = (
     <HeaderActions
@@ -56,8 +56,8 @@ const MountsPage = () => {
       view={
         <ViewModeToggle
           alternateMode="table"
-          onViewModeChange={setNfsView}
-          viewMode={nfsView}
+          onViewModeChange={setMountsView}
+          viewMode={mountsView}
         />
       }
     />
@@ -86,7 +86,7 @@ const MountsPage = () => {
             onMountCreateHandler={(handler) =>
               setMountNFSHandler(() => handler)
             }
-            viewMode={nfsView}
+            viewMode={mountsView}
           />
         </div>
         <div>
@@ -97,6 +97,7 @@ const MountsPage = () => {
             onMountCreateHandler={(handler) =>
               setMountSMBHandler(() => handler)
             }
+            viewMode={mountsView}
           />
         </div>
       </div>
