@@ -14,6 +14,11 @@ import { useConfigValue } from "@/hooks/useConfig";
 import { buildAppTheme, useAppTheme } from "@/theme";
 import { alpha } from "@/utils/color";
 
+// Trailing debounce for saves driven by the native colour picker. Long enough
+// to coalesce a drag into a few RPCs, short enough that the app previews the
+// colour (via the optimistic config cache) while the picker is still open.
+const PICKER_SAVE_DEBOUNCE_MS = 250;
+
 function toInputColor(color: string): string {
   const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(color);
   if (short) {
@@ -361,25 +366,42 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
 
   const [draft, setDraft] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
-  // While the native picker is dragged, the swatch previews the pointer's
-  // colour without saving; the override clears once the pick is committed
-  // and the saved colour takes over again.
+  // The picker's live value while a save is pending, so the swatch and the
+  // controlled colour input track the pointer between debounced saves.
   const [previewOverride, setPreviewOverride] = useState<string | null>(null);
   const previewColor = previewOverride ?? normalized;
 
-  // The native colour picker fires "input" continuously while it is dragged
-  // (React's onChange) and "change" once the pick is committed. Only the
-  // latter persists a config save.
-  useEffect(() => {
-    const el = colorInputRef.current;
-    if (!el) return;
-    const commit = (e: Event) => {
+  // The native colour picker fires per pointer movement (Chromium fires
+  // "change" per tick as well, so there is no reliable commit event). Every
+  // tick reschedules one trailing save; the last tick is always followed by
+  // silence, so the final pick lands within PICKER_SAVE_DEBOUNCE_MS. The
+  // pending save carries its own onChange so an unmount can flush it.
+  const pendingSaveRef = useRef<{
+    timer: number;
+    value: string;
+    save: (value: string) => void;
+  } | null>(null);
+  const schedulePickerSave = (value: string) => {
+    if (pendingSaveRef.current) {
+      window.clearTimeout(pendingSaveRef.current.timer);
+    }
+    const timer = window.setTimeout(() => {
+      pendingSaveRef.current = null;
       setPreviewOverride(null);
-      onChange((e.target as HTMLInputElement).value);
-    };
-    el.addEventListener("change", commit);
-    return () => el.removeEventListener("change", commit);
-  }, [onChange]);
+      onChange(value);
+    }, PICKER_SAVE_DEBOUNCE_MS);
+    pendingSaveRef.current = { timer, value, save: onChange };
+  };
+  useEffect(
+    () => () => {
+      const pending = pendingSaveRef.current;
+      if (!pending) return;
+      pendingSaveRef.current = null;
+      window.clearTimeout(pending.timer);
+      pending.save(pending.value);
+    },
+    [],
+  );
 
   const focused = draft !== null;
   const displayValue = focused ? draft : previewColor;
@@ -480,7 +502,10 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
         />
         <input
           aria-hidden="true"
-          onChange={(e) => setPreviewOverride(e.target.value)}
+          onChange={(e) => {
+            setPreviewOverride(e.target.value);
+            schedulePickerSave(e.target.value);
+          }}
           ref={colorInputRef}
           style={{
             position: "fixed",
@@ -493,7 +518,7 @@ function ColorSwatch({ color, onChange, label }: ColorSwatchProps) {
           }}
           tabIndex={-1}
           type="color"
-          value={normalized}
+          value={previewColor}
         />
       </div>
     </div>
