@@ -321,6 +321,20 @@ const parseLogEntry = (jsonStr: string): LogEntry | null => {
 
 const getLogRowId = (row: LogEntry) => row.id;
 
+// Returns `current` unchanged when `entries` add no identifier, so the
+// dependent sort only reruns when the set actually grows.
+const addIdentifiers = (
+  current: ReadonlySet<string>,
+  entries: LogEntry[],
+): ReadonlySet<string> => {
+  let next: Set<string> | null = null;
+  for (const { identifier } of entries) {
+    if (current.has(identifier) || next?.has(identifier)) continue;
+    (next ??= new Set(current)).add(identifier);
+  }
+  return next ?? current;
+};
+
 const prependUniqueLogs = (
   current: LogEntry[],
   incomingNewestFirst: LogEntry[],
@@ -463,6 +477,13 @@ const GeneralLogsPage = () => {
   const navigate = useNavigate();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  // Identifiers seen since the last resetBuffer. Grow-only on purpose: an
+  // identifier whose rows the ring has since trimmed is still a valid exact
+  // backend filter, and this keeps each flush O(new rows) instead of a full
+  // buffer rescan. Updated alongside every setLogs below.
+  const [identifierSet, setIdentifierSet] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [search, setSearch] = useState("");
   const [timePeriod, setTimePeriod] = useState("24h");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -532,12 +553,10 @@ const GeneralLogsPage = () => {
     }
   }, []);
 
-  // Get unique identifiers from logs
-  const uniqueIdentifiers = useMemo(() => {
-    const identifiers = new Set<string>();
-    logs.forEach((log) => identifiers.add(log.identifier));
-    return Array.from(identifiers).sort();
-  }, [logs]);
+  const uniqueIdentifiers = useMemo(
+    () => Array.from(identifierSet).sort(),
+    [identifierSet],
+  );
 
   // Current systemd unit states, used by the unit-status filter below.
   const unitStatusNeedsServices =
@@ -603,6 +622,7 @@ const GeneralLogsPage = () => {
       setLogs((prev) =>
         prependUniqueLogs(prev, reversed, bufferLimitRef.current),
       );
+      setIdentifierSet((prev) => addIdentifiers(prev, reversed));
     });
   }, []);
 
@@ -789,6 +809,7 @@ const GeneralLogsPage = () => {
     clearLoadingFallbackTimer();
     closeStream();
     setLogs([]);
+    setIdentifierSet(new Set());
     pendingLogsRef.current = [];
     hasBufferedDataRef.current = false;
     newestCursorRef.current = null;
@@ -957,6 +978,7 @@ const GeneralLogsPage = () => {
             );
             return merged;
           });
+          setIdentifierSet((prev) => addIdentifiers(prev, olderLogs));
           setDisplayLimit((current) => current + DISPLAY_CHUNK);
           setHasMoreOlder(page.hasMore && olderLogs.length > 0);
         } catch (loadError) {

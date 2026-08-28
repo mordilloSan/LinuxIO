@@ -14,6 +14,11 @@ import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import { installTabNavigationIntent } from "@/utils/tabNavigation";
 
+// Register the app's generated icon sets so fixture pages draw icons
+// synchronously, as production does; fetching them from the Iconify API at
+// runtime lands mid-test and moves row geometry under the specs.
+import "@/icons/icons";
+import "@/icons/shell";
 import "@/theme/variables.css";
 
 installTabNavigationIntent();
