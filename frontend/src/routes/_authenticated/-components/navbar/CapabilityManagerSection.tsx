@@ -1,4 +1,5 @@
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -7,6 +8,7 @@ import "./capability-manager-section.css";
 import {
   CAPABILITIES,
   type CapabilitiesResponse,
+  capabilitiesQueryKey,
   type CapabilityErrorKey,
   type CapabilityValueKey,
   type InstallCapabilityOutput,
@@ -32,8 +34,9 @@ import {
   type CapabilityStatus,
   getCapabilityReason,
   getCapabilityStatus,
-  useCapabilityState,
+  useCapabilitiesResponse,
 } from "@/hooks/useCapabilities";
+import { useConfigUserId } from "@/hooks/useConfig";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 const MAX_INSTALL_OUTPUT_LINES = 500;
@@ -115,9 +118,12 @@ const formatLastChecked = (value: Date | null) => {
 
 const CapabilityManagerSection = () => {
   const { refreshCapabilities } = useAuth();
-  const capabilities = useCapabilityState();
+  // The latest scan lives in the query cache; refreshCapabilities writes it
+  // and an install result patches it below.
+  const latest = useCapabilitiesResponse();
+  const queryClient = useQueryClient();
+  const capabilitiesKey = capabilitiesQueryKey(useConfigUserId());
 
-  const [latest, setLatest] = useState<CapabilitiesResponse | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -207,11 +213,14 @@ const CapabilityManagerSection = () => {
         if (dismissedInstallRef.current?.wire === variables.capability) {
           dismissedInstallRef.current = null;
         }
-        setLatest((previous) => ({
-          ...(previous ?? ({} as CapabilitiesResponse)),
-          [`${variables.capability}_available`]: result.available,
-          [`${variables.capability}_error`]: result.error ?? "",
-        }));
+        queryClient.setQueryData<Partial<CapabilitiesResponse>>(
+          capabilitiesKey,
+          (previous) => ({
+            ...previous,
+            [`${variables.capability}_available`]: result.available,
+            [`${variables.capability}_error`]: result.error ?? "",
+          }),
+        );
         setLastChecked(new Date());
         setInstallRun((previous) => {
           if (!previous || previous.wire !== variables.capability) {
@@ -304,21 +313,17 @@ const CapabilityManagerSection = () => {
     }
   }, [installCapability, installRun]);
 
-  const packageKitAvailable =
-    latest?.packagekit_available ?? capabilities.packageKitAvailable ?? false;
-  const dockerAvailable =
-    latest?.docker_available ?? capabilities.dockerAvailable ?? false;
+  const packageKitAvailable = latest.packagekit_available ?? false;
+  const dockerAvailable = latest.docker_available ?? false;
 
   const rows = useMemo(
     () =>
       CAPABILITIES.map((item) => {
         const valueKey = `${item.wire}_available` as CapabilityValueKey;
         const errorKey = `${item.wire}_error` as CapabilityErrorKey;
-        const authValue = capabilities[item.state];
-        const value = latest?.[valueKey] ?? authValue;
-        const status = getCapabilityStatus(value);
+        const status = getCapabilityStatus(latest[valueKey]);
         const detail =
-          latest?.[errorKey] ||
+          latest[errorKey] ||
           (status === "available"
             ? item.readyText
             : getCapabilityReason(item.state, status));
@@ -332,7 +337,7 @@ const CapabilityManagerSection = () => {
           detail,
         };
       }),
-    [capabilities, latest],
+    [latest],
   );
 
   const handleRefresh = useCallback(
@@ -343,9 +348,8 @@ const CapabilityManagerSection = () => {
       return withPromiseCleanup(
         (async () => {
           try {
-            const data = await refreshCapabilities();
+            await refreshCapabilities();
             if (!mountedRef.current) return;
-            setLatest(data);
             setLastChecked(new Date());
             if (showSuccessToast) {
               toast.success("Capabilities refreshed");
@@ -420,11 +424,9 @@ const CapabilityManagerSection = () => {
   useEffect(() => {
     let cancelled = false;
     refreshCapabilities()
-      .then((data) => {
+      .then(() => {
         if (cancelled || !mountedRef.current) return;
-        setLatest(data);
         setLastChecked(new Date());
-        return;
       })
       .finally(() => {
         if (!cancelled && mountedRef.current) setIsRefreshing(false);

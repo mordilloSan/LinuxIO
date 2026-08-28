@@ -7,14 +7,17 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 
 /**
- * Draft-form state shared by the daemon settings sections (Indexer,
- * Monitoring): a sparse patch over the saved config, value-based dirty
- * tracking, and the restart-required flag. Domain logic — toDraft,
- * toPatchPayload, validateDraft — stays in each section.
+ * Draft-form state shared by the settings sections (Indexer, Monitoring,
+ * Docker folders, Docker auto-update): a sparse patch over the saved config,
+ * value-based dirty tracking, and the restart-required flag. Domain logic —
+ * toDraft, toPatchPayload, validateDraft — stays in each section. `isEqual`
+ * overrides the JSON comparison when the saved shape has a canonical form
+ * (normalised paths, order-insensitive lists).
  */
 export function useSettingsDraft<TDraft extends object, TErrors extends object>(
   savedDraft: TDraft | null,
   mergeDraft?: (saved: TDraft, patch: Partial<TDraft>) => TDraft,
+  isEqual?: (draft: TDraft, saved: TDraft) => boolean,
 ) {
   const [draftPatch, setDraftPatch] = useState<Partial<TDraft>>({});
   const [errors, setErrors] = useState<TErrors>({} as TErrors);
@@ -27,7 +30,10 @@ export function useSettingsDraft<TDraft extends object, TErrors extends object>(
       : { ...savedDraft, ...draftPatch };
   }, [draftPatch, mergeDraft, savedDraft]);
 
-  const isDirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
+  const isDirty =
+    isEqual && draft && savedDraft
+      ? !isEqual(draft, savedDraft)
+      : JSON.stringify(draft) !== JSON.stringify(savedDraft);
 
   /** Set one draft key; a value equal to the saved one clears the entry. */
   const patchKey = <K extends keyof TDraft>(key: K, value: TDraft[K]) => {

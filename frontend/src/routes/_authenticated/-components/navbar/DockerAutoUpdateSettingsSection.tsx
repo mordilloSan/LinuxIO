@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import {
   type DockerContainerAutoUpdateMode,
@@ -23,6 +23,7 @@ import {
   DEFAULT_AUTO_UPDATE_OPTIONS,
   optionsKey,
 } from "./dockerAutoUpdateState";
+import { useSettingsDraft } from "./SettingsSectionForm";
 import type { DockerAutoUpdateController } from "./useDockerAutoUpdateState";
 
 interface DockerAutoUpdateSettingsSectionProps {
@@ -36,27 +37,27 @@ const DockerAutoUpdateSettingsSection = ({
   dockerUpdatesEnabled = true,
   dockerUpdatesReason,
 }: DockerAutoUpdateSettingsSectionProps) => {
-  const [draftOverrides, setDraftOverrides] =
-    useState<Partial<DockerContainerAutoUpdateOptions> | null>(null);
-  const [containerNamesOverride, setContainerNamesOverride] = useState<
-    string[] | null
-  >(null);
-
   const serverState = autoUpdate.state;
-  const baseOptions = serverState?.options ?? DEFAULT_AUTO_UPDATE_OPTIONS;
-  const selectedNames =
-    containerNamesOverride ??
-    baseOptions.container_names ??
-    DEFAULT_AUTO_UPDATE_OPTIONS.container_names;
-  const currentOptions = useMemo<DockerContainerAutoUpdateOptions>(
-    () => ({
-      ...baseOptions,
-      ...(draftOverrides ?? {}),
-      container_names: selectedNames,
-    }),
-    [baseOptions, draftOverrides, selectedNames],
+  const baseOptions: DockerContainerAutoUpdateOptions = serverState?.options
+    ? {
+        ...serverState.options,
+        container_names:
+          serverState.options.container_names ??
+          DEFAULT_AUTO_UPDATE_OPTIONS.container_names,
+      }
+    : DEFAULT_AUTO_UPDATE_OPTIONS;
+  const {
+    draft,
+    isDirty: dirty,
+    patchKey: updateDraft,
+    reset,
+  } = useSettingsDraft<DockerContainerAutoUpdateOptions, object>(
+    baseOptions,
+    undefined,
+    (next, saved) => optionsKey(next) === optionsKey(saved),
   );
-  const dirty = optionsKey(currentOptions) !== optionsKey(baseOptions);
+  // baseOptions is never null, so neither is the draft.
+  const currentOptions = draft ?? baseOptions;
   const loading = autoUpdate.isPending && !serverState;
   const saving = autoUpdate.isSaving;
   const unavailable =
@@ -70,20 +71,6 @@ const DockerAutoUpdateSettingsSection = ({
     serverState?.error ??
     dockerUpdatesReason ??
     "Docker updates are unavailable.";
-
-  const updateDraft = <K extends keyof DockerContainerAutoUpdateOptions>(
-    key: K,
-    value: DockerContainerAutoUpdateOptions[K],
-  ) =>
-    setDraftOverrides((prev) => ({
-      ...(prev ?? {}),
-      [key]: value,
-    }));
-
-  const reset = () => {
-    setDraftOverrides(null);
-    setContainerNamesOverride(null);
-  };
 
   // The settings writer updates the cache immediately so the draft can clear,
   // then rolls back and reports the error if the save fails.
@@ -432,7 +419,7 @@ const DockerAutoUpdateSettingsSection = ({
           maxListHeight={260}
           multiple
           noOptionsText="No eligible containers"
-          onChange={(names) => setContainerNamesOverride(names)}
+          onChange={(names) => updateDraft("container_names", names)}
           options={selectableNames}
           placeholder="Select containers"
           shrinkLabel

@@ -25,6 +25,7 @@ import { ensureTrailingSlash } from "@/utils/path";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
+import { useSettingsDraft } from "./SettingsSectionForm";
 import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
 
 const normalizePathInput = (value: string): string => {
@@ -111,11 +112,26 @@ const DockerSettingsSection = () => {
     () => normalizeFolderList(dockerFolders),
     [dockerFolders],
   );
-  const configuredFoldersKey = configuredFolders.join("\n");
-
-  const [drafts, setDrafts] = useState<string[]>(
-    configuredFolders.length > 0 ? configuredFolders : [""],
+  // The saved list always shows at least one (empty) row.
+  const savedFolders = useMemo(
+    () => ({
+      folders: configuredFolders.length > 0 ? configuredFolders : [""],
+    }),
+    [configuredFolders],
   );
+  const {
+    draft: folderDraft,
+    isDirty,
+    patchKey,
+    reset,
+  } = useSettingsDraft<{ folders: string[] }, object>(
+    savedFolders,
+    undefined,
+    (draft, saved) =>
+      areStringListsEqual(draft.folders.map(normalizePathInput), saved.folders),
+  );
+  const drafts = folderDraft?.folders ?? savedFolders.folders;
+  const setDrafts = (next: string[]) => patchKey("folders", next);
   const [errorTexts, setErrorTexts] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -124,22 +140,6 @@ const DockerSettingsSection = () => {
 
   const createPromptResolverRef = useRef<((confirmed: boolean) => void) | null>(
     null,
-  );
-
-  const [prevConfiguredFoldersKey, setPrevConfiguredFoldersKey] =
-    useState(configuredFoldersKey);
-  if (configuredFoldersKey !== prevConfiguredFoldersKey) {
-    setPrevConfiguredFoldersKey(configuredFoldersKey);
-    setDrafts(configuredFolders.length > 0 ? configuredFolders : [""]);
-    setErrorTexts([]);
-  }
-
-  const draftFolders = useMemo(() => drafts.map(normalizePathInput), [drafts]);
-  const configuredComparisonFolders =
-    configuredFolders.length > 0 ? configuredFolders : [""];
-  const isDirty = !areStringListsEqual(
-    draftFolders,
-    configuredComparisonFolders,
   );
 
   const resolveCreatePrompt = useCallback((confirmed: boolean) => {
@@ -174,28 +174,26 @@ const DockerSettingsSection = () => {
     [],
   );
 
-  const handleReset = useCallback(() => {
-    setDrafts(configuredFolders.length > 0 ? configuredFolders : [""]);
+  const handleReset = () => {
+    reset();
     setErrorTexts([]);
-  }, [configuredFolders]);
+  };
 
-  const handleAddFolder = useCallback(() => {
-    setDrafts((prev) => [...prev, ""]);
-  }, []);
+  const handleAddFolder = () => setDrafts([...drafts, ""]);
 
-  const handleRemoveFolder = useCallback((index: number) => {
-    setDrafts((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  const handleRemoveFolder = (index: number) => {
+    setDrafts(drafts.filter((_, itemIndex) => itemIndex !== index));
     setErrorTexts((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
-  }, []);
+  };
 
-  const handleDraftChange = useCallback((index: number, value: string) => {
-    setDrafts((prev) =>
-      prev.map((item, itemIndex) => (itemIndex === index ? value : item)),
+  const handleDraftChange = (index: number, value: string) => {
+    setDrafts(
+      drafts.map((item, itemIndex) => (itemIndex === index ? value : item)),
     );
     setErrorTexts((prev) =>
       prev.map((item, itemIndex) => (itemIndex === index ? "" : item)),
     );
-  }, []);
+  };
 
   const handleSave = useCallback(async () => {
     const { folders, errors } = validateDraftFolders(drafts);
@@ -238,7 +236,7 @@ const DockerSettingsSection = () => {
           }
 
           setDockerFolders(folders);
-          setDrafts(folders);
+          reset();
           toast.success("Docker folders saved.");
         } catch (error: unknown) {
           const message =
@@ -256,6 +254,7 @@ const DockerSettingsSection = () => {
     askCreatePrompt,
     createDockerFolder,
     drafts,
+    reset,
     setDockerFolders,
     validateDockerFolder,
   ]);
