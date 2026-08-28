@@ -8,6 +8,7 @@ import {
   type VirtualMachine,
   useCallMutation,
 } from "@/api";
+import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
@@ -67,6 +68,7 @@ const VMMachinesLayout = () => {
   const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
     null,
   );
+  const consoleDialog = useDialogPresence(consoleSession);
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, VMAction>
   >(() => new Map());
@@ -115,6 +117,7 @@ const VMMachinesLayout = () => {
   });
   const deleteTarget =
     liveDeleteTarget ?? (deleteMutation.isPending ? pendingDeleteVM : null);
+  const deleteDialog = useDialogPresence(deleteTarget);
   const startMutation = useCallMutation(
     linuxio.virt.start,
     actionConfig("VM started", "Failed to start VM"),
@@ -233,7 +236,7 @@ const VMMachinesLayout = () => {
         </div>
       </div>
 
-      {deleteTarget && (
+      {deleteDialog.content && (
         <DeleteVMDialog
           isDeleting={deleteMutation.isPending}
           onClose={() => {
@@ -241,19 +244,25 @@ const VMMachinesLayout = () => {
             setPendingDeleteVM(null);
           }}
           onDelete={(deleteDisks) => {
-            setPendingDeleteVM(deleteTarget);
-            deleteMutation.mutate({ deleteDisks, name: deleteTarget.name });
+            if (!deleteDialog.content) return;
+            setPendingDeleteVM(deleteDialog.content);
+            deleteMutation.mutate({
+              deleteDisks,
+              name: deleteDialog.content.name,
+            });
           }}
-          open
-          vm={deleteTarget}
+          onExited={deleteDialog.onExited}
+          open={deleteTarget !== null}
+          vm={deleteDialog.content}
         />
       )}
       <Suspense fallback={null}>
-        {consoleSession && (
+        {consoleDialog.content && (
           <ConsoleDialog
             onClose={() => setConsoleSession(null)}
-            open={Boolean(consoleSession)}
-            session={consoleSession}
+            onExited={consoleDialog.onExited}
+            open={consoleSession !== null}
+            session={consoleDialog.content}
           />
         )}
       </Suspense>

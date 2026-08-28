@@ -35,6 +35,7 @@ import {
   getComposeStatusColor,
   getContainerStatusColor,
 } from "@/constants/statusColors";
+import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useAppMediaQuery } from "@/theme";
@@ -269,6 +270,8 @@ const ComposeList = ({
   );
   const [terminalContainer, setTerminalContainer] =
     useState<ContainerInfo | null>(null);
+  const logsDialog = useDialogPresence(logsContainer);
+  const terminalDialog = useDialogPresence(terminalContainer);
   const isSmallUp = useAppMediaQuery(up("sm"));
   const surface = useReorderableSurface({
     getId: getComposeProjectId,
@@ -837,20 +840,22 @@ const ComposeList = ({
   );
   const containerDialogs = (
     <Suspense fallback={null}>
-      {logsContainer && (
+      {logsDialog.content && (
         <LogsDialog
-          containerId={logsContainer.Id}
-          containerName={getContainerName(logsContainer)}
+          containerId={logsDialog.content.Id}
+          containerName={getContainerName(logsDialog.content)}
           onClose={() => setLogsContainer(null)}
-          open={!!logsContainer}
+          onExited={logsDialog.onExited}
+          open={logsContainer !== null}
         />
       )}
-      {terminalContainer && (
+      {terminalDialog.content && (
         <TerminalDialog
-          containerId={terminalContainer.Id}
-          containerName={getContainerName(terminalContainer)}
+          containerId={terminalDialog.content.Id}
+          containerName={getContainerName(terminalDialog.content)}
           onClose={() => setTerminalContainer(null)}
-          open={!!terminalContainer}
+          onExited={terminalDialog.onExited}
+          open={terminalContainer !== null}
         />
       )}
     </Suspense>

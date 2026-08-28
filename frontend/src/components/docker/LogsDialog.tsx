@@ -22,12 +22,14 @@ interface LogsDialogProps {
   containerId: string;
   containerName?: string;
   onClose: () => void;
+  onExited?: () => void;
   open: boolean;
 }
 
 const LogsDialog = ({
   open,
   onClose,
+  onExited,
   containerName,
   containerId,
 }: LogsDialogProps) => {
@@ -106,6 +108,7 @@ const LogsDialog = ({
         resetState();
         setSearch("");
         setTailLines("100");
+        onExited?.();
       }}
       onLiveModeChange={setLiveMode}
       open={open}

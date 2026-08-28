@@ -18,6 +18,7 @@ const ACCOUNTS_TOAST_META = {
 interface DeleteGroupDialogProps {
   groupNames: string[];
   onClose: () => void;
+  onExited?: () => void;
   onSuccess: () => void;
   open: boolean;
 }
@@ -25,6 +26,7 @@ interface DeleteGroupDialogProps {
 const DeleteGroupDialog = ({
   open,
   onClose,
+  onExited,
   groupNames,
   onSuccess,
 }: DeleteGroupDialogProps) => {
@@ -60,7 +62,13 @@ const DeleteGroupDialog = ({
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>
         Delete Group{groupNames.length > 1 ? "s" : ""}
       </AppDialogTitle>

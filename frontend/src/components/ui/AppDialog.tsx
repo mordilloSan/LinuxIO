@@ -217,10 +217,7 @@ export const AppDialog = ({
   };
 
   return createPortal(
-    <AnimatePresence
-      initial={false}
-      onExitComplete={slotProps?.transition?.onExited}
-    >
+    <AnimatePresence onExitComplete={slotProps?.transition?.onExited}>
       {open && (
         <motion.div
           animate="visible"

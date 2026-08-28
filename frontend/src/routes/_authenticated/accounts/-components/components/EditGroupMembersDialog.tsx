@@ -27,12 +27,14 @@ const ACCOUNTS_TOAST_META = {
 interface EditGroupMembersDialogProps {
   group: AccountGroup;
   onClose: () => void;
+  onExited?: () => void;
   open: boolean;
 }
 
 const EditGroupMembersDialog = ({
   open,
   onClose,
+  onExited,
   group,
 }: EditGroupMembersDialogProps) => {
   const toast = useScopedToast(ACCOUNTS_TOAST_META);
@@ -78,7 +80,13 @@ const EditGroupMembersDialog = ({
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle style={{ padding: "12px 20px" }}>
         <AppTypography component="span" fontWeight={600} variant="h6">
           Edit Group Members: {group.name}

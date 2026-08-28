@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { render, screen } from "@/test/render";
@@ -10,6 +10,10 @@ vi.mock("@iconify/react", () => ({
 }));
 
 describe("ViewModeToggle", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(document, "startViewTransition");
+  });
+
   it.each([
     ["table", "table", "Switch to card view", "mdi:card-multiple", "card"],
     ["table", "card", "Switch to table view", "mdi:view-list", "table"],
@@ -40,4 +44,27 @@ describe("ViewModeToggle", () => {
       expect(onViewModeChange).toHaveBeenCalledWith(nextMode);
     },
   );
+
+  it("updates the view inside a browser view transition", async () => {
+    const onViewModeChange = vi.fn();
+    const startViewTransition = vi.fn((update: () => void) => update());
+    Object.defineProperty(document, "startViewTransition", {
+      configurable: true,
+      value: startViewTransition,
+    });
+    const { user } = render(
+      <ViewModeToggle
+        alternateMode="table"
+        onViewModeChange={onViewModeChange}
+        viewMode="table"
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Switch to card view" }),
+    );
+
+    expect(startViewTransition).toHaveBeenCalledOnce();
+    expect(onViewModeChange).toHaveBeenCalledWith("card");
+  });
 });

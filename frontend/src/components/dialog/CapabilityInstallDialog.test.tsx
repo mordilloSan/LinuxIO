@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fireEvent, render, screen } from "@/test/render";
+import { fireEvent, render, screen, waitFor } from "@/test/render";
 
 import CapabilityInstallDialog, {
   type CapabilityInstallOutputLine,
@@ -25,7 +25,7 @@ const runningProps = {
 };
 
 describe("CapabilityInstallDialog", () => {
-  it("shows progress and preserves typed installer output", () => {
+  it("shows progress and preserves typed installer output", async () => {
     render(<CapabilityInstallDialog {...runningProps} />);
 
     expect(screen.getByText("Installing lm-sensors")).toBeInTheDocument();
@@ -36,7 +36,11 @@ describe("CapabilityInstallDialog", () => {
       screen.getByRole("button", { name: "Show installation output" }),
     );
 
-    expect(screen.getByText("[status] Resolving package names")).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByText("[status] Resolving package names"),
+      ).toBeVisible(),
+    );
     expect(screen.getByText("Probing hardware")).toBeVisible();
     expect(screen.getByText("Driver warning")).toHaveClass(
       "capability-install-dialog__output-line--stderr",

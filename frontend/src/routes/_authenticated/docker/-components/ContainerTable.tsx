@@ -46,6 +46,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { getContainerStatusColor } from "@/constants/statusColors";
+import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
@@ -1276,6 +1277,8 @@ const ContainerTable = ({
   );
   const [terminalTarget, setTerminalTarget] =
     useState<ContainerDialogTarget | null>(null);
+  const logsDialog = useDialogPresence(logsTarget);
+  const terminalDialog = useDialogPresence(terminalTarget);
   const toggleExpanded = useCallback((containerId: string) => {
     setExpandedContainerIds((previous) => {
       const next = new Set(previous);
@@ -1576,20 +1579,22 @@ const ContainerTable = ({
         </CheckingUpdatesContext.Provider>
       </ExpandedContainersContext.Provider>
       <Suspense fallback={null}>
-        {logsTarget && (
+        {logsDialog.content && (
           <LogsDialog
-            containerId={logsTarget.id}
-            containerName={logsTarget.name}
+            containerId={logsDialog.content.id}
+            containerName={logsDialog.content.name}
             onClose={() => setLogsTarget(null)}
-            open
+            onExited={logsDialog.onExited}
+            open={logsTarget !== null}
           />
         )}
-        {terminalTarget && (
+        {terminalDialog.content && (
           <TerminalDialog
-            containerId={terminalTarget.id}
-            containerName={terminalTarget.name}
+            containerId={terminalDialog.content.id}
+            containerName={terminalDialog.content.name}
             onClose={() => setTerminalTarget(null)}
-            open
+            onExited={terminalDialog.onExited}
+            open={terminalTarget !== null}
           />
         )}
       </Suspense>

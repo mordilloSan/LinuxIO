@@ -22,11 +22,13 @@ interface Props {
   containerId: string;
   containerName?: string;
   onClose: () => void;
+  onExited?: () => void;
   open: boolean;
 }
 const TerminalDialog = ({
   open,
   onClose,
+  onExited,
   containerId,
   containerName,
 }: Props) => {
@@ -70,7 +72,8 @@ const TerminalDialog = ({
   const handleDialogExited = useCallback(() => {
     closeStream();
     setSelectedShell(null);
-  }, [closeStream]);
+    onExited?.();
+  }, [closeStream, onExited]);
 
   const {
     containerRef: termRef,

@@ -5,6 +5,17 @@ import { AppDialog } from "@/components/ui/AppDialog";
 import { render } from "@/test/render";
 
 describe("AppDialog motion", () => {
+  it("animates a dialog that mounts already open", async () => {
+    const onEntered = vi.fn();
+    render(
+      <AppDialog open slotProps={{ transition: { onEntered } }}>
+        Dialog
+      </AppDialog>,
+    );
+
+    await waitFor(() => expect(onEntered).toHaveBeenCalledOnce());
+  });
+
   it("keeps the dialog mounted through its exit and fires lifecycle callbacks", async () => {
     const onEntered = vi.fn();
     const onExited = vi.fn();

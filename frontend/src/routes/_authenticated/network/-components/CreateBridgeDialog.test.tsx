@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen } from "@/test/render";
+import { render, screen, waitFor } from "@/test/render";
 
 import CreateBridgeDialog from "./CreateBridgeDialog";
 
@@ -90,7 +90,7 @@ describe("CreateBridgeDialog", () => {
     mocks.options = { candidates: [], warnings: [] };
   });
 
-  it("shows refusal reasons and blocks creation when no NIC is eligible", () => {
+  it("shows refusal reasons and blocks creation when no NIC is eligible", async () => {
     mocks.options = {
       candidates: [
         {
@@ -106,7 +106,9 @@ describe("CreateBridgeDialog", () => {
 
     render(<CreateBridgeDialog onClose={mocks.onClose} open />);
 
-    expect(screen.getByText("No eligible spare NICs")).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText("No eligible spare NICs")).toBeVisible(),
+    );
     expect(screen.getByRole("listitem")).toHaveTextContent(
       "enp2s0: interface already carries a host IP",
     );
@@ -134,7 +136,9 @@ describe("CreateBridgeDialog", () => {
       <CreateBridgeDialog onClose={mocks.onClose} open />,
     );
 
-    expect(screen.getByDisplayValue("br-enp123456789")).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("br-enp123456789")).toBeVisible(),
+    );
     expect(
       screen.queryByText("Stage 2a safety summary"),
     ).not.toBeInTheDocument();

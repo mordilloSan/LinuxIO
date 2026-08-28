@@ -9,6 +9,7 @@ import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
@@ -28,6 +29,7 @@ const VMPage = ({ children }: VMPageProps) => {
   const { status: libvirtStatus, reason: libvirtReason } =
     useCapability("libvirtAvailable");
   const [createOpen, setCreateOpen] = useState(false);
+  const createDialog = useDialogPresence(createOpen ? true : null);
   const [createProgress, setCreateProgress] = useState<VMCreateProgress | null>(
     null,
   );
@@ -136,7 +138,7 @@ const VMPage = ({ children }: VMPageProps) => {
         {children ?? <Outlet />}
       </RoutedTabLayout>
 
-      {createOpen && (
+      {createDialog.content && (
         <CreateVMDialog
           createProgress={createProgress}
           isCreating={createMutation.isPending}
@@ -145,6 +147,7 @@ const VMPage = ({ children }: VMPageProps) => {
             setCreateProgress(null);
           }}
           onCreate={(request) => createMutation.mutate(request)}
+          onExited={createDialog.onExited}
           open={createOpen}
         />
       )}

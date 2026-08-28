@@ -15,6 +15,7 @@ import type {
 import type { PermissionsDialogState } from "@/hooks/filebrowser/useFileDialogs";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
+import { useDialogPresence } from "@/hooks/useDialogPresence";
 import type {
   FileResource,
   ResourceStatData,
@@ -185,159 +186,164 @@ const FileBrowserDialogs = ({
   editor,
   permissions,
   upload,
-}: FileBrowserDialogsProps) => (
-  <>
-    <FileBrowserEditorDialog
-      editingFileResource={editor.editingFileResource}
-      editingPath={editor.editingPath}
-      editorRef={editor.editorRef}
-      isDirty={editor.isDirty}
-      isEditingFileLoading={editor.isEditingFileLoading}
-      isSaving={editor.isSaving}
-      onCloseEditor={editor.onClose}
-      onDirtyChange={editor.onDirtyChange}
-      onSaveContent={editor.onSaveContent}
-      onSaveFile={editor.onRequestSave}
-      onSearchChange={editor.onSearchChange}
-      onSwitchView={editor.onSwitchView}
-      onToggleHiddenFiles={editor.onToggleHiddenFiles}
-      searchQuery={editor.searchQuery}
-      showHiddenFiles={editor.showHiddenFiles}
-      showQuickSave={editor.showQuickSave}
-      viewMode={editor.viewMode}
-    />
+}: FileBrowserDialogsProps) => {
+  const permissionsPresence = useDialogPresence(permissions.dialog);
 
-    <ContextMenu
-      anchorPosition={contextMenu.anchorPosition}
-      canCompress={contextMenu.canCompress}
-      canExtract={contextMenu.canExtract}
-      canOpenContainingFolder={contextMenu.canOpenContainingFolder}
-      canRename={contextMenu.canRename}
-      canShowDetails={contextMenu.canShowDetails}
-      hasClipboard={contextMenu.hasClipboard}
-      hasSelection={contextMenu.hasSelection}
-      onChangePermissions={contextMenu.onChangePermissions}
-      onClose={contextMenu.onClose}
-      onCompress={contextMenu.onCompress}
-      onCopy={contextMenu.onCopy}
-      onCreateFile={contextMenu.onCreateFile}
-      onCreateFolder={contextMenu.onCreateFolder}
-      onCut={contextMenu.onCut}
-      onDelete={contextMenu.onDelete}
-      onDownload={contextMenu.onDownload}
-      onExtract={contextMenu.onExtract}
-      onOpenContainingFolder={contextMenu.onOpenContainingFolder}
-      onPaste={contextMenu.onPaste}
-      onRename={contextMenu.onRename}
-      onShowDetails={contextMenu.onShowDetails}
-      onUpload={contextMenu.onUpload}
-    />
-
-    <CompressFormatDialog
-      onClose={archive.onCloseCompressFormatDialog}
-      onConfirm={archive.onConfirmCompressFormat}
-      open={Boolean(archive.compressFormatDialog)}
-    />
-
-    <FileBrowserDetailsDialog
-      detailError={details.detailError}
-      detailResource={details.detailResource}
-      detailTarget={details.detailTarget}
-      hasMultipleDetailTargets={details.hasMultipleTargets}
-      hasSingleDetailTarget={details.hasSingleTarget}
-      isStatLoading={details.isStatLoading}
-      multiItemsStats={details.multiItemsStats}
-      onClose={details.onClose}
-      onDownload={details.onDownload}
-      onEdit={details.onEdit}
-      shouldShowDetailLoader={details.shouldShowLoader}
-      statData={details.statData}
-    />
-
-    <InputDialog
-      label="File Name"
-      onClose={create.onCloseFile}
-      onConfirm={create.onConfirmFile}
-      isPending={create.filePending}
-      open={create.fileOpen}
-      title="Create File"
-    />
-
-    <InputDialog
-      label="Folder Name"
-      onClose={create.onCloseFolder}
-      onConfirm={create.onConfirmFolder}
-      isPending={create.folderPending}
-      open={create.folderOpen}
-      title="Create Folder"
-    />
-
-    <ConfirmDialog
-      confirmText="Delete"
-      message={`Are you sure you want to delete ${deleteDialog.pendingDeletePaths.length} item${deleteDialog.pendingDeletePaths.length !== 1 ? "s" : ""}?`}
-      onClose={deleteDialog.onClose}
-      onConfirm={deleteDialog.onConfirm}
-      open={deleteDialog.open}
-      title="Delete Items"
-      isPending={deleteDialog.isPending}
-      progress={deleteDialog.progress}
-    />
-
-    <ConfirmDialog
-      confirmText="Edit Anyway"
-      message={`"${archive.unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
-      onClose={archive.onCloseUnsupportedEditDialog}
-      onConfirm={archive.onConfirmUnsupportedEdit}
-      open={Boolean(archive.unsupportedEditPath)}
-      title="Edit Unsupported File?"
-    />
-
-    {permissions.dialog && (
-      <PermissionsDialog
-        currentMode={permissions.dialog.mode}
-        group={permissions.dialog.group}
-        isDirectory={permissions.dialog.isDirectory}
-        onClose={permissions.onClose}
-        onConfirm={permissions.onConfirm}
-        open
-        owner={permissions.dialog.owner}
-        pathLabel={permissions.dialog.pathLabel}
-        isPending={permissions.isPending}
-        progress={permissions.progress}
-        selectionCount={permissions.dialog.selectionCount}
+  return (
+    <>
+      <FileBrowserEditorDialog
+        editingFileResource={editor.editingFileResource}
+        editingPath={editor.editingPath}
+        editorRef={editor.editorRef}
+        isDirty={editor.isDirty}
+        isEditingFileLoading={editor.isEditingFileLoading}
+        isSaving={editor.isSaving}
+        onCloseEditor={editor.onClose}
+        onDirtyChange={editor.onDirtyChange}
+        onSaveContent={editor.onSaveContent}
+        onSaveFile={editor.onRequestSave}
+        onSearchChange={editor.onSearchChange}
+        onSwitchView={editor.onSwitchView}
+        onToggleHiddenFiles={editor.onToggleHiddenFiles}
+        searchQuery={editor.searchQuery}
+        showHiddenFiles={editor.showHiddenFiles}
+        showQuickSave={editor.showQuickSave}
+        viewMode={editor.viewMode}
       />
-    )}
 
-    <FileBrowserUploadDialog
-      fileInputRef={upload.fileInputRef}
-      folderInputRef={upload.folderInputRef}
-      isUploadProcessing={upload.isProcessing}
-      normalizedPath={upload.normalizedPath}
-      onChangeUploadInput={upload.onChangeInput}
-      onClearUploadSelection={upload.onClearSelection}
-      onClose={upload.onClose}
-      onPickFiles={upload.onPickFiles}
-      onPickFolder={upload.onPickFolder}
-      onStartUpload={upload.onStart}
-      open={upload.open}
-      uploadEntries={upload.entries}
-      uploadSummary={upload.summary}
-    />
+      <ContextMenu
+        anchorPosition={contextMenu.anchorPosition}
+        canCompress={contextMenu.canCompress}
+        canExtract={contextMenu.canExtract}
+        canOpenContainingFolder={contextMenu.canOpenContainingFolder}
+        canRename={contextMenu.canRename}
+        canShowDetails={contextMenu.canShowDetails}
+        hasClipboard={contextMenu.hasClipboard}
+        hasSelection={contextMenu.hasSelection}
+        onChangePermissions={contextMenu.onChangePermissions}
+        onClose={contextMenu.onClose}
+        onCompress={contextMenu.onCompress}
+        onCopy={contextMenu.onCopy}
+        onCreateFile={contextMenu.onCreateFile}
+        onCreateFolder={contextMenu.onCreateFolder}
+        onCut={contextMenu.onCut}
+        onDelete={contextMenu.onDelete}
+        onDownload={contextMenu.onDownload}
+        onExtract={contextMenu.onExtract}
+        onOpenContainingFolder={contextMenu.onOpenContainingFolder}
+        onPaste={contextMenu.onPaste}
+        onRename={contextMenu.onRename}
+        onShowDetails={contextMenu.onShowDetails}
+        onUpload={contextMenu.onUpload}
+      />
 
-    <FileBrowserConflictDialog
-      onCancel={conflict.onCancel}
-      onResolve={conflict.onResolve}
-      prompt={conflict.prompt}
-    />
+      <CompressFormatDialog
+        onClose={archive.onCloseCompressFormatDialog}
+        onConfirm={archive.onConfirmCompressFormat}
+        open={Boolean(archive.compressFormatDialog)}
+      />
 
-    <UnsavedChangesDialog
-      isSaving={editor.isSaving}
-      onDiscardAndExit={editor.onDiscardAndExit}
-      onKeepEditing={editor.onKeepEditing}
-      onSaveAndExit={editor.onSaveAndExit}
-      open={editor.closeEditorDialog}
-    />
-  </>
-);
+      <FileBrowserDetailsDialog
+        detailError={details.detailError}
+        detailResource={details.detailResource}
+        detailTarget={details.detailTarget}
+        hasMultipleDetailTargets={details.hasMultipleTargets}
+        hasSingleDetailTarget={details.hasSingleTarget}
+        isStatLoading={details.isStatLoading}
+        multiItemsStats={details.multiItemsStats}
+        onClose={details.onClose}
+        onDownload={details.onDownload}
+        onEdit={details.onEdit}
+        shouldShowDetailLoader={details.shouldShowLoader}
+        statData={details.statData}
+      />
+
+      <InputDialog
+        label="File Name"
+        onClose={create.onCloseFile}
+        onConfirm={create.onConfirmFile}
+        isPending={create.filePending}
+        open={create.fileOpen}
+        title="Create File"
+      />
+
+      <InputDialog
+        label="Folder Name"
+        onClose={create.onCloseFolder}
+        onConfirm={create.onConfirmFolder}
+        isPending={create.folderPending}
+        open={create.folderOpen}
+        title="Create Folder"
+      />
+
+      <ConfirmDialog
+        confirmText="Delete"
+        message={`Are you sure you want to delete ${deleteDialog.pendingDeletePaths.length} item${deleteDialog.pendingDeletePaths.length !== 1 ? "s" : ""}?`}
+        onClose={deleteDialog.onClose}
+        onConfirm={deleteDialog.onConfirm}
+        open={deleteDialog.open}
+        title="Delete Items"
+        isPending={deleteDialog.isPending}
+        progress={deleteDialog.progress}
+      />
+
+      <ConfirmDialog
+        confirmText="Edit Anyway"
+        message={`"${archive.unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
+        onClose={archive.onCloseUnsupportedEditDialog}
+        onConfirm={archive.onConfirmUnsupportedEdit}
+        open={Boolean(archive.unsupportedEditPath)}
+        title="Edit Unsupported File?"
+      />
+
+      {permissionsPresence.content && (
+        <PermissionsDialog
+          currentMode={permissionsPresence.content.mode}
+          group={permissionsPresence.content.group}
+          isDirectory={permissionsPresence.content.isDirectory}
+          onClose={permissions.onClose}
+          onConfirm={permissions.onConfirm}
+          onExited={permissionsPresence.onExited}
+          open={permissions.dialog !== null}
+          owner={permissionsPresence.content.owner}
+          pathLabel={permissionsPresence.content.pathLabel}
+          isPending={permissions.isPending}
+          progress={permissions.progress}
+          selectionCount={permissionsPresence.content.selectionCount}
+        />
+      )}
+
+      <FileBrowserUploadDialog
+        fileInputRef={upload.fileInputRef}
+        folderInputRef={upload.folderInputRef}
+        isUploadProcessing={upload.isProcessing}
+        normalizedPath={upload.normalizedPath}
+        onChangeUploadInput={upload.onChangeInput}
+        onClearUploadSelection={upload.onClearSelection}
+        onClose={upload.onClose}
+        onPickFiles={upload.onPickFiles}
+        onPickFolder={upload.onPickFolder}
+        onStartUpload={upload.onStart}
+        open={upload.open}
+        uploadEntries={upload.entries}
+        uploadSummary={upload.summary}
+      />
+
+      <FileBrowserConflictDialog
+        onCancel={conflict.onCancel}
+        onResolve={conflict.onResolve}
+        prompt={conflict.prompt}
+      />
+
+      <UnsavedChangesDialog
+        isSaving={editor.isSaving}
+        onDiscardAndExit={editor.onDiscardAndExit}
+        onKeepEditing={editor.onKeepEditing}
+        onSaveAndExit={editor.onSaveAndExit}
+        open={editor.closeEditorDialog}
+      />
+    </>
+  );
+};
 
 export default memo(FileBrowserDialogs);

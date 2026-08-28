@@ -11,6 +11,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import { useDialogPresence } from "@/hooks/useDialogPresence";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -68,6 +69,8 @@ const GroupsTab = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AccountGroup | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<AccountGroup | null>(null);
+  const editMembersDialog = useDialogPresence(selectedGroup);
+  const deleteGroupDialog = useDialogPresence(groupToDelete);
 
   const groupsList = Array.isArray(groups) ? groups : [];
 
@@ -291,24 +294,26 @@ const GroupsTab = ({
         open={createDialogOpen}
       />
 
-      {selectedGroup && (
+      {editMembersDialog.content && (
         <EditGroupMembersDialog
-          group={selectedGroup}
+          group={editMembersDialog.content}
           onClose={() => {
             setEditMembersDialogOpen(false);
             setSelectedGroup(null);
           }}
+          onExited={editMembersDialog.onExited}
           open={editMembersDialogOpen}
         />
       )}
 
-      {groupToDelete && (
+      {deleteGroupDialog.content && (
         <DeleteGroupDialog
-          groupNames={[groupToDelete.name]}
+          groupNames={[deleteGroupDialog.content.name]}
           onClose={() => {
             setDeleteDialogOpen(false);
             setGroupToDelete(null);
           }}
+          onExited={deleteGroupDialog.onExited}
           onSuccess={() => {
             setDeleteDialogOpen(false);
             setGroupToDelete(null);

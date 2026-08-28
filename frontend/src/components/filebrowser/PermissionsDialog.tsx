@@ -31,6 +31,7 @@ interface PermissionsDialogProps {
     owner?: string,
     group?: string,
   ) => void;
+  onExited?: () => void;
   open: boolean;
   owner?: string;
   pathLabel: string;
@@ -144,6 +145,7 @@ const PermissionsDialog = ({
   group,
   onClose,
   onConfirm,
+  onExited,
   isPending = false,
   progress,
 }: PermissionsDialogProps) => {
@@ -158,6 +160,8 @@ const PermissionsDialog = ({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
+      setPermissions(parseMode(currentMode));
+      setRecursive(false);
       setOwnerInput(owner || "");
       setGroupInput(group || "");
     }
@@ -239,10 +243,10 @@ const PermissionsDialog = ({
       aria-busy={isPending || undefined}
       disableEscapeKeyDown={isPending}
       fullWidth
-      key={open ? `${currentMode}-${owner}-${group}` : "closed"}
       maxWidth="sm"
       onClose={isPending ? undefined : onClose}
       open={open}
+      slotProps={{ transition: { onExited } }}
     >
       <AppDialogTitle
         style={{

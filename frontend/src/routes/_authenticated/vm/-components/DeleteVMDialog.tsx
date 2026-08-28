@@ -38,19 +38,27 @@ export default function DeleteVMDialog({
   isDeleting,
   onClose,
   onDelete,
+  onExited,
   open,
   vm,
 }: {
   isDeleting: boolean;
   onClose: () => void;
   onDelete: (deleteDisks: boolean) => void;
+  onExited?: () => void;
   open: boolean;
   vm: VirtualMachine | null;
 }) {
   const [deleteDisks, setDeleteDisks] = useState(true);
 
   return (
-    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+    <GeneralDialog
+      fullWidth
+      maxWidth="sm"
+      onClose={onClose}
+      open={open}
+      slotProps={{ transition: { onExited } }}
+    >
       <AppDialogTitle>Delete VM</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>

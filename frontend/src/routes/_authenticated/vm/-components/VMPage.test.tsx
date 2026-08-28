@@ -971,7 +971,9 @@ describe("Virtual Machines page", () => {
     await user.click(screen.getByRole("button", { name: /create vm/i }));
     const dialog = screen.getByRole("dialog");
 
-    expect(within(dialog).getByText("default network")).toBeVisible();
+    await waitFor(() =>
+      expect(within(dialog).getByText("default network")).toBeVisible(),
+    );
     expect(
       within(dialog).getByText("default NAT network is missing"),
     ).toBeVisible();

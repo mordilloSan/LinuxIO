@@ -43,10 +43,12 @@ const consoleViewportStyle: CSSProperties = {
 
 export default function ConsoleDialog({
   onClose,
+  onExited,
   open,
   session,
 }: {
   onClose: () => void;
+  onExited?: () => void;
   open: boolean;
   session: ConsoleSession;
 }) {
@@ -124,6 +126,7 @@ export default function ConsoleDialog({
       onClose={onClose}
       open={open}
       paperStyle={consolePaperStyle(isMobile)}
+      slotProps={{ transition: { onExited } }}
     >
       <div style={consoleHeaderStyle}>
         <div>
