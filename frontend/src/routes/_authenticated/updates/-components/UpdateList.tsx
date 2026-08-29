@@ -59,7 +59,6 @@ const UpdateList = ({
       .query({
         ...linuxio.updates.get_update_detail({ packageId }),
         meta: { silent: true },
-        retry: false,
         staleTime: CACHE_TTL_MS.FIVE_MINUTES,
       })
       .catch(noop);

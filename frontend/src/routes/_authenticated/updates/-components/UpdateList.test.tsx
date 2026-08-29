@@ -99,7 +99,6 @@ describe("UpdateList", () => {
           "get_update_detail",
           { packageId: "alpha" },
         ],
-        retry: false,
         staleTime: 300_000,
       }),
     );
