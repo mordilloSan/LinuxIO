@@ -77,17 +77,20 @@ func TestShouldSyncDockerMountOrdering(t *testing.T) {
 
 	require.True(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{
 		Docker: &apischema.ConfigDockerPayload{RequireMountsForFolders: &enabled},
-	}))
+	}, bridgeconfig.StorageModeHome))
 	require.True(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{
 		Docker: &apischema.ConfigDockerPayload{Folders: []string{"/srv/docker"}},
-	}))
+	}, bridgeconfig.StorageModeFallback))
+	require.False(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{
+		Docker: &apischema.ConfigDockerPayload{RequireMountsForFolders: &enabled},
+	}, bridgeconfig.StorageModeMemory))
 
 	cfg.Docker.RequireMountsForFolders = false
 	require.False(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{
 		Docker: &apischema.ConfigDockerPayload{Folders: []string{"/srv/docker"}},
-	}))
-	require.False(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{}))
-	require.False(t, shouldSyncDockerMountOrdering(cfg, nil))
+	}, bridgeconfig.StorageModeHome))
+	require.False(t, shouldSyncDockerMountOrdering(cfg, &apischema.ConfigSetPayload{}, bridgeconfig.StorageModeHome))
+	require.False(t, shouldSyncDockerMountOrdering(cfg, nil, bridgeconfig.StorageModeHome))
 }
 
 func TestSystemdUnitValueOnlyQuotesWhenNeeded(t *testing.T) {

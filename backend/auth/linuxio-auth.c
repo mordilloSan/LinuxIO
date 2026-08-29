@@ -1667,6 +1667,13 @@ static void drop_to_user(const struct auth_user *auth_user, int status_fd)
   if (setuid(0) == 0)
     child_die(status_fd, "privilege drop verification (setuid(0) unexpectedly succeeded)");
 }
+
+static int chdir_bridge_workdir(const char *home)
+{
+  if (home && *home && chdir(home) == 0)
+    return 0;
+  return chdir("/");
+}
 // Locale validation - only allow safe locale strings
 static int valid_locale(const char *s)
 {
@@ -2212,8 +2219,8 @@ static pid_t spawn_bridge_process(
       struct stat xdg_st;
       if (stat(xdg, &xdg_st) == 0 && S_ISDIR(xdg_st.st_mode))
         setenv("XDG_RUNTIME_DIR", xdg, 1);
-      if (chdir(auth_user->dir) != 0)
-        child_die(child_status_fd, "chdir to home directory");
+      if (chdir_bridge_workdir(auth_user->dir) != 0)
+        child_die(child_status_fd, "chdir to bridge working directory");
     }
   }
 

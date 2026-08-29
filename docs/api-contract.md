@@ -374,19 +374,34 @@ make omission impossible to define as reset-to-backend-default. The bridge and
 frontend are shipped together, and the schema parity tests and generated client
 cover all four route declarations.
 
-On disk, `~/.linuxio-config.yaml` and `~/.linuxio-ui.yaml` use independent
-sidecar locks and atomic whole-file replacement. A missing or invalid UI file
-is written as `{}`. The bridge expands that sentinel, or any valid sparse UI
-document, over backend defaults when serving `config.get_ui`; it does not
-rewrite the sentinel merely because it was read. On the first preference
-change, the frontend sends one complete effective snapshot to `config.set_ui`.
-There is no session-storage configuration copy or local-storage theme cache.
-Concurrent UI replacements are serialized but not field-merged; the last
-complete snapshot committed wins.
+The bridge first stores `.linuxio-config.yaml` and `.linuxio-ui.yaml` in the
+authenticated user's home. If that store cannot be opened, it uses the
+UID-owned `/var/lib/linuxio/users/<uid>` fallback. If both disk stores fail,
+the bridge starts with in-memory defaults and accepts changes for that bridge
+session without writing files. `config.get` reports `storageMode` as `home`,
+`fallback`, or `memory`; the authenticated UI keeps a warning visible for both
+degraded modes and explains that memory-mode changes are temporary.
 
-Pre-split combined `.linuxio-config.yaml` files are no longer accepted. Strict
-core decoding rejects their UI fields and leaves the file untouched, so startup
-fails; current malformed core content likewise fails without a reset. The
+Both disk stores use independent sidecar locks and atomic whole-file
+replacement. A missing or invalid UI file is written as `{}`. The bridge
+expands that sentinel, or any valid sparse UI document, over backend defaults
+when serving `config.get_ui`; it does not rewrite the sentinel merely because
+it was read. On the first preference change, the frontend sends one complete
+effective snapshot to `config.set_ui`. There is no session-storage
+configuration copy or local-storage theme cache. Concurrent UI replacements
+are serialized but not field-merged; the last complete snapshot committed
+wins.
+
+At bridge startup a core document
+that fails to decode or validate is renamed to
+`.linuxio-config.yaml.broken-<UTC timestamp>` and replaced with defaults; an
+existing quarantine name gets `(2)`, `(3)`, and so on rather than being
+overwritten. The bridge logs both paths at warning level and starts. Read,
+stat, symlink, lock, and write failures move startup to the next storage tier
+without replacing the failed config artifact. A core update that finds an unreadable
+document fails and leaves the file untouched; only the startup read
+quarantines. The bridge logs the storage mode plus the core and UI paths when
+the store is ready and logs every default-file creation and UI reset. The
 bridge never uses filesystem observations to repair Docker folders.
 
 All four disk artifacts (the two YAML files and their lock files), plus atomic

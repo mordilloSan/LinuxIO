@@ -14,6 +14,7 @@ its plan lands.
 | Doc | Use |
 |-----|-----|
 | [API Contract](./api-contract.md) | Canonical implemented contract for Go-owned routes, generated frontend types, JSON request envelopes, Calls, Channels, Tasks, and adding endpoints. |
+| [Bridge Configuration Storage](./config-storage.md) | Per-user core/UI files, home and `/var/lib/linuxio` fallback, memory-only degradation, corrupt-document recovery, ownership, and logging. |
 | [Durable Operations Architecture](./durable-operations-architecture.md) | The implemented durable-operation boundary: the shared operation record and store, external execution owners, recovery across bridge restart and websocket loss, and what a new durable route must prove before opting in. |
 | [Handler Patterns](./bridge_handler_patterns.md) | Handler package style: `handlers.go` layout, context propagation, logging, naming, validation. |
 | [Privilege Pattern](./privilege_pattern.md) | How to decide and declare privileged routes. |

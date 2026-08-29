@@ -117,6 +117,7 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       progressMinBytesMB: 8,
       progressMinIntervalMs: 200,
     },
+    storageMode: "home",
     ...overrides,
   };
 }

@@ -132,6 +132,7 @@ export interface AppConfig {
   dismissals?: Dismissals;
   docker: DockerSettings;
   jobs: JobSettings;
+  storageMode: ConfigStorageMode;
 }
 
 export interface AppSettings {
@@ -434,6 +435,8 @@ export interface ConfigSetResult {
   message: string;
   path: string;
 }
+
+export type ConfigStorageMode = "home" | "fallback" | "memory";
 
 export interface ConfigThemeColorsByModePayload {
   light?: ConfigThemeColorsPayload;

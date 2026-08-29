@@ -7,7 +7,7 @@ import (
 
 // appConfigToAPI is deliberately explicit: core persisted configuration has
 // validation-specific types, while apischema owns the public response shape.
-func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
+func appConfigToAPI(value bridgeconfig.Settings, storageMode bridgeconfig.StorageMode) apischema.AppConfig {
 	result := apischema.AppConfig{
 		AppSettings: apischema.AppSettings{
 			ShowHiddenFiles: value.AppSettings.ShowHiddenFiles,
@@ -22,6 +22,7 @@ func appConfigToAPI(value bridgeconfig.Settings) apischema.AppConfig {
 			ProgressMinBytesMB: value.Jobs.ProgressMinBytesMB, HeavyArchiveConcurrency: value.Jobs.HeavyArchiveConcurrency,
 			ArchiveCompressionWorkers: value.Jobs.ArchiveCompressionWorkers, ArchiveExtractWorkers: value.Jobs.ArchiveExtractWorkers,
 		},
+		StorageMode: apischema.ConfigStorageMode(storageMode),
 	}
 	if value.AppSettings.ChunkSizeMB != 0 {
 		result.AppSettings.ChunkSizeMB = &value.AppSettings.ChunkSizeMB

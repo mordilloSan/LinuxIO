@@ -4,15 +4,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const lockFilePerm = 0o600
+
+var fallbackConfigRoot = filepath.Join(version.DataDir, "users")
+
+type StorageMode string
+
+const (
+	StorageModeHome     StorageMode = "home"
+	StorageModeFallback StorageMode = "fallback"
+	StorageModeMemory   StorageMode = "memory"
+)
 
 // UserStore owns independent core and UI snapshots for one bridge process.
 // Core and UI updates use separate locks so a frontend preference write cannot
@@ -24,6 +38,8 @@ type UserStore struct {
 	lockPath   string
 	uiLockPath string
 	owner      fileOwnership
+	base       string
+	mode       StorageMode
 
 	mu         sync.RWMutex
 	uiMu       sync.RWMutex
@@ -33,20 +49,65 @@ type UserStore struct {
 	ui         UIPreferences
 }
 
-// OpenUserStore prepares both files and loads both snapshots while holding both
-// sidecar locks. The authenticated numeric UID/GID identify the owner of every
-// runtime artifact; username is used only to resolve the configuration base.
+// OpenUserStore prefers the authenticated user's home, falls back to
+// /var/lib/linuxio, then keeps settings in memory if neither location works.
 func OpenUserStore(username string, targetUID, targetGID uint32) (*UserStore, error) {
 	owner, err := resolveFileOwnership(targetUID, targetGID)
 	if err != nil {
 		return nil, err
 	}
-	base, err := configBase(username)
-	if err != nil {
-		return nil, err
+	homeBase, homeErr := configBase(username)
+	return openUserStore(username, targetUID, owner, homeBase, homeErr), nil
+}
+
+func openUserStore(username string, targetUID uint32, owner fileOwnership, homeBase string, homeErr error) *UserStore {
+	if homeErr == nil {
+		store, err := openDiskUserStore(username, homeBase, homeBase, owner, StorageModeHome)
+		if err == nil {
+			return store
+		}
+		homeErr = err
 	}
-	cfgPath := filepath.Join(base, cfgFileName)
-	uiPath := filepath.Join(base, uiCfgFileName)
+
+	fallbackBase := filepath.Join(fallbackConfigRoot, strconv.FormatUint(uint64(targetUID), 10))
+	defaultBase := homeBase
+	if defaultBase == "" {
+		defaultBase = fallbackBase
+	}
+	fallbackErr := prepareFallbackConfigBase(fallbackBase, owner)
+	if fallbackErr == nil {
+		store, err := openDiskUserStore(username, fallbackBase, defaultBase, owner, StorageModeFallback)
+		if err == nil {
+			slog.Warn("home config store unavailable, using fallback",
+				"component", "config",
+				"user", username,
+				"path", fallbackBase,
+				"error", homeErr,
+			)
+			return store
+		}
+		fallbackErr = err
+	}
+
+	slog.Warn("persistent config stores unavailable, using memory",
+		"component", "config",
+		"user", username,
+		"home_error", homeErr,
+		"fallback_error", fallbackErr,
+	)
+	return &UserStore{
+		username: username,
+		owner:    owner,
+		base:     defaultBase,
+		mode:     StorageModeMemory,
+		cfg:      *DefaultSettings(defaultBase),
+		ui:       DefaultUIPreferences(),
+	}
+}
+
+func openDiskUserStore(username, configBase, defaultBase string, owner fileOwnership, mode StorageMode) (*UserStore, error) {
+	cfgPath := filepath.Join(configBase, cfgFileName)
+	uiPath := filepath.Join(configBase, uiCfgFileName)
 	store := &UserStore{
 		username:   username,
 		path:       cfgPath,
@@ -54,12 +115,14 @@ func OpenUserStore(username string, targetUID, targetGID uint32) (*UserStore, er
 		lockPath:   cfgPath + ".lock",
 		uiLockPath: uiPath + ".lock",
 		owner:      owner,
+		base:       defaultBase,
+		mode:       mode,
 	}
 	if err := withConfigLocksOwned(context.Background(), store.lockPath, store.uiLockPath, owner, func() error {
-		if err := initializeLockedOwned(cfgPath, uiPath, base, owner); err != nil {
+		if err := initializeLockedOwned(cfgPath, uiPath, defaultBase, owner); err != nil {
 			return err
 		}
-		cfg, err := readCoreLatestOwned(cfgPath, base)
+		cfg, err := loadCoreOrQuarantineOwned(cfgPath, defaultBase, owner)
 		if err != nil {
 			return err
 		}
@@ -76,6 +139,61 @@ func OpenUserStore(username string, targetUID, targetGID uint32) (*UserStore, er
 	return store, nil
 }
 
+func prepareFallbackConfigBase(path string, owner fileOwnership) error {
+	root := filepath.Dir(path)
+	if err := prepareFallbackConfigRoot(root); err != nil {
+		return err
+	}
+
+	created := false
+	if err := os.Mkdir(path, 0o700); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create fallback config directory: %w", err)
+		}
+	} else {
+		created = true
+	}
+	if created && owner.enforce {
+		if err := os.Chown(path, owner.uid, owner.gid); err != nil {
+			return fmt.Errorf("own fallback config directory: %w", err)
+		}
+	}
+	if err := owner.ensureDirectory(path); err != nil {
+		return fmt.Errorf("verify fallback config directory: %w", err)
+	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		return fmt.Errorf("set fallback config directory permissions: %w", err)
+	}
+	return nil
+}
+
+func prepareFallbackConfigRoot(root string) error {
+	rootCreated := false
+	if err := os.Mkdir(root, 0o711); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create fallback config root: %w", err)
+		}
+	} else {
+		rootCreated = true
+	}
+	rootInfo, err := os.Lstat(root)
+	if err != nil {
+		return fmt.Errorf("stat fallback config root: %w", err)
+	}
+	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+		return fmt.Errorf("fallback config root is not a directory: %s", root)
+	}
+	if rootInfo.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("fallback config root is writable by group or others: %s", root)
+	}
+	if rootCreated {
+		if err := os.Chmod(root, 0o711); err != nil {
+			return fmt.Errorf("set fallback config root permissions: %w", err)
+		}
+	}
+	return nil
+}
+
 func (s *UserStore) Path() string {
 	if s == nil {
 		return ""
@@ -88,6 +206,13 @@ func (s *UserStore) UIPath() string {
 		return ""
 	}
 	return s.uiPath
+}
+
+func (s *UserStore) StorageMode() StorageMode {
+	if s == nil {
+		return ""
+	}
+	return s.mode
 }
 
 // SnapshotForUser returns core config from the per-user bridge store.
@@ -171,7 +296,7 @@ func (s *UserStore) UISnapshot(ctx context.Context) (*UIPreferences, error) {
 	return cloneUIPreferences(&s.ui), nil
 }
 
-// Update applies a mutation to the latest core file under its sidecar lock.
+// Update applies a mutation to the latest disk snapshot or the memory store.
 func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*Settings, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
@@ -188,30 +313,29 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 		return nil, err
 	}
 	var updated *Settings
-	err := withExclusiveConfigLockOwned(ctx, s.lockPath, s.owner, func() error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		current, err := readCoreLatestOwned(s.path, filepath.Dir(s.path))
-		if err != nil {
-			return fmt.Errorf("read core config: %w", err)
-		}
-		next := cloneSettings(current)
-		if err := mutate(next); err != nil {
-			return err
-		}
-		if errs := ValidateConfig(next); len(errs) > 0 {
-			return fmt.Errorf("validate config: %s", strings.Join(errs, "; "))
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := writeCoreConfigOwned(s.path, *next, s.owner); err != nil {
-			return fmt.Errorf("write core config: %w", err)
-		}
-		updated = cloneSettings(next)
-		return nil
-	})
+	var err error
+	if s.mode == StorageModeMemory {
+		s.mu.RLock()
+		current := cloneSettings(&s.cfg)
+		s.mu.RUnlock()
+		updated, err = applySettingsMutation(ctx, current, mutate)
+	} else {
+		err = withExclusiveConfigLockOwned(ctx, s.lockPath, s.owner, func() error {
+			current, readErr := readCoreLatestOwned(s.path, s.base)
+			if readErr != nil {
+				return fmt.Errorf("read core config: %w", readErr)
+			}
+			next, updateErr := applySettingsMutation(ctx, current, mutate)
+			if updateErr != nil {
+				return updateErr
+			}
+			if writeErr := writeCoreConfigOwned(s.path, *next, s.owner); writeErr != nil {
+				return fmt.Errorf("write core config: %w", writeErr)
+			}
+			updated = next
+			return nil
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -221,9 +345,25 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 	return cloneSettings(updated), nil
 }
 
-// ReplaceUI validates and writes one complete UI snapshot under its sidecar
-// lock. Replacement semantics deliberately avoid reading or merging the old
-// UI file.
+func applySettingsMutation(ctx context.Context, current *Settings, mutate func(*Settings) error) (*Settings, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	next := cloneSettings(current)
+	if err := mutate(next); err != nil {
+		return nil, err
+	}
+	if errs := ValidateConfig(next); len(errs) > 0 {
+		return nil, fmt.Errorf("validate config: %s", strings.Join(errs, "; "))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return next, nil
+}
+
+// ReplaceUI validates and replaces the disk or memory UI snapshot. Disk
+// replacement deliberately avoids reading or merging the old UI file.
 func (s *UserStore) ReplaceUI(ctx context.Context, replacement UIPreferences) (*UIPreferences, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
@@ -240,17 +380,19 @@ func (s *UserStore) ReplaceUI(ctx context.Context, replacement UIPreferences) (*
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	var updated *UIPreferences
-	err := withExclusiveUILockOwned(ctx, s.uiLockPath, s.owner, func() error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := writeUIConfigOwned(s.uiPath, *next, s.owner); err != nil {
-			return fmt.Errorf("write UI config: %w", err)
-		}
-		updated = cloneUIPreferences(next)
-		return nil
-	})
+	updated := cloneUIPreferences(next)
+	var err error
+	if s.mode != StorageModeMemory {
+		err = withExclusiveUILockOwned(ctx, s.uiLockPath, s.owner, func() error {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if writeErr := writeUIConfigOwned(s.uiPath, *next, s.owner); writeErr != nil {
+				return fmt.Errorf("write UI config: %w", writeErr)
+			}
+			return nil
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +401,11 @@ func (s *UserStore) ReplaceUI(ctx context.Context, replacement UIPreferences) (*
 	s.uiMu.Unlock()
 	return cloneUIPreferences(updated), nil
 }
+
+// errInvalidCoreConfig marks a core document that exists and was read but
+// failed to decode or validate. The boot-time loader quarantines only this
+// class of failure; symlink, type, and I/O failures are never repaired.
+var errInvalidCoreConfig = errors.New("invalid core config")
 
 func readCoreLatestOwned(path, base string) (*Settings, error) {
 	exists, err := CheckConfig(path)
@@ -276,7 +423,57 @@ func readCoreLatestOwned(path, base string) (*Settings, error) {
 	if parseErr == nil {
 		return cfg, nil
 	}
-	return nil, fmt.Errorf("invalid core config: %w", parseErr)
+	return nil, fmt.Errorf("%w: %w", errInvalidCoreConfig, parseErr)
+}
+
+func quarantineCoreConfig(path, timestamp string) (string, error) {
+	basePath := path + ".broken-" + timestamp
+	quarantinePath := basePath
+	for copyNumber := 2; ; copyNumber++ {
+		_, err := os.Lstat(quarantinePath)
+		if errors.Is(err, os.ErrNotExist) {
+			if renameErr := os.Rename(path, quarantinePath); renameErr != nil {
+				return "", renameErr
+			}
+			return quarantinePath, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("check quarantine path: %w", err)
+		}
+		quarantinePath = fmt.Sprintf("%s(%d)", basePath, copyNumber)
+	}
+}
+
+// loadCoreOrQuarantineOwned is the boot-time core read. A document that fails
+// to decode or validate is moved to <path>.broken-<UTC timestamp> (with a
+// numbered suffix if needed) and replaced with defaults. One bad edit or a
+// downgrade past an unknown field therefore cannot lock the user out; the
+// original stays on disk for manual recovery. Every
+// other failure is returned unchanged. UserStore.Update never calls this: a
+// mutation must not reset a file it could not read.
+func loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Settings, error) {
+	cfg, err := readCoreLatestOwned(path, base)
+	if err == nil {
+		return cfg, nil
+	}
+	if !errors.Is(err, errInvalidCoreConfig) {
+		return nil, err
+	}
+	quarantinePath, renameErr := quarantineCoreConfig(path, time.Now().UTC().Format("20060102T150405Z"))
+	if renameErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("quarantine core config: %w", renameErr))
+	}
+	defaults := DefaultSettings(base)
+	if writeErr := writeCoreConfigOwned(path, *defaults, owner); writeErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("write default core config: %w", writeErr))
+	}
+	slog.Warn("core config quarantined, defaults written",
+		"component", "config",
+		"path", path,
+		"quarantined_path", quarantinePath,
+		"error", err,
+	)
+	return defaults, nil
 }
 
 func readUILatestOwned(path string, owner fileOwnership) (*UIPreferences, error) {
@@ -302,6 +499,7 @@ func readUILatestOwned(path string, owner fileOwnership) (*UIPreferences, error)
 			fmt.Errorf("reset UI config: %w", err),
 		)
 	}
+	slog.Warn("UI config reset to defaults", "component", "config", "path", path, "error", parseErr)
 	return &replacement, nil
 }
 

@@ -13,6 +13,7 @@ type AutoUpdateRebootPolicy string
 type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
+type ConfigStorageMode string
 type IndexerIntegrityCheck string
 type TaskState string
 type MonitoringHistoryResolution string
@@ -30,6 +31,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
+	"ConfigStorageMode":             {"home", "fallback", "memory"},
 	"IndexerIntegrityCheck":         {"full", "quick", "off"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
@@ -1507,10 +1509,11 @@ type CapabilitiesResponse struct {
 }
 
 type AppConfig struct {
-	AppSettings AppSettings    `json:"appSettings"`
-	Dismissals  *Dismissals    `json:"dismissals,omitempty"`
-	Docker      DockerSettings `json:"docker"`
-	Jobs        JobSettings    `json:"jobs"`
+	AppSettings AppSettings       `json:"appSettings"`
+	Dismissals  *Dismissals       `json:"dismissals,omitempty"`
+	Docker      DockerSettings    `json:"docker"`
+	Jobs        JobSettings       `json:"jobs"`
+	StorageMode ConfigStorageMode `json:"storageMode"`
 }
 
 type AppSettings struct {

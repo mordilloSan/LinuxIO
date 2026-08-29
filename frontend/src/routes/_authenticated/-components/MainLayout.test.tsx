@@ -6,6 +6,7 @@ import MainLayout from "./MainLayout";
 
 const layoutMocks = vi.hoisted(() => ({
   isDesktop: false,
+  storageMode: "home",
   toggleMobileOpen: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ vi.mock("@/components/loaders/BootstrapLoaderReady", () => ({
   default: () => null,
 }));
 vi.mock("@/hooks/useConfig", () => ({
+  useConfigStorageMode: () => layoutMocks.storageMode,
   useConfigValue: () => ["dock", vi.fn()],
 }));
 vi.mock("./footer/Footer", () => ({ default: () => null }));
@@ -62,6 +64,7 @@ vi.mock("./update/useUpdateInfo", () => ({
 describe("MainLayout navigation mode", () => {
   beforeEach(() => {
     layoutMocks.isDesktop = false;
+    layoutMocks.storageMode = "home";
   });
 
   it("forces the sidebar drawer when a small screen has a dock preference", async () => {
@@ -94,5 +97,26 @@ describe("MainLayout navigation mode", () => {
     expect(
       screen.queryByRole("button", { name: "Open drawer" }),
     ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "fallback",
+      "Using fallback settings storage",
+      "Home settings storage is unavailable. Settings are being saved in LinuxIO's persistent fallback storage.",
+    ],
+    [
+      "memory",
+      "Settings are temporary",
+      "Persistent settings storage is unavailable. Changes will be lost when you refresh or sign out.",
+    ],
+  ])("warns when config storage uses %s mode", (mode, title, message) => {
+    layoutMocks.storageMode = mode;
+
+    render(<MainLayout />);
+
+    const warning = screen.getByRole("status");
+    expect(warning).toHaveTextContent(title);
+    expect(warning).toHaveTextContent(message);
   });
 });

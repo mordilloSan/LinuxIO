@@ -32,7 +32,7 @@ func (h configHandlers) handleGetConfig(ctx context.Context, _ apischema.NoReque
 	if err != nil {
 		return apischema.AppConfig{}, err
 	}
-	return appConfigToAPI(*result), nil
+	return appConfigToAPI(*result, h.rt.Store.StorageMode()), nil
 }
 
 func (h configHandlers) handleSetConfig(ctx context.Context, req apischema.ConfigSetPayload) (apischema.ConfigSetResult, error) {

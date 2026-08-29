@@ -66,6 +66,11 @@ values and the defaults.
 
 ## Completed or closed
 
+- [x] Completed resilient bridge configuration storage: independently persisted
+  core and UI documents now fall back from the authenticated home to
+  `/var/lib/linuxio/users/<uid>` and then memory; invalid core documents are
+  quarantined at startup; degraded storage is logged and surfaced in the UI.
+  See [`Bridge Configuration Storage`](docs/config-storage.md).
 - [x] Completed
   [`File-Browser Read Paths and API Efficiency`](docs/TODO/file-browser-read-api-efficiency.md):
   replaced `resource_get` with narrow listing, tree, text, and permission reads;

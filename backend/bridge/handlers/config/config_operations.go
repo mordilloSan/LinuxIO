@@ -37,7 +37,7 @@ func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, usern
 		if applyErr := applyConfigPayload(cfg, &req); applyErr != nil {
 			return applyErr
 		}
-		syncDockerMountOrdering = shouldSyncDockerMountOrdering(cfg, &req)
+		syncDockerMountOrdering = shouldSyncDockerMountOrdering(cfg, &req, store.StorageMode())
 		return nil
 	})
 	if err != nil {
@@ -78,8 +78,8 @@ func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *ap
 	return nil
 }
 
-func shouldSyncDockerMountOrdering(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload) bool {
-	if payload == nil || payload.Docker == nil {
+func shouldSyncDockerMountOrdering(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload, storageMode bridgeconfig.StorageMode) bool {
+	if storageMode == bridgeconfig.StorageModeMemory || payload == nil || payload.Docker == nil {
 		return false
 	}
 	if payload.Docker.RequireMountsForFolders != nil {
