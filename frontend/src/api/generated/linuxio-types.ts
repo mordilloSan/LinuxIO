@@ -635,6 +635,8 @@ export interface DirectoryListingFolder {
 
 export interface DirectorySizeData {
   size: number;
+  fileCount: number;
+  folderCount: number;
 }
 
 export interface DirectoryValidationResult {

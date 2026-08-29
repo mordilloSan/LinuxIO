@@ -9,9 +9,11 @@ import FileDetail from "./FileDetail";
 vi.mock("@/hooks/filebrowser/useFileDirectorySize", () => ({
   useFileDirectorySize: () => ({
     error: null,
+    fileCount: 12,
+    folderCount: 3,
     isLoading: false,
     isUnavailable: false,
-    size: null,
+    size: 1024,
   }),
 }));
 
@@ -61,5 +63,28 @@ describe("FileDetail", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent(
       "This file isn't plain text",
     );
+  });
+
+  it("shows indexed size and recursive counts for a directory", () => {
+    render(
+      <FileDetail
+        onDownload={vi.fn()}
+        resource={resource({
+          canOpenAsText: false,
+          isRegularFile: false,
+          name: "projects",
+          path: "/srv/projects",
+          size: 0,
+          type: "directory",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Total size:")).toBeVisible();
+    expect(screen.getByText("1 KB")).toBeVisible();
+    expect(screen.getByText("Files:")).toBeVisible();
+    expect(screen.getByText("12")).toBeVisible();
+    expect(screen.getByText("Folders:")).toBeVisible();
+    expect(screen.getByText("3")).toBeVisible();
   });
 });

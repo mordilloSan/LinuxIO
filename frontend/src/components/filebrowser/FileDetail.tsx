@@ -61,7 +61,12 @@ const FileDetail = ({
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";
 
-  const { size, isLoading: isLoadingDirectoryDetails } = useFileDirectorySize(
+  const {
+    fileCount,
+    folderCount,
+    size,
+    isLoading: isLoadingDirectoryDetails,
+  } = useFileDirectorySize(
     resource?.path ?? "",
     isDirectory && !!resource?.path,
   );
@@ -173,7 +178,7 @@ const FileDetail = ({
       >
         <DetailRow label="Path" value={resource.path} />
         <DetailRow
-          label="Size"
+          label={isDirectory ? "Total size" : "Size"}
           value={
             !isDirectory ? (
               formatFileSize(resource.size)
@@ -188,13 +193,25 @@ const FileDetail = ({
                 <AppCircularProgress size={16} />
                 <AppTypography variant="body2">Calculating...</AppTypography>
               </div>
-            ) : size !== undefined && size !== null && size !== 0 ? (
+            ) : size !== undefined && size !== null ? (
               formatFileSize(size)
             ) : (
               "—"
             )
           }
         />
+        {isDirectory && (
+          <>
+            <DetailRow
+              label="Files"
+              value={isLoadingDirectoryDetails ? "—" : (fileCount ?? "—")}
+            />
+            <DetailRow
+              label="Folders"
+              value={isLoadingDirectoryDetails ? "—" : (folderCount ?? "—")}
+            />
+          </>
+        )}
         <DetailRow
           label="Modified"
           value={formatDate(resource.modified || resource.modTime)}

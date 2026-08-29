@@ -809,7 +809,9 @@ type TextFile struct {
 }
 
 type DirectorySizeData struct {
-	Size int64 `json:"size"`
+	Size        int64 `json:"size"`
+	FileCount   int64 `json:"fileCount"`
+	FolderCount int64 `json:"folderCount"`
 }
 
 type SubfolderData struct {

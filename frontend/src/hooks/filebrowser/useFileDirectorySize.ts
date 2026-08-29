@@ -14,6 +14,8 @@ import {
 
 interface UseDirectorySizeResult {
   error: Error | null;
+  fileCount: number | null;
+  folderCount: number | null;
   isLoading: boolean;
   isUnavailable: boolean;
   size: number | null;
@@ -62,6 +64,8 @@ export const useFileDirectorySize = (
 
   return {
     size: data?.size ?? null,
+    fileCount: data?.fileCount ?? null,
+    folderCount: data?.folderCount ?? null,
     isLoading: queryEnabled ? isLoading : false,
     error: derivedError,
     isUnavailable,
