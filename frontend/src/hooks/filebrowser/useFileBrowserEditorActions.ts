@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { linuxio, uploadContent } from "@/api";
 import { markTerminalFeedbackEmitted } from "@/hooks/backgroundTasks/terminalTaskFeedback";
@@ -8,9 +8,12 @@ import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import type { EditorSlice } from "./useFileEditor";
-
 interface UseFileBrowserEditorActionsParams {
   editor: EditorSlice;
+}
+
+export interface EditorSaveConflict {
+  content: string;
 }
 
 const getErrorMessage = (error: unknown, fallback: string) =>
@@ -20,6 +23,9 @@ export const useFileBrowserEditorActions = ({
   editor,
 }: UseFileBrowserEditorActionsParams) => {
   const { actions, editingPath, editorRef, isEditorDirty } = editor;
+  const [saveConflict, setSaveConflict] = useState<EditorSaveConflict | null>(
+    null,
+  );
   const toast = useScopedToast({
     label: "Open files",
     params: { _splat: "" },
@@ -29,7 +35,11 @@ export const useFileBrowserEditorActions = ({
   const chunkSize = useUploadChunkSize();
 
   const saveContentViaStream = useCallback(
-    async (path: string, contentBytes: Uint8Array) => {
+    async (
+      path: string,
+      contentBytes: Uint8Array,
+      expectedVersion?: string,
+    ) => {
       // Saving replaces the file being edited by design; uploads otherwise
       // never overwrite unless told to.
       await uploadContent(path, contentBytes, {
@@ -38,26 +48,27 @@ export const useFileBrowserEditorActions = ({
         // background-tasks watcher must not also report this task's failure.
         onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
         overwrite: true,
+        ...(expectedVersion ? { expectedVersion } : {}),
       });
     },
     [chunkSize],
   );
 
   const invalidateEditedFile = useCallback(
-    (path: string) => {
-      void queryClient.invalidateQueries({
-        queryKey: linuxio.filebrowser.resource_get({
-          path,
-          unused: "",
-          getContent: "true",
-        }).queryKey,
+    async (path: string) => {
+      await queryClient.invalidateQueries({
+        queryKey: linuxio.filebrowser.read_text({ path }).queryKey,
       });
     },
     [queryClient],
   );
 
-  const handleSaveContent = useCallback(
-    async (content: string): Promise<boolean> => {
+  const saveContent = useCallback(
+    async (
+      content: string,
+      expectedVersion: string | undefined,
+      promptOnConflict: boolean,
+    ): Promise<boolean> => {
       if (!editingPath) return false;
 
       actions.setSaving(true);
@@ -65,13 +76,21 @@ export const useFileBrowserEditorActions = ({
         (async () => {
           try {
             const contentBytes = new TextEncoder().encode(content);
-            await saveContentViaStream(editingPath, contentBytes);
-            toast.success("File saved successfully!");
-            invalidateEditedFile(editingPath);
+            await saveContentViaStream(
+              editingPath,
+              contentBytes,
+              expectedVersion,
+            );
+            toast.success("File saved successfully");
+            await invalidateEditedFile(editingPath);
             return true;
           } catch (error) {
             console.error("Save error:", error);
-            toast.error(getErrorMessage(error, "Failed to save file"));
+            if (promptOnConflict && isSaveConflict(error)) {
+              setSaveConflict({ content });
+            } else {
+              toast.error(getErrorMessage(error, "Unable to save file"));
+            }
             return false;
           }
         })(),
@@ -81,6 +100,17 @@ export const useFileBrowserEditorActions = ({
       );
     },
     [actions, editingPath, invalidateEditedFile, saveContentViaStream, toast],
+  );
+
+  const handleSaveContent = useCallback(
+    (content: string, expectedVersion?: string) => {
+      if (!expectedVersion) {
+        toast.error("Unable to save file because its version is unavailable");
+        return Promise.resolve(false);
+      }
+      return saveContent(content, expectedVersion, true);
+    },
+    [saveContent, toast],
   );
 
   const handleSaveFile = useCallback(async () => {
@@ -105,16 +135,61 @@ export const useFileBrowserEditorActions = ({
 
   const handleSaveAndExit = useCallback(async () => {
     const saved = await editorRef.current?.save();
+    actions.dismissClosePrompt();
     if (!saved) return;
     actions.close();
   }, [actions, editorRef]);
 
+  const handleReloadConflict = useCallback(async () => {
+    if (!editingPath) return;
+    actions.setSaving(true);
+    return withPromiseCleanup(
+      (async () => {
+        try {
+          const latest = await queryClient.query({
+            ...linuxio.filebrowser.read_text({ path: editingPath }),
+            staleTime: 0,
+          });
+          editorRef.current?.reset(latest.content ?? "", latest.version);
+          setSaveConflict(null);
+        } catch (error) {
+          setSaveConflict(null);
+          toast.error(getErrorMessage(error, "Unable to reload file"));
+        }
+      })(),
+      () => {
+        actions.setSaving(false);
+      },
+    );
+  }, [actions, editingPath, editorRef, queryClient, toast]);
+
+  const handleOverwriteConflict = useCallback(async () => {
+    const content = saveConflict?.content;
+    if (content === undefined) return;
+    setSaveConflict(null);
+    const saved = await saveContent(content, undefined, false);
+    if (saved) editorRef.current?.reset(content);
+  }, [editorRef, saveConflict?.content, saveContent]);
+
+  const handleCancelConflict = useCallback(() => {
+    setSaveConflict(null);
+  }, []);
+
   return {
+    handleCancelConflict,
     handleCloseEditor,
     handleDiscardAndExit,
     handleKeepEditing,
     handleSaveAndExit,
     handleSaveContent,
     handleSaveFile,
+    handleReloadConflict,
+    handleOverwriteConflict,
+    saveConflict,
   };
 };
+
+const isSaveConflict = (error: unknown) =>
+  error instanceof Error &&
+  "code" in error &&
+  (error as { code?: string | number }).code === 409;

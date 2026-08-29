@@ -1,5 +1,7 @@
 import { useMemo, useReducer } from "react";
 
+import type { FileItem } from "@/types/filebrowser";
+
 interface PermissionsDialogState {
   group?: string;
   isDirectory: boolean;
@@ -15,6 +17,7 @@ interface DialogsState {
   createFolderDialog: boolean;
   deleteDialog: boolean;
   detailTarget: string[] | null;
+  detailItems?: FileItem[];
   pendingDeletePaths: string[];
   permissionsDialog: PermissionsDialogState | null;
   permissionsDialogOpen: boolean;
@@ -32,13 +35,14 @@ type DialogsEvent =
   | { type: "openCreateFolder" }
   | { dialog: PermissionsDialogState; type: "openPermissions" }
   | { paths: string[]; type: "requestDelete" }
-  | { paths: string[]; type: "showDetails" };
+  | { items: FileItem[]; paths: string[]; type: "showDetails" };
 
 const initialDialogsState: DialogsState = {
   createFileDialog: false,
   createFolderDialog: false,
   deleteDialog: false,
   detailTarget: null,
+  detailItems: [],
   pendingDeletePaths: [],
   permissionsDialog: null,
   permissionsDialogOpen: false,
@@ -58,7 +62,7 @@ function dialogsReducer(
     case "closeDelete":
       return { ...state, deleteDialog: false, pendingDeletePaths: [] };
     case "closeDetails":
-      return { ...state, detailTarget: null };
+      return { ...state, detailItems: [], detailTarget: null };
     case "closePermissions":
       return { ...state, permissionsDialogOpen: false };
     case "clearPermissions":
@@ -76,7 +80,7 @@ function dialogsReducer(
     case "requestDelete":
       return { ...state, deleteDialog: true, pendingDeletePaths: event.paths };
     case "showDetails":
-      return { ...state, detailTarget: event.paths };
+      return { ...state, detailItems: event.items, detailTarget: event.paths };
   }
 }
 
@@ -92,7 +96,7 @@ interface DialogsActions {
   openCreateFolder: () => void;
   openPermissions: (dialog: PermissionsDialogState) => void;
   requestDelete: (paths: string[]) => void;
-  showDetails: (paths: string[]) => void;
+  showDetails: (paths: string[], items?: FileItem[]) => void;
 }
 
 interface DialogsSlice extends DialogsState {
@@ -121,7 +125,8 @@ export const useFileDialogs = (): DialogsSlice => {
       openPermissions: (dialog) =>
         dispatch({ dialog, type: "openPermissions" }),
       requestDelete: (paths) => dispatch({ paths, type: "requestDelete" }),
-      showDetails: (paths) => dispatch({ paths, type: "showDetails" }),
+      showDetails: (paths, items = []) =>
+        dispatch({ items, paths, type: "showDetails" }),
     }),
     [],
   );

@@ -1,34 +1,63 @@
-import type { ExtendedFileInfo } from "@/api";
+import type { DirectoryListing } from "@/api";
 
 import type { FileItem, FileResource } from "../../types/filebrowser";
 
-export const normalizeResource = (data: ExtendedFileInfo): FileResource => {
-  if (data.type !== "directory") {
-    return data;
-  }
-
+export const normalizeResource = (
+  data: DirectoryListing,
+  requestedPath: string,
+): FileResource => {
+  const path = requestedPath === "/" ? "/" : requestedPath.replace(/\/+$/, "");
+  const basePath = path === "/" ? "/" : `${path}/`;
   const folders = data.folders ?? [];
   const files = data.files ?? [];
 
-  const items: FileItem[] = [...folders, ...files].map((item) => {
-    const basePath = data.path === "/" ? "/" : data.path;
+  const items: FileItem[] = [
+    ...folders.map((item) => ({ ...item, type: "directory" as const })),
+    ...files.map((item) => ({ ...item, type: "file" as const })),
+  ].map((item) => {
     const nextPath =
       item.type === "directory"
         ? `${basePath}${item.name}/`
         : `${basePath}${item.name}`;
-
     return {
       ...item,
       path: nextPath.replace(/\/{2,}/g, "/"),
       modTime: item.modified,
+      hidden: item.name.startsWith("."),
     };
   });
 
   return {
-    ...data,
-    modTime: data.modified,
+    name: path === "/" ? "/" : path.split("/").pop() || path,
+    path,
+    size: 0,
+    type: "directory",
+    hidden: false,
+    symlink: false,
+    isRegularFile: false,
     items,
   };
+};
+
+// Mirrors services.MaxTextFileBytes on the backend.
+export const MAX_TEXT_FILE_BYTES = 1_000_000;
+
+// Returns why the backend refused text editing for this entry, or null when
+// it can be opened. Derived from the listing fields so no extra request is
+// needed.
+export const getTextEditBlockedReason = (
+  resource: Pick<FileResource, "canOpenAsText" | "isRegularFile" | "size">,
+): string | null => {
+  if (resource.isRegularFile === true && resource.canOpenAsText === true) {
+    return null;
+  }
+  if ((resource.size ?? 0) >= MAX_TEXT_FILE_BYTES) {
+    return "Files of 1 MB or larger can't be opened in the text editor. Download the file to edit it.";
+  }
+  if (resource.isRegularFile === false) {
+    return "Only regular files can be opened in the editor.";
+  }
+  return "This file isn't plain text, so it can't be opened in the editor.";
 };
 
 export const isArchiveFile = (name: string) => {
@@ -68,168 +97,4 @@ export const ensureTarGzExtension = (name: string) => {
     return name;
   }
   return `${name}.tar.gz`;
-};
-
-// Text-based file extensions that can be edited
-const EDITABLE_EXTENSIONS = new Set([
-  // Code
-  "js",
-  "ts",
-  "tsx",
-  "jsx",
-  "mjs",
-  "cjs",
-  "py",
-  "go",
-  "cpp",
-  "c",
-  "h",
-  "hpp",
-  "java",
-  "rs",
-  "php",
-  "rb",
-  "sh",
-  "bash",
-  "zsh",
-  "fish",
-  "ps1",
-  "bat",
-  "cmd",
-  "json",
-  "html",
-  "htm",
-  "css",
-  "scss",
-  "sass",
-  "less",
-  "vue",
-  "svelte",
-  "astro",
-  "sql",
-  "graphql",
-  "gql",
-  "swift",
-  "kt",
-  "kts",
-  "scala",
-  "clj",
-  "cljs",
-  "ex",
-  "exs",
-  "erl",
-  "hrl",
-  "elm",
-  "hs",
-  "lua",
-  "pl",
-  "pm",
-  "r",
-  "dart",
-  "groovy",
-  "gradle",
-  // Text and documentation
-  "txt",
-  "md",
-  "markdown",
-  "mdx",
-  "rst",
-  "log",
-  "text",
-  // Config files
-  "yaml",
-  "yml",
-  "xml",
-  "ini",
-  "conf",
-  "cfg",
-  "toml",
-  "env",
-  "properties",
-  "htaccess",
-  "gitignore",
-  "gitattributes",
-  "dockerignore",
-  "editorconfig",
-  "eslintrc",
-  "prettierrc",
-  "babelrc",
-  "npmrc",
-  // Data formats
-  "csv",
-  "tsv",
-  "jsonl",
-  "ndjson",
-  // Other
-  "lock",
-  "sum",
-  "mod",
-  // Dotfile configs (the part after the leading dot)
-  "bashrc",
-  "bash_profile",
-  "bash_aliases",
-  "bash_history",
-  "zshrc",
-  "zsh_history",
-  "zprofile",
-  "zshenv",
-  "profile",
-  "vimrc",
-  "nvimrc",
-  "gvimrc",
-  "exrc",
-  "inputrc",
-  "screenrc",
-  "tmux",
-  "wgetrc",
-  "curlrc",
-  "netrc",
-  "gemrc",
-  "irbrc",
-  "pryrc",
-  "pythonrc",
-  "condarc",
-]);
-
-// Files without extension that are typically editable
-const EDITABLE_FILENAMES = new Set([
-  "dockerfile",
-  "makefile",
-  "cmakelists.txt",
-  "gemfile",
-  "rakefile",
-  "procfile",
-  "vagrantfile",
-  "jenkinsfile",
-  "brewfile",
-  "readme",
-  "license",
-  "changelog",
-  "authors",
-  "contributing",
-  "todo",
-  "notes",
-]);
-
-export const isEditableFile = (name: string): boolean => {
-  const lower = name.toLowerCase();
-
-  // Check if filename itself is editable (e.g., Dockerfile, Makefile)
-  if (EDITABLE_FILENAMES.has(lower)) {
-    return true;
-  }
-
-  // Extract extension
-  const lastDotIndex = lower.lastIndexOf(".");
-  if (lastDotIndex === -1 || lastDotIndex === lower.length - 1) {
-    // No extension - check if it looks like a dotfile config
-    if (lower.startsWith(".")) {
-      // Dotfiles like .bashrc, .zshrc, .profile are typically editable
-      return true;
-    }
-    return false;
-  }
-
-  const ext = lower.slice(lastDotIndex + 1);
-  return EDITABLE_EXTENSIONS.has(ext);
 };

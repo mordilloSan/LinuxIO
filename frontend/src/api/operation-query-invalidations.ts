@@ -27,8 +27,13 @@ const ACCOUNT_USER_KEYS = [
 // Filebrowser listing caches. Fresh transfers refresh the listing via their
 // onComplete handlers; these entries cover tasks that finish after a page reload.
 const FILEBROWSER_LISTING_KEYS = [
-  endpointQueryPrefix("filebrowser.resource_get"),
+  endpointQueryPrefix("filebrowser.list_directory"),
+  endpointQueryPrefix("filebrowser.directory_children"),
+  endpointQueryPrefix("filebrowser.dir_size"),
   endpointQueryPrefix("filebrowser.subfolders"),
+];
+const FILEBROWSER_PERMISSION_KEYS = [
+  endpointQueryPrefix("filebrowser.resource_stat"),
 ];
 
 const INDEXER_KEYS = [
@@ -87,7 +92,7 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "filebrowser.copy_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.move_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.delete_batch": FILEBROWSER_LISTING_KEYS,
-  "filebrowser.chmod_batch": FILEBROWSER_LISTING_KEYS,
+  "filebrowser.chmod_batch": FILEBROWSER_PERMISSION_KEYS,
   "filebrowser.upload": FILEBROWSER_LISTING_KEYS,
   "filebrowser.upload_batch": FILEBROWSER_LISTING_KEYS,
 

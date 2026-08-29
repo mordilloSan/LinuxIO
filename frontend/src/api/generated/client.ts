@@ -114,14 +114,16 @@ const linuxio = {
       field: "paths",
     }),
     dir_size: defineCallWithRequest("filebrowser.dir_size"),
+    directory_children: defineCallWithRequest("filebrowser.directory_children"),
     exists_batch: defineCallWithRequest("filebrowser.exists_batch"),
     extract: createTaskEndpoint("filebrowser", "extract", { kind: "object" }),
     index: createTaskEndpoint("filebrowser", "index", { kind: "object" }),
     indexer_status: defineCall("filebrowser.indexer_status"),
+    list_directory: defineCallWithRequest("filebrowser.list_directory"),
     move_batch: createTaskEndpoint("filebrowser", "move_batch", {
       kind: "object",
     }),
-    resource_get: defineCallWithRequest("filebrowser.resource_get"),
+    read_text: defineCallWithRequest("filebrowser.read_text"),
     resource_patch: createTaskEndpoint("filebrowser", "resource_patch", {
       kind: "object",
     }),

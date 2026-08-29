@@ -1,0 +1,83 @@
+.file-editor,
+.file-editor .cm-editor,
+.file-editor .cm-scroller {
+  width: 100%;
+  height: 100%;
+}
+
+.file-editor .cm-editor {
+  color: var(--app-palette-text-primary);
+  background: var(--app-palette-background-paper);
+}
+
+.file-editor .cm-scroller {
+  overflow: auto;
+  font-family: var(--app-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.file-editor .cm-gutters {
+  color: var(--app-palette-text-secondary);
+  background: var(--app-palette-background-default);
+  border-right-color: var(--app-palette-divider);
+}
+
+.file-editor .cm-activeLine,
+.file-editor .cm-activeLineGutter {
+  background: var(--app-palette-action-hover);
+}
+
+.file-editor .cm-cursor,
+.file-editor .cm-dropCursor {
+  border-left-color: var(--app-palette-text-primary);
+}
+
+.file-editor .cm-panels,
+.file-editor .cm-tooltip {
+  color: var(--app-palette-text-primary);
+  background: var(--app-palette-background-paper);
+  border-color: var(--app-palette-divider);
+}
+
+.file-editor .cm-textfield,
+.file-editor .cm-button {
+  color: var(--app-palette-text-primary);
+  background: var(--app-palette-background-default);
+  border-color: var(--app-palette-divider);
+}
+
+:root[data-tab-navigation] .file-editor .cm-editor.cm-focused {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: -2px;
+}
+
+.file-editor .tok-keyword,
+.file-editor .tok-operatorName {
+  color: var(--app-palette-primary-main);
+}
+
+.file-editor .tok-typeName,
+.file-editor .tok-className {
+  color: var(--app-palette-secondary-main);
+}
+
+.file-editor .tok-string,
+.file-editor .tok-regexp {
+  color: var(--app-palette-success-main);
+}
+
+.file-editor .tok-number,
+.file-editor .tok-bool,
+.file-editor .tok-null {
+  color: var(--app-palette-warning-main);
+}
+
+.file-editor .tok-comment {
+  color: var(--app-palette-text-secondary);
+  font-style: italic;
+}
+
+.file-editor .tok-invalid {
+  color: var(--app-palette-error-main);
+}

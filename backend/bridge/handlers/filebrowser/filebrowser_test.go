@@ -2,17 +2,49 @@ package filebrowser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
+
+func TestDirectoryListingResponseHasOnlyListingFields(t *testing.T) {
+	modified := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+	response := directoryListingResponse(iteminfo.DirectoryListing{
+		Folders: []iteminfo.ItemInfo{{Name: "docs", ModTime: modified, Symlink: true}},
+		Files: []iteminfo.ItemInfo{{
+			Name: "notes.txt", Size: 12, ModTime: modified,
+			IsRegularFile: true, CanOpenAsText: true,
+		}},
+	})
+	encoded, err := json.Marshal(response)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"folders":[{"name":"docs","modified":"2026-08-29T12:00:00Z","symlink":true}],
+		"files":[{"name":"notes.txt","size":12,"modified":"2026-08-29T12:00:00Z","symlink":false,"isRegularFile":true,"canOpenAsText":true}]
+	}`, string(encoded))
+}
+
+func TestReadCallsPreserveCancellationIdentity(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, listErr := listDirectory(ctx, apischema.PathRequest{Path: "/"})
+	_, childrenErr := directoryChildren(ctx, apischema.DirectoryChildrenRequest{Path: "/"})
+	_, textErr := readText(ctx, apischema.PathRequest{Path: "/missing"})
+	require.ErrorIs(t, listErr, context.Canceled)
+	require.ErrorIs(t, childrenErr, context.Canceled)
+	require.ErrorIs(t, textErr, context.Canceled)
+}
 
 func TestResourceStatReturnsStructuredClientErrors(t *testing.T) {
 	tests := []struct {
@@ -35,6 +67,29 @@ func TestResourceStatReturnsStructuredClientErrors(t *testing.T) {
 				t.Fatalf("resourceStat() code = %d, want %d", apiErr.Code, tc.code)
 			}
 		})
+	}
+}
+
+func TestResourceStatResolvesPathWithoutBuildingAListing(t *testing.T) {
+	dir := t.TempDir()
+	for i := range 300 {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("sibling-%03d", i)), []byte("unused"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := filepath.Join(dir, "target")
+	link := filepath.Join(dir, "link")
+	if err := os.WriteFile(target, []byte("text"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := resourceStat(context.Background(), apischema.PathRequest{Path: link})
+	require.NoError(t, err)
+	if got.Mode == "" || got.Mode[0] == 'L' || got.Permissions == "" || got.Owner == "" || got.Group == "" {
+		t.Fatalf("stat = %+v, want target permission metadata", got)
 	}
 }
 
@@ -86,57 +141,5 @@ func TestGenerateUniquePathSkipsDanglingSymlink(t *testing.T) {
 	want := filepath.Join(dir, "report (copy 2).txt")
 	if got != want {
 		t.Fatalf("generateUniquePath = %q, want %q", got, want)
-	}
-}
-
-func TestExtendedFileInfoResponseMapsInternalFileInfo(t *testing.T) {
-	modified := time.Date(2026, 6, 21, 22, 15, 30, 123, time.UTC)
-	childModified := modified.Add(time.Minute)
-
-	got := extendedFileInfoResponse(&iteminfo.ExtendedFileInfo{
-		Name:       "media",
-		Size:       4096,
-		ModTime:    modified,
-		Type:       "directory",
-		Hidden:     true,
-		HasPreview: true,
-		Symlink:    true,
-		Files: []iteminfo.ItemInfo{{
-			Name:    "haos.iso",
-			Size:    1024,
-			ModTime: childModified,
-			Type:    "application/x-iso9660-image",
-		}},
-		Folders: []iteminfo.ItemInfo{{
-			Name:    "nested",
-			ModTime: childModified,
-			Type:    "directory",
-		}},
-		Path:     "/srv/media",
-		Content:  "hello",
-		RealPath: "/mnt/storage/media",
-	})
-
-	if got.Name != "media" || got.Path != "/srv/media" || got.Content != "hello" {
-		t.Fatalf("mapped top-level fields incorrectly: %+v", got)
-	}
-	if got.Modified != modified.Format(time.RFC3339Nano) {
-		t.Fatalf("modified = %q, want %q", got.Modified, modified.Format(time.RFC3339Nano))
-	}
-	if len(got.Files) != 1 || got.Files[0].Name != "haos.iso" || got.Files[0].Modified != childModified.Format(time.RFC3339Nano) {
-		t.Fatalf("mapped files incorrectly: %+v", got.Files)
-	}
-	if len(got.Folders) != 1 || got.Folders[0].Name != "nested" || got.Folders[0].Type != "directory" {
-		t.Fatalf("mapped folders incorrectly: %+v", got.Folders)
-	}
-}
-
-func TestExtendedFileInfoResponseUsesEmptyChildSlices(t *testing.T) {
-	got := extendedFileInfoResponse(&iteminfo.ExtendedFileInfo{})
-	if got.Files == nil {
-		t.Fatal("Files is nil, want empty slice")
-	}
-	if got.Folders == nil {
-		t.Fatal("Folders is nil, want empty slice")
 	}
 }

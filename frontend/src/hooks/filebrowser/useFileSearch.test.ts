@@ -84,14 +84,15 @@ describe("useFileSearch", () => {
 
   it("runs searches with query params and returns backend results", () => {
     apiMocks.searchData = {
-      count: 1,
-      query: "compose",
       results: [
         {
+          canOpenAsText: true,
+          isDir: false,
+          isRegularFile: true,
+          mod_time: "2026-08-29T00:00:00Z",
           name: "compose.yaml",
           path: "/srv/compose.yaml",
           size: 100,
-          type: "file",
         },
       ],
     };

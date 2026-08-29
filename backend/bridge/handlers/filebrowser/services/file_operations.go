@@ -556,96 +556,14 @@ func removeDeleteDirs(ctx context.Context, root *fsroot.FSRoot, dirs []string, r
 	return nil
 }
 
-// GetContent reads and returns the file content if it's considered an editable text file.
-func GetContent(realPath string) (string, error) {
-	const headerSize = 4096
-
-	cleanPath := utils.CleanAbsPath(realPath)
-
-	root, err := fsroot.Open()
-	if err != nil {
-		return "", err
-	}
-	defer root.Close()
-
-	// Open file
-	f, err := root.Root.Open(relPath(cleanPath))
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	// Read header
-	headerBytes := make([]byte, headerSize)
-	n, err := f.Read(headerBytes)
-	if err != nil && err != io.EOF {
-		return "", err
-	}
-	if !isEditableTextHeader(headerBytes[:n]) {
-		return "", nil
-	}
-
-	content, err := root.Root.ReadFile(relPath(cleanPath))
-	if err != nil {
-		return "", err
-	}
-	if len(content) == 0 {
-		return "empty-file-x6OlSil", nil
-	}
-
-	if !isEditableTextContent(content) {
-		return "", nil
-	}
-
-	return string(content), nil
-}
-
-func isEditableTextHeader(header []byte) bool {
-	const maxNullBytesInHeaderAbs = 10
-	const maxNullByteRatioInHeader = 0.1
-
-	if len(header) == 0 {
-		return true
-	}
-	if !utf8.Valid(header) {
-		return false
-	}
-
-	nullCount := countNullBytes(header)
-	if nullCount > maxNullBytesInHeaderAbs || float64(nullCount)/float64(len(header)) > maxNullByteRatioInHeader {
-		return false
-	}
-
-	for _, b := range header {
-		if b < 0x20 && b != '\t' && b != '\n' && b != '\r' {
-			return false
-		}
-	}
-	return true
-}
-
 func isEditableTextContent(content []byte) bool {
-	const maxNullByteRatioInFile = 0.05
 	const maxNonPrintableRuneRatio = 0.05
 
 	stringContent := string(content)
 	if !utf8.ValidString(stringContent) {
 		return false
 	}
-	if float64(countNullBytes(content))/float64(len(content)) > maxNullByteRatioInFile {
-		return false
-	}
 	return nonPrintableRuneRatio(stringContent) <= maxNonPrintableRuneRatio
-}
-
-func countNullBytes(content []byte) int {
-	count := 0
-	for _, b := range content {
-		if b == 0x00 {
-			count++
-		}
-	}
-	return count
 }
 
 func nonPrintableRuneRatio(content string) float64 {

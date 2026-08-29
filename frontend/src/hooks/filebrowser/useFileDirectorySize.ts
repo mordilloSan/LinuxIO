@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
+import { stripTrailingSlash } from "@/utils/path";
 
 import {
   getDirectorySizeError,
@@ -41,7 +42,7 @@ export const useFileDirectorySize = (
   );
 
   const { data, isLoading, error } = useQuery({
-    ...linuxio.filebrowser.dir_size({ path }),
+    ...linuxio.filebrowser.dir_size({ path: stripTrailingSlash(path) }),
     enabled: queryEnabled,
     ...getDirectorySizeQueryOptions(),
   });

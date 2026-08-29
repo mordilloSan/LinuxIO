@@ -89,6 +89,7 @@ describe("uploadContent", () => {
     mocks.streamWriteChunks.mockResolvedValue(undefined);
 
     await uploadContent("/srv/note.md", new Uint8Array(4), {
+      expectedVersion: "v1",
       overwrite: true,
     });
 
@@ -96,6 +97,7 @@ describe("uploadContent", () => {
       targetPath: "/srv/note.md",
       size: "4",
       overwrite: true,
+      expectedVersion: "v1",
     });
     expect(mocks.openTaskDataStream).toHaveBeenCalledWith("task-1", 0);
     expect(mocks.streamWriteChunks).toHaveBeenCalledTimes(1);

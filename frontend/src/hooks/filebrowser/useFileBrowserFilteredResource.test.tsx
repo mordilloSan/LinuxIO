@@ -111,40 +111,37 @@ describe("useFileBrowserFilteredResource", () => {
   it("maps remote search results into file items", () => {
     const results: SearchResult[] = [
       {
-        inode: 1,
         isDir: false,
+        canOpenAsText: false,
+        isRegularFile: true,
         mod_time: "2026-01-01",
         name: "report.pdf",
         path: "/docs/report.pdf",
         size: 2048,
-        type: "file",
       },
       {
-        inode: 2,
         isDir: true,
+        isRegularFile: false,
         mod_time: "",
         name: "photos",
         path: "/media/photos/",
         size: 0,
-        type: "directory",
       },
       {
-        inode: 3,
         isDir: true,
+        isRegularFile: false,
         mod_time: "",
         name: "config",
         path: "/etc/config",
         size: 12,
-        type: "directory",
       },
       {
-        inode: 4,
         isDir: false,
+        isRegularFile: false,
         mod_time: "2026-02-02",
         name: "shortcut.lnk",
         path: "/srv/shortcut.lnk",
         size: 1,
-        type: "symlink",
       },
     ];
     mockSearch({ results });
@@ -158,6 +155,8 @@ describe("useFileBrowserFilteredResource", () => {
       expect.objectContaining({
         extension: "pdf",
         isDirectory: false,
+        isRegularFile: true,
+        canOpenAsText: false,
         modTime: "2026-01-01",
         name: "report.pdf",
         path: "/docs/report.pdf",
@@ -183,7 +182,7 @@ describe("useFileBrowserFilteredResource", () => {
         isDirectory: false,
         modTime: "2026-02-02",
         name: "shortcut.lnk",
-        type: "symlink",
+        type: "file",
       }),
     ]);
   });

@@ -32,7 +32,7 @@ vi.mock("@/api", async () => {
 import { emptyCapabilityState } from "@/api/capabilities";
 import { scopedConfigQueryKey } from "@/api/config-query";
 import linuxio from "@/api/generated/client";
-import type { ExtendedFileInfo } from "@/api/generated/linuxio-types";
+import type { DirectoryListing } from "@/api/generated/linuxio-types";
 import {
   isLiveUpdateBlocked,
   publishLiveUpdateBlocked,
@@ -80,21 +80,13 @@ function createLoaderArgs(
 }
 
 const fileBrowserListing = {
-  name: "projects",
-  size: 0,
-  modified: "2026-01-01T00:00:00Z",
-  type: "directory",
-  hidden: false,
-  hasPreview: false,
-  symlink: false,
   files: [],
   folders: [],
-  path: "/srv/projects",
-} satisfies ExtendedFileInfo;
+} satisfies DirectoryListing;
 
-function fileBrowserListingOptions(queryFn: () => Promise<ExtendedFileInfo>) {
+function fileBrowserListingOptions(queryFn: () => Promise<DirectoryListing>) {
   return {
-    ...linuxio.filebrowser.resource_get({ path: fileBrowserListing.path }),
+    ...linuxio.filebrowser.list_directory({ path: "/srv/projects" }),
     ...fileBrowserListingQueryOptions,
     queryFn,
   };
@@ -190,7 +182,7 @@ describe("loadRouteQueries", () => {
 
     function Observer() {
       const query = useQuery(queryOptions);
-      return <span>{query.data?.name}</span>;
+      return <span>{query.data ? "loaded" : null}</span>;
     }
 
     const view = render(
@@ -199,9 +191,7 @@ describe("loadRouteQueries", () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() =>
-      expect(view.getByText(fileBrowserListing.name)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(view.getByText("loaded")).toBeInTheDocument());
     expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
@@ -222,7 +212,7 @@ describe("loadRouteQueries", () => {
 
     function Observer() {
       const query = useQuery(queryOptions);
-      return <span>{query.data?.name}</span>;
+      return <span>{query.data ? "loaded" : null}</span>;
     }
 
     const firstVisit = render(
@@ -232,7 +222,7 @@ describe("loadRouteQueries", () => {
     );
 
     await waitFor(() =>
-      expect(firstVisit.getByText(fileBrowserListing.name)).toBeInTheDocument(),
+      expect(firstVisit.getByText("loaded")).toBeInTheDocument(),
     );
     expect(queryFn).toHaveBeenCalledTimes(1);
     firstVisit.unmount();
@@ -254,7 +244,7 @@ describe("loadRouteQueries", () => {
     );
 
     await waitFor(() =>
-      expect(revisit.getByText(fileBrowserListing.name)).toBeInTheDocument(),
+      expect(revisit.getByText("loaded")).toBeInTheDocument(),
     );
     expect(queryFn).toHaveBeenCalledTimes(2);
   });

@@ -5,10 +5,12 @@ import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
+import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
+import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
+import { getTextEditBlockedReason } from "./utils";
 import type { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 interface FileDetailProps {
@@ -59,20 +61,10 @@ const FileDetail = ({
   // Fetch directory details only for directories
   const isDirectory = resource?.type === "directory";
 
-  // Calculate parent path to fetch subfolders
-  const parentPath = resource?.path
-    ? resource.path.substring(0, resource.path.lastIndexOf("/")) || "/"
-    : "/";
-
-  // Fetch subfolders of the parent directory
-  const { subfoldersMap, isLoading: isLoadingDirectoryDetails } =
-    useFileSubfolders(parentPath, isDirectory && !!resource?.path);
-
-  // Look up this directory's size from the parent's subfolders
-  const size =
-    isDirectory && resource?.path
-      ? (subfoldersMap.get(resource.path)?.size ?? null)
-      : null;
+  const { size, isLoading: isLoadingDirectoryDetails } = useFileDirectorySize(
+    resource?.path ?? "",
+    isDirectory && !!resource?.path,
+  );
   if (!resource) {
     return (
       <AppPaper
@@ -89,9 +81,7 @@ const FileDetail = ({
     );
   }
   const isSymlink = resource.symlink;
-  // Show edit button for any non-directory; the parent handler asks for
-  // confirmation when the file isn't in the editable allowlist.
-  const canEdit = !isDirectory;
+  const editBlockedReason = getTextEditBlockedReason(resource);
   const getTypeIcon = () => {
     if (isSymlink) return <Icon height={28} icon="mdi:link" width={28} />;
     if (isDirectory) return <Icon height={28} icon="mdi:folder" width={28} />;
@@ -267,14 +257,17 @@ const FileDetail = ({
             >
               Download
             </AppButton>
-            {canEdit && onEdit && (
-              <AppButton
-                onClick={() => onEdit(resource.path)}
-                startIcon={<Icon height={20} icon="mdi:pencil" width={20} />}
-                variant="outlined"
-              >
-                Edit
-              </AppButton>
+            {onEdit && (
+              <AppTooltip title={editBlockedReason ?? ""}>
+                <AppButton
+                  disabled={editBlockedReason !== null}
+                  onClick={() => onEdit(resource.path)}
+                  startIcon={<Icon height={20} icon="mdi:pencil" width={20} />}
+                  variant="outlined"
+                >
+                  Open text file
+                </AppButton>
+              </AppTooltip>
             )}
           </div>
         </>

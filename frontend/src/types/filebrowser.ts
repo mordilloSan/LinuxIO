@@ -3,8 +3,9 @@ import type { ResourceStatData as ApiResourceStatData } from "@/api";
 export type ViewMode = "card" | "list";
 
 interface ItemMetadata {
-  hasPreview?: boolean;
+  canOpenAsText?: boolean;
   hidden?: boolean;
+  isRegularFile?: boolean;
   modified?: string;
   modTime?: string;
   name: string;
@@ -18,12 +19,12 @@ export type FileItem = ItemMetadata & {
   path: string;
 };
 
-// Client-normalized view of a directory resource: the wire `folders` + `files`
-// (generated ExtendedFileInfo) are flattened into a single `items` list with
-// computed paths. See normalizeResource.
+// Client-normalized directory listing with computed child paths.
 export type FileResource = FileItem & {
+  canSave?: boolean;
   content?: string;
   items?: FileItem[];
+  version?: string;
 };
 
 export type SortField = "name" | "size" | "modTime";

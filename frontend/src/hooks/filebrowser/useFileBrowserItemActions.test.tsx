@@ -47,7 +47,13 @@ vi.mock("@/api", async () => {
 type Params = Parameters<typeof useFileBrowserItemActions>[0];
 
 function fileItem(name: string, type = "file"): FileItem {
-  return { name, path: `/srv/projects/${name}`, type };
+  return {
+    canOpenAsText: type === "file",
+    isRegularFile: type === "file",
+    name,
+    path: `/srv/projects/${name}`,
+    type,
+  };
 }
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -139,7 +145,12 @@ function setup(overrides: Partial<Params> = {}) {
     editor: editorSlice(),
     handleOpenDirectory: vi.fn(),
     renameItem: vi.fn().mockResolvedValue(undefined),
-    resource: undefined,
+    resource: {
+      items: [fileItem("readme.md")],
+      name: "projects",
+      path: "/srv/projects",
+      type: "directory",
+    },
     selectedItems: [],
     selectedPaths: new Set<string>(),
     startDownload: vi.fn().mockResolvedValue(undefined),
@@ -159,7 +170,7 @@ describe("useFileBrowserItemActions", () => {
   });
 
   describe("editing entry points", () => {
-    it("opens editable files inline and routes others to the unsupported dialog", () => {
+    it("opens only files the backend marks as eligible", () => {
       const { result, params } = setup();
 
       act(() => result.current.handleDoubleClickFile(fileItem("notes.txt")));
@@ -167,10 +178,13 @@ describe("useFileBrowserItemActions", () => {
         "/srv/projects/notes.txt",
       );
 
-      act(() => result.current.handleDoubleClickFile(fileItem("photo.png")));
-      expect(result.current.unsupportedEditPath).toBe(
-        "/srv/projects/photo.png",
+      act(() =>
+        result.current.handleDoubleClickFile({
+          ...fileItem("photo.png"),
+          canOpenAsText: false,
+        }),
       );
+      expect(params.editor.actions.openFile).toHaveBeenCalledTimes(1);
     });
 
     it("edits a file from the detail view and clears the detail target", () => {
@@ -184,23 +198,23 @@ describe("useFileBrowserItemActions", () => {
       expect(params.dialogs.actions.closeDetails).toHaveBeenCalledTimes(1);
     });
 
-    it("confirms an unsupported edit by promoting it to the editor", () => {
+    it("opens a search-result detail outside the current directory", () => {
       const { result, params } = setup();
 
-      act(() => result.current.handleEditFile("/srv/projects/photo.png"));
-      act(() => result.current.handleConfirmUnsupportedEdit());
+      act(() => result.current.handleEditFile("/var/log/messages"));
 
       expect(params.editor.actions.openFile).toHaveBeenCalledWith(
-        "/srv/projects/photo.png",
+        "/var/log/messages",
       );
-      expect(result.current.unsupportedEditPath).toBeNull();
       expect(params.dialogs.actions.closeDetails).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("details and downloads", () => {
     it("exposes detail availability and targets the current selection", () => {
+      const selectedItems = [fileItem("a"), fileItem("b")];
       const { result, params } = setup({
+        selectedItems,
         selectedPaths: new Set(["/srv/projects/a", "/srv/projects/b"]),
       });
 
@@ -209,10 +223,10 @@ describe("useFileBrowserItemActions", () => {
       act(() => result.current.handleShowDetails());
 
       expect(params.view.actions.closeContextMenu).toHaveBeenCalledTimes(1);
-      expect(params.dialogs.actions.showDetails).toHaveBeenCalledWith([
-        "/srv/projects/a",
-        "/srv/projects/b",
-      ]);
+      expect(params.dialogs.actions.showDetails).toHaveBeenCalledWith(
+        ["/srv/projects/a", "/srv/projects/b"],
+        selectedItems,
+      );
     });
 
     it("skips showing details when nothing is selected", () => {

@@ -20,6 +20,20 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
+  it("does not invalidate an open text document from file mutations", () => {
+    expect(
+      Object.values(OPERATION_QUERY_INVALIDATIONS)
+        .flat()
+        .some((queryKey) => queryKey.includes("read_text")),
+    ).toBe(false);
+  });
+
+  it("refreshes only permissions after chmod", () => {
+    expect(OPERATION_QUERY_INVALIDATIONS["filebrowser.chmod_batch"]).toEqual([
+      ["linuxio", "filebrowser", "resource_stat"],
+    ]);
+  });
+
   it("refreshes service, socket, and timer lists after unit actions", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["systemd.restart_service"]).toEqual([
       ["linuxio", "systemd", "list_services"],

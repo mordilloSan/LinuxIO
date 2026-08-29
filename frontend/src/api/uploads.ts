@@ -16,6 +16,8 @@ export interface UploadContentOptions {
   onTaskStart?: (task: TaskSnapshot) => void;
   /** Replace an existing file. Uploads never overwrite unless told to. */
   overwrite?: boolean;
+  /** Content version returned when the file was opened for editing. */
+  expectedVersion?: string;
   signal?: AbortSignal;
 }
 
@@ -34,6 +36,9 @@ export async function uploadContent(
     targetPath,
     size: String(data.length),
     overwrite: options.overwrite,
+    ...(options.expectedVersion
+      ? { expectedVersion: options.expectedVersion }
+      : {}),
   });
   options.onTaskStart?.(task);
 

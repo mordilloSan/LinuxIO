@@ -2,6 +2,7 @@ import { useQueries } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
 import type { MultiStatsItem } from "@/types/filebrowser";
+import { stripTrailingSlash } from "@/utils/path";
 
 import {
   getDirectorySizeQueryOptions,
@@ -39,7 +40,7 @@ export const useFileMultipleDirectoryDetails = (
   // One dir_size query per directory - shares cache with useDirectorySize!
   const queries = useQueries({
     queries: directoryPaths.map((path) => ({
-      ...linuxio.filebrowser.dir_size({ path }),
+      ...linuxio.filebrowser.dir_size({ path: stripTrailingSlash(path) }),
       ...getDirectorySizeQueryOptions(),
       enabled: !indexerDisabled,
     })),

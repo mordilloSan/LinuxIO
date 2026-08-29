@@ -1,11 +1,12 @@
-import { useQueries, useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 
-import { CACHE_TTL_MS, linuxio } from "@/api";
-import { normalizeResource } from "@/components/filebrowser/utils";
+import { linuxio, type TextFile } from "@/api";
 import type { FileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
+import type { FileItem, FileResource } from "@/types/filebrowser";
 
-interface useFileQueriesParams {
+interface UseFileQueriesParams {
+  detailItems?: FileItem[];
   detailTarget: string[] | null;
   editingPath: string | null;
   hasMultipleDetailTargets: boolean;
@@ -13,126 +14,89 @@ interface useFileQueriesParams {
   listingQueryOptions: FileBrowserListingQueryOptions;
 }
 
+const fileName = (path: string) =>
+  path.split("/").filter(Boolean).pop() ?? path;
+
+const textResource = (path: string, data: TextFile): FileResource => ({
+  canOpenAsText: true,
+  canSave: data.canSave,
+  content: data.content,
+  hidden: fileName(path).startsWith("."),
+  isRegularFile: true,
+  name: fileName(path),
+  path,
+  type: "file",
+  version: data.version,
+});
+
 export const useFileQueries = ({
+  detailItems,
   detailTarget,
   editingPath,
   hasSingleDetailTarget,
   hasMultipleDetailTargets,
   listingQueryOptions,
-}: useFileQueriesParams) => {
-  const { data: resource } = useSuspenseQuery({
-    ...listingQueryOptions,
-    // Normalize inside the Query observer so its structural-sharing pass can
-    // retain unchanged FileItem objects when one directory entry changes.
-    // Normalizing afterwards recreated every card's item prop on each refresh.
-    select: normalizeResource,
-  });
+}: UseFileQueriesParams) => {
+  const { data: resource } = useSuspenseQuery(listingQueryOptions);
+  const selectedDetail = hasSingleDetailTarget
+    ? detailItems?.find((item) => item.path === detailTarget?.[0])
+    : undefined;
+  const detailResource = selectedDetail;
+  const detailError =
+    hasSingleDetailTarget && detailTarget && !selectedDetail
+      ? new Error("Selected item is no longer available")
+      : null;
 
-  // Detail resource query with content flag
   const {
-    data: detailResource,
-    isLoading: isDetailLoading,
-    error: detailError,
+    data: statData,
+    error: statError,
+    isLoading: isStatLoading,
   } = useQuery({
-    ...linuxio.filebrowser.resource_get({
-      path: detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
-      unused: "",
-      getContent: "true",
-    }),
-    ...{
-      enabled:
-        hasSingleDetailTarget &&
-        detailTarget !== null &&
-        detailTarget.length === 1,
-    },
-  });
-
-  const { data: statData, isLoading: isStatLoading } = useQuery({
     ...linuxio.filebrowser.resource_stat({
-      path: detailTarget && detailTarget.length === 1 ? detailTarget[0] : "",
+      path: selectedDetail?.path ?? "",
     }),
-    ...{
-      enabled:
-        hasSingleDetailTarget &&
-        detailTarget !== null &&
-        detailTarget.length === 1,
-    },
+    enabled: hasSingleDetailTarget && !!selectedDetail,
   });
-
-  const multipleDetailTargets =
-    hasMultipleDetailTargets && detailTarget !== null && detailTarget.length > 1
-      ? detailTarget
-      : [];
-
-  const multipleResourceQueries = useQueries({
-    queries: multipleDetailTargets.map((path) => ({
-      ...linuxio.filebrowser.resource_get({ path }),
-      staleTime: CACHE_TTL_MS.NONE,
-      enabled: multipleDetailTargets.length > 1,
-    })),
-  });
-
-  // Plain guarded derivation, not useMemo: memoizing would need a
-  // variable-length dep array (hooks-contract violation) and the query
-  // result array is fresh every render anyway. The map's identity churn is
-  // safe downstream — useFileMultipleDirectoryDetails keys its queries by
-  // path string, so it cannot cause refetch loops.
-  const hasAllMultipleResources =
-    multipleDetailTargets.length > 1 &&
-    multipleResourceQueries.every((query) => query.data !== undefined);
 
   const fileResourceMap: Record<
     string,
     { name: string; type: string; size: number }
   > = {};
-  if (hasAllMultipleResources) {
-    multipleDetailTargets.forEach((path, index) => {
-      const data = multipleResourceQueries[index]?.data;
-      if (data === undefined) return;
-      const resource = normalizeResource(data);
-      fileResourceMap[path] = {
-        name: resource.name,
-        type: resource.type,
-        size: resource.size ?? 0,
-      };
-    });
-  }
-
-  const isMultipleFilesLoading =
-    multipleDetailTargets.length > 1 &&
-    multipleResourceQueries.some((query) => query.isLoading);
-
+  (detailItems ?? []).forEach((item) => {
+    fileResourceMap[item.path] = {
+      name: item.name,
+      type: item.type,
+      size: item.size ?? 0,
+    };
+  });
   const multiItemsStats = useFileMultipleDirectoryDetails(
-    detailTarget || [],
+    hasMultipleDetailTargets && detailTarget ? detailTarget : [],
     fileResourceMap,
   );
 
-  // Editing file resource with content flag
-  const { data: editingFileResource, isLoading: isEditingFileLoading } =
-    useQuery({
-      ...linuxio.filebrowser.resource_get({
-        path: editingPath || "",
-        unused: "",
-        getContent: "true",
-      }),
-      ...{
-        enabled: !!editingPath,
-      },
-    });
-
-  const shouldShowDetailLoader =
-    (hasSingleDetailTarget && isDetailLoading) ||
-    (hasMultipleDetailTargets && isMultipleFilesLoading);
+  const {
+    data: editingData,
+    error: editingFileError,
+    isLoading: isEditingFileLoading,
+  } = useQuery({
+    ...linuxio.filebrowser.read_text({ path: editingPath || "" }),
+    enabled: !!editingPath,
+  });
+  const editingFileResource =
+    editingPath && editingData
+      ? textResource(editingPath, editingData)
+      : undefined;
 
   return {
     resource,
     detailResource,
-    detailError,
+    detailError: detailError ?? statError,
     statData,
     isStatLoading,
     multiItemsStats,
     editingFileResource,
+    editingFileError,
     isEditingFileLoading,
-    shouldShowDetailLoader,
+    shouldShowDetailLoader: false,
   };
 };

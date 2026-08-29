@@ -60,7 +60,7 @@ export const useFileSearch = ({
 
   return {
     results: data?.results ?? [],
-    count: data?.count ?? 0,
+    count: data?.results.length ?? 0,
     isLoading: queryEnabled ? isLoading : false,
     error: derivedError,
     isUnavailable,

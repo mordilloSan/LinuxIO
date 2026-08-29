@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"testing"
 
@@ -356,62 +355,5 @@ func TestCountEntries(t *testing.T) {
 		total, err := CountEntries(context.Background(), dirPath, false)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
-	})
-}
-
-func TestGetContent(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	t.Run("get_text_file_content", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "text.txt", []byte("Hello, World!"))
-
-		content, err := GetContent(filePath)
-		require.NoError(t, err)
-		assert.Equal(t, "Hello, World!", content)
-	})
-
-	t.Run("get_empty_file_content", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "empty.txt", []byte{})
-
-		// GetContent may return the filename for empty files or other behavior
-		content, err := GetContent(filePath)
-		if err == nil {
-			assert.NotNil(t, content)
-		}
-		// Empty file handling is implementation dependent
-	})
-
-	t.Run("get_large_file_content", func(t *testing.T) {
-		var largeContent strings.Builder
-		largeContent.WriteString("x")
-		for range 1000 {
-			largeContent.WriteString("1234567890")
-		}
-		filePath := createTestFile(t, tmpDir, "large.txt", []byte(largeContent.String()))
-
-		content, err := GetContent(filePath)
-		require.NoError(t, err)
-		assert.Equal(t, largeContent.String(), content)
-	})
-
-	t.Run("get_nonexistent_file", func(t *testing.T) {
-		_, err := GetContent(filepath.Join(tmpDir, "nonexistent.txt"))
-		require.Error(t, err)
-	})
-
-	t.Run("get_directory_content_fails", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "testdir")
-
-		_, err := GetContent(dirPath)
-		require.Error(t, err, "should error when getting content of directory")
-	})
-
-	t.Run("get_multiline_content", func(t *testing.T) {
-		multilineContent := "line1\nline2\nline3\n"
-		filePath := createTestFile(t, tmpDir, "multiline.txt", []byte(multilineContent))
-
-		content, err := GetContent(filePath)
-		require.NoError(t, err)
-		assert.Equal(t, multilineContent, content)
 	})
 }

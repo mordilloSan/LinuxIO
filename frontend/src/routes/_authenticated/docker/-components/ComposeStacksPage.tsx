@@ -55,10 +55,8 @@ const envPathFor = (composeFilePath: string): string => {
 const loadEnvContent = async (envPath: string): Promise<string | null> => {
   if (!envPath) return null;
   try {
-    const result = await call(linuxio.filebrowser.resource_get.route, {
+    const result = await call(linuxio.filebrowser.read_text.route, {
       path: envPath,
-      unused: "",
-      getContent: "true",
     });
     return result?.content ?? "";
   } catch {
@@ -275,11 +273,7 @@ const ComposeStacksPage = ({
       try {
         const envPath = envPathFor(configPath);
         const [result, envContent] = await Promise.all([
-          call(linuxio.filebrowser.resource_get.route, {
-            path: configPath,
-            unused: "",
-            getContent: "true",
-          }),
+          call(linuxio.filebrowser.read_text.route, { path: configPath }),
           loadEnvContent(envPath),
         ]);
 

@@ -8,6 +8,7 @@ import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import InputDialog from "@/components/filebrowser/InputDialog";
 import PermissionsDialog from "@/components/filebrowser/PermissionsDialog";
 import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
+import type { EditorSaveConflict } from "@/hooks/filebrowser/useFileBrowserEditorActions";
 import type {
   ConflictDecision,
   ConflictPrompt,
@@ -25,6 +26,7 @@ import {
   FileBrowserConflictDialog,
   FileBrowserDetailsDialog,
   FileBrowserEditorDialog,
+  FileBrowserSaveConflictDialog,
   FileBrowserUploadDialog,
   type MultiItemsStats,
 } from "./FileBrowserPanels";
@@ -37,18 +39,26 @@ interface CompressFormatDialogState {
 export interface FileBrowserEditorDialogsProps {
   closeEditorDialog: boolean;
   editingFileResource?: FileResource;
+  editingFileError: unknown;
   editingPath: string | null;
   editorRef: RefObject<FileEditorHandle | null>;
   isDirty: boolean;
   isEditingFileLoading: boolean;
   isSaving: boolean;
   onClose: () => void;
+  onCancelConflict: () => void;
   onDirtyChange: (isDirty: boolean) => void;
   onDiscardAndExit: () => void;
   onKeepEditing: () => void;
+  onOverwriteConflict: () => Promise<void> | void;
+  onReloadConflict: () => Promise<void> | void;
   onRequestSave: () => Promise<void>;
-  onSaveContent: (content: string) => Promise<boolean>;
+  onSaveContent: (
+    content: string,
+    expectedVersion?: string,
+  ) => Promise<boolean>;
   onSaveAndExit: () => Promise<void> | void;
+  saveConflict: EditorSaveConflict | null;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
@@ -153,10 +163,7 @@ export interface FileBrowserUploadDialogProps {
 export interface FileBrowserArchiveDialogsProps {
   compressFormatDialog: CompressFormatDialogState | null;
   onCloseCompressFormatDialog: () => void;
-  onCloseUnsupportedEditDialog: () => void;
   onConfirmCompressFormat: (format: "zip" | "tar.gz") => Promise<void> | void;
-  onConfirmUnsupportedEdit: () => void;
-  unsupportedEditPath: string | null;
 }
 
 export interface FileBrowserConflictDialogProps {
@@ -192,6 +199,7 @@ const FileBrowserDialogs = ({
     <>
       <FileBrowserEditorDialog
         editingFileResource={editor.editingFileResource}
+        editingFileError={editor.editingFileError}
         editingPath={editor.editingPath}
         editorRef={editor.editorRef}
         isDirty={editor.isDirty}
@@ -208,6 +216,14 @@ const FileBrowserDialogs = ({
         showHiddenFiles={editor.showHiddenFiles}
         showQuickSave={editor.showQuickSave}
         viewMode={editor.viewMode}
+      />
+
+      <FileBrowserSaveConflictDialog
+        conflict={editor.saveConflict}
+        isSaving={editor.isSaving}
+        onCancel={editor.onCancelConflict}
+        onOverwrite={editor.onOverwriteConflict}
+        onReload={editor.onReloadConflict}
       />
 
       <ContextMenu
@@ -284,15 +300,6 @@ const FileBrowserDialogs = ({
         title="Delete Items"
         isPending={deleteDialog.isPending}
         progress={deleteDialog.progress}
-      />
-
-      <ConfirmDialog
-        confirmText="Edit Anyway"
-        message={`"${archive.unsupportedEditPath?.split("/").pop() ?? ""}" is not a recognized text file. Opening it in the editor may show garbled content, and saving could corrupt binary files. Edit anyway?`}
-        onClose={archive.onCloseUnsupportedEditDialog}
-        onConfirm={archive.onConfirmUnsupportedEdit}
-        open={Boolean(archive.unsupportedEditPath)}
-        title="Edit Unsupported File?"
       />
 
       {permissions.dialog && (

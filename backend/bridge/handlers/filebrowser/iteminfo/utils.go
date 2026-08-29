@@ -1,6 +1,7 @@
 package iteminfo
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,46 +13,36 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-func (info *FileInfo) SortItems() {
-	sort.Slice(info.Folders, func(i, j int) bool {
-		nameWithoutExt, _, _ := strings.Cut(info.Folders[i].Name, ".")
-		nameWithoutExt2, _, _ := strings.Cut(info.Folders[j].Name, ".")
-		// Convert strings to integers for numeric sorting if both are numeric
-		numI, errI := strconv.Atoi(nameWithoutExt)
-		numJ, errJ := strconv.Atoi(nameWithoutExt2)
-		if errI == nil && errJ == nil {
-			return numI < numJ
-		}
-		// Fallback to case-insensitive lexicographical sorting
-		return strings.ToLower(info.Folders[i].Name) < strings.ToLower(info.Folders[j].Name)
-	})
-	sort.Slice(info.Files, func(i, j int) bool {
-		nameWithoutExt, _, _ := strings.Cut(info.Files[i].Name, ".")
-		nameWithoutExt2, _, _ := strings.Cut(info.Files[j].Name, ".")
-		// Convert strings to integers for numeric sorting if both are numeric
-		numI, errI := strconv.Atoi(nameWithoutExt)
-		numJ, errJ := strconv.Atoi(nameWithoutExt2)
-		if errI == nil && errJ == nil {
-			return numI < numJ
-		}
-		// Fallback to case-insensitive lexicographical sorting
-		return strings.ToLower(info.Files[i].Name) < strings.ToLower(info.Files[j].Name)
-	})
+func SortItems(items []ItemInfo) {
+	sort.Slice(items, func(i, j int) bool { return lessName(items[i].Name, items[j].Name) })
 }
 
-// ResolveSymlinks resolves symlinks in the given path and returns
-// the final resolved path, whether it's a directory (considering bundle logic), and any error.
-func ResolveSymlinks(path string) (string, bool, error) {
-	root, err := fsroot.Open()
-	if err != nil {
-		return path, false, fmt.Errorf("could not open filesystem root: %w", err)
-	}
-	defer root.Close()
+func SortNames(names []string) {
+	sort.Slice(names, func(i, j int) bool { return lessName(names[i], names[j]) })
+}
 
+func lessName(left, right string) bool {
+	leftStem, _, _ := strings.Cut(left, ".")
+	rightStem, _, _ := strings.Cut(right, ".")
+	leftNumber, leftErr := strconv.Atoi(leftStem)
+	rightNumber, rightErr := strconv.Atoi(rightStem)
+	if leftErr == nil && rightErr == nil {
+		return leftNumber < rightNumber
+	}
+	return strings.ToLower(left) < strings.ToLower(right)
+}
+
+// ResolveSymlinksAt follows the final component of path through any chain of
+// symlinks using an already open root and reports the resolved path and
+// whether it is a directory.
+func ResolveSymlinksAt(ctx context.Context, root *fsroot.FSRoot, path string) (string, bool, error) {
 	cleanPath := utils.CleanAbsPath(path)
 	visited := make(map[string]struct{})
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return cleanPath, false, err
+		}
 		if _, seen := visited[cleanPath]; seen {
 			return cleanPath, false, fmt.Errorf("detected symlink loop at %s", cleanPath)
 		}
@@ -64,6 +55,9 @@ func ResolveSymlinks(path string) (string, bool, error) {
 		}
 
 		if info.Mode()&os.ModeSymlink != 0 {
+			if err := ctx.Err(); err != nil {
+				return cleanPath, false, err
+			}
 			target, err := root.Root.Readlink(relPath)
 			if err != nil {
 				return cleanPath, false, fmt.Errorf("could not read symlink %s: %w", cleanPath, err)

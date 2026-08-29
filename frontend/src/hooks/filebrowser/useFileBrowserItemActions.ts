@@ -6,7 +6,6 @@ import {
   type FileChmodBatchRequest,
   linuxio,
 } from "@/api";
-import { isEditableFile } from "@/components/filebrowser/utils";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import type { FileItem, FileResource } from "@/types/filebrowser";
@@ -83,9 +82,6 @@ export const useFileBrowserItemActions = ({
   const { joinPath, getParentPath } = useFilePathUtilities();
   const resourceItemsRef = useLatestRef(resource?.items);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
-  const [unsupportedEditPath, setUnsupportedEditPath] = useState<string | null>(
-    null,
-  );
 
   const downloadPaths = useCallback(
     async (paths: string[]) => {
@@ -98,24 +94,10 @@ export const useFileBrowserItemActions = ({
     dialogActions.closeDetails();
   }, [dialogActions]);
 
-  const handleCloseUnsupportedEditDialog = useCallback(() => {
-    setUnsupportedEditPath(null);
-  }, []);
-
-  const handleConfirmUnsupportedEdit = useCallback(() => {
-    if (unsupportedEditPath) {
-      editorActions.openFile(unsupportedEditPath);
-    }
-    setUnsupportedEditPath(null);
-    dialogActions.closeDetails();
-  }, [dialogActions, editorActions, unsupportedEditPath]);
-
   const handleDoubleClickFile = useCallback(
     (item: FileItem) => {
-      if (isEditableFile(item.name)) {
+      if (item.isRegularFile === true && item.canOpenAsText === true) {
         editorActions.openFile(item.path);
-      } else {
-        setUnsupportedEditPath(item.path);
       }
     },
     [editorActions],
@@ -131,8 +113,8 @@ export const useFileBrowserItemActions = ({
   const handleShowDetails = useCallback(() => {
     closeContextMenu();
     if (selectedPaths.size === 0) return;
-    dialogActions.showDetails(Array.from(selectedPaths));
-  }, [dialogActions, closeContextMenu, selectedPaths]);
+    dialogActions.showDetails(Array.from(selectedPaths), selectedItems);
+  }, [dialogActions, closeContextMenu, selectedItems, selectedPaths]);
 
   const handleDownloadDetail = useCallback(
     (path: string) => {
@@ -329,13 +311,8 @@ export const useFileBrowserItemActions = ({
 
   const handleEditFile = useCallback(
     (filePath: string) => {
-      const fileName = filePath.split("/").pop() ?? filePath;
-      if (isEditableFile(fileName)) {
-        editorActions.openFile(filePath);
-        dialogActions.closeDetails();
-      } else {
-        setUnsupportedEditPath(filePath);
-      }
+      editorActions.openFile(filePath);
+      dialogActions.closeDetails();
     },
     [dialogActions, editorActions],
   );
@@ -349,13 +326,11 @@ export const useFileBrowserItemActions = ({
     handleCloseDeleteDialog,
     handleCloseDetailDialog,
     handleClosePermissionsDialog,
-    handleCloseUnsupportedEditDialog,
     handleConfirmCreateFile,
     handleConfirmCreateFolder,
     handleConfirmDelete,
     handleConfirmInlineRename,
     handleConfirmPermissions,
-    handleConfirmUnsupportedEdit,
     handleContextMenuRename,
     handleCreateFile,
     handleCreateFolder,
@@ -369,6 +344,5 @@ export const useFileBrowserItemActions = ({
     handleShowDetails,
     handleStartInlineRename,
     renamingPath,
-    unsupportedEditPath,
   };
 };
