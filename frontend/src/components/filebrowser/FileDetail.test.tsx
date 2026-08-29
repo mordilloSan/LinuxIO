@@ -80,11 +80,11 @@ describe("FileDetail", () => {
       />,
     );
 
-    expect(screen.getByText("Total size:")).toBeVisible();
+    expect(screen.getByText("Total size")).toBeVisible();
     expect(screen.getByText("1 KB")).toBeVisible();
-    expect(screen.getByText("Files:")).toBeVisible();
+    expect(screen.getByText("Files")).toBeVisible();
     expect(screen.getByText("12")).toBeVisible();
-    expect(screen.getByText("Folders:")).toBeVisible();
+    expect(screen.getByText("Folders")).toBeVisible();
     expect(screen.getByText("3")).toBeVisible();
   });
 });

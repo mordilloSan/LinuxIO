@@ -1,13 +1,16 @@
 import { Icon } from "@iconify/react";
 import type { ReactNode } from "react";
 
+import CardIconHeader from "@/components/cards/CardIconHeader";
+import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
+import AppChip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppDivider from "@/components/ui/AppDivider";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
+import { GAP_LG, GAP_MD } from "@/theme/constants";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
 import { getTextEditBlockedReason } from "./utils";
@@ -20,37 +23,122 @@ interface FileDetailProps {
   resource?: FileResource;
   statData?: ResourceStatData | null;
 }
-const DetailRow = ({ label, value }: { label: string; value: ReactNode }) => {
-  return (
+
+/** Headline number tile — the settings/VM stat card, for the few facts worth reading first. */
+const MetricTile = ({
+  detail,
+  icon,
+  label,
+  value,
+}: {
+  detail?: ReactNode;
+  icon: string;
+  label: string;
+  value: ReactNode;
+}) => (
+  <FrostedCard
+    hoverLift
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "var(--app-space-4)",
+      minWidth: 0,
+      padding: 12,
+    }}
+  >
     <div
       style={{
+        alignItems: "center",
+        color: "var(--app-palette-primary-main)",
         display: "flex",
-        gap: "var(--app-space-8)",
+        gap: "var(--app-space-4)",
       }}
     >
-      <AppTypography
-        color="text.secondary"
-        fontWeight={600}
-        style={{
-          minWidth: 100,
-        }}
-        variant="body2"
-      >
-        {label}:
-      </AppTypography>
-      <AppTypography
-        component="div"
-        style={{
-          flex: 1,
-          wordBreak: "break-all",
-        }}
-        variant="body2"
-      >
-        {value}
+      <Icon height={18} icon={icon} width={18} />
+      <AppTypography color="text.secondary" variant="caption">
+        {label}
       </AppTypography>
     </div>
-  );
-};
+    <AppTypography
+      component="div"
+      fontWeight={700}
+      style={{ lineHeight: 1.2, overflowWrap: "anywhere" }}
+      variant="h4"
+    >
+      {value}
+    </AppTypography>
+    {detail ? (
+      <AppTypography color="text.secondary" variant="caption">
+        {detail}
+      </AppTypography>
+    ) : null}
+  </FrostedCard>
+);
+
+/** Settings-style card: tinted icon, heading, subtitle, then its rows. */
+const DetailSection = ({
+  children,
+  icon,
+  subtitle,
+  title,
+}: {
+  children: ReactNode;
+  icon: string;
+  subtitle: string;
+  title: string;
+}) => (
+  <section aria-label={title}>
+    <FrostedCard style={{ padding: 12 }}>
+      <CardIconHeader
+        headingVariant="section"
+        icon={<Icon height={20} icon={icon} width={20} />}
+        iconTint
+        subtitle={subtitle}
+        title={title}
+      />
+      <div style={{ marginTop: GAP_MD }}>{children}</div>
+    </FrostedCard>
+  </section>
+);
+
+const DetailRow = ({
+  label,
+  mono = false,
+  value,
+  wide = false,
+}: {
+  label: string;
+  mono?: boolean;
+  value: ReactNode;
+  wide?: boolean;
+}) => (
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "var(--app-space-4)",
+      gridColumn: wide ? "1 / -1" : undefined,
+      minWidth: 0,
+    }}
+  >
+    <AppTypography color="text.secondary" variant="caption">
+      {label}
+    </AppTypography>
+    <AppTypography
+      component="div"
+      fontWeight={500}
+      style={{
+        ...(mono ? { fontFamily: "var(--app-font-mono)" } : {}),
+        minWidth: 0,
+        overflowWrap: "anywhere",
+      }}
+      variant="body2"
+    >
+      {value}
+    </AppTypography>
+  </div>
+);
+
 const FileDetail = ({
   resource,
   onDownload,
@@ -97,199 +185,160 @@ const FileDetail = ({
     if (isDirectory) return "Directory";
     return "File";
   };
+  // toLocaleString puts the clock time after the date, so the tile reads as a
+  // date with the time under it; a locale without that split keeps one line.
+  const [modifiedDate, ...modifiedTime] = formatDate(
+    resource.modified || resource.modTime,
+  ).split(", ");
+  const spinner = <AppCircularProgress size={20} />;
+  const directoryCount = (count?: number | null) =>
+    isLoadingDirectoryDetails ? spinner : (count?.toLocaleString() ?? "—");
   return (
-    <AppPaper
+    <div
       style={{
-        borderRadius: "var(--app-radius-md)",
         display: "flex",
         flexDirection: "column",
-        padding: 12,
-        gap: 8,
+        gap: GAP_LG,
       }}
-      variant="outlined"
     >
-      {/* Header with icon and name */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--app-space-8)",
-        }}
-      >
-        <div
-          style={{
-            color: "var(--app-palette-primary-main)",
-            display: "flex",
-          }}
-        >
-          {getTypeIcon()}
-        </div>
-        <div
-          style={{
-            flex: 1,
-          }}
-        >
-          <AppTypography fontWeight={600} variant="h6">
-            {resource.name}
-          </AppTypography>
+      <CardIconHeader
+        icon={getTypeIcon()}
+        iconTint
+        right={
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: "var(--app-space-4)",
-              marginTop: "var(--app-space-2)",
+              flexWrap: "wrap",
+              gap: "var(--app-space-6)",
+              justifyContent: "flex-end",
             }}
           >
-            <AppTypography color="text.secondary" variant="body2">
-              {getTypeLabel()}
-            </AppTypography>
+            <AppChip label={getTypeLabel()} size="small" variant="soft" />
             {resource.hidden && (
-              <>
-                <AppTypography color="text.secondary" variant="body2">
-                  •
-                </AppTypography>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--app-space-2)",
-                  }}
-                >
-                  <Icon height={16} icon="mdi:eye-off" width={16} />
-                  <AppTypography color="text.secondary" variant="body2">
-                    Hidden
-                  </AppTypography>
-                </div>
-              </>
+              <AppChip label="Hidden" size="small" variant="soft" />
             )}
           </div>
-        </div>
-      </div>
+        }
+        subtitle={resource.path}
+        title={resource.name}
+      />
 
-      <AppDivider />
-
-      {/* Details section */}
       <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--app-space-6)",
+          display: "grid",
+          gap: GAP_MD,
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
         }}
       >
-        <DetailRow label="Path" value={resource.path} />
-        <DetailRow
+        <MetricTile
+          detail={
+            isDirectory && isLoadingDirectoryDetails
+              ? "Indexing this directory"
+              : undefined
+          }
+          icon="mdi:harddisk"
           label={isDirectory ? "Total size" : "Size"}
           value={
-            !isDirectory ? (
-              formatFileSize(resource.size)
-            ) : isLoadingDirectoryDetails ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--app-space-4)",
-                }}
-              >
-                <AppCircularProgress size={16} />
-                <AppTypography variant="body2">Calculating...</AppTypography>
-              </div>
-            ) : size !== undefined && size !== null ? (
-              formatFileSize(size)
-            ) : (
-              "—"
-            )
+            !isDirectory
+              ? formatFileSize(resource.size)
+              : isLoadingDirectoryDetails
+                ? spinner
+                : formatFileSize(size, 2, "—")
           }
         />
         {isDirectory && (
           <>
-            <DetailRow
+            <MetricTile
+              icon="mdi:file-outline"
               label="Files"
-              value={isLoadingDirectoryDetails ? "—" : (fileCount ?? "—")}
+              value={directoryCount(fileCount)}
             />
-            <DetailRow
+            <MetricTile
+              icon="mdi:folder-outline"
               label="Folders"
-              value={isLoadingDirectoryDetails ? "—" : (folderCount ?? "—")}
+              value={directoryCount(folderCount)}
             />
           </>
         )}
-        <DetailRow
+        <MetricTile
+          detail={modifiedTime.join(", ") || undefined}
+          icon="mdi:clock-outline"
           label="Modified"
-          value={formatDate(resource.modified || resource.modTime)}
+          value={modifiedDate}
         />
       </div>
 
-      {/* Permissions and Ownership Section */}
-      {statData && (
-        <>
-          <AppDivider />
-          <AppTypography fontWeight={600} variant="subtitle2">
-            Permissions & Ownership
-          </AppTypography>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--app-space-6)",
-            }}
-          >
-            <DetailRow label="Mode" value={statData.mode} />
-            <DetailRow label="Owner" value={statData.owner} />
-            <DetailRow label="Group" value={statData.group} />
-            <DetailRow label="Permissions" value={statData.permissions} />
-          </div>
-        </>
-      )}
-      {isLoadingStat && (
-        <>
-          <AppDivider />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--app-space-4)",
-            }}
-          >
-            <AppCircularProgress size={16} />
-            <AppTypography variant="body2">
-              Loading permissions...
-            </AppTypography>
-          </div>
-        </>
+      {(statData || isLoadingStat) && (
+        <DetailSection
+          icon="mdi:shield-lock-outline"
+          subtitle="Who may read, write and run this item."
+          title="Permissions & ownership"
+        >
+          {statData ? (
+            <div
+              style={{
+                display: "grid",
+                gap: GAP_MD,
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              }}
+            >
+              <DetailRow label="Mode" mono value={statData.mode} />
+              <DetailRow label="Owner" value={statData.owner} />
+              <DetailRow label="Group" value={statData.group} />
+              <DetailRow
+                label="Permissions"
+                value={statData.permissions}
+                wide
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                alignItems: "center",
+                display: "flex",
+                gap: "var(--app-space-4)",
+              }}
+            >
+              {spinner}
+              <AppTypography color="text.secondary" variant="body2">
+                Loading permissions...
+              </AppTypography>
+            </div>
+          )}
+        </DetailSection>
       )}
 
       {/* Download and Edit buttons - only for files */}
       {!isDirectory && (
-        <>
-          <AppDivider />
-          <div
-            style={{
-              display: "flex",
-              gap: "var(--app-space-4)",
-            }}
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--app-space-4)",
+            flexWrap: "wrap",
+          }}
+        >
+          <AppButton
+            onClick={() => onDownload(resource.path)}
+            startIcon={<Icon height={20} icon="mdi:download" width={20} />}
+            variant="contained"
           >
-            <AppButton
-              onClick={() => onDownload(resource.path)}
-              startIcon={<Icon height={20} icon="mdi:download" width={20} />}
-              variant="contained"
-            >
-              Download
-            </AppButton>
-            {onEdit && (
-              <AppTooltip title={editBlockedReason ?? ""}>
-                <AppButton
-                  disabled={editBlockedReason !== null}
-                  onClick={() => onEdit(resource.path)}
-                  startIcon={<Icon height={20} icon="mdi:pencil" width={20} />}
-                  variant="outlined"
-                >
-                  Open text file
-                </AppButton>
-              </AppTooltip>
-            )}
-          </div>
-        </>
+            Download
+          </AppButton>
+          {onEdit && (
+            <AppTooltip title={editBlockedReason ?? ""}>
+              <AppButton
+                disabled={editBlockedReason !== null}
+                onClick={() => onEdit(resource.path)}
+                startIcon={<Icon height={20} icon="mdi:pencil" width={20} />}
+                variant="outlined"
+              >
+                Open text file
+              </AppButton>
+            </AppTooltip>
+          )}
+        </div>
       )}
-    </AppPaper>
+    </div>
   );
 };
 export default FileDetail;
