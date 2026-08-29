@@ -1,10 +1,11 @@
 # Core Config Quarantine Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement this plan task-by-task. Steps use checkbox
+> (`- [ ]`) syntax for tracking.
 
 **Goal:** A corrupt `~/.linuxio-config.yaml` no longer locks the user out of LinuxIO: at bridge startup it is moved aside and replaced with defaults, and the bridge logs where every config artifact lives and when it creates or resets one.
 
-**Architecture:** One new boot-only loader in `backend/bridge/internal/config/store.go` wraps the existing `readCoreLatestOwned`. Parse/validation failures (identified by a new sentinel error) trigger rename-to-`.broken-<timestamp>` + write-defaults; every other failure (symlink, directory, I/O) still aborts startup. The mutation path (`UserStore.Update`) keeps calling `readCoreLatestOwned` directly and keeps refusing to touch an unreadable file. Three log lines are added where files are created, reset, or announced.
+**Architecture:** One new boot-only loader in `backend/bridge/internal/config/store.go` wraps the existing `readCoreLatestOwned`. Parse/validation failures (identified by a new sentinel error) trigger rename-to-`.broken-<timestamp>` + write-defaults; an existing name gets `(2)`, `(3)`, and so on instead of being overwritten. Every other failure (symlink, directory, I/O) still aborts startup. The mutation path (`UserStore.Update`) keeps calling `readCoreLatestOwned` directly and keeps refusing to touch an unreadable file. Three log lines are added where files are created, reset, or announced.
 
 **Tech Stack:** Go (stdlib `os`, `errors`, `log/slog`, `time`), `github.com/goccy/go-yaml`, `testify/require`. Backend only.
 
@@ -39,7 +40,7 @@ Boot order, `backend/bridge/cmd/root.go:45-95` (`runBridgeProcess`):
 | Situation at boot | Before | After |
 |---|---|---|
 | Core file missing | defaults written silently | defaults written, `slog.Info` with path |
-| Core file fails parse/validation | bridge exits | file renamed to `<path>.broken-<UTC ts>`, defaults written, `slog.Warn` with both paths + error, bridge starts |
+| Core file fails parse/validation | bridge exits | file renamed to `<path>.broken-<UTC ts>` (or the first free `(<n>)` suffix), defaults written, `slog.Warn` with both paths + error, bridge starts |
 | Core path is symlink / directory / unreadable | bridge exits | unchanged — bridge exits, nothing renamed or written |
 | UI file missing | `{}` written silently | `{}` written, `slog.Info` with path |
 | UI file corrupt | reset to `{}` silently | reset to `{}`, `slog.Warn` with path + error |
@@ -48,13 +49,13 @@ Boot order, `backend/bridge/cmd/root.go:45-95` (`runBridgeProcess`):
 
 Why quarantine rather than overwrite: `docker.folders` points at real compose stacks and `requireMountsForFolders` drives a systemd drop-in. Losing that silently would be worse than the outage. The `.broken-*` copy lets the user diff and restore. Why only at boot: a mutation that finds an unreadable file must not "fix" it by discarding it — the existing tests `TestCore*DoesNotRewrite` and `TestUserStoreMutationRejectsMalformedCoreWithoutRewriting` encode that and stay green.
 
-Concurrency: quarantine runs inside `withConfigLocksOwned`, so two bridges for the same user cannot both quarantine — the second sees the fresh defaults. `os.Rename` within one directory is atomic and preserves the inode's ownership, so no chown is needed on the quarantined file.
+Concurrency: quarantine runs inside `withConfigLocksOwned`, so two bridges for the same user cannot both quarantine — the second sees the fresh defaults. If a quarantine name already exists, the bridge uses `(2)`, `(3)`, and so on rather than overwrite it. `os.Rename` within one directory is atomic and preserves the inode's ownership, so no chown is needed on the quarantined file.
 
 ### File map
 
 | File | Change |
 |---|---|
-| `backend/bridge/internal/config/store.go` | add `errInvalidCoreConfig`; wrap parse failure in `readCoreLatestOwned`; add `loadCoreOrQuarantineOwned`; call it from `OpenUserStore`; `slog.Warn` in `readUILatestOwned` reset path |
+| `backend/bridge/internal/config/store.go` | add `errInvalidCoreConfig`; wrap parse failure in `readCoreLatestOwned`; add the numbered quarantine helper and `loadCoreOrQuarantineOwned`; call the loader from `OpenUserStore`; `slog.Warn` in `readUILatestOwned` reset path |
 | `backend/bridge/internal/config/store_test.go` | new tests for `loadCoreOrQuarantineOwned`; one extra assertion in `TestUserStoreMutationRejectsMalformedCoreWithoutRewriting` |
 | `backend/bridge/internal/config/init.go` | two `slog.Info` lines when defaults are created |
 | `backend/bridge/internal/config/validator.go` | doc comment on `parseCoreConfig` |
@@ -71,7 +72,7 @@ Concurrency: quarantine runs inside `withConfigLocksOwned`, so two bridges for t
 
 **Interfaces:**
 - Consumes: `readCoreLatestOwned(path, base string) (*Settings, error)`, `writeCoreConfigOwned(cfgPath string, cfg Settings, owner fileOwnership) error`, `DefaultSettings(base string) *Settings`, `fileOwnership` (all existing, same package).
-- Produces: `var errInvalidCoreConfig error` (sentinel, unexported) and `func loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Settings, error)`. Task 2 wires the latter into `OpenUserStore`.
+- Produces: `var errInvalidCoreConfig error` (sentinel, unexported), `func quarantineCoreConfig(path, timestamp string) (string, error)`, and `func loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Settings, error)`. Task 2 wires the loader into `OpenUserStore`.
 - Test helpers already available in package `config` tests: `readConfigStrict(path) (*Settings, error)` (`settings_test.go:12`), `writeCoreConfig(cfgPath, cfg)` (`test_helpers_test.go`), `currentProcessFileOwnership()` (`test_helpers_test.go`), constants `cfgFileName`, `filePerm`, `dirPerm`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -84,6 +85,27 @@ func quarantinedCoreFiles(t *testing.T, cfgPath string) []string {
 	matches, err := filepath.Glob(cfgPath + ".broken-*")
 	require.NoError(t, err)
 	return matches
+}
+
+func TestQuarantineCoreConfigUsesNumberedSuffix(t *testing.T) {
+	base := t.TempDir()
+	cfgPath := filepath.Join(base, cfgFileName)
+	timestamp := "20260829T120000Z"
+	firstPath := cfgPath + ".broken-" + timestamp
+	current := []byte("current invalid config")
+	earlier := []byte("earlier invalid config")
+	require.NoError(t, os.WriteFile(cfgPath, current, filePerm))
+	require.NoError(t, os.WriteFile(firstPath, earlier, filePerm))
+
+	quarantinePath, err := quarantineCoreConfig(cfgPath, timestamp)
+	require.NoError(t, err)
+	require.Equal(t, firstPath+"(2)", quarantinePath)
+	first, err := os.ReadFile(firstPath)
+	require.NoError(t, err)
+	require.Equal(t, earlier, first)
+	second, err := os.ReadFile(quarantinePath)
+	require.NoError(t, err)
+	require.Equal(t, current, second)
 }
 
 func TestLoadCoreOrQuarantineKeepsValidCore(t *testing.T) {
@@ -165,8 +187,8 @@ func TestLoadCoreOrQuarantineDoesNotTouchNonParseFailures(t *testing.T) {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `make test-backend-quiet GO_TEST_FLAGS="-run 'TestLoadCoreOrQuarantine' -count=1"`
-Expected: FAIL — compile error in package `config` tests: `undefined: loadCoreOrQuarantineOwned`. (The quiet target also runs `test-auth*`; those are unrelated and should pass. If the quiet summary is unclear, read `.cache/test-logs/`.)
+Run: `make test-backend-quiet GO_TEST_FLAGS="-run 'TestLoadCoreOrQuarantine|TestQuarantineCoreConfig' -count=1"`
+Expected: FAIL — compile errors in package `config` tests for the new loader and quarantine helper. (The quiet target also runs `test-auth*`; those are unrelated and should pass. If the quiet summary is unclear, read `.cache/test-logs/`.)
 
 - [ ] **Step 3: Implement the sentinel and loader**
 
@@ -215,10 +237,29 @@ func readCoreLatestOwned(path, base string) (*Settings, error) {
 	return nil, fmt.Errorf("%w: %w", errInvalidCoreConfig, parseErr)
 }
 
+func quarantineCoreConfig(path, timestamp string) (string, error) {
+	basePath := path + ".broken-" + timestamp
+	quarantinePath := basePath
+	for copyNumber := 2; ; copyNumber++ {
+		_, err := os.Lstat(quarantinePath)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Rename(path, quarantinePath); err != nil {
+				return "", err
+			}
+			return quarantinePath, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("check quarantine path: %w", err)
+		}
+		quarantinePath = fmt.Sprintf("%s(%d)", basePath, copyNumber)
+	}
+}
+
 // loadCoreOrQuarantineOwned is the boot-time core read. A document that fails
-// to decode or validate is moved to <path>.broken-<UTC timestamp> and replaced
-// with defaults so one bad edit, or a downgrade past an unknown field, cannot
-// lock the user out; the original stays on disk for manual recovery. Every
+// to decode or validate is moved to <path>.broken-<UTC timestamp> (with a
+// numbered suffix if needed) and replaced with defaults. One bad edit or a
+// downgrade past an unknown field therefore cannot lock the user out; the
+// original stays on disk for manual recovery. Every
 // other failure is returned unchanged. UserStore.Update never calls this: a
 // mutation must not reset a file it could not read.
 func loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Settings, error) {
@@ -229,8 +270,8 @@ func loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Setting
 	if !errors.Is(err, errInvalidCoreConfig) {
 		return nil, err
 	}
-	quarantinePath := path + ".broken-" + time.Now().UTC().Format("20060102T150405Z")
-	if renameErr := os.Rename(path, quarantinePath); renameErr != nil {
+	quarantinePath, renameErr := quarantineCoreConfig(path, time.Now().UTC().Format("20060102T150405Z"))
+	if renameErr != nil {
 		return nil, errors.Join(err, fmt.Errorf("quarantine core config: %w", renameErr))
 	}
 	defaults := DefaultSettings(base)
@@ -251,7 +292,7 @@ Notes for the implementer: the error string of `readCoreLatestOwned` is unchange
 
 - [ ] **Step 4: Run the new tests and the existing no-rewrite tests**
 
-Run: `make test-backend-quiet GO_TEST_FLAGS="-run 'TestLoadCoreOrQuarantine|TestCore.*Rewrite|TestCoreReadFailurePreservesInvalidDocument|TestInvalidCoreDoesNotClobberValidUI' -count=1"`
+Run: `make test-backend-quiet GO_TEST_FLAGS="-run 'TestLoadCoreOrQuarantine|TestQuarantineCoreConfig|TestCore.*Rewrite|TestCoreReadFailurePreservesInvalidDocument|TestInvalidCoreDoesNotClobberValidUI' -count=1"`
 Expected: PASS for all. The pre-existing `TestCore*DoesNotRewrite` tests must remain green — they exercise `readCoreLatestOwned`, which still never writes.
 
 - [ ] **Step 5: Check the worktree**
@@ -439,9 +480,10 @@ with
 Pre-split combined `.linuxio-config.yaml` files are no longer accepted, and
 strict core decoding rejects unknown fields. At bridge startup a core document
 that fails to decode or validate is renamed to
-`.linuxio-config.yaml.broken-<UTC timestamp>` and replaced with defaults; the
-bridge logs both paths at warning level and starts. Read, stat, and symlink
-failures still abort startup and touch nothing. A core update that finds an
+`.linuxio-config.yaml.broken-<UTC timestamp>` and replaced with defaults; an
+existing quarantine name gets `(2)`, `(3)`, and so on rather than being
+overwritten. The bridge logs both paths at warning level and starts. Read,
+stat, and symlink failures still abort startup and touch nothing. A core update that finds an
 unreadable document fails and leaves the file untouched; only the startup read
 quarantines. The bridge logs the core and UI paths when the store is ready and
 logs every default-file creation and UI reset. The bridge never uses filesystem
@@ -471,7 +513,7 @@ with
 
 - [ ] **Step 3: Confirm no other doc claims the old behavior**
 
-Run: `grep -rn "without a reset\|fails without\|cannot be erased" docs backend --include=*.md --include=*.go`
+Run: `rg -n 'without a reset|fails without|cannot be erased' docs backend -g '*.md' -g '*.go' -g '!bridge_config.md'`
 Expected: no matches.
 
 ---
@@ -499,7 +541,7 @@ Expected changed files, and only these:
  backend/bridge/internal/config/store_test.go
  backend/bridge/internal/config/validator.go
  docs/api-contract.md
- docs/superpowers/plans/2026-08-29-core-config-quarantine.md
+ docs/TODO/bridge_config.md
 ```
 
 Report any file changed automatically by tooling (formatter, `go mod tidy`, modernize) — Sol decides whether to keep it.
@@ -521,7 +563,8 @@ Checklist for the reviewer:
 fix(config): quarantine invalid core config at startup instead of refusing to boot
 
 A ~/.linuxio-config.yaml that fails strict decode or validation is renamed
-to .linuxio-config.yaml.broken-<timestamp> and replaced with defaults so the
+to .linuxio-config.yaml.broken-<timestamp> (using a numbered suffix if needed)
+and replaced with defaults so the
 bridge starts; the original stays for recovery. Symlink, type, and I/O
 failures still abort startup, and core mutations still never rewrite an
 unreadable file. Log default-file creation, UI resets, and both config paths
@@ -530,6 +573,6 @@ at ready.
 
 ## Self-review notes
 
-- Coverage: every row of the *Target behavior* table maps to a task (rows 1,4 → Task 3 step 1; row 2 → Tasks 1–2; row 3 → Task 1 test `DoesNotTouchNonParseFailures`; row 5 → Task 3 step 2; row 6 → Task 3 step 3; row 7 → Task 2 step 1). Docs → Task 4.
-- Names are consistent across tasks: `errInvalidCoreConfig`, `loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Settings, error)`, `quarantinedCoreFiles(t, cfgPath) []string`.
+- Coverage: every row of the *Target behavior* table maps to a task (rows 1,4 → Task 3 step 1; row 2 → Tasks 1–2, including `TestQuarantineCoreConfigUsesNumberedSuffix`; row 3 → Task 1 test `DoesNotTouchNonParseFailures`; row 5 → Task 3 step 2; row 6 → Task 3 step 3; row 7 → Task 2 step 1). Docs → Task 4.
+- Names are consistent across tasks: `errInvalidCoreConfig`, `quarantineCoreConfig(path, timestamp string) (string, error)`, `loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Settings, error)`, `quarantinedCoreFiles(t, cfgPath) []string`.
 - Deliberately out of scope: an `OpenUserStore`-level integration test (needs a real passwd home); a log-capture test harness; any frontend change (`config.get`/`config.get_ui` payloads are unchanged, so `make generate` is not needed).
