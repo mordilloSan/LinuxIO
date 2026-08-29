@@ -40,6 +40,13 @@ task contexts to one identity-stable actions context. Architectural follow-on
 to the completed config-state migration; schedule with the tasks-page or
 notification work rather than as standalone churn.
 
+### Complete indexer integration
+
+Follow [`Complete Indexer Integration`](docs/TODO/indexer-integration.md):
+finish release-safe installation and lifecycle ownership, consolidate the
+backend Unix-socket contract, define mutation reconciliation, and verify the
+frontend and disposable-host flows.
+
 ### Frontend test coverage
 
 Define and complete the intended division of coverage between Vitest and Playwright.
