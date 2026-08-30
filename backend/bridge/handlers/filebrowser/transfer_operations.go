@@ -16,6 +16,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -35,12 +36,14 @@ type uploadAttributes struct {
 }
 
 type uploadTransferTask struct {
-	task         *bridgetasks.Task
-	path         string
-	expectedSize int64
-	done         chan transferOutcome
-	activity     chan struct{}
-	finishOnce   sync.Once
+	task            *bridgetasks.Task
+	ctx             context.Context
+	path            string
+	expectedSize    int64
+	expectedVersion string
+	done            chan transferOutcome
+	activity        chan struct{}
+	finishOnce      sync.Once
 
 	mu       sync.Mutex
 	bytes    int64
@@ -74,6 +77,10 @@ type archiveTransferTask struct {
 }
 
 var fileTransferTasks sync.Map
+
+var errUploadVersionConflict = errors.New("file changed since it was opened")
+
+var uploadCommitMu sync.Mutex // ponytail: global CAS lock; use per-path locks if upload throughput requires it.
 
 // transferIdleTimeout bounds how long a transfer task may sit with no client
 // progress before it is abandoned. Uploads and archives park in
@@ -131,17 +138,21 @@ func awaitTransferOutcome(ctx context.Context, done <-chan transferOutcome, acti
 	}
 }
 
-func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, bool, error) {
+func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, bool, string, error) {
 	if req.TargetPath == "" || req.Size == "" {
-		return "", 0, false, fmt.Errorf("missing path or size")
+		return "", 0, false, "", fmt.Errorf("missing path or size")
 	}
 
 	expectedSize, err := strconv.ParseInt(req.Size, 10, 64)
 	if err != nil {
-		return "", 0, false, fmt.Errorf("invalid size: %w", err)
+		return "", 0, false, "", fmt.Errorf("invalid size: %w", err)
 	}
 
-	return req.TargetPath, expectedSize, req.Overwrite != nil && *req.Overwrite, nil
+	expectedVersion := ""
+	if req.ExpectedVersion != nil {
+		expectedVersion = *req.ExpectedVersion
+	}
+	return req.TargetPath, expectedSize, req.Overwrite != nil && *req.Overwrite, expectedVersion, nil
 }
 
 func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes, error) {
@@ -184,9 +195,12 @@ func notifyUploadedFile(path string, info os.FileInfo) {
 }
 
 func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadRequest) (any, error) {
-	path, expectedSize, overwrite, err := parseUploadRequest(req)
+	path, expectedSize, overwrite, expectedVersion, err := parseUploadRequest(req)
 	if err != nil {
 		return nil, bridgetasks.NewError(err.Error(), 400)
+	}
+	if expectedVersion != "" && expectedSize >= services.MaxTextFileBytes {
+		return nil, bridgetasks.NewError("editor save exceeds the maximum text file size", 400)
 	}
 
 	// Uploads never overwrite unless explicitly told to: fail the conflict
@@ -206,11 +220,13 @@ func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.Fi
 	}
 
 	transfer := &uploadTransferTask{
-		task:         task,
-		path:         filepath.Clean(path),
-		expectedSize: expectedSize,
-		done:         make(chan transferOutcome, 1),
-		activity:     make(chan struct{}, 1),
+		task:            task,
+		ctx:             ctx,
+		path:            filepath.Clean(path),
+		expectedSize:    expectedSize,
+		expectedVersion: expectedVersion,
+		done:            make(chan transferOutcome, 1),
+		activity:        make(chan struct{}, 1),
 	}
 	fileTransferTasks.Store(task.ID(), transfer)
 	defer fileTransferTasks.Delete(task.ID())
@@ -432,7 +448,11 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAtt
 
 	err = t.prepare(root)
 	if err != nil {
-		return t.fail(stream, err.Error(), 500, err)
+		code := 500
+		if errors.Is(err, errUploadVersionConflict) {
+			code = 409
+		}
+		return t.fail(stream, err.Error(), code, err)
 	}
 
 	file, err := root.Root.OpenFile(t.tempRel, os.O_RDWR, services.PermFile)
@@ -517,10 +537,21 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.mu.Unlock()
 
 	realPath := filepath.Clean(t.path)
+	// Write through a symlink so the atomic rename replaces the target, not the
+	// link (dotfile repos, sites-enabled). A dangling link is replaced as-is.
+	if resolvedPath, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, realPath); err == nil {
+		realPath = resolvedPath
+	} else if ctxErr := t.ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	realRel := fsroot.ToRel(realPath)
 	attrs, err := loadUploadAttributes(root, realRel)
 	if err != nil {
 		return err
+	}
+	versionErr := t.verifyExpectedVersion(root, realPath)
+	if versionErr != nil {
+		return versionErr
 	}
 	err = root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(realPath)), services.PermDir)
 	if err != nil {
@@ -542,6 +573,20 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.tempRel = tempRel
 	t.attrs = attrs
 	t.mu.Unlock()
+	return nil
+}
+
+func (t *uploadTransferTask) verifyExpectedVersion(root *fsroot.FSRoot, path string) error {
+	if t.expectedVersion == "" {
+		return nil
+	}
+	version, err := services.EditorFileVersion(t.ctx, root, path)
+	if err != nil {
+		return err
+	}
+	if version != t.expectedVersion {
+		return errUploadVersionConflict
+	}
 	return nil
 }
 
@@ -589,14 +634,9 @@ func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot, file
 	if total >= 0 && bytes != total {
 		return t.fail(stream, fmt.Sprintf("size mismatch: expected %d, got %d", total, bytes), 400, fmt.Errorf("size mismatch"))
 	}
-	if err := file.Sync(); err != nil {
-		return t.fail(stream, fmt.Sprintf("sync upload: %v", err), 500, err)
-	}
-	if err := file.Close(); err != nil {
-		return t.fail(stream, fmt.Sprintf("close upload: %v", err), 500, err)
-	}
-	if err := root.Root.Rename(tempRel, finalRel); err != nil {
-		return t.fail(stream, fmt.Sprintf("finalize upload: %v", err), 500, err)
+	code, commitErr := t.commit(root, file, path, tempRel, finalRel)
+	if commitErr != nil {
+		return t.fail(stream, commitErr.Error(), code, commitErr)
 	}
 
 	restoreUploadedFile(root, finalRel, attrs)
@@ -610,6 +650,28 @@ func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot, file
 	t.finish(result, nil)
 	slog.Info("upload complete", "path", path, "size", bytes, "task_id", t.task.ID())
 	return nil
+}
+
+func (t *uploadTransferTask) commit(root *fsroot.FSRoot, file *os.File, path, tempRel, finalRel string) (int, error) {
+	uploadCommitMu.Lock()
+	defer uploadCommitMu.Unlock()
+
+	if err := t.verifyExpectedVersion(root, path); err != nil {
+		if errors.Is(err, errUploadVersionConflict) {
+			return 409, err
+		}
+		return 500, err
+	}
+	if err := file.Sync(); err != nil {
+		return 500, fmt.Errorf("sync upload: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return 500, fmt.Errorf("close upload: %w", err)
+	}
+	if err := root.Root.Rename(tempRel, finalRel); err != nil {
+		return 500, fmt.Errorf("finalize upload: %w", err)
+	}
+	return 0, nil
 }
 
 func (t *uploadTransferTask) writeProgress(stream net.Conn, phase string) {

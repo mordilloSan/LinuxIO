@@ -6,7 +6,8 @@ import { render, screen, waitFor } from "@/test/render";
 import PathPickerField from "./PathPickerField";
 
 const mocks = vi.hoisted(() => ({
-  resourceGet: vi.fn(),
+  directoryChildren: vi.fn(),
+  listDirectory: vi.fn(),
 }));
 
 vi.mock("@/api", async (importOriginal) => {
@@ -18,12 +19,19 @@ vi.mock("@/api", async (importOriginal) => {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        resource_get: Object.assign(
-          (request: { path: string }) => ({
-            queryKey: ["test", "resource-get", request],
-            queryFn: () => mocks.resourceGet(request),
+        directory_children: Object.assign(
+          (request: { path: string; includeFiles: boolean }) => ({
+            queryKey: ["test", "directory-children", request],
+            queryFn: () => mocks.directoryChildren(request),
           }),
-          { route: actual.linuxio.filebrowser.resource_get.route },
+          { route: actual.linuxio.filebrowser.directory_children.route },
+        ),
+        list_directory: Object.assign(
+          (request: { path: string }) => {
+            mocks.listDirectory(request);
+            throw new Error("PathPickerField must not fetch a full listing");
+          },
+          { route: actual.linuxio.filebrowser.list_directory.route },
         ),
       },
     },
@@ -40,23 +48,21 @@ function PickerHarness(
 
 describe("PathPickerField", () => {
   beforeEach(() => {
-    mocks.resourceGet.mockImplementation(({ path }: { path: string }) => {
-      if (path === "/") {
-        return Promise.resolve({
-          folders: [{ name: "media", type: "directory" }],
-        });
-      }
-      if (path === "/media/") {
-        return Promise.resolve({
-          files: [
-            { name: "debian.iso", type: "file" },
-            { name: "notes.txt", type: "file" },
-          ],
-          folders: [{ name: "nested", type: "directory" }],
-        });
-      }
-      return Promise.resolve({ files: [], folders: [] });
-    });
+    vi.clearAllMocks();
+    mocks.directoryChildren.mockImplementation(
+      ({ path, includeFiles }: { path: string; includeFiles: boolean }) => {
+        if (path === "/") {
+          return Promise.resolve({ folders: ["media"], files: [] });
+        }
+        if (path === "/media") {
+          return Promise.resolve({
+            files: includeFiles ? ["debian.iso", "notes.txt"] : [],
+            folders: ["nested"],
+          });
+        }
+        return Promise.resolve({ files: [], folders: [] });
+      },
+    );
   });
 
   it("selects a folder and closes after expanding with the chevron", async () => {
@@ -66,6 +72,11 @@ describe("PathPickerField", () => {
     await user.click(screen.getByRole("button", { name: "Expand /" }));
     await user.click(await screen.findByText("media"));
 
+    expect(mocks.directoryChildren).toHaveBeenCalledWith({
+      path: "/",
+      includeFiles: false,
+    });
+    expect(mocks.listDirectory).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Directory Path")).toHaveValue("/media/");
     expect(screen.queryByRole("tree")).not.toBeInTheDocument();
   });
@@ -87,15 +98,24 @@ describe("PathPickerField", () => {
     await user.click(await screen.findByText("media"));
     await user.click(await screen.findByText("debian.iso"));
 
-    expect(mocks.resourceGet).toHaveBeenCalledWith({ path: "/" });
-    expect(mocks.resourceGet).toHaveBeenCalledWith({ path: "/media/" });
+    expect(mocks.directoryChildren).toHaveBeenCalledWith({
+      path: "/",
+      includeFiles: true,
+    });
+    expect(mocks.directoryChildren).toHaveBeenCalledWith({
+      path: "/media",
+      includeFiles: true,
+    });
+    expect(mocks.listDirectory).not.toHaveBeenCalled();
     expect(screen.queryByText("notes.txt")).not.toBeInTheDocument();
     expect(screen.getByLabelText("ISO path")).toHaveValue("/media/debian.iso");
     expect(screen.queryByRole("tree")).not.toBeInTheDocument();
   });
 
   it("clears the loading state and stays collapsed when expanding fails", async () => {
-    mocks.resourceGet.mockRejectedValueOnce(new Error("resource unavailable"));
+    mocks.directoryChildren.mockRejectedValueOnce(
+      new Error("resource unavailable"),
+    );
     const { user } = render(<PickerHarness />);
 
     await user.click(screen.getByLabelText("Directory Path"));
@@ -110,11 +130,11 @@ describe("PathPickerField", () => {
   });
 
   it("ignores repeated row activation while loading", async () => {
-    let resolveResource: (resource: unknown) => void = () => undefined;
-    const pendingResource = new Promise((resolve) => {
-      resolveResource = resolve;
+    let resolveChildren: (resource: unknown) => void = () => undefined;
+    const pendingChildren = new Promise((resolve) => {
+      resolveChildren = resolve;
     });
-    mocks.resourceGet.mockReturnValueOnce(pendingResource);
+    mocks.directoryChildren.mockReturnValueOnce(pendingChildren);
     const { user } = render(<PickerHarness selectableTypes={[]} />);
 
     await user.click(screen.getByLabelText("Directory Path"));
@@ -122,9 +142,9 @@ describe("PathPickerField", () => {
     await user.click(root);
     await user.click(root);
 
-    expect(mocks.resourceGet).toHaveBeenCalledTimes(1);
+    expect(mocks.directoryChildren).toHaveBeenCalledTimes(1);
 
-    resolveResource({ folders: [{ name: "media", type: "directory" }] });
+    resolveChildren({ folders: ["media"], files: [] });
     await waitFor(() =>
       expect(screen.getByRole("treeitem", { name: "/" })).toHaveAttribute(
         "aria-expanded",

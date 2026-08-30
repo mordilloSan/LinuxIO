@@ -13,6 +13,7 @@ type AutoUpdateRebootPolicy string
 type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
+type ConfigStorageMode string
 type IndexerIntegrityCheck string
 type TaskState string
 type MonitoringHistoryResolution string
@@ -30,6 +31,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
+	"ConfigStorageMode":             {"home", "fallback", "memory"},
 	"IndexerIntegrityCheck":         {"full", "quick", "off"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
@@ -417,14 +419,8 @@ type FilesystemInfo struct {
 type ResourceStatData struct {
 	Group       string `json:"group"`
 	Mode        string `json:"mode"`
-	Modified    string `json:"modified"`
-	Name        string `json:"name"`
 	Owner       string `json:"owner"`
-	Path        string `json:"path"`
 	Permissions string `json:"permissions"`
-	Raw         string `json:"raw"`
-	RealPath    string `json:"realPath"`
-	Size        int64  `json:"size"`
 }
 
 type ContainerPort struct {
@@ -783,64 +779,63 @@ type PowerStatus struct {
 	TunedUnitFileState        string         `json:"tuned_unit_file_state"`
 }
 
-type FileResourceItem struct {
-	Name       string `json:"name"`
-	Size       int64  `json:"size"`
-	Modified   string `json:"modified"`
-	Type       string `json:"type"`
-	Hidden     bool   `json:"hidden"`
-	HasPreview bool   `json:"hasPreview"`
-	Symlink    bool   `json:"symlink"`
+type DirectoryListingFolder struct {
+	Name     string `json:"name"`
+	Modified string `json:"modified"`
+	Symlink  bool   `json:"symlink"`
 }
 
-type ExtendedFileInfo struct {
-	Name       string             `json:"name"`
-	Size       int64              `json:"size"`
-	Modified   string             `json:"modified"`
-	Type       string             `json:"type"`
-	Hidden     bool               `json:"hidden"`
-	HasPreview bool               `json:"hasPreview"`
-	Symlink    bool               `json:"symlink"`
-	Files      []FileResourceItem `json:"files"`
-	Folders    []FileResourceItem `json:"folders"`
-	Path       string             `json:"path"`
-	Content    string             `json:"content,omitempty"`
+type DirectoryListingFile struct {
+	Name          string `json:"name"`
+	Size          int64  `json:"size"`
+	Modified      string `json:"modified"`
+	Symlink       bool   `json:"symlink"`
+	IsRegularFile bool   `json:"isRegularFile"`
+	CanOpenAsText bool   `json:"canOpenAsText"`
+}
+
+type DirectoryListing struct {
+	Folders []DirectoryListingFolder `json:"folders"`
+	Files   []DirectoryListingFile   `json:"files"`
+}
+
+type DirectoryChildren struct {
+	Folders []string `json:"folders"`
+	Files   []string `json:"files"`
+}
+
+type TextFile struct {
+	Content string `json:"content"`
+	Version string `json:"version"`
+	CanSave bool   `json:"canSave"`
 }
 
 type DirectorySizeData struct {
+	Size        int64 `json:"size"`
+	FileCount   int64 `json:"fileCount"`
+	FolderCount int64 `json:"folderCount"`
+}
+
+type SubfolderData struct {
 	Path string `json:"path"`
 	Size int64  `json:"size"`
 }
 
-type SubfolderData struct {
-	ModTime string `json:"mod_time"`
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Size    int64  `json:"size"`
-}
-
 type SubfoldersResponse struct {
-	Count      int             `json:"count"`
-	Path       string          `json:"path"`
 	Subfolders []SubfolderData `json:"subfolders"`
 }
 
 type SearchResult struct {
-	Inode      uint64 `json:"inode"`
-	IsDir      bool   `json:"isDir"`
-	ModTime    string `json:"mod_time"`
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	Size       int64  `json:"size"`
-	TotalDirs  *int64 `json:"total_dirs,omitempty"`
-	TotalFiles *int64 `json:"total_files,omitempty"`
-	TotalSize  *int64 `json:"total_size,omitempty"`
-	Type       string `json:"type"`
+	IsDir         bool   `json:"isDir"`
+	IsRegularFile bool   `json:"isRegularFile"`
+	ModTime       string `json:"mod_time"`
+	Name          string `json:"name"`
+	Path          string `json:"path"`
+	Size          int64  `json:"size"`
+	CanOpenAsText *bool  `json:"canOpenAsText,omitempty"`
 }
 
 type SearchResponse struct {
-	Count   int            `json:"count"`
-	Query   string         `json:"query"`
 	Results []SearchResult `json:"results"`
 }
 
@@ -1514,10 +1509,11 @@ type CapabilitiesResponse struct {
 }
 
 type AppConfig struct {
-	AppSettings AppSettings    `json:"appSettings"`
-	Dismissals  *Dismissals    `json:"dismissals,omitempty"`
-	Docker      DockerSettings `json:"docker"`
-	Jobs        JobSettings    `json:"jobs"`
+	AppSettings AppSettings       `json:"appSettings"`
+	Dismissals  *Dismissals       `json:"dismissals,omitempty"`
+	Docker      DockerSettings    `json:"docker"`
+	Jobs        JobSettings       `json:"jobs"`
+	StorageMode ConfigStorageMode `json:"storageMode"`
 }
 
 type AppSettings struct {

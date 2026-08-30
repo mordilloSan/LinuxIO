@@ -50,7 +50,7 @@ const ROUTE_CONTEXT_OBSERVER_ENDPOINTS: Record<
     listUsersQueryOptions: "accounts.list_users",
   },
   "/_authenticated/filebrowser/$": {
-    listingQueryOptions: "filebrowser.resource_get",
+    listingQueryOptions: "filebrowser.list_directory",
   },
   "/_authenticated/services/": {
     listQueryOptions: "systemd.list_services",

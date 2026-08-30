@@ -4,6 +4,7 @@ import { useCallback, useContext } from "react";
 
 import {
   type AppConfig,
+  type ConfigStorageMode,
   type DockerSettings,
   type TableCardViewMode,
   type UIConfig,
@@ -111,4 +112,15 @@ export function useDockerSettings(): DockerSettings {
     );
   }
   return data;
+}
+
+export function useConfigStorageMode(): ConfigStorageMode {
+  const userId = useConfigUserId();
+  const { data } = useQuery({
+    ...linuxio.config.get,
+    queryKey: bridgeConfigQueryKey(userId),
+    enabled: false,
+    select: (config: AppConfig) => config.storageMode,
+  });
+  return data ?? "home";
 }

@@ -142,6 +142,7 @@ export function buildTestConfigSnapshots(
       progressMinBytesMB: 16,
       progressMinIntervalMs: 250,
     },
+    storageMode: "home",
   };
   return { bridge, ui };
 }

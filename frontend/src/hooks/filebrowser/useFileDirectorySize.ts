@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
+import { stripTrailingSlash } from "@/utils/path";
 
 import {
   getDirectorySizeError,
@@ -13,6 +14,8 @@ import {
 
 interface UseDirectorySizeResult {
   error: Error | null;
+  fileCount: number | null;
+  folderCount: number | null;
   isLoading: boolean;
   isUnavailable: boolean;
   size: number | null;
@@ -41,7 +44,7 @@ export const useFileDirectorySize = (
   );
 
   const { data, isLoading, error } = useQuery({
-    ...linuxio.filebrowser.dir_size({ path }),
+    ...linuxio.filebrowser.dir_size({ path: stripTrailingSlash(path) }),
     enabled: queryEnabled,
     ...getDirectorySizeQueryOptions(),
   });
@@ -61,6 +64,8 @@ export const useFileDirectorySize = (
 
   return {
     size: data?.size ?? null,
+    fileCount: data?.fileCount ?? null,
+    folderCount: data?.folderCount ?? null,
     isLoading: queryEnabled ? isLoading : false,
     error: derivedError,
     isUnavailable,

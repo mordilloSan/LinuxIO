@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { noop, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Update } from "@/api";
@@ -20,6 +20,7 @@ const UpdateList = ({
   isUpdating,
   currentPackage,
 }: Props) => {
+  const queryClient = useQueryClient();
   const [expandedPackageId, setExpandedPackageId] = useState<string | null>(
     null,
   );
@@ -52,6 +53,15 @@ const UpdateList = ({
       setExpandedPackageId(packageId);
       setChangelogPackageId(packageId);
     }
+  };
+  const prefetchChangelog = (packageId: string) => {
+    void queryClient
+      .query({
+        ...linuxio.updates.get_update_detail({ packageId }),
+        meta: { silent: true },
+        staleTime: CACHE_TTL_MS.FIVE_MINUTES,
+      })
+      .catch(noop);
   };
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -105,6 +115,7 @@ const UpdateList = ({
               changelogQuery.isLoading
             }
             isUpdating={!!isUpdating}
+            onPrefetchChangelog={() => prefetchChangelog(update.package_id)}
             onToggleChangelog={() => toggleExpanded(update.package_id)}
             onUpdate={() => onUpdateClick(update.package_id)}
             update={update}

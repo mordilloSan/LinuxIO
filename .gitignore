@@ -2,7 +2,6 @@
 backend/webserver/web/frontend/
 frontend/node_modules/
 frontend/.vite-dev.pid
-frontend/vite.config.module-build.tmp.js
 tsconfig.tsbuildinfo
 
 # Go Binaries

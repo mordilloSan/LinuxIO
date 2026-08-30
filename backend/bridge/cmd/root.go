@@ -87,7 +87,7 @@ func runBridgeProcess() error {
 		status.fail("bridge config store failed: " + err.Error())
 		return err
 	}
-	slog.Info("config store ready", "user", sess.User.Username, "path", userConfig.Path())
+	slog.Info("config store ready", "user", sess.User.Username, "storage_mode", userConfig.StorageMode(), "path", userConfig.Path(), "ui_path", userConfig.UIPath())
 
 	rt := runtime.New(sess, userConfig)
 	runBridge(clientConn, rt, status.ready)

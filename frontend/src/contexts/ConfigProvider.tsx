@@ -140,6 +140,7 @@ function mergeBridgeConfig(previous: AppConfig, patch: ConfigPatch): AppConfig {
       patch.dismissals === undefined
         ? previous.dismissals
         : { ...previous.dismissals, ...patch.dismissals },
+    storageMode: previous.storageMode,
   };
 }
 

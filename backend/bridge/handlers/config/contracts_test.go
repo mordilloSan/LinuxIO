@@ -63,9 +63,10 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 	}
 
 	wantCore := decodeConfigJSON(t, core)
+	wantCore["storageMode"] = "home"
 	wantUI := decodeConfigJSON(t, ui)
 	wantUI["viewModeDefault"] = "card"
-	if got := decodeConfigJSON(t, appConfigToAPI(core)); !reflect.DeepEqual(got, wantCore) {
+	if got := decodeConfigJSON(t, appConfigToAPI(core, bridgeconfig.StorageModeHome)); !reflect.DeepEqual(got, wantCore) {
 		t.Fatalf("converted core config JSON differs:\n got: %#v\nwant: %#v", got, wantCore)
 	}
 	if got := decodeConfigJSON(t, uiConfigToAPI(ui)); !reflect.DeepEqual(got, wantUI) {

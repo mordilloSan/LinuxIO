@@ -11,7 +11,7 @@ import { relativeToSrc, SRC_ROOT, sourceFiles } from "@/test/sourceFiles";
  * components or uses the variables directly. Reading the theme in JS,
  * computing colours, restating the type scale inline, or branching on the
  * colour scheme in JS is reserved for code that must hand a browser API a
- * resolved value: canvas strokes, the xterm and ace themes, colour editors.
+ * resolved value: canvas strokes, xterm themes, and colour editors.
  * Those files are listed below with their reason. Nothing else may match,
  * and a listed file that stops matching must be removed from the list.
  */
@@ -28,10 +28,6 @@ const RESOLVED_COLOUR_READERS: { file: string; reason: string }[] = [
   {
     file: "components/docker/TerminalDialog.tsx",
     reason: "xterm's theme option takes resolved colours",
-  },
-  {
-    file: "components/filebrowser/FileEditor.tsx",
-    reason: "the ace theme is picked from the colour scheme in JS",
   },
   {
     file: "components/gauge/CirularGauge.tsx",

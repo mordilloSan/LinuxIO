@@ -2,14 +2,13 @@
 package iteminfo
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -18,14 +17,27 @@ import (
 
 // CollectStatInfo gathers extended Linux-specific file metadata including owner, group, and permissions.
 // This function collects detailed stat information for a file or directory.
-func CollectStatInfo(realPath string) (*apischema.ResourceStatData, error) {
+func CollectStatInfo(ctx context.Context, realPath string) (*apischema.ResourceStatData, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	root, err := fsroot.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
 
-	cleanPath := utils.CleanAbsPath(realPath)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	resolvedPath, _, err := ResolveSymlinksAt(ctx, root, realPath)
+	if err != nil {
+		return nil, err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	cleanPath := utils.CleanAbsPath(resolvedPath)
 	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
 	if err != nil {
 		return nil, err
@@ -37,13 +49,12 @@ func CollectStatInfo(realPath string) (*apischema.ResourceStatData, error) {
 	}
 
 	data := &apischema.ResourceStatData{
-		Mode:     info.Mode().String(),
-		Size:     info.Size(),
-		Modified: info.ModTime().Format(time.RFC3339),
-		RealPath: cleanPath,
-		Name:     filepath.Base(cleanPath),
+		Mode: info.Mode().String(),
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	uid := strconv.FormatUint(uint64(stat.Uid), 10)
 	if u, err := user.LookupId(uid); err == nil && u != nil {
 		data.Owner = u.Username
@@ -51,6 +62,9 @@ func CollectStatInfo(realPath string) (*apischema.ResourceStatData, error) {
 		data.Owner = uid
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	gid := strconv.FormatUint(uint64(stat.Gid), 10)
 	if g, err := user.LookupGroupId(gid); err == nil && g != nil {
 		data.Group = g.Name
@@ -59,8 +73,6 @@ func CollectStatInfo(realPath string) (*apischema.ResourceStatData, error) {
 	}
 
 	data.Permissions = formatPermissionHuman(info.Mode())
-	data.Raw = formatStatLine(data.Mode, data.Owner, data.Group, data.Size, info.ModTime(), cleanPath)
-
 	return data, nil
 }
 
@@ -94,17 +106,4 @@ func formatPermissionHuman(mode os.FileMode) string {
 		parts = append(parts, fmt.Sprintf("%s: %s", segment.label, strings.Join(abilities, ", ")))
 	}
 	return strings.Join(parts, " | ")
-}
-
-func formatStatLine(mode, owner, group string, size int64, modTime time.Time, path string) string {
-	timestamp := modTime.Format("2006-01-02 15:04:05.000000000 -0700")
-	components := []string{
-		strings.TrimSpace(mode),
-		strings.TrimSpace(owner),
-		strings.TrimSpace(group),
-		fmt.Sprintf("%d", size),
-		timestamp,
-		path,
-	}
-	return strings.Join(components, " ")
 }

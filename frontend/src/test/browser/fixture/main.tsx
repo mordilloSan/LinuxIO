@@ -26,6 +26,10 @@ installTabNavigationIntent();
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
+const CodeEditorPage = lazy(() => import("./routes/CodeEditorPage"));
+const FileBrowserReadPathsPage = lazy(
+  () => import("./routes/FileBrowserReadPathsPage"),
+);
 const ScrollingTabsPage = lazy(() => import("./routes/ScrollingTabsPage"));
 const VirtualFileBrowserPage = lazy(
   () => import("./routes/VirtualFileBrowserPage"),
@@ -97,6 +101,16 @@ const accessibilityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "accessibility",
 });
+const codeEditorRoute = createRoute({
+  component: CodeEditorPage,
+  getParentRoute: () => rootRoute,
+  path: "editor",
+});
+const fileBrowserReadPathsRoute = createRoute({
+  component: FileBrowserReadPathsPage,
+  getParentRoute: () => rootRoute,
+  path: "filebrowser/read-paths",
+});
 const growingTabsRoute = createRoute({
   component: () => <ScrollingTabsPage panel="grow" />,
   getParentRoute: () => rootRoute,
@@ -163,6 +177,8 @@ const failedRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
+  codeEditorRoute,
+  fileBrowserReadPathsRoute,
   growingTabsRoute,
   fillingTabsRoute,
   cardTabsRoute,

@@ -13,7 +13,7 @@ import { linuxio } from "@/api";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppTypography from "@/components/ui/AppTypography";
-import { joinPath as joinPathUtil } from "@/utils/path";
+import { joinPath as joinPathUtil, stripTrailingSlash } from "@/utils/path";
 
 import "./directory-tree.css";
 
@@ -216,8 +216,13 @@ const DirectoryTree = ({
   const queryClient = useQueryClient();
   const fetchResource = useCallback(
     (path: string) =>
-      queryClient.query(linuxio.filebrowser.resource_get({ path })),
-    [queryClient],
+      queryClient.query(
+        linuxio.filebrowser.directory_children({
+          path: stripTrailingSlash(path),
+          includeFiles,
+        }),
+      ),
+    [includeFiles, queryClient],
   );
   const [roots, setRoots] = useState<TreeNodeData[]>(() => [
     { name: rootPath, path: rootPath, kind: "directory", loaded: false },
@@ -232,14 +237,14 @@ const DirectoryTree = ({
     async (node: TreeNodeData) => {
       if (node.loaded || node.kind !== "directory") return;
 
-      const resource = await fetchResource(node.path);
+      const children = await fetchResource(node.path);
 
-      const children = resourceChildren(resource, node.path, {
+      const nodes = resourceChildren(children, node.path, {
         fileFilter,
         includeFiles,
       });
 
-      setRoots((prev) => updateNode(prev, node.path, children));
+      setRoots((prev) => updateNode(prev, node.path, nodes));
     },
     [fetchResource, fileFilter, includeFiles],
   );
@@ -293,12 +298,6 @@ const DirectoryTree = ({
 // Helpers
 // ============================================================================
 
-// resource_get returns an ExtendedFileInfo: directory children arrive pre-split
-// into `folders` and `files`, neither of which carries its own `path`.
-interface ResourceChild {
-  name: string;
-}
-
 function resourceChildren(
   resource: unknown,
   parentPath: string,
@@ -311,25 +310,25 @@ function resourceChildren(
   },
 ): TreeNodeData[] {
   const raw = resource as {
-    files?: ResourceChild[];
-    folders?: ResourceChild[];
+    files?: string[];
+    folders?: string[];
   };
   const folders = raw.folders ?? [];
   const files = includeFiles ? (raw.files ?? []) : [];
 
-  const dirs: TreeNodeData[] = folders.map((folder) => ({
+  const dirs: TreeNodeData[] = folders.map((name) => ({
     kind: "directory",
     loaded: false,
-    name: folder.name,
-    path: joinPath(parentPath, folder.name),
+    name,
+    path: joinPath(parentPath, name),
   }));
 
   const fileNodes: TreeNodeData[] = files
-    .map((file) => ({
+    .map((name) => ({
       kind: "file" as const,
       loaded: true,
-      name: file.name,
-      path: joinFilePath(parentPath, file.name),
+      name,
+      path: joinFilePath(parentPath, name),
     }))
     .filter((node) => fileFilter?.(node) ?? true);
 

@@ -21,6 +21,7 @@ interface FileBrowserHeaderProps {
   editingFilePath?: string;
   isDirty?: boolean;
   isSaving?: boolean;
+  readOnly?: boolean;
   onCloseEditor?: () => void;
   onSaveFile?: () => Promise<void>;
   onSearchChange?: (value: string) => void;
@@ -39,6 +40,7 @@ const FileBrowserHeader = ({
   onSaveFile,
   onCloseEditor,
   isSaving = false,
+  readOnly = false,
   viewMode,
   breadcrumbs,
   editingFileName,
@@ -175,7 +177,7 @@ const FileBrowserHeader = ({
               <AppTooltip title="Save changes">
                 <AppIconButton
                   aria-label="Save changes"
-                  disabled={isSaving || !onSaveFile}
+                  disabled={isSaving || readOnly || !onSaveFile}
                   onClick={onSaveFile}
                 >
                   <Icon height={22} icon="mdi:content-save" width={22} />

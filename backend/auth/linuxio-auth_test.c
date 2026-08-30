@@ -182,6 +182,26 @@ static int test_stderr_parking_clears_cloexec(void)
   return 0;
 }
 
+static int test_bridge_workdir_falls_back_to_root(void)
+{
+  int status = 0;
+  pid_t pid = fork();
+
+  CHECK(pid >= 0);
+  if (pid == 0)
+  {
+    char cwd[PATH_MAX];
+
+    if (chdir_bridge_workdir("/linuxio-home-does-not-exist") != 0 ||
+        !getcwd(cwd, sizeof(cwd)) || strcmp(cwd, "/") != 0)
+      _exit(1);
+    _exit(0);
+  }
+  CHECK(waitpid_nointr(pid, &status, 0) == pid);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  return 0;
+}
+
 static int test_pam_conversation(void)
 {
   const struct pam_message messages[] = {
@@ -896,6 +916,7 @@ int main(void)
       {"length-prefixed input", test_lenstr_rejects_ambiguous_input},
       {"length-prefixed deadline", test_lenstr_honors_absolute_deadline},
       {"stderr parking CLOEXEC", test_stderr_parking_clears_cloexec},
+      {"bridge workdir fallback", test_bridge_workdir_falls_back_to_root},
       {"PAM conversation", test_pam_conversation},
       {"bridge policy", test_bridge_policy},
       {"sudo policy argv", test_sudo_policy_argv},

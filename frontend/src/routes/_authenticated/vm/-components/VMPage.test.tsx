@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LinuxIOError, linuxio } from "@/api";
+import { linuxio } from "@/api";
 import {
   act,
   createTestQueryClient,
@@ -100,9 +100,9 @@ const mocks = vi.hoisted(() => {
     routeNavigate: vi.fn(),
     // Detail selection is a path param on /vm/machines/$name.
     routeParams: { name: "alpha" },
-    resourceGet: vi.fn(),
+    directoryChildren: vi.fn(),
+    existsBatch: vi.fn(),
     resourcePost: vi.fn(),
-    resourceStat: vi.fn(),
     refetchList: vi.fn(),
     rfbConstructor: vi.fn(),
     rfbDisconnect: vi.fn(),
@@ -289,32 +289,20 @@ vi.mock("@/api", async (importOriginal) => {
       { route },
     );
 
-  const resourceGet = requestCall(
-    "filebrowser.resource_get",
-    (request: { path: string }) => [
+  const directoryChildren = requestCall(
+    "filebrowser.directory_children",
+    (request: { path: string; includeFiles: boolean }) => [
       "linuxio",
       "filebrowser",
-      "resource_get",
+      "directory_children",
       request,
     ],
-    (request: { path: string }) => mocks.resourceGet(request),
+    (request: { path: string; includeFiles: boolean }) =>
+      mocks.directoryChildren(request),
   );
   const resourcePost = Object.assign(mocks.resourcePost, {
     route: "filebrowser.resource_post",
   });
-  const resourceStat = Object.assign(
-    requestCall(
-      "filebrowser.resource_stat",
-      (request: { path: string }) => [
-        "linuxio",
-        "filebrowser",
-        "resource_stat",
-        request,
-      ],
-      (request: { path: string }) => mocks.resourceStat(request),
-    ),
-  );
-
   return {
     ...actual,
     useCallMutation: useCallMutationMock,
@@ -322,9 +310,8 @@ vi.mock("@/api", async (importOriginal) => {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        resource_get: resourceGet,
+        directory_children: directoryChildren,
         resource_post: resourcePost,
-        resource_stat: resourceStat,
       },
       virt: {
         create: Object.assign(mocks.virtCreate, {
@@ -378,8 +365,8 @@ vi.mock("@/api", async (importOriginal) => {
       },
     },
     call: (route: string, request?: unknown) => {
-      if (route === "filebrowser.resource_stat") {
-        return mocks.resourceStat(request);
+      if (route === "filebrowser.exists_batch") {
+        return mocks.existsBatch(request);
       }
       return Promise.resolve(undefined);
     },
@@ -504,62 +491,22 @@ beforeEach(() => {
   mocks.preflightRequests = [];
   mocks.routeNavigate.mockReset();
   mocks.routeParams = { name: "alpha" };
-  mocks.resourceGet.mockReset();
-  mocks.resourceGet.mockImplementation(({ path }: { path: string }) => {
-    if (path === "/") {
-      return Promise.resolve({
-        folders: [{ name: "isos", type: "directory" }],
-        name: "/",
-        path: "/",
-        type: "directory",
-      });
-    }
-    if (path === "/isos/") {
-      return Promise.resolve({
-        files: [
-          { name: "debian.iso", type: "file" },
-          { name: "notes.txt", type: "file" },
-        ],
-        folders: [],
-        name: "isos",
-        path: "/isos/",
-        type: "directory",
-      });
-    }
-    if (path === `${mocks.managedISOPath}/`) {
-      return Promise.resolve({
-        files: [
-          { name: "debian.iso", type: "file" },
-          { name: "notes.txt", type: "file" },
-        ],
-        folders: [],
-        name: "isos",
-        path: `${mocks.managedISOPath}/`,
-        type: "directory",
-      });
-    }
-    return Promise.resolve({
-      folders: [],
-      name: path,
-      path,
-      type: "directory",
-    });
-  });
+  mocks.directoryChildren.mockReset();
+  mocks.directoryChildren.mockImplementation(
+    ({ path, includeFiles }: { path: string; includeFiles: boolean }) => {
+      if (path === mocks.managedISOPath) {
+        return Promise.resolve({
+          files: includeFiles ? ["debian.iso", "notes.txt"] : [],
+          folders: [],
+        });
+      }
+      return Promise.resolve({ files: [], folders: [] });
+    },
+  );
+  mocks.existsBatch.mockReset();
+  mocks.existsBatch.mockResolvedValue({ existing: [] });
   mocks.resourcePost.mockReset();
   mocks.resourcePost.mockResolvedValue(undefined);
-  mocks.resourceStat.mockReset();
-  mocks.resourceStat.mockResolvedValue({
-    group: "miguelmariz",
-    mode: "drwxrwxr-x",
-    modified: "2026-06-20T00:00:00Z",
-    name: "isos",
-    owner: "miguelmariz",
-    path: "/isos",
-    permissions: "775",
-    raw: "",
-    realPath: "/isos",
-    size: 0,
-  });
   mocks.refetchList.mockReset();
   mocks.rfbConstructor.mockReset();
   mocks.rfbDisconnect.mockReset();
@@ -1162,8 +1109,9 @@ describe("Virtual Machines page", () => {
     await user.click(await screen.findByText(`${mocks.managedISOPath}/`));
     await user.click(await screen.findByText("debian.iso"));
 
-    expect(mocks.resourceGet).toHaveBeenCalledWith({
-      path: `${mocks.managedISOPath}/`,
+    expect(mocks.directoryChildren).toHaveBeenCalledWith({
+      path: mocks.managedISOPath,
+      includeFiles: true,
     });
     expect(screen.queryByText("notes.txt")).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText(/iso path/i)).toHaveValue(
@@ -1196,9 +1144,6 @@ describe("Virtual Machines page", () => {
   });
 
   it("creates a missing folder derived from typed ISO path text", async () => {
-    mocks.resourceStat.mockRejectedValueOnce(
-      new LinuxIOError("path wording is presentation only", 404),
-    );
     const { user } = await renderVMPage();
 
     await user.click(screen.getByRole("button", { name: /create vm/i }));
@@ -1211,7 +1156,7 @@ describe("Virtual Machines page", () => {
     await user.tab();
 
     await waitFor(() => {
-      expect(mocks.resourceStat).toHaveBeenCalledWith({ path: "/missing" });
+      expect(mocks.existsBatch).toHaveBeenCalledWith({ paths: ["/missing"] });
       expect(mocks.resourcePost).toHaveBeenCalledWith({ path: "/missing/" });
     });
   });

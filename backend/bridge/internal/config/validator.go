@@ -15,8 +15,9 @@ import (
 
 // parseCoreConfig decodes one complete core document and validates the result.
 // Defaults only supply omitted core fields. A failed decode is returned to the
-// caller unchanged so a malformed or unknown-field document cannot be erased
-// by a read or an unrelated mutation.
+// caller unchanged; parseCoreConfig never rewrites. Only the startup read
+// (loadCoreOrQuarantineOwned) quarantines and replaces an invalid document;
+// core mutations leave it untouched.
 func parseCoreConfig(raw []byte, path, base string) (*Settings, error) {
 	if err := validateSingleYAMLDocument(raw); err != nil {
 		logYAMLError(err, path)

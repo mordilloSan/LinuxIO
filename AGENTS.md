@@ -40,11 +40,13 @@
   independent work, but they are not required for non-trivial tasks and should
   not be spawned merely to repeat planning already provided with the task.
 
+- When delegating, prefer capable, faster, lower-cost worker models for bounded
+  exploration, implementation, and test execution. Keep architecture,
+  integration, conflict resolution, final diff review, and final decisions in
+  the main agent.
+
 - When subagents are used, parallel agents must be read-only or own clearly
   disjoint files. Never allow overlapping edits in the same worktree.
-
-- The main coding agent owns integration, conflict resolution, final diff
-  review, and the final handoff.
 
 - Never run Make verification concurrently with implementation or with another
   Make invocation when repository tooling may mutate the shared worktree.

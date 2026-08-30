@@ -690,15 +690,14 @@ type OptionalPathRequest struct {
 	Path *string `json:"path,omitempty"`
 }
 
-type FileResourceGetRequest struct {
-	Path       string  `json:"path"`
-	Unused     *string `json:"unused,omitempty"`
-	GetContent *string `json:"getContent,omitempty"`
-}
-
 type FileResourcePostRequest struct {
 	Path     string `json:"path"`
 	Override *bool  `json:"override,omitempty"`
+}
+
+type DirectoryChildrenRequest struct {
+	Path         string `json:"path"`
+	IncludeFiles bool   `json:"includeFiles"`
 }
 
 type FileSearchRequest struct {
@@ -708,9 +707,10 @@ type FileSearchRequest struct {
 }
 
 type FileUploadRequest struct {
-	TargetPath string `json:"targetPath"`
-	Size       string `json:"size"`
-	Overwrite  *bool  `json:"overwrite,omitempty"`
+	TargetPath      string  `json:"targetPath"`
+	Size            string  `json:"size"`
+	Overwrite       *bool   `json:"overwrite,omitempty"`
+	ExpectedVersion *string `json:"expectedVersion,omitempty"`
 }
 
 // FileUploadBatchEntry is one file in a batch upload manifest. Path is

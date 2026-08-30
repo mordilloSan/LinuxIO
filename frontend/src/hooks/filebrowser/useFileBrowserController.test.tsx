@@ -73,12 +73,16 @@ const mocks = vi.hoisted(() => ({
     showQuickSave: false,
   },
   editorActions: {
+    handleCancelConflict: vi.fn(),
     handleCloseEditor: vi.fn(),
     handleDiscardAndExit: vi.fn(),
     handleKeepEditing: vi.fn(),
+    handleOverwriteConflict: vi.fn(),
+    handleReloadConflict: vi.fn(),
     handleSaveAndExit: vi.fn(),
     handleSaveContent: vi.fn(),
     handleSaveFile: vi.fn(),
+    saveConflict: null,
   },
   filteredResource: undefined as FileResource | undefined,
   itemActions: {
@@ -90,13 +94,11 @@ const mocks = vi.hoisted(() => ({
     handleCloseDeleteDialog: vi.fn(),
     handleCloseDetailDialog: vi.fn(),
     handleClosePermissionsDialog: vi.fn(),
-    handleCloseUnsupportedEditDialog: vi.fn(),
     handleConfirmCreateFile: vi.fn(),
     handleConfirmCreateFolder: vi.fn(),
     handleConfirmDelete: vi.fn(),
     handleConfirmInlineRename: vi.fn(),
     handleConfirmPermissions: vi.fn(),
-    handleConfirmUnsupportedEdit: vi.fn(),
     handleContextMenuRename: vi.fn(),
     handleCreateFile: vi.fn(),
     handleCreateFolder: vi.fn(),
@@ -110,7 +112,6 @@ const mocks = vi.hoisted(() => ({
     handleShowDetails: vi.fn(),
     handleStartInlineRename: vi.fn(),
     renamingPath: null,
-    unsupportedEditPath: null,
   },
   invalidateListing: vi.fn(),
   mutations: {
@@ -131,6 +132,7 @@ const mocks = vi.hoisted(() => ({
   queries: {
     detailError: null,
     detailResource: undefined as FileResource | undefined,
+    editingFileError: null,
     editingFileResource: undefined as FileResource | undefined,
     errorMessage: null,
     isEditingFileLoading: false,
@@ -231,9 +233,9 @@ vi.mock("@/api", () => ({
       exists_batch: {
         useFetcher: () => () => Promise.resolve({ existing: [] }),
       },
-      resource_get: ({ path }: { path: string }) => ({
+      list_directory: ({ path }: { path: string }) => ({
         queryFn: vi.fn(),
-        queryKey: ["filebrowser", "resource_get", path],
+        queryKey: ["filebrowser", "list_directory", path],
       }),
     },
   },

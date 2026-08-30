@@ -3,16 +3,103 @@ package filebrowser
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
+
+func TestUploadTaskRejectsChangedExpectedVersion(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "note.txt")
+	require.NoError(t, os.WriteFile(target, []byte("before"), 0o644))
+
+	opened, err := services.ReadEditorFile(context.Background(), target)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(target, []byte("after"), 0o644))
+
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+	transfer := &uploadTransferTask{ctx: context.Background(), expectedVersion: opened.Version}
+
+	err = transfer.verifyExpectedVersion(root, target)
+	if !errors.Is(err, errUploadVersionConflict) {
+		t.Fatalf("verifyExpectedVersion() error = %v, want conflict", err)
+	}
+}
+
+func TestUploadTaskSavesThroughSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "bashrc")
+	link := filepath.Join(dir, ".bashrc")
+	require.NoError(t, os.WriteFile(target, []byte("old"), 0o644))
+	require.NoError(t, os.Symlink(target, link))
+	opened, err := services.ReadEditorFile(context.Background(), link)
+	require.NoError(t, err)
+
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+	task, err := bridgetasks.NewTaskService().Create(routeUpload, apischema.FileUploadRequest{TargetPath: link, Size: "3"})
+	require.NoError(t, err)
+	transfer := &uploadTransferTask{task: task, ctx: context.Background(), path: link, expectedSize: 3, expectedVersion: opened.Version}
+	require.NoError(t, transfer.prepare(root))
+
+	file, err := root.Root.OpenFile(transfer.tempRel, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = file.Write([]byte("new"))
+	require.NoError(t, err)
+	code, err := transfer.commit(root, file, link, transfer.tempRel, transfer.finalRel)
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink, "saving must write through the link, not replace it")
+	content, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "new", string(content))
+}
+
+func TestUploadTaskPreservesVersionReadErrors(t *testing.T) {
+	dir := t.TempDir()
+	nul := filepath.Join(dir, "nul")
+	large := filepath.Join(dir, "large")
+	require.NoError(t, os.WriteFile(nul, []byte("x\x00y"), 0o644))
+	require.NoError(t, os.WriteFile(large, make([]byte, services.MaxTextFileBytes), 0o644))
+
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+	transfer := &uploadTransferTask{ctx: context.Background(), expectedVersion: "opened-version"}
+
+	for _, test := range []struct {
+		name string
+		path string
+		want error
+	}{
+		{name: "missing", path: filepath.Join(dir, "missing"), want: os.ErrNotExist},
+		{name: "NUL", path: nul, want: services.ErrEditorFileContainsNUL},
+		{name: "oversized", path: large, want: services.ErrEditorFileNotEligible},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := transfer.verifyExpectedVersion(root, test.path)
+			require.ErrorIs(t, err, test.want)
+			require.NotErrorIs(t, err, errUploadVersionConflict)
+		})
+	}
+}
 
 func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 	dir := t.TempDir()

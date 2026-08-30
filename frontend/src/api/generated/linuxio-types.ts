@@ -132,6 +132,7 @@ export interface AppConfig {
   dismissals?: Dismissals;
   docker: DockerSettings;
   jobs: JobSettings;
+  storageMode: ConfigStorageMode;
 }
 
 export interface AppSettings {
@@ -435,6 +436,8 @@ export interface ConfigSetResult {
   path: string;
 }
 
+export type ConfigStorageMode = "home" | "fallback" | "memory";
+
 export interface ConfigThemeColorsByModePayload {
   light?: ConfigThemeColorsPayload;
   dark?: ConfigThemeColorsPayload;
@@ -603,9 +606,40 @@ export interface DirPathRequest {
   dirPath: string;
 }
 
-export interface DirectorySizeData {
+export interface DirectoryChildren {
+  folders: string[];
+  files: string[];
+}
+
+export interface DirectoryChildrenRequest {
   path: string;
+  includeFiles: boolean;
+}
+
+export interface DirectoryListing {
+  folders: DirectoryListingFolder[];
+  files: DirectoryListingFile[];
+}
+
+export interface DirectoryListingFile {
+  name: string;
   size: number;
+  modified: string;
+  symlink: boolean;
+  isRegularFile: boolean;
+  canOpenAsText: boolean;
+}
+
+export interface DirectoryListingFolder {
+  name: string;
+  modified: string;
+  symlink: boolean;
+}
+
+export interface DirectorySizeData {
+  size: number;
+  fileCount: number;
+  folderCount: number;
 }
 
 export interface DirectoryValidationResult {
@@ -905,20 +939,6 @@ export interface ExistsBatchResponse {
   existing: ExistsBatchItem[];
 }
 
-export interface ExtendedFileInfo {
-  name: string;
-  size: number;
-  modified: string;
-  type: string;
-  hidden: boolean;
-  hasPreview: boolean;
-  symlink: boolean;
-  files: FileResourceItem[];
-  folders: FileResourceItem[];
-  path: string;
-  content?: string;
-}
-
 export interface FailedLoginEventsRequest {
   limit?: string;
 }
@@ -982,22 +1002,6 @@ export interface FileProgress {
   indeterminate?: boolean;
 }
 
-export interface FileResourceGetRequest {
-  path: string;
-  unused?: string;
-  getContent?: string;
-}
-
-export interface FileResourceItem {
-  name: string;
-  size: number;
-  modified: string;
-  type: string;
-  hidden: boolean;
-  hasPreview: boolean;
-  symlink: boolean;
-}
-
 export interface FileResourcePostRequest {
   path: string;
   override?: boolean;
@@ -1033,6 +1037,7 @@ export interface FileUploadRequest {
   targetPath: string;
   size: string;
   overwrite?: boolean;
+  expectedVersion?: string;
 }
 
 export interface FileUploadResult {
@@ -1815,14 +1820,8 @@ export interface ResizeLogicalVolumeRequest {
 export interface ResourceStatData {
   group: string;
   mode: string;
-  modified: string;
-  name: string;
   owner: string;
-  path: string;
   permissions: string;
-  raw: string;
-  realPath: string;
-  size: number;
 }
 
 export interface SambaShare {
@@ -1831,22 +1830,17 @@ export interface SambaShare {
 }
 
 export interface SearchResponse {
-  count: number;
-  query: string;
   results: SearchResult[];
 }
 
 export interface SearchResult {
-  inode: number;
   isDir: boolean;
+  isRegularFile: boolean;
   mod_time: string;
   name: string;
   path: string;
   size: number;
-  total_dirs?: number;
-  total_files?: number;
-  total_size?: number;
-  type: string;
+  canOpenAsText?: boolean;
 }
 
 export interface SensorGroup {
@@ -1969,15 +1963,11 @@ export interface StorageWarningResult {
 }
 
 export interface SubfolderData {
-  mod_time: string;
-  name: string;
   path: string;
   size: number;
 }
 
 export interface SubfoldersResponse {
-  count: number;
-  path: string;
   subfolders: SubfolderData[];
 }
 
@@ -2116,6 +2106,12 @@ export interface TerminalOpenRequest {
 export interface TerminateSessionRequest {
   sessionId: string;
   pid: string;
+}
+
+export interface TextFile {
+  content: string;
+  version: string;
+  canSave: boolean;
 }
 
 export type Theme = "LIGHT" | "DARK";
@@ -2745,6 +2741,11 @@ export interface LinuxIOSchema {
       request: PathRequest;
       result: DirectorySizeData;
     };
+    directory_children: {
+      input: [request: DirectoryChildrenRequest];
+      request: DirectoryChildrenRequest;
+      result: DirectoryChildren;
+    };
     exists_batch: {
       input: [paths: string[]];
       request: BatchPathRequest;
@@ -2763,16 +2764,21 @@ export interface LinuxIOSchema {
       progress: TaskProgress<IndexerProgress>;
     };
     indexer_status: { input: []; request: void; result: IndexerStatusResponse };
+    list_directory: {
+      input: [path: string];
+      request: PathRequest;
+      result: DirectoryListing;
+    };
     move_batch: {
       input: [request: BatchTransferRequest];
       request: BatchTransferRequest;
       result: FileBatchResult;
       progress: TaskProgress<FileProgress>;
     };
-    resource_get: {
-      input: [request: FileResourceGetRequest];
-      request: FileResourceGetRequest;
-      result: ExtendedFileInfo;
+    read_text: {
+      input: [path: string];
+      request: PathRequest;
+      result: TextFile;
     };
     resource_patch: {
       input: [request: ActionSourceDestinationRequest];
@@ -3480,6 +3486,10 @@ export interface LinuxIOCallSchema {
     result: DirectoryValidationResult;
   };
   "filebrowser.dir_size": { request: PathRequest; result: DirectorySizeData };
+  "filebrowser.directory_children": {
+    request: DirectoryChildrenRequest;
+    result: DirectoryChildren;
+  };
   "filebrowser.exists_batch": {
     request: BatchPathRequest;
     result: ExistsBatchResponse;
@@ -3488,10 +3498,11 @@ export interface LinuxIOCallSchema {
     request: void;
     result: IndexerStatusResponse;
   };
-  "filebrowser.resource_get": {
-    request: FileResourceGetRequest;
-    result: ExtendedFileInfo;
+  "filebrowser.list_directory": {
+    request: PathRequest;
+    result: DirectoryListing;
   };
+  "filebrowser.read_text": { request: PathRequest; result: TextFile };
   "filebrowser.resource_post": {
     request: FileResourcePostRequest;
     result: void;

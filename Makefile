@@ -5,7 +5,7 @@ default: help
 # Include private release automation
 -include release.mk
 
-repo_root := $(if $(REPO_ROOT),$(REPO_ROOT),$(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST))))))
+repo_root := $(if $(REPO_ROOT),$(REPO_ROOT),$(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST))))))
 REPO_ROOT ?= $(repo_root)
 frontend_dir := $(if $(FRONTEND_DIR),$(FRONTEND_DIR),$(repo_root)/frontend)
 FRONTEND_DIR ?= $(frontend_dir)
@@ -1395,8 +1395,8 @@ generate: ensure-go ensure-node setup
 
 clean:
 	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" || true
-	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" || true
-	@rm -rf "$(frontend_node_modules_dir)" || true
+	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(frontend_dir)/tsconfig.tsbuildinfo" || true
+	@rm -rf "$(cache_dir)" "$(frontend_node_modules_dir)" || true
 	@find "$(backend_frontend_dir)" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 

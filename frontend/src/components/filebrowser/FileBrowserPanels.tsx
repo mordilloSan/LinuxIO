@@ -24,6 +24,7 @@ import {
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import type { EditorSaveConflict } from "@/hooks/filebrowser/useFileBrowserEditorActions";
 import type {
   ConflictDecision,
   ConflictPrompt,
@@ -105,6 +106,7 @@ export const FileDropOverlay = ({ normalizedPath }: FileDropOverlayProps) => {
 
 interface FileBrowserEditorDialogProps {
   editingFileResource?: FileResource;
+  editingFileError: unknown;
   editingPath: string | null;
   editorRef: RefObject<FileEditorHandle | null>;
   isDirty: boolean;
@@ -112,7 +114,10 @@ interface FileBrowserEditorDialogProps {
   isSaving: boolean;
   onCloseEditor: () => void;
   onDirtyChange: (isDirty: boolean) => void;
-  onSaveContent: (content: string) => Promise<boolean>;
+  onSaveContent: (
+    content: string,
+    expectedVersion?: string,
+  ) => Promise<boolean>;
   onSaveFile: () => Promise<void>;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
@@ -125,6 +130,7 @@ interface FileBrowserEditorDialogProps {
 
 export const FileBrowserEditorDialog = ({
   editingFileResource,
+  editingFileError,
   editingPath,
   editorRef,
   isDirty,
@@ -142,6 +148,8 @@ export const FileBrowserEditorDialog = ({
   showQuickSave,
   viewMode,
 }: FileBrowserEditorDialogProps) => {
+  const readOnly = editingFileResource?.canSave !== true;
+
   return (
     <AppFullscreenDialog
       contentStyle={{
@@ -154,6 +162,7 @@ export const FileBrowserEditorDialog = ({
         editingFileName={editingFileResource?.name}
         editingFilePath={editingPath || undefined}
         isDirty={isDirty}
+        readOnly={readOnly}
         isSaving={isSaving}
         onCloseEditor={onCloseEditor}
         onSaveFile={onSaveFile}
@@ -193,17 +202,92 @@ export const FileBrowserEditorDialog = ({
               fileName={editingFileResource.name}
               filePath={editingPath}
               initialContent={editingFileResource.content || ""}
+              initialVersion={editingFileResource.version}
               isSaving={isSaving}
               onDirtyChange={onDirtyChange}
               onSave={onSaveContent}
+              readOnly={readOnly}
               ref={editorRef}
             />
           </Suspense>
         )}
+
+        {editingPath &&
+          !isEditingFileLoading &&
+          !editingFileResource &&
+          Boolean(editingFileError) && (
+            <div
+              style={{
+                alignItems: "center",
+                display: "flex",
+                flex: 1,
+                flexDirection: "column",
+                gap: "var(--app-space-4)",
+                justifyContent: "center",
+                padding: "var(--app-space-6)",
+              }}
+            >
+              <AppAlert severity="error">
+                <AppAlertTitle>Unable to open file</AppAlertTitle>
+                Close the editor and try again.
+              </AppAlert>
+              <AppButton onClick={onCloseEditor}>Close editor</AppButton>
+            </div>
+          )}
       </div>
     </AppFullscreenDialog>
   );
 };
+
+interface FileBrowserSaveConflictDialogProps {
+  isSaving: boolean;
+  onCancel: () => void;
+  onOverwrite: () => void;
+  onReload: () => void;
+  conflict: EditorSaveConflict | null;
+}
+
+export const FileBrowserSaveConflictDialog = ({
+  conflict,
+  isSaving,
+  onCancel,
+  onOverwrite,
+  onReload,
+}: FileBrowserSaveConflictDialogProps) => (
+  <FileBrowserDialog
+    disableEscapeKeyDown={isSaving}
+    fullWidth
+    maxWidth="sm"
+    onClose={isSaving ? undefined : onCancel}
+    open={Boolean(conflict)}
+  >
+    <AppDialogTitle>File changed on disk</AppDialogTitle>
+    <AppDialogContent
+      style={{ borderTop: "1px solid var(--app-palette-divider)" }}
+    >
+      <AppTypography variant="body1">
+        This file changed after you opened it. Reload to discard your edits, or
+        overwrite the current file with your edits.
+      </AppTypography>
+    </AppDialogContent>
+    <AppDialogActions>
+      <AppButton disabled={isSaving} onClick={onCancel}>
+        Cancel
+      </AppButton>
+      <AppButton disabled={isSaving} onClick={onReload} variant="outlined">
+        Reload file
+      </AppButton>
+      <AppButton
+        color="warning"
+        disabled={isSaving}
+        onClick={onOverwrite}
+        variant="contained"
+      >
+        Overwrite file
+      </AppButton>
+    </AppDialogActions>
+  </FileBrowserDialog>
+);
 
 export type MultiFileDetailItem = MultiStatsItem & {
   aggregateSize?: number;

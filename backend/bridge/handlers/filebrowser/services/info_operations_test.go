@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,193 +13,102 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 )
 
-func TestFileInfoFaster(t *testing.T) {
+func TestListDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
+	createTestDir(t, tmpDir, "folder")
+	createTestFile(t, tmpDir, "plain", []byte("text"))
+	createTestFile(t, tmpDir, "large", make([]byte, MaxTextFileBytes))
+	require.NoError(t, os.Symlink(filepath.Join(tmpDir, "plain"), filepath.Join(tmpDir, "link")))
+	require.NoError(t, os.Symlink(filepath.Join(tmpDir, "folder"), filepath.Join(tmpDir, "folder-link")))
 
-	t.Run("get_info_single_file", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "test.txt", []byte("content"))
+	listing, err := ListDirectory(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"folder", "folder-link"}, testItemNames(listing.Folders))
+	assert.ElementsMatch(t, []string{"plain", "large", "link"}, testItemNames(listing.Files))
 
-		opts := iteminfo.FileOptions{
-			Path:    filePath,
-			IsDir:   false,
-			Expand:  false,
-			Content: false,
-		}
-
-		info, err := FileInfoFaster(opts)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.Equal(t, "test.txt", info.Name)
-		assert.Equal(t, int64(7), info.Size)
-		assert.False(t, info.Hidden)
-	})
-
-	t.Run("get_info_nonexistent", func(t *testing.T) {
-		opts := iteminfo.FileOptions{
-			Path: filepath.Join(tmpDir, "nonexistent.txt"),
-		}
-
-		_, err := FileInfoFaster(opts)
-		require.Error(t, err)
-	})
-
-	t.Run("get_info_hidden_file", func(t *testing.T) {
-		hiddenFile := createTestFile(t, tmpDir, ".hidden", []byte("secret"))
-
-		opts := iteminfo.FileOptions{
-			Path: hiddenFile,
-		}
-
-		info, err := FileInfoFaster(opts)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.True(t, info.Hidden, "file starting with . should be marked as hidden")
-	})
-
-	t.Run("get_info_empty_file", func(t *testing.T) {
-		emptyFile := createTestFile(t, tmpDir, "empty.txt", []byte{})
-
-		opts := iteminfo.FileOptions{
-			Path: emptyFile,
-		}
-
-		info, err := FileInfoFaster(opts)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.Equal(t, int64(0), info.Size)
-	})
-
-	t.Run("get_info_large_file", func(t *testing.T) {
-		largeContent := make([]byte, 5*1024*1024) // 5 MB
-		largeFile := filepath.Join(tmpDir, "large.bin")
-		err := os.WriteFile(largeFile, largeContent, 0o644)
-		require.NoError(t, err)
-
-		opts := iteminfo.FileOptions{
-			Path: largeFile,
-		}
-
-		info, err := FileInfoFaster(opts)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.Equal(t, int64(5*1024*1024), info.Size)
-	})
+	items := make(map[string]iteminfo.ItemInfo, len(listing.Files))
+	for _, item := range listing.Files {
+		items[item.Name] = item
+	}
+	assert.Equal(t, int64(4), items["plain"].Size)
+	assert.True(t, items["plain"].IsRegularFile)
+	assert.True(t, items["plain"].CanOpenAsText)
+	assert.False(t, items["large"].CanOpenAsText)
+	assert.True(t, items["link"].Symlink)
+	assert.True(t, items["link"].IsRegularFile)
+	assert.True(t, items["link"].CanOpenAsText)
 }
 
-func TestGetDirInfo(t *testing.T) {
+func TestListDirectoryDoesNotReadContent(t *testing.T) {
 	tmpDir := t.TempDir()
+	createTestFile(t, tmpDir, "nul", []byte("text\x00binary"))
 
-	t.Run("get_directory_with_files", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "testdir")
-		createTestFile(t, dirPath, "file1.txt", []byte("content1"))
-		createTestFile(t, dirPath, "file2.txt", []byte("content2"))
-
-		info, err := GetDirInfo(dirPath, dirPath)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.Equal(t, "testdir", info.Name)
-		// Should have files listed
-		assert.True(t, len(info.Files) > 0 || len(info.Folders) > 0)
-	})
-
-	t.Run("get_empty_directory", func(t *testing.T) {
-		emptyDir := createTestDir(t, tmpDir, "empty")
-
-		info, err := GetDirInfo(emptyDir, emptyDir)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.Equal(t, "empty", info.Name)
-		assert.Empty(t, info.Files, "empty directory should have no files")
-		assert.Empty(t, info.Folders, "empty directory should have no folders")
-	})
-
-	t.Run("get_directory_with_subdirectories", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "parent")
-		subDir1 := createTestDir(t, dirPath, "sub1")
-		subDir2 := createTestDir(t, dirPath, "sub2")
-		createTestFile(t, dirPath, "file.txt", []byte("root"))
-		createTestFile(t, subDir1, "nested.txt", []byte("nested"))
-		assert.NotEmpty(t, subDir2)
-
-		info, err := GetDirInfo(dirPath, dirPath)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		// Should list both files and subdirectories
-		assert.Positive(t, len(info.Files)+len(info.Folders))
-	})
-
-	t.Run("get_directory_with_hidden_files", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "with_hidden")
-		createTestFile(t, dirPath, "visible.txt", []byte("visible"))
-		createTestFile(t, dirPath, ".hidden", []byte("hidden"))
-
-		info, err := GetDirInfo(dirPath, dirPath)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		// Both visible and hidden should be returned
-		totalItems := len(info.Files) + len(info.Folders)
-		assert.GreaterOrEqual(t, totalItems, 1)
-	})
-
-	t.Run("get_nonexistent_directory", func(t *testing.T) {
-		nonexistent := filepath.Join(tmpDir, "nonexistent")
-
-		_, err := GetDirInfo(nonexistent, nonexistent)
-		require.Error(t, err)
-	})
-
-	t.Run("get_file_as_directory", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "file.txt", []byte("content"))
-
-		// GetDirInfo may or may not error on a file - implementation dependent
-		info, err := GetDirInfo(filePath, filePath)
-		// Just verify it either errors or returns something
-		if err == nil {
-			assert.NotNil(t, info)
-		}
-	})
-
-	t.Run("directory_with_special_characters", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "dir_with-special.chars")
-		createTestFile(t, dirPath, "file-with-dash.txt", []byte("content"))
-		createTestFile(t, dirPath, "file_with_underscore.txt", []byte("content"))
-
-		info, err := GetDirInfo(dirPath, dirPath)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		assert.NotEmpty(t, info.Files)
-	})
-
-	t.Run("deep_nested_directory_structure", func(t *testing.T) {
-		dirPath := createTestDir(t, tmpDir, "deep")
-		level1 := createTestDir(t, dirPath, "level1")
-		level2 := createTestDir(t, level1, "level2")
-		level3 := createTestDir(t, level2, "level3")
-		createTestFile(t, level3, "deep_file.txt", []byte("deep content"))
-
-		// GetDirInfo on level1 should see level2
-		info, err := GetDirInfo(level1, level1)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		// Should have the level2 subdirectory
-		assert.NotEmpty(t, info.Folders)
-	})
+	listing, err := ListDirectory(context.Background(), tmpDir)
+	require.NoError(t, err)
+	require.Len(t, listing.Files, 1)
+	assert.True(t, listing.Files[0].CanOpenAsText, "content validation belongs to editor open")
 }
 
-func TestFileTypeDetection(t *testing.T) {
+func TestListDirectoryChildren(t *testing.T) {
 	tmpDir := t.TempDir()
+	createTestDir(t, tmpDir, "folder")
+	createTestFile(t, tmpDir, "plain", []byte("text"))
+	require.NoError(t, os.Symlink(filepath.Join(tmpDir, "folder"), filepath.Join(tmpDir, "folder-link")))
+	require.NoError(t, os.Symlink(filepath.Join(tmpDir, "plain"), filepath.Join(tmpDir, "file-link")))
 
-	t.Run("basic_file_type", func(t *testing.T) {
-		filePath := createTestFile(t, tmpDir, "document.txt", []byte("text content"))
+	folders, err := ListDirectoryChildren(context.Background(), tmpDir, false)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"folder", "folder-link"}, folders.Folders)
+	assert.Empty(t, folders.Files)
 
-		opts := iteminfo.FileOptions{
-			Path: filePath,
-		}
+	all, err := ListDirectoryChildren(context.Background(), tmpDir, true)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"folder", "folder-link"}, all.Folders)
+	assert.ElementsMatch(t, []string{"plain", "file-link"}, all.Files)
+}
 
-		info, err := FileInfoFaster(opts)
-		require.NoError(t, err)
-		assert.NotNil(t, info)
-		// Should have a type set
-		assert.NotEmpty(t, info.Type)
-	})
+func TestListDirectoryCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := ListDirectory(ctx, tmpDir)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestListDirectoryCancellationAfterFirstBatch(t *testing.T) {
+	dir := t.TempDir()
+	for i := range directoryReadBatchSize * 2 {
+		createTestFile(t, dir, fmt.Sprintf("file-%03d", i), []byte("x"))
+	}
+	ctx := &cancelAfterErrChecks{Context: context.Background(), cancelAt: 133}
+	_, err := ListDirectory(ctx, dir)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestListDirectoryRejectsFile(t *testing.T) {
+	path := createTestFile(t, t.TempDir(), "file", []byte("x"))
+	_, err := ListDirectory(context.Background(), path)
+	assert.ErrorIs(t, err, os.ErrInvalid)
+}
+
+func testItemNames(items []iteminfo.ItemInfo) []string {
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		names = append(names, item.Name)
+	}
+	return names
+}
+
+type cancelAfterErrChecks struct {
+	context.Context
+	calls    int
+	cancelAt int
+}
+
+func (c *cancelAfterErrChecks) Err() error {
+	c.calls++
+	if c.calls >= c.cancelAt {
+		return context.Canceled
+	}
+	return c.Context.Err()
 }

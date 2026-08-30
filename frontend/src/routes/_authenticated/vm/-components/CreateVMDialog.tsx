@@ -29,7 +29,7 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
-import { ensureTrailingSlash } from "@/utils/path";
+import { ensureTrailingSlash, stripTrailingSlash } from "@/utils/path";
 
 import PreflightSummary from "./PreflightSummary";
 import type {
@@ -47,7 +47,6 @@ import {
   VM_TOAST,
   folderFromISOPathText,
   isISOPath,
-  isMissingPathError,
   parentDirectory,
 } from "./vmShared";
 
@@ -207,8 +206,8 @@ export default function CreateVMDialog({
     linuxio.filebrowser.resource_post,
     {
       invalidates: (_result, variables) => [
-        linuxio.filebrowser.resource_get({
-          path: ensureTrailingSlash(parentDirectory(variables.path) || "/"),
+        linuxio.filebrowser.list_directory({
+          path: stripTrailingSlash(parentDirectory(variables.path) || "/"),
         }).queryKey,
       ],
     },
@@ -311,20 +310,17 @@ export default function CreateVMDialog({
     if (!folder || folder === "/") return;
 
     try {
-      const stat = await call(linuxio.filebrowser.resource_stat.route, {
-        path: folder,
+      const { existing } = await call(linuxio.filebrowser.exists_batch.route, {
+        paths: [folder],
       });
-      if (stat.mode && !stat.mode.startsWith("d")) {
+      const found = existing.find((item) => item.path === folder);
+      if (found?.isDir === false) {
         toast.error(`${folder} exists but is not a directory.`);
       }
-      return;
+      if (found) return;
     } catch (error) {
-      if (!isMissingPathError(error)) {
-        toast.error(
-          getMutationErrorMessage(error, "Failed to check ISO folder"),
-        );
-        return;
-      }
+      toast.error(getMutationErrorMessage(error, "Failed to check ISO folder"));
+      return;
     }
 
     try {

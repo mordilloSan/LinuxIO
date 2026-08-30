@@ -10,7 +10,9 @@ import (
 
 var api = apischema.Bindings(
 	apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeDownloadStream, apischema.NoEndpoint()).Duplex(streamFileDownload),
-	apischema.Call[apischema.FileResourceGetRequest, apischema.ExtendedFileInfo]("filebrowser.resource_get", apischema.RetrySafe()).Handle(handleResourceGet),
+	apischema.Call[apischema.PathRequest, apischema.DirectoryListing]("filebrowser.list_directory", apischema.RetrySafe()).Handle(handleListDirectory),
+	apischema.Call[apischema.DirectoryChildrenRequest, apischema.DirectoryChildren]("filebrowser.directory_children", apischema.RetrySafe()).Handle(handleDirectoryChildren),
+	apischema.Call[apischema.PathRequest, apischema.TextFile]("filebrowser.read_text", apischema.RetrySafe()).Handle(handleReadText),
 	apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat", apischema.RetrySafe()).Handle(handleResourceStat),
 	apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch", apischema.RetrySafe()).Handle(handleExistsBatch),
 	apischema.Call[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
@@ -31,8 +33,16 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleResourceGet(ctx context.Context, req apischema.FileResourceGetRequest) (apischema.ExtendedFileInfo, error) {
-	return resourceGet(ctx, req)
+func handleListDirectory(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
+	return listDirectory(ctx, req)
+}
+
+func handleDirectoryChildren(ctx context.Context, req apischema.DirectoryChildrenRequest) (apischema.DirectoryChildren, error) {
+	return directoryChildren(ctx, req)
+}
+
+func handleReadText(ctx context.Context, req apischema.PathRequest) (apischema.TextFile, error) {
+	return readText(ctx, req)
 }
 
 func handleResourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.ResourceStatData, error) {

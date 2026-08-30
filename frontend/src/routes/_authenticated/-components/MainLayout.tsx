@@ -2,8 +2,9 @@ import { Outlet, useLocation } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import "@/icons/icons";
-import { useConfigValue } from "@/hooks/useConfig";
+import { useConfigStorageMode, useConfigValue } from "@/hooks/useConfig";
 import { useAppMediaQuery } from "@/theme";
 import { up } from "@/theme/breakpoints";
 
@@ -20,6 +21,7 @@ const MainLayout = () => {
   const location = useLocation();
   const isSmallUp = useAppMediaQuery(up("sm"));
   const [navigationMode] = useConfigValue("navigationMode");
+  const storageMode = useConfigStorageMode();
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
   const dockMode = isDesktop && navigationMode === "dock";
   const { updateInfo, dismissUpdate } = useUpdateInfo();
@@ -102,6 +104,31 @@ const MainLayout = () => {
             dockMode={dockMode}
             onDrawerToggle={dockMode ? undefined : toggleMobileOpen}
           />
+
+          {storageMode !== "home" && (
+            <div
+              style={{
+                paddingLeft: pageInsetInline,
+                paddingRight: pageInsetInline,
+                paddingBottom: "var(--app-space-4)",
+              }}
+            >
+              <AppAlert
+                role="status"
+                severity="warning"
+                style={{ borderRadius: "var(--app-radius-card)" }}
+              >
+                <AppAlertTitle>
+                  {storageMode === "memory"
+                    ? "Settings are temporary"
+                    : "Using fallback settings storage"}
+                </AppAlertTitle>
+                {storageMode === "memory"
+                  ? "Persistent settings storage is unavailable. Changes will be lost when you refresh or sign out."
+                  : "Home settings storage is unavailable. Settings are being saved in LinuxIO's persistent fallback storage."}
+              </AppAlert>
+            </div>
+          )}
 
           {updateInfo?.available && (
             <div

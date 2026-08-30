@@ -19,6 +19,7 @@ const deferredUpdate: Update = {
 describe("UpdateCard", () => {
   it("keeps deferred updates visible while disabling only their Update action", async () => {
     const onUpdate = vi.fn();
+    const onPrefetchChangelog = vi.fn();
     const onToggleChangelog = vi.fn();
     const { user } = render(
       <UpdateCard
@@ -27,6 +28,7 @@ describe("UpdateCard", () => {
         isExpanded={false}
         isLoadingChangelog={false}
         isUpdating={false}
+        onPrefetchChangelog={onPrefetchChangelog}
         onToggleChangelog={onToggleChangelog}
         onUpdate={onUpdate}
         update={deferredUpdate}
@@ -47,5 +49,8 @@ describe("UpdateCard", () => {
 
     await user.click(screen.getByRole("button", { name: "View Changelog" }));
     expect(onToggleChangelog).toHaveBeenCalledTimes(1);
+
+    await user.hover(screen.getByRole("button", { name: "View Changelog" }));
+    expect(onPrefetchChangelog).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,26 +1,24 @@
 import {
-  useCallback,
+  StreamLanguage,
+  syntaxHighlighting,
+  type StreamParser,
+} from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
+import { classHighlighter } from "@lezer/highlight";
+import CodeMirror, { type Extension } from "@uiw/react-codemirror";
+import {
   useEffect,
   useEffectEvent,
   useImperativeHandle,
-  useRef,
   useState,
   type Ref,
 } from "react";
-import ReactAce from "react-ace";
 
-import ComponentLoader from "@/components/loaders/ComponentLoader";
-import { useAppTheme } from "@/theme";
-
-// react-ace CJS exports the component as .default — Rolldown may not unwrap it
-const AceEditor =
-  typeof (ReactAce as any).default === "function"
-    ? (ReactAce as any).default
-    : ReactAce;
+import "./file-editor.css";
 
 interface FileEditorProps {
-  // Ace uses this as the editor container's DOM id, so it must be unique when
-  // two editors are mounted at once (compose + env panes).
+  // Used as the editor container's DOM id, so it must be unique when two
+  // editors are mounted at once (compose + env panes).
   editorName?: string;
   // When two editors share a dialog, only the primary one may own the
   // document-level Ctrl+S listener — both would fire on one keydown.
@@ -28,9 +26,13 @@ interface FileEditorProps {
   fileName: string;
   filePath: string;
   initialContent: string;
+  initialVersion?: string;
   isSaving?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
-  onSave: (content: string) => Promise<boolean | void>;
+  onSave: (
+    content: string,
+    expectedVersion?: string,
+  ) => Promise<boolean | void>;
   readOnly?: boolean;
   ref?: Ref<FileEditorHandle>;
 }
@@ -38,64 +40,198 @@ interface FileEditorProps {
 export interface FileEditorHandle {
   getContent: () => string;
   isDirty: () => boolean;
+  reset: (content: string, version?: string) => void;
   save: () => Promise<boolean>;
 }
 
-const getLanguageMode = (fileName: string): string => {
-  const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  const modeMap: Record<string, string> = {
-    js: "javascript",
-    ts: "javascript",
-    tsx: "javascript",
-    jsx: "javascript",
-    py: "python",
-    java: "java",
-    c: "c_cpp",
-    cpp: "c_cpp",
-    h: "c_cpp",
-    hpp: "c_cpp",
-    html: "html",
-    htm: "html",
-    css: "css",
-    sql: "sql",
-    json: "json",
-    xml: "xml",
-    yml: "yaml",
-    yaml: "yaml",
-    sh: "sh",
-    env: "sh",
+type LanguageName =
+  | "c"
+  | "cpp"
+  | "css"
+  | "diff"
+  | "dockerfile"
+  | "go"
+  | "html"
+  | "ini"
+  | "java"
+  | "javascript"
+  | "json"
+  | "lua"
+  | "perl"
+  | "python"
+  | "ruby"
+  | "rust"
+  | "scss"
+  | "shell"
+  | "sql"
+  | "text"
+  | "toml"
+  | "typescript"
+  | "xml"
+  | "yaml";
+
+const languageByExtension: Record<string, LanguageName> = {
+  bash: "shell",
+  c: "c",
+  cc: "cpp",
+  cfg: "ini",
+  cjs: "javascript",
+  conf: "ini",
+  cpp: "cpp",
+  css: "css",
+  cts: "typescript",
+  cxx: "cpp",
+  desktop: "ini",
+  diff: "diff",
+  dockerfile: "dockerfile",
+  env: "shell",
+  fish: "shell",
+  go: "go",
+  h: "c",
+  hh: "cpp",
+  hpp: "cpp",
+  htm: "html",
+  html: "html",
+  ini: "ini",
+  java: "java",
+  js: "javascript",
+  json: "json",
+  link: "ini",
+  lua: "lua",
+  mjs: "javascript",
+  mount: "ini",
+  mts: "typescript",
+  netdev: "ini",
+  network: "ini",
+  patch: "diff",
+  path: "ini",
+  pl: "perl",
+  plist: "xml",
+  pm: "perl",
+  properties: "ini",
+  py: "python",
+  rb: "ruby",
+  rs: "rust",
+  scss: "scss",
+  service: "ini",
+  sh: "shell",
+  slice: "ini",
+  socket: "ini",
+  sql: "sql",
+  svg: "xml",
+  target: "ini",
+  timer: "ini",
+  toml: "toml",
+  ts: "typescript",
+  xml: "xml",
+  xsl: "xml",
+  yaml: "yaml",
+  yml: "yaml",
+  zsh: "shell",
+};
+
+export const getEditorLanguageName = (fileName: string): LanguageName => {
+  const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
+  return languageByExtension[extension] ?? "text";
+};
+
+function legacy<M>(
+  load: () => Promise<M>,
+  pick: (mod: M) => StreamParser<unknown>,
+) {
+  return () => load().then((mod) => StreamLanguage.define(pick(mod)));
+}
+
+const clike = () => import("@codemirror/legacy-modes/mode/clike");
+const cssModes = () => import("@codemirror/legacy-modes/mode/css");
+const jsModes = () => import("@codemirror/legacy-modes/mode/javascript");
+const xmlModes = () => import("@codemirror/legacy-modes/mode/xml");
+
+const languageLoaders: Partial<Record<LanguageName, () => Promise<Extension>>> =
+  {
+    c: legacy(clike, (m) => m.c),
+    cpp: legacy(clike, (m) => m.cpp),
+    css: legacy(cssModes, (m) => m.css),
+    diff: legacy(
+      () => import("@codemirror/legacy-modes/mode/diff"),
+      (m) => m.diff,
+    ),
+    dockerfile: legacy(
+      () => import("@codemirror/legacy-modes/mode/dockerfile"),
+      (m) => m.dockerFile,
+    ),
+    go: legacy(
+      () => import("@codemirror/legacy-modes/mode/go"),
+      (m) => m.go,
+    ),
+    html: legacy(xmlModes, (m) => m.html),
+    ini: legacy(
+      () => import("@codemirror/legacy-modes/mode/properties"),
+      (m) => m.properties,
+    ),
+    java: legacy(clike, (m) => m.java),
+    javascript: legacy(jsModes, (m) => m.javascript),
+    json: () => import("@codemirror/lang-json").then(({ json }) => json()),
+    lua: legacy(
+      () => import("@codemirror/legacy-modes/mode/lua"),
+      (m) => m.lua,
+    ),
+    perl: legacy(
+      () => import("@codemirror/legacy-modes/mode/perl"),
+      (m) => m.perl,
+    ),
+    python: legacy(
+      () => import("@codemirror/legacy-modes/mode/python"),
+      (m) => m.python,
+    ),
+    ruby: legacy(
+      () => import("@codemirror/legacy-modes/mode/ruby"),
+      (m) => m.ruby,
+    ),
+    rust: legacy(
+      () => import("@codemirror/legacy-modes/mode/rust"),
+      (m) => m.rust,
+    ),
+    scss: legacy(cssModes, (m) => m.sCSS),
+    shell: legacy(
+      () => import("@codemirror/legacy-modes/mode/shell"),
+      (m) => m.shell,
+    ),
+    sql: legacy(
+      () => import("@codemirror/legacy-modes/mode/sql"),
+      (m) => m.standardSQL,
+    ),
+    toml: legacy(
+      () => import("@codemirror/legacy-modes/mode/toml"),
+      (m) => m.toml,
+    ),
+    typescript: legacy(jsModes, (m) => m.typescript),
+    xml: legacy(xmlModes, (m) => m.xml),
+    yaml: () => import("@codemirror/lang-yaml").then(({ yaml }) => yaml()),
   };
-  return modeMap[ext] || "text";
-};
 
-const aceModeLoaders: Record<string, () => Promise<unknown>> = {
-  javascript: () => import("ace-builds/src-noconflict/mode-javascript"),
-  python: () => import("ace-builds/src-noconflict/mode-python"),
-  java: () => import("ace-builds/src-noconflict/mode-java"),
-  c_cpp: () => import("ace-builds/src-noconflict/mode-c_cpp"),
-  html: () => import("ace-builds/src-noconflict/mode-html"),
-  css: () => import("ace-builds/src-noconflict/mode-css"),
-  sql: () => import("ace-builds/src-noconflict/mode-sql"),
-  json: () => import("ace-builds/src-noconflict/mode-json"),
-  xml: () => import("ace-builds/src-noconflict/mode-xml"),
-  yaml: () => import("ace-builds/src-noconflict/mode-yaml"),
-  sh: () => import("ace-builds/src-noconflict/mode-sh"),
-};
+// Selection colour must beat CodeMirror's base theme. A theme extension is
+// guaranteed to; a stylesheet rule only wins on selector specificity.
+const editorChrome = EditorView.theme({
+  ".cm-selectionBackground": {
+    background: "var(--app-palette-action-selected)",
+  },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+    background: "var(--app-palette-action-selected)",
+  },
+});
 
-const aceThemeLoaders: Record<string, () => Promise<unknown>> = {
-  github: () => import("ace-builds/src-noconflict/theme-github"),
-  monokai: () => import("ace-builds/src-noconflict/theme-monokai"),
-};
+const baseEditorExtensions: Extension[] = [
+  EditorView.contentAttributes.of({ "aria-label": "Code editor" }),
+  syntaxHighlighting(classHighlighter),
+  editorChrome,
+];
 
-const loadedAceModes = new Set<string>();
-const loadedAceThemes = new Set<string>();
-const failedAceModes = new Set<string>();
-const failedAceThemes = new Set<string>();
-const loadingAceModes = new Map<string, Promise<void>>();
-const loadingAceThemes = new Map<string, Promise<void>>();
+const editorSetup = { tabSize: 2 };
 
 interface EditorState {
   baseContent: string;
+  baseVersion?: string;
   content: string;
   filePath: string;
   isDirty: boolean;
@@ -104,9 +240,11 @@ interface EditorState {
 const createEditorState = (
   filePath: string,
   baseContent: string,
+  baseVersion?: string,
 ): EditorState => ({
   filePath,
   baseContent,
+  baseVersion,
   content: baseContent,
   isDirty: false,
 });
@@ -115,17 +253,27 @@ const stateForSource = (
   state: EditorState,
   filePath: string,
   initialContent: string,
+  initialVersion?: string,
 ): EditorState => {
   if (state.filePath !== filePath) {
-    return createEditorState(filePath, initialContent);
+    return createEditorState(filePath, initialContent, initialVersion);
   }
   // Background refetches may update the source while the user is editing.
   // Preserve that draft; a clean editor can safely adopt the new source.
-  if (!state.isDirty && state.baseContent !== initialContent) {
-    return createEditorState(filePath, initialContent);
+  if (
+    !state.isDirty &&
+    (state.baseContent !== initialContent ||
+      state.baseVersion !== initialVersion)
+  ) {
+    return createEditorState(filePath, initialContent, initialVersion);
   }
   return state;
 };
+
+interface LoadedLanguage {
+  extensions: Extension[];
+  name: LanguageName;
+}
 
 const FileEditor = ({
   editorName = "file-editor",
@@ -133,6 +281,7 @@ const FileEditor = ({
   filePath,
   fileName,
   initialContent,
+  initialVersion,
   onSave,
   isSaving = false,
   readOnly = false,
@@ -140,39 +289,41 @@ const FileEditor = ({
   ref,
 }: FileEditorProps) => {
   const [editorState, setEditorState] = useState<EditorState>(() =>
-    createEditorState(filePath, initialContent),
+    createEditorState(filePath, initialContent, initialVersion),
   );
-  const normalizedState = stateForSource(editorState, filePath, initialContent);
-  const { content, isDirty } = normalizedState;
-  const editorRef = useRef<InstanceType<typeof ReactAce>>(null);
-  // The ace theme is chosen from the colour scheme here; nothing else in
-  // this file reads the theme.
-  const theme = useAppTheme();
-  const isDarkMode = theme.palette.mode === "dark";
-  const language = getLanguageMode(fileName);
-  const aceTheme = isDarkMode ? "monokai" : "github";
-  const [, forceAssetRefresh] = useState(0);
-  const isEditorAssetsReady =
-    (!aceModeLoaders[language] ||
-      loadedAceModes.has(language) ||
-      failedAceModes.has(language)) &&
-    (!aceThemeLoaders[aceTheme] ||
-      loadedAceThemes.has(aceTheme) ||
-      failedAceThemes.has(aceTheme));
-
-  const updateEditorState = useCallback(
-    (updater: (state: EditorState) => EditorState) => {
-      setEditorState((prev) => {
-        const current = stateForSource(prev, filePath, initialContent);
-        return updater(current);
-      });
-    },
-    [filePath, initialContent],
+  const normalizedState = stateForSource(
+    editorState,
+    filePath,
+    initialContent,
+    initialVersion,
   );
+  const { baseVersion, content, isDirty } = normalizedState;
+  const language = getEditorLanguageName(fileName);
+  const [loadedLanguage, setLoadedLanguage] = useState<LoadedLanguage>({
+    extensions: baseEditorExtensions,
+    name: "text",
+  });
+  const extensions =
+    loadedLanguage.name === language
+      ? loadedLanguage.extensions
+      : baseEditorExtensions;
 
-  const handleSave = useCallback(async () => {
+  const updateEditorState = (updater: (state: EditorState) => EditorState) => {
+    setEditorState((previous) => {
+      const current = stateForSource(
+        previous,
+        filePath,
+        initialContent,
+        initialVersion,
+      );
+      return updater(current);
+    });
+  };
+
+  const handleSave = async () => {
+    if (readOnly) return false;
     try {
-      const saved = await onSave(content);
+      const saved = await onSave(content, baseVersion);
       if (saved === false) return false;
 
       updateEditorState((state) => ({
@@ -188,12 +339,11 @@ const FileEditor = ({
       // Error is handled by parent component
       return false;
     }
-  }, [onSave, content, isDirty, onDirtyChange, updateEditorState]);
+  };
 
-  // Add Ctrl+S keyboard shortcut
-  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-      e.preventDefault();
+  const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+      event.preventDefault();
       if (!isSaving && !readOnly) {
         void handleSave();
       }
@@ -207,79 +357,30 @@ const FileEditor = ({
   }, [enableSaveShortcut]);
 
   useEffect(() => {
-    let isCancelled = false;
-    const pendingLoads: Promise<unknown>[] = [];
+    const loadLanguage = languageLoaders[language];
+    if (!loadLanguage) return;
 
-    const loadMode = aceModeLoaders[language];
-    if (
-      loadMode &&
-      !loadedAceModes.has(language) &&
-      !failedAceModes.has(language)
-    ) {
-      const existingModeLoad = loadingAceModes.get(language);
-      if (existingModeLoad) {
-        pendingLoads.push(existingModeLoad);
-      } else {
-        const modeLoad = loadMode()
-          .then(() => {
-            loadedAceModes.add(language);
-            return;
-          })
-          .catch((error) => {
-            failedAceModes.add(language);
-            console.error(`Failed to load Ace mode "${language}":`, error);
-          })
-          .finally(() => {
-            loadingAceModes.delete(language);
+    let cancelled = false;
+    void loadLanguage()
+      .then((languageExtension) => {
+        if (!cancelled) {
+          setLoadedLanguage({
+            extensions: [...baseEditorExtensions, languageExtension],
+            name: language,
           });
-        loadingAceModes.set(language, modeLoad);
-        pendingLoads.push(modeLoad);
-      }
-    }
-
-    const loadTheme = aceThemeLoaders[aceTheme];
-    if (
-      loadTheme &&
-      !loadedAceThemes.has(aceTheme) &&
-      !failedAceThemes.has(aceTheme)
-    ) {
-      const existingThemeLoad = loadingAceThemes.get(aceTheme);
-      if (existingThemeLoad) {
-        pendingLoads.push(existingThemeLoad);
-      } else {
-        const themeLoad = loadTheme()
-          .then(() => {
-            loadedAceThemes.add(aceTheme);
-            return;
-          })
-          .catch((error) => {
-            failedAceThemes.add(aceTheme);
-            console.error(`Failed to load Ace theme "${aceTheme}":`, error);
-          })
-          .finally(() => {
-            loadingAceThemes.delete(aceTheme);
-          });
-        loadingAceThemes.set(aceTheme, themeLoad);
-        pendingLoads.push(themeLoad);
-      }
-    }
-
-    if (pendingLoads.length === 0) {
-      return;
-    }
-
-    Promise.allSettled(pendingLoads)
-      .finally(() => {
-        if (!isCancelled) {
-          forceAssetRefresh((version) => version + 1);
         }
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        console.error(
+          `Failed to load CodeMirror language "${language}":`,
+          error,
+        );
+      });
 
     return () => {
-      isCancelled = true;
+      cancelled = true;
     };
-  }, [language, aceTheme]);
+  }, [language]);
 
   const handleContentChange = (newValue: string) => {
     const nextDirty = newValue !== normalizedState.baseContent;
@@ -294,50 +395,28 @@ const FileEditor = ({
   };
 
   useImperativeHandle(ref, () => ({
+    reset: (nextContent: string, nextVersion?: string) => {
+      setEditorState(createEditorState(filePath, nextContent, nextVersion));
+      onDirtyChange?.(false);
+    },
     save: handleSave,
     getContent: () => content,
     isDirty: () => isDirty,
   }));
 
-  if (!isEditorAssetsReady) {
-    return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ComponentLoader />
-      </div>
-    );
-  }
-
   return (
-    <AceEditor
-      editorProps={{
-        $blockScrolling: true,
-      }}
-      fontSize={14}
-      mode={language}
-      name={editorName}
+    <CodeMirror
+      basicSetup={editorSetup}
+      className="file-editor"
+      extensions={extensions}
+      height="100%"
+      id={editorName}
+      indentWithTab={false}
       onChange={handleContentChange}
       readOnly={isSaving || readOnly}
-      ref={editorRef}
-      setOptions={{
-        useWorker: true,
-        enableBasicAutocompletion: true,
-        enableLiveAutocompletion: true,
-        enableSnippets: true,
-        showLineNumbers: true,
-        tabSize: 2,
-      }}
-      showPrintMargin={false}
-      style={{ width: "100%", height: "100%" }}
-      theme={aceTheme}
+      theme="none"
       value={content}
+      width="100%"
     />
   );
 };

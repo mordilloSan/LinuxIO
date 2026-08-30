@@ -14,12 +14,7 @@ const (
 )
 
 func configBase(username string) (string, error) {
-	base, err := Homedir(username)
-	if err != nil {
-		slog.Error("home directory resolution failed", "user", username, "error", err)
-		return "", err
-	}
-	return base, nil
+	return Homedir(username)
 }
 
 func initializeLockedOwned(cfgPath, uiPath, base string, owner fileOwnership) error {
@@ -40,6 +35,7 @@ func initializeLockedOwned(cfgPath, uiPath, base string, owner fileOwnership) er
 		if err := writeCoreConfigOwned(cfgPath, *DefaultSettings(base), owner); err != nil {
 			return fmt.Errorf("write default core config: %w", err)
 		}
+		slog.Info("wrote default core config", "component", "config", "path", cfgPath)
 	} else if err := owner.ensureFile(cfgPath); err != nil {
 		return fmt.Errorf("own core config: %w", err)
 	}
@@ -47,6 +43,7 @@ func initializeLockedOwned(cfgPath, uiPath, base string, owner fileOwnership) er
 		if err := writeEmptyUIConfigOwned(uiPath, owner); err != nil {
 			return fmt.Errorf("write default UI config: %w", err)
 		}
+		slog.Info("wrote empty UI config", "component", "config", "path", uiPath)
 	} else if err := owner.ensureFile(uiPath); err != nil {
 		return fmt.Errorf("own UI config: %w", err)
 	}

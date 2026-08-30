@@ -4,6 +4,7 @@ import { useFileDialogs } from "@/hooks/filebrowser/useFileDialogs";
 import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
 import { useFileUpload } from "@/hooks/filebrowser/useFileUpload";
 import { act, renderHook } from "@/test/render";
+import type { FileItem } from "@/types/filebrowser";
 
 describe("filebrowser state hooks", () => {
   it("tracks dialog state for create, delete, detail, and permissions flows", () => {
@@ -11,10 +12,15 @@ describe("filebrowser state hooks", () => {
     const initialActions = result.current.actions;
 
     act(() => {
+      const item: FileItem = {
+        name: "old.txt",
+        path: "/tmp/old.txt",
+        type: "file",
+      };
       result.current.actions.openCreateFile();
       result.current.actions.openCreateFolder();
       result.current.actions.requestDelete(["/tmp/old.txt"]);
-      result.current.actions.showDetails(["/tmp/old.txt"]);
+      result.current.actions.showDetails(["/tmp/old.txt"], [item]);
       result.current.actions.openPermissions({
         isDirectory: false,
         mode: "0644",
@@ -29,6 +35,9 @@ describe("filebrowser state hooks", () => {
     expect(result.current.deleteDialog).toBe(true);
     expect(result.current.pendingDeletePaths).toEqual(["/tmp/old.txt"]);
     expect(result.current.detailTarget).toEqual(["/tmp/old.txt"]);
+    expect(result.current.detailItems).toEqual([
+      { name: "old.txt", path: "/tmp/old.txt", type: "file" },
+    ]);
     expect(result.current.permissionsDialog).toMatchObject({
       mode: "0644",
       pathLabel: "old.txt",

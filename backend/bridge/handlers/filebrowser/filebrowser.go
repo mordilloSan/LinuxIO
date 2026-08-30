@@ -14,9 +14,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -29,8 +32,9 @@ import (
 )
 
 var (
-	indexerAvailable      atomic.Bool
-	errIndexerUnavailable = errors.New("indexer unavailable")
+	detachedIndexerUpdates sync.WaitGroup
+	indexerAvailable       atomic.Bool
+	errIndexerUnavailable  = errors.New("indexer unavailable")
 )
 
 const (
@@ -59,75 +63,90 @@ func isIndexerEnabled() bool {
 // runDetachedIndexerUpdate bounds intentionally fire-and-forget indexer notifications
 // that should outlive the request/task which already completed the filesystem change.
 func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
-	go func() {
+	detachedIndexerUpdates.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := fn(ctx); err != nil {
 			slog.Debug("detached indexer update failed", "operation", label, "error", err)
 		}
-	}()
+	})
 }
 
-// resourceGet retrieves information about a resource.
-func resourceGet(ctx context.Context, req apischema.FileResourceGetRequest) (apischema.ExtendedFileInfo, error) {
+func listDirectory(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
 	if err := ctx.Err(); err != nil {
-		return apischema.ExtendedFileInfo{}, err
+		return apischema.DirectoryListing{}, err
 	}
 	if req.Path == "" {
-		return apischema.ExtendedFileInfo{}, fmt.Errorf("bad_request:missing path")
+		return apischema.DirectoryListing{}, fmt.Errorf("bad_request:missing path")
 	}
 
-	getContent := req.GetContent != nil && *req.GetContent == "true"
-
-	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
-		Path:    req.Path,
-		Expand:  true,
-		Content: getContent,
-	})
+	listing, err := services.ListDirectory(ctx, req.Path)
 	if err != nil {
-		slog.Debug("error getting file info", "path", req.Path, "error", err)
-		return apischema.ExtendedFileInfo{}, fmt.Errorf("bad_request:%v", err)
-	}
-
-	return extendedFileInfoResponse(fileInfo), nil
-}
-
-func extendedFileInfoResponse(info *iteminfo.ExtendedFileInfo) apischema.ExtendedFileInfo {
-	if info == nil {
-		return apischema.ExtendedFileInfo{
-			Files:   []apischema.FileResourceItem{},
-			Folders: []apischema.FileResourceItem{},
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return apischema.DirectoryListing{}, err
 		}
+		return apischema.DirectoryListing{}, fmt.Errorf("bad_request:%v", err)
 	}
-	return apischema.ExtendedFileInfo{
-		Name:       info.Name,
-		Size:       info.Size,
-		Modified:   formatResourceModTime(info.ModTime),
-		Type:       info.Type,
-		Hidden:     info.Hidden,
-		HasPreview: info.HasPreview,
-		Symlink:    info.Symlink,
-		Files:      fileResourceItems(info.Files),
-		Folders:    fileResourceItems(info.Folders),
-		Path:       info.Path,
-		Content:    info.Content,
+	if err := ctx.Err(); err != nil {
+		return apischema.DirectoryListing{}, err
 	}
+	return directoryListingResponse(listing), nil
 }
 
-func fileResourceItems(items []iteminfo.ItemInfo) []apischema.FileResourceItem {
-	out := make([]apischema.FileResourceItem, 0, len(items))
-	for _, item := range items {
-		out = append(out, apischema.FileResourceItem{
-			Name:       item.Name,
-			Size:       item.Size,
-			Modified:   formatResourceModTime(item.ModTime),
-			Type:       item.Type,
-			Hidden:     item.Hidden,
-			HasPreview: item.HasPreview,
-			Symlink:    item.Symlink,
+func directoryChildren(ctx context.Context, req apischema.DirectoryChildrenRequest) (apischema.DirectoryChildren, error) {
+	if err := ctx.Err(); err != nil {
+		return apischema.DirectoryChildren{}, err
+	}
+	if req.Path == "" {
+		return apischema.DirectoryChildren{}, fmt.Errorf("bad_request:missing path")
+	}
+	children, err := services.ListDirectoryChildren(ctx, req.Path, req.IncludeFiles)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return apischema.DirectoryChildren{}, err
+		}
+		return apischema.DirectoryChildren{}, fmt.Errorf("bad_request:%v", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return apischema.DirectoryChildren{}, err
+	}
+	return apischema.DirectoryChildren{Folders: children.Folders, Files: children.Files}, nil
+}
+
+func readText(ctx context.Context, req apischema.PathRequest) (apischema.TextFile, error) {
+	if err := ctx.Err(); err != nil {
+		return apischema.TextFile{}, err
+	}
+	if req.Path == "" {
+		return apischema.TextFile{}, fmt.Errorf("bad_request:missing path")
+	}
+	file, err := services.ReadEditorFile(ctx, req.Path)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return apischema.TextFile{}, err
+		}
+		return apischema.TextFile{}, fmt.Errorf("bad_request:%v", err)
+	}
+	return apischema.TextFile{Content: string(file.Content), Version: file.Version, CanSave: file.CanSave}, nil
+}
+
+func directoryListingResponse(listing iteminfo.DirectoryListing) apischema.DirectoryListing {
+	response := apischema.DirectoryListing{
+		Folders: make([]apischema.DirectoryListingFolder, 0, len(listing.Folders)),
+		Files:   make([]apischema.DirectoryListingFile, 0, len(listing.Files)),
+	}
+	for _, folder := range listing.Folders {
+		response.Folders = append(response.Folders, apischema.DirectoryListingFolder{
+			Name: folder.Name, Modified: formatResourceModTime(folder.ModTime), Symlink: folder.Symlink,
 		})
 	}
-	return out
+	for _, file := range listing.Files {
+		response.Files = append(response.Files, apischema.DirectoryListingFile{
+			Name: file.Name, Size: file.Size, Modified: formatResourceModTime(file.ModTime),
+			Symlink: file.Symlink, IsRegularFile: file.IsRegularFile, CanOpenAsText: file.CanOpenAsText,
+		})
+	}
+	return response
 }
 
 func formatResourceModTime(modTime time.Time) string {
@@ -137,7 +156,7 @@ func formatResourceModTime(modTime time.Time) string {
 	return modTime.Format(time.RFC3339Nano)
 }
 
-// resourceStat returns extended metadata.
+// resourceStat returns direct permission metadata without enumerating siblings.
 func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.ResourceStatData, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -146,31 +165,16 @@ func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.Re
 		return nil, bridgeipc.NewError("missing path", 400)
 	}
 
-	fileInfo, err := services.FileInfoFaster(iteminfo.FileOptions{
-		Path:   req.Path,
-		Expand: false,
-	})
+	statData, err := iteminfo.CollectStatInfo(ctx, req.Path)
 	if err != nil {
-		slog.Debug("error getting file stat info", "path", req.Path, "error", err)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, bridgeipc.NewError("path not found", 404)
+		slog.Debug("error collecting stat info", "path", req.Path, "error", err)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
 		}
-		return nil, fmt.Errorf("bad_request:%v", err)
-	}
-
-	statData, err := iteminfo.CollectStatInfo(fileInfo.RealPath)
-	if err != nil {
-		slog.Debug("error collecting stat info", "path", fileInfo.RealPath, "error", err)
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, bridgeipc.NewError("path not found", 404)
 		}
 		return nil, fmt.Errorf("error collecting stat info: %w", err)
-	}
-
-	statData.Path = req.Path
-	statData.Name = fileInfo.Name
-	if statData.Size == 0 {
-		statData.Size = fileInfo.Size
 	}
 
 	return statData, nil
@@ -233,7 +237,8 @@ func deleteEntryTotalForPath(ctx context.Context, path string, isDir bool) int64
 		return 1
 	}
 
-	if total, err := fetchEntryCountFromIndexer(ctx, path); err == nil {
+	if counts, err := fetchEntryCountsFromIndexer(ctx, path); err == nil {
+		total := counts.Files + counts.Dirs
 		if total > 0 {
 			return total
 		}
@@ -491,12 +496,12 @@ func computeTransferSize(ctx context.Context, path string, info os.FileInfo) com
 }
 
 func indexerHasEntry(ctx context.Context, path string) bool {
-	total, err := fetchEntryCountFromIndexer(ctx, path)
+	counts, err := fetchEntryCountsFromIndexer(ctx, path)
 	if err != nil {
 		slog.Debug("failed to confirm indexed transfer path", "path", path, "error", err)
 		return false
 	}
-	return total > 0
+	return counts.Files+counts.Dirs > 0
 }
 
 func indexerEntrySize(info os.FileInfo, size computedTransferSize) int64 {
@@ -1057,13 +1062,13 @@ func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
 	return payload.Bytes, nil
 }
 
-// fetchEntryCountFromIndexer queries the indexer daemon for cached recursive entry counts.
-func fetchEntryCountFromIndexer(ctx context.Context, path string) (int64, error) {
+// fetchEntryCountsFromIndexer queries the indexer daemon for cached recursive entry counts.
+func fetchEntryCountsFromIndexer(ctx context.Context, path string) (indexerEntryCountResponse, error) {
 	normPath := utils.NormalizeIndexerPath(path)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/entrycount", nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to build indexer entrycount request: %w", err)
+		return indexerEntryCountResponse{}, fmt.Errorf("failed to build indexer entrycount request: %w", err)
 	}
 	q := req.URL.Query()
 	q.Set("path", normPath)
@@ -1072,25 +1077,25 @@ func fetchEntryCountFromIndexer(ctx context.Context, path string) (int64, error)
 	resp, err := indexerHTTPClient.Do(req)
 	if err != nil {
 		setIndexerAvailability(false)
-		return 0, fmt.Errorf("%w: indexer entrycount request failed: %v", errIndexerUnavailable, err)
+		return indexerEntryCountResponse{}, fmt.Errorf("%w: indexer entrycount request failed: %v", errIndexerUnavailable, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode >= http.StatusInternalServerError {
 			setIndexerAvailability(false)
-			return 0, fmt.Errorf("%w: indexer entrycount returned status %s", errIndexerUnavailable, resp.Status)
+			return indexerEntryCountResponse{}, fmt.Errorf("%w: indexer entrycount returned status %s", errIndexerUnavailable, resp.Status)
 		}
-		return 0, fmt.Errorf("indexer entrycount returned status %s", resp.Status)
+		return indexerEntryCountResponse{}, fmt.Errorf("indexer entrycount returned status %s", resp.Status)
 	}
 
 	var payload indexerEntryCountResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return 0, fmt.Errorf("decode indexer entrycount response: %w", err)
+		return indexerEntryCountResponse{}, fmt.Errorf("decode indexer entrycount response: %w", err)
 	}
 
 	setIndexerAvailability(true)
-	return payload.Files + payload.Dirs, nil
+	return payload, nil
 }
 
 func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, error) {
@@ -1183,17 +1188,33 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:path is not a directory")
 	}
 
-	// Get directory size from the indexer daemon (precomputed)
-	size, err := fetchDirSizeFromIndexer(ctx, req.Path)
+	var size int64
+	var counts indexerEntryCountResponse
+	var group errgroup.Group
+	group.Go(func() error {
+		var fetchErr error
+		size, fetchErr = fetchDirSizeFromIndexer(ctx, req.Path)
+		return fetchErr
+	})
+	group.Go(func() error {
+		var fetchErr error
+		counts, fetchErr = fetchEntryCountsFromIndexer(ctx, req.Path)
+		return fetchErr
+	})
+	err = group.Wait()
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
 			return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:indexer unavailable")
 		}
-		slog.Debug("error fetching directory size from indexer", "path", req.Path, "error", err)
-		return apischema.DirectorySizeData{}, fmt.Errorf("error fetching directory size: %w", err)
+		slog.Debug("error fetching directory details from indexer", "path", req.Path, "error", err)
+		return apischema.DirectorySizeData{}, fmt.Errorf("error fetching directory details: %w", err)
 	}
 
-	return apischema.DirectorySizeData{Path: req.Path, Size: size}, nil
+	return apischema.DirectorySizeData{
+		Size:        size,
+		FileCount:   counts.Files,
+		FolderCount: counts.Dirs,
+	}, nil
 }
 
 // indexerSubfolder is the canonical response shape from the indexer. Keep this
@@ -1240,7 +1261,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 		return apischema.SubfoldersResponse{}, fmt.Errorf("error fetching subfolders: %w", err)
 	}
 
-	return apischema.SubfoldersResponse{Path: path, Subfolders: folders, Count: len(folders)}, nil
+	return apischema.SubfoldersResponse{Subfolders: folders}, nil
 }
 
 // fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
@@ -1284,7 +1305,7 @@ func subfoldersFromIndexer(folders []indexerSubfolder) []apischema.SubfolderData
 	result := make([]apischema.SubfolderData, 0, len(folders))
 	for _, folder := range folders {
 		result = append(result, apischema.SubfolderData{
-			Path: folder.Path, Name: folder.Name, Size: folder.Size, ModTime: folder.ModTime,
+			Path: folder.Path, Size: folder.Size,
 		})
 	}
 	return result
@@ -1340,21 +1361,26 @@ type indexerSearchResult struct {
 	Type       string  `json:"type"`
 }
 
-func searchResponseFromIndexer(query string, results []indexerSearchResult) apischema.SearchResponse {
-	response := apischema.SearchResponse{Query: query, Results: make([]apischema.SearchResult, 0, len(results))}
+func searchResponseFromIndexer(_ string, results []indexerSearchResult) apischema.SearchResponse {
+	response := apischema.SearchResponse{Results: make([]apischema.SearchResult, 0, len(results))}
 	for _, result := range results {
 		response.Results = append(response.Results, searchResultFromIndexer(result))
 	}
-	response.Count = len(response.Results)
 	return response
 }
 
 func searchResultFromIndexer(result indexerSearchResult) apischema.SearchResult {
 	typeName, isDir := normalizeIndexerSearchType(result.Type, result.IsDir, result.Path)
+	isRegularFile := !isDir && typeName == "file"
+	var canOpenAsText *bool
+	if isRegularFile {
+		canOpen := result.Size < services.MaxTextFileBytes
+		canOpenAsText = &canOpen
+	}
 	return apischema.SearchResult{
-		Inode: result.Inode, IsDir: isDir, ModTime: indexerModTime(result), Name: result.Name,
-		Path: result.Path, Size: result.Size, TotalDirs: result.TotalDirs, TotalFiles: result.TotalFiles,
-		TotalSize: result.TotalSize, Type: typeName,
+		IsDir: isDir, IsRegularFile: isRegularFile,
+		ModTime: indexerModTime(result), Name: result.Name, Path: result.Path, Size: result.Size,
+		CanOpenAsText: canOpenAsText,
 	}
 }
 
