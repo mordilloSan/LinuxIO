@@ -131,14 +131,14 @@ jobs:
           sudo apt-get install -y libpam0g-dev libdbus-1-dev libsystemd-dev pkg-config build-essential
 
       - name: Use Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache: true
           cache-dependency-path: backend/go.sum
 
       - name: Use Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: frontend/package.json
           cache: "npm"
