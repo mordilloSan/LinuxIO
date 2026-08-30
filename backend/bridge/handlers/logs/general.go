@@ -303,9 +303,11 @@ type runningJournalCommand struct {
 	stdout io.ReadCloser
 }
 
+var journalCommandContext = exec.CommandContext
+
 func startJournalCommand(ctx context.Context, args []string) (*runningJournalCommand, error) {
 	command := &runningJournalCommand{}
-	command.cmd = exec.CommandContext(ctx, "journalctl", args...)
+	command.cmd = journalCommandContext(ctx, "journalctl", args...)
 	command.cmd.Stderr = &command.stderr
 
 	stdout, err := command.cmd.StdoutPipe()
@@ -526,13 +528,13 @@ func cancelGeneralLogsFollow(
 ) error {
 	killLogsProcess(command.cmd)
 	<-readDone
+	_ = command.cmd.Wait()
 	if err := batch.drain(lines); err != nil {
 		return err
 	}
 	if err := batch.flush(); err != nil {
 		return err
 	}
-	_ = command.cmd.Wait()
 	return ctx.Err()
 }
 
@@ -543,14 +545,15 @@ func finishGeneralLogsFollow(
 	batch *journalDataBatch,
 	lines <-chan string,
 ) error {
+	finishErr := command.finish(ctx, readErr, false)
 	if err := batch.drain(lines); err != nil {
 		return err
 	}
 	if err := batch.flush(); err != nil {
 		return err
 	}
-	if err := command.finish(ctx, readErr, false); err != nil {
-		return err
+	if finishErr != nil {
+		return finishErr
 	}
 	// A follow process exiting on its own is unexpected; surface it so the
 	// frontend can reconnect instead of showing a silent dead tail.
@@ -560,12 +563,21 @@ func finishGeneralLogsFollow(
 // streamGeneralLogsFollow tails the journal from just after newestCursor,
 // coalescing lines into batched frames on a size/interval policy.
 func streamGeneralLogsFollow(ctx context.Context, stream net.Conn, req generalLogsRequest, afterCursor string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	command, err := startJournalCommand(ctx, followArgs(req, afterCursor))
 	if err != nil {
 		return err
 	}
 
 	lines, readDone := startJournalLineReader(ctx, command.stdout)
+	abort := func() {
+		cancel()
+		killLogsProcess(command.cmd)
+		<-readDone
+		_ = command.cmd.Wait()
+	}
 	ticker := time.NewTicker(followFlushInterval)
 	defer ticker.Stop()
 	batch := journalDataBatch{stream: stream}
@@ -576,10 +588,12 @@ func streamGeneralLogsFollow(ctx context.Context, stream net.Conn, req generalLo
 			return cancelGeneralLogsFollow(ctx, command, readDone, &batch, lines)
 		case line := <-lines:
 			if err := batch.append(line); err != nil {
+				abort()
 				return err
 			}
 		case <-ticker.C:
 			if err := batch.flush(); err != nil {
+				abort()
 				return err
 			}
 		case readErr := <-readDone:

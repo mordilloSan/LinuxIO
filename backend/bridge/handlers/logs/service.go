@@ -34,7 +34,7 @@ func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime
 		"service", serviceName,
 		"lines", lines)
 
-	cmd := exec.CommandContext(ctx, "journalctl", "-u", serviceName, "-n", lines, "-f", "--no-pager", "-o", "short-iso")
+	cmd := journalCommandContext(ctx, "journalctl", "-u", serviceName, "-n", lines, "-f", "--no-pager", "-o", "short-iso")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -59,9 +59,13 @@ func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime
 
 	sentData, readErr := streamServiceLogs(ctx, stream, stdout, cmd)
 	if readErr != nil {
+		killLogsProcess(cmd)
+	}
+	waitErr := waitForServiceLogsCommand(ctx, cmd, &stderr, sentData)
+	if readErr != nil {
 		return writeLogErrorUnlessCanceled(ctx, stream, readErr)
 	}
-	if waitErr := waitForServiceLogsCommand(ctx, cmd, &stderr, sentData); waitErr != nil {
+	if waitErr != nil {
 		return writeLogErrorUnlessCanceled(ctx, stream, waitErr)
 	}
 	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
