@@ -57,8 +57,9 @@
 ## Required quality workflow
 
 - Every LinuxIO code change must be linted and tested before handoff.
-- Always use repository Make targets. Never invoke underlying tools directly, including `npm`, `eslint`, `tsc`, `go test`, `gofmt`, `golangci-lint`, `govulncheck`, `vitest`, `oxlint`, or `oxfmt`.
-- If the required focused target does not exist, add or improve a Make target instead of bypassing Make.
+- Use repository Make targets for Go, frontend, C, generation, build, and test workflows. Never invoke their underlying tools directly, including `npm`, `eslint`, `tsc`, `go test`, `gofmt`, `golangci-lint`, `govulncheck`, `vitest`, `oxlint`, or `oxfmt`.
+- If one of those project workflows lacks a required focused target, add or improve a Make target.
+- Run lightweight file-level tools required by higher-level instructions—such as `shellcheck`, `shfmt`, `actionlint`, `jq`, and `rg`—directly. Their use alone does not justify adding a Make target.
 - Prefer the narrowest `*-quiet` target that fully covers the current work.
 - Frontend-only changes: iterate with focused targets and finish with `make check-frontend-quiet`.
 - Backend-only changes: iterate with focused targets and finish with `make check-backend-quiet`.
