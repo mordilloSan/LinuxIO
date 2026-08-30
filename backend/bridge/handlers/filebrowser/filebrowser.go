@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -31,8 +32,9 @@ import (
 )
 
 var (
-	indexerAvailable      atomic.Bool
-	errIndexerUnavailable = errors.New("indexer unavailable")
+	detachedIndexerUpdates sync.WaitGroup
+	indexerAvailable       atomic.Bool
+	errIndexerUnavailable  = errors.New("indexer unavailable")
 )
 
 const (
@@ -61,13 +63,13 @@ func isIndexerEnabled() bool {
 // runDetachedIndexerUpdate bounds intentionally fire-and-forget indexer notifications
 // that should outlive the request/task which already completed the filesystem change.
 func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
-	go func() {
+	detachedIndexerUpdates.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := fn(ctx); err != nil {
 			slog.Debug("detached indexer update failed", "operation", label, "error", err)
 		}
-	}()
+	})
 }
 
 func listDirectory(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {

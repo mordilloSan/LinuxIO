@@ -56,6 +56,7 @@ func TestReadCallsPreserveCancellationIdentity(t *testing.T) {
 }
 
 func TestDirSizeFetchesSizeAndCountsConcurrently(t *testing.T) {
+	detachedIndexerUpdates.Wait()
 	originalClient := indexerHTTPClient
 	started := make(chan string, 2)
 	release := make(chan struct{})
