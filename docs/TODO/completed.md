@@ -1,85 +1,12 @@
-# TODO
-
-### API reliability, recovery, and notifications
-
-Follow the dependency-ordered
-[`API Reliability, Recovery, and Notifications Roadmap`](docs/TODO/api-reliability-roadmap.md):
-
-1. Add a persistent alert lifecycle: severity, deduplication, seen, dismissal,
-   restoration, and resolution.
-2. Use native systemd services and timers for scheduled scripts, with stable run
-   summaries correlated to journald rather than duplicated log storage.
-3. Add notification routing through metadata matchers and delivery targets.
-4. Reassess durable Task reconstruction and extensions only from measured need.
-
-The remaining design details live in
-[`docs/TODO/notifications.md`](docs/TODO/notifications.md) and
-[`docs/TODO/scheduled-execution.md`](docs/TODO/scheduled-execution.md). Do not
-duplicate their task lists here. The durable-operation boundary is implemented
-and documented in
-[`docs/durable-operations-architecture.md`](docs/durable-operations-architecture.md).
-
-### VM bridged networking
-
-Follow the phased
-[`VM Bridge Networking Plan`](docs/TODO/vm-bridge-networking-plan.md):
-
-1. VM-side network selection: enumerate libvirt networks and host bridges,
-   generate `type='bridge'` domain XML, and add the create-dialog network
-   field with per-preset defaults.
-2. Guided host bridge creation through the renderer backends, first on spare
-   NICs, then the single-NIC IP hand-off protected by snapshot, transient
-   revert timer, and reconnect check-in.
-
-### Frontend task state unification
-
-Follow [`Frontend Task State Unification`](docs/TODO/frontend-task-state-unification.md):
-move background-task progress state from provider `useState` into per-task
-TanStack Query cache entries read through select slices, collapsing the four
-task contexts to one identity-stable actions context. Architectural follow-on
-to the completed config-state migration; schedule with the tasks-page or
-notification work rather than as standalone churn.
-
-### Complete indexer integration
-
-Follow [`Complete Indexer Integration`](docs/TODO/indexer-integration.md):
-finish release-safe installation and lifecycle ownership, consolidate the
-backend Unix-socket contract, define mutation reconciliation, and verify the
-frontend and disposable-host flows.
-
-### Frontend test coverage
-
-Define and complete the intended division of coverage between Vitest and Playwright.
-
-### Global frontend router configuration
-
-As part of the global configuration update, move these application-wide
-TanStack Router options out of `frontend/src/router/router.tsx` and pass their
-effective values from the global config file when creating the router:
-
-```ts
-defaultPreload: "intent",
-defaultPreloadDelay: 50,
-defaultPendingMs: 150,
-defaultPendingMinMs: 0,
-defaultPreloadStaleTime: 0,
-```
-
-Keep the config fields optional for existing installations. If the global
-config file or any field is absent, use the exact value above for that field.
-Keep this policy router-wide, update the config contract and generated types,
-and replace the fixed-value router tests with coverage for both configured
-values and the defaults.
-
-## Completed or closed
+# Completed or closed TODOs
 
 - [x] Completed resilient bridge configuration storage: independently persisted
   core and UI documents now fall back from the authenticated home to
   `/var/lib/linuxio/users/<uid>` and then memory; invalid core documents are
   quarantined at startup; degraded storage is logged and surfaced in the UI.
-  See [`Bridge Configuration Storage`](docs/config-storage.md).
+  See [Bridge Configuration Storage](../config-storage.md).
 - [x] Completed
-  [`File-Browser Read Paths and API Efficiency`](docs/TODO/file-browser-read-api-efficiency.md):
+  File-Browser Read Paths and API Efficiency:
   replaced `resource_get` with narrow listing, tree, text, and permission reads;
   removed single-file sibling scans; added bounded cancellable enumeration; and
   aligned frontend query ownership and invalidation with the focused contracts.
@@ -103,7 +30,7 @@ values and the defaults.
   standalone containers recreate transactionally with rollback, and scheduled
   execution moved to a LinuxIO systemd runner.
 - [x] Completed Phases 1–5.5 of the
-  [`API Reliability, Recovery, and Notifications Roadmap`](docs/TODO/api-reliability-roadmap.md):
+  [API Reliability, Recovery, and Notifications Roadmap](./api-reliability-roadmap.md):
   strict standard-library request decoding with an explicit safe-retry policy
   and honest connection-loss outcomes; Task lifetime/owner scope and session
   activity semantics; the durable `docker.update_container` Task proven with a

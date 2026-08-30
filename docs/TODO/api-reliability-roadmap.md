@@ -20,7 +20,7 @@ Focused implementation and design details remain in their own documents:
 - [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
   run-summary, and journald ownership boundaries.
 
-The repository [`ToDo`](../../ToDo) links here instead of duplicating these
+The [TODO index](./README.md) links here instead of duplicating these
 plans.
 
 ## Principles
@@ -576,7 +576,7 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 - `scheduled-execution.md`: schedule, systemd unit, run-summary, and journald
   ownership.
 - this roadmap: phase ordering and cross-cutting decisions.
-- `ToDo`: one short entry linking this roadmap.
+- `TODO/README.md`: one short entry linking this roadmap.
 
 ## Definition of Done
 
@@ -597,4 +597,4 @@ This roadmap is complete when:
   to, rather than duplicate, journald logs;
 - no feature relies on a live event stream as its only recovery source;
 - measurements and fault tests meet the agreed gates;
-- the focused documents and `ToDo` match the implemented state.
+- the focused documents and TODO index match the implemented state.
