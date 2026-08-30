@@ -5,7 +5,7 @@ default: help
 # Include private release automation
 -include release.mk
 
-repo_root := $(if $(REPO_ROOT),$(REPO_ROOT),$(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST))))))
+repo_root := $(if $(REPO_ROOT),$(REPO_ROOT),$(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST))))))
 REPO_ROOT ?= $(repo_root)
 frontend_dir := $(if $(FRONTEND_DIR),$(FRONTEND_DIR),$(repo_root)/frontend)
 FRONTEND_DIR ?= $(frontend_dir)
