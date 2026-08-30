@@ -36,6 +36,9 @@ Make the smallest change that establishes a real invariant:
   generation; keep buffers, replay, retention, and persistent records bounded.
 - **Safety:** no blind mutation retry, explicit owner scope, validated privilege
   boundaries, atomic persistence, and honest unknown-outcome reporting.
+- **Recoverable events:** Every system-wide live event must have an
+  authoritative snapshot or persistent record. Events invalidate or announce
+  state; they do not become the state.
 - **Simple handlers:** transport, scheduling, persistence, and presentation do
   not leak into ordinary domain handlers.
 - **Native ownership:** systemd owns schedules and process execution, journald
