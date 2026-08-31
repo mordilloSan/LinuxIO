@@ -133,18 +133,11 @@ The normal lifecycle is:
 5. The daemon exits when idle and is reactivated on demand.
 
 Upgrades replace the binary and units while preserving the config and database.
-The installers also perform an idempotent migration from LinuxIO's former
-standalone indexer: they stop and remove `indexer.target`, `indexer.socket`,
-`indexer.service`, `indexer-index.service`, `indexer-index.timer`,
-`/usr/local/bin/indexer`, and `/run/indexer.sock`. Legacy `/etc/indexer`,
-`/var/lib/indexer`, and database files are left untouched for recovery. The
-uninstaller also preserves `/var/lib/linuxio` unless explicitly invoked with
-`--remove-data`.
+The uninstaller also preserves `/var/lib/linuxio` unless explicitly invoked
+with `--remove-data`.
 
 The installer preserves an existing generated TCP socket but does not recreate
-runtime settings. Legacy YAML `socket_path` and `listen_addr` fields are accepted
-during the supported upgrade window and dropped on the next save; they no longer
-change listeners. Enable the privileged TCP setting again if its generated unit
+runtime settings. Enable the privileged TCP setting again if its generated unit
 is missing. The daemon never binds sockets directly.
 
 To roll back, reinstall the prior immutable amd64 release tag:

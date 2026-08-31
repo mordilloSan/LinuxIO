@@ -31,7 +31,6 @@ search_default_limit: 150
 search_max_limit: 300
 entries_default_limit: 500
 entries_max_limit: 1000
-interval: 30m
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -79,40 +78,6 @@ func TestSaveWritesNormalizedYAML(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "idle_timeout: 1m0s") {
 		t.Fatalf("expected normalized idle timeout, got:\n%s", content)
-	}
-	if strings.Contains(string(content), "\ninterval:") {
-		t.Fatalf("legacy interval was persisted:\n%s", content)
-	}
-	if strings.Contains(string(content), "\nlisten_addr:") || strings.Contains(string(content), "\nsocket_path:") {
-		t.Fatalf("legacy listener configuration was persisted:\n%s", content)
-	}
-}
-
-func TestLoadAcceptsLegacySystemdOwnedFields(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "indexer.yaml")
-	content := "index_path: /data\ninterval: 1h\nlisten_addr: :8080\nsocket_path: /run/indexer.sock\n"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.IndexPath != "/data" {
-		t.Fatalf("index_path = %q", cfg.IndexPath)
-	}
-	if err := Save(path, cfg); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-	saved, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read saved config: %v", err)
-	}
-	for _, legacy := range []string{"interval:", "listen_addr:", "socket_path:"} {
-		if strings.Contains(string(saved), legacy) {
-			t.Fatalf("legacy field %q was persisted:\n%s", legacy, saved)
-		}
 	}
 }
 

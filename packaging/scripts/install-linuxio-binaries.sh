@@ -72,48 +72,6 @@ release_systemd_units() {
 		linuxio-indexer-index.timer
 }
 
-legacy_indexer_units() {
-	printf '%s\n' \
-		indexer.target \
-		indexer.socket \
-		indexer.service \
-		indexer-index.service \
-		indexer-index.timer
-}
-
-indexer_timer_needs_enable() {
-	local timer_path="$1"
-	local target_path="$2"
-	local config_path="$3"
-
-	[[ ! -e "$timer_path" && ! -L "$timer_path" ]] && return 0
-	grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$target_path" 2>/dev/null || return 1
-	! grep -Eq '^[[:space:]]*interval:[[:space:]]*(0|0s)([[:space:]]|$)' "$config_path" 2>/dev/null
-}
-
-remove_legacy_indexer_installation() {
-	local found=0 unit
-	local units
-	mapfile -t units < <(legacy_indexer_units)
-
-	[[ -e "${BIN_DIR}/indexer" || -S /run/indexer.sock ]] && found=1
-	for unit in "${units[@]}"; do
-		[[ -e "${SYSTEMD_DIR}/${unit}" || -L "${SYSTEMD_DIR}/${unit}" ]] && found=1
-	done
-	((found == 1)) || return 0
-
-	Show 2 "Removing legacy standalone indexer installation..."
-	for unit in "${units[@]}"; do
-		systemctl disable --now "$unit" >/dev/null 2>&1 || true
-		rm -f "${SYSTEMD_DIR}/${unit}" "${SYSTEMD_DIR}"/*.wants/"${unit}"
-		rm -rf "${SYSTEMD_DIR}/${unit}.d"
-	done
-	rm -f "${BIN_DIR}/indexer" /run/indexer.sock
-	systemctl daemon-reload
-	systemctl reset-failed "${units[@]}" >/dev/null 2>&1 || true
-	Show 0 "Legacy standalone indexer services and binary removed"
-}
-
 atomic_replace_file() {
 	local src="$1"
 	local dst="$2"
@@ -573,10 +531,8 @@ install_systemd_files() {
 	# installed socket. A valid existing port is part of the reinstall
 	# compatibility contract and is preserved whenever possible.
 	existing_port=$(find_existing_linuxio_port || true)
-	if indexer_timer_needs_enable \
-		"${SYSTEMD_DIR}/${INDEXER_TIMER_UNIT_NAME}" \
-		"${SYSTEMD_DIR}/linuxio.target" \
-		"${CONFIG_DIR}/indexer/config.yaml"; then
+	if [[ ! -e "${SYSTEMD_DIR}/${INDEXER_TIMER_UNIT_NAME}" &&
+		! -L "${SYSTEMD_DIR}/${INDEXER_TIMER_UNIT_NAME}" ]]; then
 		ENABLE_INDEXER_TIMER=1
 	fi
 
@@ -855,7 +811,6 @@ main() {
 		fi
 
 		Header "Step 3/5 — Install Binaries"
-		remove_legacy_indexer_installation
 		if ! install_binaries; then
 			Show 1 "Binary installation failed"
 		fi

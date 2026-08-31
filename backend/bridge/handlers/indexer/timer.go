@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	indexerTimerUnitName         = "linuxio-indexer-index.timer"
-	indexerTimerDropInPath       = "/etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf"
-	indexerLegacyTimerDropInPath = "/etc/systemd/system/linuxio-indexer-index.timer.d/override.conf"
+	indexerTimerUnitName   = "linuxio-indexer-index.timer"
+	indexerTimerDropInPath = "/etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf"
 )
 
 var (
@@ -48,10 +47,8 @@ func SetTimerInterval(ctx context.Context, raw string) (apischema.IndexerTimerSe
 	}
 
 	if interval == "0" {
-		for _, path := range []string{indexerTimerDropInPath, indexerLegacyTimerDropInPath} {
-			if err := removeTimerDropIn(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return apischema.IndexerTimerSetResult{}, fmt.Errorf("remove indexer timer override: %w", err)
-			}
+		if err := removeTimerDropIn(indexerTimerDropInPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return apischema.IndexerTimerSetResult{}, fmt.Errorf("remove indexer timer override: %w", err)
 		}
 		if err := disableTimerUnit(ctx, indexerTimerUnitName); err != nil {
 			return apischema.IndexerTimerSetResult{}, err
@@ -63,9 +60,6 @@ func SetTimerInterval(ctx context.Context, raw string) (apischema.IndexerTimerSe
 		body := []byte("[Timer]\nOnActiveSec=\nOnUnitActiveSec=\nOnActiveSec=" + interval + "\nOnUnitActiveSec=" + interval + "\n")
 		if err := writeTimerDropIn(indexerTimerDropInPath, body, 0o644); err != nil {
 			return apischema.IndexerTimerSetResult{}, fmt.Errorf("write indexer timer override: %w", err)
-		}
-		if err := removeTimerDropIn(indexerLegacyTimerDropInPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return apischema.IndexerTimerSetResult{}, fmt.Errorf("remove legacy indexer timer override: %w", err)
 		}
 		if err := enableTimerUnit(ctx, indexerTimerUnitName); err != nil {
 			return apischema.IndexerTimerSetResult{}, err

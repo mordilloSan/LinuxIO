@@ -157,45 +157,10 @@ run_port_fixtures() {
 	)
 }
 
-run_indexer_timer_enable_fixtures() {
-	local installer="$1"
-	(
-		local fixture_dir timer target config
-		fixture_dir=$(mktemp -d)
-		trap 'rm -rf "$fixture_dir"' EXIT
-		timer="${fixture_dir}/linuxio-indexer-index.timer"
-		target="${fixture_dir}/linuxio.target"
-		config="${fixture_dir}/config.yaml"
-
-		# shellcheck source=/dev/null
-		source "$installer"
-		indexer_timer_needs_enable "$timer" "$target" "$config" || fail "new timer was not enabled"
-
-		: >"$timer"
-		printf '%s\n' 'Wants=linuxio-indexer.socket linuxio-indexer-index.timer' >"$target"
-		printf '%s\n' 'interval: 1h0m0s' >"$config"
-		indexer_timer_needs_enable "$timer" "$target" "$config" || fail "old enabled timer was not migrated"
-
-		printf '%s\n' 'interval: 0s' >"$config"
-		if indexer_timer_needs_enable "$timer" "$target" "$config"; then
-			fail "old disabled timer was enabled"
-		fi
-
-		printf '%s\n' 'Wants=linuxio-indexer.socket' >"$target"
-		printf '%s\n' 'interval: 1h0m0s' >"$config"
-		if indexer_timer_needs_enable "$timer" "$target" "$config"; then
-			fail "current disabled timer was enabled"
-		fi
-	)
-}
-
 run_port_fixtures "$LOCAL_INSTALLER"
 printf '   \033[1;32m✓\033[0m %s\n' "local installer port fixtures"
 run_port_fixtures "$RELEASE_INSTALLER"
 printf '   \033[1;32m✓\033[0m %s\n' "release installer port fixtures"
-run_indexer_timer_enable_fixtures "$LOCAL_INSTALLER"
-run_indexer_timer_enable_fixtures "$RELEASE_INSTALLER"
-printf '   \033[1;32m✓\033[0m %s\n' "indexer timer enablement fixtures"
 
 grep -Fq \
 	'CURRENT_MAIN_PACKAGING_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"' \
@@ -206,27 +171,18 @@ fi
 printf '   \033[1;32m✓\033[0m %s\n' "recovery-asset packaging policy"
 
 for installer in "$LOCAL_INSTALLER" "$RELEASE_INSTALLER"; do
-	legacy_unit_list=$(bash -c "source '$installer'; legacy_indexer_units")
 	if [[ "$installer" == "$LOCAL_INSTALLER" ]]; then
 		binary_list=$(bash -c "source '$installer'; linuxio_binary_names")
 		unit_list=$(bash -c "source '$installer'; linuxio_systemd_units")
-		legacy_binary=/usr/local/bin/indexer
 	else
 		binary_list=$(bash -c "source '$installer'; release_binary_names")
 		unit_list=$(bash -c "source '$installer'; release_systemd_units")
-		legacy_binary='${BIN_DIR}/indexer'
 	fi
 	assert_line linuxio-indexer "$binary_list" "${installer} binary list"
 	assert_line linuxio-indexer.socket "$unit_list" "${installer} unit list"
 	assert_line linuxio-indexer.service "$unit_list" "${installer} unit list"
 	assert_line linuxio-indexer-index.service "$unit_list" "${installer} unit list"
 	assert_line linuxio-indexer-index.timer "$unit_list" "${installer} unit list"
-	for unit in indexer.target indexer.socket indexer.service indexer-index.service indexer-index.timer; do
-		assert_line "$unit" "$legacy_unit_list" "${installer} legacy cleanup list"
-	done
-	grep -Eq '^[[:space:]]+remove_legacy_indexer_installation$' "$installer" || fail "${installer} does not run legacy indexer cleanup"
-	grep -Fq "$legacy_binary" "$installer" || fail "${installer} does not remove the legacy indexer binary"
-	grep -Fq '/run/indexer.sock' "$installer" || fail "${installer} does not remove the legacy world-accessible socket"
 	if grep -Eq 'sync_indexer_tcp_listener|--tcp-listener-only|linuxio-indexer config' "$installer"; then
 		fail "${installer} still mutates indexer runtime configuration"
 	fi

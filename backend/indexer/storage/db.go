@@ -409,16 +409,6 @@ func initSchema(ctx context.Context, db *sql.DB, disableFTS bool) error {
 		return err
 	}
 
-	// Breaking schema change: absolute_path is no longer stored.
-	// If an existing database still has entries.absolute_path, require a rebuild.
-	hasAbsolutePath, err := tableHasColumn(ctx, db, "entries", "absolute_path")
-	if err != nil {
-		return err
-	}
-	if hasAbsolutePath {
-		return fmt.Errorf("unsupported database schema: entries.absolute_path exists; delete the DB file and reindex to rebuild")
-	}
-
 	if _, err := db.ExecContext(ctx, `
 		CREATE INDEX IF NOT EXISTS idx_entries_index_id ON entries(index_id);
 	`); err != nil {
@@ -431,39 +421,6 @@ func initSchema(ctx context.Context, db *sql.DB, disableFTS bool) error {
 		return err
 	}
 
-	if err := ensureColumn(ctx, db, "entries", "path_depth", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, db, "entries", "inode", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, db, "entries", "last_seen", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, db, "indexes", "index_duration_ms", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, db, "indexes", "export_duration_ms", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureColumn(ctx, db, "indexes", "vacuum_duration_ms", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-
-	if err := migrateIndexesDropUniqueName(ctx, db); err != nil {
-		return fmt.Errorf("migrate indexes table: %w", err)
-	}
-
-	// Backfill path_depth for existing rows (0 for root "/", otherwise number of segments)
-	// Safe to run on every startup; it only updates rows still at the default value.
-	if _, err := db.ExecContext(ctx, `
-		UPDATE entries
-		SET path_depth = (LENGTH(relative_path) - LENGTH(REPLACE(relative_path, '/', '')))
-		WHERE relative_path != '/' AND path_depth = 0;
-	`); err != nil {
-		return err
-	}
-
 	if _, err := db.ExecContext(ctx, `
 		CREATE INDEX IF NOT EXISTS idx_entries_subfolders ON entries(index_id, type, path_depth, relative_path);
 	`); err != nil {
@@ -471,141 +428,6 @@ func initSchema(ctx context.Context, db *sql.DB, disableFTS bool) error {
 	}
 
 	return ensureFTS(ctx, db, disableFTS)
-}
-
-// migrateIndexesDropUniqueName rebuilds a legacy indexes table to remove the
-// UNIQUE constraint on name (SQLite cannot drop constraints in place).
-// Generation-based scans insert multiple rows per name, which the old
-// constraint forbids. Row ids are preserved so entries' foreign keys stay
-// valid; the rebuild runs on one connection with foreign_keys off (a no-op
-// inside a transaction, so it is toggled outside one).
-func migrateIndexesDropUniqueName(ctx context.Context, db *sql.DB) error {
-	var tableSQL sql.NullString
-	err := db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'indexes';`).Scan(&tableSQL)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !strings.Contains(strings.ToUpper(tableSQL.String), "UNIQUE") {
-		return nil
-	}
-	slog.Info("migrating indexes table: dropping UNIQUE constraint on name for generation-based scans")
-
-	// Copy only columns the legacy table actually has; the new table's
-	// defaults cover anything it lacks (e.g. created_at on very old DBs).
-	canonical := []string{
-		"id", "name", "root_path", "source", "include_hidden",
-		"num_dirs", "num_files", "total_size", "disk_used", "disk_total",
-		"last_indexed", "index_duration_ms", "export_duration_ms",
-		"vacuum_duration_ms", "created_at",
-	}
-	var copyCols []string
-	for _, col := range canonical {
-		found, colErr := tableHasColumn(ctx, db, "indexes", col)
-		if colErr != nil {
-			return colErr
-		}
-		if found {
-			copyCols = append(copyCols, col)
-		}
-	}
-	colsCSV := strings.Join(copyCols, ", ")
-
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if closeErr := conn.Close(); closeErr != nil {
-			slog.Warn("failed to release migration connection", "err", closeErr)
-		}
-	}()
-
-	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=OFF;`); err != nil {
-		return err
-	}
-	defer func() {
-		if _, fkErr := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON;`); fkErr != nil {
-			slog.Warn("failed to re-enable foreign keys after migration", "err", fkErr)
-		}
-	}()
-
-	stmts := []string{
-		`BEGIN IMMEDIATE;`,
-		`CREATE TABLE indexes_migrated (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			root_path TEXT NOT NULL,
-			source TEXT,
-			include_hidden INTEGER NOT NULL DEFAULT 0,
-			num_dirs INTEGER NOT NULL DEFAULT 0,
-			num_files INTEGER NOT NULL DEFAULT 0,
-			total_size INTEGER NOT NULL DEFAULT 0,
-			disk_used INTEGER NOT NULL DEFAULT 0,
-			disk_total INTEGER NOT NULL DEFAULT 0,
-			last_indexed INTEGER NOT NULL,
-			index_duration_ms INTEGER NOT NULL DEFAULT 0,
-			export_duration_ms INTEGER NOT NULL DEFAULT 0,
-			vacuum_duration_ms INTEGER NOT NULL DEFAULT 0,
-			created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-		);`,
-		fmt.Sprintf(`INSERT INTO indexes_migrated (%s) SELECT %s FROM indexes;`, colsCSV, colsCSV),
-		`DROP TABLE indexes;`,
-		`ALTER TABLE indexes_migrated RENAME TO indexes;`,
-		`COMMIT;`,
-	}
-	for _, stmt := range stmts {
-		if _, err := conn.ExecContext(ctx, stmt); err != nil {
-			if _, rbErr := conn.ExecContext(ctx, `ROLLBACK;`); rbErr != nil {
-				slog.Warn("migration rollback failed", "err", rbErr)
-			}
-			return fmt.Errorf("indexes table migration failed: %w", err)
-		}
-	}
-	return nil
-}
-
-// tableHasColumn reports whether table has a column with the given name.
-func tableHasColumn(ctx context.Context, db *sql.DB, table, column string) (found bool, err error) {
-	rows, err := db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s);`, table))
-	if err != nil {
-		return false, err
-	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			slog.Warn("failed to close table_info rows", "table", table, "err", closeErr)
-		}
-	}()
-
-	for rows.Next() {
-		var (
-			cid        int
-			name       string
-			colType    string
-			notNull    int
-			defaultVal sql.NullString
-			pk         int
-		)
-		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultVal, &pk); err != nil {
-			return false, err
-		}
-		if strings.EqualFold(name, column) {
-			return true, nil
-		}
-	}
-	return false, rows.Err()
-}
-
-func ensureColumn(ctx context.Context, db *sql.DB, table, column, definition string) error {
-	found, err := tableHasColumn(ctx, db, table, column)
-	if err != nil || found {
-		return err
-	}
-	stmt := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s;`, table, column, definition)
-	_, err = db.ExecContext(ctx, stmt)
-	return err
 }
 
 func insertEntriesBatch(ctx context.Context, tx *sql.Tx, indexID int64, scanTime int64, batch []indexing.IndexEntry) error {

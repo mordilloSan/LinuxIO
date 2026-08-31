@@ -1,9 +1,9 @@
 # Complete Indexer Integration
 
-> **Status: Implementation complete; verification and cleanup remain.**
+> **Status: Implementation complete; verification remains.**
 > LinuxIO now owns, builds, ships, configures, and activates the indexer. The
-> unchecked work below covers the guarded smoke test and retiring the legacy
-> migration path. The approved YAML, runtime-path, and warm-start changes are in
+> unchecked work below covers the guarded smoke test. The approved YAML,
+> runtime-path, and warm-start changes are in
 > [Configuration and storage layout](../configuration-storage-layout.md).
 
 ## Current integration
@@ -106,12 +106,11 @@
 - [x] Add `linuxio-indexer` or the chosen binary artifact to the release
   workflow, tarball, checksum list, executable checks, and release artifacts.
 - [x] Update `install-linuxio-binaries.sh` and `localinstall.sh` to install the
-  indexer binary and all `packaging/systemd/linuxio-indexer*` units atomically,
-  stopping and removing the former standalone `indexer*` units and binary on
-  upgrade while preserving its data.
-- [ ] Remove the legacy standalone-indexer and YAML systemd-field migration
-  paths (`interval`, `socket_path`, and `listen_addr`) once supported upgrades
-  no longer depend on them.
+  indexer binary and all `packaging/systemd/linuxio-indexer*` units atomically
+  while preserving its data.
+- [x] Remove the standalone-indexer cleanup, YAML systemd-field compatibility
+  (`interval`, `socket_path`, and `listen_addr`), timer drop-in cleanup, and
+  database schema migration paths.
 - [x] Update `uninstall.sh` to remove the indexer binary, socket, service, and
   timer units, including any persistent index data only when the uninstall
   policy explicitly requests data removal.

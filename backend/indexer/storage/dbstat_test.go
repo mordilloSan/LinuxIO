@@ -3,9 +3,12 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
+
+	sqlite3 "github.com/mattn/go-sqlite3"
 
 	"github.com/mordilloSan/LinuxIO/backend/indexer/indexing"
 )
@@ -49,5 +52,20 @@ func TestDatabaseDiskUsage(t *testing.T) {
 	}
 	for _, u := range usage {
 		t.Logf("object=%s pages=%d bytes=%d unused=%d", u.Name, u.Pages, u.Bytes, u.UnusedBytes)
+	}
+}
+
+func TestIsCorruptionError(t *testing.T) {
+	if !IsCorruptionError(sqlite3.Error{Code: sqlite3.ErrCorrupt}) {
+		t.Fatal("ErrCorrupt should classify as corruption")
+	}
+	if !IsCorruptionError(fmt.Errorf("wrapped: %w", sqlite3.Error{Code: sqlite3.ErrNotADB})) {
+		t.Fatal("wrapped ErrNotADB should classify as corruption")
+	}
+	if IsCorruptionError(sqlite3.Error{Code: sqlite3.ErrBusy}) {
+		t.Fatal("ErrBusy is operational, not corruption")
+	}
+	if IsCorruptionError(errors.New("disk I/O error")) {
+		t.Fatal("plain errors are not corruption")
 	}
 }

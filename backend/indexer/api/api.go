@@ -95,11 +95,6 @@ type IndexerConfigPatch struct {
 	EntriesDefaultLimit  *int                   `json:"entries_default_limit,omitempty" yaml:"entries_default_limit,omitempty"`
 	EntriesMaxLimit      *int                   `json:"entries_max_limit,omitempty" yaml:"entries_max_limit,omitempty"`
 	IdleTimeout          *string                `json:"idle_timeout,omitempty" yaml:"idle_timeout,omitempty"`
-	// Legacy systemd-owned fields keep strict YAML loading compatible until the
-	// supported upgrade window closes. They are ignored and dropped on save.
-	LegacyInterval   *string `json:"-" yaml:"interval,omitempty"`
-	LegacyListenAddr *string `json:"-" yaml:"listen_addr,omitempty"`
-	LegacySocketPath *string `json:"-" yaml:"socket_path,omitempty"`
 }
 
 // ConfigPatch preserves the indexer's internal name for its canonical wire type.

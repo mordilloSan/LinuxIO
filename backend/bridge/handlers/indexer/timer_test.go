@@ -46,7 +46,6 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 	})
 
 	var dropIn, dropInPath string
-	var removed []string
 	var units []string
 	writeTimerDropIn = func(path string, data []byte, _ fs.FileMode) error {
 		dropInPath = path
@@ -54,7 +53,7 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 		return nil
 	}
 	removeTimerDropIn = func(path string) error {
-		removed = append(removed, path)
+		t.Fatalf("unexpected removal of %s", path)
 		return nil
 	}
 	enableTimerUnit = func(_ context.Context, unit string) error {
@@ -74,9 +73,6 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 	if dropInPath != indexerTimerDropInPath || dropIn != wantDropIn {
 		t.Fatalf("path=%q drop-in=%q", dropInPath, dropIn)
 	}
-	if strings.Join(removed, ",") != indexerLegacyTimerDropInPath {
-		t.Fatalf("removed paths = %v", removed)
-	}
 	if strings.Join(units, ",") != "enable linuxio-indexer-index.timer,restart linuxio-indexer-index.timer" {
 		t.Fatalf("systemd calls = %v", units)
 	}
@@ -85,7 +81,7 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 	}
 }
 
-func TestSetTimerIntervalDisablesAndRemovesBothDropIns(t *testing.T) {
+func TestSetTimerIntervalDisablesAndRemovesDropIn(t *testing.T) {
 	originalRemove := removeTimerDropIn
 	originalDisable := disableTimerUnit
 	originalStop := stopTimerUnit
@@ -112,7 +108,7 @@ func TestSetTimerIntervalDisablesAndRemovesBothDropIns(t *testing.T) {
 	if _, err := SetTimerInterval(context.Background(), "0"); err != nil {
 		t.Fatalf("SetTimerInterval: %v", err)
 	}
-	if strings.Join(removed, ",") != indexerTimerDropInPath+","+indexerLegacyTimerDropInPath {
+	if strings.Join(removed, ",") != indexerTimerDropInPath {
 		t.Fatalf("removed paths = %v", removed)
 	}
 	if strings.Join(units, ",") != "disable "+indexerTimerUnitName+",stop "+indexerTimerUnitName {
