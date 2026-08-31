@@ -1,1 +1,5 @@
 project_doc_fallback_filenames = [".claude/CLAUDE.md"]
+
+[mcp_servers.morph-mcp]
+command = "bash"
+args = ["-c", "set -a; source .codex/morph.env && exec npx --prefer-offline -y @morphllm/morphmcp"]
