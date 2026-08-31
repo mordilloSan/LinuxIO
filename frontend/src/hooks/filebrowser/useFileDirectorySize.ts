@@ -57,7 +57,6 @@ export const useFileDirectorySize = (
 
   const isUnavailable = isDirectorySizeUnavailable(
     error,
-    data,
     indexerDisabled,
     shouldSkip,
   );

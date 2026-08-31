@@ -2,7 +2,7 @@
 Description=LinuxIO Web Server (TCP socket)
 Documentation=https://github.com/mordilloSan/LinuxIO
 PartOf=linuxio.target
-Wants=linuxio-issue.service
+Wants=linuxio-issue.service linuxio-indexer.socket
 
 [Socket]
 # Port-only form binds dual-stack (IPv4 + IPv6 via IPV6_V6ONLY=0).

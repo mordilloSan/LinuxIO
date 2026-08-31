@@ -48,7 +48,10 @@ export const useFileSubfolders = (
   });
 
   // Create a stable array reference (avoid new empty array on each render)
-  const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);
+  const subfolders = useMemo(
+    () => (indexerDisabled ? [] : (data?.subfolders ?? [])),
+    [data?.subfolders, indexerDisabled],
+  );
 
   // Create a memoized map for quick lookup by path
   const subfoldersMap = useMemo(() => {
@@ -67,7 +70,6 @@ export const useFileSubfolders = (
 
   const isUnavailable = isDirectorySizeUnavailable(
     error,
-    data,
     indexerDisabled,
     shouldSkip,
   );

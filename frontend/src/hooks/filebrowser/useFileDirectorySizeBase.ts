@@ -54,7 +54,6 @@ export const getDirectorySizeError = (
  */
 export const isDirectorySizeUnavailable = (
   error: Error | null,
-  data: any,
   indexerDisabled: boolean,
   shouldSkip: boolean,
 ): boolean => {
@@ -63,7 +62,7 @@ export const isDirectorySizeUnavailable = (
     indexerDisabled,
     shouldSkip,
   );
-  return (derivedError !== null && !data) || (indexerDisabled && !shouldSkip);
+  return derivedError !== null || (indexerDisabled && !shouldSkip);
 };
 
 /**

@@ -3,6 +3,7 @@ Description=LinuxIO Web Server
 Documentation=https://github.com/mordilloSan/LinuxIO
 PartOf=linuxio.target
 Requires=linuxio-webserver.socket linuxio-auth.socket
+Wants=linuxio-indexer.service
 After=linuxio-webserver.socket linuxio-auth.socket network-online.target
 
 [Service]

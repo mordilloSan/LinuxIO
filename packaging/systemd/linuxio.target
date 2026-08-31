@@ -2,7 +2,7 @@
 Description=LinuxIO Application Stack
 Documentation=https://github.com/mordilloSan/LinuxIO
 After=network-online.target
-Wants=linuxio-webserver.socket linuxio-auth.socket
+Wants=linuxio-webserver.socket linuxio-auth.socket linuxio-indexer.socket linuxio-indexer-index.timer
 
 [Install]
 WantedBy=multi-user.target

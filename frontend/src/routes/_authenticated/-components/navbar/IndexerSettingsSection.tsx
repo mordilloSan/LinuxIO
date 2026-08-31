@@ -1,3 +1,4 @@
+import { Icon } from "@iconify/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -13,10 +14,13 @@ import {
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import AppButton from "@/components/ui/AppButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import StatusDot from "@/components/ui/StatusDot";
+import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
+import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
 import { useCapability } from "@/hooks/useCapabilities";
 import { compactGoDuration, isGoDuration } from "@/utils/durations";
 import { formatDate, formatFileSize } from "@/utils/formaters";
@@ -41,8 +45,9 @@ import {
 
 type DraftConfig = Omit<
   IndexerConfig,
-  "keep_indexes" | "db_max_open_conns" | "db_max_idle_conns"
+  "exclude_paths" | "keep_indexes" | "db_max_open_conns" | "db_max_idle_conns"
 > & {
+  exclude_paths: string;
   keep_indexes: string;
   db_max_open_conns: string;
   db_max_idle_conns: string;
@@ -79,10 +84,12 @@ const RESTART_FIELDS: DraftKey[] = [
   "socket_path",
   "listen_addr",
 ];
-const INDEXER_TIMER_UNIT = "indexer-index.timer";
+const INDEXER_TIMER_UNIT = "linuxio-indexer-index.timer";
+const INDEXER_SERVICE_UNIT = "linuxio-indexer.service";
 
 const toDraft = (config: IndexerConfig): DraftConfig => ({
   ...config,
+  exclude_paths: config.exclude_paths.join("\n"),
   integrity_check: config.integrity_check || "full",
   interval: compactGoDuration(config.interval),
   keep_indexes: String(config.keep_indexes),
@@ -100,6 +107,16 @@ const toPatchPayload = (
   }
   if (patch.index_name !== undefined) {
     payload.index_name = patch.index_name.trim();
+  }
+  if (patch.exclude_paths !== undefined) {
+    payload.exclude_paths = [
+      ...new Set(
+        patch.exclude_paths
+          .split("\n")
+          .map((path) => path.trim())
+          .filter(Boolean),
+      ),
+    ];
   }
   if (patch.include_hidden !== undefined) {
     payload.include_hidden = patch.include_hidden;
@@ -168,6 +185,14 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
 
   if (!draft.index_name.trim()) {
     errors.index_name = "Index name is required.";
+  }
+
+  const invalidExcludePath = draft.exclude_paths
+    .split("\n")
+    .map((path) => path.trim())
+    .find((path) => path && (!isAbsolutePath(path) || path === "/"));
+  if (invalidExcludePath) {
+    errors.exclude_paths = "Use absolute paths other than /, one per line.";
   }
 
   if (!isNonNegativeInteger(draft.keep_indexes)) {
@@ -282,6 +307,8 @@ const getStatusColor = (status: IndexerDaemonStatus | undefined) => {
 
 const IndexerSettingsSection = () => {
   const queryClient = useQueryClient();
+  const { startIndexer } = useBackgroundTaskActions();
+  const isIndexing = useIsIndexing();
   const {
     isEnabled: indexerEnabled,
     status: indexerStatus,
@@ -329,7 +356,6 @@ const IndexerSettingsSection = () => {
       linuxio.systemd.get_unit_info({ unitName: INDEXER_TIMER_UNIT }).queryKey,
     ],
   });
-
   const savedDraft = useMemo(() => (config ? toDraft(config) : null), [config]);
   const {
     draft,
@@ -343,7 +369,21 @@ const IndexerSettingsSection = () => {
     patchKey,
     reset: handleReset,
   } = useSettingsDraft<DraftConfig, DraftErrors>(savedDraft);
-  const busy = setConfigMutation.isPending || setTimerMutation.isPending;
+  const restartMutation = useCallMutation(linuxio.systemd.restart_service, {
+    success: () => {
+      setRestartRequired(false);
+      toast.success("Indexer restarted");
+      void Promise.all([refetch(), refetchStatus(), refetchTimer()]);
+    },
+    error: "Failed to restart indexer",
+  });
+  const busy =
+    setConfigMutation.isPending ||
+    setTimerMutation.isPending ||
+    restartMutation.isPending;
+  const fullIndexRequired = Boolean(
+    config && daemonStatus && config.fts_search !== daemonStatus.fts_active,
+  );
   const refreshing = isFetching || isStatusFetching || isTimerFetching;
   const statusTooltip = formatStatusLabel(daemonStatus?.status);
   const timerTooltip = formatTimerState(timerInfo);
@@ -435,6 +475,16 @@ const IndexerSettingsSection = () => {
     void refetchTimer();
   };
 
+  const handleRestart = () => {
+    restartMutation.mutate({ serviceName: INDEXER_SERVICE_UNIT });
+  };
+
+  const handleFullIndex = () => {
+    void startIndexer({
+      onComplete: () => void refetchStatus(),
+    });
+  };
+
   const renderStatusGrid = (children: ReactNode) => (
     <div
       className="indexer-status-grid"
@@ -506,10 +556,53 @@ const IndexerSettingsSection = () => {
           <AppAlertTitle>Restart required</AppAlertTitle>
           Some saved settings need the indexer daemon to restart before they
           fully apply.
+          <div style={{ marginTop: "var(--app-space-4)" }}>
+            <AppButton
+              disabled={busy}
+              onClick={handleRestart}
+              size="small"
+              startIcon={
+                <Icon
+                  height={16}
+                  icon={
+                    restartMutation.isPending ? "mdi:loading" : "mdi:restart"
+                  }
+                  width={16}
+                />
+              }
+              variant="outlined"
+            >
+              {restartMutation.isPending ? "Restarting..." : "Restart indexer"}
+            </AppButton>
+          </div>
         </AppAlert>
       ) : willRequireRestart ? (
         <AppAlert severity="info">
           Some changed settings will require an indexer restart after saving.
+        </AppAlert>
+      ) : null}
+
+      {fullIndexRequired ? (
+        <AppAlert severity="info">
+          <AppAlertTitle>Full index required</AppAlertTitle>
+          Run a full index to apply the selected search mode to existing data.
+          <div style={{ marginTop: "var(--app-space-4)" }}>
+            <AppButton
+              disabled={busy || isIndexing}
+              onClick={handleFullIndex}
+              size="small"
+              startIcon={
+                <Icon
+                  height={16}
+                  icon={isIndexing ? "mdi:loading" : "mdi:sync"}
+                  width={16}
+                />
+              }
+              variant="outlined"
+            >
+              {isIndexing ? "Indexing..." : "Run full index"}
+            </AppButton>
+          </div>
         </AppAlert>
       ) : null}
 
@@ -615,7 +708,7 @@ const IndexerSettingsSection = () => {
 
       <SectionCard
         icon="mdi:magnify-scan"
-        subtitle="Root path, index name, and retention"
+        subtitle="Scan root, exclusions, name, and retention"
         title="Index Scope"
       >
         <SettingsGrid minColumnWidth={180}>
@@ -646,6 +739,24 @@ const IndexerSettingsSection = () => {
                 }
                 size="small"
                 value={draft.index_name}
+              />
+            </AppTooltip>
+            <AppTooltip title="Absolute folders skipped during indexing, one per line">
+              <AppTextField
+                disabled={busy}
+                error={Boolean(errors.exclude_paths)}
+                fullWidth
+                helperText={
+                  errors.exclude_paths ?? "One absolute path per line."
+                }
+                label="Excluded paths"
+                multiline
+                onChange={(event) =>
+                  updateDraft("exclude_paths", event.target.value)
+                }
+                rows={3}
+                size="small"
+                value={draft.exclude_paths}
               />
             </AppTooltip>
             <AppTooltip title="0 disables pruning">

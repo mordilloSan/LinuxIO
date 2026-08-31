@@ -16,26 +16,37 @@ readonly GREY='\e[90m'
 readonly RED='\e[91m'
 readonly YELLOW='\e[33m'
 readonly DATA_DIR="/var/lib/linuxio"
+REMOVE_DATA=0
+
+if [[ "${1:-}" == "--remove-data" ]]; then
+	REMOVE_DATA=1
+elif [[ $# -gt 0 ]]; then
+	echo "Usage: $(basename "$0") [--remove-data]" >&2
+	exit 2
+fi
 
 readonly LINE=" ${GREEN}───────────────────────────────────────────────────────${COLOUR_RESET}"
 
 Show() {
-    local status="$1"
-    shift
-    case "$status" in
-        0) echo -e " ${GREY}[${GREEN}  OK  ${GREY}]${COLOUR_RESET} $*" ;;
-        1) echo -e " ${GREY}[${RED}FAILED${GREY}]${COLOUR_RESET} $*"; exit 1 ;;
-        2) echo -e " ${GREY}[${BOLD} INFO ${GREY}]${COLOUR_RESET} $*" ;;
-        3) echo -e " ${GREY}[${YELLOW}NOTICE${GREY}]${COLOUR_RESET} $*" ;;
-    esac
+	local status="$1"
+	shift
+	case "$status" in
+	0) echo -e " ${GREY}[${GREEN}  OK  ${GREY}]${COLOUR_RESET} $*" ;;
+	1)
+		echo -e " ${GREY}[${RED}FAILED${GREY}]${COLOUR_RESET} $*"
+		exit 1
+		;;
+	2) echo -e " ${GREY}[${BOLD} INFO ${GREY}]${COLOUR_RESET} $*" ;;
+	3) echo -e " ${GREY}[${YELLOW}NOTICE${GREY}]${COLOUR_RESET} $*" ;;
+	esac
 }
 
 Header() {
-    echo ""
-    echo -e "${LINE}"
-    echo -e " ${BOLD} $*${COLOUR_RESET}"
-    echo -e "${LINE}"
-    echo ""
+	echo ""
+	echo -e "${LINE}"
+	echo -e " ${BOLD} $*${COLOUR_RESET}"
+	echo -e "${LINE}"
+	echo ""
 }
 
 # ---------- Main ----------
@@ -44,7 +55,7 @@ Header "LinuxIO ${GREY}· Uninstaller${COLOUR_RESET}"
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
-    Show 1 "This script must be run as root"
+	Show 1 "This script must be run as root"
 fi
 
 # ========== STOP AND DISABLE SERVICES ==========
@@ -84,7 +95,13 @@ Show 0 "Configuration files removed"
 Show 2 "Removing runtime and data files..."
 rm -rf /run/linuxio
 rm -rf /usr/share/linuxio
-rm -rf "${DATA_DIR}"
+rm -rf /usr/share/doc/linuxio
+if [[ $REMOVE_DATA -eq 1 ]]; then
+	rm -rf "${DATA_DIR}"
+	Show 0 "Persistent LinuxIO data removed"
+else
+	Show 3 "Preserving persistent data in ${DATA_DIR}; pass --remove-data to delete it"
+fi
 rm -f /etc/motd.d/linuxio 2>/dev/null || true
 rm -f /etc/update-motd.d/60-linuxio 2>/dev/null || true
 Show 0 "Runtime files removed"
@@ -99,11 +116,11 @@ Show 0 "Development files removed"
 Show 2 "Cleaning build artifacts from repo..."
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
-    cd "$REPO_ROOT"
-    rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update 2>/dev/null || true
-    Show 0 "Build artifacts cleaned"
+	cd "$REPO_ROOT"
+	rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer 2>/dev/null || true
+	Show 0 "Build artifacts cleaned"
 else
-    Show 3 "Cannot find repo directory, skipping build artifact cleanup"
+	Show 3 "Cannot find repo directory, skipping build artifact cleanup"
 fi
 
 # ========== SUMMARY ==========
@@ -117,7 +134,12 @@ echo -e " ${GREEN}-${COLOUR_RESET} All systemd services and sockets"
 echo -e " ${GREEN}-${COLOUR_RESET} All binaries from /usr/local/bin"
 echo -e " ${GREEN}-${COLOUR_RESET} Configuration files from /etc/linuxio"
 echo -e " ${GREEN}-${COLOUR_RESET} PAM configuration"
-echo -e " ${GREEN}-${COLOUR_RESET} Runtime files from /run and /var/lib"
+echo -e " ${GREEN}-${COLOUR_RESET} Runtime files from /run"
+if [[ $REMOVE_DATA -eq 1 ]]; then
+	echo -e " ${GREEN}-${COLOUR_RESET} Persistent data from /var/lib/linuxio"
+else
+	echo -e " ${YELLOW}-${COLOUR_RESET} Persistent data preserved in /var/lib/linuxio"
+fi
 echo -e " ${GREEN}-${COLOUR_RESET} Development files from /tmp/linuxio"
 echo ""
 echo -e " ${BOLD}To reinstall:${COLOUR_RESET} ${GREY}make localinstall${COLOUR_RESET}"

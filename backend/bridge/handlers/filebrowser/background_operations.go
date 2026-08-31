@@ -264,7 +264,7 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
 			path := ""
 			if req.Path != nil {
 				path = *req.Path
@@ -654,7 +654,7 @@ func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 func runIndexerTask(ctx context.Context, task *bridgetasks.Task, req apischema.OptionalPathRequest) (indexer.IndexerResult, error) {
 	path := "/"
 	if req.Path != nil && *req.Path != "" {
-		path = filepath.Clean(*req.Path)
+		path = utils.CleanAbsPath(*req.Path)
 	}
 	return runIndexerOperation(ctx, task, path, false)
 }
@@ -681,12 +681,12 @@ func runIndexerOperation(ctx context.Context, task *bridgetasks.Task, path strin
 
 	var err error
 	if attachOnly {
-		err = indexer.StreamIndexerAttach(ctx, cb)
+		err = indexer.StreamIndexerAttach(ctx, path, cb)
 	} else {
 		err = indexer.StreamIndexer(ctx, path, cb)
 		if err != nil && taskErr != nil && taskErr.Code == 409 {
 			taskErr = nil
-			err = indexer.StreamIndexerAttach(ctx, cb)
+			err = indexer.StreamIndexerAttach(ctx, path, cb)
 		}
 	}
 	if err != nil {

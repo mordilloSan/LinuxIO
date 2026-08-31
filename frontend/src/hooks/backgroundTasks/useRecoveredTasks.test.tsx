@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Stream } from "@/api";
 import {
   TASK_TYPE_DOCKER_UPDATE,
+  TASK_TYPE_FILE_INDEXER,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_SYSTEM_INSTALL_CAPABILITY,
 } from "@/constants/backgroundTaskTypes";
@@ -175,6 +176,33 @@ describe("useRecoveredTasks package updates", () => {
         id: "docker-update-active",
         label: "Pulling the updated image",
         taskType: TASK_TYPE_DOCKER_UPDATE,
+      }),
+    ]);
+  });
+
+  it("restores an active index operation after navigation", async () => {
+    const { controls, emitTerminalEvent } = renderRecoveredTasks();
+
+    await emitTerminalEvent({
+      created_at: "2026-01-01T00:00:00Z",
+      id: "indexer-active",
+      metadata: { path: "/srv/data" },
+      state: "running",
+      type: TASK_TYPE_FILE_INDEXER,
+      updated_at: "2026-01-01T00:00:01Z",
+    });
+
+    expect(controls.indexers.setIsIndexerDialogOpen).toHaveBeenCalledWith(true);
+    expect(controls.indexers.setIndexers).toHaveBeenCalledOnce();
+    const update = controls.indexers.setIndexers.mock.calls[0]?.[0];
+    if (typeof update !== "function") {
+      throw new Error("expected recovered indexer state updater");
+    }
+    expect(update([])).toEqual([
+      expect.objectContaining({
+        id: "indexer-active",
+        path: "/srv/data",
+        phase: "connecting",
       }),
     ]);
   });

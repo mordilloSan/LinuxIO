@@ -1181,30 +1181,38 @@ export interface ImageIDRequest {
 }
 
 export interface IndexerConfig {
-  db_auto_vacuum: string;
-  db_busy_timeout: string;
-  db_conn_max_idle_time: string;
-  db_journal_mode: string;
-  db_max_idle_conns: number;
-  db_max_open_conns: number;
-  db_path: string;
-  db_synchronous: string;
-  fresh_index: boolean;
-  fts_search: boolean;
+  index_path: string;
+  index_name: string;
+  exclude_paths: string[];
   include_hidden: boolean;
   include_network_mounts: boolean;
-  integrity_check: IndexerIntegrityCheck;
-  index_name: string;
-  index_path: string;
-  interval: string;
+  fresh_index: boolean;
+  fts_search: boolean;
   keep_indexes: number;
-  listen_addr: string;
+  integrity_check: IndexerIntegrityCheck;
+  db_path: string;
+  db_busy_timeout: string;
+  db_journal_mode: string;
+  db_synchronous: string;
+  db_auto_vacuum: string;
+  db_max_open_conns: number;
+  db_max_idle_conns: number;
+  db_conn_max_idle_time: string;
+  db_stmt_cache_size: number;
+  search_default_limit: number;
+  search_max_limit: number;
+  entries_default_limit: number;
+  entries_max_limit: number;
   socket_path: string;
+  listen_addr: string;
+  interval: string;
+  idle_timeout: string;
 }
 
 export interface IndexerConfigPatch {
   index_path?: string;
   index_name?: string;
+  exclude_paths?: string[];
   include_hidden?: boolean;
   include_network_mounts?: boolean;
   fresh_index?: boolean;
@@ -1219,9 +1227,15 @@ export interface IndexerConfigPatch {
   db_max_open_conns?: number;
   db_max_idle_conns?: number;
   db_conn_max_idle_time?: string;
+  db_stmt_cache_size?: number;
+  search_default_limit?: number;
+  search_max_limit?: number;
+  entries_default_limit?: number;
+  entries_max_limit?: number;
   socket_path?: string;
   listen_addr?: string;
   interval?: string;
+  idle_timeout?: string;
 }
 
 export interface IndexerConfigSetResult {

@@ -1,20 +1,22 @@
 import { act, fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
 import type { FileResource } from "@/types/filebrowser";
 
 import FileDetail from "./FileDetail";
 
+const directorySizeState = vi.hoisted(() => ({
+  error: null as Error | null,
+  fileCount: 12,
+  folderCount: 3,
+  isLoading: false,
+  isUnavailable: false,
+  size: 1024,
+}));
+
 vi.mock("@/hooks/filebrowser/useFileDirectorySize", () => ({
-  useFileDirectorySize: () => ({
-    error: null,
-    fileCount: 12,
-    folderCount: 3,
-    isLoading: false,
-    isUnavailable: false,
-    size: 1024,
-  }),
+  useFileDirectorySize: () => directorySizeState,
 }));
 
 const resource = (overrides: Partial<FileResource> = {}): FileResource => ({
@@ -29,6 +31,13 @@ const resource = (overrides: Partial<FileResource> = {}): FileResource => ({
 });
 
 describe("FileDetail", () => {
+  beforeEach(() => {
+    directorySizeState.error = null;
+    directorySizeState.isLoading = false;
+    directorySizeState.isUnavailable = false;
+    directorySizeState.size = 1024;
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -86,5 +95,26 @@ describe("FileDetail", () => {
     expect(screen.getByText("12")).toBeVisible();
     expect(screen.getByText("Folders")).toBeVisible();
     expect(screen.getByText("3")).toBeVisible();
+  });
+
+  it("marks cached directory sizes unavailable when the indexer is offline", () => {
+    directorySizeState.error = new Error("Indexer API unavailable");
+    directorySizeState.isUnavailable = true;
+
+    render(
+      <FileDetail
+        onDownload={vi.fn()}
+        resource={resource({
+          isRegularFile: false,
+          name: "projects",
+          path: "/srv/projects",
+          size: 0,
+          type: "directory",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Unavailable")).toBeVisible();
+    expect(screen.getByText("Indexer API unavailable")).toBeVisible();
   });
 });

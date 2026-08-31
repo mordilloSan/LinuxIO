@@ -1,66 +1,78 @@
 package indexer
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 const (
-	indexerTimerUnitName       = "indexer-index.timer"
-	indexerTimerCommandTimeout = 45 * time.Second
+	indexerTimerUnitName         = "linuxio-indexer-index.timer"
+	indexerTimerDropInPath       = "/etc/systemd/system/linuxio-indexer-index.timer.d/linuxio.conf"
+	indexerLegacyTimerDropInPath = "/etc/systemd/system/linuxio-indexer-index.timer.d/override.conf"
 )
 
 var (
-	indexerCLILookPath = exec.LookPath
-	indexerCLIStat     = os.Stat
-	indexerCLIOutput   = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		return exec.CommandContext(ctx, name, args...).CombinedOutput()
-	}
+	updateTimerConfig = UpdateConfig
+	writeTimerDropIn  = utils.WriteFileAtomic
+	removeTimerDropIn = os.Remove
+	enableTimerUnit   = systemdapi.EnableUnit
+	disableTimerUnit  = systemdapi.DisableUnit
+	stopTimerUnit     = systemdapi.StopUnit
+	restartTimerUnit  = systemdapi.RestartUnit
 )
-
-var indexerCLIFallbackDirs = []string{
-	"/usr/local/bin",
-	"/usr/bin",
-	"/bin",
-	"/usr/sbin",
-	"/sbin",
-}
 
 func SetTimerInterval(ctx context.Context, raw string) (apischema.IndexerTimerSetResult, error) {
 	interval, err := normalizeTimerInterval(raw)
 	if err != nil {
 		return apischema.IndexerTimerSetResult{}, err
 	}
-	binary, err := findIndexerCLI()
+
+	patch, err := json.Marshal(indexerapi.ConfigPatch{Interval: &interval})
+	if err != nil {
+		return apischema.IndexerTimerSetResult{}, fmt.Errorf("encode indexer interval: %w", err)
+	}
+	cfg, _, err := updateTimerConfig(ctx, patch)
 	if err != nil {
 		return apischema.IndexerTimerSetResult{}, err
 	}
 
-	cmdCtx, cancel := context.WithTimeout(ctx, indexerTimerCommandTimeout)
-	defer cancel()
-
-	output, runErr := indexerCLIOutput(cmdCtx, binary, "config", "set", "--interval", interval)
-	if runErr != nil {
-		return apischema.IndexerTimerSetResult{}, indexerCLICommandError("set timer interval", runErr, output)
-	}
-
-	cfg, err := readIndexerCLIConfig(cmdCtx, binary)
-	if err != nil {
-		return apischema.IndexerTimerSetResult{
-			Interval:  interval,
-			TimerUnit: indexerTimerUnitName,
-		}, err
+	if interval == "0" {
+		for _, path := range []string{indexerTimerDropInPath, indexerLegacyTimerDropInPath} {
+			if err := removeTimerDropIn(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return apischema.IndexerTimerSetResult{}, fmt.Errorf("remove indexer timer override: %w", err)
+			}
+		}
+		if err := disableTimerUnit(ctx, indexerTimerUnitName); err != nil {
+			return apischema.IndexerTimerSetResult{}, err
+		}
+		if err := stopTimerUnit(ctx, indexerTimerUnitName); err != nil {
+			return apischema.IndexerTimerSetResult{}, err
+		}
+	} else {
+		body := []byte("[Timer]\nOnActiveSec=\nOnUnitActiveSec=\nOnActiveSec=" + interval + "\nOnUnitActiveSec=" + interval + "\n")
+		if err := writeTimerDropIn(indexerTimerDropInPath, body, 0o644); err != nil {
+			return apischema.IndexerTimerSetResult{}, fmt.Errorf("write indexer timer override: %w", err)
+		}
+		if err := removeTimerDropIn(indexerLegacyTimerDropInPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return apischema.IndexerTimerSetResult{}, fmt.Errorf("remove legacy indexer timer override: %w", err)
+		}
+		if err := enableTimerUnit(ctx, indexerTimerUnitName); err != nil {
+			return apischema.IndexerTimerSetResult{}, err
+		}
+		if err := restartTimerUnit(ctx, indexerTimerUnitName); err != nil {
+			return apischema.IndexerTimerSetResult{}, err
+		}
 	}
 
 	return apischema.IndexerTimerSetResult{
@@ -89,39 +101,4 @@ func normalizeTimerInterval(raw string) (string, error) {
 		return "0", nil
 	}
 	return duration.String(), nil
-}
-
-func findIndexerCLI() (string, error) {
-	if path, err := indexerCLILookPath("indexer"); err == nil {
-		return path, nil
-	}
-	for _, dir := range indexerCLIFallbackDirs {
-		path := filepath.Join(dir, "indexer")
-		info, err := indexerCLIStat(path)
-		if err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("indexer CLI not found")
-}
-
-func readIndexerCLIConfig(ctx context.Context, binary string) (apischema.IndexerConfig, error) {
-	output, err := indexerCLIOutput(ctx, binary, "config")
-	if err != nil {
-		return apischema.IndexerConfig{}, indexerCLICommandError("read timer config", err, output)
-	}
-	decoder := json.NewDecoder(io.LimitReader(bytes.NewReader(output), maxIndexerConfigPayloadBytes))
-	var cfg apischema.IndexerConfig
-	if err := decoder.Decode(&cfg); err != nil {
-		return apischema.IndexerConfig{}, fmt.Errorf("decode indexer config: %w", err)
-	}
-	return cfg, nil
-}
-
-func indexerCLICommandError(action string, err error, output []byte) error {
-	message := strings.TrimSpace(string(output))
-	if message == "" {
-		return fmt.Errorf("%s: %w", action, err)
-	}
-	return fmt.Errorf("%s: %w: %s", action, err, message)
 }

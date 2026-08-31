@@ -1,5 +1,9 @@
 # Bridge Configuration Storage
 
+This document covers configuration owned by each authenticated bridge. The
+indexer's separate configuration and state are recorded in the
+[configuration and storage layout](./configuration-storage-layout.md).
+
 LinuxIO keeps each authenticated user's functional settings and UI preferences
 in separate bridge-owned stores. Configuration failures degrade through two
 persistent locations and finally to memory so an unavailable settings file does
@@ -17,7 +21,7 @@ The persistent artifacts are:
 
 | Artifact | Purpose |
 |----------|---------|
-| `.linuxio-config.yaml` | Functional settings used by the bridge. |
+| `.linuxio-config.yaml` | Per-user functional settings used by the bridge. |
 | `.linuxio-ui.yaml` | UI preferences produced by the frontend. |
 | `.linuxio-config.yaml.lock` | Core-config sidecar lock. |
 | `.linuxio-ui.yaml.lock` | UI-config sidecar lock. |

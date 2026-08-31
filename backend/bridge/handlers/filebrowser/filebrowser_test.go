@@ -18,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -57,10 +58,10 @@ func TestReadCallsPreserveCancellationIdentity(t *testing.T) {
 
 func TestDirSizeFetchesSizeAndCountsConcurrently(t *testing.T) {
 	detachedIndexerUpdates.Wait()
-	originalClient := indexerHTTPClient
+	originalClient := indexer.Client
 	started := make(chan string, 2)
 	release := make(chan struct{})
-	indexerHTTPClient = &http.Client{Transport: indexerRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+	indexer.Client = &http.Client{Transport: indexerRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		started <- req.URL.Path
 		<-release
 
@@ -86,7 +87,7 @@ func TestDirSizeFetchesSizeAndCountsConcurrently(t *testing.T) {
 		}, nil
 	})}
 	t.Cleanup(func() {
-		indexerHTTPClient = originalClient
+		indexer.Client = originalClient
 		setIndexerAvailability(true)
 	})
 

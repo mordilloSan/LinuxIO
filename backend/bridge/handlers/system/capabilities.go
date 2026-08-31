@@ -62,7 +62,6 @@ type InstallCommand struct {
 }
 
 const (
-	OptionalComponentIndexer    = "indexer"
 	OptionalComponentMonitoring = "monitoring"
 )
 
@@ -95,9 +94,6 @@ var capabilityRegistry = []CapabilitySpec{
 		LogName: "Indexer API",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(filebrowser.CheckIndexerAvailability(ctx))
-		},
-		Install: &InstallSpec{
-			OptionalComponent: OptionalComponentIndexer,
 		},
 	},
 	{

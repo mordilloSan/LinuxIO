@@ -1,6 +1,9 @@
 # Process & Systemd Architecture
 
-How LinuxIO is split into **four binaries** wired together by **systemd socket activation** under one umbrella **`linuxio.target`**. This is the deployment counterpart to the [Server Yamux Protocol](./server-yamux-protocol.md), which covers what flows *through* the webserver↔bridge connection once it exists.
+How LinuxIO's processes are wired together by **systemd socket activation**
+under one umbrella **`linuxio.target`**. This is the deployment counterpart to
+the [Server Yamux Protocol](./server-yamux-protocol.md), which covers what flows
+*through* the webserver↔bridge connection once it exists.
 
 ## Why Multiple Binaries
 
@@ -11,9 +14,10 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | Serve HTTP/WebSocket to the browser | `linuxio-webserver` | Big attack surface (TLS-less HTTP, untrusted input) → runs **unprivileged**, heavily sandboxed, never root. |
 | Authenticate (PAM) and launch a session | `linuxio-auth` | Needs **root** for PAM + privilege drop → kept tiny, written in C, audited, socket-activated per connection. |
 | Execute user-facing operations | `linuxio-bridge` | Runs with **exactly the logged-in user's** privileges (or root only when the user is privileged). One process per login. |
+| Maintain the filesystem index | `linuxio-indexer` | Needs broad read access but a narrow write boundary → isolated, sandboxed, and socket activated. |
 | Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. |
 
-## The Four Binaries
+## Binaries
 
 | Binary | Lang | Source | Runs as | Lifetime | Role |
 |--------|------|--------|---------|----------|------|
@@ -21,19 +25,47 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | `linuxio-webserver` | Go | `backend/webserver/` | `DynamicUser` + group `linuxio-bridge-socket` | long-running (socket-activated) | HTTP + WebSocket relay; **yamux client** |
 | `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM authentication, sudoers policy query, fork + supervise bridge |
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged) | per login session | **yamux server**; executes operations |
+| `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled or durable update operation | Docker update worker |
+| `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
 
-All four install to `/usr/local/bin/`. The CLI is a thin management front-end; the other three are the running **control plane**.
+These binaries install to `/usr/local/bin/`. The CLI is a thin management
+front-end; the remaining processes are independently constrained by their
+responsibilities.
+
+### Binary invocation map
+
+Only `linuxio` is an operator administration CLI. The other binaries expose
+metadata for diagnostics and narrowly scoped process modes owned by systemd or
+the auth/bridge launch protocol.
+
+| Binary | Supported interactive surface | Managed or private surface |
+|---|---|---|
+| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version [--self]`, `help`/`-h`/`--help` | None |
+| `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [-port N] [-verbose]`; used by `linuxio-webserver.service` |
+| `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
+| `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only |
+| `linuxio-docker-update` | `help`/`-h`/`--help` | `run [--config PATH]` for the managed timer and `run-operation --id ID` for transient durable work |
+| `linuxio-indexer` | `--help`, `-h`, `--version` | No-command daemon with `--config-file`/`--verbose`; private `--trigger-index` timer client and `--index-mode` scanner worker |
+
+The private indexer modes are an implementation protocol between the daemon and
+its systemd units, not alternate administration paths. Indexer status,
+configuration, and indexing remain available through LinuxIO and its HTTP APIs.
 
 ## Systemd Units
 
-Seven units under `linuxio.target`:
+Core units under `linuxio.target`:
 
 ```
-linuxio.target                       umbrella; Wants the two sockets; WantedBy=multi-user.target
+linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-webserver.socket          TCP :8090 (dual-stack) → activates webserver.service
 │  └─ linuxio-webserver.service      runs `linuxio-webserver run` (DynamicUser, sandboxed)
 ├─ linuxio-auth.socket               unix /run/linuxio/auth.sock (Accept=yes) → per-conn instance
 │  └─ linuxio-auth@.service          one instance per connection; root; forks+supervises a bridge
+├─ linuxio-indexer.socket            unix /run/linuxio/indexer.sock → activates linuxio-indexer.service
+├─ linuxio-indexer-tcp.socket        optional read-only TCP → activates linuxio-indexer.service
+│  └─ linuxio-indexer.service       runs the managed daemon; exits when idle
+├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
+│  └─ linuxio-indexer-index.service asks the daemon for a full index
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group
 └─ linuxio-issue.service             oneshot: updates the login issue/MOTD
 ```
@@ -44,6 +76,15 @@ Key unit facts (see `packaging/systemd/`):
 - **`linuxio-webserver.service`** — `ExecStart=/usr/local/bin/linuxio-webserver run`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
 - **`linuxio-auth.socket`** — `ListenStream=/run/linuxio/auth.sock`, `SocketUser=root`, `SocketGroup=linuxio-bridge-socket`, `SocketMode=0660`, **`Accept=yes`**, `MaxConnections=16`. The group+mode is the access-control boundary: only members of `linuxio-bridge-socket` (i.e. the webserver) may connect.
 - **`linuxio-auth@.service`** — template; one instance per accepted connection, with the connected socket as `StandardInput=socket`. `User=root`. `TasksMax=1024` / `MemoryMax=2G` bound the bridge it spawns, because **the bridge runs inside this instance's cgroup** (see below).
+- **`linuxio-indexer.socket` / `linuxio-indexer-tcp.socket` /
+  `linuxio-indexer.service`** — the `root:root`, mode-`0600` local API socket
+  and optional read-only TCP socket activate one database/scanner owner. A
+  privileged setting creates or removes the TCP unit. The daemon exits after
+  its idle timeout while systemd retains both enabled listeners. Indexer-backed
+  bridge routes are privileged, so the bridge reaches the Unix socket only when
+  the authenticated user is sudo-authorized and the bridge remains root. The
+  service writes only its canonical config and `/var/lib/linuxio/indexer`
+  state. See the [filesystem indexer guide](./indexer.md).
 - **`linuxio-bridge-socket-user.service`** — `Type=oneshot`, `DynamicUser=yes`, `User=linuxio-bridge-socket`, `Before=linuxio-auth.socket`. Its only job is to make the `linuxio-bridge-socket` user/group exist *before* the auth socket is created with that group ownership.
 
 ### The `linuxio-bridge-socket` group trick
@@ -61,10 +102,12 @@ So the (uid-less) webserver can `connect()` to the root-owned auth socket purely
 ### Boot — nothing is running yet
 
 ```
-linuxio.target → pulls in the two .socket units
+linuxio.target → pulls in the webserver, auth, and indexer sockets
   systemd binds  TCP :8090            (webserver.socket)
   systemd binds  /run/linuxio/auth.sock (auth.socket, root:linuxio-bridge-socket 0660)
-  No linuxio-webserver / linuxio-auth / linuxio-bridge process exists.
+  systemd binds  /run/linuxio/indexer.sock (linuxio-indexer.socket, root:root 0600)
+  systemd also retains linuxio-indexer-tcp.socket when listen_addr is enabled
+  No linuxio-webserver / linuxio-auth / linuxio-bridge / linuxio-indexer process exists.
 ```
 
 ### First request — webserver starts via socket activation
@@ -114,11 +157,12 @@ The webserver keeps its end of the socket it dialed; it is now wired straight to
 | Webserver ↔ auth socket | unix socket, `root:linuxio-bridge-socket 0660` | only the webserver's group may request a login |
 | Auth ↔ bridge | PAM authentication + root-side sudoers query + `fork`/privilege drop | bridge stays root only when sudoers permits the exact bridge command; otherwise it starts with the user's uid/gid |
 | Webserver ↔ bridge | inherited socket fd + yamux | webserver never gains the bridge's privileges; just relays bytes |
+| Bridge ↔ indexer socket | privileged route metadata + `root:root 0600` Unix socket | only a sudo-authorized root bridge reaches the machine-wide index |
 | Webserver → bridge launch | embedded SHA-256 pin (`version.BridgeSHA256`), checked by `validateBridgeHash` | a tampered/substituted bridge binary won't be spawned |
 
 ## Build & Install
 
-The `Makefile` produces the four artifacts:
+The `Makefile` produces six release artifacts:
 
 | Target | Output | Notes |
 |--------|--------|-------|
@@ -126,8 +170,10 @@ The `Makefile` produces the four artifacts:
 | `make build-backend` | `linuxio-webserver` | Go; embeds version + **bridge SHA-256** |
 | `make build-bridge` | `linuxio-bridge` | Go |
 | `make build-auth` | `linuxio-auth` | C; hardened flags (RELRO, PIE, FORTIFY, stack-clash, LTO), links `libpam` + `libsystemd` |
+| `make build-docker-update` | `linuxio-docker-update` | Go; transient Docker update worker |
+| `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 and dbstat enabled |
 
-`make build` / `make fastbuild` build all four; the internal `_build-binaries` step hashes the freshly built `linuxio-bridge` and passes it as `BRIDGE_SHA256` into the webserver build so the pin always matches. Install via `make localinstall` (`packaging/scripts/localinstall.sh`):
+`make build` / `make fastbuild` build all six; the internal `_build-binaries` step hashes the freshly built `linuxio-bridge` and passes it as `BRIDGE_SHA256` into the webserver build so the pin always matches. Install via `make localinstall` (`packaging/scripts/localinstall.sh`):
 
 - binaries → `/usr/local/bin/`
 - units → `/etc/systemd/system/linuxio*`
@@ -163,6 +209,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Webserver socket-activation adopt | `backend/webserver/cmd/activation.go`, `cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
+| Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Build | `Makefile` (`build-*`, `_build-binaries`) |
 
 ## See Also

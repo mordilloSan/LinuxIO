@@ -2,10 +2,17 @@ package indexer
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/systemdunit"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -16,9 +23,21 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func withTestIndexerClient(t *testing.T, fn roundTripFunc) {
 	t.Helper()
-	orig := indexerClient
-	indexerClient = &http.Client{Transport: fn}
-	t.Cleanup(func() { indexerClient = orig })
+	orig := Client
+	Client = &http.Client{Transport: fn}
+	t.Cleanup(func() { Client = orig })
+}
+
+func TestSetConfigRouteIsPrivileged(t *testing.T) {
+	for _, route := range Routes {
+		if route.Route == "indexer.set_config" {
+			if !route.Privileged {
+				t.Fatal("indexer.set_config must remain privileged")
+			}
+			return
+		}
+	}
+	t.Fatal("indexer.set_config route not registered")
 }
 
 func TestFetchConfigUsesUnixConfigEndpoint(t *testing.T) {
@@ -29,14 +48,14 @@ func TestFetchConfigUsesUnixConfigEndpoint(t *testing.T) {
 		if req.URL.Path != "/config" {
 			t.Fatalf("path = %s, want /config", req.URL.Path)
 		}
-		return jsonResponse(http.StatusOK, `{ "index_path": "/", "index_name": "root", "include_hidden": true, "fts_search": true, "integrity_check": "quick" }`, nil), nil
+		return jsonResponse(http.StatusOK, `{ "index_path": "/", "index_name": "root", "exclude_paths": ["/proc", "/dev"], "include_hidden": true, "fts_search": true, "integrity_check": "quick" }`, nil), nil
 	})
 
 	cfg, err := FetchConfig(context.Background())
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !cfg.IncludeHidden || !cfg.FTSSearch || cfg.IntegrityCheck != "quick" {
+	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !slices.Equal(cfg.ExcludePaths, []string{"/proc", "/dev"}) || !cfg.IncludeHidden || !cfg.FTSSearch || cfg.IntegrityCheck != "quick" {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
@@ -83,6 +102,72 @@ func TestUpdateConfigSendsTypedPatchAndReadsRestartHeader(t *testing.T) {
 	}
 	if cfg.IndexPath != "/data" || cfg.IncludeHidden || cfg.FTSSearch {
 		t.Fatalf("config = %#v", cfg)
+	}
+}
+
+func TestHandleSetConfigAppliesTCPListener(t *testing.T) {
+	withTestIndexerClient(t, func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{ "listen_addr": ":8080" }`, nil), nil
+	})
+	original := configureTCPListener
+	t.Cleanup(func() { configureTCPListener = original })
+	var got string
+	configureTCPListener = func(_ context.Context, listenAddr string) error {
+		got = listenAddr
+		return nil
+	}
+
+	listenAddr := ":8080"
+	if _, err := handleSetConfig(context.Background(), indexerapi.IndexerConfigPatch{ListenAddr: &listenAddr}); err != nil {
+		t.Fatalf("handleSetConfig: %v", err)
+	}
+	if got != listenAddr {
+		t.Fatalf("configured address = %q, want %q", got, listenAddr)
+	}
+}
+
+func TestConfigureTCPListenerWritesAndRemovesUnit(t *testing.T) {
+	originalPath := tcpSocketUnitPath
+	originalEnable := enableTCPSocketUnit
+	originalDisable := disableTCPSocketUnit
+	originalStop := stopTCPSocketUnit
+	originalRestart := restartTCPSocketUnit
+	originalReload := reloadTCPSystemd
+	t.Cleanup(func() {
+		tcpSocketUnitPath = originalPath
+		enableTCPSocketUnit = originalEnable
+		disableTCPSocketUnit = originalDisable
+		stopTCPSocketUnit = originalStop
+		restartTCPSocketUnit = originalRestart
+		reloadTCPSystemd = originalReload
+	})
+
+	tcpSocketUnitPath = filepath.Join(t.TempDir(), systemdunit.TCPSocketUnitName)
+	var calls []string
+	enableTCPSocketUnit = func(context.Context, string) error { calls = append(calls, "enable"); return nil }
+	disableTCPSocketUnit = func(context.Context, string) error { calls = append(calls, "disable"); return nil }
+	stopTCPSocketUnit = func(context.Context, string) error { calls = append(calls, "stop"); return nil }
+	restartTCPSocketUnit = func(context.Context, string) error { calls = append(calls, "restart"); return nil }
+	reloadTCPSystemd = func(context.Context) error { calls = append(calls, "reload"); return nil }
+
+	if err := ConfigureTCPListener(context.Background(), ":8080"); err != nil {
+		t.Fatalf("enable TCP listener: %v", err)
+	}
+	unit, err := os.ReadFile(tcpSocketUnitPath)
+	if err != nil {
+		t.Fatalf("read TCP socket unit: %v", err)
+	}
+	if !strings.Contains(string(unit), "ListenStream=:8080\n") {
+		t.Fatalf("unexpected TCP socket unit:\n%s", unit)
+	}
+	if err := ConfigureTCPListener(context.Background(), ""); err != nil {
+		t.Fatalf("disable TCP listener: %v", err)
+	}
+	if _, err := os.Stat(tcpSocketUnitPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("TCP socket unit still exists: %v", err)
+	}
+	if got := strings.Join(calls, ","); got != "enable,restart,disable,stop,reload" {
+		t.Fatalf("systemd calls = %q", got)
 	}
 }
 
@@ -158,6 +243,36 @@ func TestNormalizeConfigPatchRejectsNonCanonicalJSON(t *testing.T) {
 				t.Fatal("expected invalid JSON error")
 			}
 		})
+	}
+}
+
+func TestFetchConfigPreservesHTTPResponseError(t *testing.T) {
+	withTestIndexerClient(t, func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusConflict, "another update is active", nil), nil
+	})
+
+	_, err := FetchConfig(context.Background())
+	var responseErr *ResponseError
+	if !errors.As(err, &responseErr) {
+		t.Fatalf("error = %v, want ResponseError", err)
+	}
+	if responseErr.StatusCode != http.StatusConflict || responseErr.Route != "/config" {
+		t.Fatalf("response error = %#v", responseErr)
+	}
+}
+
+func TestUpdateConfigPreservesUnavailableResponseError(t *testing.T) {
+	withTestIndexerClient(t, func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusInternalServerError, "database unavailable", nil), nil
+	})
+
+	_, _, err := UpdateConfig(context.Background(), []byte(`{"fts_search":false}`))
+	var responseErr *ResponseError
+	if !errors.As(err, &responseErr) {
+		t.Fatalf("error = %v, want ResponseError", err)
+	}
+	if !errors.Is(err, ErrUnavailable) || responseErr.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("error = %v, response error = %#v", err, responseErr)
 	}
 }
 

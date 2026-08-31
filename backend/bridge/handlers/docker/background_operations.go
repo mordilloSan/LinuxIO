@@ -136,6 +136,9 @@ func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username s
 		msg := "command failed: " + err.Error()
 		return ComposeTaskResult{}, bridgetask.NewError(msg, 500)
 	}
+	if req.Action == "up" || req.Action == "restart" {
+		notifyIndexerForComposeFile(ctx, configFile)
+	}
 
 	result := ComposeTaskResult{Type: "complete", Message: "operation completed successfully"}
 	return result, nil

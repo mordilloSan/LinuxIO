@@ -204,3 +204,20 @@ func TestReadSSE_LargeDataLine(t *testing.T) {
 		t.Fatalf("unexpected data size: got=%d want=%d", len(events[0].Data), len(large))
 	}
 }
+
+func TestReadSSE_BoundsAccumulatedEventData(t *testing.T) {
+	var b strings.Builder
+	for range 6 {
+		b.WriteString("event:progress\ndata:")
+		b.WriteString(strings.Repeat("x", 200*1024))
+		b.WriteString("\n")
+	}
+
+	_, err := collectEvents(t, b.String())
+	if err == nil {
+		t.Fatal("expected accumulated event data size error")
+	}
+	if !strings.Contains(err.Error(), "event data exceeds") {
+		t.Fatalf("error = %v, want event data limit", err)
+	}
+}

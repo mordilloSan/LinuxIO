@@ -1,0 +1,9 @@
+index_path: /
+index_name: root
+exclude_paths:
+  - /proc
+  - /dev
+db_path: /var/lib/linuxio/indexer/indexer.db
+socket_path: /run/linuxio/indexer.sock
+interval: 1h0m0s
+idle_timeout: 2m0s

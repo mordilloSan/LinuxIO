@@ -5,6 +5,7 @@ import (
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 type AutoUpdateFrequency string
@@ -14,7 +15,6 @@ type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
 type ConfigStorageMode string
-type IndexerIntegrityCheck string
 type TaskState string
 type MonitoringHistoryResolution string
 type SensorReadingKind string
@@ -1093,37 +1093,15 @@ type InstallCapabilityResult struct {
 	Warning   *string `json:"warning,omitempty"`
 }
 
-type IndexerConfig struct {
-	DBAutoVacuum         string                `json:"db_auto_vacuum"`
-	DBBusyTimeout        string                `json:"db_busy_timeout"`
-	DBConnMaxIdleTime    string                `json:"db_conn_max_idle_time"`
-	DBJournalMode        string                `json:"db_journal_mode"`
-	DBMaxIdleConns       int                   `json:"db_max_idle_conns"`
-	DBMaxOpenConns       int                   `json:"db_max_open_conns"`
-	DBPath               string                `json:"db_path"`
-	DBSynchronous        string                `json:"db_synchronous"`
-	FreshIndex           bool                  `json:"fresh_index"`
-	FTSSearch            bool                  `json:"fts_search"`
-	IncludeHidden        bool                  `json:"include_hidden"`
-	IncludeNetworkMounts bool                  `json:"include_network_mounts"`
-	IntegrityCheck       IndexerIntegrityCheck `json:"integrity_check"`
-	IndexName            string                `json:"index_name"`
-	IndexPath            string                `json:"index_path"`
-	Interval             string                `json:"interval"`
-	KeepIndexes          int                   `json:"keep_indexes"`
-	ListenAddr           string                `json:"listen_addr"`
-	SocketPath           string                `json:"socket_path"`
-}
-
 type IndexerConfigSetResult struct {
-	Config          IndexerConfig `json:"config"`
-	RestartRequired bool          `json:"restart_required"`
+	Config          indexerapi.IndexerConfig `json:"config"`
+	RestartRequired bool                     `json:"restart_required"`
 }
 
 type IndexerTimerSetResult struct {
-	Config    IndexerConfig `json:"config"`
-	Interval  string        `json:"interval"`
-	TimerUnit string        `json:"timer_unit"`
+	Config    indexerapi.IndexerConfig `json:"config"`
+	Interval  string                   `json:"interval"`
+	TimerUnit string                   `json:"timer_unit"`
 }
 
 type IndexerDaemonStatus struct {

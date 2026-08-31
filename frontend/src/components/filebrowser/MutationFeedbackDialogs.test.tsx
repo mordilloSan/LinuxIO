@@ -194,3 +194,22 @@ describe("inline rename feedback", () => {
     },
   );
 });
+
+describe("file size feedback", () => {
+  it.each([
+    ["list", FileListRow],
+    ["card", FileCard],
+  ] as const)("shows an indexed zero-byte size in %s view", (_view, Item) => {
+    render(
+      <Item
+        isDirectory
+        name="empty"
+        onClick={vi.fn()}
+        size={0}
+        type="directory"
+      />,
+    );
+
+    expect(screen.getByText("0 Bytes")).toBeVisible();
+  });
+});

@@ -284,6 +284,7 @@ func ComposeUp(ctx context.Context, username string, store *config.UserStore, pr
 		return apischema.ComposeActionResult{}, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
 	}
 	slog.Info("compose up complete", "project", projectName, "config", configFile)
+	notifyIndexerForComposeFile(ctx, configFile)
 
 	return apischema.ComposeActionResult{Message: "Project started successfully", Output: collector.String()}, nil
 }
@@ -451,6 +452,7 @@ func deleteStackDirectory(ctx context.Context, result apischema.DeleteStackResul
 	}
 	result.DirDeleted = true
 	result.DeletedPath = workingDir
+	notifyIndexerForDeletedComposePath(ctx, workingDir)
 	slog.Info("deleted stack directory", "project", projectName, "path", workingDir)
 	return result, nil
 }
@@ -467,6 +469,7 @@ func deleteComposeFile(ctx context.Context, result apischema.DeleteStackResult, 
 	}
 	result.FilesDeleted = true
 	result.DeletedPath = configFile
+	notifyIndexerForDeletedComposePath(ctx, configFile)
 	slog.Info("deleted compose file", "project", projectName, "path", configFile)
 	return result, nil
 }
@@ -485,6 +488,7 @@ func ComposeRestart(ctx context.Context, username string, store *config.UserStor
 		return apischema.ComposeActionResult{}, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
 	}
 	slog.Info("compose restart complete", "project", projectName, "config", configFile)
+	notifyIndexerForComposeFile(ctx, configFile)
 
 	return apischema.ComposeActionResult{Message: "Project restarted successfully", Output: collector.String()}, nil
 }
@@ -1596,13 +1600,13 @@ func DeleteComposeStack(ctx context.Context, username string, store *config.User
 		}
 	}
 
-	deleteComposeFiles(projectName, project.ConfigFiles)
-	tryRemoveEmptyDir(project.WorkingDir, projectName)
+	deleteComposeFiles(ctx, projectName, project.ConfigFiles)
+	tryRemoveEmptyDir(ctx, project.WorkingDir, projectName)
 	slog.Info("compose stack deleted successfully", "project", projectName)
 	return nil
 }
 
-func deleteComposeFiles(projectName string, files []string) {
+func deleteComposeFiles(ctx context.Context, projectName string, files []string) {
 	for _, configFile := range files {
 		slog.Info("deleting compose file",
 			"project", projectName,
@@ -1616,11 +1620,13 @@ func deleteComposeFiles(projectName string, files []string) {
 					"file", configFile,
 					"error", err.Error())
 			}
+			continue
 		}
+		notifyIndexerForDeletedComposePath(ctx, configFile)
 	}
 }
 
-func tryRemoveEmptyDir(dir, projectName string) {
+func tryRemoveEmptyDir(ctx context.Context, dir, projectName string) {
 	if dir == "" {
 		return
 	}
@@ -1636,5 +1642,7 @@ func tryRemoveEmptyDir(dir, projectName string) {
 		slog.Warn("failed to remove working directory",
 			"dir", dir,
 			"error", err.Error())
+		return
 	}
+	notifyIndexerForDeletedComposePath(ctx, dir)
 }

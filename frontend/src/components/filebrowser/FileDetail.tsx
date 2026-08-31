@@ -153,6 +153,8 @@ const FileDetail = ({
     fileCount,
     folderCount,
     size,
+    error: directorySizeError,
+    isUnavailable: isDirectorySizeUnavailable,
     isLoading: isLoadingDirectoryDetails,
   } = useFileDirectorySize(
     resource?.path ?? "",
@@ -234,7 +236,10 @@ const FileDetail = ({
           detail={
             isDirectory && isLoadingDirectoryDetails
               ? "Indexing this directory"
-              : undefined
+              : isDirectory && isDirectorySizeUnavailable
+                ? (directorySizeError?.message ??
+                  "Cached size is unavailable while the indexer is offline")
+                : undefined
           }
           icon="mdi:harddisk"
           label={isDirectory ? "Total size" : "Size"}
@@ -243,7 +248,9 @@ const FileDetail = ({
               ? formatFileSize(resource.size)
               : isLoadingDirectoryDetails
                 ? spinner
-                : formatFileSize(size, 2, "—")
+                : isDirectorySizeUnavailable
+                  ? "Unavailable"
+                  : formatFileSize(size, 2, "—")
           }
         />
         {isDirectory && (

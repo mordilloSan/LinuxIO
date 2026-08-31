@@ -2,14 +2,8 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"strings"
 )
-
-const maxIndexerStatusPayloadBytes = 1 << 20
 
 // Status is the daemon status shape exposed by the indexer /status endpoint.
 type Status struct {
@@ -32,32 +26,18 @@ type Status struct {
 }
 
 func FetchStatus(ctx context.Context) (Status, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/status", nil)
+	raw, err := fetchDaemonStatus(ctx)
 	if err != nil {
-		return Status{}, fmt.Errorf("create indexer status request: %w", err)
+		return Status{}, err
 	}
-
-	resp, err := indexerClient.Do(req)
-	if err != nil {
-		return Status{}, fmt.Errorf("indexer status request: %w", err)
+	status := Status{
+		Status: raw.Status, NumDirs: raw.NumDirs, NumFiles: raw.NumFiles,
+		TotalSize: raw.TotalSize, FTSActive: raw.FTSActive, LastIndexed: raw.LastIndexed,
+		TotalIndexes: int64(raw.TotalIndexes), TotalEntries: raw.TotalEntries,
+		DatabaseSize: raw.DatabaseSize, WALSize: raw.WALSize, SHMSize: raw.SHMSize,
+		TotalOnDisk: raw.TotalOnDisk, ActiveOp: raw.ActiveOperation,
+		ActivePath: raw.ActivePath, Warning: raw.Warning,
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxIndexerStatusPayloadBytes))
-		message := strings.TrimSpace(string(body))
-		if message == "" {
-			message = resp.Status
-		}
-		return Status{}, fmt.Errorf("%s", message)
-	}
-
-	var status Status
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, maxIndexerStatusPayloadBytes))
-	if err := decoder.Decode(&status); err != nil {
-		return Status{}, fmt.Errorf("decode indexer status: %w", err)
-	}
-
 	status.Status = strings.ToLower(strings.TrimSpace(status.Status))
 	status.Running = status.Status == "running" || status.Status == "indexing"
 	return status, nil

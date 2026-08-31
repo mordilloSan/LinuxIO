@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,15 +35,15 @@ func requireFlusher(t *testing.T, w http.ResponseWriter) http.Flusher {
 // dials the given test server, restoring the original on cleanup.
 func overrideClient(t *testing.T, srv *httptest.Server) {
 	t.Helper()
-	orig := indexerClient
-	indexerClient = &http.Client{
+	orig := Client
+	Client = &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				return net.Dial("tcp", srv.Listener.Addr().String())
 			},
 		},
 	}
-	t.Cleanup(func() { indexerClient = orig })
+	t.Cleanup(func() { Client = orig })
 }
 
 // newTwoStepServer creates a test server that handles both indexer trigger
@@ -199,6 +201,25 @@ func TestHandleIndexerSSEEventRejectsNonIndexOperation(t *testing.T) {
 	}
 	if gotCode != http.StatusConflict {
 		t.Fatalf("error code = %d, want %d", gotCode, http.StatusConflict)
+	}
+}
+
+func TestHandleIndexerSSEEventRejectsMalformedPayloads(t *testing.T) {
+	for _, event := range []string{"started", "progress", "complete", "error"} {
+		t.Run(event, func(t *testing.T) {
+			_, err := handleIndexerSSEEvent(IndexerCallbacks{}, SSEEvent{Type: event, Data: "{"})
+			if err == nil {
+				t.Fatal("expected malformed payload error")
+			}
+			if !strings.Contains(err.Error(), event) {
+				t.Fatalf("error = %v, want event name", err)
+			}
+		})
+	}
+
+	_, err := handleIndexerSSEEvent(IndexerCallbacks{}, SSEEvent{Type: "error", Data: `{}`})
+	if err == nil || !strings.Contains(err.Error(), "missing message") {
+		t.Fatalf("error = %v, want missing message", err)
 	}
 }
 
@@ -388,6 +409,61 @@ func TestStreamIndexer_UnexpectedEOF(t *testing.T) {
 	}
 }
 
+func TestStreamIndexerReattachesScopedOperationAfterStreamEnds(t *testing.T) {
+	var streamRequests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/reindex":
+			if got := r.URL.Query().Get("path"); got != "/docs" {
+				t.Errorf("reindex path = %q, want /docs", got)
+			}
+			w.WriteHeader(http.StatusAccepted)
+		case r.Method == http.MethodGet && r.URL.Path == "/status" && r.URL.Query().Get("stream") == "true":
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			if streamRequests.Add(1) == 1 {
+				return
+			}
+			mustWrite(t, w, "event:complete\ndata:{\"status\":\"complete\",\"operation\":\"reindex\",\"path\":\"/docs\",\"files_indexed\":3}\n\n")
+		case r.Method == http.MethodGet && r.URL.Path == "/status":
+			w.Header().Set("Content-Type", "application/json")
+			mustWrite(t, w, `{"protocol_version":1,"status":"indexing","active_operation":"reindex","active_path":"/docs","num_files":2}`)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	overrideClient(t, srv)
+
+	var recovered IndexerProgress
+	var result IndexerResult
+	err := StreamIndexer(context.Background(), "/docs", IndexerCallbacks{
+		OnProgress: func(progress IndexerProgress) error {
+			if progress.Operation == "reindex" && progress.CurrentPath == "/docs" {
+				recovered = progress
+			}
+			return nil
+		},
+		OnResult: func(got IndexerResult) error {
+			result = got
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("StreamIndexer: %v", err)
+	}
+	if streamRequests.Load() != 2 {
+		t.Fatalf("stream requests = %d, want 2", streamRequests.Load())
+	}
+	if recovered.FilesIndexed != 2 || recovered.Operation != "reindex" || recovered.CurrentPath != "/docs" {
+		t.Fatalf("recovered progress = %#v", recovered)
+	}
+	if result.Path != "/docs" || result.Operation != "reindex" || result.FilesIndexed != 3 {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
 func TestStreamIndexerAttach_CompleteFlow(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("stream") != "true" {
@@ -424,7 +500,7 @@ func TestStreamIndexerAttach_CompleteFlow(t *testing.T) {
 		},
 	}
 
-	err := StreamIndexerAttach(context.Background(), cb)
+	err := StreamIndexerAttach(context.Background(), "/", cb)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -453,7 +529,7 @@ func TestStreamIndexerAttach_NoActiveOperation(t *testing.T) {
 		},
 	}
 
-	err := StreamIndexerAttach(context.Background(), cb)
+	err := StreamIndexerAttach(context.Background(), "/", cb)
 	if err == nil {
 		t.Fatal("expected error when no active operation")
 	}

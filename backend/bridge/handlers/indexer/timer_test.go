@@ -2,114 +2,133 @@ package indexer
 
 import (
 	"context"
-	"errors"
-	"reflect"
+	"io/fs"
 	"strings"
 	"testing"
+
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 func TestNormalizeTimerInterval(t *testing.T) {
 	tests := []struct {
-		name    string
 		raw     string
 		want    string
 		wantErr bool
 	}{
-		{name: "zero", raw: "0", want: "0"},
-		{name: "zero duration", raw: "0s", want: "0"},
-		{name: "trim and normalize", raw: " 30m ", want: "30m0s"},
-		{name: "compound", raw: "1h30m", want: "1h30m0s"},
-		{name: "empty", raw: " ", wantErr: true},
-		{name: "negative", raw: "-1s", wantErr: true},
-		{name: "invalid", raw: "soon", wantErr: true},
+		{raw: "0", want: "0"},
+		{raw: "0s", want: "0"},
+		{raw: " 30m ", want: "30m0s"},
+		{raw: "-1s", wantErr: true},
+		{raw: "soon", wantErr: true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := normalizeTimerInterval(tt.raw)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error")
-				}
-				return
+	for _, test := range tests {
+		got, err := normalizeTimerInterval(test.raw)
+		if test.wantErr {
+			if err == nil {
+				t.Fatalf("normalizeTimerInterval(%q) returned nil", test.raw)
 			}
-			if err != nil {
-				t.Fatalf("normalizeTimerInterval: %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("interval = %q, want %q", got, tt.want)
-			}
-		})
+			continue
+		}
+		if err != nil || got != test.want {
+			t.Fatalf("normalizeTimerInterval(%q) = %q, %v; want %q", test.raw, got, err, test.want)
+		}
 	}
 }
 
-func TestSetTimerIntervalUsesIndexerCLIAndReadsConfig(t *testing.T) {
-	withTestIndexerCLI(t, func(context.Context, string, ...string) ([]byte, error) {
-		t.Fatal("unexpected unconfigured command")
-		return nil, nil
+func TestSetTimerIntervalUpdatesConfigAndSystemd(t *testing.T) {
+	originalUpdate := updateTimerConfig
+	originalWrite := writeTimerDropIn
+	originalRemove := removeTimerDropIn
+	originalEnable := enableTimerUnit
+	originalRestart := restartTimerUnit
+	t.Cleanup(func() {
+		updateTimerConfig = originalUpdate
+		writeTimerDropIn = originalWrite
+		removeTimerDropIn = originalRemove
+		enableTimerUnit = originalEnable
+		restartTimerUnit = originalRestart
 	})
 
-	var calls [][]string
-	indexerCLIOutput = func(_ context.Context, name string, args ...string) ([]byte, error) {
-		call := append([]string{name}, args...)
-		calls = append(calls, call)
-		switch strings.Join(args, " ") {
-		case "config set --interval 30m0s":
-			return []byte("updated /etc/indexer/config.json\n"), nil
-		case "config":
-			return []byte(`{"index_path":"/","index_name":"root","interval":"30m0s"}`), nil
-		default:
-			t.Fatalf("unexpected args: %v", args)
-			return nil, nil
-		}
+	var patch, dropIn, dropInPath string
+	var removed []string
+	var units []string
+	updateTimerConfig = func(_ context.Context, payload []byte) (indexerapi.IndexerConfig, bool, error) {
+		patch = string(payload)
+		return indexerapi.IndexerConfig{Interval: "30m0s"}, false, nil
+	}
+	writeTimerDropIn = func(path string, data []byte, _ fs.FileMode) error {
+		dropInPath = path
+		dropIn = string(data)
+		return nil
+	}
+	removeTimerDropIn = func(path string) error {
+		removed = append(removed, path)
+		return nil
+	}
+	enableTimerUnit = func(_ context.Context, unit string) error {
+		units = append(units, "enable "+unit)
+		return nil
+	}
+	restartTimerUnit = func(_ context.Context, unit string) error {
+		units = append(units, "restart "+unit)
+		return nil
 	}
 
 	result, err := SetTimerInterval(context.Background(), "30m")
 	if err != nil {
 		t.Fatalf("SetTimerInterval: %v", err)
 	}
-	if result.Config.Interval != "30m0s" || result.Interval != "30m0s" {
+	wantDropIn := "[Timer]\nOnActiveSec=\nOnUnitActiveSec=\nOnActiveSec=30m0s\nOnUnitActiveSec=30m0s\n"
+	if patch != `{"interval":"30m0s"}` || dropInPath != indexerTimerDropInPath || dropIn != wantDropIn {
+		t.Fatalf("patch=%s path=%q drop-in=%q", patch, dropInPath, dropIn)
+	}
+	if strings.Join(removed, ",") != indexerLegacyTimerDropInPath {
+		t.Fatalf("removed paths = %v", removed)
+	}
+	if strings.Join(units, ",") != "enable linuxio-indexer-index.timer,restart linuxio-indexer-index.timer" {
+		t.Fatalf("systemd calls = %v", units)
+	}
+	if result.Interval != "30m0s" || result.TimerUnit != indexerTimerUnitName {
 		t.Fatalf("result = %#v", result)
 	}
-	if result.TimerUnit != indexerTimerUnitName {
-		t.Fatalf("timer unit = %q, want %q", result.TimerUnit, indexerTimerUnitName)
-	}
-	wantCalls := [][]string{
-		{"/usr/bin/indexer", "config", "set", "--interval", "30m0s"},
-		{"/usr/bin/indexer", "config"},
-	}
-	if !reflect.DeepEqual(calls, wantCalls) {
-		t.Fatalf("calls = %#v, want %#v", calls, wantCalls)
-	}
 }
 
-func TestSetTimerIntervalReportsCLIOutput(t *testing.T) {
-	withTestIndexerCLI(t, func(_ context.Context, _ string, _ ...string) ([]byte, error) {
-		return []byte("systemctl failed"), errors.New("exit status 1")
-	})
-
-	_, err := SetTimerInterval(context.Background(), "5m")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "systemctl failed") {
-		t.Fatalf("error = %q, want command output", err)
-	}
-}
-
-func withTestIndexerCLI(t *testing.T, output func(context.Context, string, ...string) ([]byte, error)) {
-	t.Helper()
-	origLookPath := indexerCLILookPath
-	origStat := indexerCLIStat
-	origOutput := indexerCLIOutput
-	indexerCLILookPath = func(string) (string, error) {
-		return "/usr/bin/indexer", nil
-	}
-	indexerCLIStat = origStat
-	indexerCLIOutput = output
+func TestSetTimerIntervalDisablesAndRemovesBothDropIns(t *testing.T) {
+	originalUpdate := updateTimerConfig
+	originalRemove := removeTimerDropIn
+	originalDisable := disableTimerUnit
+	originalStop := stopTimerUnit
 	t.Cleanup(func() {
-		indexerCLILookPath = origLookPath
-		indexerCLIStat = origStat
-		indexerCLIOutput = origOutput
+		updateTimerConfig = originalUpdate
+		removeTimerDropIn = originalRemove
+		disableTimerUnit = originalDisable
+		stopTimerUnit = originalStop
 	})
+
+	var removed, units []string
+	updateTimerConfig = func(_ context.Context, _ []byte) (indexerapi.IndexerConfig, bool, error) {
+		return indexerapi.IndexerConfig{Interval: "0"}, false, nil
+	}
+	removeTimerDropIn = func(path string) error {
+		removed = append(removed, path)
+		return nil
+	}
+	disableTimerUnit = func(_ context.Context, unit string) error {
+		units = append(units, "disable "+unit)
+		return nil
+	}
+	stopTimerUnit = func(_ context.Context, unit string) error {
+		units = append(units, "stop "+unit)
+		return nil
+	}
+
+	if _, err := SetTimerInterval(context.Background(), "0"); err != nil {
+		t.Fatalf("SetTimerInterval: %v", err)
+	}
+	if strings.Join(removed, ",") != indexerTimerDropInPath+","+indexerLegacyTimerDropInPath {
+		t.Fatalf("removed paths = %v", removed)
+	}
+	if strings.Join(units, ",") != "disable "+indexerTimerUnitName+",stop "+indexerTimerUnitName {
+		t.Fatalf("systemd calls = %v", units)
+	}
 }

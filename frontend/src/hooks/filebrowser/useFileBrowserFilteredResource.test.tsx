@@ -24,6 +24,7 @@ const directoryResource: FileResource = {
 
 function mockSearch(
   overrides: Partial<{
+    error: Error | null;
     isLoading: boolean;
     isUnavailable: boolean;
     results: SearchResult[];
@@ -106,6 +107,19 @@ describe("useFileBrowserFilteredResource", () => {
     expect(
       result.current.filteredResource?.items?.map((item) => item.name),
     ).toEqual(["Alpha.txt"]);
+  });
+
+  it("preserves the directory and exposes search errors instead of showing an empty result", () => {
+    const error = new Error("indexer request failed");
+    mockSearch({ error });
+
+    const { result } = renderFiltered({
+      resource: directoryResource,
+      searchQuery: "ALPHA",
+    });
+
+    expect(result.current.filteredResource).toBe(directoryResource);
+    expect(result.current.searchError).toBe(error);
   });
 
   it("maps remote search results into file items", () => {

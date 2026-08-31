@@ -150,10 +150,11 @@ export function useFileBrowserController(
     hasMultipleDetailTargets,
     listingQueryOptions,
   });
-  const { filteredResource, isSearchLoading } = useFileBrowserFilteredResource({
-    resource,
-    searchQuery,
-  });
+  const { filteredResource, searchError, isSearchLoading } =
+    useFileBrowserFilteredResource({
+      resource,
+      searchQuery,
+    });
 
   // Clipboard behaviors on top of the selection slice
   const { handleCopy, handleCut, handlePaste, selectedItems } =
@@ -608,10 +609,11 @@ export function useFileBrowserController(
   const contentData = useMemo(
     () => ({
       filteredResource,
+      searchError,
       isSearchLoading,
       resource,
     }),
-    [filteredResource, isSearchLoading, resource],
+    [filteredResource, searchError, isSearchLoading, resource],
   );
 
   const contentListing = useMemo(

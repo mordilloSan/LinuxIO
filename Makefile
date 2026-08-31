@@ -21,6 +21,7 @@ bridge_binary := $(bin_dir)/linuxio-bridge
 cli_binary := $(bin_dir)/linuxio
 auth_binary := $(bin_dir)/linuxio-auth
 docker_update_binary := $(bin_dir)/linuxio-docker-update
+indexer_binary := $(bin_dir)/linuxio-indexer
 
 # Quiet aliases capture complete target output in .cache/test-logs while
 # printing only a compact success/failure summary. Keep this list limited to
@@ -28,6 +29,8 @@ docker_update_binary := $(bin_dir)/linuxio-docker-update
 # quiet behavior when invoked through one of these aliases.
 quiet_targets := \
 	test \
+	check-actions \
+	check-systemd \
 	check-frontend \
 	check-backend \
 	lint \
@@ -43,6 +46,7 @@ quiet_targets := \
 	test-auth-protocol \
 	test-auth-pam \
 	test-installation-scripts \
+	test-indexer-systemd-integration \
 	test-updater \
 	test-docker-update-integration \
 	analyze \
@@ -532,7 +536,20 @@ update-deps: ensure-node ensure-go
 	@echo "✅ Go dependencies updated to latest!"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
-.PHONY: lint tsc lint-ci golint test check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
+.PHONY: lint tsc lint-ci golint test check-actions check-systemd check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
+check-actions:
+	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint is required" >&2; exit 1; }
+	@actionlint
+
+check-systemd:
+	@command -v systemd-analyze >/dev/null 2>&1 || { echo "❌ systemd-analyze is required" >&2; exit 1; }
+	@set -e; \
+	tmp="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	cp packaging/systemd/linuxio*.service packaging/systemd/linuxio*.socket packaging/systemd/linuxio*.target packaging/systemd/linuxio*.timer "$$tmp"; \
+	sed -Ei 's|^ExecStart=-?[^ ]+|ExecStart=/bin/true|' "$$tmp"/*.service; \
+	systemd-analyze verify --man=no "$$tmp"/linuxio*.service "$$tmp"/linuxio*.socket "$$tmp"/linuxio*.target "$$tmp"/linuxio*.timer
+
 lint: ensure-node setup
 	@$(MAKE) --no-print-directory lint-only
 
@@ -876,6 +893,9 @@ test-installation-scripts:
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running installer port and recovery-asset fixture tests...$(COLOR_RESET)"
 	@bash "$(packaging_scripts_dir)/tests/installer-port-fixtures.sh"
 
+test-indexer-systemd-integration:
+	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"
+
 test-docker-update-integration: ensure-go
 	@echo "🐳 Running native Docker update integration test..."
 	@cd "$(backend_dir)" && \
@@ -1166,7 +1186,7 @@ $(quiet_aliases):
 		exit "$$rc"; \
 	fi
 
-.PHONY: build-vite bundle-metrics compiler-coverage analyze build-leak-profile build-backend build-bridge check-c-build-deps build-auth build-cli build-docker-update
+.PHONY: build-vite bundle-metrics compiler-coverage analyze build-leak-profile build-backend build-bridge check-c-build-deps build-auth build-cli build-docker-update build-indexer
 build-vite:
 	@echo ""
 	@echo "🏗️  Building frontend..."
@@ -1285,7 +1305,7 @@ build-auth:
 	  echo " checksec:"; checksec --file="$(auth_binary)" || true; \
 	fi
 
-go_binary_targets := build-bridge build-cli build-docker-update
+go_binary_targets := build-bridge build-cli build-docker-update build-indexer
 
 build-bridge: go_binary_label := bridge
 build-bridge: go_binary_package := ./bridge
@@ -1302,6 +1322,13 @@ build-docker-update: go_binary_package := ./docker-update
 build-docker-update: go_binary_output := $(docker_update_binary)
 build-docker-update: go_binary_ldflags := -s -w
 
+build-indexer: go_binary_label := filesystem indexer
+build-indexer: go_binary_package := ./indexer
+build-indexer: go_binary_output := $(indexer_binary)
+build-indexer: go_binary_ldflags := -s -w -X '$(MODULE_PATH)/indexer/internal/version.Version=$(GIT_VERSION)' -X '$(MODULE_PATH)/indexer/internal/version.Commit=$(GIT_COMMIT_SHORT)' -X '$(MODULE_PATH)/indexer/internal/version.Date=$(BUILD_TIME)'
+build-indexer: go_binary_extra_env := CGO_ENABLED=1
+build-indexer: go_binary_tags := sqlite_dbstat sqlite_fts5
+
 $(go_binary_targets): $(GO_BUILD_PREREQ)
 
 $(go_binary_targets):
@@ -1309,10 +1336,10 @@ $(go_binary_targets):
 	@echo "🏗️  Building $(go_binary_label)..."
 	@mkdir -p "$(bin_dir)"
 	@cd "$(backend_dir)" && \
-	$(GO_CMD_ENV) GOAMD64=$(GOAMD64) GOFLAGS="-buildvcs=false" $(GO_BUILD_EXTRA_ENV) \
+	$(GO_CMD_ENV) GOAMD64=$(GOAMD64) GOFLAGS="-buildvcs=false" $(GO_BUILD_EXTRA_ENV) $(go_binary_extra_env) \
 	"$(GO_BIN)" build -trimpath \
 	-ldflags "$(go_binary_ldflags)" \
-	$(GO_BUILD_TAGS_FLAG) \
+	$(if $(strip $(GO_BUILD_TAGS) $(go_binary_tags)),-tags "$(strip $(GO_BUILD_TAGS) $(go_binary_tags))") \
 	-o "$(go_binary_output)" "$(go_binary_package)" && \
 	echo "✅ $(go_binary_label) built successfully!" && \
 	echo "   Path: $(go_binary_output)" && \
@@ -1383,6 +1410,7 @@ _build-binaries: ensure-go check-c-build-deps
 	@$(MAKE) --no-print-directory build-auth
 	@$(MAKE) --no-print-directory build-cli SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-docker-update SKIP_ENSURE_GO=1
+	@$(MAKE) --no-print-directory build-indexer SKIP_ENSURE_GO=1
 
 build: generate test build-vite build-bridge _build-binaries
 
@@ -1394,7 +1422,7 @@ generate: ensure-go ensure-node setup
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
 
 clean:
-	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" || true
+	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" "$(indexer_binary)" || true
 	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(frontend_dir)/tsconfig.tsbuildinfo" || true
 	@rm -rf "$(cache_dir)" "$(frontend_node_modules_dir)" || true
 	@find "$(backend_frontend_dir)" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
@@ -1445,6 +1473,8 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode         $(COLOR_RESET) Report unreachable Go functions (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make deadcode-only    $(COLOR_RESET) Scan backend for dead code without tool setup"
 	@$(PRINTC) "$(COLOR_GREEN)    make test             $(COLOR_RESET) Run lint + tsc + frontend tests + golint + backend tests + deadcode scan"
+	@$(PRINTC) "$(COLOR_GREEN)    make check-actions    $(COLOR_RESET) Validate GitHub Actions workflows"
+	@$(PRINTC) "$(COLOR_GREEN)    make check-systemd    $(COLOR_RESET) Validate LinuxIO systemd units"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-frontend   $(COLOR_RESET) Run frontend lint + typecheck + unit tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-backend    $(COLOR_RESET) Run backend lint + unit tests + deadcode scan"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend    $(COLOR_RESET) Run frontend unit tests only"
@@ -1457,6 +1487,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-installation-scripts$(COLOR_RESET) Run host-independent installer fixture tests"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-indexer-systemd-integration$(COLOR_RESET) Run the opt-in disposable-host indexer smoke test"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-docker-update-integration$(COLOR_RESET) Run the opt-in real Docker/Compose update test"
 	@$(PRINTC) "$(COLOR_GREEN)    make <target>-quiet   $(COLOR_RESET) Run a validation target with compact output and a saved full log"
@@ -1479,6 +1510,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-vite       $(COLOR_RESET) Build frontend static assets (Vite)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-indexer    $(COLOR_RESET) Build the filesystem indexer"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-leak-profile$(COLOR_RESET) Build DEBUG webserver+bridge with localhost pprof + goroutine leak profile"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"

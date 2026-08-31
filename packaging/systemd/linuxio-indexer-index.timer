@@ -1,0 +1,16 @@
+[Unit]
+Description=Periodically run the LinuxIO filesystem index
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+Requisite=linuxio-indexer.socket
+After=linuxio-indexer.socket
+
+[Timer]
+OnActiveSec=1h
+OnUnitActiveSec=1h
+AccuracySec=1min
+Persistent=true
+Unit=linuxio-indexer-index.service
+
+[Install]
+WantedBy=linuxio.target

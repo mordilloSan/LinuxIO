@@ -1,5 +1,8 @@
 # Completed or closed TODOs
 
+- [x] Documented indexer YAML/database/socket paths and bridge per-user
+  configuration storage. See
+  [Configuration and Storage Layout](../configuration-storage-layout.md).
 - [x] Completed resilient bridge configuration storage: independently persisted
   core and UI documents now fall back from the authenticated home to
   `/var/lib/linuxio/users/<uid>` and then memory; invalid core documents are

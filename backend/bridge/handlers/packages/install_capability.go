@@ -404,8 +404,6 @@ func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgetask.T
 
 func installOptionalComponent(ctx context.Context, task *bridgetask.Task, spec system.CapabilitySpec) error {
 	switch spec.Install.OptionalComponent {
-	case system.OptionalComponentIndexer:
-		return installIndexer(ctx, task)
 	case system.OptionalComponentMonitoring:
 		return installMonitoring(ctx, task)
 	default:

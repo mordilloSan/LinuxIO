@@ -3,8 +3,14 @@ package indexer
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"strings"
+)
+
+const (
+	maxSSELineBytes      = 256 * 1024
+	maxSSEEventDataBytes = 1 << 20
 )
 
 // SSEEvent represents a single Server-Sent Event.
@@ -34,15 +40,21 @@ func ReadSSE(ctx context.Context, r io.Reader) (<-chan SSEEvent, <-chan error) {
 
 		scanner := bufio.NewScanner(r)
 		// Increase token limit above bufio.Scanner's 64 KiB default for larger JSON lines.
-		scanner.Buffer(make([]byte, 64*1024), 256*1024)
+		scanner.Buffer(make([]byte, 64*1024), maxSSELineBytes)
 		var currentType string
 		var dataParts []string
+		var dataBytes int
 
 		for scanner.Scan() {
 			if ctx.Err() != nil {
 				return
 			}
-			currentType, dataParts = processSSELine(scanner.Text(), currentType, dataParts, events, ctx)
+			var err error
+			currentType, dataParts, dataBytes, err = processSSELine(scanner.Text(), currentType, dataParts, dataBytes, events, ctx)
+			if err != nil {
+				errCh <- err
+				return
+			}
 			if ctx.Err() != nil {
 				return
 			}
@@ -65,23 +77,32 @@ func ReadSSE(ctx context.Context, r io.Reader) (<-chan SSEEvent, <-chan error) {
 func processSSELine(
 	line, currentType string,
 	dataParts []string,
+	dataBytes int,
 	events chan<- SSEEvent,
 	ctx context.Context,
-) (string, []string) {
+) (string, []string, int, error) {
 	if strings.HasPrefix(line, ":") {
-		return currentType, dataParts
+		return currentType, dataParts, dataBytes, nil
 	}
 	if line == "" {
 		flushSSEEvent(currentType, dataParts, events, ctx)
-		return "", dataParts[:0]
+		return "", dataParts[:0], 0, nil
 	}
 	if after, ok := strings.CutPrefix(line, "event:"); ok {
-		return strings.TrimSpace(after), dataParts
+		return strings.TrimSpace(after), dataParts, dataBytes, nil
 	}
 	if after, ok := strings.CutPrefix(line, "data:"); ok {
-		return currentType, append(dataParts, strings.TrimSpace(after))
+		part := strings.TrimSpace(after)
+		nextBytes := dataBytes + len(part)
+		if len(dataParts) > 0 {
+			nextBytes++
+		}
+		if nextBytes > maxSSEEventDataBytes {
+			return currentType, dataParts, dataBytes, fmt.Errorf("SSE event data exceeds %d bytes", maxSSEEventDataBytes)
+		}
+		return currentType, append(dataParts, part), nextBytes, nil
 	}
-	return currentType, dataParts
+	return currentType, dataParts, dataBytes, nil
 }
 
 func flushSSEEvent(currentType string, dataParts []string, events chan<- SSEEvent, ctx context.Context) {

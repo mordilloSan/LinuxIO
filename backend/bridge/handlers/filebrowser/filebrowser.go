@@ -2,12 +2,9 @@ package filebrowser
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/user"
@@ -16,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -25,10 +21,12 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	indexer "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 var (
@@ -38,8 +36,8 @@ var (
 )
 
 const (
-	indexerServiceName = "indexer.service"
-	indexerSocketName  = "indexer.socket"
+	indexerServiceName = "linuxio-indexer.service"
+	indexerSocketName  = "linuxio-indexer.socket"
 )
 const (
 	deleteLocalPrescanMaxBytes           int64 = 512 * 1024 * 1024
@@ -680,35 +678,6 @@ func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, timestamp, ext))
 }
 
-// indexerHTTPClient is a shared HTTP client for communicating with the indexer daemon.
-// It uses a Unix socket connection and is reused across all indexer operations.
-var indexerHTTPClient = &http.Client{
-	Transport: &http.Transport{
-		// Dial over the unix domain socket exposed by the indexer systemd service.
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialer := &net.Dialer{
-				Timeout:   2 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}
-			return dialer.DialContext(ctx, "unix", "/var/run/indexer.sock")
-		},
-	},
-	Timeout: 10 * time.Second,
-}
-
-// indexerEntry represents a file or directory entry for the indexer API
-type indexerEntry struct {
-	Path    string `json:"path"`
-	AbsPath string `json:"absPath"`
-	Name    string `json:"name"`
-	Size    int64  `json:"size"`
-	IsDir   bool   `json:"isDir"`
-	Type    string `json:"type"`
-	Hidden  bool   `json:"hidden"`
-	ModUnix int64  `json:"modUnix"`
-	Inode   uint64 `json:"inode"`
-}
-
 // addToIndexer notifies the indexer daemon about a new or updated file/directory.
 // This updates the cached directory sizes in the indexer.
 func addToIndexer(ctx context.Context, path string, info os.FileInfo) error {
@@ -729,70 +698,16 @@ func addToIndexerWithSize(ctx context.Context, path string, info os.FileInfo, si
 		size = info.Size()
 	}
 
-	// Get inode number
-	var inode uint64
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-		inode = stat.Ino
-	}
-
-	entry := indexerEntry{
-		Path:    utils.NormalizeIndexerPath(path),
-		AbsPath: path,
-		Name:    filepath.Base(path),
-		Size:    size,
-		IsDir:   info.IsDir(),
-		Type: func() string {
-			if info.IsDir() {
-				return "directory"
-			}
-			return "file"
-		}(),
-		Hidden:  strings.HasPrefix(filepath.Base(path), "."),
-		ModUnix: info.ModTime().Unix(),
-		Inode:   inode,
-	}
-
-	body, err := json.Marshal(entry)
+	err := indexer.Add(ctx, indexer.EntryFromFileInfo(path, info, size))
 	if err != nil {
-		return fmt.Errorf("failed to marshal indexer entry: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/add", strings.NewReader(string(body)))
-	if err != nil {
-		return fmt.Errorf("failed to build indexer add request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		slog.
-			// Log but don't fail the operation if indexer is unavailable
-			Debug("indexer add request failed (indexer may be offline)", "error", err)
-		setIndexerAvailability(false)
-		return nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		slog.Debug("indexer add returned non-OK status", "status", resp.Status)
-		if resp.StatusCode >= http.StatusInternalServerError {
+		slog.Debug("indexer add request failed (indexer may be offline)", "error", err)
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
+			return fmt.Errorf("%w: indexer add request failed: %v", errIndexerUnavailable, err)
 		}
-		return nil
+		return fmt.Errorf("indexer add request failed: %w", err)
 	}
-
 	setIndexerAvailability(true)
-
-	// Log successful indexer update
-	fileType := "file"
-	if entry.IsDir {
-		fileType = "directory"
-	}
-	slog.Info("notified indexer of added/updated entry",
-		"path", entry.Path,
-		"type", fileType,
-		"size", entry.Size)
-
 	return nil
 }
 
@@ -840,33 +755,16 @@ func requestIndexerReindex(ctx context.Context, path string) error {
 	if !isIndexerEnabled() {
 		return nil
 	}
-
-	query := url.Values{}
-	query.Set("path", utils.NormalizeIndexerPath(path))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/reindex?"+query.Encode(), nil)
+	err := indexer.Reindex(ctx, path)
 	if err != nil {
-		return fmt.Errorf("failed to build indexer reindex request: %w", err)
-	}
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		setIndexerAvailability(false)
-		return fmt.Errorf("%w: indexer reindex request failed: %v", errIndexerUnavailable, err)
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusAccepted, http.StatusOK:
-		setIndexerAvailability(true)
-		return nil
-	case http.StatusConflict:
-		return nil
-	default:
-		if resp.StatusCode >= http.StatusInternalServerError {
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
+			return fmt.Errorf("%w: indexer reindex request failed: %v", errIndexerUnavailable, err)
 		}
-		return fmt.Errorf("indexer reindex returned status %s", resp.Status)
+		return fmt.Errorf("indexer reindex request failed: %w", err)
 	}
+	setIndexerAvailability(true)
+	return nil
 }
 
 // deleteFromIndexer notifies the indexer daemon about a deleted file/directory.
@@ -875,39 +773,16 @@ func deleteFromIndexer(ctx context.Context, path string) error {
 	if !isIndexerEnabled() {
 		return nil
 	}
-
-	normPath := utils.NormalizeIndexerPath(path)
-	deleteURL := fmt.Sprintf("http://unix/delete?path=%s", url.QueryEscape(normPath))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, deleteURL, nil)
+	err := indexer.Delete(ctx, path)
 	if err != nil {
-		return fmt.Errorf("failed to build indexer delete request: %w", err)
-	}
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		slog.
-			// Log but don't fail the operation if indexer is unavailable
-			Debug("indexer delete request failed (indexer may be offline)", "error", err)
-		setIndexerAvailability(false)
-		return nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		slog.Debug("indexer delete returned non-OK status", "status", resp.Status)
-		if resp.StatusCode >= http.StatusInternalServerError {
+		slog.Debug("indexer delete request failed (indexer may be offline)", "error", err)
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
+			return fmt.Errorf("%w: indexer delete request failed: %v", errIndexerUnavailable, err)
 		}
-		return nil
+		return fmt.Errorf("indexer delete request failed: %w", err)
 	}
-
 	setIndexerAvailability(true)
-	slog.
-
-		// Log successful indexer deletion
-		Info("notified indexer of deleted entry", "path", normPath)
-
 	return nil
 }
 
@@ -999,17 +874,7 @@ func indexerUnitStateError(label, activeState, subState string) error {
 	return fmt.Errorf("indexer %s not active: %s", label, activeState)
 }
 
-type indexerDirSizeResponse struct {
-	Path  string `json:"path"`
-	Size  int64  `json:"size"`
-	Bytes int64  `json:"bytes"`
-}
-
-type indexerEntryCountResponse struct {
-	Path  string `json:"path"`
-	Files int64  `json:"files"`
-	Dirs  int64  `json:"dirs"`
-}
+type indexerEntryCountResponse = indexerapi.EntryCountResponse
 
 type indexerStatusResponse struct {
 	Running      bool   `json:"running"`
@@ -1024,124 +889,45 @@ type indexerStatusResponse struct {
 
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
 func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
-	normPath := utils.NormalizeIndexerPath(path)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/dirsize", nil)
+	payload, err := indexer.DirSize(ctx, path)
 	if err != nil {
-		return 0, fmt.Errorf("failed to build indexer request: %w", err)
-	}
-	q := req.URL.Query()
-	q.Set("path", normPath)
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		setIndexerAvailability(false)
-		return 0, fmt.Errorf("%w: indexer dirsize request failed: %v", errIndexerUnavailable, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= http.StatusInternalServerError {
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
-			return 0, fmt.Errorf("%w: indexer dirsize returned status %s", errIndexerUnavailable, resp.Status)
+			return 0, fmt.Errorf("%w: indexer dirsize request failed: %v", errIndexerUnavailable, err)
 		}
-		return 0, fmt.Errorf("indexer dirsize returned status %s", resp.Status)
+		return 0, err
 	}
-
-	var payload indexerDirSizeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return 0, fmt.Errorf("decode indexer dirsize response: %w", err)
-	}
-
 	setIndexerAvailability(true)
-
-	if payload.Size != 0 {
-		return payload.Size, nil
-	}
-	return payload.Bytes, nil
+	return payload.Size, nil
 }
 
 // fetchEntryCountsFromIndexer queries the indexer daemon for cached recursive entry counts.
 func fetchEntryCountsFromIndexer(ctx context.Context, path string) (indexerEntryCountResponse, error) {
-	normPath := utils.NormalizeIndexerPath(path)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/entrycount", nil)
+	payload, err := indexer.EntryCount(ctx, path)
 	if err != nil {
-		return indexerEntryCountResponse{}, fmt.Errorf("failed to build indexer entrycount request: %w", err)
-	}
-	q := req.URL.Query()
-	q.Set("path", normPath)
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		setIndexerAvailability(false)
-		return indexerEntryCountResponse{}, fmt.Errorf("%w: indexer entrycount request failed: %v", errIndexerUnavailable, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= http.StatusInternalServerError {
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
-			return indexerEntryCountResponse{}, fmt.Errorf("%w: indexer entrycount returned status %s", errIndexerUnavailable, resp.Status)
+			return indexerEntryCountResponse{}, fmt.Errorf("%w: indexer entrycount request failed: %v", errIndexerUnavailable, err)
 		}
-		return indexerEntryCountResponse{}, fmt.Errorf("indexer entrycount returned status %s", resp.Status)
+		return indexerEntryCountResponse{}, err
 	}
-
-	var payload indexerEntryCountResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return indexerEntryCountResponse{}, fmt.Errorf("decode indexer entrycount response: %w", err)
-	}
-
 	setIndexerAvailability(true)
 	return payload, nil
 }
 
 func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/status", nil)
+	raw, err := indexer.FetchStatus(ctx)
 	if err != nil {
-		return indexerStatusResponse{}, fmt.Errorf("failed to build indexer status request: %w", err)
-	}
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		setIndexerAvailability(false)
-		return indexerStatusResponse{}, fmt.Errorf("%w: indexer status request failed: %v", errIndexerUnavailable, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= http.StatusInternalServerError {
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
-			return indexerStatusResponse{}, fmt.Errorf("%w: indexer status returned status %s", errIndexerUnavailable, resp.Status)
+			return indexerStatusResponse{}, fmt.Errorf("%w: indexer status request failed: %v", errIndexerUnavailable, err)
 		}
-		return indexerStatusResponse{}, fmt.Errorf("indexer status returned status %s", resp.Status)
+		return indexerStatusResponse{}, err
 	}
-
-	var raw struct {
-		Status      string `json:"status"`
-		FTSActive   bool   `json:"fts_active"`
-		NumDirs     int64  `json:"num_dirs"`
-		NumFiles    int64  `json:"num_files"`
-		TotalSize   int64  `json:"total_size"`
-		LastIndexed string `json:"last_indexed"`
-		Warning     string `json:"warning,omitempty"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return indexerStatusResponse{}, fmt.Errorf("decode indexer status response: %w", err)
-	}
-
 	setIndexerAvailability(true)
-
-	status := strings.ToLower(strings.TrimSpace(raw.Status))
-	if status == "" {
-		status = "unknown"
-	}
-
 	return indexerStatusResponse{
-		Running:      status == "running" || status == "indexing",
-		Status:       status,
+		Running:      raw.Running,
+		Status:       raw.Status,
 		FTSActive:    raw.FTSActive,
 		FilesIndexed: raw.NumFiles,
 		DirsIndexed:  raw.NumDirs,
@@ -1217,14 +1003,7 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 	}, nil
 }
 
-// indexerSubfolder is the canonical response shape from the indexer. Keep this
-// private so SDK/daemon compatibility fields cannot leak into our API contract.
-type indexerSubfolder struct {
-	Path    string `json:"path"`
-	Name    string `json:"name"`
-	Size    int64  `json:"size"`
-	ModTime string `json:"mod_time"`
-}
+type indexerSubfolder = indexerapi.SubfolderResult
 
 // subfolders gets direct child folders with their pre-calculated sizes.
 func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.SubfoldersResponse, error) {
@@ -1266,38 +1045,15 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 
 // fetchSubfoldersFromIndexer queries the indexer daemon for direct child folders with sizes
 func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.SubfolderData, error) {
-	normPath := utils.NormalizeIndexerPath(path)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/subfolders", nil)
+	folders, err := indexer.Subfolders(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build indexer request: %w", err)
-	}
-	q := req.URL.Query()
-	q.Set("path", normPath)
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		setIndexerAvailability(false)
-		return nil, fmt.Errorf("%w: indexer subfolders request failed: %v", errIndexerUnavailable, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= http.StatusInternalServerError {
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
-			return nil, fmt.Errorf("%w: indexer subfolders returned status %s", errIndexerUnavailable, resp.Status)
+			return nil, fmt.Errorf("%w: indexer subfolders request failed: %v", errIndexerUnavailable, err)
 		}
-		return nil, fmt.Errorf("indexer subfolders returned status %s", resp.Status)
+		return nil, err
 	}
-
-	var folders []indexerSubfolder
-	if err := json.NewDecoder(resp.Body).Decode(&folders); err != nil {
-		return nil, fmt.Errorf("decode indexer subfolders response: %w", err)
-	}
-
 	setIndexerAvailability(true)
-
 	return subfoldersFromIndexer(folders), nil
 }
 
@@ -1343,23 +1099,7 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischem
 	return searchResponseFromIndexer(req.Query, results), nil
 }
 
-// indexerSearchResult is the private compatibility decoder for indexer search
-// responses. Legacy timestamp aliases stop here; all public results emit only
-// mod_time.
-type indexerSearchResult struct {
-	Inode      uint64  `json:"inode"`
-	IsDir      *bool   `json:"isDir,omitempty"`
-	ModTime    *string `json:"mod_time,omitempty"`
-	ModTimeOld *string `json:"modTime,omitempty"`
-	Modified   *string `json:"modified,omitempty"`
-	Name       string  `json:"name"`
-	Path       string  `json:"path"`
-	Size       int64   `json:"size"`
-	TotalDirs  *int64  `json:"total_dirs,omitempty"`
-	TotalFiles *int64  `json:"total_files,omitempty"`
-	TotalSize  *int64  `json:"total_size,omitempty"`
-	Type       string  `json:"type"`
-}
+type indexerSearchResult = indexerapi.EntryResult
 
 func searchResponseFromIndexer(_ string, results []indexerSearchResult) apischema.SearchResponse {
 	response := apischema.SearchResponse{Results: make([]apischema.SearchResult, 0, len(results))}
@@ -1370,8 +1110,8 @@ func searchResponseFromIndexer(_ string, results []indexerSearchResult) apischem
 }
 
 func searchResultFromIndexer(result indexerSearchResult) apischema.SearchResult {
-	typeName, isDir := normalizeIndexerSearchType(result.Type, result.IsDir, result.Path)
-	isRegularFile := !isDir && typeName == "file"
+	isDir := result.Type == "folder"
+	isRegularFile := result.Type == "file"
 	var canOpenAsText *bool
 	if isRegularFile {
 		canOpen := result.Size < services.MaxTextFileBytes
@@ -1379,83 +1119,22 @@ func searchResultFromIndexer(result indexerSearchResult) apischema.SearchResult 
 	}
 	return apischema.SearchResult{
 		IsDir: isDir, IsRegularFile: isRegularFile,
-		ModTime: indexerModTime(result), Name: result.Name, Path: result.Path, Size: result.Size,
+		ModTime: formatResourceModTime(result.ModTime), Name: result.Name, Path: result.Path, Size: result.Size,
 		CanOpenAsText: canOpenAsText,
 	}
 }
 
-func indexerModTime(result indexerSearchResult) string {
-	if result.ModTime != nil {
-		return *result.ModTime
-	}
-	if result.ModTimeOld != nil {
-		return *result.ModTimeOld
-	}
-	if result.Modified != nil {
-		return *result.Modified
-	}
-	return ""
-}
-
-func normalizeIndexerSearchType(typeName string, legacyIsDir *bool, path string) (string, bool) {
-	switch strings.ToLower(typeName) {
-	case "directory", "dir", "folder":
-		return "directory", true
-	case "file":
-		return "file", false
-	}
-
-	isDir := legacyIsDir != nil && *legacyIsDir
-	if legacyIsDir == nil {
-		isDir = strings.HasSuffix(path, "/")
-	}
-	if typeName == "" {
-		if isDir {
-			return "directory", true
-		}
-		return "file", false
-	}
-	return typeName, isDir
-}
-
 // searchInIndexer queries the indexer for files matching the search term
 func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]indexerSearchResult, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/search", nil)
+	results, err := indexer.Search(ctx, query, limit, basePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build indexer search request: %w", err)
-	}
-
-	q := req.URL.Query()
-	q.Set("q", query)
-	q.Set("limit", limit)
-	if basePath != "/" {
-		q.Set("base", basePath)
-	}
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := indexerHTTPClient.Do(req)
-	if err != nil {
-		setIndexerAvailability(false)
-		return nil, fmt.Errorf("%w: indexer search request failed: %v", errIndexerUnavailable, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode >= http.StatusInternalServerError {
+		if errors.Is(err, indexer.ErrUnavailable) {
 			setIndexerAvailability(false)
-			return nil, fmt.Errorf("%w: indexer search returned status %s", errIndexerUnavailable, resp.Status)
+			return nil, fmt.Errorf("%w: indexer search request failed: %v", errIndexerUnavailable, err)
 		}
-		return nil, fmt.Errorf("indexer search returned status %s", resp.Status)
+		return nil, err
 	}
-
-	// Indexer returns array directly, not wrapped in object
-	var results []indexerSearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return nil, fmt.Errorf("decode indexer search response: %w", err)
-	}
-
 	setIndexerAvailability(true)
-
 	if results == nil {
 		return []indexerSearchResult{}, nil
 	}

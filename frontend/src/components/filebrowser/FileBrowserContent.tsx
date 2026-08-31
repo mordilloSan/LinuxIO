@@ -10,6 +10,8 @@ import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import SortBar from "@/components/filebrowser/SortBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
+import type { CapabilityStatus } from "@/hooks/useCapabilities";
 import type {
   FileItem,
   FileResource,
@@ -33,7 +35,7 @@ export interface FileBrowserSurfaceProps {
 export interface FileBrowserChromeProps {
   editingPath: string | null;
   indexerEnabled: boolean;
-  indexerStatus: string;
+  indexerStatus: CapabilityStatus;
   isSavingFile: boolean;
   normalizedPath: string;
   onOpenDirectory: (path: string) => void;
@@ -49,6 +51,7 @@ export interface FileBrowserChromeProps {
 
 export interface FileBrowserDataProps {
   filteredResource?: FileResource;
+  searchError?: Error | null;
   isSearchLoading: boolean;
   resource?: FileResource;
 }
@@ -160,8 +163,16 @@ const FileBrowserContent = ({
         >
           {data.isSearchLoading && <ComponentLoader />}
 
+          {!chrome.editingPath && data.searchError && (
+            <AppAlert severity="error">
+              <AppAlertTitle>Search unavailable</AppAlertTitle>
+              {data.searchError.message}
+            </AppAlert>
+          )}
+
           {!chrome.editingPath &&
             !data.isSearchLoading &&
+            !data.searchError &&
             data.filteredResource &&
             data.filteredResource.type === "directory" && (
               <DirectoryListing

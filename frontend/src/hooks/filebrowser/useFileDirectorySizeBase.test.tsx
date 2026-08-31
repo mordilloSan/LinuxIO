@@ -54,16 +54,11 @@ describe("directory size query helpers", () => {
   });
 
   it("reports unavailable state when data cannot be served", () => {
-    expect(isDirectorySizeUnavailable(null, null, true, false)).toBe(true);
-    expect(isDirectorySizeUnavailable(null, { size: 10 }, true, false)).toBe(
+    expect(isDirectorySizeUnavailable(null, true, false)).toBe(true);
+    expect(isDirectorySizeUnavailable(new Error("boom"), false, false)).toBe(
       true,
     );
-    expect(
-      isDirectorySizeUnavailable(new Error("boom"), null, false, false),
-    ).toBe(true);
-    expect(
-      isDirectorySizeUnavailable(new Error("boom"), { size: 10 }, false, false),
-    ).toBe(false);
+    expect(isDirectorySizeUnavailable(null, false, false)).toBe(false);
   });
 
   it("enables queries only for eligible paths and available indexer capability", () => {

@@ -108,7 +108,7 @@ const MultiFileItemRow = ({
       return <span style={{ animation: "detailGlow 2.5s infinite" }}>—</span>;
     }
     if (item.error) {
-      return "—";
+      return "Unavailable";
     }
     if (isDir && item.aggregateSize !== undefined) {
       return formatFileSize(item.aggregateSize);

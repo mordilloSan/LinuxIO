@@ -31,6 +31,7 @@ import type {
 } from "@/hooks/filebrowser/useFileConflicts";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
+import type { CapabilityStatus } from "@/hooks/useCapabilities";
 import type {
   FileResource,
   MultiStatsItem,
@@ -41,7 +42,7 @@ import type {
 const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
 
 interface IndexerUnavailableAlertProps {
-  status: string;
+  status: CapabilityStatus;
 }
 
 export const IndexerUnavailableAlert = ({
@@ -68,8 +69,8 @@ export const IndexerUnavailableAlert = ({
     ) : (
       <AppTypography variant="body2">
         Directory size calculations and file search are disabled. Start the{" "}
-        <strong>indexer.target</strong> or <strong>indexer.socket</strong> to
-        enable these features.
+        <strong>linuxio.target</strong> or{" "}
+        <strong>linuxio-indexer.socket</strong> to enable these features.
       </AppTypography>
     )}
   </AppAlert>

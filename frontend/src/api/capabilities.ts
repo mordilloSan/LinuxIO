@@ -99,7 +99,6 @@ export const CAPABILITIES = [
     icon: "mdi:magnify-scan",
     reasonUnknown: "Indexer availability is still being checked.",
     reasonUnavailable: "Indexer API is unavailable.",
-    installable: { requiresPackageKit: false },
   },
   {
     wire: "monitoring",

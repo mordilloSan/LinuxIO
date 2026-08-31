@@ -1,3 +1,4 @@
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import FileBrowserContent, {
@@ -32,7 +33,7 @@ const contentProps: FileBrowserContentProps = {
   chrome: {
     editingPath: null,
     indexerEnabled: true,
-    indexerStatus: "",
+    indexerStatus: "unavailable",
     isSavingFile: false,
     normalizedPath: "/",
     onOpenDirectory: vi.fn(),
@@ -100,5 +101,21 @@ describe("FileBrowserContent render boundaries", () => {
     );
 
     expect(headerSearchRender).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports search failures instead of rendering an empty listing", () => {
+    render(
+      <FileBrowserContent
+        {...contentProps}
+        chrome={{ ...contentProps.chrome, searchQuery: "alpha" }}
+        data={{
+          ...contentProps.data,
+          searchError: new Error("indexer request failed"),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Search unavailable")).toBeInTheDocument();
+    expect(screen.getByText("indexer request failed")).toBeInTheDocument();
   });
 });
