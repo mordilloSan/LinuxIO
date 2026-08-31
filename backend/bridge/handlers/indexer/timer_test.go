@@ -69,7 +69,7 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetTimerInterval: %v", err)
 	}
-	wantDropIn := "[Timer]\nOnActiveSec=\nOnUnitActiveSec=\nOnActiveSec=30m0s\nOnUnitActiveSec=30m0s\n"
+	wantDropIn := "[Timer]\nOnUnitActiveSec=\nOnUnitActiveSec=30m0s\n"
 	if dropInPath != indexerTimerDropInPath || dropIn != wantDropIn {
 		t.Fatalf("path=%q drop-in=%q", dropInPath, dropIn)
 	}

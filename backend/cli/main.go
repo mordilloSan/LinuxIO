@@ -79,7 +79,7 @@ Usage: linuxio <command> [options]
 
 Commands:
   status      Show status of all LinuxIO services
-  logs        Tail logs [webserver|bridge|auth] [lines] (default: all, 100)
+  logs        Tail logs [webserver|bridge|auth|indexer] [lines] (default: all, 100)
   start       Start LinuxIO services
   stop        Stop LinuxIO services
   restart     Restart LinuxIO control plane [--full]
@@ -136,6 +136,14 @@ func showVersion(args []string) {
 		fmt.Println("linuxio-auth: not found or error")
 	}
 
+	// Check linuxio-indexer
+	out, err = versionExecCommand("linuxio-indexer", "--version").CombinedOutput()
+	if err == nil {
+		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+		fmt.Printf("  %s\n", line)
+	} else {
+		fmt.Println("  linuxio-indexer: not found or error")
+	}
 }
 
 func runStatus(parent context.Context) int {
@@ -294,6 +302,8 @@ func parseLogsArgs(args []string) (string, int) {
 			mode = "bridge"
 		case "auth":
 			mode = "auth"
+		case "indexer", "index":
+			mode = "indexer"
 		}
 	}
 	return mode, lines
@@ -304,6 +314,7 @@ func journalTermsForMode(mode string) []string {
 		"SYSLOG_IDENTIFIER=linuxio-webserver",
 		"SYSLOG_IDENTIFIER=linuxio-bridge",
 		"SYSLOG_IDENTIFIER=linuxio-auth",
+		"SYSLOG_IDENTIFIER=linuxio-indexer",
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
 		"_SYSTEMD_UNIT=linuxio-webserver.socket",
@@ -311,6 +322,10 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-auth.socket",
 		"_SYSTEMD_UNIT=linuxio-auth@.service",
 		"_SYSTEMD_UNIT=linuxio-issue.service",
+		"_SYSTEMD_UNIT=linuxio-indexer.service",
+		"_SYSTEMD_UNIT=linuxio-indexer.socket",
+		"_SYSTEMD_UNIT=linuxio-indexer-index.service",
+		"_SYSTEMD_UNIT=linuxio-indexer-index.timer",
 	}
 
 	switch mode {
@@ -327,6 +342,14 @@ func journalTermsForMode(mode string) []string {
 			"SYSLOG_IDENTIFIER=linuxio-auth",
 			"_SYSTEMD_UNIT=linuxio-auth.socket",
 			"_SYSTEMD_UNIT=linuxio-auth@.service",
+		}
+	case "indexer":
+		journalTerms = []string{
+			"SYSLOG_IDENTIFIER=linuxio-indexer",
+			"_SYSTEMD_UNIT=linuxio-indexer.service",
+			"_SYSTEMD_UNIT=linuxio-indexer.socket",
+			"_SYSTEMD_UNIT=linuxio-indexer-index.service",
+			"_SYSTEMD_UNIT=linuxio-indexer-index.timer",
 		}
 	}
 	return journalTerms
@@ -624,11 +647,25 @@ func restartTargets(args []string) ([]string, string, error) {
 	return nil, "", fmt.Errorf("unknown restart option: %s", strings.Join(args, " "))
 }
 
-const verboseDropinPath = "/etc/systemd/system/linuxio-webserver.service.d/verbose.conf"
-const verboseDropinContent = `[Service]
+var verboseDropins = []struct {
+	path    string
+	content string
+}{
+	{
+		path: "/etc/systemd/system/linuxio-webserver.service.d/verbose.conf",
+		content: `[Service]
 ExecStart=
 ExecStart=/usr/local/bin/linuxio-webserver run -verbose
-`
+`,
+	},
+	{
+		path: "/etc/systemd/system/linuxio-indexer.service.d/verbose.conf",
+		content: `[Service]
+ExecStart=
+ExecStart=/usr/local/bin/linuxio-indexer --config-file /etc/linuxio/indexer/config.yaml --verbose
+`,
+	},
+}
 
 func runVerbose(ctx context.Context, args []string) int {
 	if len(args) == 0 {
@@ -654,25 +691,22 @@ func runVerbose(ctx context.Context, args []string) int {
 }
 
 func enableVerbose(parent context.Context) int {
-	// Check if already enabled
-	if _, err := os.Stat(verboseDropinPath); err == nil {
+	if verboseEnabled() {
 		fmt.Println("Verbose mode is already enabled")
 		return 0
 	}
 
-	// Create drop-in directory
-	dropinDir := filepath.Dir(verboseDropinPath)
-	if err := os.MkdirAll(dropinDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create drop-in directory: %v\n", err)
-		fmt.Fprintln(os.Stderr, "This command requires sudo")
-		return 1
-	}
-
-	// Write drop-in file
-	if err := os.WriteFile(verboseDropinPath, []byte(verboseDropinContent), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write drop-in file: %v\n", err)
-		fmt.Fprintln(os.Stderr, "This command requires sudo")
-		return 1
+	for _, dropin := range verboseDropins {
+		if err := os.MkdirAll(filepath.Dir(dropin.path), 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create drop-in directory: %v\n", err)
+			fmt.Fprintln(os.Stderr, "This command requires sudo")
+			return 1
+		}
+		if err := os.WriteFile(dropin.path, []byte(dropin.content), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to write drop-in file: %v\n", err)
+			fmt.Fprintln(os.Stderr, "This command requires sudo")
+			return 1
+		}
 	}
 
 	fmt.Println("✓ Verbose mode enabled")
@@ -697,17 +731,17 @@ func enableVerbose(parent context.Context) int {
 }
 
 func disableVerbose(parent context.Context) int {
-	// Check if already disabled
-	if _, err := os.Stat(verboseDropinPath); os.IsNotExist(err) {
+	if !verboseEnabled() && !verbosePartiallyEnabled() {
 		fmt.Println("Verbose mode is already disabled")
 		return 0
 	}
 
-	// Remove drop-in file
-	if err := os.Remove(verboseDropinPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to remove drop-in file: %v\n", err)
-		fmt.Fprintln(os.Stderr, "This command requires sudo")
-		return 1
+	for _, dropin := range verboseDropins {
+		if err := os.Remove(dropin.path); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Failed to remove drop-in file: %v\n", err)
+			fmt.Fprintln(os.Stderr, "This command requires sudo")
+			return 1
+		}
 	}
 
 	fmt.Println("✓ Verbose mode disabled")
@@ -731,12 +765,33 @@ func disableVerbose(parent context.Context) int {
 }
 
 func showVerboseStatus() {
-	if _, err := os.Stat(verboseDropinPath); os.IsNotExist(err) {
+	if !verboseEnabled() {
 		fmt.Println("Verbose mode: \033[90mdisabled\033[0m")
 		fmt.Println("\nTo enable: sudo linuxio verbose enable")
 	} else {
 		fmt.Println("Verbose mode: \033[32menabled\033[0m")
-		fmt.Println("\nDrop-in file: " + verboseDropinPath)
+		fmt.Println("\nDrop-in files:")
+		for _, dropin := range verboseDropins {
+			fmt.Println("  " + dropin.path)
+		}
 		fmt.Println("To disable: sudo linuxio verbose disable")
 	}
+}
+
+func verboseEnabled() bool {
+	for _, dropin := range verboseDropins {
+		if _, err := os.Stat(dropin.path); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func verbosePartiallyEnabled() bool {
+	for _, dropin := range verboseDropins {
+		if _, err := os.Stat(dropin.path); err == nil {
+			return true
+		}
+	}
+	return false
 }

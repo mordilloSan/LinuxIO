@@ -92,18 +92,6 @@ export const CAPABILITIES = [
     reasonUnavailable: "The LinuxIO Docker update runner is unavailable.",
   },
   {
-    wire: "indexer",
-    state: "indexerAvailable",
-    label: "Indexer",
-    description: "Search, folder sizes, and Docker stack indexing",
-    readyText: "Indexer API is reachable.",
-    dependency: "linuxio indexer",
-    icon: "mdi:magnify-scan",
-    reasonUnknown: "Indexer availability is still being checked.",
-    reasonUnavailable: "Indexer API is unavailable.",
-    visibleInManager: false,
-  },
-  {
     wire: "monitoring",
     state: "monitoringAvailable",
     label: "Monitoring",

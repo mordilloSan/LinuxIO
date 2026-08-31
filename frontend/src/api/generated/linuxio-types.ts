@@ -271,7 +271,6 @@ export interface CaddyStatusResponse {
 export interface CapabilitiesResponse {
   docker_available: boolean;
   docker_updates_available: boolean;
-  indexer_available: boolean;
   monitoring_available: boolean;
   lm_sensors_available: boolean;
   memory_inventory_available: boolean;
@@ -287,7 +286,6 @@ export interface CapabilitiesResponse {
   libvirt_available: boolean;
   docker_error?: string;
   docker_updates_error?: string;
-  indexer_error?: string;
   monitoring_error?: string;
   lm_sensors_error?: string;
   memory_inventory_error?: string;
@@ -1181,89 +1179,38 @@ export interface ImageIDRequest {
 }
 
 export interface IndexerConfig {
-  index_path: string;
-  index_name: string;
   exclude_paths: string[];
-  include_hidden: boolean;
   include_network_mounts: boolean;
-  fresh_index: boolean;
-  fts_search: boolean;
-  keep_indexes: number;
-  integrity_check: IndexerIntegrityCheck;
-  db_path: string;
-  db_busy_timeout: string;
-  db_journal_mode: string;
-  db_synchronous: string;
-  db_auto_vacuum: string;
-  db_max_open_conns: number;
-  db_max_idle_conns: number;
-  db_conn_max_idle_time: string;
-  db_stmt_cache_size: number;
-  search_default_limit: number;
-  search_max_limit: number;
-  entries_default_limit: number;
-  entries_max_limit: number;
-  idle_timeout: string;
   interval: string;
-  listen_addr: string;
 }
 
 export interface IndexerConfigPatch {
-  index_path?: string;
-  index_name?: string;
   exclude_paths?: string[];
-  include_hidden?: boolean;
   include_network_mounts?: boolean;
-  fresh_index?: boolean;
-  fts_search?: boolean;
-  keep_indexes?: number;
-  integrity_check?: IndexerIntegrityCheck;
-  db_path?: string;
-  db_busy_timeout?: string;
-  db_journal_mode?: string;
-  db_synchronous?: string;
-  db_auto_vacuum?: string;
-  db_max_open_conns?: number;
-  db_max_idle_conns?: number;
-  db_conn_max_idle_time?: string;
-  db_stmt_cache_size?: number;
-  search_default_limit?: number;
-  search_max_limit?: number;
-  entries_default_limit?: number;
-  entries_max_limit?: number;
-  idle_timeout?: string;
-  listen_addr?: string;
 }
 
 export interface IndexerConfigSetResult {
   config: IndexerConfig;
-  restart_required: boolean;
 }
 
 export interface IndexerDaemonStatus {
   active_operation?: string;
+  active_operation_id?: string;
   active_path?: string;
   database_size: number;
-  fts_active: boolean;
   last_indexed?: string;
   num_dirs: number;
   num_files: number;
   running: boolean;
-  shm_size: number;
   status: string;
-  total_entries: number;
-  total_indexes: number;
-  total_on_disk: number;
   total_size: number;
-  wal_size: number;
   warning?: string;
 }
-
-export type IndexerIntegrityCheck = "full" | "quick" | "off";
 
 export interface IndexerProgress {
   status?: string;
   operation?: string;
+  operation_id?: string;
   state?: string;
   message?: string;
   path?: string;
@@ -1277,24 +1224,13 @@ export interface IndexerProgress {
 export interface IndexerResult {
   status?: string;
   operation?: string;
+  operation_id?: string;
   path: string;
   files_indexed: number;
   dirs_indexed: number;
   total_size: number;
   duration_ms: number;
-  deleted_indexes?: number;
   deleted_entries?: number;
-}
-
-export interface IndexerStatusResponse {
-  dirs_indexed: number;
-  fts_active: boolean;
-  files_indexed: number;
-  last_indexed?: string;
-  running: boolean;
-  status: string;
-  total_size: number;
-  warning?: string;
 }
 
 export interface IndexerTimerSetResult {
@@ -2772,7 +2708,6 @@ export interface LinuxIOSchema {
       result: IndexerResult;
       progress: TaskProgress<IndexerProgress>;
     };
-    indexer_status: { input: []; request: void; result: IndexerStatusResponse };
     list_directory: {
       input: [path: string];
       request: PathRequest;
@@ -3502,10 +3437,6 @@ export interface LinuxIOCallSchema {
   "filebrowser.exists_batch": {
     request: BatchPathRequest;
     result: ExistsBatchResponse;
-  };
-  "filebrowser.indexer_status": {
-    request: void;
-    result: IndexerStatusResponse;
   };
   "filebrowser.list_directory": {
     request: PathRequest;

@@ -31,7 +31,6 @@ import type {
 } from "@/hooks/filebrowser/useFileConflicts";
 import type { DroppedEntry } from "@/hooks/filebrowser/useFileDroppedEntries";
 import type { UploadSummary } from "@/hooks/filebrowser/useFileUpload";
-import type { CapabilityStatus } from "@/hooks/useCapabilities";
 import type {
   FileResource,
   MultiStatsItem,
@@ -40,41 +39,6 @@ import type {
 } from "@/types/filebrowser";
 
 const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
-
-interface IndexerUnavailableAlertProps {
-  status: CapabilityStatus;
-}
-
-export const IndexerUnavailableAlert = ({
-  status,
-}: IndexerUnavailableAlertProps) => (
-  <AppAlert
-    severity="info"
-    style={{
-      marginLeft: 8,
-      marginRight: 8,
-      marginTop: 4,
-    }}
-  >
-    <AppAlertTitle>
-      {status === "unknown"
-        ? "Checking Indexer Availability"
-        : "Indexer API Unavailable"}
-    </AppAlertTitle>
-    {status === "unknown" ? (
-      <AppTypography variant="body2">
-        Directory size calculations and file search stay disabled until indexer
-        availability is confirmed.
-      </AppTypography>
-    ) : (
-      <AppTypography variant="body2">
-        Directory size calculations and file search are disabled. Start the{" "}
-        <strong>linuxio.target</strong> or{" "}
-        <strong>linuxio-indexer.socket</strong> to enable these features.
-      </AppTypography>
-    )}
-  </AppAlert>
-);
 
 interface FileDropOverlayProps {
   normalizedPath: string;

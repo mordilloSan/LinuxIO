@@ -1,10 +1,48 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 )
+
+func TestParseLogsArgsIndexer(t *testing.T) {
+	mode, lines := parseLogsArgs([]string{"indexer", "25"})
+	if mode != "indexer" || lines != 25 {
+		t.Fatalf("parseLogsArgs = %q, %d; want indexer, 25", mode, lines)
+	}
+}
+
+func TestVerboseDropinState(t *testing.T) {
+	original := verboseDropins
+	t.Cleanup(func() { verboseDropins = original })
+	dir := t.TempDir()
+	verboseDropins = []struct {
+		path    string
+		content string
+	}{
+		{path: filepath.Join(dir, "webserver.conf")},
+		{path: filepath.Join(dir, "indexer.conf")},
+	}
+
+	if verboseEnabled() || verbosePartiallyEnabled() {
+		t.Fatal("missing drop-ins reported enabled")
+	}
+	if err := os.WriteFile(verboseDropins[0].path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if verboseEnabled() || !verbosePartiallyEnabled() {
+		t.Fatal("one drop-in did not report partial state")
+	}
+	if err := os.WriteFile(verboseDropins[1].path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !verboseEnabled() {
+		t.Fatal("both drop-ins did not report enabled")
+	}
+}
 
 func TestJournalTermsForMode(t *testing.T) {
 	tests := []struct {
@@ -41,12 +79,23 @@ func TestJournalTermsForMode(t *testing.T) {
 			},
 		},
 		{
+			name: "indexer",
+			mode: "indexer",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-indexer",
+				"_SYSTEMD_UNIT=linuxio-indexer.service",
+				"_SYSTEMD_UNIT=linuxio-indexer-index.service",
+				"_SYSTEMD_UNIT=linuxio-indexer-index.timer",
+			},
+		},
+		{
 			name: "all",
 			mode: "all",
 			wantIn: []string{
 				"SYSLOG_IDENTIFIER=linuxio-webserver",
 				"SYSLOG_IDENTIFIER=linuxio-bridge",
 				"SYSLOG_IDENTIFIER=linuxio-auth",
+				"SYSLOG_IDENTIFIER=linuxio-indexer",
 			},
 		},
 	}

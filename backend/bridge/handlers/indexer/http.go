@@ -118,12 +118,7 @@ func Delete(ctx context.Context, path string) error {
 
 func Reindex(ctx context.Context, path string) error {
 	q := url.Values{"path": {utils.NormalizeIndexerPath(path)}}
-	err := daemonJSON(ctx, http.MethodPost, indexerapi.RouteReindex, q, nil, nil)
-	var responseErr *ResponseError
-	if errors.As(err, &responseErr) && responseErr.StatusCode == http.StatusConflict {
-		return nil
-	}
-	return err
+	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteReindex, q, nil, nil)
 }
 
 func DirSize(ctx context.Context, path string) (indexerapi.DirSizeResponse, error) {
@@ -132,18 +127,9 @@ func DirSize(ctx context.Context, path string) (indexerapi.DirSizeResponse, erro
 	return out, err
 }
 
-func EntryCount(ctx context.Context, path string) (indexerapi.EntryCountResponse, error) {
-	var out indexerapi.EntryCountResponse
-	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteEntryCount, url.Values{"path": {utils.NormalizeIndexerPath(path)}}, nil, &out)
-	return out, err
-}
-
 func fetchDaemonStatus(ctx context.Context) (indexerapi.StatusResponse, error) {
 	var out indexerapi.StatusResponse
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteStatus, nil, nil, &out)
-	if err == nil && out.ProtocolVersion != indexerapi.ProtocolVersion {
-		err = fmt.Errorf("%w: unsupported protocol version %d (want %d)", ErrUnavailable, out.ProtocolVersion, indexerapi.ProtocolVersion)
-	}
 	return out, err
 }
 

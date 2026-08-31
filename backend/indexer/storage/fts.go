@@ -16,11 +16,9 @@ import (
 // FTS5 trigram substring index over entries.name.
 //
 // entries_fts is an external-content FTS5 table kept in sync with entries by
-// the triggers below, so no Go write path needs to know about it. It only
-// exists when the binary is built with -tags sqlite_fts5; without the tag,
-// ensureFTS drops the table and triggers so that plain binaries can still
-// write to entries (triggers referencing a missing fts5 module would
-// otherwise fail every insert). Search transparently falls back to LIKE.
+// the triggers below, so no Go write path needs to know about it. It is used
+// when the binary includes FTS5; searches transparently fall back to LIKE
+// when the SQLite module is unavailable.
 
 const ftsCreateTable = `
 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
@@ -103,44 +101,19 @@ func createFTSTriggers(ctx context.Context, db dbExecutor) error {
 	return nil
 }
 
-// ensureFTS is called from initSchema. With FTS5 compiled in and enabled by
-// configuration it creates the table and triggers, backfilling from entries
-// when the index is missing or its last rebuild never ran to completion.
-// When FTS is unavailable or disabled it removes any existing table and
-// triggers so that this binary can still write to entries.
-func ensureFTS(ctx context.Context, db *sql.DB, disabled bool) error {
-	if disabled {
-		return disableFTS(ctx, db, "disabled by configuration (fts_search=false)")
-	}
+// ensureFTS is called from initSchema. FTS is enabled whenever the binary
+// includes the SQLite module; otherwise searches use the LIKE fallback.
+func ensureFTS(ctx context.Context, db *sql.DB) error {
 	if !ftsModuleAvailable(ctx, db) {
-		return disableFTS(ctx, db, "not compiled into this binary (build with -tags sqlite_fts5)")
-	}
-	return enableFTS(ctx, db)
-}
-
-// disableFTS removes the FTS table and sync triggers; keeping them without
-// serving the index would make every write to entries fail (missing module)
-// or silently keep paying trigram maintenance (disabled by config).
-func disableFTS(ctx context.Context, db *sql.DB, reason string) error {
-	exists, err := ftsTableExists(ctx, db)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		slog.Info("FTS5 search index inactive; search uses LIKE scans", "reason", reason)
+		if err := dropFTSTriggers(ctx, db); err != nil {
+			return err
+		}
+		if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS entries_fts; DROP TABLE IF EXISTS fts_state;`); err != nil {
+			return fmt.Errorf("remove unavailable FTS tables: %w", err)
+		}
 		return nil
 	}
-	if err := dropFTSTriggers(ctx, db); err != nil {
-		return err
-	}
-	if _, err := db.ExecContext(ctx, `DROP TABLE entries_fts;`); err != nil {
-		return fmt.Errorf("drop entries_fts: %w", err)
-	}
-	if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS fts_state;`); err != nil {
-		return fmt.Errorf("drop fts_state: %w", err)
-	}
-	slog.Warn("FTS5 search index removed; search uses LIKE scans", "reason", reason)
-	return nil
+	return enableFTS(ctx, db)
 }
 
 func enableFTS(ctx context.Context, db *sql.DB) error {
@@ -202,13 +175,8 @@ func markFTSRebuilt(ctx context.Context, db dbExecutor) error {
 }
 
 // ftsRebuild repopulates entries_fts from the entries table and records
-// completion in fts_state within the same transaction. The rebuild is
-// deliberately detached from the caller's deadline (Open's schemaTimeout):
-// its duration scales with the entry count, and aborting it would leave the
-// index empty while search reports FTS active.
+// completion in fts_state within the same transaction.
 func ftsRebuild(ctx context.Context, db *sql.DB) error {
-	ctx = context.WithoutCancel(ctx)
-
 	var entryCount int64
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries;`).Scan(&entryCount); err != nil {
 		return fmt.Errorf("count entries before fts rebuild: %w", err)
@@ -235,39 +203,17 @@ func ftsRebuild(ctx context.Context, db *sql.DB) error {
 	return tx.Commit()
 }
 
-// searchIndexAvailable reports whether entries_fts exists, probing once per
-// Store; ensureFTS settles the table's existence when the DB is opened.
-func (s *Store) searchIndexAvailable(ctx context.Context) bool {
-	s.ftsOnce.Do(func() {
-		s.ftsEnabled = s.SearchIndexActive(ctx)
-	})
-	return s.ftsEnabled
-}
-
-// SearchIndexActive reports whether the FTS5 search index currently exists in
-// the database — the ACTUAL state, probed fresh on every call, as opposed to
-// the DESIRED state in the configuration (fts_search). The two differ between
-// a configuration change and the next scan (or daemon restart) reconciling
-// the database.
-func (s *Store) SearchIndexActive(ctx context.Context) bool {
-	exists, err := ftsTableExists(ctx, s.db)
-	if err != nil {
-		slog.Warn("failed to probe entries_fts", "err", err)
-		return false
-	}
-	return exists
-}
-
 // searchEntriesFTS answers a search from the trigram index: match rowids in
 // entries_fts, then join back to entries for metadata and mod_time ordering.
-func (s *Store) searchEntriesFTS(ctx context.Context, indexID int64, match, basePath string, limit int) ([]EntryResult, error) {
-	where, args := appendSearchBaseFilter("e.index_id = ?", []any{indexID}, basePath)
+func (s *Store) searchEntriesFTS(ctx context.Context, match, basePath string, limit int) ([]EntryResult, error) {
+	where, args := appendSearchBaseFilter("1 = 1", nil, basePath)
 	args = append([]any{match}, args...)
 	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
         SELECT e.relative_path, e.name, e.type, e.size, e.mod_time, e.inode
         FROM entries e
         JOIN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?) f ON e.id = f.rowid
+        JOIN (SELECT id FROM indexes WHERE last_indexed > 0 ORDER BY last_indexed DESC, id DESC LIMIT 1) latest ON latest.id = e.index_id
         WHERE %s
         ORDER BY e.mod_time DESC
         LIMIT ?
@@ -277,7 +223,7 @@ func (s *Store) searchEntriesFTS(ctx context.Context, indexID int64, match, base
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			slog.Warn("rows close failed", "query", "search_fts", "err", cerr)
+			slog.Warn("rows close failed", "query", "search", "err", cerr)
 		}
 	}()
 

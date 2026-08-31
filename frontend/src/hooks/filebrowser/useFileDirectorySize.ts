@@ -9,7 +9,6 @@ import {
   isDirectorySizeUnavailable,
   shouldEnableDirectorySizeQuery,
   shouldSkipSizeCalculation,
-  useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
 interface UseDirectorySizeResult {
@@ -35,12 +34,10 @@ export const useFileDirectorySize = (
 ): UseDirectorySizeResult => {
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
-  const indexerDisabled = useIndexerAvailability();
   const queryEnabled = shouldEnableDirectorySizeQuery(
     enabled,
     path,
     shouldSkip,
-    indexerDisabled,
   );
 
   const { data, isLoading, error } = useQuery({
@@ -49,17 +46,9 @@ export const useFileDirectorySize = (
     ...getDirectorySizeQueryOptions(),
   });
 
-  const derivedError = getDirectorySizeError(
-    error,
-    indexerDisabled,
-    shouldSkip,
-  );
+  const derivedError = getDirectorySizeError(error, shouldSkip);
 
-  const isUnavailable = isDirectorySizeUnavailable(
-    error,
-    indexerDisabled,
-    shouldSkip,
-  );
+  const isUnavailable = isDirectorySizeUnavailable(error, shouldSkip);
 
   return {
     size: data?.size ?? null,

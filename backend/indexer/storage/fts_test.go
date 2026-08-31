@@ -49,7 +49,7 @@ func TestFTSSearchStaysInSyncAcrossMutations(t *testing.T) {
 	indexID := insertTestIndex(t, db)
 	store := NewStoreWithDB(db, dbPath)
 
-	if !store.searchIndexAvailable(ctx) {
+	if exists, err := ftsTableExists(ctx, db); err != nil || !exists {
 		t.Fatal("entries_fts missing after setup with FTS5 compiled in")
 	}
 
@@ -114,51 +114,6 @@ func TestFTSSearchStaysInSyncAcrossMutations(t *testing.T) {
 
 }
 
-// TestFTSDisableByOption verifies the fts_search=false path: opening with
-// DisableFTS drops the index and triggers so writes stop paying for trigram
-// maintenance and search falls back to LIKE; re-enabling backfills.
-func TestFTSDisableByOption(t *testing.T) {
-	skipWithoutFTS(t)
-	ctx, db, dbPath := setupTestDB(t)
-	indexID := insertTestIndex(t, db)
-
-	e := indexing.IndexEntry{RelativePath: "/toggle.txt", Name: "toggle.txt", Size: 1, ModTime: time.Now(), Type: "file"}
-	if _, err := UpdateEntry(ctx, db, indexID, e); err != nil {
-		t.Fatalf("insert: %v", err)
-	}
-
-	// Disable: table and triggers must be gone, writes and search still work.
-	if err := ensureFTS(ctx, db, true); err != nil {
-		t.Fatalf("ensureFTS disabled: %v", err)
-	}
-	if exists, err := ftsTableExists(ctx, db); err != nil || exists {
-		t.Fatalf("entries_fts should be dropped when disabled: exists=%v err=%v", exists, err)
-	}
-	// SearchIndexActive probes fresh and must report the actual state
-	// immediately, unlike the per-Store cached probe.
-	if NewStoreWithDB(db, dbPath).SearchIndexActive(ctx) {
-		t.Fatal("SearchIndexActive should be false after disable")
-	}
-	e2 := indexing.IndexEntry{RelativePath: "/afterward.txt", Name: "afterward.txt", Size: 1, ModTime: time.Now(), Type: "file"}
-	if _, err := UpdateEntry(ctx, db, indexID, e2); err != nil {
-		t.Fatalf("insert with FTS disabled: %v", err)
-	}
-	store := NewStoreWithDB(db, dbPath)
-	results, err := store.SearchEntriesUnder(ctx, "afterward", "/", 10)
-	if err != nil || len(results) != 1 {
-		t.Fatalf("LIKE fallback search = %v, %v; want 1 row", results, err)
-	}
-
-	// Re-enable: index is rebuilt including rows written while disabled.
-	if err := ensureFTS(ctx, db, false); err != nil {
-		t.Fatalf("ensureFTS re-enabled: %v", err)
-	}
-	var n int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries_fts WHERE entries_fts MATCH '"afterward"'`).Scan(&n); err != nil || n != 1 {
-		t.Fatalf("backfill after re-enable: n=%d err=%v", n, err)
-	}
-}
-
 func TestFTSBackfillOnOpenWithExistingEntries(t *testing.T) {
 	skipWithoutFTS(t)
 	ctx, db, dbPath := setupTestDB(t)
@@ -177,7 +132,7 @@ func TestFTSBackfillOnOpenWithExistingEntries(t *testing.T) {
 		t.Fatalf("insert without fts: %v", err)
 	}
 
-	if err := ensureFTS(ctx, db, false); err != nil {
+	if err := ensureFTS(ctx, db); err != nil {
 		t.Fatalf("ensureFTS: %v", err)
 	}
 
@@ -228,7 +183,7 @@ func TestFTSInterruptedRebuildRecoversOnReopen(t *testing.T) {
 	}
 
 	// Reopen path: ensureFTS must detect the missing marker and rebuild.
-	if err := ensureFTS(ctx, db, false); err != nil {
+	if err := ensureFTS(ctx, db); err != nil {
 		t.Fatalf("ensureFTS on reopen: %v", err)
 	}
 	results, err := store.SearchEntriesUnder(ctx, "needle", "/", 10)
@@ -245,7 +200,7 @@ func TestFTSInterruptedRebuildRecoversOnReopen(t *testing.T) {
 	if incomplete, markerErr := ftsRebuildIncomplete(ctx, db); markerErr != nil || incomplete {
 		t.Fatalf("rebuild marker missing after successful rebuild: incomplete=%v err=%v", incomplete, markerErr)
 	}
-	if ensureErr := ensureFTS(ctx, db, false); ensureErr != nil {
+	if ensureErr := ensureFTS(ctx, db); ensureErr != nil {
 		t.Fatalf("second ensureFTS: %v", ensureErr)
 	}
 	if results, err = store.SearchEntriesUnder(ctx, "needle", "/", 10); err != nil || len(results) != 1 {

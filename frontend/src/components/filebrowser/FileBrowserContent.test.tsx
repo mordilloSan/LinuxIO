@@ -15,9 +15,6 @@ vi.mock("@/components/ui/AppHeaderSearch", () => ({
   },
 }));
 vi.mock("./IndexerDialog", () => ({ default: () => null }));
-vi.mock("@/hooks/useCapabilities", () => ({
-  useCapability: () => ({ isEnabled: false, reason: "Unavailable" }),
-}));
 vi.mock("@/hooks/backgroundTasks/useIsIndexing", () => ({
   useIsIndexing: () => false,
 }));
@@ -32,8 +29,6 @@ const contentProps: FileBrowserContentProps = {
   breadcrumbs: <div>Root</div>,
   chrome: {
     editingPath: null,
-    indexerEnabled: true,
-    indexerStatus: "unavailable",
     isSavingFile: false,
     normalizedPath: "/",
     onOpenDirectory: vi.fn(),

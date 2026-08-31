@@ -57,7 +57,7 @@ func SetTimerInterval(ctx context.Context, raw string) (apischema.IndexerTimerSe
 			return apischema.IndexerTimerSetResult{}, err
 		}
 	} else {
-		body := []byte("[Timer]\nOnActiveSec=\nOnUnitActiveSec=\nOnActiveSec=" + interval + "\nOnUnitActiveSec=" + interval + "\n")
+		body := []byte("[Timer]\nOnUnitActiveSec=\nOnUnitActiveSec=" + interval + "\n")
 		if err := writeTimerDropIn(indexerTimerDropInPath, body, 0o644); err != nil {
 			return apischema.IndexerTimerSetResult{}, fmt.Errorf("write indexer timer override: %w", err)
 		}

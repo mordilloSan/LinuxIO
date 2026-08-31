@@ -7,7 +7,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/indexer/systemdunit"
 )
 
 var api = apischema.Bindings(
@@ -33,11 +32,7 @@ func handleGetConfig(ctx context.Context, _ apischema.NoRequest) (apischema.Inde
 	if err != nil {
 		return apischema.IndexerConfig{}, err
 	}
-	listenAddr, err := currentTCPListener(ctx)
-	if err != nil {
-		return apischema.IndexerConfig{}, err
-	}
-	return apischema.IndexerConfig{IndexerConfig: cfg, Interval: interval, ListenAddr: listenAddr}, nil
+	return apischema.IndexerConfig{IndexerConfig: cfg, Interval: interval}, nil
 }
 
 func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerDaemonStatus, error) {
@@ -50,39 +45,19 @@ func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch) (api
 	if err != nil {
 		return apischema.IndexerConfigSetResult{}, err
 	}
-	listenAddr, err := currentTCPListener(ctx)
-	if err != nil {
-		return apischema.IndexerConfigSetResult{}, err
-	}
-	nextListenAddr := listenAddr
-	if req.ListenAddr != nil {
-		nextListenAddr, err = systemdunit.NormalizeTCPListenAddress(*req.ListenAddr)
-		if err != nil {
-			return apischema.IndexerConfigSetResult{}, err
-		}
-	}
-
 	raw, err := json.Marshal(req.IndexerConfigPatch)
 	if err != nil {
 		return apischema.IndexerConfigSetResult{}, err
 	}
-	cfg, restartRequired, err := UpdateConfig(ctx, raw)
+	cfg, err := UpdateConfig(ctx, raw)
 	if err != nil {
 		return apischema.IndexerConfigSetResult{}, err
-	}
-	listenerChanged := req.ListenAddr != nil && nextListenAddr != listenAddr
-	if listenerChanged {
-		if err := configureTCPListener(ctx, nextListenAddr); err != nil {
-			return apischema.IndexerConfigSetResult{}, err
-		}
 	}
 	return apischema.IndexerConfigSetResult{
 		Config: apischema.IndexerConfig{
 			IndexerConfig: cfg,
 			Interval:      interval,
-			ListenAddr:    nextListenAddr,
 		},
-		RestartRequired: restartRequired || listenerChanged,
 	}, nil
 }
 

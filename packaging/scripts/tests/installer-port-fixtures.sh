@@ -88,6 +88,17 @@ run_atomic_replacement_fixture() {
 
 run_release_architecture_fixtures
 printf '   \033[1;32m✓\033[0m %s\n' "release architecture guard"
+(
+	# shellcheck disable=SC1090
+	source "$RELEASE_INSTALLER"
+	release_version_supported v0.27.0 || fail "v0.27.0 must be supported"
+	release_version_supported v0.27.1 || fail "v0.27.1 must be supported"
+	release_version_supported v1.0.0 || fail "v1.0.0 must be supported"
+	if release_version_supported v0.26.0; then
+		fail "v0.26.0 must be rejected before downloads"
+	fi
+)
+printf '   \033[1;32m✓\033[0m %s\n' "first indexer release floor"
 run_release_integrity_fixtures
 printf '   \033[1;32m✓\033[0m %s\n' "release checksum verification"
 run_atomic_replacement_fixture "$RELEASE_INSTALLER"
@@ -200,12 +211,21 @@ done
 
 INDEXER_SOCKET="${REPO_ROOT}/packaging/systemd/linuxio-indexer.socket"
 INDEXER_SERVICE="${REPO_ROOT}/packaging/systemd/linuxio-indexer.service"
+INDEXER_TIMER="${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.timer"
 INDEXER_TARGET="${REPO_ROOT}/packaging/systemd/linuxio.target"
+WEBSERVER_SERVICE="${REPO_ROOT}/packaging/systemd/linuxio-webserver.service"
 grep -Fqx 'SocketMode=0600' "$INDEXER_SOCKET" || fail "indexer socket must be root-only"
 grep -Fqx 'SocketGroup=root' "$INDEXER_SOCKET" || fail "indexer socket group"
 grep -Fqx 'ListenStream=/run/linuxio/indexer.sock' "$INDEXER_SOCKET" || fail "indexer socket path"
-grep -Fqx 'PrivateTmp=true' "$INDEXER_SERVICE" || fail "indexer service needs writable private temporary storage"
-grep -Fqx 'Requires=linuxio-webserver.socket' "$INDEXER_SERVICE" || fail "indexer service must support either activation socket"
+if grep -Fqx 'PrivateTmp=true' "$INDEXER_SERVICE"; then
+	fail "indexer service must share the host temporary filesystem"
+fi
+grep -Fqx 'Environment=SQLITE_TMPDIR=/var/lib/linuxio/indexer' "$INDEXER_SERVICE" ||
+	fail "indexer service must keep SQLite scratch in its state directory"
+grep -Fqx 'RestrictAddressFamilies=AF_UNIX' "$INDEXER_SERVICE" || fail "indexer service must be Unix-only"
+if grep -Eq 'linuxio-webserver.socket|linuxio-indexer-tcp.socket' "$INDEXER_SERVICE"; then
+	fail "indexer service must depend only on its Unix activation socket"
+fi
 grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --config-file /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" || fail "indexer service must start the managed daemon directly"
 grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock' \
 	"${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.service" || fail "index timer must use the private socket trigger"
@@ -219,17 +239,24 @@ if grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$INDEXER_TARGET"; then
 	fail "linuxio.target must not bypass the timer's enabled state"
 fi
 grep -Fqx 'WantedBy=linuxio.target' "${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.timer" || fail "index timer install relationship"
+grep -Fqx 'OnActiveSec=5m' "$INDEXER_TIMER" || fail "index timer must run soon after first activation"
+grep -Fqx 'OnUnitActiveSec=1h' "$INDEXER_TIMER" || fail "index timer default recurring interval"
 if grep -Fqx 'Persistent=true' "${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.timer"; then
 	fail "Persistent has no effect on a monotonic timer"
 fi
 grep -Fq 'Wants=linuxio-issue.service linuxio-indexer.socket' "${REPO_ROOT}/packaging/systemd/linuxio-webserver.socket" || fail "webserver socket warm dependency"
-grep -Fq 'Wants=linuxio-indexer.service' "${REPO_ROOT}/packaging/systemd/linuxio-webserver.service" || fail "webserver service warm dependency"
+grep -Fqx 'Wants=linuxio-indexer.service' "$WEBSERVER_SERVICE" || fail "webserver service must warm the indexer"
+grep -Eq '^After=.*linuxio-indexer\.service' "$WEBSERVER_SERVICE" || fail "webserver service must start after the indexer"
+grep -Fqx 'RuntimeDirectory=linuxio/webserver' "$WEBSERVER_SERVICE" || fail "webserver runtime marker"
+if grep -q '^\[Install\]' "$INDEXER_SERVICE"; then
+	fail "indexer service must be socket-activated only"
+fi
 if grep -Fq 'linuxio-indexer.service' "$INDEXER_TARGET"; then
 	fail "linuxio.target must not start the indexer service"
 fi
 [[ -f "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml" ]] || fail "missing packaged indexer config"
-if rg -q '^(socket_path|listen_addr):' "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml"; then
-	fail "systemd-owned listeners must not be duplicated in indexer YAML"
+if rg -qv '^(exclude_paths:|  - |include_network_mounts:|[[:space:]]*$|#)' "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml"; then
+	fail "indexer YAML contains non-scan policy"
 fi
 grep -Fq -- '--remove-data' "$UNINSTALLER" || fail "uninstaller must preserve data by default"
 grep -Fq 'if [[ $REMOVE_DATA -eq 1 ]]; then' "$UNINSTALLER" || fail "uninstaller remove-data branch missing"

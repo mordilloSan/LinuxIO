@@ -32,7 +32,6 @@ var StringEnums = map[string][]string{
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
 	"ConfigStorageMode":             {"home", "fallback", "memory"},
-	"IndexerIntegrityCheck":         {"full", "quick", "off"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
@@ -844,17 +843,6 @@ type UsersGroupsResponse struct {
 	Users  []string `json:"users"`
 }
 
-type IndexerStatusResponse struct {
-	DirsIndexed  int     `json:"dirs_indexed"`
-	FTSActive    bool    `json:"fts_active"`
-	FilesIndexed int     `json:"files_indexed"`
-	LastIndexed  *string `json:"last_indexed,omitempty"`
-	Running      bool    `json:"running"`
-	Status       string  `json:"status"`
-	TotalSize    int64   `json:"total_size"`
-	Warning      *string `json:"warning,omitempty"`
-}
-
 type AccountUser struct {
 	Gecos        string   `json:"gecos"`
 	GID          int      `json:"gid"`
@@ -1093,22 +1081,18 @@ type InstallCapabilityResult struct {
 	Warning   *string `json:"warning,omitempty"`
 }
 
-// IndexerConfig combines daemon-owned configuration with systemd-owned
-// scheduling and listener settings read by the bridge.
+// IndexerConfig combines daemon-owned configuration with systemd scheduling.
 type IndexerConfig struct {
 	indexerapi.IndexerConfig
-	Interval   string `json:"interval"`
-	ListenAddr string `json:"listen_addr"`
+	Interval string `json:"interval"`
 }
 
 type IndexerConfigPatch struct {
 	indexerapi.IndexerConfigPatch
-	ListenAddr *string `json:"listen_addr,omitempty"`
 }
 
 type IndexerConfigSetResult struct {
-	Config          IndexerConfig `json:"config"`
-	RestartRequired bool          `json:"restart_required"`
+	Config IndexerConfig `json:"config"`
 }
 
 type IndexerTimerSetResult struct {
@@ -1116,22 +1100,17 @@ type IndexerTimerSetResult struct {
 }
 
 type IndexerDaemonStatus struct {
-	ActiveOperation *string `json:"active_operation,omitempty"`
-	ActivePath      *string `json:"active_path,omitempty"`
-	DatabaseSize    int64   `json:"database_size"`
-	FTSActive       bool    `json:"fts_active"`
-	LastIndexed     *string `json:"last_indexed,omitempty"`
-	NumDirs         int     `json:"num_dirs"`
-	NumFiles        int     `json:"num_files"`
-	Running         bool    `json:"running"`
-	SHMSize         int64   `json:"shm_size"`
-	Status          string  `json:"status"`
-	TotalEntries    int     `json:"total_entries"`
-	TotalIndexes    int     `json:"total_indexes"`
-	TotalOnDisk     int64   `json:"total_on_disk"`
-	TotalSize       int64   `json:"total_size"`
-	WALSize         int64   `json:"wal_size"`
-	Warning         *string `json:"warning,omitempty"`
+	ActiveOperation   *string `json:"active_operation,omitempty"`
+	ActiveOperationID *string `json:"active_operation_id,omitempty"`
+	ActivePath        *string `json:"active_path,omitempty"`
+	DatabaseSize      int64   `json:"database_size"`
+	LastIndexed       *string `json:"last_indexed,omitempty"`
+	NumDirs           int     `json:"num_dirs"`
+	NumFiles          int     `json:"num_files"`
+	Running           bool    `json:"running"`
+	Status            string  `json:"status"`
+	TotalSize         int64   `json:"total_size"`
+	Warning           *string `json:"warning,omitempty"`
 }
 
 type MonitoringListener struct {

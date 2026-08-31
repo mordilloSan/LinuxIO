@@ -12,7 +12,6 @@ import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
-import { useCapability } from "@/hooks/useCapabilities";
 import { iconSize } from "@/theme/constants";
 import type { ViewMode } from "@/types/filebrowser";
 
@@ -42,8 +41,6 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
     useState<HTMLElement | null>(null);
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
-  const { isEnabled: indexerEnabled, reason: indexerReason } =
-    useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
   const isIndexing = useIsIndexing();
 
@@ -92,16 +89,10 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
       />
       <AppActionIconButton
         ariaLabel="Index filesystem"
-        disabled={isIndexing || !indexerEnabled}
+        disabled={isIndexing}
         icon="mdi:sync"
         iconSize={20}
-        label={
-          isIndexing
-            ? "Indexing..."
-            : !indexerEnabled
-              ? indexerReason
-              : "Index filesystem"
-        }
+        label={isIndexing ? "Indexing..." : "Index filesystem"}
         loading={isIndexing}
         onClick={handleIndexer}
       />

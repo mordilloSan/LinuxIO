@@ -48,19 +48,20 @@ type uploadBatchTransferTask struct {
 	activity    chan struct{}
 	finishOnce  sync.Once
 
-	mu        sync.Mutex
-	bytes     int64 // stream bytes consumed across the whole batch
-	attached  bool
-	active    net.Conn
-	prepared  bool  // manifest directories created
-	index     int   // current manifest file
-	fileBytes int64 // stream bytes consumed for the current file
-	tempRel   string
-	finalRel  string
-	attrs     uploadAttributes
-	curFailed bool // current file failed; its remaining bytes are discarded
-	succeeded int
-	failures  []FileBatchItemFailure
+	mu           sync.Mutex
+	bytes        int64 // stream bytes consumed across the whole batch
+	attached     bool
+	active       net.Conn
+	prepared     bool  // manifest directories created
+	index        int   // current manifest file
+	fileBytes    int64 // stream bytes consumed for the current file
+	tempRel      string
+	finalRel     string
+	attrs        uploadAttributes
+	curFailed    bool // current file failed; its remaining bytes are discarded
+	succeeded    int
+	failures     []FileBatchItemFailure
+	indexedPaths []string
 }
 
 // uploadBatchSession holds per-attach state: the filesystem root and the open
@@ -254,8 +255,10 @@ func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 		t.succeeded++
 		t.mu.Unlock()
 
-		if info, err := root.Root.Stat(fsroot.ToRel(absPath)); err == nil {
-			notifyUploadedFile(absPath, info)
+		if _, err := root.Root.Stat(fsroot.ToRel(absPath)); err == nil {
+			t.mu.Lock()
+			t.indexedPaths = append(t.indexedPaths, absPath)
+			t.mu.Unlock()
 		}
 	}
 }
@@ -481,8 +484,10 @@ func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession, c
 		return fmt.Errorf("finalize upload: %w", err)
 	}
 	restoreUploadedFile(session.root, finalRel, attrs)
-	if info, err := session.root.Root.Stat(finalRel); err == nil {
-		notifyUploadedFile(current.absPath, info)
+	if _, err := session.root.Root.Stat(finalRel); err == nil {
+		t.mu.Lock()
+		t.indexedPaths = append(t.indexedPaths, current.absPath)
+		t.mu.Unlock()
 	}
 	return nil
 }
@@ -521,7 +526,18 @@ func (t *uploadBatchTransferTask) complete(stream net.Conn) error {
 	}
 	bytes := t.bytes
 	failed := len(t.failures)
+	indexedPaths := append([]string(nil), t.indexedPaths...)
 	t.mu.Unlock()
+	if len(indexedPaths) > 0 {
+		runDetachedIndexerUpdate("upload_batch", func(ctx context.Context) error {
+			for _, path := range indexedPaths {
+				if err := addToIndexer(ctx, path); err != nil {
+					slog.Debug("batch upload indexer reconciliation failed", "path", path, "error", err)
+				}
+			}
+			return nil
+		})
+	}
 
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))

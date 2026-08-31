@@ -6,7 +6,7 @@ Requisite=linuxio-indexer.socket
 After=linuxio-indexer.socket
 
 [Timer]
-OnActiveSec=1h
+OnActiveSec=5m
 OnUnitActiveSec=1h
 AccuracySec=1min
 Unit=linuxio-indexer-index.service

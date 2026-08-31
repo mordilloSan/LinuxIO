@@ -102,12 +102,14 @@ hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
 
-The first-party `linuxio-indexer` binary is installed with LinuxIO. Its root-only
-local API is socket activated at `/run/linuxio/indexer.sock`, it exits after an idle period,
-and a systemd timer requests periodic full indexing. Configuration
-and index data live under `/etc/linuxio/indexer` and `/var/lib/linuxio/indexer`; see the
-[filesystem indexer guide](docs/indexer.md) for permissions, lifecycle, and
-recovery.
+The first-party `linuxio-indexer` binary is installed with LinuxIO rather than
+through Capability Manager. Its root-only Unix API is socket activated at
+`/run/linuxio/indexer.sock`; the webserver keeps the daemon warm while it is
+running, and the daemon exits after a fixed 90-second idle grace once the
+webserver and active work are gone. A systemd timer requests periodic full indexing. Its two-field YAML
+configuration and rebuildable cache live under `/etc/linuxio/indexer` and
+`/var/lib/linuxio/indexer`; see the [filesystem indexer guide](docs/indexer.md)
+for permissions, lifecycle, and recovery.
 
 <details>
 <summary><strong>What gets installed?</strong></summary>

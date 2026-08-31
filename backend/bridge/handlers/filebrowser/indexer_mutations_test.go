@@ -44,10 +44,8 @@ func recordIndexerRequests(t *testing.T) *[]recordedIndexerRequest {
 			Body:       io.NopCloser(strings.NewReader(`{"status":"ok"}`)),
 		}, nil
 	})}
-	setIndexerAvailability(true)
 	t.Cleanup(func() {
 		indexer.Client = originalClient
-		setIndexerAvailability(true)
 	})
 	return &requests
 }
@@ -74,13 +72,13 @@ func TestIndexerMutationNotificationsUseCanonicalOperations(t *testing.T) {
 
 	t.Run("create", func(t *testing.T) {
 		requests := recordIndexerRequests(t)
-		if err := addToIndexer(context.Background(), filePath, fileInfo); err != nil {
+		if err := addToIndexer(context.Background(), filePath); err != nil {
 			t.Fatalf("addToIndexer: %v", err)
 		}
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{{
 			method: http.MethodPost,
 			path:   indexerapi.RouteAdd,
-			entry:  &indexerapi.EntryRequest{Path: filePath, AbsPath: filePath, Name: "created.txt", Size: 5, Type: "file"},
+			entry:  &indexerapi.EntryRequest{Path: filePath},
 		}})
 	})
 
@@ -91,7 +89,7 @@ func TestIndexerMutationNotificationsUseCanonicalOperations(t *testing.T) {
 		}
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{
 			{method: http.MethodDelete, path: indexerapi.RouteDelete, query: pathQuery(filePath)},
-			{method: http.MethodPost, path: indexerapi.RouteAdd, entry: &indexerapi.EntryRequest{Path: filePath, AbsPath: filePath, Name: "created.txt", Size: 5, Type: "file"}},
+			{method: http.MethodPost, path: indexerapi.RouteAdd, entry: &indexerapi.EntryRequest{Path: filePath}},
 		})
 	})
 
@@ -101,7 +99,6 @@ func TestIndexerMutationNotificationsUseCanonicalOperations(t *testing.T) {
 			t.Fatalf("addCopiedPathToIndexer: %v", err)
 		}
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{
-			{method: http.MethodPost, path: indexerapi.RouteAdd, entry: &indexerapi.EntryRequest{Path: dirPath, AbsPath: dirPath, Name: "copied", Size: 42, Type: "directory"}},
 			{method: http.MethodPost, path: indexerapi.RouteReindex, query: pathQuery(dirPath)},
 		})
 	})
@@ -117,7 +114,7 @@ func TestIndexerMutationNotificationsUseCanonicalOperations(t *testing.T) {
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{
 			{method: http.MethodDelete, path: indexerapi.RouteDelete, query: pathQuery(filePath)},
 			{method: http.MethodDelete, path: indexerapi.RouteDelete, query: pathQuery(destination)},
-			{method: http.MethodPost, path: indexerapi.RouteAdd, entry: &indexerapi.EntryRequest{Path: destination, AbsPath: destination, Name: "moved.txt", Size: 5, Type: "file"}},
+			{method: http.MethodPost, path: indexerapi.RouteAdd, entry: &indexerapi.EntryRequest{Path: destination}},
 		})
 	})
 
@@ -130,30 +127,32 @@ func TestIndexerMutationNotificationsUseCanonicalOperations(t *testing.T) {
 	})
 }
 
-func TestIndexerMutationFailureMarksCapabilityUnavailable(t *testing.T) {
+func TestIndexerMutationRetriesAfterUnavailableRequest(t *testing.T) {
 	originalClient := indexer.Client
+	attempts := 0
 	indexer.Client = &http.Client{Transport: indexerRoundTripFunc(func(*http.Request) (*http.Response, error) {
-		return nil, errors.New("socket unavailable")
+		attempts++
+		if attempts == 1 {
+			return nil, errors.New("socket unavailable")
+		}
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: http.NoBody}, nil
 	})}
-	setIndexerAvailability(true)
 	t.Cleanup(func() {
 		indexer.Client = originalClient
-		setIndexerAvailability(true)
 	})
 
-	info, err := os.Stat(t.TempDir())
-	if err != nil {
-		t.Fatalf("stat fixture: %v", err)
-	}
-	if err := addToIndexer(context.Background(), "/data", info); !errors.Is(err, errIndexerUnavailable) {
+	if err := addToIndexer(context.Background(), "/data"); !errors.Is(err, errIndexerUnavailable) {
 		t.Fatalf("addToIndexer error = %v, want errIndexerUnavailable", err)
 	}
-	if isIndexerEnabled() {
-		t.Fatal("indexer capability remained available after notification failure")
+	if err := addToIndexer(context.Background(), "/data"); err != nil {
+		t.Fatalf("second addToIndexer: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
 	}
 }
 
-func TestIndexerMutationAuthorizationFailureKeepsCapabilityAvailable(t *testing.T) {
+func TestIndexerMutationAuthorizationFailureIsNotUnavailable(t *testing.T) {
 	originalClient := indexer.Client
 	indexer.Client = &http.Client{Transport: indexerRoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -163,22 +162,13 @@ func TestIndexerMutationAuthorizationFailureKeepsCapabilityAvailable(t *testing.
 			Body:       io.NopCloser(strings.NewReader("root privileges required")),
 		}, nil
 	})}
-	setIndexerAvailability(true)
 	t.Cleanup(func() {
 		indexer.Client = originalClient
-		setIndexerAvailability(true)
 	})
 
-	info, err := os.Stat(t.TempDir())
-	if err != nil {
-		t.Fatalf("stat fixture: %v", err)
-	}
-	err = addToIndexer(context.Background(), "/data", info)
+	err := addToIndexer(context.Background(), "/data")
 	if err == nil || errors.Is(err, errIndexerUnavailable) {
 		t.Fatalf("addToIndexer error = %v, want non-availability response error", err)
-	}
-	if !isIndexerEnabled() {
-		t.Fatal("authorization failure disabled otherwise healthy indexer reads")
 	}
 }
 
@@ -200,7 +190,7 @@ func assertIndexerRequests(t *testing.T, got, want []recordedIndexerRequest) {
 		if got[i].entry == nil {
 			t.Fatalf("request[%d] entry = nil, want %#v", i, want[i].entry)
 		}
-		if got[i].entry.Path != want[i].entry.Path || got[i].entry.AbsPath != want[i].entry.AbsPath || got[i].entry.Name != want[i].entry.Name || got[i].entry.Size != want[i].entry.Size || got[i].entry.Type != want[i].entry.Type {
+		if got[i].entry.Path != want[i].entry.Path {
 			t.Fatalf("request[%d] entry = %#v, want matching %#v", i, got[i].entry, want[i].entry)
 		}
 	}

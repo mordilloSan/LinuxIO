@@ -1,7 +1,9 @@
 package indexing
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"testing"
@@ -41,9 +43,9 @@ func (w *memoryWriter) totalFileSize() int64 {
 	return total
 }
 
-func newStreamingIndex(t *testing.T, name, root string, includeHidden bool) (*Index, *memoryWriter) {
+func newStreamingIndex(t *testing.T, _ string, root string, includeHidden bool) (*Index, *memoryWriter) {
 	t.Helper()
-	idx := Initialize(name, root, root, includeHidden)
+	idx := Initialize(root)
 	writer := &memoryWriter{}
 	idx.EnableStreaming(writer)
 	return idx, writer
@@ -53,8 +55,8 @@ func TestStartIndexingRequiresStreaming(t *testing.T) {
 	mock := newMockFileSystem(t)
 	mock.CreateStandardTestStructure()
 
-	idx := Initialize("test", mock.Root, mock.Root, false)
-	if err := idx.StartIndexing(); err == nil {
+	idx := Initialize(mock.Root)
+	if err := idx.StartIndexing(context.Background()); err == nil {
 		t.Fatalf("expected streaming mode error when writer is not configured")
 	}
 }
@@ -64,7 +66,7 @@ func TestStartIndexingStreamsEntries(t *testing.T) {
 	mock.CreateStandardTestStructure()
 
 	idx, writer := newStreamingIndex(t, "test", mock.Root, false)
-	if err := idx.StartIndexing(); err != nil {
+	if err := idx.StartIndexing(context.Background()); err != nil {
 		t.Fatalf("StartIndexing failed: %v", err)
 	}
 
@@ -80,6 +82,37 @@ func TestStartIndexingStreamsEntries(t *testing.T) {
 	assertHasEntry(t, entries, "/photos/image1.jpg", false)
 }
 
+func TestStartIndexingSkipsUnreadableEntry(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux directory permissions required")
+	}
+	root := t.TempDir()
+	limited := filepath.Join(root, "limited")
+	if err := os.Mkdir(limited, 0o700); err != nil {
+		t.Fatalf("create limited directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(limited, "blocked"), []byte("blocked"), 0o600); err != nil {
+		t.Fatalf("create blocked file: %v", err)
+	}
+	if err := os.Chmod(limited, 0o400); err != nil {
+		t.Fatalf("remove directory search permission: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(limited, 0o700) })
+	if err := os.WriteFile(filepath.Join(root, "visible"), []byte("visible"), 0o600); err != nil {
+		t.Fatalf("create visible file: %v", err)
+	}
+
+	idx, writer := newStreamingIndex(t, "test", root, false)
+	if err := idx.StartIndexing(context.Background()); err != nil {
+		t.Fatalf("StartIndexing failed: %v", err)
+	}
+	entries := writer.entriesByPath()
+	assertHasEntry(t, entries, "/visible", false)
+	if _, ok := entries["/limited/blocked"]; ok {
+		t.Fatal("unreadable entry was indexed")
+	}
+}
+
 func TestDirMetadataKeyConsistency(t *testing.T) {
 	mock := newMockFileSystem(t)
 
@@ -88,7 +121,7 @@ func TestDirMetadataKeyConsistency(t *testing.T) {
 	mock.CreateFile("parent/file2.txt", "abcd")
 
 	idx, writer := newStreamingIndex(t, "test", mock.Root, false)
-	if err := idx.StartIndexing(); err != nil {
+	if err := idx.StartIndexing(context.Background()); err != nil {
 		t.Fatalf("StartIndexing failed: %v", err)
 	}
 
@@ -97,33 +130,18 @@ func TestDirMetadataKeyConsistency(t *testing.T) {
 		t.Fatalf("expected non-zero file sizes from writer")
 	}
 
-	if idx.DiskUsed != expectedDiskUsed {
-		t.Fatalf("expected DiskUsed=%d, got %d", expectedDiskUsed, idx.DiskUsed)
-	}
 }
 
-func TestHiddenFilesControlledByFlag(t *testing.T) {
+func TestHiddenFilesIncluded(t *testing.T) {
 	mock := newMockFileSystem(t)
 	mock.CreateStandardTestStructure()
 
-	withHiddenIdx, withHiddenWriter := newStreamingIndex(t, "with-hidden", mock.Root, true)
-	if err := withHiddenIdx.StartIndexing(); err != nil {
+	idx, writer := newStreamingIndex(t, "index", mock.Root, false)
+	if err := idx.StartIndexing(context.Background()); err != nil {
 		t.Fatalf("StartIndexing with hidden failed: %v", err)
 	}
-
-	withoutHiddenIdx, withoutHiddenWriter := newStreamingIndex(t, "without-hidden", mock.Root, false)
-	if err := withoutHiddenIdx.StartIndexing(); err != nil {
-		t.Fatalf("StartIndexing without hidden failed: %v", err)
-	}
-
-	withHiddenEntries := withHiddenWriter.entriesByPath()
-	withoutHiddenEntries := withoutHiddenWriter.entriesByPath()
-
-	if _, ok := withHiddenEntries["/.config"]; !ok {
-		t.Fatalf("expected hidden root file to be indexed when includeHidden=true")
-	}
-	if _, ok := withoutHiddenEntries["/.config"]; ok {
-		t.Fatalf("hidden file should be skipped when includeHidden=false")
+	if _, ok := writer.entriesByPath()["/.config"]; !ok {
+		t.Fatalf("expected hidden file to be indexed")
 	}
 }
 
@@ -135,7 +153,7 @@ func TestGetTotalSize(t *testing.T) {
 	mock.CreateFile("file2.txt", "1234567890") // 10 bytes
 
 	idx, _ := newStreamingIndex(t, "test", mock.Root, false)
-	if err := idx.StartIndexing(); err != nil {
+	if err := idx.StartIndexing(context.Background()); err != nil {
 		t.Fatalf("StartIndexing failed: %v", err)
 	}
 
@@ -155,7 +173,7 @@ func TestHardlinks(t *testing.T) {
 	mock.CreateHardlink("original.txt", "hardlink.txt")
 
 	idx, _ := newStreamingIndex(t, "test", mock.Root, false)
-	if err := idx.StartIndexing(); err != nil {
+	if err := idx.StartIndexing(context.Background()); err != nil {
 		t.Fatalf("StartIndexing failed: %v", err)
 	}
 
@@ -164,66 +182,56 @@ func TestHardlinks(t *testing.T) {
 		t.Errorf("Expected 2 files, got %d", idx.NumFiles)
 	}
 
-	// Should track the hardlink
-	if len(idx.FoundHardLinks) == 0 {
-		t.Error("Expected hardlinks to be tracked")
-	}
 }
 
 func TestShouldSkip(t *testing.T) {
 	tests := []struct {
-		name          string
-		isDir         bool
-		isHidden      bool
-		fullCombined  string
-		includeHidden bool
-		shouldSkip    bool
+		name         string
+		isDir        bool
+		isHidden     bool
+		fullCombined string
+		shouldSkip   bool
 	}{
 		{
-			name:          "root directory never skipped",
-			isDir:         true,
-			isHidden:      false,
-			fullCombined:  "/",
-			includeHidden: false,
-			shouldSkip:    false,
+			name:         "root directory never skipped",
+			isDir:        true,
+			isHidden:     false,
+			fullCombined: "/",
+			shouldSkip:   false,
 		},
 		{
-			name:          "hidden file skipped when includeHidden=false",
-			isDir:         false,
-			isHidden:      true,
-			fullCombined:  "/.hidden",
-			includeHidden: false,
-			shouldSkip:    true,
+			name:         "hidden file included",
+			isDir:        false,
+			isHidden:     true,
+			fullCombined: "/.hidden",
+			shouldSkip:   false,
 		},
 		{
-			name:          "hidden file not skipped when includeHidden=true",
-			isDir:         false,
-			isHidden:      true,
-			fullCombined:  "/.hidden",
-			includeHidden: true,
-			shouldSkip:    false,
+			name:         "hidden file not skipped when includeHidden=true",
+			isDir:        false,
+			isHidden:     true,
+			fullCombined: "/.hidden",
+			shouldSkip:   false,
 		},
 		{
-			name:          "regular file not skipped",
-			isDir:         false,
-			isHidden:      false,
-			fullCombined:  "/file.txt",
-			includeHidden: false,
-			shouldSkip:    false,
+			name:         "regular file not skipped",
+			isDir:        false,
+			isHidden:     false,
+			fullCombined: "/file.txt",
+			shouldSkip:   false,
 		},
 		{
-			name:          "regular directory not skipped",
-			isDir:         true,
-			isHidden:      false,
-			fullCombined:  "/documents",
-			includeHidden: false,
-			shouldSkip:    false,
+			name:         "regular directory not skipped",
+			isDir:        true,
+			isHidden:     false,
+			fullCombined: "/documents",
+			shouldSkip:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			idx := Initialize("test", "/tmp/test", "test", tt.includeHidden)
+			idx := Initialize("/tmp/test")
 			result := idx.shouldSkip(tt.isDir, tt.isHidden, tt.fullCombined)
 
 			if result != tt.shouldSkip {
@@ -234,7 +242,7 @@ func TestShouldSkip(t *testing.T) {
 }
 
 func TestShouldSkipExcludedPaths(t *testing.T) {
-	idx := Initialize("test", "/srv", "/srv", true, WithExcludePaths([]string{"/srv/cache"}))
+	idx := Initialize("/srv", WithExcludePaths([]string{"/srv/cache"}))
 
 	for _, path := range []string{"/cache", "/cache/nested"} {
 		if !idx.shouldSkip(true, false, path) {
@@ -251,7 +259,7 @@ func TestShouldSkipDockerOverlayMergedWhenIndexingRoot(t *testing.T) {
 		t.Skip("linux-specific path behavior")
 	}
 
-	idx := Initialize("test", "/", "/", true)
+	idx := Initialize("/")
 
 	if !idx.shouldSkip(true, false, "/var/lib/docker/overlay2/layer123/merged") {
 		t.Fatal("expected docker overlay merged directory to be skipped")
@@ -266,7 +274,7 @@ func TestShouldSkipDockerOverlayMergedWhenIndexingDockerRoot(t *testing.T) {
 		t.Skip("linux-specific path behavior")
 	}
 
-	idx := Initialize("test", "/var/lib/docker", "/var/lib/docker", true)
+	idx := Initialize("/var/lib/docker")
 
 	if !idx.shouldSkip(true, false, "/overlay2/layer123/merged") {
 		t.Fatal("expected docker overlay merged directory to be skipped")
@@ -287,12 +295,12 @@ func TestShouldSkipExternalMountRespectsNetworkMountOption(t *testing.T) {
 	}
 	defer func() { loadExternalMountPointsFn = restore }()
 
-	defaultIdx := Initialize("test", "/mnt/share", "/mnt/share", false)
+	defaultIdx := Initialize("/mnt/share")
 	if !defaultIdx.shouldSkip(true, false, "/nested") {
 		t.Fatal("expected network mount contents to be skipped by default")
 	}
 
-	includeIdx := Initialize("test", "/mnt/share", "/mnt/share", false, WithNetworkMounts(true))
+	includeIdx := Initialize("/mnt/share", WithNetworkMounts(true))
 	if includeIdx.shouldSkip(true, false, "/nested") {
 		t.Fatal("expected network mount contents to be indexed when option is enabled")
 	}

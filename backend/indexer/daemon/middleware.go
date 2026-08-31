@@ -9,8 +9,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
-
-	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 type responseRecorder struct {
@@ -133,16 +131,7 @@ func recoveryMiddleware(next http.Handler) http.Handler {
 
 func authorizeTransportMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		kind, _ := r.Context().Value(connectionKindContextKey{}).(connectionKind)
-		if kind == connectionKindTCP {
-			if !isRemoteReadOnlyRequest(r) {
-				http.Error(w, "the TCP listener is read-only; use the local root Unix socket for mutations", http.StatusForbidden)
-				return
-			}
-			next.ServeHTTP(w, r)
-			return
-		}
-		if kind != connectionKindUnix {
+		if !requestFromUnixSocket(r) {
 			http.Error(w, "indexer connection transport unavailable", http.StatusForbidden)
 			return
 		}
@@ -153,25 +142,6 @@ func authorizeTransportMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func isRemoteReadOnlyRequest(r *http.Request) bool {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		return false
-	}
-	switch r.URL.Path {
-	case api.RouteOpenAPI,
-		api.RouteStatus,
-		api.RouteSearch,
-		api.RouteDirSize,
-		api.RouteEntryCount,
-		api.RouteSubfolders,
-		api.RouteEntries,
-		api.RouteConfig:
-		return true
-	default:
-		return false
-	}
 }
 
 // httpErrorLogAdapter routes http.Server.ErrorLog output through slog.

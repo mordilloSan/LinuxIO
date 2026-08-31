@@ -2,7 +2,12 @@ package daemon
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -14,37 +19,22 @@ func TestWireProgressRoundTrip(t *testing.T) {
 	p.ScanProgress(2, 10, 4096)
 	p.Summary(IndexRunStats{Files: 10, Dirs: 2, TotalSize: 4096, DeletedEntries: 3, SkippedDirs: 1, Duration: 1500 * time.Millisecond})
 
-	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 wire lines, got %d:\n%s", len(lines), buf.String())
+	decoder := json.NewDecoder(bytes.NewReader(buf.Bytes()))
+	var step, scan, summary indexWireEvent
+	if err := decoder.Decode(&step); err != nil || step.Type != "step" || step.Message != "Checking database integrity" {
+		t.Errorf("step event = %+v err=%v", step, err)
 	}
-
-	step, ok := parseIndexWireLine(lines[0])
-	if !ok || step.Type != "step" || step.Message != "Checking database integrity" {
-		t.Errorf("step event = %+v ok=%v", step, ok)
+	if err := decoder.Decode(&scan); err != nil || scan.Type != "scan" || scan.Dirs != 2 || scan.Files != 10 || scan.Size != 4096 {
+		t.Errorf("scan event = %+v err=%v", scan, err)
 	}
-	scan, ok := parseIndexWireLine(lines[1])
-	if !ok || scan.Type != "scan" || scan.Dirs != 2 || scan.Files != 10 || scan.Size != 4096 {
-		t.Errorf("scan event = %+v ok=%v", scan, ok)
-	}
-	summary, ok := parseIndexWireLine(lines[2])
-	if !ok || summary.Type != "summary" || summary.Files != 10 || summary.DeletedEntries != 3 ||
+	if err := decoder.Decode(&summary); err != nil || summary.Type != "summary" || summary.Files != 10 || summary.DeletedEntries != 3 ||
 		summary.SkippedDirs != 1 || summary.DurationMs != 1500 {
-		t.Errorf("summary event = %+v ok=%v", summary, ok)
-	}
-}
-
-func TestParseIndexWireLineRejectsForeignOutput(t *testing.T) {
-	for _, line := range []string{"", "plain text", "{not json", `{"no_type":true}`} {
-		if evt, ok := parseIndexWireLine([]byte(line)); ok {
-			t.Errorf("parseIndexWireLine(%q) accepted foreign line as %+v", line, evt)
-		}
+		t.Errorf("summary event = %+v", summary)
 	}
 }
 
 func TestRunIndexProcessForwardsEventsAndSummary(t *testing.T) {
-	script := `echo 'stray non-wire output'
-echo '{"type":"step","message":"Scanning filesystem"}'
+	script := `echo '{"type":"step","message":"Scanning filesystem"}'
 echo '{"type":"scan","dirs":2,"files":10,"size":4096}'
 echo '{"type":"summary","dirs":2,"files":10,"size":4096,"deleted_entries":1,"duration_ms":1500}'`
 
@@ -77,5 +67,30 @@ func TestRunIndexProcessReportsFailure(t *testing.T) {
 	}
 	if stats != nil {
 		t.Errorf("expected nil stats on failure, got %+v", *stats)
+	}
+}
+
+func TestRunIndexProcessReapsChildAfterDecodeFailure(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=TestRunIndexProcessDecodeFailureHelper")
+	cmd.Env = append(os.Environ(), "LINUXIO_INDEX_WIRE_DECODE_HELPER=1")
+	cmd.WaitDelay = 50 * time.Millisecond
+
+	started := time.Now()
+	if _, err := runIndexProcess(cmd, nil); err == nil {
+		t.Fatal("expected malformed child output error")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("decode failure took %v; child was not reaped promptly", elapsed)
+	}
+}
+
+func TestRunIndexProcessDecodeFailureHelper(t *testing.T) {
+	if os.Getenv("LINUXIO_INDEX_WIRE_DECODE_HELPER") != "1" {
+		return
+	}
+	signal.Ignore(syscall.SIGTERM)
+	_, _ = fmt.Fprintln(os.Stdout, "}")
+	for {
+		time.Sleep(time.Hour)
 	}
 }

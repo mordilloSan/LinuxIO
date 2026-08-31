@@ -16,13 +16,12 @@ export const useFileBrowserFilteredResource = ({
     results: searchResults,
     error: queryError,
     isLoading: isSearchLoading,
-    isUnavailable: isSearchUnavailable,
   } = useFileSearch({
     query: searchQuery,
     basePath: "/",
     enabled: searchQuery.trim().length >= 2,
   });
-  const searchError = isSearchUnavailable ? null : queryError;
+  const searchError = queryError;
 
   const filteredResource = useMemo(() => {
     if (!resource || !searchQuery.trim()) {
@@ -30,17 +29,6 @@ export const useFileBrowserFilteredResource = ({
     }
     if (resource.type !== "directory" || !resource.items) {
       return resource;
-    }
-
-    if (isSearchUnavailable) {
-      const lowerQuery = searchQuery.toLowerCase().trim();
-      const filteredItems = resource.items.filter((item) =>
-        item.name.toLowerCase().includes(lowerQuery),
-      );
-      return {
-        ...resource,
-        items: filteredItems,
-      };
     }
 
     if (searchError) {
@@ -75,7 +63,7 @@ export const useFileBrowserFilteredResource = ({
       ...resource,
       items: [],
     };
-  }, [resource, searchError, searchQuery, searchResults, isSearchUnavailable]);
+  }, [resource, searchError, searchQuery, searchResults]);
 
   return {
     filteredResource,

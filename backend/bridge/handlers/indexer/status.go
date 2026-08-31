@@ -12,15 +12,10 @@ type Status struct {
 	NumDirs      int64  `json:"num_dirs"`
 	NumFiles     int64  `json:"num_files"`
 	TotalSize    int64  `json:"total_size"`
-	FTSActive    bool   `json:"fts_active"`
 	LastIndexed  string `json:"last_indexed,omitempty"`
-	TotalIndexes int64  `json:"total_indexes"`
-	TotalEntries int64  `json:"total_entries"`
 	DatabaseSize int64  `json:"database_size"`
-	WALSize      int64  `json:"wal_size"`
-	SHMSize      int64  `json:"shm_size"`
-	TotalOnDisk  int64  `json:"total_on_disk"`
 	ActiveOp     string `json:"active_operation,omitempty"`
+	OperationID  string `json:"active_operation_id,omitempty"`
 	ActivePath   string `json:"active_path,omitempty"`
 	Warning      string `json:"warning,omitempty"`
 }
@@ -32,10 +27,8 @@ func FetchStatus(ctx context.Context) (Status, error) {
 	}
 	status := Status{
 		Status: raw.Status, NumDirs: raw.NumDirs, NumFiles: raw.NumFiles,
-		TotalSize: raw.TotalSize, FTSActive: raw.FTSActive, LastIndexed: raw.LastIndexed,
-		TotalIndexes: int64(raw.TotalIndexes), TotalEntries: raw.TotalEntries,
-		DatabaseSize: raw.DatabaseSize, WALSize: raw.WALSize, SHMSize: raw.SHMSize,
-		TotalOnDisk: raw.TotalOnDisk, ActiveOp: raw.ActiveOperation,
+		TotalSize: raw.TotalSize, LastIndexed: raw.LastIndexed,
+		DatabaseSize: raw.DatabaseSize, ActiveOp: raw.ActiveOperation, OperationID: raw.ActiveOperationID,
 		ActivePath: raw.ActivePath, Warning: raw.Warning,
 	}
 	status.Status = strings.ToLower(strings.TrimSpace(status.Status))

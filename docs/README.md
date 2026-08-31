@@ -21,7 +21,7 @@ its plan lands.
 | [Privilege Pattern](./privilege_pattern.md) | How to decide and declare privileged routes. |
 | [Capabilities](./capabilities.md) | Detecting optional host tooling, gating features/routes on it, and the UI install flow. |
 | [Process & Systemd Architecture](./process-systemd-architecture.md) | LinuxIO processes and helpers, systemd socket activation, `linuxio.target`, and privilege separation. |
-| [Filesystem Indexer](./indexer.md) | First-party indexer ownership, socket activation, timer, configuration, permissions, lifecycle, troubleshooting, and recovery. |
+| [Filesystem Indexer](./indexer.md) | Architecture, operation, bridge and daemon APIs, configuration, recovery, and administration. |
 | [Third-Party Notices](./THIRD_PARTY_NOTICES.md) | Attribution and license notices for incorporated indexer code and dependencies. |
 | [Production Diagnostic Data Policy](./production-diagnostics.md) | Credentials and permitted correlation identifiers in journald, tracebacks, pprof, support artifacts, and core-dump controls. |
 | [Server Yamux Protocol](./server-yamux-protocol.md) | Lower-level WebSocket/yamux byte relay and mux framing. |

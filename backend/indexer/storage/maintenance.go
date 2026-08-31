@@ -6,15 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
-
-// ErrDBStatUnavailable indicates the binary was built without the
-// sqlite_dbstat build tag, so the DBSTAT virtual table is not compiled in.
-var ErrDBStatUnavailable = errors.New("dbstat virtual table unavailable (build with -tags sqlite_dbstat)")
 
 // IsCorruptionError reports whether err is a SQLite corruption-class error
 // (corrupt database image or not a database file), as opposed to an
@@ -26,52 +21,6 @@ func IsCorruptionError(err error) bool {
 		return serr.Code == sqlite3.ErrCorrupt || serr.Code == sqlite3.ErrNotADB
 	}
 	return false
-}
-
-// TableDiskUsage reports DBSTAT page usage aggregated per table or index.
-type TableDiskUsage struct {
-	Name        string
-	Pages       int64
-	Bytes       int64
-	UnusedBytes int64
-}
-
-// DatabaseDiskUsage returns per-table/index disk usage from the DBSTAT
-// virtual table, largest first. The scan reads every page of every btree,
-// so reserve it for maintenance operations such as post-vacuum reporting.
-func DatabaseDiskUsage(ctx context.Context, db *sql.DB) ([]TableDiskUsage, error) {
-	ctx = ensureContext(ctx)
-	if db == nil {
-		return nil, fmt.Errorf("db is nil")
-	}
-
-	rows, err := db.QueryContext(ctx, `
-		SELECT name, COUNT(*), SUM(pgsize), SUM(unused)
-		FROM dbstat
-		GROUP BY name
-		ORDER BY SUM(pgsize) DESC;
-	`)
-	if err != nil {
-		if strings.Contains(err.Error(), "no such table: dbstat") {
-			return nil, ErrDBStatUnavailable
-		}
-		return nil, err
-	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			slog.Warn("failed to close dbstat rows", "err", closeErr)
-		}
-	}()
-
-	var usage []TableDiskUsage
-	for rows.Next() {
-		var t TableDiskUsage
-		if err := rows.Scan(&t.Name, &t.Pages, &t.Bytes, &t.UnusedBytes); err != nil {
-			return nil, err
-		}
-		usage = append(usage, t)
-	}
-	return usage, rows.Err()
 }
 
 type WALCheckpointStats struct {
@@ -99,25 +48,6 @@ func WALCheckpointTruncate(ctx context.Context, db *sql.DB) (WALCheckpointStats,
 	return stats, nil
 }
 
-type VacuumStats struct {
-	Duration time.Duration
-}
-
-// Vacuum rebuilds the SQLite database file to reclaim free space and defragment pages.
-// Note: VACUUM requires an exclusive lock and can be slow on large databases.
-func Vacuum(ctx context.Context, db *sql.DB) (VacuumStats, error) {
-	ctx = ensureContext(ctx)
-	if db == nil {
-		return VacuumStats{}, fmt.Errorf("db is nil")
-	}
-
-	start := time.Now()
-	if _, err := db.ExecContext(ctx, `VACUUM;`); err != nil {
-		return VacuumStats{}, err
-	}
-	return VacuumStats{Duration: time.Since(start).Truncate(time.Millisecond)}, nil
-}
-
 // PruneStats holds statistics about the pruning operation
 type PruneStats struct {
 	DeletedIndexes int
@@ -125,12 +55,10 @@ type PruneStats struct {
 	Duration       time.Duration
 }
 
-// PruneOldIndexes removes index records outside the requested retention window.
+// PruneOldIndexes removes index records outside the requested retention count.
 // This also cascades to delete all associated entries due to the FOREIGN KEY constraint.
 // keepLatest specifies how many most recent indexes to always keep (minimum 1).
-// maxAge specifies the maximum age for indexes to keep (e.g., 30 days).
-// If maxAge is zero or negative, pruning is count-only.
-func PruneOldIndexes(ctx context.Context, db *sql.DB, keepLatest int, maxAge time.Duration) (PruneStats, error) {
+func PruneOldIndexes(ctx context.Context, db *sql.DB, keepLatest int) (PruneStats, error) {
 	ctx = ensureContext(ctx)
 	if db == nil {
 		return PruneStats{}, fmt.Errorf("db is nil")
@@ -151,10 +79,6 @@ func PruneOldIndexes(ctx context.Context, db *sql.DB, keepLatest int, maxAge tim
 		)
 	`
 	args := []any{keepLatest}
-	if maxAge > 0 {
-		where += ` AND last_indexed < ?`
-		args = append(args, time.Now().Add(-maxAge).Unix())
-	}
 
 	// First, count entries that will be deleted (for stats)
 	var entriesToDelete int64
@@ -199,32 +123,7 @@ func PruneOldIndexes(ctx context.Context, db *sql.DB, keepLatest int, maxAge tim
 	stats.DeletedEntries = entriesToDelete
 	stats.Duration = time.Since(start).Truncate(time.Millisecond)
 
-	// Run incremental vacuum to reclaim space
-	if err := incrementalVacuum(ctx, db); err != nil {
-		// Log warning but don't fail the operation
-		slog.Warn("incremental vacuum failed after pruning", "err", err)
-	}
-
 	return stats, nil
-}
-
-// incrementalVacuum reclaims the whole freelist and truncates the file.
-// The pragma frees pages as its result rows are stepped through, so it must
-// be executed as a query and drained — Exec performs a single step and frees
-// only one page, silently leaving the rest of the freelist in place.
-func incrementalVacuum(ctx context.Context, db *sql.DB) error {
-	rows, err := db.QueryContext(ctx, `PRAGMA incremental_vacuum;`)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			slog.Warn("incremental_vacuum rows close failed", "err", closeErr)
-		}
-	}()
-	for rows.Next() {
-	}
-	return rows.Err()
 }
 
 // deleteIndexesWithFTSRebuild runs a cascading index delete with the FTS sync

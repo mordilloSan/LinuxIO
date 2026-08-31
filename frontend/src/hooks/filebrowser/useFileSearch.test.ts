@@ -8,10 +8,6 @@ const apiMocks = vi.hoisted(() => ({
   searchQueryOptions: vi.fn(),
 }));
 
-const capabilityMocks = vi.hoisted(() => ({
-  useCapability: vi.fn(),
-}));
-
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
@@ -28,16 +24,6 @@ vi.mock("@/api", async () => {
   };
 });
 
-vi.mock("@/hooks/useCapabilities", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/hooks/useCapabilities")
-  >("@/hooks/useCapabilities");
-  return {
-    ...actual,
-    useCapability: capabilityMocks.useCapability,
-  };
-});
-
 const { useFileSearch } = await import("@/hooks/filebrowser/useFileSearch");
 const { createTestQueryClient, renderHook, waitFor } =
   await import("@/test/render");
@@ -48,12 +34,6 @@ const queryWrapper = ({ children }: { children: ReactNode }) =>
 describe("useFileSearch", () => {
   beforeEach(() => {
     queryClient.clear();
-    capabilityMocks.useCapability.mockReturnValue({
-      isEnabled: true,
-      reason: "",
-      status: "available",
-      value: true,
-    });
     apiMocks.searchData = undefined;
     apiMocks.searchError = null;
     apiMocks.searchQueryOptions.mockImplementation((request: unknown) => ({
@@ -117,28 +97,6 @@ describe("useFileSearch", () => {
       name: "compose.yaml",
       path: "/srv/compose.yaml",
     });
-  });
-
-  it("returns an unavailable error when the indexer is disabled", () => {
-    capabilityMocks.useCapability.mockReturnValue({
-      isEnabled: false,
-      reason: "Indexer status unknown",
-      status: "unknown",
-      value: null,
-    });
-    const { result } = renderHook(
-      () => useFileSearch({ query: "compose", enabled: true }),
-      { wrapper: queryWrapper },
-    );
-
-    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith({
-      basePath: "/",
-      limit: "100",
-      query: "compose",
-    });
-    expect(result.current.isUnavailable).toBe(true);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.error?.message).toBe("Indexer status unknown");
   });
 
   it("passes through backend query errors when searching is enabled", async () => {

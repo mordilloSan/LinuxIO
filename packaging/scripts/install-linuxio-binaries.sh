@@ -20,6 +20,7 @@ readonly DATA_DIR="/var/lib/linuxio"
 readonly DOC_DIR="/usr/share/doc/linuxio"
 readonly STAGING="/tmp/linuxio-install-$$"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
+readonly MINIMUM_INDEXER_RELEASE="v0.27.0"
 ENABLE_INDEXER_TIMER=0
 # Recovery-asset policy: a versioned install downloads immutable release
 # binaries, but intentionally fetches current-main configuration, PAM, MOTD,
@@ -39,6 +40,22 @@ release_architecture_supported() {
 require_release_architecture() {
 	if ! release_architecture_supported; then
 		Show 1 "Release binaries support amd64 (x86_64) only; use localinstall.sh for a host-built install"
+	fi
+}
+
+release_version_supported() {
+	local requested="$1"
+	[[ "$requested" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || return 1
+
+	local major=$((10#${BASH_REMATCH[1]}))
+	local minor=$((10#${BASH_REMATCH[2]}))
+	((major > 0 || (major == 0 && minor >= 27)))
+}
+
+require_release_version() {
+	local requested="$1"
+	if [[ -n "$requested" ]] && ! release_version_supported "$requested"; then
+		Show 1 "LinuxIO releases before ${MINIMUM_INDEXER_RELEASE} are not supported by this installer"
 	fi
 }
 
@@ -745,7 +762,7 @@ verify_dry_run_targets() {
 # ---------- Main ----------
 
 main() {
-	local version="${1:-}"
+	local version=""
 	local skip_binaries=0
 	local dry_run=0
 	local defer_restart=0
@@ -782,6 +799,7 @@ main() {
 		Show 1 "This script must be run as root"
 	fi
 	require_release_architecture
+	require_release_version "$version"
 
 	if [[ $dry_run -eq 1 ]]; then
 		if ! verify_dry_run_targets; then
@@ -889,7 +907,7 @@ Usage: $(basename "$0") [OPTIONS] [VERSION]
 Downloads and installs LinuxIO with all required system configuration.
 
 Arguments:
-  VERSION           Optional release tag (e.g., v0.3.0). If omitted, installs latest.
+  VERSION           Optional release tag (v0.27.0 or newer). If omitted, installs latest.
 
 Options:
   --dry-run         Validate writable install targets and exit
@@ -908,7 +926,7 @@ What gets installed:
 
 Examples:
   $(basename "$0")                 # Install latest release
-  $(basename "$0") v0.3.0          # Install specific version
+  $(basename "$0") v0.27.0         # Install specific version
   $(basename "$0") --dry-run       # Validate updater write access without installing
   $(basename "$0") --skip-binaries # Only install config/systemd/pam
 

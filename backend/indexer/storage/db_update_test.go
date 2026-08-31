@@ -22,7 +22,6 @@ func (h *testHelper) seedDir(relPath string) {
 	h.t.Helper()
 	entry := indexing.IndexEntry{
 		RelativePath: relPath,
-		AbsolutePath: relPath,
 		Name:         filepath.Base(relPath),
 		Size:         0,
 		ModTime:      time.Now(),
@@ -97,13 +96,9 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 
 	// Seed an index row.
 	res, err := db.Exec(`
-		INSERT INTO indexes (
-			name, root_path, source, include_hidden,
-			num_dirs, num_files, total_size, disk_used,
-			disk_total, last_indexed, index_duration_ms,
-			export_duration_ms, vacuum_duration_ms
-		) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, strftime('%s','now'), 0, 0, 0);
-	`, "test", "/", "/")
+		INSERT INTO indexes (last_indexed)
+		VALUES (strftime('%s','now'));
+	`)
 	if err != nil {
 		t.Fatalf("insert index: %v", err)
 	}
@@ -120,7 +115,6 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 
 	fileEntry := indexing.IndexEntry{
 		RelativePath: "/data/file.txt",
-		AbsolutePath: "/data/file.txt",
 		Name:         "file.txt",
 		Size:         200,
 		ModTime:      time.Now(),
@@ -144,4 +138,58 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	h.assertSize("/data", 0, "after delete")
 	h.assertSize("/", 0, "after delete")
 	h.assertFileDeleted("/data/file.txt")
+}
+
+func TestTransactionalStreamingWriterRollbackPreservesEntries(t *testing.T) {
+	ctx, db, _ := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	original := indexing.IndexEntry{
+		RelativePath: "/docs/kept.txt",
+		Name:         "kept.txt",
+		Size:         10,
+		ModTime:      time.Now(),
+		Type:         "file",
+		Inode:        1,
+	}
+	if _, err := UpdateEntry(ctx, db, indexID, original); err != nil {
+		t.Fatalf("seed original entry: %v", err)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin transaction: %v", err)
+	}
+	writer := NewTransactionalStreamingWriter(ctx, tx, indexID, 2, nil)
+	changed := original
+	changed.Size = 99
+	if err := writer.Write(changed); err != nil {
+		t.Fatalf("write changed entry: %v", err)
+	}
+	if err := writer.Write(indexing.IndexEntry{
+		RelativePath: "/docs/new.txt", Name: "new.txt", Size: 5,
+		ModTime: time.Now(), Type: "file", Inode: 2,
+	}); err != nil {
+		t.Fatalf("write new entry: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("rollback transaction: %v", err)
+	}
+
+	var size int64
+	if err := db.QueryRowContext(ctx, `SELECT size FROM entries WHERE index_id = ? AND relative_path = ?`, indexID, original.RelativePath).Scan(&size); err != nil {
+		t.Fatalf("read original entry: %v", err)
+	}
+	if size != original.Size {
+		t.Fatalf("original size = %d, want %d", size, original.Size)
+	}
+	var newCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE index_id = ? AND relative_path = '/docs/new.txt'`, indexID).Scan(&newCount); err != nil {
+		t.Fatalf("count new entry: %v", err)
+	}
+	if newCount != 0 {
+		t.Fatalf("new entry count = %d, want 0 after rollback", newCount)
+	}
 }

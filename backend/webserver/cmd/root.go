@@ -20,6 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/debugserver"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/socketactivation"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
@@ -67,7 +68,8 @@ func newSessionManager() *session.Manager {
 
 type serverActivity struct {
 	inFlight atomic.Int64
-	lastHit  atomic.Int64
+	mu       sync.Mutex
+	lastHit  time.Time
 }
 
 // HTTP connection limits protect the public listener from slow handshakes and
@@ -79,7 +81,15 @@ const (
 )
 
 func (a *serverActivity) idleFor(duration time.Duration) bool {
-	return a.inFlight.Load() == 0 && time.Since(time.Unix(0, a.lastHit.Load())) >= duration
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.inFlight.Load() == 0 && !a.lastHit.IsZero() && time.Since(a.lastHit) >= duration
+}
+
+func (a *serverActivity) touch() {
+	a.mu.Lock()
+	a.lastHit = time.Now()
+	a.mu.Unlock()
 }
 
 func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *serverActivity, error) {
@@ -98,12 +108,15 @@ func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *server
 	}, sm)
 
 	activity := &serverActivity{}
-	activity.lastHit.Store(time.Now().UnixNano())
+	activity.touch()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		activity.lastHit.Store(time.Now().UnixNano())
+		activity.touch()
 		activity.inFlight.Add(1)
-		defer activity.inFlight.Add(-1)
+		defer func() {
+			activity.touch()
+			activity.inFlight.Add(-1)
+		}()
 		router.ServeHTTP(w, r)
 	})
 
@@ -144,7 +157,7 @@ func serveWithSocketActivation(
 	sm *session.Manager,
 	activity *serverActivity,
 ) (bool, error) {
-	listeners, err := systemdListeners()
+	listeners, err := socketactivation.Listeners()
 	if err != nil {
 		return true, fmt.Errorf("load socket activation listeners: %w", err)
 	}
@@ -153,9 +166,10 @@ func serveWithSocketActivation(
 	}
 
 	if err := configureServerTLS(srv); err != nil {
-		closeListeners(listeners)
+		socketactivation.CloseListeners(listeners)
 		return true, err
 	}
+	watcherCtx, cancelWatcher := context.WithCancel(context.Background())
 
 	var stopOnce sync.Once
 	servStopped := make(chan struct{})
@@ -171,12 +185,14 @@ func serveWithSocketActivation(
 		go serveTLSListener(srv, web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port), stop, "server error (TLS)")
 	}
 	slog.Info("socket-activated HTTPS server listening")
-	startSocketIdleExitWatcher(
-		srv, sm, activity,
+	watcherDone := startSocketIdleExitWatcher(
+		watcherCtx, srv, sm, activity,
 		90*time.Second, 15*time.Second,
 	)
 
 	<-servStopped
+	cancelWatcher()
+	<-watcherDone
 	return true, serveErr
 }
 
@@ -261,40 +277,54 @@ func closeBridgeSessions(sm *session.Manager) {
 }
 
 func startSocketIdleExitWatcher(
+	ctx context.Context,
 	srv *http.Server,
 	sm *session.Manager,
 	activity *serverActivity,
 	idleGrace time.Duration,
 	checkEvery time.Duration,
-) {
-	if idleGrace <= 0 || checkEvery <= 0 {
-		return
-	}
+) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		t := time.NewTicker(checkEvery)
 		defer t.Stop()
-		for range t.C {
-			if !activity.idleFor(idleGrace) {
-				continue
+		hadSessions := false
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
 			}
-			// no active sessions?
-			act, err := sm.ActiveSessions()
-			if err != nil {
-				continue
-			}
-			if len(act) > 0 {
+
+			idle, nextHadSessions := socketIdleState(sm, activity, idleGrace, hadSessions)
+			hadSessions = nextHadSessions
+			if !idle {
 				continue
 			}
 
 			slog.Info("socket idle exit triggered", "idle_grace", idleGrace)
-			ctx, cancel := shutdownContext()
-			if err := srv.Shutdown(ctx); err != nil {
-				slog.Warn("idle shutdown failed", "idle_grace", idleGrace, "error", err)
-			}
-			cancel()
+			shutdownHTTPServer(srv)
 			return
 		}
 	}()
+	return done
+}
+
+func socketIdleState(sm *session.Manager, activity *serverActivity, idleGrace time.Duration, hadSessions bool) (idle, nextHadSessions bool) {
+	act, err := sm.ActiveSessions()
+	if err != nil {
+		return false, hadSessions
+	}
+	if len(act) > 0 {
+		activity.touch()
+		return false, true
+	}
+	if hadSessions {
+		activity.touch()
+		return false, false
+	}
+	return activity.idleFor(idleGrace), false
 }
 
 func shutdownContext() (context.Context, context.CancelFunc) {

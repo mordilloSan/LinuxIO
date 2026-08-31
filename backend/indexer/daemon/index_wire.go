@@ -1,13 +1,13 @@
 package daemon
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
+	"syscall"
 	"time"
 )
 
@@ -67,24 +67,24 @@ func (p *WireProgress) emit(evt indexWireEvent) {
 	}
 }
 
-// parseIndexWireLine decodes one subprocess stdout line. Lines that are not
-// wire events (e.g. stray tool output) report ok=false and are passed through.
-func parseIndexWireLine(line []byte) (evt indexWireEvent, ok bool) {
-	if len(line) == 0 || line[0] != '{' {
-		return indexWireEvent{}, false
-	}
-	if err := json.Unmarshal(line, &evt); err != nil || evt.Type == "" {
-		return indexWireEvent{}, false
-	}
-	return evt, true
-}
-
 // runIndexProcess runs a prepared index-mode command, decoding wire events
 // from its stdout as they arrive. Each event is handed to onEvent (which may
 // be nil); the final summary, when the subprocess emitted one, is also
 // returned as run statistics.
 func runIndexProcess(cmd *exec.Cmd, onEvent func(indexWireEvent)) (*IndexRunStats, error) {
 	cmd.Stderr = os.Stderr
+	cancel := func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return cmd.Process.Signal(syscall.SIGTERM)
+	}
+	if cmd.Cancel != nil {
+		cmd.Cancel = cancel
+	}
+	if cmd.WaitDelay == 0 {
+		cmd.WaitDelay = 5 * time.Second
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("index subprocess stdout: %w", err)
@@ -93,34 +93,63 @@ func runIndexProcess(cmd *exec.Cmd, onEvent func(indexWireEvent)) (*IndexRunStat
 		return nil, fmt.Errorf("index subprocess start: %w", err)
 	}
 
+	summary, decodeErr := decodeIndexProcessOutput(stdout, onEvent)
+	var killTimer *time.Timer
+	if decodeErr != nil {
+		_ = cancel()
+		// A manual Cancel does not start exec.Cmd's WaitDelay clock. Force a
+		// kill after the same bound so malformed output cannot leave Wait
+		// blocked on a child that ignores SIGTERM or remains stuck writing.
+		killTimer = time.AfterFunc(cmd.WaitDelay, func() {
+			_ = cmd.Process.Kill()
+		})
+	}
+	waitErr := cmd.Wait()
+	if killTimer != nil {
+		killTimer.Stop()
+	}
+	if decodeErr != nil {
+		if waitErr != nil {
+			return nil, fmt.Errorf("%w (wait: %v)", decodeErr, waitErr)
+		}
+		return nil, decodeErr
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("index subprocess failed: %w", waitErr)
+	}
+	return summary, nil
+}
+
+func decodeIndexProcessOutput(stdout io.Reader, onEvent func(indexWireEvent)) (*IndexRunStats, error) {
+	decoder := json.NewDecoder(stdout)
 	var summary *IndexRunStats
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		evt, ok := parseIndexWireLine(scanner.Bytes())
-		if !ok {
-			fmt.Fprintf(os.Stdout, "%s\n", scanner.Bytes())
-			continue
+	for {
+		var evt indexWireEvent
+		if err := decoder.Decode(&evt); err != nil {
+			if err == io.EOF {
+				return summary, nil
+			}
+			return nil, fmt.Errorf("decode index subprocess output: %w", err)
+		}
+		if evt.Type == "" {
+			return nil, fmt.Errorf("decode index subprocess output: event type is empty")
 		}
 		if evt.Type == "summary" {
-			summary = &IndexRunStats{
-				Dirs:           int64(evt.Dirs),
-				Files:          int64(evt.Files),
-				TotalSize:      int64(evt.Size),
-				DeletedEntries: evt.DeletedEntries,
-				SkippedDirs:    evt.SkippedDirs,
-				Duration:       time.Duration(evt.DurationMs) * time.Millisecond,
-			}
+			summary = indexRunStatsFromWireEvent(evt)
 		}
 		if onEvent != nil {
 			onEvent(evt)
 		}
 	}
-	if scanErr := scanner.Err(); scanErr != nil {
-		slog.Warn("reading index subprocess output failed", "err", scanErr)
+}
+
+func indexRunStatsFromWireEvent(evt indexWireEvent) *IndexRunStats {
+	return &IndexRunStats{
+		Dirs:           int64(evt.Dirs),
+		Files:          int64(evt.Files),
+		TotalSize:      int64(evt.Size),
+		DeletedEntries: evt.DeletedEntries,
+		SkippedDirs:    evt.SkippedDirs,
+		Duration:       time.Duration(evt.DurationMs) * time.Millisecond,
 	}
-	if err := cmd.Wait(); err != nil {
-		return nil, fmt.Errorf("index subprocess failed: %w", err)
-	}
-	return summary, nil
 }

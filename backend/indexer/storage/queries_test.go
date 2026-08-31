@@ -45,7 +45,6 @@ func TestSearchEntriesWithType(t *testing.T) {
 	// Create a folder and a file with similar names
 	folder := indexing.IndexEntry{
 		RelativePath: "/data",
-		AbsolutePath: "/data",
 		Name:         "data",
 		Size:         100,
 		ModTime:      time.Now(),
@@ -55,7 +54,6 @@ func TestSearchEntriesWithType(t *testing.T) {
 	}
 	file := indexing.IndexEntry{
 		RelativePath: "/data.txt",
-		AbsolutePath: "/data.txt",
 		Name:         "data.txt",
 		Size:         50,
 		ModTime:      time.Now(),
@@ -97,9 +95,9 @@ func TestSearchEntriesUsesParsedTerms(t *testing.T) {
 
 	now := time.Now()
 	entries := []indexing.IndexEntry{
-		{RelativePath: "/alpha.txt", AbsolutePath: "/alpha.txt", Name: "alpha.txt", Size: 1, ModTime: now, Type: "file", Inode: 1},
-		{RelativePath: "/beta.txt", AbsolutePath: "/beta.txt", Name: "beta.txt", Size: 1, ModTime: now.Add(time.Second), Type: "file", Inode: 2},
-		{RelativePath: "/AlphaExact.txt", AbsolutePath: "/AlphaExact.txt", Name: "AlphaExact.txt", Size: 1, ModTime: now.Add(2 * time.Second), Type: "file", Inode: 3},
+		{RelativePath: "/alpha.txt", Name: "alpha.txt", Size: 1, ModTime: now, Type: "file", Inode: 1},
+		{RelativePath: "/beta.txt", Name: "beta.txt", Size: 1, ModTime: now.Add(time.Second), Type: "file", Inode: 2},
+		{RelativePath: "/AlphaExact.txt", Name: "AlphaExact.txt", Size: 1, ModTime: now.Add(2 * time.Second), Type: "file", Inode: 3},
 	}
 	for _, entry := range entries {
 		if _, err := UpdateEntry(ctx, db, indexID, entry); err != nil {
@@ -132,7 +130,7 @@ func TestSearchEntriesUnderRestrictsResultsToSubtree(t *testing.T) {
 	indexID := insertTestIndex(t, db)
 	for inode, path := range []string{"/docs/report.txt", "/other/report.txt"} {
 		entry := indexing.IndexEntry{
-			RelativePath: path, AbsolutePath: path, Name: "report.txt",
+			RelativePath: path, Name: "report.txt",
 			Size: 1, ModTime: time.Now(), Type: "file", Inode: uint64(inode + 1),
 		}
 		if _, err := UpdateEntry(ctx, db, indexID, entry); err != nil {
@@ -149,59 +147,6 @@ func TestSearchEntriesUnderRestrictsResultsToSubtree(t *testing.T) {
 	}
 }
 
-func TestQueryPathRecursiveUsesPathBoundary(t *testing.T) {
-	ctx, db, dbPath := setupTestDB(t)
-	indexID := insertTestIndex(t, db)
-	seedDirectories(t, ctx, db, indexID, []directorySeed{
-		{path: "/home", size: 100},
-		{path: "/home/user", size: 50},
-		{path: "/home-backup", size: 200},
-		{path: "/homeassistant", size: 300},
-	})
-
-	store := NewStoreWithDB(db, dbPath)
-	results, err := store.QueryPath(ctx, "/home", true, 0, 0, "")
-	if err != nil {
-		t.Fatalf("query path: %v", err)
-	}
-	assertResultPaths(t, results, map[string]bool{
-		"/home":      true,
-		"/home/user": true,
-	})
-}
-
-func TestQueryPathKeysetAfter(t *testing.T) {
-	ctx, db, dbPath := setupTestDB(t)
-	indexID := insertTestIndex(t, db)
-	seedDirectories(t, ctx, db, indexID, []directorySeed{
-		{path: "/home", size: 0},
-		{path: "/home/a", size: 1},
-		{path: "/home/b", size: 2},
-		{path: "/home/c", size: 3},
-		{path: "/home-backup", size: 4},
-	})
-
-	store := NewStoreWithDB(db, dbPath)
-	page1, err := store.QueryPath(ctx, "/home", true, 2, 0, "")
-	if err != nil {
-		t.Fatalf("first page: %v", err)
-	}
-	if len(page1) != 2 || page1[0].Path != "/home" || page1[1].Path != "/home/a" {
-		t.Fatalf("first page = %+v, want /home then /home/a", page1)
-	}
-
-	// Cursor continues after the last returned path; offset must be ignored
-	// and the sibling /home-backup stays excluded.
-	page2, err := store.QueryPath(ctx, "/home", true, 10, 99, page1[1].Path)
-	if err != nil {
-		t.Fatalf("cursor page: %v", err)
-	}
-	assertResultPaths(t, page2, map[string]bool{
-		"/home/b": true,
-		"/home/c": true,
-	})
-}
-
 func TestPathQueriesEscapeLikeWildcards(t *testing.T) {
 	ctx, db, dbPath := setupTestDB(t)
 	indexID := insertTestIndex(t, db)
@@ -213,15 +158,6 @@ func TestPathQueriesEscapeLikeWildcards(t *testing.T) {
 	})
 
 	store := NewStoreWithDB(db, dbPath)
-	results, err := store.QueryPath(ctx, "/data%_set", true, 0, 0, "")
-	if err != nil {
-		t.Fatalf("query escaped path: %v", err)
-	}
-	assertResultPaths(t, results, map[string]bool{
-		"/data%_set":       true,
-		"/data%_set/child": true,
-	})
-
 	subfolders, err := store.GetDirectSubfolders(ctx, "/data%_set")
 	if err != nil {
 		t.Fatalf("query escaped subfolders: %v", err)
@@ -263,96 +199,6 @@ func TestDeletePathRecursiveEscapesLikeWildcards(t *testing.T) {
 	}
 }
 
-//nolint:gocognit // Table setup and all subtree cases intentionally share one indexed fixture.
-func TestEntryCount(t *testing.T) {
-	t.Run("empty db returns zeros", func(t *testing.T) {
-		ctx, db, dbPath := setupTestDB(t)
-		store := NewStoreWithDB(db, dbPath)
-		files, dirs, err := store.EntryCount(ctx, "/")
-		if err != nil {
-			t.Fatalf("entry count: %v", err)
-		}
-		if files != 0 || dirs != 0 {
-			t.Fatalf("empty db counts = (files=%d, dirs=%d), want (0, 0)", files, dirs)
-		}
-	})
-
-	t.Run("mixed tree includes self", func(t *testing.T) {
-		ctx, db, dbPath := setupTestDB(t)
-		indexID := insertTestIndex(t, db)
-		seedDirectories(t, ctx, db, indexID, []directorySeed{
-			{path: "/", size: 0},
-			{path: "/a", size: 100},
-			{path: "/b", size: 200},
-		})
-		file := indexing.IndexEntry{
-			RelativePath: "/a/file.txt",
-			AbsolutePath: "/a/file.txt",
-			Name:         "file.txt",
-			Size:         42,
-			ModTime:      time.Now(),
-			Type:         "file",
-		}
-		if _, err := UpdateEntry(ctx, db, indexID, file); err != nil {
-			t.Fatalf("seed file: %v", err)
-		}
-
-		store := NewStoreWithDB(db, dbPath)
-
-		files, dirs, err := store.EntryCount(ctx, "/")
-		if err != nil {
-			t.Fatalf("root count: %v", err)
-		}
-		if dirs != 3 || files != 1 {
-			t.Fatalf("root counts = (files=%d, dirs=%d), want (1, 3)", files, dirs)
-		}
-
-		files, dirs, err = store.EntryCount(ctx, "/a")
-		if err != nil {
-			t.Fatalf("subtree count: %v", err)
-		}
-		if dirs != 1 || files != 1 {
-			t.Fatalf("/a counts = (files=%d, dirs=%d), want (1, 1)", files, dirs)
-		}
-
-		files, dirs, err = store.EntryCount(ctx, "/a/file.txt")
-		if err != nil {
-			t.Fatalf("file path count: %v", err)
-		}
-		if files != 1 || dirs != 0 {
-			t.Fatalf("/a/file.txt counts = (files=%d, dirs=%d), want (1, 0)", files, dirs)
-		}
-
-		files, dirs, err = store.EntryCount(ctx, "/does/not/exist")
-		if err != nil {
-			t.Fatalf("nonexistent path count: %v", err)
-		}
-		if files != 0 || dirs != 0 {
-			t.Fatalf("nonexistent counts = (files=%d, dirs=%d), want (0, 0)", files, dirs)
-		}
-	})
-
-	t.Run("escapes LIKE wildcards", func(t *testing.T) {
-		ctx, db, dbPath := setupTestDB(t)
-		indexID := insertTestIndex(t, db)
-		seedDirectories(t, ctx, db, indexID, []directorySeed{
-			{path: "/data%_set", size: 150},
-			{path: "/data%_set/child", size: 50},
-			{path: "/dataXXset", size: 275},
-			{path: "/dataXXset/child", size: 75},
-		})
-
-		store := NewStoreWithDB(db, dbPath)
-		files, dirs, err := store.EntryCount(ctx, "/data%_set")
-		if err != nil {
-			t.Fatalf("escaped count: %v", err)
-		}
-		if dirs != 2 || files != 0 {
-			t.Fatalf("/data%%_set counts = (files=%d, dirs=%d), want (0, 2)", files, dirs)
-		}
-	})
-}
-
 type folderExpectation struct {
 	name string
 	size int64
@@ -384,13 +230,9 @@ func setupTestDB(t *testing.T) (context.Context, *sql.DB, string) {
 func insertTestIndex(t *testing.T, db *sql.DB) int64 {
 	t.Helper()
 	res, err := db.Exec(`
-		INSERT INTO indexes (
-			name, root_path, source, include_hidden,
-			num_dirs, num_files, total_size, disk_used,
-			disk_total, last_indexed, index_duration_ms,
-			export_duration_ms, vacuum_duration_ms
-		) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, strftime('%s','now'), 0, 0, 0);
-	`, "test", "/", "/")
+		INSERT INTO indexes (last_indexed)
+		VALUES (strftime('%s','now'));
+	`)
 	if err != nil {
 		t.Fatalf("insert index: %v", err)
 	}
@@ -406,7 +248,6 @@ func seedDirectories(t *testing.T, ctx context.Context, db *sql.DB, indexID int6
 	for _, dir := range dirs {
 		entry := indexing.IndexEntry{
 			RelativePath: dir.path,
-			AbsolutePath: dir.path,
 			Name:         filepath.Base(dir.path),
 			Size:         dir.size,
 			ModTime:      time.Now(),
@@ -438,18 +279,6 @@ func assertSubfolders(t *testing.T, ctx context.Context, store *Store, path stri
 		}
 		if results[i].Size != exp.size {
 			t.Errorf("result[%d] size = %d, want %d", i, results[i].Size, exp.size)
-		}
-	}
-}
-
-func assertResultPaths(t *testing.T, results []EntryResult, expected map[string]bool) {
-	t.Helper()
-	if len(results) != len(expected) {
-		t.Fatalf("expected %d results, got %d: %+v", len(expected), len(results), results)
-	}
-	for _, result := range results {
-		if !expected[result.Path] {
-			t.Fatalf("unexpected path %s in results %+v", result.Path, results)
 		}
 	}
 }

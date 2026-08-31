@@ -98,7 +98,7 @@ func waitForCondition(t *testing.T, timeout time.Duration, condition func() bool
 //nolint:gocognit // Fanout behavior is clearest as one end-to-end concurrency scenario.
 func TestWorkStreamBroadcasterFanout(t *testing.T) {
 	t.Run("metadata", func(t *testing.T) {
-		b := newWorkStreamBroadcaster("reindex", "/docs")
+		b := newWorkStreamBroadcaster("reindex", "op-1", "/docs")
 		defer b.close()
 
 		if got := b.Operation(); got != "reindex" {
@@ -110,7 +110,7 @@ func TestWorkStreamBroadcasterFanout(t *testing.T) {
 	})
 
 	t.Run("fanout_to_subscribers", func(t *testing.T) {
-		b := newWorkStreamBroadcaster("reindex", "/docs")
+		b := newWorkStreamBroadcaster("reindex", "op-1", "/docs")
 		defer b.close()
 
 		_, ch1, err := b.subscribe()
@@ -125,7 +125,7 @@ func TestWorkStreamBroadcasterFanout(t *testing.T) {
 			t.Fatalf("subscriber count = %d, want 2", got)
 		}
 
-		if err := b.SendEvent("progress", WorkProgressEvent{Operation: "reindex", FilesIndexed: 10}); err != nil {
+		if err := b.SendEvent("progress", WorkProgressEvent{Operation: "reindex", OperationID: "op-1", Path: "/docs", FilesIndexed: 10}); err != nil {
 			t.Fatalf("broadcast progress: %v", err)
 		}
 
@@ -145,7 +145,7 @@ func TestWorkStreamBroadcasterFanout(t *testing.T) {
 	})
 
 	t.Run("unsubscribe", func(t *testing.T) {
-		b := newWorkStreamBroadcaster("reindex", "/docs")
+		b := newWorkStreamBroadcaster("reindex", "op-1", "/docs")
 		defer b.close()
 
 		id1, ch1, err := b.subscribe()
@@ -172,7 +172,7 @@ func TestWorkStreamBroadcasterFanout(t *testing.T) {
 	})
 
 	t.Run("send_error", func(t *testing.T) {
-		b := newWorkStreamBroadcaster("reindex", "/docs")
+		b := newWorkStreamBroadcaster("reindex", "op-1", "/docs")
 		defer b.close()
 
 		_, ch, err := b.subscribe()
@@ -188,17 +188,17 @@ func TestWorkStreamBroadcasterFanout(t *testing.T) {
 		if evt.event != "error" {
 			t.Fatalf("event name = %q, want %q", evt.event, "error")
 		}
-		errorData, ok := evt.data.(map[string]string)
+		errorData, ok := evt.data.(WorkErrorEvent)
 		if !ok {
-			t.Fatalf("error payload type = %T, want map[string]string", evt.data)
+			t.Fatalf("error payload type = %T, want WorkErrorEvent", evt.data)
 		}
-		if got := errorData["message"]; got != "boom" {
-			t.Fatalf("error message = %q, want %q", got, "boom")
+		if errorData.Message != "boom" || errorData.OperationID != "op-1" {
+			t.Fatalf("error payload = %+v", errorData)
 		}
 	})
 
 	t.Run("close_broadcaster", func(t *testing.T) {
-		b := newWorkStreamBroadcaster("reindex", "/docs")
+		b := newWorkStreamBroadcaster("reindex", "op-1", "/docs")
 
 		_, ch, err := b.subscribe()
 		if err != nil {
@@ -218,13 +218,13 @@ func TestWorkStreamBroadcasterFanout(t *testing.T) {
 		if got := subscriberCount(b); got != 0 {
 			t.Fatalf("subscriber count after close = %d, want 0", got)
 		}
-		if err := b.SendEvent("progress", WorkProgressEvent{}); err == nil {
+		if err := b.SendEvent("progress", WorkProgressEvent{Operation: "reindex", OperationID: "op-1", Path: "/docs"}); err == nil {
 			t.Fatal("expected send error after broadcaster close")
 		}
 	})
 }
 
-func TestHandleStatusStreamFallsBackToJSONWhenIdle(t *testing.T) {
+func TestHandleStatusStreamFallsBackToUninitializedJSON(t *testing.T) {
 	d, _ := newDaemonWithDB(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/status?stream=true", nil)
@@ -238,20 +238,38 @@ func TestHandleStatusStreamFallsBackToJSONWhenIdle(t *testing.T) {
 	if got := rr.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
 		t.Fatalf("content-type = %q, want application/json", got)
 	}
-	if !strings.Contains(rr.Body.String(), `"status":"idle"`) {
-		t.Fatalf("body = %q, expected idle json status", rr.Body.String())
+	if !strings.Contains(rr.Body.String(), `"status":"uninitialized"`) {
+		t.Fatalf("body = %q, expected uninitialized json status", rr.Body.String())
+	}
+}
+
+func TestAttachStatusSSERequiresMatchingOperationIdentity(t *testing.T) {
+	d := &daemon{}
+	d.setWorkStreamBroadcaster(newWorkStreamBroadcaster("reindex", "op-1", "/docs"))
+
+	for _, query := range []string{
+		"stream=true",
+		"stream=true&operation_id=other&operation=reindex&path=%2Fdocs",
+		"stream=true&operation_id=op-1&operation=index&path=%2Fdocs",
+		"stream=true&operation_id=op-1&operation=reindex&path=%2Fother",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/status?"+query, nil)
+		rr := httptest.NewRecorder()
+		if d.attachStatusSSEIfActive(rr, req) {
+			t.Fatalf("attached with mismatched query %q", query)
+		}
 	}
 }
 
 func TestHandleStatusStreamAttachReceivesEventAndCleansSubscriber(t *testing.T) {
 	d := &daemon{}
-	broadcaster := newWorkStreamBroadcaster("reindex", "/docs")
+	broadcaster := newWorkStreamBroadcaster("reindex", "op-1", "/docs")
 	d.setWorkStreamBroadcaster(broadcaster)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	req := httptest.NewRequest(http.MethodGet, "/status?stream=true", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/status?stream=true&operation_id=op-1&operation=reindex&path=%2Fdocs", nil).WithContext(ctx)
 	req.Header.Set("Accept", "text/event-stream")
 	writer := newTestSSEWriter()
 
@@ -267,6 +285,8 @@ func TestHandleStatusStreamAttachReceivesEventAndCleansSubscriber(t *testing.T) 
 
 	if err := broadcaster.SendEvent("progress", WorkProgressEvent{
 		Operation:   "reindex",
+		OperationID: "op-1",
+		Path:        "/docs",
 		CurrentPath: "/docs",
 	}); err != nil {
 		t.Fatalf("send progress: %v", err)
@@ -296,6 +316,9 @@ func TestHandleStatusStreamAttachReceivesEventAndCleansSubscriber(t *testing.T) 
 	}
 	if !strings.Contains(body, "\"operation\":\"reindex\"") {
 		t.Fatalf("body = %q, expected operation payload", body)
+	}
+	if !strings.Contains(body, "\"operation_id\":\"op-1\"") {
+		t.Fatalf("body = %q, expected operation id payload", body)
 	}
 	if !strings.Contains(body, "event: progress") {
 		t.Fatalf("body = %q, expected progress event", body)

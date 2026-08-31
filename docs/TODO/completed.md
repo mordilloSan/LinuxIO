@@ -1,5 +1,9 @@
 # Completed or closed TODOs
 
+- [x] Completed the first-party indexer integration and simplification. LinuxIO
+  owns the root-only socket-activated service, timer, reduced configuration,
+  rebuildable cache, and browser Task recovery. The final design and operating
+  contract are documented in [Filesystem Indexer](../indexer.md).
 - [x] Documented indexer YAML/database/socket paths and bridge per-user
   configuration storage. See
   [Configuration and Storage Layout](../configuration-storage-layout.md).

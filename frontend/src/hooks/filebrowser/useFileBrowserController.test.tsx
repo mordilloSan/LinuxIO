@@ -22,10 +22,6 @@ const mocks = vi.hoisted(() => ({
     startDownload: vi.fn(),
     startUpload: vi.fn(),
   },
-  capability: {
-    isEnabled: true,
-    status: "available",
-  },
   dialogs: {
     actions: {
       clearPendingDelete: vi.fn(),
@@ -310,10 +306,6 @@ vi.mock("@/hooks/filebrowser/useListingInvalidation", () => ({
   useListingInvalidation: () => mocks.invalidateListing,
 }));
 
-vi.mock("@/hooks/useCapabilities", () => ({
-  useCapability: () => mocks.capability,
-}));
-
 const resource = {
   path: "/srv/projects",
   type: "directory",
@@ -384,8 +376,6 @@ describe("useFileBrowserController", () => {
 
     expect(result.current.contentProps).toMatchObject({
       chrome: {
-        indexerEnabled: true,
-        indexerStatus: "available",
         normalizedPath: "/srv/projects",
         searchQuery: "readme",
         showHiddenFiles: false,

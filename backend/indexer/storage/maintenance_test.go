@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -65,12 +64,9 @@ func TestPruneOldIndexesCountOnly(t *testing.T) {
 
 	for i := 1; i <= 4; i++ {
 		result, err := db.ExecContext(ctx, `
-			INSERT INTO indexes (
-				name, root_path, source, include_hidden,
-				num_dirs, num_files, total_size, disk_used,
-				disk_total, last_indexed
-			) VALUES (?, ?, ?, 0, 0, 1, 1, 1, 1, ?);
-		`, fmt.Sprintf("idx%d", i), "/tmp", "/tmp", int64(i))
+			INSERT INTO indexes (num_dirs, num_files, total_size, last_indexed)
+			VALUES (0, 1, 1, ?);
+		`, int64(i))
 		if err != nil {
 			t.Fatalf("insert index %d: %v", i, err)
 		}
@@ -88,7 +84,7 @@ func TestPruneOldIndexesCountOnly(t *testing.T) {
 		}
 	}
 
-	stats, err := PruneOldIndexes(ctx, db, 2, 0)
+	stats, err := PruneOldIndexes(ctx, db, 2)
 	if err != nil {
 		t.Fatalf("prune: %v", err)
 	}
@@ -135,11 +131,8 @@ func TestPruneKeepsNewestOnLastIndexedTie(t *testing.T) {
 	var lastID int64
 	for i := 1; i <= 2; i++ {
 		result, err := db.ExecContext(ctx, `
-			INSERT INTO indexes (
-				name, root_path, source, include_hidden,
-				num_dirs, num_files, total_size, disk_used,
-				disk_total, last_indexed
-			) VALUES ('root', '/tmp', '/tmp', 0, 0, 1, 1, 1, 1, ?);
+			INSERT INTO indexes (num_dirs, num_files, total_size, last_indexed)
+			VALUES (0, 1, 1, ?);
 		`, sameSecond)
 		if err != nil {
 			t.Fatalf("insert index %d: %v", i, err)
@@ -158,7 +151,7 @@ func TestPruneKeepsNewestOnLastIndexedTie(t *testing.T) {
 		t.Fatalf("latest before prune = %d, want %d", latestBefore, lastID)
 	}
 
-	stats, err := PruneOldIndexes(ctx, db, 1, 0)
+	stats, err := PruneOldIndexes(ctx, db, 1)
 	if err != nil {
 		t.Fatalf("prune: %v", err)
 	}

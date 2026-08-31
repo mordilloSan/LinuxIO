@@ -2,7 +2,6 @@ package systemd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
@@ -77,45 +76,4 @@ func fetchSocketStatus(session dbusclient.SystemSession, entry listedUnit) Socke
 		socket.NAccepted = n
 	}
 	return socket
-}
-
-// GetSocketListenAddress returns the first effective systemd stream listener.
-func GetSocketListenAddress(ctx context.Context, name string) (string, error) {
-	if err := requireUnitName(name); err != nil {
-		return "", err
-	}
-
-	var address string
-	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
-		path, err := getUnitObjectPath(session, name)
-		if err != nil {
-			return err
-		}
-		unit := session.ObjectAt(path)
-		listeners, err := dbusclient.GetProperty[[][]any](session, unit, dbusclient.SystemdSocketIface, "Listen")
-		if err != nil {
-			return err
-		}
-		var ok bool
-		address, ok = streamSocketListenAddress(listeners)
-		if !ok {
-			return fmt.Errorf("socket %s has no stream listener", name)
-		}
-		return nil
-	})
-	return address, err
-}
-
-func streamSocketListenAddress(listeners [][]any) (string, bool) {
-	for _, listener := range listeners {
-		if len(listener) < 2 {
-			continue
-		}
-		kind, kindOK := listener[0].(string)
-		address, addressOK := listener[1].(string)
-		if kindOK && addressOK && kind == "Stream" && address != "" {
-			return address, true
-		}
-	}
-	return "", false
 }

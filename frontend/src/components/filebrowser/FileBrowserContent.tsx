@@ -11,7 +11,6 @@ import FileDetail from "@/components/filebrowser/FileDetail";
 import SortBar from "@/components/filebrowser/SortBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import type { CapabilityStatus } from "@/hooks/useCapabilities";
 import type {
   FileItem,
   FileResource,
@@ -21,7 +20,7 @@ import type {
 } from "@/types/filebrowser";
 import { allowContextMenuProps } from "@/utils/contextMenu";
 
-import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
+import { FileDropOverlay } from "./FileBrowserPanels";
 
 export interface FileBrowserSurfaceProps {
   isDragOver: boolean;
@@ -34,8 +33,6 @@ export interface FileBrowserSurfaceProps {
 
 export interface FileBrowserChromeProps {
   editingPath: string | null;
-  indexerEnabled: boolean;
-  indexerStatus: CapabilityStatus;
   isSavingFile: boolean;
   normalizedPath: string;
   onOpenDirectory: (path: string) => void;
@@ -126,10 +123,6 @@ const FileBrowserContent = ({
           showHiddenFiles={chrome.showHiddenFiles}
           viewMode={chrome.viewMode}
         />
-      )}
-
-      {!chrome.indexerEnabled && !chrome.editingPath && (
-        <IndexerUnavailableAlert status={chrome.indexerStatus} />
       )}
 
       <div

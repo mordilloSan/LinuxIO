@@ -121,8 +121,7 @@ resolve -> [install_asset] -> [install_package] -> [enable_service] -> [start_se
   `debian` or `rhel`; `pickByFamily` chooses the matching package/service name.
 - Optional LinuxIO-managed components such as go-monitoring install through a
   component-specific asset/script step instead of PackageKit. The filesystem
-  indexer ships with LinuxIO and is detected for health/feature gating; it is
-  not installed through Capability Manager.
+  indexer ships with LinuxIO and is not installed through Capability Manager.
 - Package installs go through PackageKit (`InstallByName`), so installable
   capabilities that have a package step require PackageKit to be available.
 - A distro-specific optional package may report a warning without preventing

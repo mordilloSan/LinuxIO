@@ -11,10 +11,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/daemon"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/configfile"
-	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/version"
-	"github.com/mordilloSan/LinuxIO/backend/indexer/logging"
 )
 
 const usageText = `linuxio-indexer is managed by LinuxIO and systemd.
@@ -30,7 +30,7 @@ func Main(args []string) int {
 		case "--trigger-index":
 			return runIndexTrigger(args[1:])
 		case "--version":
-			return writeOutput(os.Stdout, version.String()+"\n")
+			return writeOutput(os.Stdout, "LinuxIO Indexer "+version.Version+"\n")
 		case "--help", "-h":
 			return writeOutput(os.Stdout, usageText)
 		}
@@ -40,7 +40,7 @@ func Main(args []string) int {
 
 func runDaemon(args []string) int {
 	fs := flag.NewFlagSet("linuxio-indexer", flag.ContinueOnError)
-	configPath := fs.String("config-file", configfile.PathFromEnvOrDefault(), "YAML config file path")
+	configPath := fs.String("config-file", configfile.DefaultPath(), "YAML config file path")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	if err := fs.Parse(args); err != nil {
 		return flagParseExitCode(err)
@@ -49,20 +49,16 @@ func runDaemon(args []string) int {
 		return writeError(fs.Output(), fmt.Sprintf("linuxio-indexer does not accept commands: %s\n", fs.Arg(0)))
 	}
 
-	logging.Configure("indexer", *verbose)
-	slog.Info("indexer starting", "version", version.String(), "mode", "daemon")
+	if err := logging.Configure("linuxio-indexer", *verbose); err != nil {
+		return writeError(os.Stderr, fmt.Sprintf("linuxio-indexer: initialize logging: %v\n", err))
+	}
+	slog.Info("indexer starting", "version", version.Version, "mode", "daemon")
 
 	fileCfg, err := configfile.Load(*configPath)
 	if err != nil {
 		slog.Error("failed to load config", "config_file", *configPath, "err", err)
 		return 1
 	}
-	fileCfg, err = configfile.ApplyEnvOverrides(fileCfg, os.LookupEnv)
-	if err != nil {
-		slog.Error("invalid environment config override", "err", err)
-		return 1
-	}
-
 	cfg, err := daemon.DaemonConfigFromConfig(fileCfg, *configPath)
 	if err != nil {
 		slog.Error("invalid daemon config", "err", err)
@@ -77,20 +73,7 @@ func runDaemon(args []string) int {
 
 	slog.Info("daemon initialized",
 		"config_file", cfg.ConfigPath,
-		"path", cfg.IndexPath,
-		"name", cfg.IndexName,
-		"db", cfg.DBPath,
-		"db_journal_mode", cfg.DBOptions.JournalMode,
-		"db_synchronous", cfg.DBOptions.Synchronous,
-		"include_hidden", cfg.IncludeHidden,
 		"include_network_mounts", cfg.IncludeNetworkMounts,
-		"keep_indexes", cfg.KeepIndexes,
-		"integrity_check", cfg.IntegrityCheck,
-		"search_default_limit", cfg.SearchDefaultLimit,
-		"search_max_limit", cfg.SearchMaxLimit,
-		"entries_default_limit", cfg.EntriesDefaultLimit,
-		"entries_max_limit", cfg.EntriesMaxLimit,
-		"idle_timeout", cfg.IdleTimeout,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

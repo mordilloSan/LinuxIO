@@ -12,17 +12,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	indexer "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
@@ -31,31 +27,13 @@ import (
 
 var (
 	detachedIndexerUpdates sync.WaitGroup
-	indexerAvailable       atomic.Bool
 	errIndexerUnavailable  = errors.New("indexer unavailable")
 )
 
 const (
-	indexerSocketName = "linuxio-indexer.socket"
-)
-const (
 	deleteLocalPrescanMaxBytes           int64 = 512 * 1024 * 1024
 	deleteLocalPrescanMaxTopLevelEntries       = 1000
 )
-
-var getIndexerUnitInfo = systemdapi.GetUnitInfo
-
-func init() {
-	indexerAvailable.Store(true)
-}
-
-func setIndexerAvailability(available bool) {
-	indexerAvailable.Store(available)
-}
-
-func isIndexerEnabled() bool {
-	return indexerAvailable.Load()
-}
 
 // runDetachedIndexerUpdate bounds intentionally fire-and-forget indexer notifications
 // that should outlive the request/task which already completed the filesystem change.
@@ -234,25 +212,20 @@ func deleteEntryTotalForPath(ctx context.Context, path string, isDir bool) int64
 		return 1
 	}
 
-	if counts, err := fetchEntryCountsFromIndexer(ctx, path); err == nil {
-		total := counts.Files + counts.Dirs
+	if details, err := fetchDirSizeFromIndexer(ctx, path); err == nil {
+		total := details.Files + details.Dirs
 		if total > 0 {
 			return total
 		}
-		return prescanDeleteEntryTotal(ctx, path, shouldPrescanDeletePath(path))
-	} else {
-		slog.Debug("failed to get delete entry count from indexer", "path", path, "error", err)
-	}
-
-	if size, err := fetchDirSizeFromIndexer(ctx, path); err == nil {
-		if size > deleteLocalPrescanMaxBytes {
+		if details.Size > deleteLocalPrescanMaxBytes {
 			return 0
 		}
-		if size > 0 {
+		if details.Size > 0 {
 			return prescanDeleteEntryTotal(ctx, path, true)
 		}
+		return prescanDeleteEntryTotal(ctx, path, shouldPrescanDeletePath(path))
 	} else {
-		slog.Debug("failed to get delete directory size from indexer", "path", path, "error", err)
+		slog.Debug("failed to get delete directory details from indexer", "path", path, "error", err)
 	}
 
 	return prescanDeleteEntryTotal(ctx, path, shouldPrescanDeletePath(path))
@@ -384,8 +357,8 @@ func createFileResource(ctx context.Context, root *fsroot.FSRoot, req resourcePo
 }
 
 func notifyIndexerForCreatedResource(ctx context.Context, root *fsroot.FSRoot, cleanPath, relPath, kind string) {
-	if info, err := root.Root.Stat(relPath); err == nil {
-		if err := addToIndexer(ctx, cleanPath, info); err != nil {
+	if _, err := root.Root.Stat(relPath); err == nil {
+		if err := addToIndexer(ctx, cleanPath); err != nil {
 			slog.Debug("failed to update indexer after create", "path", cleanPath, "type", kind, "error", err)
 		}
 	}
@@ -475,9 +448,9 @@ func computeTransferSize(ctx context.Context, path string, info os.FileInfo) com
 	}
 
 	if info != nil && info.IsDir() {
-		if totalSize, err := fetchDirSizeFromIndexer(ctx, path); err == nil {
-			if totalSize > 0 || indexerHasEntry(ctx, path) {
-				return computedTransferSize{total: totalSize, known: true}
+		if details, err := fetchDirSizeFromIndexer(ctx, path); err == nil {
+			if details.Size > 0 || details.Files+details.Dirs > 0 {
+				return computedTransferSize{total: details.Size, known: true}
 			}
 		} else {
 			slog.Debug("failed to get transfer size from indexer", "path", path, "error", err)
@@ -490,25 +463,6 @@ func computeTransferSize(ctx context.Context, path string, info os.FileInfo) com
 		return computedTransferSize{}
 	}
 	return computedTransferSize{total: totalSize, known: true}
-}
-
-func indexerHasEntry(ctx context.Context, path string) bool {
-	counts, err := fetchEntryCountsFromIndexer(ctx, path)
-	if err != nil {
-		slog.Debug("failed to confirm indexed transfer path", "path", path, "error", err)
-		return false
-	}
-	return counts.Files+counts.Dirs > 0
-}
-
-func indexerEntrySize(info os.FileInfo, size computedTransferSize) int64 {
-	if info == nil {
-		return 0
-	}
-	if info.IsDir() && size.known {
-		return size.total
-	}
-	return info.Size()
 }
 
 func moveFileOptions(size computedTransferSize) services.MoveFileOptions {
@@ -679,38 +633,19 @@ func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 
 // addToIndexer notifies the indexer daemon about a new or updated file/directory.
 // This updates the cached directory sizes in the indexer.
-func addToIndexer(ctx context.Context, path string, info os.FileInfo) error {
-	if info == nil {
-		return nil
-	}
-	return addToIndexerWithSize(ctx, path, info, info.Size())
-}
-
-func addToIndexerWithSize(ctx context.Context, path string, info os.FileInfo, size int64) error {
-	if !isIndexerEnabled() {
-		return nil
-	}
-	if info == nil {
-		return nil
-	}
-	if !info.IsDir() || size < 0 {
-		size = info.Size()
-	}
-
-	err := indexer.Add(ctx, indexer.EntryFromFileInfo(path, info, size))
+func addToIndexer(ctx context.Context, path string) error {
+	err := indexer.Add(ctx, indexer.EntryForPath(path))
 	if err != nil {
 		slog.Debug("indexer add request failed (indexer may be offline)", "error", err)
 		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
 			return fmt.Errorf("%w: indexer add request failed: %v", errIndexerUnavailable, err)
 		}
 		return fmt.Errorf("indexer add request failed: %w", err)
 	}
-	setIndexerAvailability(true)
 	return nil
 }
 
-func addCopiedPathToIndexer(ctx context.Context, path string, info os.FileInfo, size computedTransferSize, removeExisting bool) error {
+func addCopiedPathToIndexer(ctx context.Context, path string, info os.FileInfo, _ computedTransferSize, removeExisting bool) error {
 	if removeExisting {
 		if err := deleteFromIndexer(ctx, path); err != nil {
 			slog.Debug("failed to remove overwritten indexer entry", "path", path, "error", err)
@@ -719,13 +654,11 @@ func addCopiedPathToIndexer(ctx context.Context, path string, info os.FileInfo, 
 	if info == nil {
 		return nil
 	}
-	if err := addToIndexerWithSize(ctx, path, info, indexerEntrySize(info, size)); err != nil {
-		return err
-	}
 	if info.IsDir() {
-		if err := requestIndexerReindex(ctx, path); err != nil {
-			slog.Debug("failed to request indexer refresh", "path", path, "error", err)
-		}
+		return requestIndexerReindex(ctx, path)
+	}
+	if err := addToIndexer(ctx, path); err != nil {
+		return err
 	}
 	return nil
 }
@@ -751,160 +684,40 @@ func movePathInIndexer(ctx context.Context, source, destination string, size com
 }
 
 func requestIndexerReindex(ctx context.Context, path string) error {
-	if !isIndexerEnabled() {
-		return nil
-	}
 	err := indexer.Reindex(ctx, path)
 	if err != nil {
 		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
 			return fmt.Errorf("%w: indexer reindex request failed: %v", errIndexerUnavailable, err)
 		}
 		return fmt.Errorf("indexer reindex request failed: %w", err)
 	}
-	setIndexerAvailability(true)
 	return nil
 }
 
 // deleteFromIndexer notifies the indexer daemon about a deleted file/directory.
 // This updates the cached directory sizes in the indexer.
 func deleteFromIndexer(ctx context.Context, path string) error {
-	if !isIndexerEnabled() {
-		return nil
-	}
 	err := indexer.Delete(ctx, path)
 	if err != nil {
 		slog.Debug("indexer delete request failed (indexer may be offline)", "error", err)
 		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
 			return fmt.Errorf("%w: indexer delete request failed: %v", errIndexerUnavailable, err)
 		}
 		return fmt.Errorf("indexer delete request failed: %w", err)
 	}
-	setIndexerAvailability(true)
 	return nil
 }
 
-// CheckIndexerAvailability checks whether the managed indexer activation socket
-// is available without waking the idle daemon.
-func CheckIndexerAvailability(ctx context.Context) (bool, error) {
-	ok, err := checkIndexerSocketAvailability(ctx)
-	setIndexerAvailability(err == nil && ok)
-	return ok, err
-}
-
-func checkIndexerSocketAvailability(ctx context.Context) (bool, error) {
-	info, err := getIndexerUnitInfo(ctx, indexerSocketName)
-	if err != nil {
-		return false, fmt.Errorf("indexer socket unavailable: %w", err)
-	}
-
-	activeState, subState, ok := indexerUnitStates(info)
-	if !ok {
-		return false, fmt.Errorf("indexer socket state unavailable")
-	}
-	if activeState != "active" {
-		return false, indexerUnitStateError("socket", activeState, subState)
-	}
-
-	return true, nil
-}
-
-func indexerUnitStates(info apischema.UnitInfo) (string, string, bool) {
-	if info.ActiveState == nil || *info.ActiveState == "" {
-		return "", "", false
-	}
-
-	var subState string
-	if info.SubState != nil {
-		subState = *info.SubState
-	}
-
-	return *info.ActiveState, subState, true
-}
-
-func indexerUnitStateError(label, activeState, subState string) error {
-	if subState != "" {
-		return fmt.Errorf("indexer %s not active: %s (%s)", label, activeState, subState)
-	}
-	return fmt.Errorf("indexer %s not active: %s", label, activeState)
-}
-
-type indexerEntryCountResponse = indexerapi.EntryCountResponse
-
-type indexerStatusResponse struct {
-	Running      bool   `json:"running"`
-	Status       string `json:"status"`
-	FTSActive    bool   `json:"fts_active"`
-	FilesIndexed int64  `json:"files_indexed"`
-	DirsIndexed  int64  `json:"dirs_indexed"`
-	TotalSize    int64  `json:"total_size"`
-	LastIndexed  string `json:"last_indexed,omitempty"`
-	Warning      string `json:"warning,omitempty"`
-}
-
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
-func fetchDirSizeFromIndexer(ctx context.Context, path string) (int64, error) {
+func fetchDirSizeFromIndexer(ctx context.Context, path string) (indexerapi.DirSizeResponse, error) {
 	payload, err := indexer.DirSize(ctx, path)
 	if err != nil {
 		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
-			return 0, fmt.Errorf("%w: indexer dirsize request failed: %v", errIndexerUnavailable, err)
+			return indexerapi.DirSizeResponse{}, fmt.Errorf("%w: indexer dirsize request failed: %v", errIndexerUnavailable, err)
 		}
-		return 0, err
+		return indexerapi.DirSizeResponse{}, err
 	}
-	setIndexerAvailability(true)
-	return payload.Size, nil
-}
-
-// fetchEntryCountsFromIndexer queries the indexer daemon for cached recursive entry counts.
-func fetchEntryCountsFromIndexer(ctx context.Context, path string) (indexerEntryCountResponse, error) {
-	payload, err := indexer.EntryCount(ctx, path)
-	if err != nil {
-		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
-			return indexerEntryCountResponse{}, fmt.Errorf("%w: indexer entrycount request failed: %v", errIndexerUnavailable, err)
-		}
-		return indexerEntryCountResponse{}, err
-	}
-	setIndexerAvailability(true)
 	return payload, nil
-}
-
-func fetchIndexerStatusFromIndexer(ctx context.Context) (indexerStatusResponse, error) {
-	raw, err := indexer.FetchStatus(ctx)
-	if err != nil {
-		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
-			return indexerStatusResponse{}, fmt.Errorf("%w: indexer status request failed: %v", errIndexerUnavailable, err)
-		}
-		return indexerStatusResponse{}, err
-	}
-	setIndexerAvailability(true)
-	return indexerStatusResponse{
-		Running:      raw.Running,
-		Status:       raw.Status,
-		FTSActive:    raw.FTSActive,
-		FilesIndexed: raw.NumFiles,
-		DirsIndexed:  raw.NumDirs,
-		TotalSize:    raw.TotalSize,
-		LastIndexed:  raw.LastIndexed,
-		Warning:      raw.Warning,
-	}, nil
-}
-
-// indexerStatus returns current indexer status for refresh recovery.
-func indexerStatus(ctx context.Context) (indexerStatusResponse, error) {
-	status, err := fetchIndexerStatusFromIndexer(ctx)
-	if err != nil {
-		if errors.Is(err, errIndexerUnavailable) {
-			return indexerStatusResponse{}, fmt.Errorf("bad_request:indexer unavailable")
-		}
-		slog.Debug("error fetching indexer status", "error", err)
-		return indexerStatusResponse{}, fmt.Errorf("error fetching indexer status: %w", err)
-	}
-
-	return status, nil
 }
 
 // dirSize calculates the total size of a directory recursively.
@@ -930,20 +743,7 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:path is not a directory")
 	}
 
-	var size int64
-	var counts indexerEntryCountResponse
-	var group errgroup.Group
-	group.Go(func() error {
-		var fetchErr error
-		size, fetchErr = fetchDirSizeFromIndexer(ctx, req.Path)
-		return fetchErr
-	})
-	group.Go(func() error {
-		var fetchErr error
-		counts, fetchErr = fetchEntryCountsFromIndexer(ctx, req.Path)
-		return fetchErr
-	})
-	err = group.Wait()
+	details, err := fetchDirSizeFromIndexer(ctx, req.Path)
 	if err != nil {
 		if errors.Is(err, errIndexerUnavailable) {
 			return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:indexer unavailable")
@@ -953,9 +753,9 @@ func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.Director
 	}
 
 	return apischema.DirectorySizeData{
-		Size:        size,
-		FileCount:   counts.Files,
-		FolderCount: counts.Dirs,
+		Size:        details.Size,
+		FileCount:   details.Files,
+		FolderCount: details.Dirs,
 	}, nil
 }
 
@@ -1004,12 +804,10 @@ func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.S
 	folders, err := indexer.Subfolders(ctx, path)
 	if err != nil {
 		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
 			return nil, fmt.Errorf("%w: indexer subfolders request failed: %v", errIndexerUnavailable, err)
 		}
 		return nil, err
 	}
-	setIndexerAvailability(true)
 	return subfoldersFromIndexer(folders), nil
 }
 
@@ -1085,12 +883,10 @@ func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]inde
 	results, err := indexer.Search(ctx, query, limit, basePath)
 	if err != nil {
 		if errors.Is(err, indexer.ErrUnavailable) {
-			setIndexerAvailability(false)
 			return nil, fmt.Errorf("%w: indexer search request failed: %v", errIndexerUnavailable, err)
 		}
 		return nil, err
 	}
-	setIndexerAvailability(true)
 	if results == nil {
 		return []indexerSearchResult{}, nil
 	}

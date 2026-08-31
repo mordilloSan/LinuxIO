@@ -18,7 +18,6 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
 	apischema.TaskRunner[apischema.ActionSourceDestinationRequest, apischema.MessageResponse]("filebrowser.resource_patch", apischema.SessionTask(), apischema.WithTaskProgress[FileProgress]()).Run(handleResourcePatch, bridgeipc.TaskDefault),
 	apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size", apischema.RetrySafe(), apischema.Privileged()).Handle(handleDirSize),
-	apischema.Call[apischema.NoRequest, apischema.IndexerStatusResponse]("filebrowser.indexer_status", apischema.RetrySafe(), apischema.Privileged()).Handle(handleIndexerStatus),
 	apischema.Call[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders", apischema.RetrySafe(), apischema.Privileged()).Handle(handleSubfolders),
 	apischema.Call[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search", apischema.RetrySafe(), apischema.Privileged()).Handle(handleSearch),
 	apischema.Call[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups", apischema.RetrySafe()).Handle(handleUsersGroups),
@@ -64,14 +63,6 @@ func handleResourcePatch(ctx context.Context, task *bridgeipc.Task, req apischem
 
 func handleDirSize(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {
 	return dirSize(ctx, req)
-}
-
-func handleIndexerStatus(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerStatusResponse, error) {
-	result, err := indexerStatus(ctx)
-	if err != nil {
-		return apischema.IndexerStatusResponse{}, err
-	}
-	return indexerStatusToAPI(result), nil
 }
 
 func handleSubfolders(ctx context.Context, req apischema.PathRequest) (apischema.SubfoldersResponse, error) {

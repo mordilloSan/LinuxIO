@@ -5,6 +5,7 @@
 package indexing
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,7 +23,10 @@ func dirMetadataKey(path string) string {
 }
 
 // indexDirectory recursively indexes files and directories.
-func (idx *Index) indexDirectory(adjustedPath string) error {
+func (idx *Index) indexDirectory(ctx context.Context, adjustedPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// Normalize path to always have trailing slash (except for root which is just "/")
 	if adjustedPath != "/" {
 		adjustedPath = strings.TrimSuffix(adjustedPath, "/") + "/"
@@ -51,7 +55,7 @@ func (idx *Index) indexDirectory(adjustedPath string) error {
 		return ErrNotIndexed
 	}
 
-	dirFileInfo, err2 := idx.GetDirInfo(dir, dirInfo, realPath, adjustedPath)
+	dirFileInfo, err2 := idx.GetDirInfo(ctx, dir, dirInfo, realPath, adjustedPath)
 	if err2 != nil {
 		return err2
 	}
@@ -66,11 +70,8 @@ func (idx *Index) indexDirectory(adjustedPath string) error {
 	idx.mu.Unlock()
 
 	normalized := dirKey
-	absDirPath := idx.realPathFromCombined(adjustedPath)
-
 	entry := IndexEntry{
 		RelativePath: normalized,
-		AbsolutePath: absDirPath,
 		Name:         directoryName(dirFileInfo, normalized),
 		Size:         dirFileInfo.Size,
 		ModTime:      dirFileInfo.ModTime,
@@ -84,7 +85,7 @@ func (idx *Index) indexDirectory(adjustedPath string) error {
 	return nil
 }
 
-func (idx *Index) GetDirInfo(dirInfo *os.File, stat os.FileInfo, realPath, adjustedPath string) (*iteminfo.FileInfo, error) {
+func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.FileInfo, realPath, adjustedPath string) (*iteminfo.FileInfo, error) {
 	// Ensure combinedPath has exactly one trailing slash to prevent double slashes in subdirectory paths
 	combinedPath := strings.TrimRight(adjustedPath, "/") + "/"
 	// Read directory contents
@@ -99,6 +100,9 @@ func (idx *Index) GetDirInfo(dirInfo *os.File, stat os.FileInfo, realPath, adjus
 	normalizedDir := dirMetadataKey(adjustedPath)
 
 	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		hidden := isHidden(file)
 		isDir := file.IsDir()
 		baseName := file.Name()
@@ -109,11 +113,9 @@ func (idx *Index) GetDirInfo(dirInfo *os.File, stat os.FileInfo, realPath, adjus
 
 		if isDir {
 			dirPath := combinedPath + baseName
-			dirSize, indexErr := idx.indexChildDirectory(dirPath)
+			dirSize, indexErr := idx.indexChildDirectory(ctx, dirPath)
 			if indexErr != nil {
-				// A dead stream writer aborts the whole traversal; any other
-				// per-directory error skips the directory.
-				if errors.Is(indexErr, ErrStreamWrite) {
+				if errors.Is(indexErr, ErrStreamWrite) || errors.Is(indexErr, context.Canceled) || errors.Is(indexErr, context.DeadlineExceeded) {
 					return nil, indexErr
 				}
 				idx.logChildDirError(dirPath, indexErr)
@@ -123,17 +125,11 @@ func (idx *Index) GetDirInfo(dirInfo *os.File, stat os.FileInfo, realPath, adjus
 			continue
 		}
 
-		fileSize, writeErr := idx.indexChildFile(file, realPath, normalizedDir, fullCombined, hidden)
+		fileSize, writeErr := idx.indexChildFile(ctx, file, normalizedDir, hidden)
 		if writeErr != nil {
 			return nil, writeErr
 		}
 		totalSize += fileSize
-	}
-
-	if adjustedPath == "/" {
-		idx.mu.Lock()
-		idx.DiskUsed = uint64(totalSize)
-		idx.mu.Unlock()
 	}
 
 	dirFileInfo := &iteminfo.FileInfo{
@@ -150,8 +146,8 @@ func (idx *Index) GetDirInfo(dirInfo *os.File, stat os.FileInfo, realPath, adjus
 	return dirFileInfo, nil
 }
 
-func (idx *Index) indexChildDirectory(dirPath string) (int64, error) {
-	if err := idx.indexDirectory(dirPath); err != nil {
+func (idx *Index) indexChildDirectory(ctx context.Context, dirPath string) (int64, error) {
+	if err := idx.indexDirectory(ctx, dirPath); err != nil {
 		return 0, err
 	}
 
@@ -167,14 +163,16 @@ func (idx *Index) indexChildDirectory(dirPath string) (int64, error) {
 	return size, nil
 }
 
-func (idx *Index) indexChildFile(file os.FileInfo, realPath, normalizedDir, fullCombined string, hidden bool) (int64, error) {
-	size, shouldCountSize := idx.handleFile(file, fullCombined)
+func (idx *Index) indexChildFile(ctx context.Context, file os.FileInfo, normalizedDir string, hidden bool) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	size, shouldCountSize := idx.handleFile(file)
 	idx.incrementFileCount()
 
 	childPath := makeChildRelativePath(normalizedDir, file.Name())
 	entry := IndexEntry{
 		RelativePath: childPath,
-		AbsolutePath: filepath.Join(realPath, file.Name()),
 		Name:         file.Name(),
 		Size:         int64(size),
 		ModTime:      file.ModTime(),
@@ -193,8 +191,8 @@ func (idx *Index) indexChildFile(file os.FileInfo, realPath, normalizedDir, full
 
 // logChildDirError records a child directory that could not be indexed.
 // Deliberate exclusions and directories deleted mid-scan are routine and stay
-// at debug level; anything else (EACCES, EIO) means the subtree is silently
-// missing from this scan, so it is logged visibly and counted.
+// at debug level; anything else is logged visibly and counted before the scan
+// continues without that subtree.
 func (idx *Index) logChildDirError(dirPath string, err error) {
 	if errors.Is(err, ErrNotIndexed) || errors.Is(err, os.ErrNotExist) {
 		slog.Debug("skipping directory", "path", dirPath, "err", err)
@@ -228,11 +226,6 @@ func (idx *Index) shouldSkip(isDir bool, isHidden bool, fullCombined string) boo
 				return true
 			}
 		}
-	}
-
-	// Skip hidden files and directories unless includeHidden is true
-	if isHidden && !idx.includeHidden {
-		return true
 	}
 
 	return false

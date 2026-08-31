@@ -7,9 +7,27 @@ package indexing
 import (
 	"os"
 	"syscall"
+	"time"
 )
 
-func (idx *Index) handleFile(file os.FileInfo, fullCombined string) (size uint64, shouldCountSize bool) {
+// EntryFromFileInfo builds the canonical mutation payload from the filesystem.
+func EntryFromFileInfo(path string, info os.FileInfo) IndexEntry {
+	typ := "file"
+	if info.IsDir() {
+		typ = "directory"
+	}
+	return IndexEntry{
+		RelativePath: NormalizeIndexPath(path),
+		Name:         info.Name(),
+		Size:         info.Size(),
+		ModTime:      info.ModTime().In(time.UTC),
+		Type:         typ,
+		Hidden:       isHidden(info),
+		Inode:        inodeFromFileInfo(info),
+	}
+}
+
+func (idx *Index) handleFile(file os.FileInfo) (size uint64, shouldCountSize bool) {
 	var realSize uint64
 	var nlink uint64 = 1
 	var key devIno
@@ -31,7 +49,6 @@ func (idx *Index) handleFile(file os.FileInfo, fullCombined string) (size uint64
 			return realSize, false
 		}
 		idx.processedInodes[key] = struct{}{}
-		idx.FoundHardLinks[fullCombined] = realSize
 		idx.totalSize += realSize
 		idx.mu.Unlock()
 		return realSize, true

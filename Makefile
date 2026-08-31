@@ -1325,9 +1325,9 @@ build-docker-update: go_binary_ldflags := -s -w
 build-indexer: go_binary_label := filesystem indexer
 build-indexer: go_binary_package := ./indexer
 build-indexer: go_binary_output := $(indexer_binary)
-build-indexer: go_binary_ldflags := -s -w -X '$(MODULE_PATH)/indexer/internal/version.Version=$(GIT_VERSION)' -X '$(MODULE_PATH)/indexer/internal/version.Commit=$(GIT_COMMIT_SHORT)' -X '$(MODULE_PATH)/indexer/internal/version.Date=$(BUILD_TIME)'
+build-indexer: go_binary_ldflags := -s -w -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'
 build-indexer: go_binary_extra_env := CGO_ENABLED=1
-build-indexer: go_binary_tags := sqlite_dbstat sqlite_fts5
+build-indexer: go_binary_tags := sqlite_fts5
 
 $(go_binary_targets): $(GO_BUILD_PREREQ)
 

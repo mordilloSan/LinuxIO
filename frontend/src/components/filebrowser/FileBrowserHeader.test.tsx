@@ -20,9 +20,6 @@ vi.mock("@/components/ui/HeaderActions", () => ({
     );
   },
 }));
-vi.mock("@/hooks/useCapabilities", () => ({
-  useCapability: () => ({ isEnabled: false, reason: "Unavailable" }),
-}));
 vi.mock("@/hooks/backgroundTasks/useIsIndexing", () => ({
   useIsIndexing: () => false,
 }));

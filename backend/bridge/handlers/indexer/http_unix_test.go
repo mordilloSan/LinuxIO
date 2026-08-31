@@ -48,7 +48,7 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
 				t.Errorf("decode add: %v", err)
 			}
-			if entry.Path != "/docs/readme.txt" || entry.Name != "readme.txt" {
+			if entry.Path != "/docs/readme.txt" {
 				t.Errorf("add entry = %#v", entry)
 			}
 		case indexerapi.RouteDelete:
@@ -64,12 +64,6 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 				t.Errorf("dirsize request = %s %s", r.Method, r.URL.String())
 			}
 			_, _ = io.WriteString(w, `{"path":"/docs","size":42}`)
-			return
-		case indexerapi.RouteEntryCount:
-			if r.Method != http.MethodGet || r.URL.Query().Get("path") != "/docs" {
-				t.Errorf("entrycount request = %s %s", r.Method, r.URL.String())
-			}
-			_, _ = io.WriteString(w, `{"path":"/docs","files":2,"dirs":1}`)
 			return
 		case indexerapi.RouteSubfolders:
 			if r.Method != http.MethodGet || r.URL.Query().Get("path") != "/docs" {
@@ -91,7 +85,7 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 
-	entry := indexerapi.EntryRequest{Path: "/docs/readme.txt", Name: "readme.txt", Type: "file"}
+	entry := indexerapi.EntryRequest{Path: "/docs/readme.txt"}
 	if err := Add(context.Background(), entry); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -103,9 +97,6 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 	}
 	if got, err := DirSize(context.Background(), "docs"); err != nil || got.Size != 42 {
 		t.Fatalf("DirSize = %#v, %v", got, err)
-	}
-	if got, err := EntryCount(context.Background(), "docs"); err != nil || got.Files != 2 || got.Dirs != 1 {
-		t.Fatalf("EntryCount = %#v, %v", got, err)
 	}
 	if got, err := Subfolders(context.Background(), "docs"); err != nil || len(got) != 1 || got[0].Path != "/docs/a" {
 		t.Fatalf("Subfolders = %#v, %v", got, err)

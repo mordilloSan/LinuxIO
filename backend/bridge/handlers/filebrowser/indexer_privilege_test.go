@@ -11,7 +11,6 @@ func TestIndexerRoutesArePrivileged(t *testing.T) {
 	for _, route := range []string{
 		"filebrowser.dir_size",
 		"filebrowser.index",
-		"filebrowser.indexer_status",
 		"filebrowser.search",
 		"filebrowser.subfolders",
 	} {

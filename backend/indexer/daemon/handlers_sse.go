@@ -15,6 +15,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/indexing"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/configfile"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/storage"
 )
 
@@ -64,14 +65,13 @@ func (s *SSEWriter) SendEvent(event string, data any) error {
 	return nil
 }
 
-// SendError sends an SSE error event.
-func (s *SSEWriter) SendError(msg string) error {
-	return s.SendEvent("error", map[string]string{"message": msg})
-}
-
 type sseEventSender interface {
 	SendEvent(event string, data any) error
 	SendError(msg string) error
+}
+
+type sseEventWriter interface {
+	SendEvent(event string, data any) error
 }
 
 type workStreamEvent struct {
@@ -81,6 +81,7 @@ type workStreamEvent struct {
 
 type workStreamBroadcaster struct {
 	operation        string
+	operationID      string
 	path             string
 	mu               sync.Mutex
 	subscribers      map[int]chan workStreamEvent
@@ -90,13 +91,16 @@ type workStreamBroadcaster struct {
 
 const workStreamSubscriberBuffer = 64
 
-func newWorkStreamBroadcaster(operation, path string) *workStreamBroadcaster {
+func newWorkStreamBroadcaster(operation, operationID, path string) *workStreamBroadcaster {
 	return &workStreamBroadcaster{
 		operation:   operation,
+		operationID: operationID,
 		path:        path,
 		subscribers: make(map[int]chan workStreamEvent),
 	}
 }
+
+func (b *workStreamBroadcaster) OperationID() string { return b.operationID }
 
 func (b *workStreamBroadcaster) Operation() string {
 	return b.operation
@@ -129,7 +133,13 @@ func (b *workStreamBroadcaster) SendEvent(event string, data any) error {
 }
 
 func (b *workStreamBroadcaster) SendError(msg string) error {
-	return b.SendEvent("error", map[string]string{"message": msg})
+	return b.SendEvent("error", WorkErrorEvent{
+		Status:      "error",
+		Operation:   b.operation,
+		OperationID: b.operationID,
+		Path:        b.path,
+		Message:     msg,
+	})
 }
 
 func (b *workStreamBroadcaster) subscribe() (int, <-chan workStreamEvent, error) {
@@ -172,7 +182,7 @@ func (b *workStreamBroadcaster) close() {
 	b.mu.Unlock()
 }
 
-func sendSSEEvent(s sseEventSender, event string, data any) bool {
+func sendSSEEvent(s sseEventWriter, event string, data any) bool {
 	if err := s.SendEvent(event, data); err != nil {
 		slog.Warn("SSE send failed", "event", event, "err", err)
 		return false
@@ -189,6 +199,7 @@ func sendSSEError(s sseEventSender, msg string) {
 type WorkStartedEvent = api.WorkStartedEvent
 type WorkProgressEvent = api.WorkProgressEvent
 type WorkCompleteEvent = api.WorkCompleteEvent
+type WorkErrorEvent = api.WorkErrorEvent
 
 func wantsStatusSSE(r *http.Request) bool {
 	streamParam := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("stream")))
@@ -201,6 +212,14 @@ func wantsStatusSSE(r *http.Request) bool {
 func (d *daemon) attachStatusSSEIfActive(w http.ResponseWriter, r *http.Request) bool {
 	broadcaster := d.getWorkStreamBroadcaster()
 	if broadcaster == nil {
+		return false
+	}
+	expectedID := strings.TrimSpace(r.URL.Query().Get("operation_id"))
+	expectedOperation := strings.TrimSpace(r.URL.Query().Get("operation"))
+	_, pathProvided := r.URL.Query()["path"]
+	expectedPath := indexing.NormalizeIndexPath(r.URL.Query().Get("path"))
+	if expectedID == "" || expectedID != broadcaster.OperationID() ||
+		expectedOperation != broadcaster.Operation() || !pathProvided || expectedPath != indexing.NormalizeIndexPath(broadcaster.Path()) {
 		return false
 	}
 
@@ -218,9 +237,10 @@ func (d *daemon) attachStatusSSEIfActive(w http.ResponseWriter, r *http.Request)
 	defer broadcaster.unsubscribe(subscriberID)
 
 	if !sendSSEEvent(sse, "started", WorkStartedEvent{
-		Status:    "running",
-		Operation: broadcaster.Operation(),
-		Path:      broadcaster.Path(),
+		Status:      "running",
+		Operation:   broadcaster.Operation(),
+		OperationID: broadcaster.OperationID(),
+		Path:        broadcaster.Path(),
 	}) {
 		return true
 	}
@@ -245,8 +265,8 @@ func (d *daemon) streamWorkEvents(ctx context.Context, sse *SSEWriter, events <-
 	}
 }
 
-func (d *daemon) beginWorkStream(operation, path string) *workStreamBroadcaster {
-	b := newWorkStreamBroadcaster(operation, path)
+func (d *daemon) beginWorkStream(operation, operationID, path string) *workStreamBroadcaster {
+	b := newWorkStreamBroadcaster(operation, operationID, path)
 	d.setWorkStreamBroadcaster(b)
 	return b
 }
@@ -257,7 +277,7 @@ func (d *daemon) endWorkStream(b *workStreamBroadcaster) {
 }
 
 // reindexPathWithProgress reindexes a path and emits progress events.
-func (d *daemon) reindexPathWithProgress(ctx context.Context, relativePath string, sender sseEventSender) {
+func (d *daemon) reindexPathWithProgress(ctx context.Context, operationID, relativePath string, sender sseEventSender) {
 	start := time.Now()
 	slog.Info("starting reindex", "path", relativePath)
 
@@ -267,48 +287,55 @@ func (d *daemon) reindexPathWithProgress(ctx context.Context, relativePath strin
 		return
 	}
 
-	// Refuse to proceed when the path can't even be stat'ed (e.g. permissions):
-	// entries are deleted before rescanning, so failing later would leave the
-	// index missing the whole subtree. A path that no longer exists is fine —
-	// removing its stale entries is the point of reindexing it. Files are
-	// rejected for the same reason: traversal only handles directories, so a
-	// file's row would be deleted and then never rewritten.
 	cfg := d.configSnapshot()
-	realPath := strings.TrimRight(cfg.IndexPath, "/") + relativePath
-	fi, statErr := os.Stat(realPath)
+	fi, statErr := os.Stat(relativePath)
 	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-		sendSSEError(sender, fmt.Sprintf("cannot access %s: %v", realPath, statErr))
+		sendSSEError(sender, fmt.Sprintf("cannot access %s: %v", relativePath, statErr))
 		return
 	}
 	if statErr == nil && !fi.IsDir() {
-		sendSSEError(sender, fmt.Sprintf("%s is a file; reindex its parent directory instead", realPath))
+		sendSSEError(sender, fmt.Sprintf("%s is a file; reindex its parent directory instead", relativePath))
 		return
 	}
 
-	if !sendSSEEvent(sender, "progress", WorkProgressEvent{
-		Operation:   "reindex",
-		CurrentPath: "Deleting old entries...",
-	}) {
+	if statErr != nil {
+		if deleteErr := storage.DeletePathRecursive(ctx, d.db, indexID, relativePath); deleteErr != nil {
+			sendSSEError(sender, fmt.Sprintf("failed to delete stale entries: %v", deleteErr))
+			return
+		}
+		sendSSEEvent(sender, "complete", WorkCompleteEvent{Status: "complete", Operation: "reindex", OperationID: operationID, Path: relativePath, DurationMs: time.Since(start).Milliseconds()})
 		return
 	}
+	d.reindexExistingPath(ctx, operationID, relativePath, sender, start, cfg, indexID)
+}
 
-	if deleteErr := storage.DeletePathRecursive(ctx, d.db, indexID, relativePath); deleteErr != nil {
-		sendSSEError(sender, fmt.Sprintf("failed to delete existing entries: %v", deleteErr))
+func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativePath string, sender sseEventSender, start time.Time, cfg DaemonConfig, indexID int64) {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		sendSSEError(sender, fmt.Sprintf("begin reindex transaction: %v", err))
+		return
+	}
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			slog.Warn("reindex transaction rollback failed", "err", rollbackErr)
+		}
+	}()
+
+	var oldSize int64
+	if err := tx.QueryRowContext(ctx, `SELECT size FROM entries WHERE index_id = ? AND relative_path = ?`, indexID, relativePath).Scan(&oldSize); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		sendSSEError(sender, fmt.Sprintf("read prior directory size: %v", err))
 		return
 	}
 
 	index := indexing.Initialize(
-		cfg.IndexName,
-		cfg.IndexPath,
-		cfg.IndexPath,
-		cfg.IncludeHidden,
+		"/",
 		indexing.WithNetworkMounts(cfg.IncludeNetworkMounts),
-		indexing.WithExcludePaths(cfg.ExcludePaths),
+		indexing.WithExcludePaths(configfile.EffectiveExcludePaths(configfile.Config{ExcludePaths: cfg.ExcludePaths})),
 	)
-	writer := storage.NewStreamingWriter(ctx, d.db, indexID, 1000, reindexProgressCallback(sender))
+	writer := storage.NewTransactionalStreamingWriter(ctx, tx, indexID, 1000, reindexProgressCallback(operationID, relativePath, sender))
 	index.EnableStreaming(writer)
 
-	if indexErr := index.StartIndexingFromPath(relativePath); indexErr != nil {
+	if indexErr := index.StartIndexingFromPath(ctx, relativePath); indexErr != nil {
 		if closeErr := writer.Close(); closeErr != nil {
 			slog.Warn("failed to close streaming writer after reindex stream error", "err", closeErr)
 		}
@@ -321,9 +348,13 @@ func (d *daemon) reindexPathWithProgress(ctx context.Context, relativePath strin
 		return
 	}
 
-	newSize, finishErr := d.finishPathReindex(ctx, indexID, relativePath, writer.ScanTime())
+	newSize, finishErr := d.finishPathReindex(ctx, tx, indexID, relativePath, writer.ScanTime(), oldSize)
 	if finishErr != nil {
 		sendSSEError(sender, finishErr.Error())
+		return
+	}
+	if commitErr := tx.Commit(); commitErr != nil {
+		sendSSEError(sender, fmt.Sprintf("commit reindex: %v", commitErr))
 		return
 	}
 
@@ -342,6 +373,7 @@ func (d *daemon) reindexPathWithProgress(ctx context.Context, relativePath strin
 	sendSSEEvent(sender, "complete", WorkCompleteEvent{
 		Status:       "complete",
 		Operation:    "reindex",
+		OperationID:  operationID,
 		Path:         relativePath,
 		FilesIndexed: int64(index.NumFiles),
 		DirsIndexed:  int64(index.NumDirs),
@@ -350,11 +382,13 @@ func (d *daemon) reindexPathWithProgress(ctx context.Context, relativePath strin
 	})
 }
 
-func reindexProgressCallback(sender sseEventSender) func(int64, int64, string) {
+func reindexProgressCallback(operationID, operationPath string, sender sseEventSender) func(int64, int64, string) {
 	return func(filesWritten, dirsWritten int64, lastPath string) {
 		if (filesWritten+dirsWritten)%100 == 0 {
 			sendSSEEvent(sender, "progress", WorkProgressEvent{
 				Operation:    "reindex",
+				OperationID:  operationID,
+				Path:         operationPath,
 				FilesIndexed: filesWritten,
 				DirsIndexed:  dirsWritten,
 				CurrentPath:  lastPath,
@@ -363,8 +397,8 @@ func reindexProgressCallback(sender sseEventSender) func(int64, int64, string) {
 	}
 }
 
-func (d *daemon) finishPathReindex(ctx context.Context, indexID int64, relativePath string, scanTime int64) (int64, error) {
-	deleted, err := storage.CleanupDeletedEntriesUnderPath(ctx, d.db, indexID, relativePath, scanTime)
+func (d *daemon) finishPathReindex(ctx context.Context, tx *sql.Tx, indexID int64, relativePath string, scanTime, oldSize int64) (int64, error) {
+	deleted, err := storage.CleanupDeletedEntriesUnderPath(ctx, tx, indexID, relativePath, scanTime)
 	if err != nil {
 		return 0, fmt.Errorf("cleanup deleted entries: %w", err)
 	}
@@ -375,7 +409,7 @@ func (d *daemon) finishPathReindex(ctx context.Context, indexID int64, relativeP
 	// Directory rows already aggregate descendants, so read the reindexed
 	// path's own row instead of summing and double-counting its subtree.
 	var newSizeRow sql.NullInt64
-	err = d.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		SELECT size FROM entries
 		WHERE index_id = ? AND relative_path = ?;
 	`, indexID, relativePath).Scan(&newSizeRow)
@@ -388,150 +422,10 @@ func (d *daemon) finishPathReindex(ctx context.Context, indexID int64, relativeP
 		newSize = newSizeRow.Int64
 	}
 	// The root has no parent; propagating its size would double its own row.
-	if relativePath != "/" && newSize != 0 {
-		if updateErr := storage.UpdateParentDirectorySizes(ctx, d.db, indexID, relativePath, newSize); updateErr != nil {
+	if relativePath != "/" && newSize != oldSize {
+		if updateErr := storage.UpdateParentDirectorySizes(ctx, tx, indexID, relativePath, newSize-oldSize); updateErr != nil {
 			return 0, fmt.Errorf("update parent sizes: %w", updateErr)
 		}
 	}
 	return newSize, nil
-}
-
-// vacuumWithProgress runs vacuum and emits progress events.
-func (d *daemon) vacuumWithProgress(ctx context.Context, sender sseEventSender) {
-	start := time.Now()
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Hour)
-	defer cancel()
-
-	indexID, err := d.store.LatestIndexID(ctx)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		slog.Warn("vacuum: latest index id unavailable", "err", err)
-		indexID = 0
-	}
-
-	if !sendSSEEvent(sender, "progress", WorkProgressEvent{
-		Operation: "vacuum",
-		Phase:     "pre_checkpoint",
-		Message:   "Running WAL checkpoint before vacuum...",
-	}) {
-		return
-	}
-
-	if _, checkpointErr := storage.WALCheckpointTruncate(ctx, d.db); checkpointErr != nil {
-		slog.Warn("vacuum: wal checkpoint pre failed", "err", checkpointErr)
-		if !sendSSEEvent(sender, "progress", WorkProgressEvent{
-			Operation: "vacuum",
-			Phase:     "pre_checkpoint",
-			Message:   fmt.Sprintf("WAL checkpoint warning: %v", checkpointErr),
-		}) {
-			return
-		}
-	}
-
-	if !sendSSEEvent(sender, "progress", WorkProgressEvent{
-		Operation: "vacuum",
-		Phase:     "vacuum",
-		Message:   "Running VACUUM (this may take a while)...",
-	}) {
-		return
-	}
-
-	vs, err := storage.Vacuum(ctx, d.db)
-	if err != nil {
-		slog.Error("vacuum failed", "err", err)
-		sendSSEError(sender, fmt.Sprintf("vacuum failed: %v", err))
-		return
-	}
-
-	slog.Info("vacuum complete", "duration", vs.Duration)
-
-	if !sendSSEEvent(sender, "progress", WorkProgressEvent{
-		Operation: "vacuum",
-		Phase:     "post_checkpoint",
-		Message:   "Running WAL checkpoint after vacuum...",
-	}) {
-		return
-	}
-
-	if _, err := storage.WALCheckpointTruncate(ctx, d.db); err != nil {
-		slog.Warn("vacuum: wal checkpoint post failed", "err", err)
-	}
-	if err := storage.ReleaseSQLiteMemory(ctx, d.db); err != nil {
-		slog.Warn("failed to release SQLite memory after vacuum", "err", err)
-	}
-	logDatabaseDiskUsage(ctx, d.db)
-
-	if indexID != 0 {
-		if _, err := d.db.ExecContext(ctx, `UPDATE indexes SET vacuum_duration_ms = ? WHERE id = ?;`, vs.Duration.Milliseconds(), indexID); err != nil {
-			slog.Warn("vacuum: failed to persist duration", "err", err)
-		}
-	}
-
-	duration := time.Since(start)
-	sendSSEEvent(sender, "complete", WorkCompleteEvent{
-		Status:     "complete",
-		Operation:  "vacuum",
-		DurationMs: duration.Milliseconds(),
-	})
-}
-
-// logDatabaseDiskUsage logs per-table/index disk usage via DBSTAT.
-// Silently skipped when the binary was built without -tags sqlite_dbstat.
-func logDatabaseDiskUsage(ctx context.Context, db *sql.DB) {
-	usage, err := storage.DatabaseDiskUsage(ctx, db)
-	if err != nil {
-		if !errors.Is(err, storage.ErrDBStatUnavailable) {
-			slog.Warn("dbstat disk usage query failed", "err", err)
-		}
-		return
-	}
-	for _, t := range usage {
-		slog.Info("db disk usage", "object", t.Name, "pages", t.Pages, "bytes", t.Bytes, "unused_bytes", t.UnusedBytes)
-	}
-}
-
-// pruneWithProgress prunes historical index data and emits status events.
-func (d *daemon) pruneWithProgress(ctx context.Context, keepLatest, maxAgeDays int, sender sseEventSender) {
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Hour)
-	defer cancel()
-
-	maxAge := time.Duration(maxAgeDays) * 24 * time.Hour
-	if !sendSSEEvent(sender, "progress", WorkProgressEvent{
-		Operation: "prune",
-		Phase:     "prune",
-		Message:   "Pruning old index records...",
-	}) {
-		return
-	}
-
-	stats, err := storage.PruneOldIndexes(ctx, d.db, keepLatest, maxAge)
-	if err != nil {
-		slog.Error("prune failed", "err", err)
-		sendSSEError(sender, fmt.Sprintf("prune failed: %v", err))
-		return
-	}
-
-	slog.Info("prune complete", "duration", stats.Duration, "deleted_indexes", stats.DeletedIndexes, "deleted_entries", stats.DeletedEntries)
-
-	if !sendSSEEvent(sender, "progress", WorkProgressEvent{
-		Operation: "prune",
-		Phase:     "post_cleanup",
-		Message:   "Running WAL checkpoint after prune...",
-	}) {
-		return
-	}
-
-	if _, err := storage.WALCheckpointTruncate(ctx, d.db); err != nil {
-		slog.Warn("prune: wal checkpoint failed", "err", err)
-	}
-	if err := storage.ReleaseSQLiteMemory(ctx, d.db); err != nil {
-		slog.Warn("prune: failed to release SQLite memory", "err", err)
-	}
-
-	sendSSEEvent(sender, "complete", WorkCompleteEvent{
-		Status:         "complete",
-		Operation:      "prune",
-		DurationMs:     stats.Duration.Milliseconds(),
-		DeletedIndexes: stats.DeletedIndexes,
-		DeletedEntries: stats.DeletedEntries,
-	})
 }

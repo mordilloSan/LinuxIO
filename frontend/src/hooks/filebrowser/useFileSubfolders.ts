@@ -9,7 +9,6 @@ import {
   isDirectorySizeUnavailable,
   shouldEnableDirectorySizeQuery,
   shouldSkipSizeCalculation,
-  useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
 interface UseSubfoldersResult {
@@ -33,12 +32,10 @@ export const useFileSubfolders = (
 ): UseSubfoldersResult => {
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
-  const indexerDisabled = useIndexerAvailability();
   const queryEnabled = shouldEnableDirectorySizeQuery(
     enabled,
     path,
     shouldSkip,
-    indexerDisabled,
   );
 
   const { data, isLoading, error } = useQuery({
@@ -48,10 +45,7 @@ export const useFileSubfolders = (
   });
 
   // Create a stable array reference (avoid new empty array on each render)
-  const subfolders = useMemo(
-    () => (indexerDisabled ? [] : (data?.subfolders ?? [])),
-    [data?.subfolders, indexerDisabled],
-  );
+  const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);
 
   // Create a memoized map for quick lookup by path
   const subfoldersMap = useMemo(() => {
@@ -62,17 +56,9 @@ export const useFileSubfolders = (
     return map;
   }, [subfolders]);
 
-  const derivedError = getDirectorySizeError(
-    error,
-    indexerDisabled,
-    shouldSkip,
-  );
+  const derivedError = getDirectorySizeError(error, shouldSkip);
 
-  const isUnavailable = isDirectorySizeUnavailable(
-    error,
-    indexerDisabled,
-    shouldSkip,
-  );
+  const isUnavailable = isDirectorySizeUnavailable(error, shouldSkip);
 
   return {
     subfolders,

@@ -5,6 +5,7 @@
 package indexing
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,18 +20,6 @@ var (
 	// traversal rather than skipping the current directory.
 	ErrStreamWrite = errors.New("stream writer failed")
 )
-
-// ReducedIndex is the JSON-friendly representation exposed to clients.
-type ReducedIndex struct {
-	IdxName         string      `json:"name"`
-	DiskUsed        uint64      `json:"used"`
-	DiskTotal       uint64      `json:"total"`
-	Status          IndexStatus `json:"status"`
-	NumDirs         uint64      `json:"numDirs"`
-	NumFiles        uint64      `json:"numFiles"`
-	LastIndexed     time.Time   `json:"-"`
-	LastIndexedUnix int64       `json:"lastIndexedUnixTime"`
-}
 
 // DirMetadata stores minimal per-directory metadata; the map key is the path to avoid duplicating it.
 type DirMetadata struct {
@@ -53,32 +42,21 @@ type devIno struct {
 }
 
 type Index struct {
-	ReducedIndex
-	Name                 string              // unique name for this index
-	Path                 string              // filesystem path being indexed
-	Source               string              // source identifier
-	includeHidden        bool                // whether to include hidden files and directories
+	Path                 string // filesystem path being indexed
+	NumDirs              uint64
+	NumFiles             uint64
 	includeNetworkMounts bool                // whether to traverse NFS/SMB/CIFS-style mounts
 	excludePaths         []string            // absolute filesystem paths excluded from traversal
 	externalMounts       map[string]string   // external mount point -> fs type, snapshotted at Initialize
-	FoundHardLinks       map[string]uint64   `json:"-"` // hardlink path -> size
-	processedInodes      map[devIno]struct{} `json:"-"` // tracks processed (device, inode) pairs for hardlinks
-	totalSize            uint64              `json:"-"` // total size
-	skippedDirs          uint64              `json:"-"` // directories unreadable due to permission/I-O errors
-	mu                   sync.RWMutex        `json:"-"` // protects concurrent access
+	processedInodes      map[devIno]struct{} // tracks processed (device, inode) pairs for hardlinks
+	totalSize            uint64              // total size
+	skippedDirs          uint64              // directories unreadable due to permission/I-O errors
+	mu                   sync.RWMutex        // protects concurrent access
 
 	// Streaming mode fields
-	streamWriter StreamingWriter        `json:"-"` // where to send entries in streaming mode
-	dirMetadata  map[string]DirMetadata `json:"-"` // lightweight dir metadata in streaming mode
+	streamWriter StreamingWriter        // where to send entries in streaming mode
+	dirMetadata  map[string]DirMetadata // lightweight dir metadata in streaming mode
 }
-
-type IndexStatus string
-
-const (
-	READY       IndexStatus = "ready"
-	INDEXING    IndexStatus = "indexing"
-	UNAVAILABLE IndexStatus = "unavailable"
-)
 
 type Option func(*Index)
 
@@ -97,18 +75,11 @@ func WithExcludePaths(paths []string) Option {
 }
 
 // Initialize creates a new index for the given path.
-// name: a unique name for this index
 // path: the filesystem path to index (e.g., "/", "/home", "/home/user/documents")
-// source: an optional source identifier (can be same as name)
-// includeHidden: whether to include hidden files and directories (starting with .)
-func Initialize(name string, path string, source string, includeHidden bool, opts ...Option) *Index {
+func Initialize(path string, opts ...Option) *Index {
 	newIndex := &Index{
-		Name:            name,
 		Path:            path,
-		Source:          source,
-		includeHidden:   includeHidden,
 		processedInodes: make(map[devIno]struct{}),
-		FoundHardLinks:  make(map[string]uint64),
 	}
 	for _, opt := range opts {
 		opt(newIndex)
@@ -118,12 +89,7 @@ func Initialize(name string, path string, source string, includeHidden bool, opt
 	if !newIndex.includeNetworkMounts {
 		newIndex.externalMounts = loadExternalMountPointsFn()
 	}
-	newIndex.ReducedIndex = ReducedIndex{
-		Status:  READY,
-		IdxName: name,
-	}
-
-	slog.Info("initialized index", "name", name, "path", path, "include_hidden", includeHidden, "include_network_mounts", newIndex.includeNetworkMounts, "exclude_paths", newIndex.excludePaths)
+	slog.Info("initialized index", "path", path, "include_network_mounts", newIndex.includeNetworkMounts, "exclude_paths", newIndex.excludePaths)
 	return newIndex
 }
 
@@ -138,7 +104,10 @@ func (idx *Index) EnableStreaming(writer StreamingWriter) {
 }
 
 // StartIndexing begins indexing the configured path.
-func (idx *Index) StartIndexing() error {
+func (idx *Index) StartIndexing(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
 	idx.mu.RLock()
 	writer := idx.streamWriter
 	idx.mu.RUnlock()
@@ -147,28 +116,28 @@ func (idx *Index) StartIndexing() error {
 		return fmt.Errorf("streaming mode is required; call EnableStreaming with a writer before indexing")
 	}
 
-	idx.SetStatus(INDEXING)
-	slog.Info("starting indexing", "name", idx.Name, "path", idx.Path)
+	slog.Info("starting indexing", "path", idx.Path)
 
-	err := idx.indexDirectory("/")
+	err := idx.indexDirectory(ctx, "/")
 	if err != nil {
-		idx.SetStatus(UNAVAILABLE)
 		return err
 	}
 
-	idx.SetStatus(READY)
 	idx.mu.RLock()
 	dirs := idx.NumDirs
 	files := idx.NumFiles
 	skipped := idx.skippedDirs
 	idx.mu.RUnlock()
-	slog.Info("completed indexing", "name", idx.Name, "dirs", dirs, "files", files, "skipped_dirs", skipped)
+	slog.Info("completed indexing", "dirs", dirs, "files", files, "skipped_dirs", skipped)
 	return nil
 }
 
 // StartIndexingFromPath begins indexing from a specific subdirectory within the configured path.
 // relativePath should be a normalized path like "/home/user" relative to the index root.
-func (idx *Index) StartIndexingFromPath(relativePath string) error {
+func (idx *Index) StartIndexingFromPath(ctx context.Context, relativePath string) error {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
 	idx.mu.RLock()
 	writer := idx.streamWriter
 	idx.mu.RUnlock()
@@ -177,12 +146,12 @@ func (idx *Index) StartIndexingFromPath(relativePath string) error {
 		return fmt.Errorf("streaming mode is required; call EnableStreaming with a writer before indexing")
 	}
 
-	slog.Info("starting partial reindex", "name", idx.Name, "path", relativePath)
+	slog.Info("starting partial reindex", "path", relativePath)
 
 	// Normalize the path
 	normalizedPath := NormalizeIndexPath(relativePath)
 
-	err := idx.indexDirectory(normalizedPath)
+	err := idx.indexDirectory(ctx, normalizedPath)
 	if err != nil {
 		return err
 	}
@@ -191,14 +160,8 @@ func (idx *Index) StartIndexingFromPath(relativePath string) error {
 	dirs := idx.NumDirs
 	files := idx.NumFiles
 	idx.mu.RUnlock()
-	slog.Info("completed partial reindex", "name", idx.Name, "dirs", dirs, "files", files)
+	slog.Info("completed partial reindex", "dirs", dirs, "files", files)
 	return nil
-}
-
-func (idx *Index) SetStatus(status IndexStatus) {
-	idx.mu.Lock()
-	defer idx.mu.Unlock()
-	idx.Status = status
 }
 
 func (idx *Index) GetTotalSize() uint64 {

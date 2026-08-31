@@ -6,42 +6,16 @@ import { createTestQueryClient, render } from "@/test/render";
 
 const mocks = vi.hoisted(() => ({
   config: {
-    db_auto_vacuum: "NONE",
-    db_busy_timeout: "5s",
-    db_conn_max_idle_time: "5m0s",
-    db_journal_mode: "WAL",
-    db_max_idle_conns: 2,
-    db_max_open_conns: 4,
-    db_path: "/var/lib/linuxio/indexer/indexer.db",
-    db_stmt_cache_size: 100,
-    db_synchronous: "NORMAL",
-    entries_default_limit: 200,
-    entries_max_limit: 200,
     exclude_paths: ["/proc", "/dev"],
-    fresh_index: true,
-    fts_search: true,
-    idle_timeout: "2m0s",
-    include_hidden: true,
     include_network_mounts: false,
-    index_name: "root",
-    index_path: "/",
-    integrity_check: "full" as const,
     interval: "1h0m0s",
-    keep_indexes: 1,
-    listen_addr: "",
-    search_default_limit: 100,
-    search_max_limit: 100,
   },
-  restart: vi.fn(),
   setConfig: vi.fn(),
   setTimer: vi.fn(),
   startIndexer: vi.fn(),
 }));
 
 vi.mock("@iconify/react", () => ({ Icon: () => <span /> }));
-vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
-}));
 vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({
   useBackgroundTaskActions: () => ({ startIndexer: mocks.startIndexer }),
 }));
@@ -52,62 +26,35 @@ vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   return {
     ...actual,
-    useCallMutation: (
-      endpoint: { route: string },
-      config?: { success?: () => void },
-    ) => {
-      if (endpoint.route === "indexer.set_config") {
-        return {
-          isPending: false,
-          mutateAsync: async (patch: Partial<typeof mocks.config>) => {
-            mocks.setConfig(patch);
-            return {
-              config: { ...mocks.config, ...patch },
-              restart_required: true,
-            };
-          },
-        };
-      }
-      if (endpoint.route === "indexer.set_timer_interval") {
-        return {
-          isPending: false,
-          mutateAsync: async (request: { interval: string }) => {
-            mocks.setTimer(request);
-            return { interval: request.interval };
-          },
-        };
-      }
-      return {
-        isPending: false,
-        mutate: (request: unknown) => {
-          mocks.restart(request);
-          config?.success?.();
-        },
-      };
-    },
+    useCallMutation: (endpoint: { route: string }) => ({
+      isPending: false,
+      mutateAsync: async (request: Record<string, unknown>) => {
+        if (endpoint.route === "indexer.set_config") {
+          mocks.setConfig(request);
+          return { config: { ...mocks.config, ...request } };
+        }
+        mocks.setTimer(request);
+        return { interval: request.interval };
+      },
+    }),
   };
 });
 
 import IndexerSettingsSection from "./IndexerSettingsSection";
 
-function renderSection(ftsActive = true) {
+function renderSection(status = "idle") {
   const queryClient = createTestQueryClient();
   queryClient.setQueryData(linuxio.indexer.get_config.queryKey, {
     ...mocks.config,
   });
   queryClient.setQueryData(linuxio.indexer.get_status.queryKey, {
     database_size: 1024,
-    fts_active: ftsActive,
+    last_indexed: "2026-08-29T00:00:00Z",
     num_dirs: 2,
     num_files: 3,
     running: false,
-    shm_size: 0,
-    status: "idle",
-    total_entries: 5,
-    total_indexes: 1,
-    total_on_disk: 1024,
+    status,
     total_size: 2048,
-    wal_size: 0,
   });
   queryClient.setQueryData(
     linuxio.systemd.get_unit_info({
@@ -115,69 +62,40 @@ function renderSection(ftsActive = true) {
     }).queryKey,
     { ActiveState: "active", SubState: "waiting" },
   );
-  return render(<IndexerSettingsSection />, {
-    capabilities: { indexerAvailable: true },
-    queryClient,
-  });
+  return render(<IndexerSettingsSection />, { queryClient });
 }
 
-describe("IndexerSettingsSection actions", () => {
+describe("IndexerSettingsSection", () => {
   beforeEach(() => {
-    mocks.restart.mockClear();
     mocks.setConfig.mockClear();
     mocks.setTimer.mockClear();
     mocks.startIndexer.mockClear();
   });
 
-  it("restarts the LinuxIO-prefixed service after a restart-bound change", async () => {
+  it("saves the reduced scan policy and timer fields", async () => {
     const { user } = renderSection();
-
-    const listenAddress = screen.getByLabelText("Listen address");
-    await user.type(listenAddress, ":8080");
+    const excludedPaths = screen.getByLabelText("Excluded paths");
+    await user.clear(excludedPaths);
+    await user.type(excludedPaths, "/srv/cache");
+    await user.click(screen.getByLabelText("Include network mounts"));
+    await user.clear(screen.getByLabelText("Timer interval"));
+    await user.type(screen.getByLabelText("Timer interval"), "30m");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    await user.click(
-      await screen.findByRole("button", { name: "Restart indexer" }),
-    );
-    expect(mocks.restart).toHaveBeenCalledWith({
-      serviceName: "linuxio-indexer.service",
+    await waitFor(() => {
+      expect(mocks.setConfig).toHaveBeenCalledWith({
+        exclude_paths: ["/srv/cache"],
+        include_network_mounts: true,
+      });
+      expect(mocks.setTimer).toHaveBeenCalledWith({ interval: "30m" });
     });
+    expect(screen.queryByLabelText("Database path")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Listen address")).not.toBeInTheDocument();
   });
 
-  it("offers a full index when the configured FTS mode is not active", async () => {
-    const { user } = renderSection(false);
-
+  it("prompts for a first full index before initialization", async () => {
+    const { user } = renderSection("uninitialized");
     await user.click(screen.getByRole("button", { name: "Run full index" }));
-    await waitFor(() => expect(mocks.startIndexer).toHaveBeenCalledOnce());
-  });
-
-  it("saves excluded paths as a list", async () => {
-    const { user } = renderSection();
-
-    const excludePaths = screen.getByLabelText("Excluded paths");
-    await user.clear(excludePaths);
-    await user.type(excludePaths, "/proc\n/dev\n/srv/cache");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(mocks.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          exclude_paths: ["/proc", "/dev", "/srv/cache"],
-        }),
-      ),
-    );
-  });
-
-  it("saves the timer through its systemd-owned action", async () => {
-    const { user } = renderSection();
-
-    const interval = screen.getByLabelText("Timer interval");
-    await user.clear(interval);
-    await user.type(interval, "30m");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(mocks.setTimer).toHaveBeenCalledWith({ interval: "30m" }),
-    );
+    expect(mocks.startIndexer).toHaveBeenCalledOnce();
   });
 });

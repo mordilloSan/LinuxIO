@@ -24,7 +24,6 @@ import {
 import { useFileUpload } from "@/hooks/filebrowser/useFileUpload";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
 import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidation";
-import { useCapability } from "@/hooks/useCapabilities";
 
 export interface FileBrowserController {
   contentProps: Omit<FileBrowserContentProps, "breadcrumbs">;
@@ -94,8 +93,6 @@ export function useFileBrowserController(
     selectedPaths,
   } = selection;
   const { startDownload, startUpload } = useBackgroundTaskActions();
-  const { isEnabled: indexerEnabled, status: indexerStatus } =
-    useCapability("indexerAvailable");
 
   // Collision handling shared by paste and uploads: pre-check destinations,
   // prompt per conflicting item, never overwrite without an explicit choice.
@@ -577,8 +574,6 @@ export function useFileBrowserController(
   const contentChrome = useMemo(
     () => ({
       editingPath,
-      indexerEnabled,
-      indexerStatus,
       isSavingFile,
       normalizedPath,
       onOpenDirectory: handleOpenDirectory,
@@ -594,8 +589,6 @@ export function useFileBrowserController(
     [
       editingPath,
       handleOpenDirectory,
-      indexerEnabled,
-      indexerStatus,
       isSavingFile,
       normalizedPath,
       searchQuery,

@@ -17,19 +17,12 @@ func TestFetchStatusReadsDaemonCounters(t *testing.T) {
 			t.Fatalf("path = %s, want /status", req.URL.Path)
 		}
 		return jsonResponse(http.StatusOK, `{
-			"protocol_version": 1,
 			"status": "indexing",
-			"fts_active": true,
 			"num_dirs": 12,
 			"num_files": 345,
 			"total_size": 4096,
 			"last_indexed": "2026-05-06T10:30:00Z",
-			"total_indexes": 2,
-			"total_entries": 357,
-			"database_size": 1048576,
-			"wal_size": 2048,
-			"shm_size": 32768,
-			"total_on_disk": 1081344
+			"database_size": 1048576
 		}`, nil), nil
 	})
 
@@ -40,24 +33,11 @@ func TestFetchStatusReadsDaemonCounters(t *testing.T) {
 	if !status.Running || status.Status != "indexing" {
 		t.Fatalf("status running=%v status=%q, want running indexing", status.Running, status.Status)
 	}
-	if status.NumFiles != 345 || status.NumDirs != 12 || status.TotalEntries != 357 {
+	if status.NumFiles != 345 || status.NumDirs != 12 {
 		t.Fatalf("unexpected counts: %#v", status)
 	}
-	if status.DatabaseSize != 1048576 || status.TotalOnDisk != 1081344 {
+	if status.DatabaseSize != 1048576 {
 		t.Fatalf("unexpected storage counters: %#v", status)
-	}
-	if !status.FTSActive {
-		t.Fatalf("fts_active = false, want true")
-	}
-}
-
-func TestFetchStatusRejectsProtocolMismatch(t *testing.T) {
-	withTestIndexerClient(t, func(*http.Request) (*http.Response, error) {
-		return jsonResponse(http.StatusOK, `{"protocol_version":2,"status":"idle"}`, nil), nil
-	})
-
-	if _, err := FetchStatus(context.Background()); err == nil {
-		t.Fatal("FetchStatus accepted an incompatible protocol")
 	}
 }
 

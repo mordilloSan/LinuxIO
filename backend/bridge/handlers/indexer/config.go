@@ -28,24 +28,20 @@ func FetchConfig(ctx context.Context) (indexerapi.IndexerConfig, error) {
 	return cfg, nil
 }
 
-func UpdateConfig(ctx context.Context, payload []byte) (indexerapi.IndexerConfig, bool, error) {
+func UpdateConfig(ctx context.Context, payload []byte) (indexerapi.IndexerConfig, error) {
 	body, err := normalizeConfigPatchPayload(payload)
 	if err != nil {
-		return indexerapi.IndexerConfig{}, false, err
+		return indexerapi.IndexerConfig{}, err
 	}
 	resp, err := sendConfigRequest(ctx, http.MethodPut, bytes.NewReader(body))
 	if err != nil {
-		return indexerapi.IndexerConfig{}, false, err
+		return indexerapi.IndexerConfig{}, err
 	}
-	restartRequired := strings.EqualFold(
-		resp.Header.Get(indexerapi.RestartRequiredHeader),
-		"true",
-	)
 	cfg, err := decodeConfigResponse(resp)
 	if err != nil {
-		return indexerapi.IndexerConfig{}, false, fmt.Errorf("update indexer config: %w", err)
+		return indexerapi.IndexerConfig{}, fmt.Errorf("update indexer config: %w", err)
 	}
-	return cfg, restartRequired, nil
+	return cfg, nil
 }
 
 func sendConfigRequest(ctx context.Context, method string, body io.Reader) (*http.Response, error) {

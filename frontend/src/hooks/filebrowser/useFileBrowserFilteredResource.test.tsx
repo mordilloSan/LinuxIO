@@ -96,17 +96,17 @@ describe("useFileBrowserFilteredResource", () => {
     });
   });
 
-  it("filters items client-side (case-insensitive) when the indexer is unavailable", () => {
-    mockSearch({ isUnavailable: true });
+  it("preserves the directory and surfaces service errors", () => {
+    const error = new Error("indexer service unavailable");
+    mockSearch({ error, isUnavailable: true });
 
     const { result } = renderFiltered({
       resource: directoryResource,
       searchQuery: "ALPHA",
     });
 
-    expect(
-      result.current.filteredResource?.items?.map((item) => item.name),
-    ).toEqual(["Alpha.txt"]);
+    expect(result.current.filteredResource).toBe(directoryResource);
+    expect(result.current.searchError).toBe(error);
   });
 
   it("preserves the directory and exposes search errors instead of showing an empty result", () => {

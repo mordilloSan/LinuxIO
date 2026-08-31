@@ -12,7 +12,6 @@ import (
 // IndexEntry captures a flattened representation of either a directory or a file.
 type IndexEntry struct {
 	RelativePath string
-	AbsolutePath string
 	Name         string
 	Size         int64
 	ModTime      time.Time

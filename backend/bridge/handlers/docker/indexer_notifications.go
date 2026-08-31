@@ -9,12 +9,12 @@ import (
 )
 
 func notifyIndexerForComposeFile(ctx context.Context, path string) {
-	info, err := os.Stat(path)
+	_, err := os.Stat(path)
 	if err != nil {
 		slog.Debug("failed to stat compose file for indexer update", "path", path, "error", err)
 		return
 	}
-	if err := indexer.Add(ctx, indexer.EntryFromFileInfo(path, info, -1)); err != nil {
+	if err := indexer.Add(ctx, indexer.EntryForPath(path)); err != nil {
 		slog.Debug("failed to update compose file in indexer", "path", path, "error", err)
 	}
 }

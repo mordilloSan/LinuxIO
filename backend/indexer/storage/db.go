@@ -20,10 +20,14 @@ import (
 
 const (
 	defaultDBPath = "indexer.db"
+	schemaVersion = 1
 	schemaTimeout = 30 * time.Second
 	batchSize     = 500
 	batchTimeout  = 1 * time.Second
 )
+
+// ErrIncompatibleSchema means the cache belongs to a different schema version.
+var ErrIncompatibleSchema = errors.New("incompatible database schema")
 
 type OpenOptions struct {
 	BusyTimeout     time.Duration
@@ -36,11 +40,6 @@ type OpenOptions struct {
 	// StmtCacheSize is the number of prepared statements the driver caches
 	// per connection (go-sqlite3 _stmt_cache_size); 0 disables the cache.
 	StmtCacheSize int
-	// DisableFTS drops and stops maintaining the FTS5 search index even when
-	// the binary was built with sqlite_fts5. Searches fall back to LIKE
-	// scans; full fresh scans run substantially faster without trigram
-	// maintenance. Re-enabling rebuilds the index from entries on next open.
-	DisableFTS bool
 }
 
 func DefaultOpenOptions() OpenOptions {
@@ -114,6 +113,7 @@ type ProgressCallback func(filesWritten, dirsWritten int64, lastPath string)
 // StreamingWriter accepts entries via a channel and writes them to the database in batches.
 type StreamingWriter struct {
 	db           *sql.DB
+	tx           *sql.Tx
 	indexID      int64
 	scanTime     int64
 	entryCh      chan indexing.IndexEntry
@@ -130,8 +130,18 @@ type StreamingWriter struct {
 // NewStreamingWriter creates a writer with an optional progress callback.
 // The callback is invoked after each entry is processed with cumulative file/dir counts.
 func NewStreamingWriter(ctx context.Context, db *sql.DB, indexID int64, bufferSize int, progressCb ProgressCallback) *StreamingWriter {
+	return newStreamingWriter(ctx, db, nil, indexID, bufferSize, progressCb)
+}
+
+// NewTransactionalStreamingWriter writes every batch through tx. The caller
+// owns commit or rollback after traversal and cleanup complete.
+func NewTransactionalStreamingWriter(ctx context.Context, tx *sql.Tx, indexID int64, bufferSize int, progressCb ProgressCallback) *StreamingWriter {
+	return newStreamingWriter(ctx, nil, tx, indexID, bufferSize, progressCb)
+}
+
+func newStreamingWriter(ctx context.Context, db *sql.DB, tx *sql.Tx, indexID int64, bufferSize int, progressCb ProgressCallback) *StreamingWriter {
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = context.TODO()
 	}
 	if bufferSize <= 0 {
 		bufferSize = 1000
@@ -139,6 +149,7 @@ func NewStreamingWriter(ctx context.Context, db *sql.DB, indexID int64, bufferSi
 	ctx, cancel := context.WithCancel(ctx)
 	sw := &StreamingWriter{
 		db:      db,
+		tx:      tx,
 		indexID: indexID,
 		// Nanoseconds, not seconds: last_seen cleanup deletes rows with
 		// last_seen < scanTime, so two scans starting within the same second
@@ -171,11 +182,6 @@ func (sw *StreamingWriter) Write(entry indexing.IndexEntry) error {
 func (sw *StreamingWriter) Close() error {
 	close(sw.entryCh)
 	return <-sw.doneCh
-}
-
-// DB returns the underlying database connection for direct operations.
-func (sw *StreamingWriter) DB() *sql.DB {
-	return sw.db
 }
 
 // IndexID returns the index ID this writer is associated with.
@@ -258,6 +264,9 @@ func (sw *StreamingWriter) writeBatch(batch []indexing.IndexEntry) error {
 	if len(batch) == 0 {
 		return nil
 	}
+	if sw.tx != nil {
+		return insertEntriesBatch(sw.ctx, sw.tx, sw.indexID, sw.scanTime, batch)
+	}
 
 	tx, err := sw.db.BeginTx(sw.ctx, nil)
 	if err != nil {
@@ -285,6 +294,14 @@ func (sw *StreamingWriter) writeBatch(batch []indexing.IndexEntry) error {
 // Open creates (or reuses) a SQLite database with the supplied options and
 // ensures the schema exists.
 func Open(path string, opts OpenOptions) (*sql.DB, error) {
+	return OpenContext(context.Background(), path, opts)
+}
+
+// OpenContext opens and initializes the cache while honoring ctx cancellation.
+func OpenContext(parent context.Context, path string, opts OpenOptions) (*sql.DB, error) {
+	if parent == nil {
+		parent = context.TODO()
+	}
 	if path == "" {
 		path = defaultDBPath
 	}
@@ -315,7 +332,7 @@ func Open(path string, opts OpenOptions) (*sql.DB, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), schemaTimeout)
+	ctx, cancel := context.WithTimeout(parent, schemaTimeout)
 	defer cancel()
 
 	var journalMode string
@@ -333,7 +350,7 @@ func Open(path string, opts OpenOptions) (*sql.DB, error) {
 	db.SetConnMaxLifetime(0)
 	db.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
 
-	if err := initSchema(ctx, db, opts.DisableFTS); err != nil {
+	if err := initSchema(ctx, db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			slog.Warn("failed to close DB after schema init error", "err", closeErr)
 		}
@@ -346,7 +363,7 @@ func Open(path string, opts OpenOptions) (*sql.DB, error) {
 // GetJournalMode returns the SQLite journal mode for the provided database.
 func GetJournalMode(ctx context.Context, db *sql.DB) (string, error) {
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = context.TODO()
 	}
 	if db == nil {
 		return "", fmt.Errorf("db is nil")
@@ -359,31 +376,24 @@ func GetJournalMode(ctx context.Context, db *sql.DB) (string, error) {
 	return mode, nil
 }
 
-func initSchema(ctx context.Context, db *sql.DB, disableFTS bool) error {
+func initSchema(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON;`); err != nil {
 		return err
 	}
+	if err := validateSchemaVersion(ctx, db); err != nil {
+		return err
+	}
 
-	// name is deliberately NOT unique: every fresh scan inserts a new
-	// generation row for its name with last_indexed=0 and publishes it by
+	// Every full scan inserts a new generation with last_indexed=0 and publishes it by
 	// setting last_indexed on success, so readers atomically switch from the
 	// previous generation and a failed scan leaves the old one untouched.
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS indexes (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			root_path TEXT NOT NULL,
-			source TEXT,
-			include_hidden INTEGER NOT NULL DEFAULT 0,
 			num_dirs INTEGER NOT NULL DEFAULT 0,
 			num_files INTEGER NOT NULL DEFAULT 0,
 			total_size INTEGER NOT NULL DEFAULT 0,
-			disk_used INTEGER NOT NULL DEFAULT 0,
-			disk_total INTEGER NOT NULL DEFAULT 0,
 			last_indexed INTEGER NOT NULL,
-			index_duration_ms INTEGER NOT NULL DEFAULT 0,
-			export_duration_ms INTEGER NOT NULL DEFAULT 0,
-			vacuum_duration_ms INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 		);
 	`); err != nil {
@@ -427,10 +437,39 @@ func initSchema(ctx context.Context, db *sql.DB, disableFTS bool) error {
 		return err
 	}
 
-	return ensureFTS(ctx, db, disableFTS)
+	if err := ensureFTS(ctx, db); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion))
+	return err
 }
 
-func insertEntriesBatch(ctx context.Context, tx *sql.Tx, indexID int64, scanTime int64, batch []indexing.IndexEntry) error {
+func validateSchemaVersion(ctx context.Context, db *sql.DB) error {
+	var version int
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&version); err != nil {
+		return fmt.Errorf("read database schema version: %w", err)
+	}
+	if version == schemaVersion {
+		return nil
+	}
+	if version != 0 {
+		return fmt.Errorf("%w: got %d, want %d", ErrIncompatibleSchema, version, schemaVersion)
+	}
+
+	var tables int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_schema
+		WHERE type = 'table' AND name NOT LIKE 'sqlite_%';
+	`).Scan(&tables); err != nil {
+		return fmt.Errorf("inspect unversioned database schema: %w", err)
+	}
+	if tables != 0 {
+		return fmt.Errorf("%w: existing database is unversioned", ErrIncompatibleSchema)
+	}
+	return nil
+}
+
+func insertEntriesBatch(ctx context.Context, tx dbExecutor, indexID int64, scanTime int64, batch []indexing.IndexEntry) error {
 	if len(batch) == 0 {
 		return nil
 	}
@@ -496,7 +535,7 @@ ON CONFLICT(index_id, relative_path) DO UPDATE SET
 
 func ensureContext(ctx context.Context) context.Context {
 	if ctx == nil {
-		return context.Background()
+		return context.TODO()
 	}
 	return ctx
 }
@@ -718,31 +757,10 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 	return tx.Commit()
 }
 
-// CleanupDeletedEntries removes entries that were not seen during the latest scan.
-// Returns the number of entries deleted.
-func CleanupDeletedEntries(ctx context.Context, db *sql.DB, indexID int64, scanTime int64) (int64, error) {
-	ctx = ensureContext(ctx)
-
-	result, err := db.ExecContext(ctx, `
-		DELETE FROM entries
-		WHERE index_id = ? AND last_seen < ?;
-	`, indexID, scanTime)
-	if err != nil {
-		return 0, err
-	}
-
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		return 0, err
-	}
-
-	return deleted, nil
-}
-
 // CleanupDeletedEntriesUnderPath removes entries under a specific path that were not seen during the latest scan.
 // This is used for partial reindexing to avoid deleting entries outside the reindexed path.
 // Returns the number of entries deleted.
-func CleanupDeletedEntriesUnderPath(ctx context.Context, db *sql.DB, indexID int64, relativePath string, scanTime int64) (int64, error) {
+func CleanupDeletedEntriesUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string, scanTime int64) (int64, error) {
 	ctx = ensureContext(ctx)
 
 	lo, childLo, hi := subtreeBounds(relativePath)

@@ -56,75 +56,36 @@ func TestReadCallsPreserveCancellationIdentity(t *testing.T) {
 	require.ErrorIs(t, textErr, context.Canceled)
 }
 
-func TestDirSizeFetchesSizeAndCountsConcurrently(t *testing.T) {
+func TestDirSizeFetchesSizeAndCountsTogether(t *testing.T) {
 	detachedIndexerUpdates.Wait()
 	originalClient := indexer.Client
-	started := make(chan string, 2)
-	release := make(chan struct{})
 	indexer.Client = &http.Client{Transport: indexerRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		started <- req.URL.Path
-		<-release
-
-		var body string
-		switch req.URL.Path {
-		case "/dirsize":
-			body = `{"size":4096}`
-		case "/entrycount":
-			body = `{"files":12,"dirs":3}`
-		default:
-			return &http.Response{
-				StatusCode: http.StatusNotFound,
-				Status:     http.StatusText(http.StatusNotFound),
-				Body:       http.NoBody,
-				Request:    req,
-			}, nil
+		if req.URL.Path != "/dirsize" {
+			t.Errorf("request path = %s, want /dirsize", req.URL.Path)
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Status:     http.StatusText(http.StatusOK),
-			Body:       io.NopCloser(strings.NewReader(body)),
+			Body:       io.NopCloser(strings.NewReader(`{"size":4096,"files":12,"dirs":3}`)),
 			Request:    req,
 		}, nil
 	})}
 	t.Cleanup(func() {
 		indexer.Client = originalClient
-		setIndexerAvailability(true)
 	})
 
 	type result struct {
 		data apischema.DirectorySizeData
 		err  error
 	}
-	done := make(chan result, 1)
 	directory := t.TempDir()
-	go func() {
-		data, err := dirSize(context.Background(), apischema.PathRequest{Path: directory})
-		done <- result{data: data, err: err}
-	}()
-
-	seen := make(map[string]bool, 2)
-	for len(seen) < 2 {
-		select {
-		case path := <-started:
-			seen[path] = true
-		case <-time.After(time.Second):
-			close(release)
-			select {
-			case <-done:
-			case <-time.After(time.Second):
-			}
-			t.Fatal("indexer requests did not start concurrently")
-		}
-	}
-	close(release)
-	got := <-done
+	data, err := dirSize(context.Background(), apischema.PathRequest{Path: directory})
+	got := result{data: data, err: err}
 
 	require.NoError(t, got.err)
 	require.Equal(t, int64(4096), got.data.Size)
 	require.Equal(t, int64(12), got.data.FileCount)
 	require.Equal(t, int64(3), got.data.FolderCount)
-	require.True(t, seen["/dirsize"])
-	require.True(t, seen["/entrycount"])
 }
 
 func TestResourceStatReturnsStructuredClientErrors(t *testing.T) {

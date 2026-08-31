@@ -49,8 +49,7 @@ func TestDockerComposeIndexerNotificationsUseSharedEntryContract(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(composePath), 0o700); err != nil {
 		t.Fatalf("mkdir compose directory: %v", err)
 	}
-	content := []byte("services:\n  app:\n    image: alpine\n")
-	if err := os.WriteFile(composePath, content, 0o600); err != nil {
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine\n"), 0o600); err != nil {
 		t.Fatalf("write compose file: %v", err)
 	}
 
@@ -58,7 +57,7 @@ func TestDockerComposeIndexerNotificationsUseSharedEntryContract(t *testing.T) {
 	if len(requests) != 1 || requests[0].Method != http.MethodPost || requests[0].URL.Path != indexerapi.RouteAdd {
 		t.Fatalf("add requests = %#v", requests)
 	}
-	if len(entries) != 1 || entries[0].Path != composePath || entries[0].AbsPath != composePath || entries[0].Name != "compose.yaml" || entries[0].Type != "file" || entries[0].Size != int64(len(content)) {
+	if len(entries) != 1 || entries[0].Path != composePath {
 		t.Fatalf("entry = %#v", entries)
 	}
 

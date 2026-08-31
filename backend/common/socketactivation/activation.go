@@ -1,4 +1,4 @@
-package cmd
+package socketactivation
 
 import (
 	"fmt"
@@ -10,32 +10,33 @@ import (
 
 const listenFDsStart = 3
 
-func systemdListeners() ([]net.Listener, error) {
+// Listeners returns listeners inherited through systemd socket activation.
+func Listeners() ([]net.Listener, error) {
 	defer func() {
 		_ = os.Unsetenv("LISTEN_PID")
 		_ = os.Unsetenv("LISTEN_FDS")
 		_ = os.Unsetenv("LISTEN_FDNAMES")
 	}()
 
-	pidStr := os.Getenv("LISTEN_PID")
-	if pidStr == "" {
+	pidString := os.Getenv("LISTEN_PID")
+	if pidString == "" {
 		return nil, nil
 	}
-	pid, err := strconv.Atoi(pidStr)
+	pid, err := strconv.Atoi(pidString)
 	if err != nil {
-		return nil, fmt.Errorf("invalid LISTEN_PID %q: %w", pidStr, err)
+		return nil, fmt.Errorf("invalid LISTEN_PID %q: %w", pidString, err)
 	}
 	if pid != os.Getpid() {
 		return nil, nil
 	}
 
-	fdsStr := os.Getenv("LISTEN_FDS")
-	if fdsStr == "" {
+	fdsString := os.Getenv("LISTEN_FDS")
+	if fdsString == "" {
 		return nil, nil
 	}
-	nfds, err := strconv.Atoi(fdsStr)
+	nfds, err := strconv.Atoi(fdsString)
 	if err != nil {
-		return nil, fmt.Errorf("invalid LISTEN_FDS %q: %w", fdsStr, err)
+		return nil, fmt.Errorf("invalid LISTEN_FDS %q: %w", fdsString, err)
 	}
 	if nfds <= 0 {
 		return nil, nil
@@ -64,7 +65,7 @@ func listenersFromFiles(files []*os.File) ([]net.Listener, error) {
 	for _, file := range files {
 		listener, err := net.FileListener(file)
 		if err != nil {
-			closeListeners(listeners)
+			CloseListeners(listeners)
 			return nil, fmt.Errorf("wrap fd %d: %w", file.Fd(), err)
 		}
 		listeners = append(listeners, listener)
@@ -72,7 +73,7 @@ func listenersFromFiles(files []*os.File) ([]net.Listener, error) {
 	return listeners, nil
 }
 
-func closeListeners(listeners []net.Listener) {
+func CloseListeners(listeners []net.Listener) {
 	for _, listener := range listeners {
 		_ = listener.Close()
 	}
