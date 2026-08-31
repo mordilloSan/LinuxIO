@@ -20,4 +20,7 @@ tsconfig.tsbuildinfo
 .gocache
 .DS_Store
 .vscode
-.claude
+.claude/*
+!.claude/CLAUDE.md
+.codex/*
+!.codex/config.toml
