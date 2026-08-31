@@ -45,6 +45,7 @@ Header() {
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly LINUXIO_SOCKET_NAME="linuxio-webserver.socket"
+readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly LINUXIO_PORT_MIN=8090
 readonly LINUXIO_PORT_MAX=8099
 PORT=""
@@ -81,6 +82,16 @@ legacy_indexer_units() {
 		indexer.service \
 		indexer-index.service \
 		indexer-index.timer
+}
+
+indexer_timer_needs_enable() {
+	local timer_path="$1"
+	local target_path="$2"
+	local config_path="$3"
+
+	[[ ! -e "$timer_path" && ! -L "$timer_path" ]] && return 0
+	grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$target_path" 2>/dev/null || return 1
+	! grep -Eq '^[[:space:]]*interval:[[:space:]]*(0|0s)([[:space:]]|$)' "$config_path" 2>/dev/null
 }
 
 remove_legacy_indexer_installation() {
@@ -312,6 +323,13 @@ main() {
 	# Systemd
 	Show 2 "Installing systemd service files..."
 	existing_port=$(find_existing_linuxio_port || true)
+	local enable_indexer_timer=0
+	if indexer_timer_needs_enable \
+		"${SYSTEMD_DIR}/${INDEXER_TIMER_UNIT_NAME}" \
+		"${SYSTEMD_DIR}/linuxio.target" \
+		/etc/linuxio/indexer/config.yaml; then
+		enable_indexer_timer=1
+	fi
 	local units
 	mapfile -t units < <(linuxio_systemd_units)
 	for file in "${units[@]}"; do
@@ -436,6 +454,9 @@ main() {
 
 	Show 2 "Enabling services..."
 	systemctl enable linuxio.target >/dev/null 2>&1
+	if [[ $enable_indexer_timer -eq 1 ]]; then
+		systemctl enable "$INDEXER_TIMER_UNIT_NAME" >/dev/null 2>&1
+	fi
 	Show 0 "Services enabled"
 
 	Show 2 "Restarting LinuxIO..."

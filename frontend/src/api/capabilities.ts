@@ -35,6 +35,8 @@ export interface CapabilityDef {
   };
   /** Display name in the capability manager. */
   label: string;
+  /** False for internal feature gates that have their own status UI. */
+  visibleInManager?: boolean;
   /** Text shown when the capability is reachable. */
   readyText: string;
   /** Message when status is "unavailable". */
@@ -99,6 +101,7 @@ export const CAPABILITIES = [
     icon: "mdi:magnify-scan",
     reasonUnknown: "Indexer availability is still being checked.",
     reasonUnavailable: "Indexer API is unavailable.",
+    visibleInManager: false,
   },
   {
     wire: "monitoring",

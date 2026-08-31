@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   CACHE_TTL_MS,
   type IndexerConfig,
+  type IndexerConfigPatch,
   type IndexerDaemonStatus,
   type IndexerIntegrityCheck,
   linuxio,
@@ -81,7 +82,6 @@ const RESTART_FIELDS: DraftKey[] = [
   "db_max_open_conns",
   "db_max_idle_conns",
   "db_conn_max_idle_time",
-  "socket_path",
   "listen_addr",
 ];
 const INDEXER_TIMER_UNIT = "linuxio-indexer-index.timer";
@@ -97,10 +97,8 @@ const toDraft = (config: IndexerConfig): DraftConfig => ({
   db_max_idle_conns: String(config.db_max_idle_conns),
 });
 
-const toPatchPayload = (
-  patch: Partial<DraftConfig>,
-): Partial<IndexerConfig> => {
-  const payload: Partial<IndexerConfig> = {};
+const toPatchPayload = (patch: Partial<DraftConfig>): IndexerConfigPatch => {
+  const payload: IndexerConfigPatch = {};
 
   if (patch.index_path !== undefined) {
     payload.index_path = patch.index_path.trim();
@@ -159,9 +157,6 @@ const toPatchPayload = (
   }
   if (patch.db_conn_max_idle_time !== undefined) {
     payload.db_conn_max_idle_time = patch.db_conn_max_idle_time.trim();
-  }
-  if (patch.socket_path !== undefined) {
-    payload.socket_path = patch.socket_path.trim();
   }
   if (patch.listen_addr !== undefined) {
     payload.listen_addr = patch.listen_addr.trim();
@@ -225,12 +220,6 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
 
   if (!isNonNegativeInteger(draft.db_max_idle_conns)) {
     errors.db_max_idle_conns = "Use a non-negative whole number.";
-  }
-
-  if (!draft.socket_path.trim()) {
-    errors.socket_path = "Socket path is required for LinuxIO.";
-  } else if (!isAbsolutePath(draft.socket_path)) {
-    errors.socket_path = "Socket path must be absolute.";
   }
 
   const listenAddr = draft.listen_addr.trim();
@@ -398,16 +387,14 @@ const IndexerSettingsSection = () => {
   };
 
   const saveChanges = async () => {
-    if (!draft) return;
+    if (!config || !draft) return;
     const nextErrors = validateDraft(draft);
     if (hasErrors(nextErrors)) {
       setErrors(nextErrors);
       return;
     }
 
-    const configPatch = { ...draftPatch };
-    delete configPatch.interval;
-    const payload = toPatchPayload(configPatch);
+    const payload = toPatchPayload(draftPatch);
     const hasConfigChanges = Object.keys(payload).length > 0;
     const hasTimerChange = draftPatch.interval !== undefined;
     const hasFTSSearchChange = draftPatch.fts_search !== undefined;
@@ -429,7 +416,10 @@ const IndexerSettingsSection = () => {
         const timerResult = await setTimerMutation.mutateAsync({
           interval: draft.interval.trim(),
         });
-        nextConfig = timerResult.config;
+        nextConfig = {
+          ...(nextConfig ?? config),
+          interval: timerResult.interval,
+        };
       }
 
       if (nextConfig) {
@@ -853,22 +843,11 @@ const IndexerSettingsSection = () => {
 
       <SectionCard
         icon="mdi:connection"
-        subtitle="Local socket and optional TCP listener"
+        subtitle="Optional read-only TCP listener managed by systemd"
         title="Daemon Access"
       >
         <SettingsGrid>
           <>
-            <AppTextField
-              disabled={busy}
-              error={Boolean(errors.socket_path)}
-              fullWidth
-              label="Socket path"
-              onChange={(event) =>
-                updateDraft("socket_path", event.target.value)
-              }
-              size="small"
-              value={draft.socket_path}
-            />
             <AppTextField
               disabled={busy}
               error={Boolean(errors.listen_addr)}

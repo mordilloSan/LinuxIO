@@ -31,10 +31,10 @@ const mocks = vi.hoisted(() => ({
     listen_addr: "",
     search_default_limit: 100,
     search_max_limit: 100,
-    socket_path: "/run/linuxio/indexer.sock",
   },
   restart: vi.fn(),
   setConfig: vi.fn(),
+  setTimer: vi.fn(),
   startIndexer: vi.fn(),
 }));
 
@@ -71,11 +71,10 @@ vi.mock("@/api", async (importOriginal) => {
       if (endpoint.route === "indexer.set_timer_interval") {
         return {
           isPending: false,
-          mutateAsync: async () => ({
-            config: mocks.config,
-            interval: mocks.config.interval,
-            timer_unit: "linuxio-indexer-index.timer",
-          }),
+          mutateAsync: async (request: { interval: string }) => {
+            mocks.setTimer(request);
+            return { interval: request.interval };
+          },
         };
       }
       return {
@@ -126,15 +125,15 @@ describe("IndexerSettingsSection actions", () => {
   beforeEach(() => {
     mocks.restart.mockClear();
     mocks.setConfig.mockClear();
+    mocks.setTimer.mockClear();
     mocks.startIndexer.mockClear();
   });
 
   it("restarts the LinuxIO-prefixed service after a restart-bound change", async () => {
     const { user } = renderSection();
 
-    const socketPath = screen.getByLabelText("Socket path");
-    await user.clear(socketPath);
-    await user.type(socketPath, "/run/linuxio/next-indexer.sock");
+    const listenAddress = screen.getByLabelText("Listen address");
+    await user.type(listenAddress, ":8080");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await user.click(
@@ -166,6 +165,19 @@ describe("IndexerSettingsSection actions", () => {
           exclude_paths: ["/proc", "/dev", "/srv/cache"],
         }),
       ),
+    );
+  });
+
+  it("saves the timer through its systemd-owned action", async () => {
+    const { user } = renderSection();
+
+    const interval = screen.getByLabelText("Timer interval");
+    await user.clear(interval);
+    await user.type(interval, "30m");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.setTimer).toHaveBeenCalledWith({ interval: "30m" }),
     );
   });
 });

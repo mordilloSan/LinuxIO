@@ -91,7 +91,7 @@ var capabilityRegistry = []CapabilitySpec{
 	},
 	{
 		Name:    "indexer",
-		LogName: "Indexer API",
+		LogName: "Indexer socket",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(filebrowser.CheckIndexerAvailability(ctx))
 		},

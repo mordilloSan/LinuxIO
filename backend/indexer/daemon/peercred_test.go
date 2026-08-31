@@ -241,55 +241,26 @@ func TestReadUnixPeerCred(t *testing.T) {
 	}
 }
 
-func TestGetUnixListenerCreatesRootOnlySocket(t *testing.T) {
+func TestStartHTTPRequiresSocketActivation(t *testing.T) {
 	t.Setenv("LISTEN_PID", "")
 	t.Setenv("LISTEN_FDS", "")
 
-	socketPath := filepath.Join(t.TempDir(), "indexer.sock")
-	d := &daemon{
-		cfg: DaemonConfig{
-			SocketPath: socketPath,
-		},
-	}
-
-	l, err := d.getUnixListener()
-	if err != nil {
-		t.Fatalf("get unix listener: %v", err)
-	}
-	defer func() {
-		if closeErr := l.Close(); closeErr != nil {
-			t.Fatalf("close listener: %v", closeErr)
-		}
-	}()
-
-	info, err := os.Stat(socketPath)
-	if err != nil {
-		t.Fatalf("stat socket: %v", err)
-	}
-	if mode := info.Mode().Perm(); mode != 0o600 {
-		t.Fatalf("socket mode = %o, want 600", mode)
+	err := (&daemon{}).startHTTP(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "systemd socket activation") {
+		t.Fatalf("startHTTP error = %v", err)
 	}
 }
 
-func TestConfiguredTCPRequiresSocketActivation(t *testing.T) {
-	t.Setenv("LISTEN_PID", "")
-	t.Setenv("LISTEN_FDS", "")
-
-	reserved, listenErr := net.Listen("tcp", "127.0.0.1:0")
-	if listenErr != nil {
-		t.Fatalf("reserve TCP address: %v", listenErr)
+func TestServeHTTPAcceptsActivatedTCPListener(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen TCP: %v", err)
 	}
-	tcpAddr := reserved.Addr().String()
-	if closeErr := reserved.Close(); closeErr != nil {
-		t.Fatalf("release TCP address: %v", closeErr)
-	}
-
-	socketPath := filepath.Join(t.TempDir(), "indexer.sock")
-	d := &daemon{cfg: DaemonConfig{SocketPath: socketPath, ListenAddr: tcpAddr}}
+	d := &daemon{}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- d.startHTTP(ctx)
+		done <- d.serveHTTP(ctx, activatedListenerSet{tcp: listener})
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -298,23 +269,16 @@ func TestConfiguredTCPRequiresSocketActivation(t *testing.T) {
 		}
 	})
 
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		conn, dialErr := net.DialTimeout("unix", socketPath, 50*time.Millisecond)
-		if dialErr == nil {
-			_ = conn.Close()
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("Unix listener did not start: %v", dialErr)
-		}
-		time.Sleep(10 * time.Millisecond)
+	client := &http.Client{Timeout: time.Second}
+	resp, err := client.Get("http://" + listener.Addr().String() + "/openapi.json")
+	if err != nil {
+		t.Fatalf("GET activated TCP listener: %v", err)
 	}
-
-	conn, dialErr := net.DialTimeout("tcp", tcpAddr, 100*time.Millisecond)
-	if dialErr == nil {
-		_ = conn.Close()
-		t.Fatal("configured TCP address was bound without socket activation")
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		t.Fatalf("close response: %v", closeErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 }
 

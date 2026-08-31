@@ -36,8 +36,7 @@ var (
 )
 
 const (
-	indexerServiceName = "linuxio-indexer.service"
-	indexerSocketName  = "linuxio-indexer.socket"
+	indexerSocketName = "linuxio-indexer.socket"
 )
 const (
 	deleteLocalPrescanMaxBytes           int64 = 512 * 1024 * 1024
@@ -786,38 +785,12 @@ func deleteFromIndexer(ctx context.Context, path string) error {
 	return nil
 }
 
-// CheckIndexerAvailability checks whether the indexer API entrypoint is
-// available. Newer indexer installs are socket activated, so the socket unit is
-// the primary availability signal; the service check remains for older installs.
+// CheckIndexerAvailability checks whether the managed indexer activation socket
+// is available without waking the idle daemon.
 func CheckIndexerAvailability(ctx context.Context) (bool, error) {
-	var socketErr error
-	if ok, err := checkIndexerSocketAvailability(ctx); err == nil && ok {
-		setIndexerAvailability(true)
-		return true, nil
-	} else {
-		socketErr = err
-	}
-
-	var serviceErr error
-	if ok, err := checkIndexerServiceAvailability(ctx); err == nil && ok {
-		setIndexerAvailability(true)
-		return true, nil
-	} else {
-		serviceErr = err
-	}
-
-	setIndexerAvailability(false)
-
-	switch {
-	case socketErr != nil && serviceErr != nil:
-		return false, fmt.Errorf("%v; %v", socketErr, serviceErr)
-	case socketErr != nil:
-		return false, socketErr
-	case serviceErr != nil:
-		return false, serviceErr
-	default:
-		return false, fmt.Errorf("indexer socket and service are unavailable")
-	}
+	ok, err := checkIndexerSocketAvailability(ctx)
+	setIndexerAvailability(err == nil && ok)
+	return ok, err
 }
 
 func checkIndexerSocketAvailability(ctx context.Context) (bool, error) {
@@ -832,23 +805,6 @@ func checkIndexerSocketAvailability(ctx context.Context) (bool, error) {
 	}
 	if activeState != "active" {
 		return false, indexerUnitStateError("socket", activeState, subState)
-	}
-
-	return true, nil
-}
-
-func checkIndexerServiceAvailability(ctx context.Context) (bool, error) {
-	info, err := getIndexerUnitInfo(ctx, indexerServiceName)
-	if err != nil {
-		return false, fmt.Errorf("indexer service unavailable: %w", err)
-	}
-
-	activeState, subState, ok := indexerUnitStates(info)
-	if !ok {
-		return false, fmt.Errorf("indexer service state unavailable")
-	}
-	if activeState != "active" || subState != "running" {
-		return false, indexerUnitStateError("service", activeState, subState)
 	}
 
 	return true, nil

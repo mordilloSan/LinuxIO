@@ -1093,15 +1093,26 @@ type InstallCapabilityResult struct {
 	Warning   *string `json:"warning,omitempty"`
 }
 
+// IndexerConfig combines daemon-owned configuration with systemd-owned
+// scheduling and listener settings read by the bridge.
+type IndexerConfig struct {
+	indexerapi.IndexerConfig
+	Interval   string `json:"interval"`
+	ListenAddr string `json:"listen_addr"`
+}
+
+type IndexerConfigPatch struct {
+	indexerapi.IndexerConfigPatch
+	ListenAddr *string `json:"listen_addr,omitempty"`
+}
+
 type IndexerConfigSetResult struct {
-	Config          indexerapi.IndexerConfig `json:"config"`
-	RestartRequired bool                     `json:"restart_required"`
+	Config          IndexerConfig `json:"config"`
+	RestartRequired bool          `json:"restart_required"`
 }
 
 type IndexerTimerSetResult struct {
-	Config    indexerapi.IndexerConfig `json:"config"`
-	Interval  string                   `json:"interval"`
-	TimerUnit string                   `json:"timer_unit"`
+	Interval string `json:"interval"`
 }
 
 type IndexerDaemonStatus struct {

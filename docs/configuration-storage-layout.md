@@ -9,7 +9,7 @@ frontend router policy remains source-controlled.
 
 | Path | Owner and lifecycle | Purpose |
 |---|---|---|
-| `/etc/linuxio/indexer/config.yaml` | `root:root`; atomically updated by the indexer | Strict YAML indexer configuration. |
+| `/etc/linuxio/indexer/config.yaml` | `root:root`; atomically updated by the indexer | Strict scan, database, query, and daemon lifecycle configuration. |
 | `/etc/systemd/system/linuxio-indexer-tcp.socket` | `root:root`; created only while `listen_addr` is enabled | Optional read-only TCP socket activation unit. |
 | `/var/lib/linuxio/indexer/indexer.db` | `root:root`; persistent indexer state | SQLite index data; `-wal` and `-shm` sidecars may appear beside it. |
 | `/run/linuxio/indexer.sock` | `root:root`, mode `0600`; recreated by systemd | Root-only indexer HTTP API socket for privileged bridges and the timer. |
@@ -38,15 +38,17 @@ validation, and recovery behavior.
 
 ## Systemd lifecycle
 
-`linuxio.target` wants `linuxio-webserver.socket`, `linuxio-auth.socket`,
-`linuxio-indexer.socket`, and `linuxio-indexer-index.timer`. The webserver
+`linuxio.target` wants `linuxio-webserver.socket`, `linuxio-auth.socket`, and
+`linuxio-indexer.socket`. The enabled `linuxio-indexer-index.timer` attaches to
+the target through its `WantedBy=` symlink. The webserver
 socket weakly wants the indexer socket, and the webserver service weakly wants
 the indexer service without service-to-service ordering. The indexer socket is
 bound to the webserver socket, so it follows the application entrypoint.
 
 When `listen_addr` is enabled, its privileged settings action creates and
 enables `linuxio-indexer-tcp.socket` for both `linuxio.target` and
-`linuxio-webserver.socket`, with the same lifecycle binding.
+`linuxio-webserver.socket`, with the same lifecycle binding. The bridge reads
+the effective address back from systemd; it is not duplicated in indexer YAML.
 
 Unix and read-only TCP requests socket-activate `linuxio-indexer.service`. The
 timer and manual index actions ask that daemon to perform work; they do not

@@ -19,8 +19,24 @@ var (
 	stopTCPSocketUnit    = systemdapi.StopUnit
 	restartTCPSocketUnit = systemdapi.RestartUnit
 	reloadTCPSystemd     = systemdapi.DaemonReload
+	getTCPSocketAddress  = systemdapi.GetSocketListenAddress
+	currentTCPListener   = CurrentTCPListener
 	configureTCPListener = ConfigureTCPListener
 )
+
+func CurrentTCPListener(ctx context.Context) (string, error) {
+	if _, err := os.Stat(tcpSocketUnitPath); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", fmt.Errorf("stat indexer TCP socket unit: %w", err)
+	}
+
+	address, err := getTCPSocketAddress(ctx, systemdunit.TCPSocketUnitName)
+	if err != nil {
+		return "", fmt.Errorf("read indexer TCP socket listener: %w", err)
+	}
+	return systemdunit.NormalizeTCPListenAddress(address)
+}
 
 func ConfigureTCPListener(ctx context.Context, listenAddr string) error {
 	if listenAddr == "" {

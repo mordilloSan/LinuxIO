@@ -104,7 +104,7 @@ certificate is reused across restarts, reboots, and updates until it enters its
 
 The first-party `linuxio-indexer` binary is installed with LinuxIO. Its root-only
 local API is socket activated at `/run/linuxio/indexer.sock`, it exits after an idle period,
-and a persistent systemd timer requests periodic full indexing. Configuration
+and a systemd timer requests periodic full indexing. Configuration
 and index data live under `/etc/linuxio/indexer` and `/var/lib/linuxio/indexer`; see the
 [filesystem indexer guide](docs/indexer.md) for permissions, lifecycle, and
 recovery.

@@ -337,7 +337,6 @@ func TestHandleConfigPutRequiresUnixSocket(t *testing.T) {
 			IndexPath:     "/",
 			IncludeHidden: true,
 			DBPath:        "/tmp/indexer.db",
-			SocketPath:    "/var/run/linuxio/indexer.sock",
 			ConfigPath:    configPath,
 		},
 		savedConfig: configfile.Defaults(),
@@ -357,20 +356,20 @@ func TestHandleConfigPutRequiresUnixSocket(t *testing.T) {
 
 func TestHandleConfigPutWritesFileAndAppliesRuntimeFields(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "indexer.yaml")
+	defaults := configfile.Defaults()
 	d := &daemon{
 		cfg: DaemonConfig{
 			IndexName:     "root",
 			IndexPath:     "/",
 			IncludeHidden: true,
-			DBPath:        "/tmp/indexer.db",
-			SocketPath:    "/var/run/linuxio/indexer.sock",
-			Interval:      time.Hour,
+			DBPath:        defaults.DBPath,
+			DBOptions:     storage.DefaultOpenOptions(),
 			ConfigPath:    configPath,
 		},
-		savedConfig: configfile.Defaults(),
+		savedConfig: defaults,
 	}
 
-	body := `{"index_path":"/data","exclude_paths":["/data/cache"],"include_hidden":false,"integrity_check":"quick","interval":"30m","idle_timeout":"45s","listen_addr":":8080"}`
+	body := `{"index_path":"/data","exclude_paths":["/data/cache"],"include_hidden":false,"integrity_check":"quick","idle_timeout":"45s"}`
 	req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(body))
 	req = req.WithContext(withConnectionKind(req.Context(), connectionKindUnix))
 	rr := httptest.NewRecorder()
@@ -379,24 +378,21 @@ func TestHandleConfigPutWritesFileAndAppliesRuntimeFields(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("handleConfig status = %d, want 200; body=%s", rr.Code, rr.Body.String())
 	}
-	if rr.Header().Get("X-Indexer-Restart-Required") != "true" {
-		t.Fatalf("expected restart-required header for listen_addr change")
+	if rr.Header().Get("X-Indexer-Restart-Required") != "" {
+		t.Fatalf("unexpected restart-required header")
 	}
 
 	saved, err := configfile.Load(configPath)
 	if err != nil {
 		t.Fatalf("load saved config: %v", err)
 	}
-	if saved.IndexPath != "/data" || !slices.Equal(saved.ExcludePaths, []string{"/data/cache"}) || saved.IncludeHidden || saved.IntegrityCheck != configfile.IntegrityCheckQuick || saved.Interval != "30m0s" || saved.IdleTimeout != "45s" || saved.ListenAddr != ":8080" {
+	if saved.IndexPath != "/data" || !slices.Equal(saved.ExcludePaths, []string{"/data/cache"}) || saved.IncludeHidden || saved.IntegrityCheck != configfile.IntegrityCheckQuick || saved.IdleTimeout != "45s" {
 		t.Fatalf("unexpected saved config: %#v", saved)
 	}
 
 	active := d.configSnapshot()
-	if active.IndexPath != "/data" || !slices.Equal(active.ExcludePaths, []string{"/data/cache"}) || active.IncludeHidden || active.IntegrityCheck != configfile.IntegrityCheckQuick || active.Interval != 30*time.Minute || active.IdleTimeout != 45*time.Second {
+	if active.IndexPath != "/data" || !slices.Equal(active.ExcludePaths, []string{"/data/cache"}) || active.IncludeHidden || active.IntegrityCheck != configfile.IntegrityCheckQuick || active.IdleTimeout != 45*time.Second {
 		t.Fatalf("runtime-safe fields were not applied: %#v", active)
-	}
-	if active.ListenAddr != "" {
-		t.Fatalf("listen_addr should require restart before runtime apply, got %q", active.ListenAddr)
 	}
 }
 
@@ -407,7 +403,6 @@ func TestHandleConfigPutRejectsInvalidIntegrityCheck(t *testing.T) {
 			IndexName:  "root",
 			IndexPath:  "/",
 			DBPath:     "/tmp/indexer.db",
-			SocketPath: "/var/run/linuxio/indexer.sock",
 			ConfigPath: configPath,
 		},
 		savedConfig: configfile.Defaults(),

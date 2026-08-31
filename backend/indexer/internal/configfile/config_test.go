@@ -13,7 +13,7 @@ func TestLoadMissingFileUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !slices.Equal(cfg.ExcludePaths, []string{"/proc", "/dev"}) || cfg.Interval != "1h0m0s" || cfg.IdleTimeout != "2m0s" || cfg.KeepIndexes != 1 || cfg.IntegrityCheck != IntegrityCheckFull {
+	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !slices.Equal(cfg.ExcludePaths, []string{"/proc", "/dev"}) || cfg.IdleTimeout != "2m0s" || cfg.KeepIndexes != 1 || cfg.IntegrityCheck != IntegrityCheckFull {
 		t.Fatalf("unexpected defaults: %#v", cfg)
 	}
 }
@@ -53,7 +53,7 @@ interval: 30m
 	if !cfg.FTSSearch {
 		t.Fatalf("fts_search should default to true when absent: %#v", cfg)
 	}
-	if cfg.KeepIndexes != 2 || cfg.Interval != "30m0s" {
+	if cfg.KeepIndexes != 2 {
 		t.Fatalf("unexpected normalized fields: %#v", cfg)
 	}
 	if cfg.IntegrityCheck != IntegrityCheckFull {
@@ -67,18 +67,52 @@ interval: 30m
 func TestSaveWritesNormalizedYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "indexer.yaml")
 	cfg := Defaults()
-	cfg.Interval = "1h"
+	cfg.IdleTimeout = "1m"
 
-	if err := Save(path, cfg); err != nil {
-		t.Fatalf("Save: %v", err)
+	if saveErr := Save(path, cfg); saveErr != nil {
+		t.Fatalf("Save: %v", saveErr)
 	}
 
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if !strings.Contains(string(content), "interval: 1h0m0s") {
-		t.Fatalf("expected normalized interval, got:\n%s", content)
+	if !strings.Contains(string(content), "idle_timeout: 1m0s") {
+		t.Fatalf("expected normalized idle timeout, got:\n%s", content)
+	}
+	if strings.Contains(string(content), "\ninterval:") {
+		t.Fatalf("legacy interval was persisted:\n%s", content)
+	}
+	if strings.Contains(string(content), "\nlisten_addr:") || strings.Contains(string(content), "\nsocket_path:") {
+		t.Fatalf("legacy listener configuration was persisted:\n%s", content)
+	}
+}
+
+func TestLoadAcceptsLegacySystemdOwnedFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "indexer.yaml")
+	content := "index_path: /data\ninterval: 1h\nlisten_addr: :8080\nsocket_path: /run/indexer.sock\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.IndexPath != "/data" {
+		t.Fatalf("index_path = %q", cfg.IndexPath)
+	}
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	for _, legacy := range []string{"interval:", "listen_addr:", "socket_path:"} {
+		if strings.Contains(string(saved), legacy) {
+			t.Fatalf("legacy field %q was persisted:\n%s", legacy, saved)
+		}
 	}
 }
 
@@ -103,8 +137,9 @@ func TestLoadRejectsUnknownAndMultipleYAMLDocuments(t *testing.T) {
 
 func TestDecodePatchJSONRejectsUnknownAndTrailingData(t *testing.T) {
 	for name, content := range map[string]string{
-		"unknown field":   `{"unknown":true}`,
-		"trailing object": `{"index_path":"/data"}{}`,
+		"unknown field":          `{"unknown":true}`,
+		"systemd listener field": `{"listen_addr":":8080"}`,
+		"trailing object":        `{"index_path":"/data"}{}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := DecodePatchJSON([]byte(content)); err == nil {
@@ -127,7 +162,6 @@ func TestApplyEnvOverrides(t *testing.T) {
 		"INDEXER_SEARCH_MAX_LIMIT":       "250",
 		"INDEXER_ENTRIES_DEFAULT_LIMIT":  "75",
 		"INDEXER_ENTRIES_MAX_LIMIT":      "750",
-		"INDEXER_LISTEN_ADDR":            ":8080",
 	}
 	cfg, err := ApplyEnvOverrides(Defaults(), func(key string) (string, bool) {
 		v, ok := env[key]
@@ -136,7 +170,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyEnvOverrides: %v", err)
 	}
-	if cfg.IndexPath != "/data" || cfg.IncludeHidden || !cfg.IncludeNetworkMounts || cfg.KeepIndexes != 3 || cfg.IntegrityCheck != IntegrityCheckQuick || cfg.DBSynchronous != "NORMAL" || cfg.DBMaxOpenConns != 7 || cfg.ListenAddr != ":8080" {
+	if cfg.IndexPath != "/data" || cfg.IncludeHidden || !cfg.IncludeNetworkMounts || cfg.KeepIndexes != 3 || cfg.IntegrityCheck != IntegrityCheckQuick || cfg.DBSynchronous != "NORMAL" || cfg.DBMaxOpenConns != 7 {
 		t.Fatalf("unexpected config: %#v", cfg)
 	}
 	if cfg.SearchDefaultLimit != 25 || cfg.SearchMaxLimit != 250 || cfg.EntriesDefaultLimit != 75 || cfg.EntriesMaxLimit != 750 {
@@ -157,14 +191,6 @@ func TestNormalizeRejectsNegativeIdleTimeout(t *testing.T) {
 	cfg.IdleTimeout = "-1s"
 	if _, err := Normalize(cfg); err == nil {
 		t.Fatal("Normalize accepted a negative idle timeout")
-	}
-}
-
-func TestNormalizeRejectsInvalidListenAddress(t *testing.T) {
-	cfg := Defaults()
-	cfg.ListenAddr = ":8080\n[Service]"
-	if _, err := Normalize(cfg); err == nil {
-		t.Fatal("Normalize accepted an invalid TCP listen address")
 	}
 }
 

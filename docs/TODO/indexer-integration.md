@@ -79,7 +79,7 @@
   exits while the Unix and optional TCP sockets remain available for activation.
 - [x] Add `packaging/systemd/linuxio-indexer-index.service` and
   `packaging/systemd/linuxio-indexer-index.timer`. Preserve periodic indexing with one
-  configurable interval and `Persistent=true`; the timer asks the daemon to
+  configurable monotonic interval; the timer asks the daemon to
   perform the index through the activity socket rather than running a second
   scanner process. Its private trigger mode is a socket client, not another
   database/scanner owner.
@@ -91,8 +91,8 @@
 - [x] Make `linuxio.target` `Wants=linuxio-indexer.socket`; keep indexer failure
   non-fatal to the rest of LinuxIO.
 - [x] Keep the existing timer-setting route, but make its interval update the
-  canonical config and the systemd timer through one atomic daemon-reload/
-  timer-restart path; remove any external-CLI assumption.
+  systemd timer drop-in and enabled state through one daemon-reload/restart
+  path; remove any external-CLI assumption.
 - [x] Move the activity socket to `/run/linuxio/indexer.sock`, make
   `linuxio-webserver.socket` want it during standalone activation, and make the
   webserver service weakly start the daemon in parallel without defeating idle
@@ -109,8 +109,9 @@
   indexer binary and all `packaging/systemd/linuxio-indexer*` units atomically,
   stopping and removing the former standalone `indexer*` units and binary on
   upgrade while preserving its data.
-- [ ] Remove the legacy standalone-indexer migration path once supported
-  upgrades no longer depend on it.
+- [ ] Remove the legacy standalone-indexer and YAML systemd-field migration
+  paths (`interval`, `socket_path`, and `listen_addr`) once supported upgrades
+  no longer depend on them.
 - [x] Update `uninstall.sh` to remove the indexer binary, socket, service, and
   timer units, including any persistent index data only when the uninstall
   policy explicitly requests data removal.

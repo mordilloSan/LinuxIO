@@ -49,7 +49,7 @@ architecture guard.
 | `/etc/systemd/system/linuxio-indexer-tcp.socket` | Optional generated TCP socket unit; exists only while `listen_addr` is enabled |
 | `linuxio-indexer.socket` | Owns the activity socket and activates the daemon |
 | `linuxio-indexer.service` | Sandboxed database/scanner owner |
-| `linuxio-indexer-index.timer` | Persistent periodic schedule |
+| `linuxio-indexer-index.timer` | Systemd-owned periodic schedule |
 | `linuxio-indexer-index.service` | Asks the daemon to start a full index |
 
 Indexer-backed bridge routes use `apischema.Privileged()`, following LinuxIO's
@@ -57,6 +57,10 @@ normal [privilege pattern](privilege_pattern.md). The dispatcher rejects an
 unprivileged session before its handler runs. A sudo-authorized session keeps
 `linuxio-bridge` as root and can open the root-only socket; the C authentication
 helper needs no indexer-specific group or socket logic.
+
+The shared capability scan checks `linuxio-indexer.socket` without waking the
+daemon so index-backed UI features can degrade cleanly. This is an internal
+health gate; the first-party indexer is not listed in the Capability Manager.
 
 The TCP API is disabled while `listen_addr` is empty. A privileged settings
 action validates the address and creates, enables, or removes
@@ -67,13 +71,13 @@ only the API's `GET` and `HEAD` routes without authentication; this intentionall
 keeps search authentication-free. Indexing, maintenance, entry mutation, and
 configuration writes remain restricted to UID 0 over the Unix socket. Bind
 `listen_addr` only to networks where exposing indexed paths, sizes, status, and
-configuration is acceptable.
+configuration is acceptable. The bridge reads the effective address from
+systemd; the daemon YAML does not duplicate it.
 
-The binary does not expose a separate administration CLI. Its ordinary
-invocation starts the managed daemon; systemd alone uses the private index
-worker and timer-trigger modes. Runtime configuration and indexing are owned by
-the LinuxIO settings and HTTP APIs, so the installer, bridge, and binary cannot
-write competing systemd state.
+The binary does not expose a separate administration CLI. The managed daemon
+requires systemd activation descriptors; systemd alone uses the private index
+worker and timer-trigger modes. The daemon owns its YAML configuration, while
+the bridge owns LinuxIO's systemd timer and optional TCP socket settings.
 
 `linuxio-indexer.socket` is bound to `linuxio-webserver.socket`. Starting or stopping
 the LinuxIO entrypoint therefore controls whether the indexer activity socket
@@ -87,19 +91,21 @@ Unix or TCP request starts a fresh daemon. The default timeout is two minutes.
 
 LinuxIO's settings API reads and writes `/etc/linuxio/indexer/config.yaml` atomically.
 The configuration covers scan roots and visibility, SQLite behavior, query
-limits, socket/listener settings, the timer interval, and daemon idle timeout.
+limits, and daemon idle timeout.
 
 - Scan settings such as `exclude_paths`, `include_hidden`, `include_network_mounts`,
   `fresh_index`, `fts_search`, `keep_indexes`, and `integrity_check` take
   effect on the next full index.
-- Query limits, the timer interval, and `idle_timeout` apply at runtime.
-- Database connection settings, `db_path`, and `socket_path` are persisted but
-  require a daemon restart. A non-empty `listen_addr` enables the read-only,
-  socket-activated TCP API after restart; an empty value disables and removes
-  its generated socket unit.
+- Query limits and `idle_timeout` apply at runtime.
+- Database connection settings and `db_path` are persisted but require a daemon
+  restart.
+- A non-empty `listen_addr` enables the read-only, socket-activated TCP API after
+  restart; an empty value disables and removes its generated socket unit. The
+  bridge reads this value back from systemd rather than daemon YAML.
 - Setting the timer interval to `0` disables the timer. Other Go duration
-  values, such as `30m` or `6h`, update the LinuxIO-owned systemd drop-in and
-  restart the timer through systemd D-Bus.
+  values, such as `30m` or `6h`, update the LinuxIO-owned systemd drop-in,
+  enable the unit, and restart it through systemd D-Bus. The bridge reads the
+  configured interval back from systemd; it is not duplicated in daemon YAML.
 
 The default index root is `/`. `exclude_paths` lists absolute folders that the
 scanner skips, including all descendants; the packaged configuration lists
@@ -114,7 +120,7 @@ It also receives an isolated writable temporary directory for SQLite work files.
 The normal lifecycle is:
 
 1. `linuxio.target` starts `linuxio-indexer.socket`, the optional enabled
-   `linuxio-indexer-tcp.socket`, and `linuxio-indexer-index.timer`.
+   `linuxio-indexer-tcp.socket`, and the enabled `linuxio-indexer-index.timer`.
 2. A Unix API request, read-only TCP request, or timer connection
    socket-activates `linuxio-indexer.service`.
 3. A full index publishes a completed generation atomically; failed scans do
@@ -136,9 +142,10 @@ uninstaller also preserves `/var/lib/linuxio` unless explicitly invoked with
 `--remove-data`.
 
 The installer preserves an existing generated TCP socket but does not recreate
-runtime settings. If `listen_addr` is non-empty and
-`linuxio-indexer-tcp.socket` is missing, re-save that privileged indexer setting
-to recreate the unit. The daemon never binds TCP directly.
+runtime settings. Legacy YAML `socket_path` and `listen_addr` fields are accepted
+during the supported upgrade window and dropped on the next save; they no longer
+change listeners. Enable the privileged TCP setting again if its generated unit
+is missing. The daemon never binds sockets directly.
 
 To roll back, reinstall the prior immutable amd64 release tag:
 

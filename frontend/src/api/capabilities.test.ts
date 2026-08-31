@@ -43,6 +43,7 @@ describe("capabilities helpers", () => {
     expect(indexer).toMatchObject({
       dependency: "linuxio indexer",
       state: "indexerAvailable",
+      visibleInManager: false,
     });
     expect(indexer).not.toHaveProperty("installable");
   });

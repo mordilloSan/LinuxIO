@@ -75,10 +75,6 @@ func runDaemon(args []string) int {
 	}
 	defer d.Close()
 
-	listenDisplay := cfg.ListenAddr
-	if listenDisplay == "" {
-		listenDisplay = "disabled"
-	}
 	slog.Info("daemon initialized",
 		"config_file", cfg.ConfigPath,
 		"path", cfg.IndexPath,
@@ -86,8 +82,6 @@ func runDaemon(args []string) int {
 		"db", cfg.DBPath,
 		"db_journal_mode", cfg.DBOptions.JournalMode,
 		"db_synchronous", cfg.DBOptions.Synchronous,
-		"socket", cfg.SocketPath,
-		"listen", listenDisplay,
 		"include_hidden", cfg.IncludeHidden,
 		"include_network_mounts", cfg.IncludeNetworkMounts,
 		"keep_indexes", cfg.KeepIndexes,
@@ -96,7 +90,6 @@ func runDaemon(args []string) int {
 		"search_max_limit", cfg.SearchMaxLimit,
 		"entries_default_limit", cfg.EntriesDefaultLimit,
 		"entries_max_limit", cfg.EntriesMaxLimit,
-		"timer_interval", cfg.Interval,
 		"idle_timeout", cfg.IdleTimeout,
 	)
 

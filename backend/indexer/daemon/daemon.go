@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,9 +40,6 @@ type DaemonConfig struct {
 	SearchMaxLimit       int
 	EntriesDefaultLimit  int
 	EntriesMaxLimit      int
-	SocketPath           string
-	ListenAddr           string
-	Interval             time.Duration
 	IdleTimeout          time.Duration
 	ConfigPath           string
 }
@@ -52,14 +48,12 @@ type daemon struct {
 	cfg              DaemonConfig
 	cfgMu            sync.RWMutex
 	savedConfig      configfile.Config
-	activeSocketPath string
 	db               *sql.DB
 	store            *storage.Store
 	servers          []*http.Server
 	running          atomic.Bool
 	workStreamMu     sync.RWMutex
 	workStream       *workStreamBroadcaster
-	usedSystemdSock  bool
 	activeRequests   atomic.Int64
 	lastActivityUnix atomic.Int64
 	bgCtx            context.Context
@@ -109,10 +103,6 @@ func DaemonConfigFromConfig(cfg configfile.Config, configPath string) (DaemonCon
 }
 
 func applyFileConfigFields(dst *DaemonConfig, cfg configfile.Config) error {
-	interval, err := configfile.ParseInterval(cfg.Interval)
-	if err != nil {
-		return err
-	}
 	idleTimeout, err := configfile.ParseIdleTimeout(cfg.IdleTimeout)
 	if err != nil {
 		return err
@@ -135,9 +125,6 @@ func applyFileConfigFields(dst *DaemonConfig, cfg configfile.Config) error {
 	dst.SearchMaxLimit = cfg.SearchMaxLimit
 	dst.EntriesDefaultLimit = cfg.EntriesDefaultLimit
 	dst.EntriesMaxLimit = cfg.EntriesMaxLimit
-	dst.SocketPath = cfg.SocketPath
-	dst.ListenAddr = cfg.ListenAddr
-	dst.Interval = interval
 	dst.IdleTimeout = idleTimeout
 	return nil
 }
@@ -152,12 +139,6 @@ func NewDaemon(cfg DaemonConfig) (*daemon, error) {
 			name = "root"
 		}
 		cfg.IndexName = name
-	}
-	switch cfg.SocketPath {
-	case "-":
-		cfg.SocketPath = ""
-	case "":
-		cfg.SocketPath = "/run/linuxio/indexer.sock"
 	}
 	if cfg.DBPath == "" {
 		cfg.DBPath = configfile.Defaults().DBPath
@@ -200,13 +181,12 @@ func NewDaemon(cfg DaemonConfig) (*daemon, error) {
 
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	return &daemon{
-		cfg:              cfg,
-		savedConfig:      savedConfig,
-		activeSocketPath: cfg.SocketPath,
-		db:               db,
-		store:            storage.NewStoreWithDB(db, cfg.DBPath),
-		bgCtx:            bgCtx,
-		bgCancel:         bgCancel,
+		cfg:         cfg,
+		savedConfig: savedConfig,
+		db:          db,
+		store:       storage.NewStoreWithDB(db, cfg.DBPath),
+		bgCtx:       bgCtx,
+		bgCancel:    bgCancel,
 	}, nil
 }
 
@@ -232,17 +212,6 @@ func (d *daemon) Close() {
 		}
 	}
 
-	// Remove Unix socket only if we created it (not systemd-managed)
-	activeSocketPath := d.activeSocketPath
-	if activeSocketPath == "" {
-		activeSocketPath = d.configSnapshot().SocketPath
-	}
-	if activeSocketPath != "" && !d.usedSystemdSock {
-		if err := os.Remove(activeSocketPath); err != nil && !os.IsNotExist(err) {
-			slog.Warn("failed to remove socket", "socket", activeSocketPath, "err", err)
-		}
-	}
-
 	slog.Info("daemon shutdown complete")
 }
 
@@ -254,41 +223,6 @@ func (d *daemon) shutdownHTTPServers() {
 			slog.Warn("server shutdown error", "err", err)
 		}
 	}
-}
-
-// getUnixListener creates the standalone Unix listener used without systemd activation.
-func (d *daemon) getUnixListener() (net.Listener, error) {
-	cfg := d.configSnapshot()
-	d.usedSystemdSock = false
-	d.activeSocketPath = cfg.SocketPath
-	// Only remove a socket that is actually stale. If another daemon is
-	// serving on it, dialing succeeds and startup must fail instead of
-	// silently unlinking the live socket from under it.
-	if conn, dialErr := net.DialTimeout("unix", cfg.SocketPath, time.Second); dialErr == nil {
-		if closeErr := conn.Close(); closeErr != nil {
-			slog.Warn("failed to close socket probe connection", "err", closeErr)
-		}
-		return nil, fmt.Errorf("socket %s is in use by another running daemon", cfg.SocketPath)
-	}
-	if err := os.Remove(cfg.SocketPath); err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("remove stale socket: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(cfg.SocketPath), 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir socket dir: %w", err)
-	}
-
-	l, err := net.Listen("unix", cfg.SocketPath)
-	if err != nil {
-		return nil, fmt.Errorf("listen on unix socket: %w", err)
-	}
-	if err := os.Chmod(cfg.SocketPath, 0o600); err != nil {
-		if closeErr := l.Close(); closeErr != nil {
-			slog.Warn("failed to close listener after chmod error", "err", closeErr)
-		}
-		return nil, fmt.Errorf("chmod socket: %w", err)
-	}
-
-	return l, nil
 }
 
 const listenFDsStart = 3
@@ -398,20 +332,6 @@ func loadActivatedListenersFrom(listeners []net.Listener) (activatedListenerSet,
 	return activated, nil
 }
 
-func (d *daemon) configuredUnixListener(socketPath string, activated net.Listener) (net.Listener, error) {
-	if socketPath == "" {
-		if activated != nil {
-			_ = activated.Close()
-		}
-		return nil, nil
-	}
-	if activated != nil {
-		d.usedSystemdSock = true
-		return activated, nil
-	}
-	return d.getUnixListener()
-}
-
 // Run starts the HTTP server and blocks until context is cancelled.
 // backgroundContext returns the daemon-lifetime context used by async handler
 // goroutines. Falls back to context.Background() for tests that construct a
@@ -446,7 +366,14 @@ func shouldStopWhenIdle(cfg DaemonConfig) bool {
 }
 
 func (d *daemon) startHTTP(ctx context.Context) error {
-	cfg := d.configSnapshot()
+	activated, err := loadActivatedListeners()
+	if err != nil {
+		return err
+	}
+	return d.serveHTTP(ctx, activated)
+}
+
+func (d *daemon) serveHTTP(ctx context.Context, activated activatedListenerSet) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc(api.RouteOpenAPI, serveOpenapi)
 	mux.HandleFunc(api.RouteIndex, d.handleIndex)
@@ -465,39 +392,23 @@ func (d *daemon) startHTTP(ctx context.Context) error {
 
 	handler := d.activityMiddleware(loggerMiddleware(recoveryMiddleware(authorizeTransportMiddleware(mux))))
 	errorLog := log.New(httpErrorLogAdapter{}, "", 0)
-	activated, err := loadActivatedListeners()
-	if err != nil {
-		return err
-	}
 
 	errCh := make(chan error, 2)
 	serverCount := 0
 
-	unixListener, err := d.configuredUnixListener(cfg.SocketPath, activated.unix)
-	if err != nil {
-		if activated.tcp != nil {
-			_ = activated.tcp.Close()
-		}
-		return err
-	}
-	if unixListener != nil {
+	if activated.unix != nil {
 		srv := newHTTPServer(handler, errorLog)
 		srv.ConnContext = unixConnContext
 		d.servers = append(d.servers, srv)
 		serverCount++
-		if d.usedSystemdSock {
-			slog.Info("API listening", "addr", "unix://"+cfg.SocketPath, "systemd_socket_activation", true)
-		} else {
-			slog.Info("API listening", "addr", "unix://"+cfg.SocketPath)
-		}
+		slog.Info("API listening", "addr", "unix://"+activated.unix.Addr().String(), "systemd_socket_activation", true)
 		go func() {
-			errCh <- srv.Serve(unixListener)
+			errCh <- srv.Serve(activated.unix)
 		}()
 	}
 
 	// TCP is only available through the privileged systemd socket unit.
-	switch {
-	case cfg.ListenAddr != "" && activated.tcp != nil:
+	if activated.tcp != nil {
 		tcpSrv := newHTTPServer(handler, errorLog)
 		tcpSrv.ConnContext = tcpConnContext
 		d.servers = append(d.servers, tcpSrv)
@@ -506,14 +417,10 @@ func (d *daemon) startHTTP(ctx context.Context) error {
 		go func() {
 			errCh <- tcpSrv.Serve(activated.tcp)
 		}()
-	case cfg.ListenAddr != "":
-		slog.Warn("configured TCP listener is not active; systemd socket activation is required", "listen_addr", cfg.ListenAddr)
-	case activated.tcp != nil:
-		_ = activated.tcp.Close()
 	}
 
 	if serverCount == 0 {
-		return fmt.Errorf("no listeners configured")
+		return fmt.Errorf("systemd socket activation provided no supported listeners")
 	}
 
 	select {

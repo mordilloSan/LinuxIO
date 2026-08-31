@@ -106,7 +106,7 @@ linuxio.target → pulls in the webserver, auth, and indexer sockets
   systemd binds  TCP :8090            (webserver.socket)
   systemd binds  /run/linuxio/auth.sock (auth.socket, root:linuxio-bridge-socket 0660)
   systemd binds  /run/linuxio/indexer.sock (linuxio-indexer.socket, root:root 0600)
-  systemd also retains linuxio-indexer-tcp.socket when listen_addr is enabled
+	  systemd also retains linuxio-indexer-tcp.socket when its TCP setting is enabled
   No linuxio-webserver / linuxio-auth / linuxio-bridge / linuxio-indexer process exists.
 ```
 

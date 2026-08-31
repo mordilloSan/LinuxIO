@@ -1203,10 +1203,9 @@ export interface IndexerConfig {
   search_max_limit: number;
   entries_default_limit: number;
   entries_max_limit: number;
-  socket_path: string;
-  listen_addr: string;
-  interval: string;
   idle_timeout: string;
+  interval: string;
+  listen_addr: string;
 }
 
 export interface IndexerConfigPatch {
@@ -1232,10 +1231,8 @@ export interface IndexerConfigPatch {
   search_max_limit?: number;
   entries_default_limit?: number;
   entries_max_limit?: number;
-  socket_path?: string;
-  listen_addr?: string;
-  interval?: string;
   idle_timeout?: string;
+  listen_addr?: string;
 }
 
 export interface IndexerConfigSetResult {
@@ -1301,9 +1298,7 @@ export interface IndexerStatusResponse {
 }
 
 export interface IndexerTimerSetResult {
-  config: IndexerConfig;
   interval: string;
-  timer_unit: string;
 }
 
 export interface InstallCapabilityOutput {

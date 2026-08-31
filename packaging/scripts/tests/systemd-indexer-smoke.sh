@@ -82,8 +82,6 @@ sed \
 	-e "s|^index_path:.*|index_path: ${INDEX_ROOT}|" \
 	-e "s|^db_path:.*|db_path: ${SMOKE_DIR}/indexer.db|" \
 	-e 's|^idle_timeout:.*|idle_timeout: 2s|' \
-	-e 's|^interval:.*|interval: 1h|' \
-	-e "s|^listen_addr:.*|listen_addr: \"${TCP_ADDR}\"|" \
 	"$CONFIG_PATH" >"$SMOKE_CONFIG"
 install -o root -g root -m 0644 "$SMOKE_CONFIG" "$CONFIG_PATH"
 

@@ -11,14 +11,10 @@ import (
 func TestCheckIndexerAvailabilityUsesSocketActivation(t *testing.T) {
 	orig := getIndexerUnitInfo
 	getIndexerUnitInfo = func(_ context.Context, unitName string) (apischema.UnitInfo, error) {
-		switch unitName {
-		case indexerSocketName:
-			return testUnitInfoState("active", "listening"), nil
-		case indexerServiceName:
-			return testUnitInfoState("inactive", "dead"), nil
-		default:
+		if unitName != indexerSocketName {
 			return apischema.UnitInfo{}, errors.New("unexpected unit")
 		}
+		return testUnitInfoState("active", "listening"), nil
 	}
 	t.Cleanup(func() {
 		getIndexerUnitInfo = orig
@@ -37,41 +33,13 @@ func TestCheckIndexerAvailabilityUsesSocketActivation(t *testing.T) {
 	}
 }
 
-func TestCheckIndexerAvailabilityFallsBackToRunningService(t *testing.T) {
-	orig := getIndexerUnitInfo
-	getIndexerUnitInfo = func(_ context.Context, unitName string) (apischema.UnitInfo, error) {
-		switch unitName {
-		case indexerSocketName:
-			return testUnitInfoState("inactive", "dead"), nil
-		case indexerServiceName:
-			return testUnitInfoState("active", "running"), nil
-		default:
-			return apischema.UnitInfo{}, errors.New("unexpected unit")
-		}
-	}
-	t.Cleanup(func() {
-		getIndexerUnitInfo = orig
-		setIndexerAvailability(true)
-	})
-
-	ok, err := CheckIndexerAvailability(context.Background())
-	if err != nil {
-		t.Fatalf("CheckIndexerAvailability returned error: %v", err)
-	}
-	if !ok {
-		t.Fatal("CheckIndexerAvailability returned false")
-	}
-}
-
 func TestCheckIndexerAvailabilityReportsUnavailable(t *testing.T) {
 	orig := getIndexerUnitInfo
 	getIndexerUnitInfo = func(_ context.Context, unitName string) (apischema.UnitInfo, error) {
-		switch unitName {
-		case indexerSocketName, indexerServiceName:
-			return testUnitInfoState("inactive", "dead"), nil
-		default:
+		if unitName != indexerSocketName {
 			return apischema.UnitInfo{}, errors.New("unexpected unit")
 		}
+		return testUnitInfoState("inactive", "dead"), nil
 	}
 	t.Cleanup(func() {
 		getIndexerUnitInfo = orig

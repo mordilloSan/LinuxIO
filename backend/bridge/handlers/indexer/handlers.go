@@ -7,13 +7,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/systemdunit"
 )
 
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, indexerapi.IndexerConfig]("indexer.get_config", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetConfig),
+	apischema.Call[apischema.NoRequest, apischema.IndexerConfig]("indexer.get_config", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetConfig),
 	apischema.Call[apischema.NoRequest, apischema.IndexerDaemonStatus]("indexer.get_status", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetStatus),
-	apischema.Call[indexerapi.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
+	apischema.Call[apischema.IndexerConfigPatch, apischema.IndexerConfigSetResult]("indexer.set_config", apischema.Privileged()).Handle(handleSetConfig),
 	apischema.Call[apischema.IntervalRequest, apischema.IndexerTimerSetResult]("indexer.set_timer_interval", apischema.Privileged()).Handle(handleSetTimerInterval),
 )
 
@@ -24,8 +24,20 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	api.Register(router)
 }
 
-func handleGetConfig(ctx context.Context, _ apischema.NoRequest) (indexerapi.IndexerConfig, error) {
-	return FetchConfig(ctx)
+func handleGetConfig(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerConfig, error) {
+	cfg, err := FetchConfig(ctx)
+	if err != nil {
+		return apischema.IndexerConfig{}, err
+	}
+	interval, err := currentTimerInterval(ctx)
+	if err != nil {
+		return apischema.IndexerConfig{}, err
+	}
+	listenAddr, err := currentTCPListener(ctx)
+	if err != nil {
+		return apischema.IndexerConfig{}, err
+	}
+	return apischema.IndexerConfig{IndexerConfig: cfg, Interval: interval, ListenAddr: listenAddr}, nil
 }
 
 func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerDaemonStatus, error) {
@@ -33,8 +45,24 @@ func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.Inde
 	return indexerStatusToAPI(status), err
 }
 
-func handleSetConfig(ctx context.Context, req indexerapi.IndexerConfigPatch) (apischema.IndexerConfigSetResult, error) {
-	raw, err := json.Marshal(req)
+func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch) (apischema.IndexerConfigSetResult, error) {
+	interval, err := currentTimerInterval(ctx)
+	if err != nil {
+		return apischema.IndexerConfigSetResult{}, err
+	}
+	listenAddr, err := currentTCPListener(ctx)
+	if err != nil {
+		return apischema.IndexerConfigSetResult{}, err
+	}
+	nextListenAddr := listenAddr
+	if req.ListenAddr != nil {
+		nextListenAddr, err = systemdunit.NormalizeTCPListenAddress(*req.ListenAddr)
+		if err != nil {
+			return apischema.IndexerConfigSetResult{}, err
+		}
+	}
+
+	raw, err := json.Marshal(req.IndexerConfigPatch)
 	if err != nil {
 		return apischema.IndexerConfigSetResult{}, err
 	}
@@ -42,14 +70,19 @@ func handleSetConfig(ctx context.Context, req indexerapi.IndexerConfigPatch) (ap
 	if err != nil {
 		return apischema.IndexerConfigSetResult{}, err
 	}
-	if req.ListenAddr != nil {
-		if err := configureTCPListener(ctx, cfg.ListenAddr); err != nil {
+	listenerChanged := req.ListenAddr != nil && nextListenAddr != listenAddr
+	if listenerChanged {
+		if err := configureTCPListener(ctx, nextListenAddr); err != nil {
 			return apischema.IndexerConfigSetResult{}, err
 		}
 	}
 	return apischema.IndexerConfigSetResult{
-		Config:          cfg,
-		RestartRequired: restartRequired,
+		Config: apischema.IndexerConfig{
+			IndexerConfig: cfg,
+			Interval:      interval,
+			ListenAddr:    nextListenAddr,
+		},
+		RestartRequired: restartRequired || listenerChanged,
 	}, nil
 }
 

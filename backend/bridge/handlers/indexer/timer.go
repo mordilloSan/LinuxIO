@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,7 +12,6 @@ import (
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
-	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 const (
@@ -23,26 +21,28 @@ const (
 )
 
 var (
-	updateTimerConfig = UpdateConfig
 	writeTimerDropIn  = utils.WriteFileAtomic
 	removeTimerDropIn = os.Remove
 	enableTimerUnit   = systemdapi.EnableUnit
 	disableTimerUnit  = systemdapi.DisableUnit
 	stopTimerUnit     = systemdapi.StopUnit
 	restartTimerUnit  = systemdapi.RestartUnit
+	getTimerInterval  = systemdapi.GetTimerInterval
 )
+
+func currentTimerInterval(ctx context.Context) (string, error) {
+	interval, err := getTimerInterval(ctx, indexerTimerUnitName)
+	if err != nil {
+		return "", fmt.Errorf("read indexer timer interval: %w", err)
+	}
+	if interval == 0 {
+		return "0", nil
+	}
+	return interval.String(), nil
+}
 
 func SetTimerInterval(ctx context.Context, raw string) (apischema.IndexerTimerSetResult, error) {
 	interval, err := normalizeTimerInterval(raw)
-	if err != nil {
-		return apischema.IndexerTimerSetResult{}, err
-	}
-
-	patch, err := json.Marshal(indexerapi.ConfigPatch{Interval: &interval})
-	if err != nil {
-		return apischema.IndexerTimerSetResult{}, fmt.Errorf("encode indexer interval: %w", err)
-	}
-	cfg, _, err := updateTimerConfig(ctx, patch)
 	if err != nil {
 		return apischema.IndexerTimerSetResult{}, err
 	}
@@ -76,9 +76,7 @@ func SetTimerInterval(ctx context.Context, raw string) (apischema.IndexerTimerSe
 	}
 
 	return apischema.IndexerTimerSetResult{
-		Config:    cfg,
-		Interval:  cfg.Interval,
-		TimerUnit: indexerTimerUnitName,
+		Interval: interval,
 	}, nil
 }
 

@@ -69,10 +69,6 @@ func daemonConfigToFileConfig(cfg DaemonConfig) (configfile.Config, error) {
 	if err != nil {
 		return configfile.Config{}, err
 	}
-	interval := cfg.Interval.String()
-	if cfg.Interval == 0 {
-		interval = "0s"
-	}
 	return configfile.Normalize(configfile.Config{
 		IndexPath:            cfg.IndexPath,
 		IndexName:            cfg.IndexName,
@@ -96,9 +92,6 @@ func daemonConfigToFileConfig(cfg DaemonConfig) (configfile.Config, error) {
 		SearchMaxLimit:       cfg.SearchMaxLimit,
 		EntriesDefaultLimit:  cfg.EntriesDefaultLimit,
 		EntriesMaxLimit:      cfg.EntriesMaxLimit,
-		SocketPath:           cfg.SocketPath,
-		ListenAddr:           cfg.ListenAddr,
-		Interval:             interval,
 		IdleTimeout:          cfg.IdleTimeout.String(),
 	})
 }
@@ -147,7 +140,6 @@ func (d *daemon) applySavedConfig(saved configfile.Config) (bool, error) {
 	d.cfg.SearchMaxLimit = next.SearchMaxLimit
 	d.cfg.EntriesDefaultLimit = next.EntriesDefaultLimit
 	d.cfg.EntriesMaxLimit = next.EntriesMaxLimit
-	d.cfg.Interval = next.Interval
 	d.cfg.IdleTimeout = next.IdleTimeout
 
 	if old.DBOptions == next.DBOptions {
@@ -167,16 +159,6 @@ func (d *daemon) applySavedConfig(saved configfile.Config) (bool, error) {
 	}
 	if old.DBPath == next.DBPath {
 		d.cfg.DBPath = next.DBPath
-	} else {
-		restartRequired = true
-	}
-	if old.SocketPath == next.SocketPath {
-		d.cfg.SocketPath = next.SocketPath
-	} else {
-		restartRequired = true
-	}
-	if old.ListenAddr == next.ListenAddr {
-		d.cfg.ListenAddr = next.ListenAddr
 	} else {
 		restartRequired = true
 	}

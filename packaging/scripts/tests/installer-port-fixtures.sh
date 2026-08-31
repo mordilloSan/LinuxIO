@@ -157,10 +157,45 @@ run_port_fixtures() {
 	)
 }
 
+run_indexer_timer_enable_fixtures() {
+	local installer="$1"
+	(
+		local fixture_dir timer target config
+		fixture_dir=$(mktemp -d)
+		trap 'rm -rf "$fixture_dir"' EXIT
+		timer="${fixture_dir}/linuxio-indexer-index.timer"
+		target="${fixture_dir}/linuxio.target"
+		config="${fixture_dir}/config.yaml"
+
+		# shellcheck source=/dev/null
+		source "$installer"
+		indexer_timer_needs_enable "$timer" "$target" "$config" || fail "new timer was not enabled"
+
+		: >"$timer"
+		printf '%s\n' 'Wants=linuxio-indexer.socket linuxio-indexer-index.timer' >"$target"
+		printf '%s\n' 'interval: 1h0m0s' >"$config"
+		indexer_timer_needs_enable "$timer" "$target" "$config" || fail "old enabled timer was not migrated"
+
+		printf '%s\n' 'interval: 0s' >"$config"
+		if indexer_timer_needs_enable "$timer" "$target" "$config"; then
+			fail "old disabled timer was enabled"
+		fi
+
+		printf '%s\n' 'Wants=linuxio-indexer.socket' >"$target"
+		printf '%s\n' 'interval: 1h0m0s' >"$config"
+		if indexer_timer_needs_enable "$timer" "$target" "$config"; then
+			fail "current disabled timer was enabled"
+		fi
+	)
+}
+
 run_port_fixtures "$LOCAL_INSTALLER"
 printf '   \033[1;32m✓\033[0m %s\n' "local installer port fixtures"
 run_port_fixtures "$RELEASE_INSTALLER"
 printf '   \033[1;32m✓\033[0m %s\n' "release installer port fixtures"
+run_indexer_timer_enable_fixtures "$LOCAL_INSTALLER"
+run_indexer_timer_enable_fixtures "$RELEASE_INSTALLER"
+printf '   \033[1;32m✓\033[0m %s\n' "indexer timer enablement fixtures"
 
 grep -Fq \
 	'CURRENT_MAIN_PACKAGING_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"' \
@@ -197,6 +232,7 @@ for installer in "$LOCAL_INSTALLER" "$RELEASE_INSTALLER"; do
 	fi
 	grep -Fq 'THIRD_PARTY_NOTICES.md' "$installer" || fail "${installer} does not install third-party notices"
 	grep -Fq 'config.yaml' "$installer" || fail "${installer} does not install YAML configuration"
+	grep -Fq 'systemctl enable "$INDEXER_TIMER_UNIT_NAME"' "$installer" || fail "${installer} does not enable the timer on first install"
 	if grep -Fq 'indexer.json' "$installer"; then
 		fail "${installer} still references removed indexer.json"
 	fi
@@ -222,13 +258,23 @@ if rg -q 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' \
 	fail "indexer socket access must not modify the auth launcher"
 fi
 grep -Fqx 'BindsTo=linuxio-webserver.socket' "$INDEXER_SOCKET" || fail "indexer socket lifecycle"
-grep -Fq 'linuxio-indexer.socket linuxio-indexer-index.timer' "$INDEXER_TARGET" || fail "linuxio.target does not own indexer units"
+grep -Fq 'Wants=linuxio-webserver.socket linuxio-auth.socket linuxio-indexer.socket' "$INDEXER_TARGET" || fail "linuxio.target does not own the indexer socket"
+if grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$INDEXER_TARGET"; then
+	fail "linuxio.target must not bypass the timer's enabled state"
+fi
+grep -Fqx 'WantedBy=linuxio.target' "${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.timer" || fail "index timer install relationship"
+if grep -Fqx 'Persistent=true' "${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.timer"; then
+	fail "Persistent has no effect on a monotonic timer"
+fi
 grep -Fq 'Wants=linuxio-issue.service linuxio-indexer.socket' "${REPO_ROOT}/packaging/systemd/linuxio-webserver.socket" || fail "webserver socket warm dependency"
 grep -Fq 'Wants=linuxio-indexer.service' "${REPO_ROOT}/packaging/systemd/linuxio-webserver.service" || fail "webserver service warm dependency"
 if grep -Fq 'linuxio-indexer.service' "$INDEXER_TARGET"; then
 	fail "linuxio.target must not start the indexer service"
 fi
 [[ -f "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml" ]] || fail "missing packaged indexer config"
+if rg -q '^(socket_path|listen_addr):' "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml"; then
+	fail "systemd-owned listeners must not be duplicated in indexer YAML"
+fi
 grep -Fq -- '--remove-data' "$UNINSTALLER" || fail "uninstaller must preserve data by default"
 grep -Fq 'if [[ $REMOVE_DATA -eq 1 ]]; then' "$UNINSTALLER" || fail "uninstaller remove-data branch missing"
 grep -Fq 'Persistent data preserved' "$UNINSTALLER" || fail "uninstaller preserve-data behavior missing"

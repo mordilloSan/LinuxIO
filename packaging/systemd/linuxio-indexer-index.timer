@@ -9,7 +9,6 @@ After=linuxio-indexer.socket
 OnActiveSec=1h
 OnUnitActiveSec=1h
 AccuracySec=1min
-Persistent=true
 Unit=linuxio-indexer-index.service
 
 [Install]

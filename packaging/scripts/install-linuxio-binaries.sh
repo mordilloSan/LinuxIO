@@ -19,6 +19,8 @@ readonly CONFIG_DIR="/etc/linuxio"
 readonly DATA_DIR="/var/lib/linuxio"
 readonly DOC_DIR="/usr/share/doc/linuxio"
 readonly STAGING="/tmp/linuxio-install-$$"
+readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
+ENABLE_INDEXER_TIMER=0
 # Recovery-asset policy: a versioned install downloads immutable release
 # binaries, but intentionally fetches current-main configuration, PAM, MOTD,
 # and systemd packaging assets. This lets a maintainer repair an installer or
@@ -77,6 +79,16 @@ legacy_indexer_units() {
 		indexer.service \
 		indexer-index.service \
 		indexer-index.timer
+}
+
+indexer_timer_needs_enable() {
+	local timer_path="$1"
+	local target_path="$2"
+	local config_path="$3"
+
+	[[ ! -e "$timer_path" && ! -L "$timer_path" ]] && return 0
+	grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$target_path" 2>/dev/null || return 1
+	! grep -Eq '^[[:space:]]*interval:[[:space:]]*(0|0s)([[:space:]]|$)' "$config_path" 2>/dev/null
 }
 
 remove_legacy_indexer_installation() {
@@ -561,6 +573,12 @@ install_systemd_files() {
 	# installed socket. A valid existing port is part of the reinstall
 	# compatibility contract and is preserved whenever possible.
 	existing_port=$(find_existing_linuxio_port || true)
+	if indexer_timer_needs_enable \
+		"${SYSTEMD_DIR}/${INDEXER_TIMER_UNIT_NAME}" \
+		"${SYSTEMD_DIR}/linuxio.target" \
+		"${CONFIG_DIR}/indexer/config.yaml"; then
+		ENABLE_INDEXER_TIMER=1
+	fi
 
 	local units
 	mapfile -t units < <(release_systemd_units)
@@ -640,6 +658,13 @@ enable_services() {
 		Show 0 "Enabled linuxio.target"
 	else
 		Show 3 "Failed to enable linuxio.target"
+	fi
+	if [[ $ENABLE_INDEXER_TIMER -eq 1 ]]; then
+		if systemctl enable "$INDEXER_TIMER_UNIT_NAME" >/dev/null 2>&1; then
+			Show 0 "Enabled ${INDEXER_TIMER_UNIT_NAME}"
+		else
+			Show 3 "Failed to enable ${INDEXER_TIMER_UNIT_NAME}"
+		fi
 	fi
 
 	return 0

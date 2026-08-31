@@ -14,7 +14,6 @@ func TestShouldStopWhenIdle(t *testing.T) {
 	}{
 		{name: "unix socket", cfg: DaemonConfig{IdleTimeout: time.Minute}, want: true},
 		{name: "disabled", cfg: DaemonConfig{}, want: false},
-		{name: "TCP listener", cfg: DaemonConfig{IdleTimeout: time.Minute, ListenAddr: ":8080"}, want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := shouldStopWhenIdle(test.cfg); got != test.want {

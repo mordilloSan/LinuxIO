@@ -221,6 +221,12 @@ describe("CapabilityManagerSection", () => {
     mocks.watch.mockReset();
   });
 
+  it("keeps the internal indexer health gate out of the manager", () => {
+    renderSection();
+
+    expect(screen.queryByText("Indexer")).not.toBeInTheDocument();
+  });
+
   it("keeps async refresh updates alive after StrictMode effect replay", async () => {
     let resolveRefresh!: (value: CapabilitiesResponse) => void;
     mocks.refreshCapabilities.mockReturnValue(

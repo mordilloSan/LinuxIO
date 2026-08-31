@@ -10,8 +10,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
-	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/systemdunit"
 )
 
@@ -26,6 +27,20 @@ func withTestIndexerClient(t *testing.T, fn roundTripFunc) {
 	orig := Client
 	Client = &http.Client{Transport: fn}
 	t.Cleanup(func() { Client = orig })
+}
+
+func withTestTimerInterval(t *testing.T, interval time.Duration) {
+	t.Helper()
+	original := getTimerInterval
+	getTimerInterval = func(context.Context, string) (time.Duration, error) { return interval, nil }
+	t.Cleanup(func() { getTimerInterval = original })
+}
+
+func withTestTCPListener(t *testing.T, address string) {
+	t.Helper()
+	original := currentTCPListener
+	currentTCPListener = func(context.Context) (string, error) { return address, nil }
+	t.Cleanup(func() { currentTCPListener = original })
 }
 
 func TestSetConfigRouteIsPrivileged(t *testing.T) {
@@ -56,6 +71,22 @@ func TestFetchConfigUsesUnixConfigEndpoint(t *testing.T) {
 		t.Fatalf("FetchConfig: %v", err)
 	}
 	if cfg.IndexPath != "/" || cfg.IndexName != "root" || !slices.Equal(cfg.ExcludePaths, []string{"/proc", "/dev"}) || !cfg.IncludeHidden || !cfg.FTSSearch || cfg.IntegrityCheck != "quick" {
+		t.Fatalf("config = %#v", cfg)
+	}
+}
+
+func TestHandleGetConfigAddsSystemdTimerInterval(t *testing.T) {
+	withTestIndexerClient(t, func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"index_path":"/","index_name":"root"}`, nil), nil
+	})
+	withTestTimerInterval(t, 30*time.Minute)
+	withTestTCPListener(t, ":8080")
+
+	cfg, err := handleGetConfig(context.Background(), apischema.NoRequest{})
+	if err != nil {
+		t.Fatalf("handleGetConfig: %v", err)
+	}
+	if cfg.IndexPath != "/" || cfg.Interval != "30m0s" || cfg.ListenAddr != ":8080" {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
@@ -106,8 +137,17 @@ func TestUpdateConfigSendsTypedPatchAndReadsRestartHeader(t *testing.T) {
 }
 
 func TestHandleSetConfigAppliesTCPListener(t *testing.T) {
-	withTestIndexerClient(t, func(*http.Request) (*http.Response, error) {
-		return jsonResponse(http.StatusOK, `{ "listen_addr": ":8080" }`, nil), nil
+	withTestTimerInterval(t, time.Hour)
+	withTestTCPListener(t, "")
+	withTestIndexerClient(t, func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if got := string(body); got != `{}` {
+			t.Fatalf("daemon config body = %s, want listener omitted", got)
+		}
+		return jsonResponse(http.StatusOK, `{ "index_path": "/" }`, nil), nil
 	})
 	original := configureTCPListener
 	t.Cleanup(func() { configureTCPListener = original })
@@ -118,11 +158,43 @@ func TestHandleSetConfigAppliesTCPListener(t *testing.T) {
 	}
 
 	listenAddr := ":8080"
-	if _, err := handleSetConfig(context.Background(), indexerapi.IndexerConfigPatch{ListenAddr: &listenAddr}); err != nil {
+	result, err := handleSetConfig(context.Background(), apischema.IndexerConfigPatch{ListenAddr: &listenAddr})
+	if err != nil {
 		t.Fatalf("handleSetConfig: %v", err)
 	}
 	if got != listenAddr {
 		t.Fatalf("configured address = %q, want %q", got, listenAddr)
+	}
+	if !result.RestartRequired || result.Config.ListenAddr != listenAddr {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestCurrentTCPListenerReadsSystemdSocket(t *testing.T) {
+	originalPath := tcpSocketUnitPath
+	originalGet := getTCPSocketAddress
+	t.Cleanup(func() {
+		tcpSocketUnitPath = originalPath
+		getTCPSocketAddress = originalGet
+	})
+
+	tcpSocketUnitPath = filepath.Join(t.TempDir(), systemdunit.TCPSocketUnitName)
+	if err := os.WriteFile(tcpSocketUnitPath, []byte("[Socket]\nListenStream=:8080\n"), 0o644); err != nil {
+		t.Fatalf("write socket unit: %v", err)
+	}
+	getTCPSocketAddress = func(_ context.Context, unit string) (string, error) {
+		if unit != systemdunit.TCPSocketUnitName {
+			t.Fatalf("unit = %q", unit)
+		}
+		return "[::]:8080", nil
+	}
+
+	address, err := CurrentTCPListener(context.Background())
+	if err != nil {
+		t.Fatalf("CurrentTCPListener: %v", err)
+	}
+	if address != "[::]:8080" {
+		t.Fatalf("address = %q", address)
 	}
 }
 

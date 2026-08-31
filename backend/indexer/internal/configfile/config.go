@@ -17,7 +17,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/storage"
-	"github.com/mordilloSan/LinuxIO/backend/indexer/systemdunit"
 )
 
 const (
@@ -71,9 +70,6 @@ func Defaults() Config {
 		SearchMaxLimit:       DefaultSearchMaxLimit,
 		EntriesDefaultLimit:  DefaultEntriesLimit,
 		EntriesMaxLimit:      DefaultEntriesMaxLimit,
-		SocketPath:           "/run/linuxio/indexer.sock",
-		ListenAddr:           "",
-		Interval:             "1h0m0s",
 		IdleTimeout:          "2m0s",
 	}
 }
@@ -237,15 +233,6 @@ func applyLimitPatch(cfg Config, patch Patch) Config {
 }
 
 func applyRuntimePatch(cfg Config, patch Patch) Config {
-	if patch.SocketPath != nil {
-		cfg.SocketPath = *patch.SocketPath
-	}
-	if patch.ListenAddr != nil {
-		cfg.ListenAddr = *patch.ListenAddr
-	}
-	if patch.Interval != nil {
-		cfg.Interval = *patch.Interval
-	}
 	if patch.IdleTimeout != nil {
 		cfg.IdleTimeout = *patch.IdleTimeout
 	}
@@ -298,15 +285,6 @@ func Normalize(cfg Config) (Config, error) {
 	cfg.DBConnMaxIdleTime = dbOpts.ConnMaxIdleTime.String()
 	cfg.DBStmtCacheSize = dbOpts.StmtCacheSize
 
-	// "-" is kept as-is: it is the explicit "no unix socket" sentinel, which
-	// NewDaemon distinguishes from "" (unset, use the default path).
-	// Normalizing it to "" here used to silently re-enable the default socket.
-	cfg.SocketPath = strings.TrimSpace(cfg.SocketPath)
-	cfg.ListenAddr, err = systemdunit.NormalizeTCPListenAddress(cfg.ListenAddr)
-	if err != nil {
-		return Config{}, err
-	}
-
 	if cfg.KeepIndexes < 0 {
 		return Config{}, fmt.Errorf("keep_indexes must be non-negative")
 	}
@@ -322,11 +300,6 @@ func Normalize(cfg Config) (Config, error) {
 		return Config{}, validationErr
 	}
 
-	interval, _, err := NormalizeInterval(cfg.Interval)
-	if err != nil {
-		return Config{}, err
-	}
-	cfg.Interval = interval
 	idleTimeout, _, err := NormalizeIdleTimeout(cfg.IdleTimeout)
 	if err != nil {
 		return Config{}, err
@@ -371,26 +344,6 @@ func DeriveIndexName(path string) string {
 		return "root"
 	}
 	return name
-}
-
-func NormalizeInterval(raw string) (string, time.Duration, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "0" {
-		return "0s", 0, nil
-	}
-	interval, err := time.ParseDuration(raw)
-	if err != nil {
-		return "", 0, fmt.Errorf("invalid interval %q: %w", raw, err)
-	}
-	if interval < 0 {
-		return "", 0, fmt.Errorf("interval must be non-negative")
-	}
-	return interval.String(), interval, nil
-}
-
-func ParseInterval(raw string) (time.Duration, error) {
-	_, interval, err := NormalizeInterval(raw)
-	return interval, err
 }
 
 func NormalizeIdleTimeout(raw string) (string, time.Duration, error) {
@@ -484,10 +437,7 @@ func applyStringEnvOverrides(patch *Patch, lookup func(string) (string, bool)) {
 		{"INDEXER_DB_SYNCHRONOUS", func(p *Patch, v *string) { p.DBSynchronous = v }},
 		{"INDEXER_DB_AUTO_VACUUM", func(p *Patch, v *string) { p.DBAutoVacuum = v }},
 		{"INDEXER_DB_CONN_MAX_IDLE_TIME", func(p *Patch, v *string) { p.DBConnMaxIdleTime = v }},
-		{"INDEXER_SOCKET", func(p *Patch, v *string) { p.SocketPath = v }},
-		{"INDEXER_INTERVAL", func(p *Patch, v *string) { p.Interval = v }},
 		{"INDEXER_IDLE_TIMEOUT", func(p *Patch, v *string) { p.IdleTimeout = v }},
-		{"INDEXER_LISTEN_ADDR", func(p *Patch, v *string) { p.ListenAddr = v }},
 	}
 	for _, override := range overrides {
 		if value, ok := lookup(override.key); ok {
