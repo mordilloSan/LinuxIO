@@ -326,6 +326,11 @@ func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativeP
 		sendSSEError(sender, fmt.Sprintf("read prior directory size: %v", err))
 		return
 	}
+	oldDirs, oldFiles, countErr := storage.CountEntriesUnderPath(ctx, tx, indexID, relativePath)
+	if countErr != nil {
+		sendSSEError(sender, fmt.Sprintf("count prior entries: %v", countErr))
+		return
+	}
 
 	index := indexing.Initialize(
 		"/",
@@ -348,7 +353,7 @@ func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativeP
 		return
 	}
 
-	newSize, finishErr := d.finishPathReindex(ctx, tx, indexID, relativePath, writer.ScanTime(), oldSize)
+	newSize, finishErr := d.finishPathReindex(ctx, tx, indexID, relativePath, writer.ScanTime(), oldSize, oldDirs, oldFiles)
 	if finishErr != nil {
 		sendSSEError(sender, finishErr.Error())
 		return
@@ -397,7 +402,7 @@ func reindexProgressCallback(operationID, operationPath string, sender sseEventS
 	}
 }
 
-func (d *daemon) finishPathReindex(ctx context.Context, tx *sql.Tx, indexID int64, relativePath string, scanTime, oldSize int64) (int64, error) {
+func (d *daemon) finishPathReindex(ctx context.Context, tx *sql.Tx, indexID int64, relativePath string, scanTime, oldSize, oldDirs, oldFiles int64) (int64, error) {
 	deleted, err := storage.CleanupDeletedEntriesUnderPath(ctx, tx, indexID, relativePath, scanTime)
 	if err != nil {
 		return 0, fmt.Errorf("cleanup deleted entries: %w", err)
@@ -426,6 +431,13 @@ func (d *daemon) finishPathReindex(ctx context.Context, tx *sql.Tx, indexID int6
 		if updateErr := storage.UpdateParentDirectorySizes(ctx, tx, indexID, relativePath, newSize-oldSize); updateErr != nil {
 			return 0, fmt.Errorf("update parent sizes: %w", updateErr)
 		}
+	}
+	newDirs, newFiles, err := storage.CountEntriesUnderPath(ctx, tx, indexID, relativePath)
+	if err != nil {
+		return 0, fmt.Errorf("count reindexed entries: %w", err)
+	}
+	if err := storage.UpdateIndexMetadata(ctx, tx, indexID, newDirs-oldDirs, newFiles-oldFiles); err != nil {
+		return 0, fmt.Errorf("update index metadata: %w", err)
 	}
 	return newSize, nil
 }

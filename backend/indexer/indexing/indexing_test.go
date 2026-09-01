@@ -82,6 +82,15 @@ func TestStartIndexingStreamsEntries(t *testing.T) {
 	assertHasEntry(t, entries, "/documents/readme.txt", false)
 	assertHasEntry(t, entries, "/photos", true)
 	assertHasEntry(t, entries, "/photos/image1.jpg", false)
+	var streamedDirs uint64
+	for _, entry := range entries {
+		if entry.Type == "directory" {
+			streamedDirs++
+		}
+	}
+	if idx.NumDirs != streamedDirs {
+		t.Fatalf("directory count = %d, streamed directories = %d", idx.NumDirs, streamedDirs)
+	}
 }
 
 func TestStartIndexingFailsOnUnreadableEntry(t *testing.T) {

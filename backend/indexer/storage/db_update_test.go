@@ -61,10 +61,10 @@ func (h *testHelper) upsertFile(entry indexing.IndexEntry) {
 	}
 }
 
-func (h *testHelper) deleteFile(relPath string) {
+func (h *testHelper) deletePath(relPath string) {
 	h.t.Helper()
 	if err := DeletePathRecursive(h.ctx, h.db, h.indexID, relPath); err != nil {
-		h.t.Fatalf("delete file: %v", err)
+		h.t.Fatalf("delete path: %v", err)
 	}
 }
 
@@ -79,7 +79,24 @@ func (h *testHelper) assertFileDeleted(relPath string) {
 	}
 }
 
-// Integration-style test to ensure manual add/delete operations keep ancestor sizes in sync.
+func (h *testHelper) assertMetadata(wantDirs, wantFiles, wantSize int64, desc string) {
+	h.t.Helper()
+	var dirs, files, size, lastIndexed int64
+	if err := h.db.QueryRowContext(h.ctx, `
+		SELECT num_dirs, num_files, total_size, last_indexed
+		FROM indexes WHERE id = ?;
+	`, h.indexID).Scan(&dirs, &files, &size, &lastIndexed); err != nil {
+		h.t.Fatalf("%s: query metadata: %v", desc, err)
+	}
+	if dirs != wantDirs || files != wantFiles || size != wantSize {
+		h.t.Fatalf("%s: metadata = dirs %d, files %d, size %d; want %d, %d, %d", desc, dirs, files, size, wantDirs, wantFiles, wantSize)
+	}
+	if lastIndexed <= 1 {
+		h.t.Fatalf("%s: last indexed = %d, want refreshed timestamp", desc, lastIndexed)
+	}
+}
+
+// Integration-style test to ensure manual add/delete operations keep sizes and metadata in sync.
 func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "index.db")
@@ -97,7 +114,7 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	// Seed an index row.
 	res, err := db.Exec(`
 		INSERT INTO indexes (last_indexed)
-		VALUES (strftime('%s','now'));
+		VALUES (1);
 	`)
 	if err != nil {
 		t.Fatalf("insert index: %v", err)
@@ -112,6 +129,9 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	// Seed root and a child directory so parent size updates have somewhere to land.
 	h.seedDir("/")
 	h.seedDir("/data")
+	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 2 WHERE id = ?`, indexID); err != nil {
+		t.Fatalf("seed directory count: %v", err)
+	}
 
 	fileEntry := indexing.IndexEntry{
 		RelativePath: "/data/file.txt",
@@ -126,18 +146,24 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	h.upsertFile(fileEntry)
 	h.assertSize("/data", 200, "after add")
 	h.assertSize("/", 200, "after add")
+	h.assertMetadata(2, 1, 200, "after add")
 
 	// Increase file size and ensure deltas propagate.
 	fileEntry.Size = 350
 	h.upsertFile(fileEntry)
 	h.assertSize("/data", 350, "after resize")
 	h.assertSize("/", 350, "after resize")
+	h.assertMetadata(2, 1, 350, "after resize")
 
 	// Delete and ensure sizes drop.
-	h.deleteFile("/data/file.txt")
+	h.deletePath("/data/file.txt")
 	h.assertSize("/data", 0, "after delete")
 	h.assertSize("/", 0, "after delete")
+	h.assertMetadata(2, 0, 0, "after file delete")
 	h.assertFileDeleted("/data/file.txt")
+
+	h.deletePath("/data")
+	h.assertMetadata(1, 0, 0, "after directory delete")
 }
 
 func TestTransactionalStreamingWriterRollbackPreservesEntries(t *testing.T) {

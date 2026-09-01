@@ -82,6 +82,7 @@ func (idx *Index) indexDirectory(ctx context.Context, adjustedPath string) error
 	if err := idx.streamWriter.Write(entry); err != nil {
 		return fmt.Errorf("%w: directory %s: %v", ErrStreamWrite, normalized, err)
 	}
+	idx.incrementDirCount()
 	return nil
 }
 
@@ -165,7 +166,6 @@ func (idx *Index) indexChildDirectory(ctx context.Context, dirPath string) (int6
 		delete(idx.dirMetadata, dirMapKey)
 	}
 	idx.mu.Unlock()
-	idx.incrementDirCount()
 	return size, nil
 }
 

@@ -276,6 +276,70 @@ func TestReindexPathRejectsDirectorySymlink(t *testing.T) {
 	}
 }
 
+func TestPartialReindexSynchronizesMetadata(t *testing.T) {
+	d, _ := newDaemonWithDB(t)
+	res, insertErr := d.db.Exec(`INSERT INTO indexes (num_dirs, last_indexed) VALUES (1, 1)`)
+	if insertErr != nil {
+		t.Fatalf("insert index: %v", insertErr)
+	}
+	indexID, idErr := res.LastInsertId()
+	if idErr != nil {
+		t.Fatalf("index id: %v", idErr)
+	}
+	if _, err := d.db.Exec(`
+		INSERT INTO entries (index_id, relative_path, name, size, mod_time, type)
+		VALUES (?, '/', '/', 0, 1, 'directory');
+	`, indexID); err != nil {
+		t.Fatalf("insert root entry: %v", err)
+	}
+
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "child"), 0o755); err != nil {
+		t.Fatalf("create child directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("file"), 0o600); err != nil {
+		t.Fatalf("create file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "child", "nested"), []byte("nested"), 0o600); err != nil {
+		t.Fatalf("create nested file: %v", err)
+	}
+
+	broadcaster := newWorkStreamBroadcaster("reindex", "op-1", root)
+	defer broadcaster.close()
+	_, events, subscribeErr := broadcaster.subscribe()
+	if subscribeErr != nil {
+		t.Fatalf("subscribe: %v", subscribeErr)
+	}
+	d.reindexExistingPath(context.Background(), "op-1", root, broadcaster, time.Now(), DaemonConfig{IncludeNetworkMounts: true}, indexID)
+	if evt := mustReceiveWorkEvent(t, events); evt.event != "complete" {
+		t.Fatalf("event = %q, want complete; data = %+v", evt.event, evt.data)
+	}
+
+	var dirs, files, totalSize, lastIndexed int64
+	if err := d.db.QueryRow(`
+		SELECT num_dirs, num_files, total_size, last_indexed
+		FROM indexes WHERE id = ?;
+	`, indexID).Scan(&dirs, &files, &totalSize, &lastIndexed); err != nil {
+		t.Fatalf("query metadata: %v", err)
+	}
+	var actualDirs, actualFiles, rootSize int64
+	if err := d.db.QueryRow(`
+		SELECT
+			COALESCE(SUM(CASE WHEN type = 'directory' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN type = 'directory' THEN 0 ELSE 1 END), 0),
+			COALESCE((SELECT size FROM entries WHERE index_id = ? AND relative_path = '/'), 0)
+		FROM entries WHERE index_id = ?;
+	`, indexID, indexID).Scan(&actualDirs, &actualFiles, &rootSize); err != nil {
+		t.Fatalf("query entries: %v", err)
+	}
+	if dirs != actualDirs || files != actualFiles || totalSize != rootSize {
+		t.Fatalf("metadata = dirs %d, files %d, size %d; entries = %d, %d, %d", dirs, files, totalSize, actualDirs, actualFiles, rootSize)
+	}
+	if lastIndexed <= 1 {
+		t.Fatalf("last indexed = %d, want refreshed timestamp", lastIndexed)
+	}
+}
+
 func TestAttachStatusSSERequiresMatchingOperationIdentity(t *testing.T) {
 	d := &daemon{}
 	d.setWorkStreamBroadcaster(newWorkStreamBroadcaster("reindex", "op-1", "/docs"))

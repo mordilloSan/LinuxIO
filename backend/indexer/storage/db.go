@@ -677,6 +677,60 @@ func UpdateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int6
 	return nil
 }
 
+// UpdateIndexMetadata applies entry-count deltas and synchronizes the stored
+// total and timestamp with the queryable generation.
+func UpdateIndexMetadata(ctx context.Context, db dbExecutor, indexID, dirDelta, fileDelta int64) error {
+	ctx = ensureContext(ctx)
+	_, err := db.ExecContext(ctx, `
+		UPDATE indexes
+		SET num_dirs = num_dirs + ?,
+			num_files = num_files + ?,
+			total_size = COALESCE((
+				SELECT size FROM entries
+				WHERE index_id = ? AND relative_path = '/'
+			), 0),
+			last_indexed = CAST(strftime('%s', 'now') AS INTEGER)
+		WHERE id = ?;
+	`, dirDelta, fileDelta, indexID, indexID)
+	return err
+}
+
+// CountEntriesUnderPath counts queryable directory and non-directory entries
+// in one subtree.
+func CountEntriesUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string) (dirs, files int64, err error) {
+	ctx = ensureContext(ctx)
+	lo, childLo, hi := subtreeBounds(relativePath)
+	err = db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN type = 'directory' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN type = 'directory' THEN 0 ELSE 1 END), 0)
+		FROM entries
+		WHERE index_id = ?
+		  AND relative_path >= ? AND relative_path < ?
+		  AND (relative_path = ? OR relative_path >= ?);
+	`, indexID, lo, hi, lo, childLo).Scan(&dirs, &files)
+	return dirs, files, err
+}
+
+func entryTypeDelta(oldType string, existed bool, newType string) (dirs, files int64) {
+	if existed && oldType == newType {
+		return 0, 0
+	}
+	if existed {
+		if oldType == "directory" {
+			dirs--
+		} else {
+			files--
+		}
+	}
+	if newType == "directory" {
+		dirs++
+	} else {
+		files++
+	}
+	return dirs, files
+}
+
 // UpsertEntryWithSizeUpdate updates an entry and propagates size changes to parents.
 // This is a convenience function that combines UpdateEntry and UpdateParentDirectorySizes.
 func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, entry indexing.IndexEntry) error {
@@ -692,6 +746,16 @@ func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, e
 		}
 	}()
 
+	var oldType string
+	typeErr := tx.QueryRowContext(ctx, `
+		SELECT type FROM entries
+		WHERE index_id = ? AND relative_path = ?;
+	`, indexID, entry.RelativePath).Scan(&oldType)
+	existed := typeErr == nil
+	if typeErr != nil && !errors.Is(typeErr, sql.ErrNoRows) {
+		return fmt.Errorf("read existing entry type: %w", typeErr)
+	}
+
 	oldSize, err := UpdateEntry(ctx, tx, indexID, entry)
 	if err != nil {
 		return err
@@ -702,6 +766,11 @@ func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, e
 		if err := UpdateParentDirectorySizes(ctx, tx, indexID, entry.RelativePath, sizeDelta); err != nil {
 			return err
 		}
+	}
+
+	dirDelta, fileDelta := entryTypeDelta(oldType, existed, entry.Type)
+	if err := UpdateIndexMetadata(ctx, tx, indexID, dirDelta, fileDelta); err != nil {
+		return fmt.Errorf("update index metadata: %w", err)
 	}
 
 	return tx.Commit()
@@ -720,6 +789,11 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 			slog.Warn("DeletePathRecursive rollback failed", "err", rollbackErr)
 		}
 	}()
+
+	deletedDirs, deletedFiles, err := CountEntriesUnderPath(ctx, tx, indexID, relativePath)
+	if err != nil {
+		return fmt.Errorf("count deleted entries: %w", err)
+	}
 
 	// Read the size of the target row. Directory rows already hold the rolled-up
 	// subtree size, and file rows hold their own size — either way, this is the
@@ -752,6 +826,9 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 		if err := UpdateParentDirectorySizes(ctx, tx, indexID, relativePath, -targetSize.Int64); err != nil {
 			return err
 		}
+	}
+	if err := UpdateIndexMetadata(ctx, tx, indexID, -deletedDirs, -deletedFiles); err != nil {
+		return fmt.Errorf("update index metadata: %w", err)
 	}
 
 	return tx.Commit()
