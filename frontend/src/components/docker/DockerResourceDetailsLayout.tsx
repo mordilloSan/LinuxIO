@@ -89,7 +89,6 @@ const DockerResourceDetailsLayout = ({
           }}
         >
           <FrostedCard
-            className="custom-scrollbar"
             style={{
               display: "flex",
               flex: 1,

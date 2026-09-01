@@ -430,7 +430,6 @@ const UserCard = ({
           </AppTypography>
           {isSelected ? (
             <div
-              className="custom-scrollbar"
               style={{
                 display: "flex",
                 flexWrap: "wrap",

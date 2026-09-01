@@ -441,7 +441,6 @@ export const FileBrowserUploadDialog = ({
         </AppTypography>
         {uploadEntries.length > 0 && (
           <ul
-            className="custom-scrollbar"
             style={{
               margin: 0,
               marginTop: 6,
@@ -580,7 +579,6 @@ export const FileBrowserConflictDialog = ({
           </AppButton>
         </div>
         <ul
-          className="custom-scrollbar"
           style={{
             listStyle: "none",
             margin: 0,

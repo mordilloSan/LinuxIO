@@ -349,7 +349,7 @@ const AppAutocomplete = (props: AppAutocompleteProps) => {
         transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
         <div
-          className="app-autocomplete__listbox custom-scrollbar"
+          className="app-autocomplete__listbox"
           id={listboxId}
           ref={listboxRef}
           role="listbox"

@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const scrollport =
-  '[data-testid="virtual-filebrowser-scrollport"] > .custom-scrollbar';
+const scrollport = '[data-testid="virtual-filebrowser-scrollport"] > div';
 
 async function settle(page: import("@playwright/test").Page) {
   await page.evaluate(
@@ -20,6 +19,90 @@ test.describe("virtual file browser geometry", () => {
     ).toBeVisible();
     await expect(page.getByTestId("virtual-filebrowser-status")).toContainText(
       "items: 240",
+    );
+  });
+
+  test("uses the global app scrollbar activity states", async ({ page }) => {
+    const scroller = page.locator(scrollport);
+    const scrollbarStyle = () =>
+      scroller.evaluate((element) => {
+        const style = getComputedStyle(element, "::-webkit-scrollbar-thumb");
+        return {
+          color: style.backgroundColor,
+          stateColor: getComputedStyle(element)
+            .getPropertyValue("--app-scrollbar-thumb-current")
+            .trim(),
+          width: getComputedStyle(
+            element,
+            "::-webkit-scrollbar",
+          ).getPropertyValue("width"),
+        };
+      });
+
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(127, 127, 127, 0.06)",
+      stateColor: "#7f7f7f0f",
+      width: "8px",
+    });
+
+    await scroller.hover();
+    await expect
+      .poll(async () => (await scrollbarStyle()).stateColor)
+      .toBe("#64646433");
+
+    const box = await scroller.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width - 4, box!.y + 8);
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(100, 100, 100, 0.45)",
+      stateColor: "#64646433",
+      width: "8px",
+    });
+
+    await page
+      .getByRole("heading", { name: "Virtual file browser fixture" })
+      .hover();
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(127, 127, 127, 0.06)",
+      stateColor: "#7f7f7f0f",
+      width: "8px",
+    });
+
+    await scroller.dispatchEvent("scroll");
+    await expect(scroller).toHaveAttribute("data-app-scrolling", "");
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(100, 100, 100, 0.2)",
+      stateColor: "#64646433",
+      width: "8px",
+    });
+
+    await scroller.dispatchEvent("scrollend");
+    await expect(scroller).not.toHaveAttribute("data-app-scrolling");
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(127, 127, 127, 0.06)",
+      stateColor: "#7f7f7f0f",
+      width: "8px",
+    });
+
+    await scroller.evaluate((element) => {
+      element.setAttribute("data-scroll-activity-log", "");
+      const observer = new MutationObserver(() => {
+        const state = element.hasAttribute("data-app-scrolling")
+          ? "active"
+          : "idle";
+        const log = `${element.getAttribute("data-scroll-activity-log")} ${state}`;
+        element.setAttribute("data-scroll-activity-log", log.trim());
+        if (state === "idle" && log.includes("active")) observer.disconnect();
+      });
+      observer.observe(element, {
+        attributeFilter: ["data-app-scrolling"],
+        attributes: true,
+      });
+      element.scrollTop += 100;
+    });
+    await expect(scroller).toHaveAttribute(
+      "data-scroll-activity-log",
+      "active idle",
     );
   });
 

@@ -348,7 +348,7 @@ function DockerUpdateOperationDialog({
             <div className="compose-log__animator">
               <div
                 aria-hidden={!showDetails}
-                className="compose-log__scroller custom-scrollbar"
+                className="compose-log__scroller"
                 id="docker-update-details"
                 ref={outputBoxRef}
                 style={{

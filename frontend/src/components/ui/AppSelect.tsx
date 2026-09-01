@@ -249,7 +249,7 @@ const AppSelect = ({
         createPortal(
           <ul
             id={dropdownId}
-            className="app-select__dropdown app-select__dropdown--portal custom-scrollbar"
+            className="app-select__dropdown app-select__dropdown--portal"
             ref={dropdownRef}
             role="listbox"
             style={{

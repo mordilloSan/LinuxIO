@@ -67,7 +67,6 @@ const MountsPage = () => {
     <>
       <RoutedTabActions>{actions}</RoutedTabActions>
       <div
-        className="custom-scrollbar"
         style={{
           display: "flex",
           flexDirection: "column",

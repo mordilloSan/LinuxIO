@@ -293,7 +293,7 @@ const ComposeOperationDialog = ({
             and yields it as the log opens; scrolls on its own once the task
             tree outgrows what it is left with. */}
         <div
-          className={`compose-progress-section custom-scrollbar ${
+          className={`compose-progress-section ${
             logVisible ? "compose-progress-section--yielded" : ""
           }`.trim()}
         >
@@ -378,7 +378,7 @@ const ComposeOperationDialog = ({
             <div className="compose-log__animator">
               <div
                 aria-hidden={!logVisible}
-                className="compose-log__scroller custom-scrollbar"
+                className="compose-log__scroller"
                 id="compose-raw-log"
                 ref={outputBoxRef}
                 style={{

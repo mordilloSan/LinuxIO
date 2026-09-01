@@ -234,7 +234,6 @@ const MultiFileDetail = ({
       <AppDivider />
 
       <div
-        className="custom-scrollbar"
         style={{
           maxHeight: 360,
           overflowY: "auto",

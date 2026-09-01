@@ -146,7 +146,7 @@ const CapabilityInstallDialog = ({
       <AppDialogContent className="capability-install-dialog__content">
         <div
           aria-live="polite"
-          className={`capability-install-dialog__progress custom-scrollbar ${
+          className={`capability-install-dialog__progress ${
             showOutput ? "capability-install-dialog__progress--yielded" : ""
           }`.trim()}
         >
@@ -228,7 +228,7 @@ const CapabilityInstallDialog = ({
           <div className="capability-install-dialog__output-animator">
             <div
               aria-hidden={!showOutput}
-              className="capability-install-dialog__output-scroller custom-scrollbar"
+              className="capability-install-dialog__output-scroller"
               id="capability-install-output"
               ref={outputBoxRef}
               style={{

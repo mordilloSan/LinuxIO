@@ -27,7 +27,6 @@ describe("FsInfoCard", () => {
     render(<FsInfoCard />);
 
     const scrollport = screen.getByRole("region", { name: "File systems" });
-    expect(scrollport).toHaveClass("custom-scrollbar");
     expect(scrollport).toHaveStyle({
       maxHeight: "110px",
       overflowX: "hidden",

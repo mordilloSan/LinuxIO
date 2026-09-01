@@ -116,7 +116,7 @@ const LogDialog = ({
           </AppAlert>
         ) : (
           <div
-            className="custom-scrollbar log-dialog__log-box"
+            className="log-dialog__log-box"
             ref={logsBoxRef}
             style={{
               position: "relative",

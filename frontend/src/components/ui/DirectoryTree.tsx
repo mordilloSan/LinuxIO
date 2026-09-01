@@ -277,12 +277,7 @@ const DirectoryTree = ({
   }, []);
 
   return (
-    <div
-      className="directory-tree custom-scrollbar"
-      ref={containerRef}
-      role="tree"
-      tabIndex={0}
-    >
+    <div className="directory-tree" ref={containerRef} role="tree" tabIndex={0}>
       {roots.map((node) => (
         <TreeNode
           depth={0}

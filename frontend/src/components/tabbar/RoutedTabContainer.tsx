@@ -370,7 +370,7 @@ const TabSelector = memo(function TabSelector({
       className={`tab-selector tab-container__selector${isMobile ? " tab-selector--mobile" : ""}`}
       style={getTabSelectorThemeVars()}
     >
-      <div className="tab-selector__scroller custom-scrollbar">
+      <div className="tab-selector__scroller">
         <div aria-label="Tabs" className="tab-selector__pills" role="tablist">
           {tabs.map((tab) => (
             <RoutedTabLink key={tab.to} {...tab} />

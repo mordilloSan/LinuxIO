@@ -293,9 +293,7 @@ const AppPopover = ({
       }}
     >
       <div
-        className={`app-popover__paper custom-scrollbar ${
-          paperClassName || ""
-        }`.trim()}
+        className={`app-popover__paper ${paperClassName || ""}`.trim()}
         ref={setPaperRef}
         style={{
           top: position.top,

@@ -97,7 +97,7 @@ const Sidebar = ({ items }: SidebarProps) => {
           )}
         </div>
 
-        <nav className="app-sidebar__nav custom-scrollbar">
+        <nav className="app-sidebar__nav">
           <ul className="app-sidebar__list">
             {items.map((page) => (
               <SidebarNavList

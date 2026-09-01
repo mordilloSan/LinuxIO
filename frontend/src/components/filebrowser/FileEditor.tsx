@@ -407,7 +407,7 @@ const FileEditor = ({
   return (
     <CodeMirror
       basicSetup={editorSetup}
-      className="file-editor custom-scrollbar custom-scrollbar-nested"
+      className="file-editor"
       extensions={extensions}
       height="100%"
       id={editorName}
