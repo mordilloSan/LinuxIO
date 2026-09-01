@@ -146,7 +146,7 @@ const CapabilityInstallDialog = ({
       <AppDialogContent className="capability-install-dialog__content">
         <div
           aria-live="polite"
-          className={`capability-install-dialog__progress ${
+          className={`capability-install-dialog__progress custom-scrollbar ${
             showOutput ? "capability-install-dialog__progress--yielded" : ""
           }`.trim()}
         >

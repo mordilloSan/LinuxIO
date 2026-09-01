@@ -207,6 +207,7 @@ const UpdateDialog = ({
               <div id={outputId}>
                 <AppCollapse in={outputExpanded} unmountOnExit>
                   <AppPaper
+                    className="custom-scrollbar"
                     style={{
                       maxHeight: 300,
                       overflowY: "auto",
