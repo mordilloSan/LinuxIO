@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -240,6 +242,37 @@ func TestHandleStatusStreamFallsBackToUninitializedJSON(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), `"status":"uninitialized"`) {
 		t.Fatalf("body = %q, expected uninitialized json status", rr.Body.String())
+	}
+}
+
+func TestReindexPathRejectsDirectorySymlink(t *testing.T) {
+	d, _ := newDaemonWithDB(t)
+	if _, err := d.db.Exec(`INSERT INTO indexes (last_indexed) VALUES (1)`); err != nil {
+		t.Fatalf("insert index: %v", err)
+	}
+
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(t.TempDir(), link); err != nil {
+		t.Fatalf("create directory symlink: %v", err)
+	}
+	broadcaster := newWorkStreamBroadcaster("reindex", "op-1", link)
+	defer broadcaster.close()
+	_, events, err := broadcaster.subscribe()
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	d.reindexPathWithProgress(context.Background(), "op-1", link, broadcaster)
+	evt := mustReceiveWorkEvent(t, events)
+	if evt.event != "error" {
+		t.Fatalf("event = %q, want error", evt.event)
+	}
+	got, ok := evt.data.(WorkErrorEvent)
+	if !ok {
+		t.Fatalf("event data type = %T, want WorkErrorEvent", evt.data)
+	}
+	if !strings.Contains(got.Message, "is not a directory") {
+		t.Fatalf("error = %q, want non-directory rejection", got.Message)
 	}
 }
 

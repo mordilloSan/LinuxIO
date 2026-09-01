@@ -288,13 +288,13 @@ func (d *daemon) reindexPathWithProgress(ctx context.Context, operationID, relat
 	}
 
 	cfg := d.configSnapshot()
-	fi, statErr := os.Stat(relativePath)
+	fi, statErr := os.Lstat(relativePath)
 	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 		sendSSEError(sender, fmt.Sprintf("cannot access %s: %v", relativePath, statErr))
 		return
 	}
 	if statErr == nil && !fi.IsDir() {
-		sendSSEError(sender, fmt.Sprintf("%s is a file; reindex its parent directory instead", relativePath))
+		sendSSEError(sender, fmt.Sprintf("%s is not a directory; reindex its parent directory instead", relativePath))
 		return
 	}
 
