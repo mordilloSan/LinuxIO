@@ -209,11 +209,13 @@ const mocks = vi.hoisted(() => ({
       clearSearch: vi.fn(),
       closeContextMenu: vi.fn(),
       openContextMenu: vi.fn(),
+      setSearchCaseSensitive: vi.fn(),
       setSearch: vi.fn(),
       switchView: vi.fn(),
       toggleHiddenFiles: vi.fn(),
     },
     contextMenuPosition: { left: 12, top: 24 },
+    searchCaseSensitive: true,
     searchQuery: "readme",
     showHiddenFiles: false,
     sortField: "name",
@@ -377,6 +379,7 @@ describe("useFileBrowserController", () => {
     expect(result.current.contentProps).toMatchObject({
       chrome: {
         normalizedPath: "/srv/projects",
+        searchCaseSensitive: true,
         searchQuery: "readme",
         showHiddenFiles: false,
         sortOrder: "asc",

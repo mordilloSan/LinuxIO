@@ -3,7 +3,6 @@ import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
-import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMobileActionsMenu from "@/components/ui/AppMobileActionsMenu";
 import AppPopover from "@/components/ui/AppPopover";
@@ -15,22 +14,28 @@ import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
 import { iconSize } from "@/theme/constants";
 import type { ViewMode } from "@/types/filebrowser";
 
+import FileBrowserSearch from "./FileBrowserSearch";
+
 interface FileBrowserHeaderActionsProps {
   isMobile: boolean;
+  onSearchCaseSensitiveChange: (value: boolean) => void;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
   searchQuery: string;
+  searchCaseSensitive: boolean;
   showHiddenFiles: boolean;
   viewMode: ViewMode;
 }
 
 const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
   isMobile,
+  onSearchCaseSensitiveChange,
   onSearchChange,
   onSwitchView,
   onToggleHiddenFiles,
   searchQuery,
+  searchCaseSensitive,
   showHiddenFiles,
   viewMode,
 }: FileBrowserHeaderActionsProps) {
@@ -172,10 +177,11 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
           role="search"
           style={{ width: "100%" }}
         >
-          <AppHeaderSearch
-            onChange={onSearchChange}
-            placeholder="Search files and folders..."
-            value={searchQuery}
+          <FileBrowserSearch
+            caseSensitive={searchCaseSensitive}
+            onCaseSensitiveChange={onSearchCaseSensitiveChange}
+            onSearchChange={onSearchChange}
+            searchQuery={searchQuery}
           />
         </div>
       </AppPopover>

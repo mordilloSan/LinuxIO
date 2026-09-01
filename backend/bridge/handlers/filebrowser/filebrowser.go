@@ -823,12 +823,8 @@ func subfoldersFromIndexer(folders []indexerSubfolder) []apischema.SubfolderData
 
 // searchFiles searches for files/directories in the indexer database.
 func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischema.SearchResponse, error) {
-	if req.Query == "" {
-		return apischema.SearchResponse{}, fmt.Errorf("bad_request:missing search query")
-	}
-
-	if strings.TrimSpace(req.Query) == "" {
-		return apischema.SearchResponse{}, fmt.Errorf("bad_request:search query cannot be empty")
+	if !indexerapi.SearchQueryAllowed(req.Query) {
+		return apischema.SearchResponse{}, fmt.Errorf("bad_request:search query must contain at least %d characters", indexerapi.MinSearchQueryRunes)
 	}
 
 	limit := "100" // default limit

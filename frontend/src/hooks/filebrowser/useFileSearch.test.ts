@@ -47,19 +47,31 @@ describe("useFileSearch", () => {
     }));
   });
 
-  it("keeps short queries disabled and suppresses loading", () => {
-    const { result } = renderHook(() => useFileSearch({ query: "a" }), {
+  it("keeps queries shorter than three characters disabled", () => {
+    const { result } = renderHook(() => useFileSearch({ query: "ab" }), {
       wrapper: queryWrapper,
     });
 
     expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith({
       basePath: "/",
       limit: "100",
-      query: "a",
+      query: "ab",
     });
     expect(result.current.isLoading).toBe(false);
     expect(result.current.results).toEqual([]);
     expect(result.current.count).toBe(0);
+  });
+
+  it("uses the compatible modifier for case-sensitive searches", () => {
+    renderHook(() => useFileSearch({ caseSensitive: true, query: "Alpha" }), {
+      wrapper: queryWrapper,
+    });
+
+    expect(apiMocks.searchQueryOptions).toHaveBeenCalledWith({
+      basePath: "/",
+      limit: "100",
+      query: "case:exact Alpha",
+    });
   });
 
   it("runs searches with query params and returns backend results", () => {

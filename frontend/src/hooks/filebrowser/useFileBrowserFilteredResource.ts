@@ -1,17 +1,23 @@
 import { useMemo } from "react";
 
-import { useFileSearch } from "@/hooks/filebrowser/useFileSearch";
+import {
+  isSearchableQuery,
+  useFileSearch,
+} from "@/hooks/filebrowser/useFileSearch";
 import type { FileResource } from "@/types/filebrowser";
 
 interface UseFileBrowserFilteredResourceParams {
+  caseSensitive?: boolean;
   resource?: FileResource;
   searchQuery: string;
 }
 
 export const useFileBrowserFilteredResource = ({
+  caseSensitive = false,
   resource,
   searchQuery,
 }: UseFileBrowserFilteredResourceParams) => {
+  const searchEnabled = isSearchableQuery(searchQuery);
   const {
     results: searchResults,
     error: queryError,
@@ -19,12 +25,13 @@ export const useFileBrowserFilteredResource = ({
   } = useFileSearch({
     query: searchQuery,
     basePath: "/",
-    enabled: searchQuery.trim().length >= 2,
+    caseSensitive,
+    enabled: searchEnabled,
   });
   const searchError = queryError;
 
   const filteredResource = useMemo(() => {
-    if (!resource || !searchQuery.trim()) {
+    if (!resource || !searchEnabled) {
       return resource;
     }
     if (resource.type !== "directory" || !resource.items) {
@@ -63,7 +70,7 @@ export const useFileBrowserFilteredResource = ({
       ...resource,
       items: [],
     };
-  }, [resource, searchError, searchQuery, searchResults]);
+  }, [resource, searchEnabled, searchError, searchResults]);
 
   return {
     filteredResource,

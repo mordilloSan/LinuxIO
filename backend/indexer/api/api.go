@@ -2,7 +2,11 @@
 // It deliberately has no dependency on the daemon or storage implementation.
 package api
 
-import "time"
+import (
+	"strings"
+	"time"
+	"unicode/utf8"
+)
 
 const (
 	RouteIndex      = "/index"
@@ -26,7 +30,16 @@ const (
 	StatusForbidden           = 403
 	StatusConflict            = 409
 	StatusInternalServerError = 500
+
+	MinSearchQueryRunes = 3
 )
+
+// SearchQueryAllowed applies the public search-length contract after removing
+// the existing case-sensitive search modifier.
+func SearchQueryAllowed(query string) bool {
+	query = strings.ReplaceAll(query, "case:exact", "")
+	return utf8.RuneCountInString(strings.TrimSpace(query)) >= MinSearchQueryRunes
+}
 
 // IndexerConfig is the persisted daemon configuration exposed by /config.
 type IndexerConfig struct {

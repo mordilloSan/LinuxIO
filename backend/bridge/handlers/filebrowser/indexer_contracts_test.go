@@ -1,9 +1,13 @@
 package filebrowser
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestSearchResultFromIndexerExposesEditorEligibility(t *testing.T) {
@@ -76,5 +80,14 @@ func TestSearchResponseFromIndexerReturnsNonNilEmptyResults(t *testing.T) {
 	got := searchResponseFromIndexer("report", nil)
 	if got.Results == nil {
 		t.Fatalf("response = %#v, want non-nil empty results", got)
+	}
+}
+
+func TestSearchFilesRejectsShortQueries(t *testing.T) {
+	for _, query := range []string{"", "ab", "case:exact ab"} {
+		_, err := searchFiles(context.Background(), apischema.FileSearchRequest{Query: query})
+		if err == nil || !strings.Contains(err.Error(), "at least 3 characters") {
+			t.Fatalf("searchFiles(%q) error = %v, want minimum-length rejection", query, err)
+		}
 	}
 }

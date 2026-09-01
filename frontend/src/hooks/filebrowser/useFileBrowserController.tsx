@@ -17,6 +17,7 @@ import { useFileDragAndDrop } from "@/hooks/filebrowser/useFileDragAndDrop";
 import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
 import { useFileMutations } from "@/hooks/filebrowser/useFileMutations";
 import { useFileQueries } from "@/hooks/filebrowser/useFileQueries";
+import { isSearchableQuery } from "@/hooks/filebrowser/useFileSearch";
 import {
   useFileSelection,
   useFileSelectionState,
@@ -38,6 +39,7 @@ export function useFileBrowserController(
   const {
     actions: viewActions,
     contextMenuPosition,
+    searchCaseSensitive,
     searchQuery,
     showHiddenFiles,
     sortField,
@@ -149,6 +151,7 @@ export function useFileBrowserController(
   });
   const { filteredResource, searchError, isSearchLoading } =
     useFileBrowserFilteredResource({
+      caseSensitive: searchCaseSensitive,
       resource,
       searchQuery,
     });
@@ -294,6 +297,7 @@ export function useFileBrowserController(
 
   const selectedPathsCount = selectedPaths.size;
   const clipboardAvailable = clipboard !== null;
+  const searchActive = isSearchableQuery(searchQuery);
 
   const editorDialogs = useMemo(
     () => ({
@@ -357,7 +361,7 @@ export function useFileBrowserController(
       anchorPosition: contextMenuPosition,
       canCompress: canCompressSelection,
       canExtract: canExtractSelection,
-      canOpenContainingFolder: Boolean(searchQuery) && selectedPathsCount === 1,
+      canOpenContainingFolder: searchActive && selectedPathsCount === 1,
       canRename: selectedPathsCount === 1,
       canShowDetails,
       hasClipboard: clipboardAvailable,
@@ -398,7 +402,7 @@ export function useFileBrowserController(
       handlePaste,
       handleShowDetails,
       handleUpload,
-      searchQuery,
+      searchActive,
       selectedPathsCount,
       viewActions,
     ],
@@ -577,11 +581,13 @@ export function useFileBrowserController(
       isSavingFile,
       normalizedPath,
       onOpenDirectory: handleOpenDirectory,
+      onSearchCaseSensitiveChange: viewActions.setSearchCaseSensitive,
       onSearchChange: viewActions.setSearch,
       onSortChange: viewActions.changeSort,
       onSwitchView: viewActions.switchView,
       onToggleHiddenFiles: viewActions.toggleHiddenFiles,
       searchQuery,
+      searchCaseSensitive,
       showHiddenFiles,
       sortOrder,
       viewMode,
@@ -591,6 +597,7 @@ export function useFileBrowserController(
       handleOpenDirectory,
       isSavingFile,
       normalizedPath,
+      searchCaseSensitive,
       searchQuery,
       showHiddenFiles,
       sortOrder,

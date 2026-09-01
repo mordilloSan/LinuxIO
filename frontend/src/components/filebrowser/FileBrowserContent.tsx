@@ -36,11 +36,13 @@ export interface FileBrowserChromeProps {
   isSavingFile: boolean;
   normalizedPath: string;
   onOpenDirectory: (path: string) => void;
+  onSearchCaseSensitiveChange: (value: boolean) => void;
   onSearchChange: (value: string) => void;
   onSortChange: (field: SortField) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
   searchQuery: string;
+  searchCaseSensitive: boolean;
   showHiddenFiles: boolean;
   sortOrder: SortOrder;
   viewMode: ViewMode;
@@ -116,10 +118,12 @@ const FileBrowserContent = ({
         <FileBrowserHeader
           breadcrumbs={breadcrumbs}
           isSaving={chrome.isSavingFile}
+          onSearchCaseSensitiveChange={chrome.onSearchCaseSensitiveChange}
           onSearchChange={chrome.onSearchChange}
           onSwitchView={chrome.onSwitchView}
           onToggleHiddenFiles={chrome.onToggleHiddenFiles}
           searchQuery={chrome.searchQuery}
+          searchCaseSensitive={chrome.searchCaseSensitive}
           showHiddenFiles={chrome.showHiddenFiles}
           viewMode={chrome.viewMode}
         />

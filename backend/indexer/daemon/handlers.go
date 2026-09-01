@@ -226,6 +226,10 @@ func (d *daemon) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search query too long", http.StatusBadRequest)
 		return
 	}
+	if !api.SearchQueryAllowed(q) {
+		http.Error(w, fmt.Sprintf("search query must contain at least %d characters", api.MinSearchQueryRunes), http.StatusBadRequest)
+		return
+	}
 	limit := configfile.SearchLimit
 	basePath, ok := queryPathOrRoot(r.URL.Query().Get("base"))
 	if !ok {

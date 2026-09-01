@@ -52,13 +52,16 @@ const mockMobileViewport = () => {
 };
 
 const SearchableMobileHeader = () => {
+  const [caseSensitive, setCaseSensitive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   return (
     <FileBrowserHeader
       {...defaultProps}
       breadcrumbs={<div>Home</div>}
+      onSearchCaseSensitiveChange={setCaseSensitive}
       onSearchChange={setSearchQuery}
+      searchCaseSensitive={caseSensitive}
       searchQuery={searchQuery}
       showQuickSave={false}
     />
@@ -201,6 +204,10 @@ describe("FileBrowserHeader", () => {
     expect(
       screen.getByRole("textbox", { name: "Search files and folders..." }),
     ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Match case" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("opens and focuses search from the mobile actions menu", async () => {
@@ -250,6 +257,11 @@ describe("FileBrowserHeader", () => {
     expect(
       document.querySelector(".file-browser-header__mobile-search"),
     ).toContainElement(search);
+
+    const matchCase = screen.getByRole("button", { name: "Match case" });
+    expect(matchCase).toHaveAttribute("aria-pressed", "false");
+    await user.click(matchCase);
+    expect(matchCase).toHaveAttribute("aria-pressed", "true");
 
     await user.type(search, "notes");
     expect(actionsTrigger).toHaveClass("app-icon-btn--primary");

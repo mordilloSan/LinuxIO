@@ -116,6 +116,7 @@ contents. Directory symlinks are recorded as entries but are not traversed.
 | Hidden entries | included |
 | Search result cap | `100` |
 | Search query cap | `256` bytes |
+| Minimum search length | `3` characters |
 | Idle grace | `90s` |
 | Idle check interval | `15s` |
 | Completed generations retained | `1` |
@@ -209,7 +210,10 @@ bridge before an indexer request is made.
 
 The daemon always caps search at 100 results. The public `limit` field remains
 in the bridge request shape for compatibility but cannot raise or lower that
-daemon cap.
+daemon cap. Searches shorter than three characters are rejected. Name matching
+is case-insensitive substring matching by default; the file browser's **Match
+case** toggle uses the compatible `case:exact` modifier for case-sensitive
+substring matching.
 
 `filebrowser.index` maps daemon SSE events into normal LinuxIO Task progress and
 results. If it finds an already-running matching daemon operation, it attaches

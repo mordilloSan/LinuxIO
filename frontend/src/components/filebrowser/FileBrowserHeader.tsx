@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { memo, type ReactNode } from "react";
 
-import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
@@ -9,10 +8,12 @@ import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 
 import FileBrowserHeaderActions from "./FileBrowserHeaderActions";
+import FileBrowserSearch from "./FileBrowserSearch";
 import IndexerDialog from "./IndexerDialog";
 import type { ViewMode } from "../../types/filebrowser";
 
 const noopSearchChange = () => {};
+const noopSearchCaseChange = () => {};
 
 interface FileBrowserHeaderProps {
   /** Leading slot for the browsing view — the breadcrumb trail. */
@@ -23,11 +24,13 @@ interface FileBrowserHeaderProps {
   isSaving?: boolean;
   readOnly?: boolean;
   onCloseEditor?: () => void;
+  onSearchCaseSensitiveChange?: (value: boolean) => void;
   onSaveFile?: () => Promise<void>;
   onSearchChange?: (value: string) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
   searchQuery?: string;
+  searchCaseSensitive?: boolean;
   showHiddenFiles: boolean;
   showQuickSave?: boolean;
   viewMode: ViewMode;
@@ -47,7 +50,9 @@ const FileBrowserHeader = ({
   editingFilePath,
   isDirty = false,
   searchQuery = "",
+  searchCaseSensitive = false,
   onSearchChange = noopSearchChange,
+  onSearchCaseSensitiveChange = noopSearchCaseChange,
 }: FileBrowserHeaderProps) => {
   const isMobile = useAppMediaQuery(down("sm"));
   const isBrowsing = !showQuickSave;
@@ -142,10 +147,11 @@ const FileBrowserHeader = ({
                   marginInline: isBrowsing ? 0 : 8,
                 }}
               >
-                <AppHeaderSearch
-                  onChange={onSearchChange}
-                  placeholder="Search files and folders..."
-                  value={searchQuery}
+                <FileBrowserSearch
+                  caseSensitive={searchCaseSensitive}
+                  onCaseSensitiveChange={onSearchCaseSensitiveChange}
+                  onSearchChange={onSearchChange}
+                  searchQuery={searchQuery}
                 />
               </div>
             ) : null}
@@ -190,9 +196,11 @@ const FileBrowserHeader = ({
             <FileBrowserHeaderActions
               isMobile={isMobile}
               onSearchChange={onSearchChange}
+              onSearchCaseSensitiveChange={onSearchCaseSensitiveChange}
               onSwitchView={onSwitchView}
               onToggleHiddenFiles={onToggleHiddenFiles}
               searchQuery={isMobile ? searchQuery : ""}
+              searchCaseSensitive={searchCaseSensitive}
               showHiddenFiles={showHiddenFiles}
               viewMode={viewMode}
             />
