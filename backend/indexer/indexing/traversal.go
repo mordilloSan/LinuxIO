@@ -94,7 +94,14 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 		return nil, err
 	}
 
-	var totalSize int64
+	dirSize := uint64(stat.Size())
+	if allocatedSize, _, _, ok := getFileDetails(stat.Sys()); ok {
+		dirSize = allocatedSize
+	}
+	idx.mu.Lock()
+	idx.totalSize += dirSize
+	idx.mu.Unlock()
+	totalSize := int64(dirSize)
 	dirHidden := isHidden(stat)
 	dirInode := inodeFromFileInfo(stat)
 	normalizedDir := dirMetadataKey(adjustedPath)

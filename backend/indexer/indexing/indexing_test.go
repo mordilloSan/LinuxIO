@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -160,6 +161,38 @@ func TestGetTotalSize(t *testing.T) {
 	totalSize := idx.GetTotalSize()
 	if totalSize == 0 {
 		t.Error("Expected totalSize > 0")
+	}
+}
+
+func TestGetDirInfoIncludesDirectoryBlocks(t *testing.T) {
+	root := t.TempDir()
+	dir, err := os.Open(root)
+	if err != nil {
+		t.Fatalf("open directory: %v", err)
+	}
+	t.Cleanup(func() { _ = dir.Close() })
+
+	info, err := dir.Stat()
+	if err != nil {
+		t.Fatalf("stat directory: %v", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("directory stat is not syscall.Stat_t")
+	}
+	stat.Blocks = 8
+
+	idx := Initialize(root)
+	got, err := idx.GetDirInfo(context.Background(), dir, info, root, "/")
+	if err != nil {
+		t.Fatalf("GetDirInfo failed: %v", err)
+	}
+	const want = int64(8 * 512)
+	if got.Size != want {
+		t.Fatalf("directory size = %d, want %d", got.Size, want)
+	}
+	if got := idx.GetTotalSize(); got != uint64(want) {
+		t.Fatalf("total size = %d, want %d", got, want)
 	}
 }
 
