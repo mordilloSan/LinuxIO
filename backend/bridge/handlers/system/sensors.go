@@ -99,7 +99,7 @@ func collectSensorLeaves(value any, path []string) []sensorLeaf {
 	case float64:
 		field := sensorLeafField(path)
 		return []sensorLeaf{{
-			path:  cloneSensorPath(path),
+			path:  slices.Clone(path),
 			value: typed,
 			kind:  apischema.SensorReadingKindNumber,
 			unit:  sensorUnitForPath(path),
@@ -108,7 +108,7 @@ func collectSensorLeaves(value any, path []string) []sensorLeaf {
 	case bool:
 		field := sensorLeafField(path)
 		return []sensorLeaf{{
-			path:  cloneSensorPath(path),
+			path:  slices.Clone(path),
 			value: sensorBooleanValue(typed),
 			kind:  apischema.SensorReadingKindBoolean,
 			field: field,
@@ -130,10 +130,6 @@ func appendSensorPath(path []string, key string) []string {
 	copy(next, path)
 	next[len(path)] = key
 	return next
-}
-
-func cloneSensorPath(path []string) []string {
-	return append([]string(nil), path...)
 }
 
 func sortedSensorKeys(m map[string]any) []string {

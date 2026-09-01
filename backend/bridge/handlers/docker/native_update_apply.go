@@ -81,7 +81,7 @@ func updateInspectedContainerWithProgress(
 		reportDockerUpdateProgress(report, "current", "The container is already using the current image")
 		return candidate.result, nil
 	}
-	if stateErr := validateContainerUpdateState(inspect); stateErr != nil {
+	if stateErr := validateContainerUpdateState(inspect, false); stateErr != nil {
 		return candidate.result, stateErr
 	}
 
@@ -431,11 +431,7 @@ func inspectAndWaitForComposeContainer(
 	return after, nil
 }
 
-func validateContainerUpdateState(inspect container.InspectResponse) error {
-	return validateContainerUpdateStateForPolicy(inspect, false)
-}
-
-func validateContainerUpdateStateForPolicy(inspect container.InspectResponse, allowStopped bool) error {
+func validateContainerUpdateState(inspect container.InspectResponse, allowStopped bool) error {
 	name := strings.TrimPrefix(inspect.Name, "/")
 	if inspect.State == nil || inspect.State.Paused || inspect.State.Restarting {
 		return fmt.Errorf("container %q must be stable before it can be updated", name)
@@ -710,7 +706,7 @@ func validateStandaloneUpdate(inspect container.InspectResponse, allowStopped bo
 	if inspect.Config == nil || inspect.HostConfig == nil {
 		return fmt.Errorf("standalone container %q does not expose complete recreation configuration", name)
 	}
-	if err := validateContainerUpdateStateForPolicy(inspect, allowStopped); err != nil {
+	if err := validateContainerUpdateState(inspect, allowStopped); err != nil {
 		return err
 	}
 	if inspect.HostConfig.AutoRemove {

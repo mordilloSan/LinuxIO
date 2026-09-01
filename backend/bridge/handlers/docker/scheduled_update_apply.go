@@ -111,7 +111,7 @@ func (s *scheduledUpdateState) prepareCandidateState(inspect container.InspectRe
 			return stopped, false
 		}
 	}
-	if err := validateContainerUpdateStateForPolicy(inspect, s.updateStopped); err != nil {
+	if err := validateContainerUpdateState(inspect, s.updateStopped); err != nil {
 		s.recordCandidateError(inspect, err)
 		return stopped, false
 	}

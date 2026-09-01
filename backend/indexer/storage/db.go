@@ -85,20 +85,16 @@ func NormalizeOpenOptions(opts OpenOptions) (OpenOptions, error) {
 	opts.JournalMode = strings.ToUpper(strings.TrimSpace(opts.JournalMode))
 	opts.Synchronous = strings.ToUpper(strings.TrimSpace(opts.Synchronous))
 	opts.AutoVacuum = strings.ToUpper(strings.TrimSpace(opts.AutoVacuum))
-	if !validSQLiteSetting(opts.JournalMode, "DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF") {
+	if !slices.Contains([]string{"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}, opts.JournalMode) {
 		return OpenOptions{}, fmt.Errorf("invalid db journal mode %q", opts.JournalMode)
 	}
-	if !validSQLiteSetting(opts.Synchronous, "OFF", "NORMAL", "FULL", "EXTRA") {
+	if !slices.Contains([]string{"OFF", "NORMAL", "FULL", "EXTRA"}, opts.Synchronous) {
 		return OpenOptions{}, fmt.Errorf("invalid db synchronous %q", opts.Synchronous)
 	}
-	if !validSQLiteSetting(opts.AutoVacuum, "NONE", "FULL", "INCREMENTAL") {
+	if !slices.Contains([]string{"NONE", "FULL", "INCREMENTAL"}, opts.AutoVacuum) {
 		return OpenOptions{}, fmt.Errorf("invalid db auto vacuum %q", opts.AutoVacuum)
 	}
 	return opts, nil
-}
-
-func validSQLiteSetting(value string, allowed ...string) bool {
-	return slices.Contains(allowed, value)
 }
 
 // dbExecutor is an interface that both sql.DB and sql.Tx implement
