@@ -75,14 +75,11 @@ func IsPathExcluded(indexPath string, excludedPaths []string, relativePath strin
 // IsPathExcludedFromIndex applies the same configured, mount, and Docker
 // subtree exclusions used by traversal to a direct mutation path.
 func IsPathExcludedFromIndex(indexPath string, excludedPaths []string, includeNetworkMounts bool, relativePath string) bool {
-	idx := &Index{
-		Path:                 indexPath,
-		includeNetworkMounts: includeNetworkMounts,
-		excludePaths:         excludedPaths,
-	}
-	if !includeNetworkMounts {
-		idx.externalMounts = loadExternalMountPointsFn()
-	}
+	idx := newIndex(
+		indexPath,
+		WithNetworkMounts(includeNetworkMounts),
+		WithExcludePaths(excludedPaths),
+	)
 	return idx.shouldSkip(true, false, relativePath)
 }
 

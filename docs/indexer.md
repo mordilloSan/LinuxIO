@@ -200,9 +200,11 @@ pin the daemon so idle shutdown cannot interrupt them.
 SQLite schema compatibility is checked at open through `PRAGMA user_version`.
 When SQLite confirms corruption, the daemon moves the database and any WAL/SHM
 sidecars to `indexer.db.corrupt-<UTC timestamp>*`. An incompatible schema uses
-`indexer.db.incompatible-<UTC timestamp>*`. It then creates an empty compatible
-database. Busy, timeout, permission, and ordinary I/O errors preserve the
-existing files and fail startup instead of replacing data.
+`indexer.db.incompatible-<UTC timestamp>*`. Schema version 2 is the current
+version; a mismatch causes one incompatible-cache quarantine and creates an
+empty version 2 cache for the next scan to populate. Busy, timeout, permission,
+and ordinary I/O errors preserve the existing files and fail startup instead of
+replacing data.
 
 The worker never performs quarantine. This prevents it from renaming a database
 behind the daemon's open handle.

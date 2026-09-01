@@ -324,7 +324,7 @@ func createDirectoryResource(ctx context.Context, root *fsroot.FSRoot, req resou
 		return nil, fmt.Errorf("bad_request:%v", chmodErr)
 	}
 
-	notifyIndexerForCreatedResource(ctx, root, req.cleanPath, req.relPath, "directory")
+	notifyIndexerForCreatedResource(ctx, root, req.cleanPath, req.relPath)
 	slog.Info("directory created", "path", req.cleanPath)
 	return map[string]any{"message": "created"}, nil
 }
@@ -351,16 +351,25 @@ func createFileResource(ctx context.Context, root *fsroot.FSRoot, req resourcePo
 		slog.Warn("failed to close created file", "path", req.cleanPath, "error", cerr)
 	}
 
-	notifyIndexerForCreatedResource(ctx, root, req.cleanPath, req.relPath, "file")
+	notifyIndexerForCreatedResource(ctx, root, req.cleanPath, req.relPath)
 	slog.Info("file created", "path", req.cleanPath)
 	return map[string]any{"message": "created"}, nil
 }
 
-func notifyIndexerForCreatedResource(ctx context.Context, root *fsroot.FSRoot, cleanPath, relPath, kind string) {
-	if _, err := root.Root.Stat(relPath); err == nil {
-		if err := addToIndexer(ctx, cleanPath); err != nil {
-			slog.Debug("failed to update indexer after create", "path", cleanPath, "type", kind, "error", err)
-		}
+func notifyIndexerForCreatedResource(ctx context.Context, root *fsroot.FSRoot, cleanPath, relPath string) {
+	info, err := root.Root.Stat(relPath)
+	if err != nil {
+		return
+	}
+	kind := "file"
+	if info.IsDir() {
+		kind = "directory"
+		err = requestIndexerReindex(ctx, cleanPath)
+	} else {
+		err = addToIndexer(ctx, cleanPath)
+	}
+	if err != nil {
+		slog.Debug("failed to update indexer after create", "path", cleanPath, "type", kind, "error", err)
 	}
 }
 

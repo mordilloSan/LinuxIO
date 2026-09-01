@@ -48,20 +48,19 @@ type uploadBatchTransferTask struct {
 	activity    chan struct{}
 	finishOnce  sync.Once
 
-	mu           sync.Mutex
-	bytes        int64 // stream bytes consumed across the whole batch
-	attached     bool
-	active       net.Conn
-	prepared     bool  // manifest directories created
-	index        int   // current manifest file
-	fileBytes    int64 // stream bytes consumed for the current file
-	tempRel      string
-	finalRel     string
-	attrs        uploadAttributes
-	curFailed    bool // current file failed; its remaining bytes are discarded
-	succeeded    int
-	failures     []FileBatchItemFailure
-	indexedPaths []string
+	mu        sync.Mutex
+	bytes     int64 // stream bytes consumed across the whole batch
+	attached  bool
+	active    net.Conn
+	prepared  bool  // manifest directories created
+	index     int   // current manifest file
+	fileBytes int64 // stream bytes consumed for the current file
+	tempRel   string
+	finalRel  string
+	attrs     uploadAttributes
+	curFailed bool // current file failed; its remaining bytes are discarded
+	succeeded int
+	failures  []FileBatchItemFailure
 }
 
 // uploadBatchSession holds per-attach state: the filesystem root and the open
@@ -254,12 +253,6 @@ func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 		t.mu.Lock()
 		t.succeeded++
 		t.mu.Unlock()
-
-		if _, err := root.Root.Stat(fsroot.ToRel(absPath)); err == nil {
-			t.mu.Lock()
-			t.indexedPaths = append(t.indexedPaths, absPath)
-			t.mu.Unlock()
-		}
 	}
 }
 
@@ -347,7 +340,7 @@ func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
 		t.mu.Unlock()
 
 		if !failed {
-			if err := t.finalizeCurrent(session, current); err != nil {
+			if err := t.finalizeCurrent(session); err != nil {
 				slog.Debug("batch upload item failed", "path", current.absPath, "error", err)
 				t.recordFailure(current.relPath, err.Error())
 				t.cleanupCurrentTemp(session.root)
@@ -466,7 +459,7 @@ func (t *uploadBatchTransferTask) failCurrent(session *uploadBatchSession, cause
 	t.cleanupCurrentTemp(session.root)
 }
 
-func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession, current uploadBatchFile) error {
+func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession) error {
 	// Zero-size files never opened a buffer; create the (empty) temp now so
 	// every finalize is a rename of a fully-written buffer.
 	if err := t.ensurePrepared(session); err != nil {
@@ -484,11 +477,6 @@ func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession, c
 		return fmt.Errorf("finalize upload: %w", err)
 	}
 	restoreUploadedFile(session.root, finalRel, attrs)
-	if _, err := session.root.Root.Stat(finalRel); err == nil {
-		t.mu.Lock()
-		t.indexedPaths = append(t.indexedPaths, current.absPath)
-		t.mu.Unlock()
-	}
 	return nil
 }
 
@@ -526,14 +514,12 @@ func (t *uploadBatchTransferTask) complete(stream net.Conn) error {
 	}
 	bytes := t.bytes
 	failed := len(t.failures)
-	indexedPaths := append([]string(nil), t.indexedPaths...)
+	succeeded := t.succeeded
 	t.mu.Unlock()
-	if len(indexedPaths) > 0 {
+	if succeeded > 0 {
 		runDetachedIndexerUpdate("upload_batch", func(ctx context.Context) error {
-			for _, path := range indexedPaths {
-				if err := addToIndexer(ctx, path); err != nil {
-					slog.Debug("batch upload indexer reconciliation failed", "path", path, "error", err)
-				}
+			if err := requestIndexerReindex(ctx, t.destination); err != nil {
+				slog.Debug("batch upload indexer reconciliation failed", "path", t.destination, "error", err)
 			}
 			return nil
 		})

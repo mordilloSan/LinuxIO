@@ -616,8 +616,8 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 		WHERE index_id = ? AND relative_path = ?;
 	`, indexID, entry.RelativePath).Scan(&existingSize)
 
-	if err != nil && err != sql.ErrNoRows {
-		return 0, err
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("query existing entry %q: %w", entry.RelativePath, err)
 	}
 
 	if existingSize.Valid {
@@ -657,7 +657,10 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 		entry.SizeContribution,
 	)
 
-	return oldSize, err
+	if err != nil {
+		return oldSize, fmt.Errorf("upsert entry %q: %w", entry.RelativePath, err)
+	}
+	return oldSize, nil
 }
 
 // UpdateParentDirectorySizes propagates size changes up the directory tree.
@@ -671,6 +674,9 @@ func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, index
 	if sizeDelta == 0 {
 		return nil
 	}
+	if stopPath != "" {
+		stopPath = indexing.NormalizeIndexPath(stopPath)
+	}
 
 	currentPath := parentDirKey(childPath)
 
@@ -683,7 +689,7 @@ func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, index
 		`, sizeDelta, indexID, currentPath)
 
 		if err != nil {
-			return err
+			return fmt.Errorf("update parent directory %q: %w", currentPath, err)
 		}
 
 		// Move to parent
@@ -760,7 +766,7 @@ func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, e
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin entry upsert: %w", err)
 	}
 	defer func() {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
@@ -776,7 +782,7 @@ func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, e
 		return fmt.Errorf("cannot replace a directory entry; reindex its parent")
 	}
 	if err := replaceEntryAccounting(ctx, tx, indexID, entry, old); err != nil {
-		return err
+		return fmt.Errorf("replace entry accounting: %w", err)
 	}
 
 	dirDelta, fileDelta := entryTypeDelta(old.typ, old.exists, entry.Type)
@@ -784,7 +790,10 @@ func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, e
 		return fmt.Errorf("update index metadata: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit entry upsert: %w", err)
+	}
+	return nil
 }
 
 // DeletePathRecursive deletes all entries under a path (including the path itself) and propagates size changes.
@@ -793,7 +802,7 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin recursive delete: %w", err)
 	}
 	defer func() {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
@@ -808,7 +817,7 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 
 	removedContribution, err := removedContributionForPath(ctx, tx, indexID, relativePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("read removed contribution: %w", err)
 	}
 	promotedGroups, err := promotedHardlinksForDelete(ctx, tx, indexID, relativePath)
 	if err != nil {
@@ -824,22 +833,25 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 		  AND (relative_path = ? OR relative_path >= ?);
 	`, indexID, lo, hi, lo, childLo)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete entries under %q: %w", relativePath, err)
 	}
 
 	if removedContribution != 0 {
 		if err := UpdateParentDirectorySizes(ctx, tx, indexID, relativePath, -removedContribution); err != nil {
-			return err
+			return fmt.Errorf("subtract removed contribution: %w", err)
 		}
 	}
 	if err := promoteHardlinks(ctx, tx, indexID, promotedGroups); err != nil {
-		return err
+		return fmt.Errorf("promote surviving hardlinks: %w", err)
 	}
 	if err := UpdateIndexMetadata(ctx, tx, indexID, -deletedDirs, -deletedFiles); err != nil {
 		return fmt.Errorf("update index metadata: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit recursive delete: %w", err)
+	}
+	return nil
 }
 
 // CleanupDeletedEntriesUnderPath removes entries under a specific path that were not seen during the latest scan.

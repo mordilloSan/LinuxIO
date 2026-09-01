@@ -96,7 +96,7 @@ func TestStartIndexingStreamsEntries(t *testing.T) {
 	}
 }
 
-func TestStartIndexingFailsOnUnreadableEntry(t *testing.T) {
+func TestStartIndexingSkipsUnreadableEntry(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Linux directory permissions required")
 	}
@@ -115,11 +115,18 @@ func TestStartIndexingFailsOnUnreadableEntry(t *testing.T) {
 		t.Fatalf("remove directory search permission: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(limited, 0o700) })
+	if err := os.WriteFile(filepath.Join(root, "visible"), []byte("visible"), 0o600); err != nil {
+		t.Fatalf("create visible file: %v", err)
+	}
 
-	idx, _ := newStreamingIndex(t, "test", root, false)
-	err := idx.StartIndexing(context.Background())
-	if !errors.Is(err, os.ErrPermission) {
-		t.Fatalf("StartIndexing error = %v, want permission error", err)
+	idx, writer := newStreamingIndex(t, "test", root, false)
+	if err := idx.StartIndexing(t.Context()); err != nil {
+		t.Fatalf("StartIndexing failed: %v", err)
+	}
+	entries := writer.entriesByPath()
+	assertHasEntry(t, entries, "/visible", false)
+	if _, ok := entries["/limited/blocked"]; ok {
+		t.Fatal("unreadable entry was indexed")
 	}
 	if got := idx.SkippedDirCount(); got != 1 {
 		t.Fatalf("skipped directories = %d, want 1", got)
@@ -224,8 +231,8 @@ func TestEntryFromFileInfoUsesAllocatedSize(t *testing.T) {
 
 	entry := EntryFromFileInfo(path, info)
 	wantSize := stat.Blocks * 512
-	if entry.Size != wantSize || entry.SizeContribution != wantSize {
-		t.Fatalf("entry size = %d, contribution = %d; want %d", entry.Size, entry.SizeContribution, wantSize)
+	if entry.Size != wantSize || entry.SizeContribution != 0 {
+		t.Fatalf("entry size = %d, contribution = %d; want size %d and contribution 0", entry.Size, entry.SizeContribution, wantSize)
 	}
 	if entry.Device != stat.Dev || entry.Inode != stat.Ino {
 		t.Fatalf("entry identity = (%d,%d), want (%d,%d)", entry.Device, entry.Inode, stat.Dev, stat.Ino)
@@ -265,15 +272,15 @@ func TestAllocatedSizeMatchesGNUDu(t *testing.T) {
 	}
 
 	idx, _ := newStreamingIndex(t, "du", root, false)
-	if err := idx.StartIndexing(context.Background()); err != nil {
+	if err := idx.StartIndexing(t.Context()); err != nil {
 		t.Fatalf("StartIndexing: %v", err)
 	}
-	out, duErr := exec.CommandContext(context.Background(), "du", "-B1", "-s", root).Output()
+	out, duErr := exec.CommandContext(t.Context(), "du", "-B1", "-s", root).CombinedOutput()
 	if errors.Is(duErr, exec.ErrNotFound) {
 		t.Skip("GNU du is unavailable")
 	}
 	if duErr != nil {
-		t.Fatalf("GNU du: %v", duErr)
+		t.Fatalf("GNU du: %v: %s", duErr, strings.TrimSpace(string(out)))
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) == 0 {

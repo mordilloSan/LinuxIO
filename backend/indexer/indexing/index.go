@@ -77,20 +77,25 @@ func WithExcludePaths(paths []string) Option {
 // Initialize creates a new index for the given path.
 // path: the filesystem path to index (e.g., "/", "/home", "/home/user/documents")
 func Initialize(path string, opts ...Option) *Index {
-	newIndex := &Index{
+	idx := newIndex(path, opts...)
+	slog.Info("initialized index", "path", path, "include_network_mounts", idx.includeNetworkMounts, "exclude_paths", idx.excludePaths)
+	return idx
+}
+
+func newIndex(path string, opts ...Option) *Index {
+	idx := &Index{
 		Path:            path,
 		processedInodes: make(map[devIno]struct{}),
 	}
 	for _, opt := range opts {
-		opt(newIndex)
+		opt(idx)
 	}
-	// Snapshot per index run (not per process) so mounts added while the
-	// daemon is running are still excluded from later partial reindexes.
-	if !newIndex.includeNetworkMounts {
-		newIndex.externalMounts = loadExternalMountPointsFn()
+	// Snapshot per check or index run (not per process) so mount changes are
+	// visible to later direct mutations and partial reindexes.
+	if !idx.includeNetworkMounts {
+		idx.externalMounts = loadExternalMountPointsFn()
 	}
-	slog.Info("initialized index", "path", path, "include_network_mounts", newIndex.includeNetworkMounts, "exclude_paths", newIndex.excludePaths)
-	return newIndex
+	return idx
 }
 
 // EnableStreaming configures the index to use streaming mode with the provided writer.

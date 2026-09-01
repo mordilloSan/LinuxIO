@@ -43,6 +43,18 @@ func TestHandleAddRejectsRootAndDirectories(t *testing.T) {
 	})
 }
 
+func TestHandleAddSkipsExcludedPathBeforeOperationLock(t *testing.T) {
+	d := &daemon{}
+	d.running.Store(true)
+	req := httptest.NewRequest(http.MethodPost, "/add", strings.NewReader(`{"path":"/proc/meminfo"}`))
+	rr := httptest.NewRecorder()
+	d.handleAdd(rr, req)
+
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"status":"ok"`) {
+		t.Fatalf("response = %d %q, want excluded-path success", rr.Code, rr.Body.String())
+	}
+}
+
 func TestHandleSearchRejectsShortQueries(t *testing.T) {
 	for _, query := range []string{"", "ab", "case:exact ab"} {
 		req := httptest.NewRequest(http.MethodGet, "/search?q="+url.QueryEscape(query), nil)

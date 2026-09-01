@@ -321,6 +321,16 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "path must not be root; use /reindex", http.StatusBadRequest)
 		return
 	}
+	cfg := d.configSnapshot()
+	if indexing.IsPathExcludedFromIndex(
+		"/",
+		configfile.EffectiveExcludePaths(configfile.Config{ExcludePaths: cfg.ExcludePaths}),
+		cfg.IncludeNetworkMounts,
+		relPath,
+	) {
+		writeJSON(w, api.OperationResponse{Status: "ok"})
+		return
+	}
 	if !d.tryLockIndex() {
 		http.Error(w, "indexer already running", http.StatusConflict)
 		return
@@ -333,16 +343,6 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := d.configSnapshot()
-	if indexing.IsPathExcludedFromIndex(
-		"/",
-		configfile.EffectiveExcludePaths(configfile.Config{ExcludePaths: cfg.ExcludePaths}),
-		cfg.IncludeNetworkMounts,
-		relPath,
-	) {
-		writeJSON(w, api.OperationResponse{Status: "ok"})
-		return
-	}
 	info, err := os.Lstat(relPath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("stat path: %v", err), http.StatusNotFound)

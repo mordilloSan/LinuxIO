@@ -85,7 +85,7 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 	// Ensure combinedPath has exactly one trailing slash to prevent double slashes in subdirectory paths
 	combinedPath := strings.TrimRight(adjustedPath, "/") + "/"
 	// Read directory contents
-	files, err := dirInfo.Readdir(-1)
+	entries, err := dirInfo.ReadDir(-1)
 	if err != nil {
 		return nil, err
 	}
@@ -103,14 +103,23 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 	dirHidden := isHidden(stat)
 	normalizedDir := NormalizeIndexPath(adjustedPath)
 
-	for _, file := range files {
+	for _, dirEntry := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		baseName := dirEntry.Name()
+		fullCombined := combinedPath + baseName
+		file, err := dirEntry.Info()
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				slog.Debug("skipping deleted filesystem entry", "path", fullCombined, "err", err)
+			} else {
+				slog.Warn("cannot inspect filesystem entry; entry missing from scan", "path", fullCombined, "err", err)
+			}
+			continue
+		}
 		hidden := isHidden(file)
 		isDir := file.IsDir()
-		baseName := file.Name()
-		fullCombined := combinedPath + baseName
 		if idx.shouldSkip(isDir, hidden, fullCombined) {
 			continue
 		}
@@ -199,7 +208,8 @@ func (idx *Index) handleChildDirError(dirPath string, err error) error {
 		return nil
 	}
 	idx.incrementSkippedDirs()
-	return fmt.Errorf("index directory %s: %w", dirPath, err)
+	slog.Warn("cannot index directory; subtree missing from scan", "path", dirPath, "err", err)
+	return nil
 }
 
 func isHidden(file os.FileInfo) bool {

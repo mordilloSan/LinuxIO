@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
@@ -124,6 +125,48 @@ func TestIndexerMutationNotificationsUseCanonicalOperations(t *testing.T) {
 			t.Fatalf("deleteFromIndexer: %v", err)
 		}
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{{method: http.MethodDelete, path: indexerapi.RouteDelete, query: pathQuery(filePath)}})
+	})
+}
+
+func TestCreatedResourceNotificationsUseTypeSpecificOperations(t *testing.T) {
+	pathQuery := func(path string) string { return url.Values{"path": {path}}.Encode() }
+
+	t.Run("directory uses scoped reindex", func(t *testing.T) {
+		dir := t.TempDir()
+		root, err := fsroot.OpenAt(dir)
+		if err != nil {
+			t.Fatalf("open root: %v", err)
+		}
+		defer root.Close()
+		requests := recordIndexerRequests(t)
+		path := filepath.Join(dir, "created-dir")
+		if _, err := createDirectoryResource(t.Context(), root, resourcePostRequest{cleanPath: path, relPath: "created-dir", isDir: true}); err != nil {
+			t.Fatalf("createDirectoryResource: %v", err)
+		}
+		assertIndexerRequests(t, *requests, []recordedIndexerRequest{{
+			method: http.MethodPost,
+			path:   indexerapi.RouteReindex,
+			query:  pathQuery(path),
+		}})
+	})
+
+	t.Run("file uses add", func(t *testing.T) {
+		dir := t.TempDir()
+		root, err := fsroot.OpenAt(dir)
+		if err != nil {
+			t.Fatalf("open root: %v", err)
+		}
+		defer root.Close()
+		requests := recordIndexerRequests(t)
+		path := filepath.Join(dir, "created.txt")
+		if _, err := createFileResource(t.Context(), root, resourcePostRequest{cleanPath: path, relPath: "created.txt"}); err != nil {
+			t.Fatalf("createFileResource: %v", err)
+		}
+		assertIndexerRequests(t, *requests, []recordedIndexerRequest{{
+			method: http.MethodPost,
+			path:   indexerapi.RouteAdd,
+			entry:  &indexerapi.EntryRequest{Path: path},
+		}})
 	})
 }
 

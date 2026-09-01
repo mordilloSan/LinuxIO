@@ -23,15 +23,14 @@ func EntryFromFileInfo(path string, info os.FileInfo) IndexEntry {
 		key = fileKey
 	}
 	return IndexEntry{
-		RelativePath:     NormalizeIndexPath(path),
-		Name:             info.Name(),
-		Size:             size,
-		ModTime:          info.ModTime().In(time.UTC),
-		Type:             typ,
-		Hidden:           isHidden(info),
-		Device:           key.dev,
-		Inode:            key.ino,
-		SizeContribution: size,
+		RelativePath: NormalizeIndexPath(path),
+		Name:         info.Name(),
+		Size:         size,
+		ModTime:      info.ModTime().In(time.UTC),
+		Type:         typ,
+		Hidden:       isHidden(info),
+		Device:       key.dev,
+		Inode:        key.ino,
 	}
 }
 

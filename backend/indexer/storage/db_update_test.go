@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -96,6 +97,30 @@ func (h *testHelper) assertMetadata(wantDirs, wantFiles, wantSize int64, desc st
 	}
 }
 
+func (h *testHelper) hardlinkAccounting(relPath string) (int64, int64) {
+	h.t.Helper()
+	var size, contribution int64
+	if err := h.db.QueryRowContext(h.ctx, `
+		SELECT size, size_contribution FROM entries
+		WHERE index_id = ? AND relative_path = ?
+	`, h.indexID, relPath).Scan(&size, &contribution); err != nil {
+		h.t.Fatalf("read hardlink accounting for %s: %v", relPath, err)
+	}
+	return size, contribution
+}
+
+func hardlinkTestEntry(t *testing.T, path string, size int64) indexing.IndexEntry {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	entry := indexing.EntryFromFileInfo(path, info)
+	entry.Size = size
+	entry.SizeContribution = 0
+	return entry
+}
+
 // Integration-style test to ensure manual add/delete operations keep sizes and metadata in sync.
 func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	ctx := context.Background()
@@ -140,7 +165,6 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 		ModTime:      time.Now(),
 		Type:         "file",
 		Hidden:       false,
-		Inode:        1,
 	}
 
 	h.upsertFile(fileEntry)
@@ -167,49 +191,187 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 }
 
 func TestHardlinkMutationSequenceCountsAllocationOnce(t *testing.T) {
-	ctx := context.Background()
-	db, err := Open(filepath.Join(t.TempDir(), "index.db"), DefaultOpenOptions())
-	if err != nil {
-		t.Fatalf("open db: %v", err)
+	ctx, db, _ := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "a"), 0o700); err != nil {
+		t.Fatalf("mkdir a: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	res, err := db.Exec(`INSERT INTO indexes (num_dirs, last_indexed) VALUES (3, 1)`)
-	if err != nil {
-		t.Fatalf("insert index: %v", err)
+	if err := os.Mkdir(filepath.Join(root, "b"), 0o700); err != nil {
+		t.Fatalf("mkdir b: %v", err)
 	}
-	indexID, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("index id: %v", err)
+	leftPath := filepath.Join(root, "a", "link")
+	rightPath := filepath.Join(root, "b", "link")
+	if err := os.WriteFile(leftPath, make([]byte, 4096), 0o600); err != nil {
+		t.Fatalf("write hardlink fixture: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 4, last_indexed = 1 WHERE id = ?`, indexID); err != nil {
+		t.Fatalf("seed index metadata: %v", err)
 	}
 	h := &testHelper{t: t, ctx: ctx, db: db, indexID: indexID}
 	h.seedDir("/")
-	h.seedDir("/a")
-	h.seedDir("/b")
+	h.seedDir(root)
+	h.seedDir(filepath.Join(root, "a"))
+	h.seedDir(filepath.Join(root, "b"))
 
-	entry := func(path string, size int64) indexing.IndexEntry {
-		return indexing.IndexEntry{
-			RelativePath: path,
-			Name:         filepath.Base(path),
-			Size:         size,
-			ModTime:      time.Now(),
-			Type:         "file",
-			Device:       7,
-			Inode:        42,
-		}
+	h.upsertFile(hardlinkTestEntry(t, leftPath, 4096))
+	if err := os.Link(leftPath, rightPath); err != nil {
+		t.Fatalf("create hardlink: %v", err)
+	}
+	h.upsertFile(hardlinkTestEntry(t, rightPath, 4096))
+	h.assertMetadata(4, 2, 4096, "after adding both hardlinks")
+	if err := os.Remove(rightPath); err != nil {
+		t.Fatalf("remove non-contributor: %v", err)
+	}
+	h.deletePath(rightPath)
+	h.assertMetadata(4, 1, 4096, "after deleting non-contributor")
+	if err := os.Link(leftPath, rightPath); err != nil {
+		t.Fatalf("restore hardlink: %v", err)
+	}
+	h.upsertFile(hardlinkTestEntry(t, rightPath, 4096))
+	if err := os.Remove(leftPath); err != nil {
+		t.Fatalf("remove contributor: %v", err)
+	}
+	h.deletePath(leftPath)
+	h.assertSize(filepath.Join(root, "a"), 0, "after deleting contributor")
+	h.assertSize(filepath.Join(root, "b"), 4096, "after promoting surviving hardlink")
+	h.assertMetadata(4, 1, 4096, "after contributor promotion")
+	if err := os.Truncate(rightPath, 8192); err != nil {
+		t.Fatalf("resize hardlink: %v", err)
+	}
+	h.upsertFile(hardlinkTestEntry(t, rightPath, 8192))
+	h.assertMetadata(4, 1, 8192, "after hardlink allocation change")
+}
+
+func TestDeletePathRecursiveMissingTargetSubtractsStoredRoots(t *testing.T) {
+	ctx, db, _ := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	h := &testHelper{t: t, ctx: ctx, db: db, indexID: indexID}
+	h.seedDir("/")
+	h.seedDir("/parent")
+	h.seedDir("/parent/missing/nested")
+	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 3 WHERE id = ?`, indexID); err != nil {
+		t.Fatalf("seed directory count: %v", err)
 	}
 
-	h.upsertFile(entry("/a/link", 4096))
-	h.upsertFile(entry("/b/link", 4096))
-	h.assertMetadata(3, 2, 4096, "after adding both hardlinks")
-	h.deletePath("/b/link")
-	h.assertMetadata(3, 1, 4096, "after deleting non-contributor")
-	h.upsertFile(entry("/b/link", 4096))
-	h.deletePath("/a/link")
-	h.assertSize("/a", 0, "after deleting contributor")
-	h.assertSize("/b", 4096, "after promoting surviving hardlink")
-	h.assertMetadata(3, 1, 4096, "after contributor promotion")
-	h.upsertFile(entry("/b/link", 8192))
-	h.assertMetadata(3, 1, 8192, "after hardlink allocation change")
+	h.upsertFile(indexing.IndexEntry{
+		RelativePath: "/parent/missing/file.txt", Name: "file.txt", Size: 10,
+		ModTime: time.Now(), Type: "file",
+	})
+	h.upsertFile(indexing.IndexEntry{
+		RelativePath: "/parent/missing/nested/child.txt", Name: "child.txt", Size: 20,
+		ModTime: time.Now(), Type: "file",
+	})
+	h.upsertFile(indexing.IndexEntry{
+		RelativePath: "/parent/missing/untracked/deeper.txt", Name: "deeper.txt", Size: 5,
+		ModTime: time.Now(), Type: "file",
+	})
+	h.assertSize("/parent", 35, "before missing-target delete")
+	h.assertSize("/", 35, "before missing-target delete")
+
+	h.deletePath("/parent/missing")
+	h.assertMetadata(2, 0, 0, "after missing-target delete")
+	h.assertFileDeleted("/parent/missing/file.txt")
+	if got := h.getSize("/parent"); got != 0 {
+		t.Fatalf("parent size after missing-target delete = %d, want 0", got)
+	}
+}
+
+func TestUpdateParentDirectorySizesThroughNormalizesStopPath(t *testing.T) {
+	ctx, db, _ := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	h := &testHelper{t: t, ctx: ctx, db: db, indexID: indexID}
+	h.seedDir("/")
+	h.seedDir("/tree")
+	h.seedDir("/tree/child")
+
+	if err := updateParentDirectorySizesThrough(ctx, db, indexID, "/tree/child/file.txt", 10, "/tree/"); err != nil {
+		t.Fatalf("update parent sizes through trailing stop path: %v", err)
+	}
+	h.assertSize("/tree/child", 10, "after trailing stop path update")
+	h.assertSize("/tree", 10, "after trailing stop path update")
+	h.assertSize("/", 0, "after trailing stop path update")
+}
+
+func TestHardlinkReconcileIgnoresStaleContributorAfterIdentityChange(t *testing.T) {
+	ctx, db, _ := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "a"), 0o700); err != nil {
+		t.Fatalf("mkdir a: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "b"), 0o700); err != nil {
+		t.Fatalf("mkdir b: %v", err)
+	}
+	validPath := filepath.Join(root, "b", "live")
+	stalePath := filepath.Join(root, "a", "stale")
+	if err := os.WriteFile(validPath, []byte("live"), 0o600); err != nil {
+		t.Fatalf("write valid fixture: %v", err)
+	}
+	if err := os.WriteFile(stalePath, []byte("stale"), 0o600); err != nil {
+		t.Fatalf("write stale fixture: %v", err)
+	}
+	validEntry := hardlinkTestEntry(t, validPath, 4)
+	staleEntry := validEntry
+	staleEntry.RelativePath = stalePath
+	staleEntry.Name = filepath.Base(stalePath)
+	staleEntry.SizeContribution = 4
+
+	h := &testHelper{t: t, ctx: ctx, db: db, indexID: indexID}
+	h.seedDir("/")
+	h.seedDir(filepath.Join(root, "a"))
+	h.seedDir(filepath.Join(root, "b"))
+	if _, err := db.Exec(`UPDATE indexes SET num_dirs = 3 WHERE id = ?`, indexID); err != nil {
+		t.Fatalf("seed directory count: %v", err)
+	}
+	if _, err := UpdateEntry(ctx, db, indexID, staleEntry); err != nil {
+		t.Fatalf("seed stale entry: %v", err)
+	}
+	if _, err := UpdateEntry(ctx, db, indexID, validEntry); err != nil {
+		t.Fatalf("seed valid entry: %v", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE entries SET size = CASE relative_path
+			WHEN ? THEN 4 WHEN ? THEN 4 WHEN ? THEN 0 ELSE size END
+		WHERE index_id = ? AND relative_path IN (?, ?, ?)
+	`, "/", filepath.Join(root, "a"), filepath.Join(root, "b"), indexID,
+		"/", filepath.Join(root, "a"), filepath.Join(root, "b")); err != nil {
+		t.Fatalf("seed directory sizes: %v", err)
+	}
+
+	identity := hardlinkIdentity{device: int64(validEntry.Device), inode: int64(validEntry.Inode)}
+	snapshot, err := SnapshotHardlinksUnderPath(ctx, db, indexID, filepath.Join(root, "a"))
+	if err != nil {
+		t.Fatalf("snapshot stale hardlink: %v", err)
+	}
+	if got := snapshot.groups[identity]; got != "" {
+		t.Fatalf("stale snapshot contributor = %q, want empty", got)
+	}
+	if err := reconcileAndApplyHardlink(ctx, db, indexID, identity, hardlinkReconcileOptions{}); err != nil {
+		t.Fatalf("reconcile stale hardlink: %v", err)
+	}
+
+	_, staleContribution := h.hardlinkAccounting(stalePath)
+	_, validContribution := h.hardlinkAccounting(validPath)
+	if staleContribution != 0 || validContribution != 4 {
+		t.Fatalf("contributions = stale %d, valid %d; want 0, 4", staleContribution, validContribution)
+	}
+	h.assertSize(filepath.Join(root, "a"), 0, "after stale contributor reconciliation")
+	h.assertSize(filepath.Join(root, "b"), 4, "after stale contributor reconciliation")
+
+	if err := os.Remove(validPath); err != nil {
+		t.Fatalf("remove valid fixture: %v", err)
+	}
+	if err := reconcileAndApplyHardlink(ctx, db, indexID, identity, hardlinkReconcileOptions{}); err != nil {
+		t.Fatalf("reconcile entirely stale hardlink group: %v", err)
+	}
+	staleSize, staleContribution := h.hardlinkAccounting(stalePath)
+	validSize, validContribution := h.hardlinkAccounting(validPath)
+	if staleSize != 4 || validSize != 4 || staleContribution != 0 || validContribution != 0 {
+		t.Fatalf("stale group = sizes %d/%d contributions %d/%d; want 4/4 and 0/0", staleSize, validSize, staleContribution, validContribution)
+	}
+	h.assertSize(filepath.Join(root, "a"), 0, "after entirely stale reconciliation")
+	h.assertSize(filepath.Join(root, "b"), 0, "after entirely stale reconciliation")
 }
 
 func TestTransactionalStreamingWriterRollbackPreservesEntries(t *testing.T) {
