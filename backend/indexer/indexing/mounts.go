@@ -31,7 +31,7 @@ var (
 // isDockerOverlayMergedPath returns true for Docker overlay2 merged mount views.
 // These paths duplicate content already present under overlay2/*/diff.
 func (idx *Index) isDockerOverlayMergedPath(fullCombined string) bool {
-	realPath := idx.realPathFromCombined(fullCombined)
+	realPath := realPathFromCombined(idx.Path, fullCombined)
 	if realPath == "" {
 		return false
 	}
@@ -77,7 +77,7 @@ func (idx *Index) isExternalMount(fullCombined string) bool {
 		return false
 	}
 
-	realPath := idx.realPathFromCombined(fullCombined)
+	realPath := realPathFromCombined(idx.Path, fullCombined)
 	if realPath == "" {
 		return false
 	}

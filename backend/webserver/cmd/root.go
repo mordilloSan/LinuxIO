@@ -249,7 +249,7 @@ func waitForServerShutdown(quit <-chan os.Signal, done <-chan error) error {
 func shutdownHTTPServer(srv *http.Server) {
 	srv.SetKeepAlivesEnabled(false)
 
-	ctx, cancel := shutdownContext()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -325,8 +325,4 @@ func socketIdleState(sm *session.Manager, activity *serverActivity, idleGrace ti
 		return false, false
 	}
 	return activity.idleFor(idleGrace), false
-}
-
-func shutdownContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), 5*time.Second)
 }

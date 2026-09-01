@@ -203,7 +203,9 @@ var capabilityRegistry = []CapabilitySpec{
 		Name:    "avahi",
 		LogName: "Avahi mDNS",
 		Detect: func(ctx context.Context) (bool, string) {
-			ok, err := checkAvahiAvailability(ctx)
+			// BusNameActive (not Available) is intentional because Avahi only
+			// publishes mDNS records while the daemon is actually running.
+			ok, err := dbusclient.BusNameActive(ctx, "org.freedesktop.Avahi")
 			return checkedCapabilityErr(ok, err, errAvahiUnavailable)
 		},
 		Install: &InstallSpec{
@@ -400,11 +402,3 @@ func buildCapabilitiesResponse(ctx context.Context) (apischema.CapabilitiesRespo
 }
 
 var errAvahiUnavailable = fmt.Errorf("avahi-daemon is not running")
-
-// checkAvahiAvailability uses BusNameActive (not Available) because Avahi only
-// publishes mDNS records while the daemon is actually running. An activatable-
-// but-stopped daemon would satisfy the looser check yet leave <hostname>.local
-// unreachable from the LAN.
-func checkAvahiAvailability(ctx context.Context) (bool, error) {
-	return dbusclient.BusNameActive(ctx, "org.freedesktop.Avahi")
-}

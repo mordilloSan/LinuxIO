@@ -231,10 +231,6 @@ func (idx *Index) shouldSkip(isDir bool, isHidden bool, fullCombined string) boo
 	return false
 }
 
-func (idx *Index) realPathFromCombined(fullCombined string) string {
-	return realPathFromCombined(idx.Path, fullCombined)
-}
-
 func realPathFromCombined(indexPath, fullCombined string) string {
 	base := filepath.Clean(indexPath)
 	if base == "" {
