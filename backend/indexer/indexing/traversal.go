@@ -122,10 +122,9 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 			dirPath := combinedPath + baseName
 			dirSize, indexErr := idx.indexChildDirectory(ctx, dirPath)
 			if indexErr != nil {
-				if errors.Is(indexErr, ErrStreamWrite) || errors.Is(indexErr, context.Canceled) || errors.Is(indexErr, context.DeadlineExceeded) {
-					return nil, indexErr
+				if err := idx.handleChildDirError(dirPath, indexErr); err != nil {
+					return nil, err
 				}
-				idx.logChildDirError(dirPath, indexErr)
 				continue
 			}
 			totalSize += dirSize
@@ -196,17 +195,16 @@ func (idx *Index) indexChildFile(ctx context.Context, file os.FileInfo, normaliz
 	return 0, nil
 }
 
-// logChildDirError records a child directory that could not be indexed.
-// Deliberate exclusions and directories deleted mid-scan are routine and stay
-// at debug level; anything else is logged visibly and counted before the scan
-// continues without that subtree.
-func (idx *Index) logChildDirError(dirPath string, err error) {
+func (idx *Index) handleChildDirError(dirPath string, err error) error {
+	if errors.Is(err, ErrStreamWrite) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
 	if errors.Is(err, ErrNotIndexed) || errors.Is(err, os.ErrNotExist) {
 		slog.Debug("skipping directory", "path", dirPath, "err", err)
-		return
+		return nil
 	}
-	slog.Warn("cannot index directory; subtree missing from scan", "path", dirPath, "err", err)
 	idx.incrementSkippedDirs()
+	return fmt.Errorf("index directory %s: %w", dirPath, err)
 }
 
 func isHidden(file os.FileInfo) bool {

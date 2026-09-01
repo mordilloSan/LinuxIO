@@ -2,6 +2,7 @@ package indexing
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -83,9 +84,12 @@ func TestStartIndexingStreamsEntries(t *testing.T) {
 	assertHasEntry(t, entries, "/photos/image1.jpg", false)
 }
 
-func TestStartIndexingSkipsUnreadableEntry(t *testing.T) {
+func TestStartIndexingFailsOnUnreadableEntry(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Linux directory permissions required")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root can read directories regardless of mode")
 	}
 	root := t.TempDir()
 	limited := filepath.Join(root, "limited")
@@ -95,22 +99,18 @@ func TestStartIndexingSkipsUnreadableEntry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(limited, "blocked"), []byte("blocked"), 0o600); err != nil {
 		t.Fatalf("create blocked file: %v", err)
 	}
-	if err := os.Chmod(limited, 0o400); err != nil {
+	if err := os.Chmod(limited, 0); err != nil {
 		t.Fatalf("remove directory search permission: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(limited, 0o700) })
-	if err := os.WriteFile(filepath.Join(root, "visible"), []byte("visible"), 0o600); err != nil {
-		t.Fatalf("create visible file: %v", err)
-	}
 
-	idx, writer := newStreamingIndex(t, "test", root, false)
-	if err := idx.StartIndexing(context.Background()); err != nil {
-		t.Fatalf("StartIndexing failed: %v", err)
+	idx, _ := newStreamingIndex(t, "test", root, false)
+	err := idx.StartIndexing(context.Background())
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("StartIndexing error = %v, want permission error", err)
 	}
-	entries := writer.entriesByPath()
-	assertHasEntry(t, entries, "/visible", false)
-	if _, ok := entries["/limited/blocked"]; ok {
-		t.Fatal("unreadable entry was indexed")
+	if got := idx.SkippedDirCount(); got != 1 {
+		t.Fatalf("skipped directories = %d, want 1", got)
 	}
 }
 
