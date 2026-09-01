@@ -291,10 +291,6 @@ a {
   }
 }
 
-[data-app-scrolling] {
-  --app-scrollbar-thumb-current: var(--app-scrollbar-thumb-active);
-}
-
 *::-webkit-scrollbar,
 .app-scrollbar-nested.app-scrollbar-nested *::-webkit-scrollbar {
   width: 8px;
@@ -351,8 +347,7 @@ a {
   width: 8px !important;
 }
 
-.xterm:hover .scrollbar .slider,
-.xterm:has(.xterm-viewport[data-app-scrolling]) .scrollbar .slider {
+.xterm:hover .scrollbar .slider {
   background-color: var(--app-scrollbar-thumb-active) !important;
 }
 

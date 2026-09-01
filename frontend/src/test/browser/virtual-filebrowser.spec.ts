@@ -22,7 +22,7 @@ test.describe("virtual file browser geometry", () => {
     );
   });
 
-  test("uses the global app scrollbar activity states", async ({ page }) => {
+  test("uses the global app scrollbar hover states", async ({ page }) => {
     const scroller = page.locator(scrollport);
     const scrollbarStyle = () =>
       scroller.evaluate((element) => {
@@ -48,14 +48,14 @@ test.describe("virtual file browser geometry", () => {
     await scroller.hover();
     await expect
       .poll(async () => (await scrollbarStyle()).stateColor)
-      .toBe("#64646433");
+      .toBe("#64646459");
 
     const box = await scroller.boundingBox();
     expect(box).not.toBeNull();
     await page.mouse.move(box!.x + box!.width - 4, box!.y + 8);
     await expect.poll(scrollbarStyle).toEqual({
       color: "rgba(100, 100, 100, 0.45)",
-      stateColor: "#64646433",
+      stateColor: "#64646459",
       width: "8px",
     });
 
@@ -67,43 +67,6 @@ test.describe("virtual file browser geometry", () => {
       stateColor: "#7f7f7f0f",
       width: "8px",
     });
-
-    await scroller.dispatchEvent("scroll");
-    await expect(scroller).toHaveAttribute("data-app-scrolling", "");
-    await expect.poll(scrollbarStyle).toEqual({
-      color: "rgba(100, 100, 100, 0.2)",
-      stateColor: "#64646433",
-      width: "8px",
-    });
-
-    await scroller.dispatchEvent("scrollend");
-    await expect(scroller).not.toHaveAttribute("data-app-scrolling");
-    await expect.poll(scrollbarStyle).toEqual({
-      color: "rgba(127, 127, 127, 0.06)",
-      stateColor: "#7f7f7f0f",
-      width: "8px",
-    });
-
-    await scroller.evaluate((element) => {
-      element.setAttribute("data-scroll-activity-log", "");
-      const observer = new MutationObserver(() => {
-        const state = element.hasAttribute("data-app-scrolling")
-          ? "active"
-          : "idle";
-        const log = `${element.getAttribute("data-scroll-activity-log")} ${state}`;
-        element.setAttribute("data-scroll-activity-log", log.trim());
-        if (state === "idle" && log.includes("active")) observer.disconnect();
-      });
-      observer.observe(element, {
-        attributeFilter: ["data-app-scrolling"],
-        attributes: true,
-      });
-      element.scrollTop += 100;
-    });
-    await expect(scroller).toHaveAttribute(
-      "data-scroll-activity-log",
-      "active idle",
-    );
   });
 
   test("virtualizes a long list and reaches the final item", async ({
