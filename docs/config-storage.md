@@ -13,7 +13,7 @@ not prevent the bridge from starting.
 
 At startup the bridge tries these stores in order:
 
-1. The authenticated user's home directory.
+1. `$HOME/.config/linuxio` for the authenticated user.
 2. `/var/lib/linuxio/users/<uid>`.
 3. An in-memory store for the bridge session.
 
@@ -21,10 +21,14 @@ The persistent artifacts are:
 
 | Artifact | Purpose |
 |----------|---------|
-| `.linuxio-config.yaml` | Per-user functional settings used by the bridge. |
-| `.linuxio-ui.yaml` | UI preferences produced by the frontend. |
-| `.linuxio-config.yaml.lock` | Core-config sidecar lock. |
-| `.linuxio-ui.yaml.lock` | UI-config sidecar lock. |
+| `config.yaml` | Per-user functional settings used by the bridge. |
+| `ui.yaml` | UI preferences produced by the frontend. |
+| `config.yaml.lock` | Core-config sidecar lock. |
+| `ui.yaml.lock` | UI-config sidecar lock. |
+
+Legacy `.linuxio-config.yaml`, `.linuxio-ui.yaml`, and their sidecar locks
+directly under `$HOME` are left untouched and are not used as configuration
+inputs.
 
 The packaged tmpfiles policy creates `/var/lib/linuxio/users` as a root-owned
 `0711` directory. A fallback directory is named by authenticated numeric UID,
@@ -62,7 +66,7 @@ Core configuration uses strict YAML decoding and normal semantic validation. A
 document that fails decoding or validation at startup is renamed to:
 
 ```text
-.linuxio-config.yaml.broken-<UTC timestamp>
+config.yaml.broken-<UTC timestamp>
 ```
 
 If that name exists, the bridge uses `(2)`, `(3)`, and so on. It then writes

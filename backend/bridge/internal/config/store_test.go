@@ -201,10 +201,32 @@ func TestOpenUserStoreStorageFallbacks(t *testing.T) {
 
 	t.Run("home", func(t *testing.T) {
 		home := t.TempDir()
+		legacyCorePath := filepath.Join(home, ".linuxio-config.yaml")
+		legacyUIPath := filepath.Join(home, ".linuxio-ui.yaml")
+		require.NoError(t, os.WriteFile(legacyCorePath, []byte("legacy core\n"), filePerm))
+		require.NoError(t, os.WriteFile(legacyUIPath, []byte("legacy UI\n"), filePerm))
 		store := openUserStore("miguel", targetUID, owner, home, nil)
 
+		configBase := filepath.Join(home, ".config", "linuxio")
 		require.Equal(t, StorageModeHome, store.StorageMode())
-		require.Equal(t, filepath.Join(home, cfgFileName), store.Path())
+		require.Equal(t, filepath.Join(configBase, cfgFileName), store.Path())
+		require.Equal(t, filepath.Join(configBase, uiCfgFileName), store.UIPath())
+		cfg, err := store.Snapshot(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, []AbsolutePath{AbsolutePath(filepath.Join(home, "docker"))}, cfg.Docker.Folders)
+		info, err := os.Stat(configBase)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+		for _, path := range []string{store.path, store.uiPath, store.lockPath, store.uiLockPath} {
+			_, statErr := os.Stat(path)
+			require.NoError(t, statErr)
+		}
+		legacyCore, err := os.ReadFile(legacyCorePath)
+		require.NoError(t, err)
+		require.Equal(t, "legacy core\n", string(legacyCore))
+		legacyUI, err := os.ReadFile(legacyUIPath)
+		require.NoError(t, err)
+		require.Equal(t, "legacy UI\n", string(legacyUI))
 	})
 
 	t.Run("persistent fallback", func(t *testing.T) {

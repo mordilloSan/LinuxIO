@@ -24,19 +24,21 @@ mandatory paths cannot be removed through the config API.
 
 ## Per-user bridge files
 
-For an authenticated user, the bridge tries the home directory first and then
-`/var/lib/linuxio/users/<uid>`:
+For an authenticated user, the bridge tries `$HOME/.config/linuxio` first and
+then `/var/lib/linuxio/users/<uid>`:
 
 | Home file | Fallback file | Purpose |
 |---|---|---|
-| `$HOME/.linuxio-config.yaml` | `/var/lib/linuxio/users/<uid>/.linuxio-config.yaml` | Functional bridge settings. |
-| `$HOME/.linuxio-ui.yaml` | `/var/lib/linuxio/users/<uid>/.linuxio-ui.yaml` | UI preferences. |
-| `$HOME/.linuxio-config.yaml.lock` | `/var/lib/linuxio/users/<uid>/.linuxio-config.yaml.lock` | Config sidecar lock. |
-| `$HOME/.linuxio-ui.yaml.lock` | `/var/lib/linuxio/users/<uid>/.linuxio-ui.yaml.lock` | UI sidecar lock. |
+| `$HOME/.config/linuxio/config.yaml` | `/var/lib/linuxio/users/<uid>/config.yaml` | Functional bridge settings. |
+| `$HOME/.config/linuxio/ui.yaml` | `/var/lib/linuxio/users/<uid>/ui.yaml` | UI preferences. |
+| `$HOME/.config/linuxio/config.yaml.lock` | `/var/lib/linuxio/users/<uid>/config.yaml.lock` | Config sidecar lock. |
+| `$HOME/.config/linuxio/ui.yaml.lock` | `/var/lib/linuxio/users/<uid>/ui.yaml.lock` | UI sidecar lock. |
 
 An invalid core document is retained as
-`.linuxio-config.yaml.broken-<UTC timestamp>` before defaults are written. If
-neither persistent tier is safe, the bridge uses memory and creates no files.
+`config.yaml.broken-<UTC timestamp>` before defaults are written. Legacy
+`.linuxio-config.yaml`, `.linuxio-ui.yaml`, and their sidecar locks in `$HOME`
+are ignored and left untouched. If neither persistent tier is safe, the bridge
+uses memory and creates no files.
 See [Bridge Configuration Storage](config-storage.md) for ownership, fallback,
 validation, and recovery behavior.
 

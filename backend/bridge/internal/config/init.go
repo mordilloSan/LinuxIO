@@ -7,15 +7,11 @@ import (
 )
 
 const (
-	cfgFileName   = ".linuxio-config.yaml"
-	uiCfgFileName = ".linuxio-ui.yaml"
+	cfgFileName   = "config.yaml"
+	uiCfgFileName = "ui.yaml"
 	filePerm      = 0o644 // file:  rw-r--r--
 	dirPerm       = 0o755 // dir:   rwxr-xr-x
 )
-
-func configBase(username string) (string, error) {
-	return Homedir(username)
-}
 
 func initializeLockedOwned(cfgPath, uiPath, base string, owner fileOwnership) error {
 	if err := owner.ensureDirectory(filepath.Dir(cfgPath)); err != nil {

@@ -56,15 +56,19 @@ func OpenUserStore(username string, targetUID, targetGID uint32) (*UserStore, er
 	if err != nil {
 		return nil, err
 	}
-	homeBase, homeErr := configBase(username)
+	homeBase, homeErr := Homedir(username)
 	return openUserStore(username, targetUID, owner, homeBase, homeErr), nil
 }
 
 func openUserStore(username string, targetUID uint32, owner fileOwnership, homeBase string, homeErr error) *UserStore {
 	if homeErr == nil {
-		store, err := openDiskUserStore(username, homeBase, homeBase, owner, StorageModeHome)
+		homeConfigBase, err := prepareHomeConfigBase(homeBase, owner)
 		if err == nil {
-			return store
+			store, openErr := openDiskUserStore(username, homeConfigBase, homeBase, owner, StorageModeHome)
+			if openErr == nil {
+				return store
+			}
+			err = openErr
 		}
 		homeErr = err
 	}
@@ -137,6 +141,41 @@ func openDiskUserStore(username, configBase, defaultBase string, owner fileOwner
 		return nil, err
 	}
 	return store, nil
+}
+
+func prepareHomeConfigBase(home string, owner fileOwnership) (string, error) {
+	configRoot := filepath.Join(home, ".config")
+	if err := prepareHomeConfigDirectory(configRoot, owner); err != nil {
+		return "", err
+	}
+	configBase := filepath.Join(configRoot, "linuxio")
+	if err := prepareHomeConfigDirectory(configBase, owner); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(configBase, 0o700); err != nil {
+		return "", fmt.Errorf("set home config directory permissions: %w", err)
+	}
+	return configBase, nil
+}
+
+func prepareHomeConfigDirectory(path string, owner fileOwnership) error {
+	created := false
+	if err := os.Mkdir(path, 0o700); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create home config directory %q: %w", path, err)
+		}
+	} else {
+		created = true
+	}
+	if created && owner.enforce {
+		if err := os.Chown(path, owner.uid, owner.gid); err != nil {
+			return fmt.Errorf("own home config directory %q: %w", path, err)
+		}
+	}
+	if err := owner.ensureDirectory(path); err != nil {
+		return fmt.Errorf("verify home config directory: %w", err)
+	}
+	return nil
 }
 
 func prepareFallbackConfigBase(path string, owner fileOwnership) error {
