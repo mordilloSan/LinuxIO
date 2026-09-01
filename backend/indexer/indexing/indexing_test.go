@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -205,6 +208,86 @@ func TestGetDirInfoIncludesDirectoryBlocks(t *testing.T) {
 	}
 }
 
+func TestEntryFromFileInfoUsesAllocatedSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat file: %v", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("file stat is not syscall.Stat_t")
+	}
+
+	entry := EntryFromFileInfo(path, info)
+	wantSize := stat.Blocks * 512
+	if entry.Size != wantSize || entry.SizeContribution != wantSize {
+		t.Fatalf("entry size = %d, contribution = %d; want %d", entry.Size, entry.SizeContribution, wantSize)
+	}
+	if entry.Device != stat.Dev || entry.Inode != stat.Ino {
+		t.Fatalf("entry identity = (%d,%d), want (%d,%d)", entry.Device, entry.Inode, stat.Dev, stat.Ino)
+	}
+}
+
+func TestAllocatedSizeMatchesGNUDu(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux allocated-size semantics required")
+	}
+	root := t.TempDir()
+	regular := filepath.Join(root, "regular")
+	if err := os.WriteFile(regular, []byte("content"), 0o600); err != nil {
+		t.Fatalf("write regular file: %v", err)
+	}
+	if err := os.Link(regular, filepath.Join(root, "hardlink")); err != nil {
+		t.Fatalf("create hardlink: %v", err)
+	}
+	sparse := filepath.Join(root, "sparse")
+	file, createErr := os.Create(sparse)
+	if createErr != nil {
+		t.Fatalf("create sparse file: %v", createErr)
+	}
+	if err := file.Truncate(8 << 20); err != nil {
+		_ = file.Close()
+		t.Fatalf("truncate sparse file: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close sparse file: %v", err)
+	}
+	directory := filepath.Join(root, "directory")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatalf("create directory: %v", err)
+	}
+	if err := os.Symlink(directory, filepath.Join(root, "directory-link")); err != nil {
+		t.Fatalf("create directory symlink: %v", err)
+	}
+
+	idx, _ := newStreamingIndex(t, "du", root, false)
+	if err := idx.StartIndexing(context.Background()); err != nil {
+		t.Fatalf("StartIndexing: %v", err)
+	}
+	out, duErr := exec.CommandContext(context.Background(), "du", "-B1", "-s", root).Output()
+	if errors.Is(duErr, exec.ErrNotFound) {
+		t.Skip("GNU du is unavailable")
+	}
+	if duErr != nil {
+		t.Fatalf("GNU du: %v", duErr)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		t.Fatalf("GNU du output = %q", out)
+	}
+	want, parseErr := strconv.ParseUint(fields[0], 10, 64)
+	if parseErr != nil {
+		t.Fatalf("parse GNU du output %q: %v", out, parseErr)
+	}
+	if got := idx.GetTotalSize(); got != want {
+		t.Fatalf("index total = %d, GNU du = %d", got, want)
+	}
+}
+
 func TestHardlinks(t *testing.T) {
 	mock := newMockFileSystem(t)
 
@@ -223,7 +306,6 @@ func TestHardlinks(t *testing.T) {
 	if idx.NumFiles != 2 {
 		t.Errorf("Expected 2 files, got %d", idx.NumFiles)
 	}
-
 }
 
 func TestShouldSkip(t *testing.T) {
@@ -345,6 +427,12 @@ func TestShouldSkipExternalMountRespectsNetworkMountOption(t *testing.T) {
 	includeIdx := Initialize("/mnt/share", WithNetworkMounts(true))
 	if includeIdx.shouldSkip(true, false, "/nested") {
 		t.Fatal("expected network mount contents to be indexed when option is enabled")
+	}
+	if !IsPathExcludedFromIndex("/", nil, false, "/mnt/share/file") {
+		t.Fatal("expected direct mutation below network mount to be excluded")
+	}
+	if IsPathExcludedFromIndex("/", nil, true, "/mnt/share/file") {
+		t.Fatal("expected direct mutation below enabled network mount to be included")
 	}
 }
 

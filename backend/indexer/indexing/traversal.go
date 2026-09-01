@@ -91,15 +91,16 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 	}
 
 	dirSize := uint64(stat.Size())
-	if allocatedSize, _, _, ok := getFileDetails(stat.Sys()); ok {
+	var dirKey devIno
+	if allocatedSize, _, key, ok := getFileDetails(stat.Sys()); ok {
 		dirSize = allocatedSize
+		dirKey = key
 	}
 	idx.mu.Lock()
 	idx.totalSize += dirSize
 	idx.mu.Unlock()
 	totalSize := int64(dirSize)
 	dirHidden := isHidden(stat)
-	dirInode := inodeFromFileInfo(stat)
 	normalizedDir := NormalizeIndexPath(adjustedPath)
 
 	for _, file := range files {
@@ -142,7 +143,7 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 		Type:    "directory",
 		Size:    totalSize,
 		ModTime: stat.ModTime(),
-		Inode:   dirInode,
+		Inode:   dirKey.ino,
 		Hidden:  dirHidden,
 	}
 	return dirFileInfo, nil
@@ -168,26 +169,25 @@ func (idx *Index) indexChildFile(ctx context.Context, file os.FileInfo, normaliz
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	size, shouldCountSize := idx.handleFile(file)
+	size, contribution, key := idx.handleFile(file)
 	idx.incrementFileCount()
 
 	childPath := makeChildRelativePath(normalizedDir, file.Name())
 	entry := IndexEntry{
-		RelativePath: childPath,
-		Name:         file.Name(),
-		Size:         int64(size),
-		ModTime:      file.ModTime(),
-		Type:         "file",
-		Hidden:       hidden,
-		Inode:        inodeFromFileInfo(file),
+		RelativePath:     childPath,
+		Name:             file.Name(),
+		Size:             int64(size),
+		ModTime:          file.ModTime(),
+		Type:             "file",
+		Hidden:           hidden,
+		Device:           key.dev,
+		Inode:            key.ino,
+		SizeContribution: int64(contribution),
 	}
 	if err := idx.streamWriter.Write(entry); err != nil {
 		return 0, fmt.Errorf("%w: file %s: %v", ErrStreamWrite, childPath, err)
 	}
-	if shouldCountSize {
-		return int64(size), nil
-	}
-	return 0, nil
+	return int64(contribution), nil
 }
 
 func (idx *Index) handleChildDirError(dirPath string, err error) error {

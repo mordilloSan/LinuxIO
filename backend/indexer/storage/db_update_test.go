@@ -166,6 +166,52 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	h.assertMetadata(1, 0, 0, "after directory delete")
 }
 
+func TestHardlinkMutationSequenceCountsAllocationOnce(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(filepath.Join(t.TempDir(), "index.db"), DefaultOpenOptions())
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	res, err := db.Exec(`INSERT INTO indexes (num_dirs, last_indexed) VALUES (3, 1)`)
+	if err != nil {
+		t.Fatalf("insert index: %v", err)
+	}
+	indexID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("index id: %v", err)
+	}
+	h := &testHelper{t: t, ctx: ctx, db: db, indexID: indexID}
+	h.seedDir("/")
+	h.seedDir("/a")
+	h.seedDir("/b")
+
+	entry := func(path string, size int64) indexing.IndexEntry {
+		return indexing.IndexEntry{
+			RelativePath: path,
+			Name:         filepath.Base(path),
+			Size:         size,
+			ModTime:      time.Now(),
+			Type:         "file",
+			Device:       7,
+			Inode:        42,
+		}
+	}
+
+	h.upsertFile(entry("/a/link", 4096))
+	h.upsertFile(entry("/b/link", 4096))
+	h.assertMetadata(3, 2, 4096, "after adding both hardlinks")
+	h.deletePath("/b/link")
+	h.assertMetadata(3, 1, 4096, "after deleting non-contributor")
+	h.upsertFile(entry("/b/link", 4096))
+	h.deletePath("/a/link")
+	h.assertSize("/a", 0, "after deleting contributor")
+	h.assertSize("/b", 4096, "after promoting surviving hardlink")
+	h.assertMetadata(3, 1, 4096, "after contributor promotion")
+	h.upsertFile(entry("/b/link", 8192))
+	h.assertMetadata(3, 1, 8192, "after hardlink allocation change")
+}
+
 func TestTransactionalStreamingWriterRollbackPreservesEntries(t *testing.T) {
 	ctx, db, _ := setupTestDB(t)
 	indexID := insertTestIndex(t, db)

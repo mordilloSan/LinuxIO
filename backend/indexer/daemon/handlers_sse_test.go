@@ -11,6 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/indexer/indexing"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/storage"
 )
 
 type testSSEWriter struct {
@@ -337,6 +340,87 @@ func TestPartialReindexSynchronizesMetadata(t *testing.T) {
 	}
 	if lastIndexed <= 1 {
 		t.Fatalf("last indexed = %d, want refreshed timestamp", lastIndexed)
+	}
+}
+
+func TestPartialReindexPreservesHardlinkContributionOutsideSubtree(t *testing.T) {
+	d, _ := newDaemonWithDB(t)
+	res, insertErr := d.db.Exec(`INSERT INTO indexes (num_dirs, num_files, last_indexed) VALUES (3, 2, 1)`)
+	if insertErr != nil {
+		t.Fatalf("insert index: %v", insertErr)
+	}
+	indexID, idErr := res.LastInsertId()
+	if idErr != nil {
+		t.Fatalf("index id: %v", idErr)
+	}
+
+	root := t.TempDir()
+	left := filepath.Join(root, "left")
+	right := filepath.Join(root, "right")
+	if err := os.Mkdir(left, 0o700); err != nil {
+		t.Fatalf("mkdir left: %v", err)
+	}
+	if err := os.Mkdir(right, 0o700); err != nil {
+		t.Fatalf("mkdir right: %v", err)
+	}
+	leftPath := filepath.Join(left, "link")
+	rightPath := filepath.Join(right, "link")
+	if err := os.WriteFile(leftPath, []byte("hardlinked"), 0o600); err != nil {
+		t.Fatalf("write hardlink fixture: %v", err)
+	}
+	if err := os.Link(leftPath, rightPath); err != nil {
+		t.Fatalf("create hardlink: %v", err)
+	}
+
+	entryForPath := func(path string) indexing.IndexEntry {
+		t.Helper()
+		info, statErr := os.Lstat(path)
+		if statErr != nil {
+			t.Fatalf("lstat %s: %v", path, statErr)
+		}
+		return indexing.EntryFromFileInfo(path, info)
+	}
+	leftEntry := entryForPath(leftPath)
+	rightEntry := entryForPath(rightPath)
+	leftEntry.SizeContribution = 0
+	rightEntry.SizeContribution = rightEntry.Size
+	leftDir := entryForPath(left)
+	rightDir := entryForPath(right)
+	rightDir.Size += rightEntry.SizeContribution
+	rootSize := leftDir.Size + rightDir.Size
+	rootEntry := indexing.IndexEntry{RelativePath: "/", Name: "/", Size: rootSize, ModTime: time.Now(), Type: "directory"}
+	for _, entry := range []indexing.IndexEntry{rootEntry, leftDir, rightDir, leftEntry, rightEntry} {
+		if _, err := storage.UpdateEntry(context.Background(), d.db, indexID, entry); err != nil {
+			t.Fatalf("seed %s: %v", entry.RelativePath, err)
+		}
+	}
+	if _, err := d.db.Exec(`UPDATE indexes SET total_size = ? WHERE id = ?`, rootSize, indexID); err != nil {
+		t.Fatalf("seed total size: %v", err)
+	}
+
+	broadcaster := newWorkStreamBroadcaster("reindex", "op-hardlink", left)
+	defer broadcaster.close()
+	_, events, subscribeErr := broadcaster.subscribe()
+	if subscribeErr != nil {
+		t.Fatalf("subscribe: %v", subscribeErr)
+	}
+	d.reindexExistingPath(context.Background(), "op-hardlink", left, broadcaster, time.Now(), DaemonConfig{IncludeNetworkMounts: true}, indexID)
+	if evt := mustReceiveWorkEvent(t, events); evt.event != "complete" {
+		t.Fatalf("event = %q, want complete; data = %+v", evt.event, evt.data)
+	}
+
+	var gotRoot, gotContribution int64
+	if err := d.db.QueryRow(`SELECT size FROM entries WHERE index_id = ? AND relative_path = '/'`, indexID).Scan(&gotRoot); err != nil {
+		t.Fatalf("query root size: %v", err)
+	}
+	if err := d.db.QueryRow(`
+		SELECT COALESCE(SUM(size_contribution), 0) FROM entries
+		WHERE index_id = ? AND device = ? AND inode = ?;
+	`, indexID, int64(leftEntry.Device), int64(leftEntry.Inode)).Scan(&gotContribution); err != nil {
+		t.Fatalf("query hardlink contribution: %v", err)
+	}
+	if gotRoot != rootSize || gotContribution != leftEntry.Size {
+		t.Fatalf("root size = %d, contribution = %d; want %d and %d", gotRoot, gotContribution, rootSize, leftEntry.Size)
 	}
 }
 

@@ -20,7 +20,7 @@ import (
 
 const (
 	defaultDBPath = "indexer.db"
-	schemaVersion = 1
+	schemaVersion = 2
 	schemaTimeout = 30 * time.Second
 	batchSize     = 500
 	batchTimeout  = 1 * time.Second
@@ -100,6 +100,7 @@ func NormalizeOpenOptions(opts OpenOptions) (OpenOptions, error) {
 // dbExecutor is an interface that both sql.DB and sql.Tx implement
 type dbExecutor interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
@@ -407,7 +408,9 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 			mod_time INTEGER NOT NULL,
 			type TEXT NOT NULL,
 			hidden INTEGER NOT NULL DEFAULT 0,
+			device INTEGER NOT NULL DEFAULT 0,
 			inode INTEGER NOT NULL DEFAULT 0,
+			size_contribution INTEGER NOT NULL DEFAULT 0,
 			last_seen INTEGER NOT NULL DEFAULT 0,
 			FOREIGN KEY (index_id) REFERENCES indexes(id) ON DELETE CASCADE
 		);
@@ -429,6 +432,12 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 
 	if _, err := db.ExecContext(ctx, `
 		CREATE INDEX IF NOT EXISTS idx_entries_subfolders ON entries(index_id, type, path_depth, relative_path);
+	`); err != nil {
+		return err
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_entries_hardlinks ON entries(index_id, device, inode);
 	`); err != nil {
 		return err
 	}
@@ -480,10 +489,12 @@ INSERT INTO entries (
 	mod_time,
 	type,
 	hidden,
+	device,
 	inode,
+	size_contribution,
 	last_seen
 ) VALUES `
-	const singlePlaceholder = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	const singlePlaceholder = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	const upsertSuffix = `
 ON CONFLICT(index_id, relative_path) DO UPDATE SET
 	name = excluded.name,
@@ -491,7 +502,9 @@ ON CONFLICT(index_id, relative_path) DO UPDATE SET
 	mod_time = excluded.mod_time,
 	type = excluded.type,
 	hidden = excluded.hidden,
+	device = excluded.device,
 	inode = excluded.inode,
+	size_contribution = excluded.size_contribution,
 	last_seen = excluded.last_seen;
 `
 
@@ -499,7 +512,7 @@ ON CONFLICT(index_id, relative_path) DO UPDATE SET
 	builder.Grow(len(insertPrefix) + len(singlePlaceholder)*len(batch) + len(batch) + len(upsertSuffix))
 	builder.WriteString(insertPrefix)
 
-	args := make([]any, 0, len(batch)*10)
+	args := make([]any, 0, len(batch)*12)
 	for i, entry := range batch {
 		if i > 0 {
 			builder.WriteByte(',')
@@ -518,7 +531,9 @@ ON CONFLICT(index_id, relative_path) DO UPDATE SET
 			entry.ModTime.Unix(),
 			entry.Type,
 			indexing.BoolToInt(entry.Hidden),
+			int64(entry.Device),
 			int64(entry.Inode),
+			entry.SizeContribution,
 			scanTime,
 		)
 	}
@@ -617,15 +632,17 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO entries (
 			index_id, relative_path, path_depth, name, size, mod_time,
-			type, hidden, inode
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			type, hidden, device, inode, size_contribution
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(index_id, relative_path) DO UPDATE SET
 			name = excluded.name,
 			size = excluded.size,
 			mod_time = excluded.mod_time,
 			type = excluded.type,
 			hidden = excluded.hidden,
-			inode = excluded.inode;
+			device = excluded.device,
+			inode = excluded.inode,
+			size_contribution = excluded.size_contribution;
 	`,
 		indexID,
 		entry.RelativePath,
@@ -635,7 +652,9 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 		entry.ModTime.Unix(),
 		entry.Type,
 		indexing.BoolToInt(entry.Hidden),
+		int64(entry.Device),
 		int64(entry.Inode),
+		entry.SizeContribution,
 	)
 
 	return oldSize, err
@@ -644,6 +663,10 @@ func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexi
 // UpdateParentDirectorySizes propagates size changes up the directory tree.
 // sizeDelta is the change in size (positive for additions, negative for deletions).
 func UpdateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int64, childPath string, sizeDelta int64) error {
+	return updateParentDirectorySizesThrough(ctx, db, indexID, childPath, sizeDelta, "")
+}
+
+func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, indexID int64, childPath string, sizeDelta int64, stopPath string) error {
 	ctx = ensureContext(ctx)
 	if sizeDelta == 0 {
 		return nil
@@ -664,7 +687,7 @@ func UpdateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int6
 		}
 
 		// Move to parent
-		if currentPath == "/" {
+		if currentPath == "/" || currentPath == stopPath {
 			break
 		}
 		currentPath = parentDirKey(currentPath)
@@ -731,6 +754,9 @@ func entryTypeDelta(oldType string, existed bool, newType string) (dirs, files i
 // This is a convenience function that combines UpdateEntry and UpdateParentDirectorySizes.
 func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, entry indexing.IndexEntry) error {
 	ctx = ensureContext(ctx)
+	if entry.Type == "directory" {
+		return fmt.Errorf("cannot add a directory entry; reindex its subtree")
+	}
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -742,29 +768,18 @@ func UpsertEntryWithSizeUpdate(ctx context.Context, db *sql.DB, indexID int64, e
 		}
 	}()
 
-	var oldType string
-	typeErr := tx.QueryRowContext(ctx, `
-		SELECT type FROM entries
-		WHERE index_id = ? AND relative_path = ?;
-	`, indexID, entry.RelativePath).Scan(&oldType)
-	existed := typeErr == nil
-	if typeErr != nil && !errors.Is(typeErr, sql.ErrNoRows) {
-		return fmt.Errorf("read existing entry type: %w", typeErr)
-	}
-
-	oldSize, err := UpdateEntry(ctx, tx, indexID, entry)
+	old, err := loadStoredEntryAccounting(ctx, tx, indexID, entry.RelativePath)
 	if err != nil {
+		return fmt.Errorf("read existing entry type: %w", err)
+	}
+	if old.exists && old.typ == "directory" {
+		return fmt.Errorf("cannot replace a directory entry; reindex its parent")
+	}
+	if err := replaceEntryAccounting(ctx, tx, indexID, entry, old); err != nil {
 		return err
 	}
 
-	sizeDelta := entry.Size - oldSize
-	if sizeDelta != 0 {
-		if err := UpdateParentDirectorySizes(ctx, tx, indexID, entry.RelativePath, sizeDelta); err != nil {
-			return err
-		}
-	}
-
-	dirDelta, fileDelta := entryTypeDelta(oldType, existed, entry.Type)
+	dirDelta, fileDelta := entryTypeDelta(old.typ, old.exists, entry.Type)
 	if err := UpdateIndexMetadata(ctx, tx, indexID, dirDelta, fileDelta); err != nil {
 		return fmt.Errorf("update index metadata: %w", err)
 	}
@@ -791,18 +806,13 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 		return fmt.Errorf("count deleted entries: %w", err)
 	}
 
-	// Read the size of the target row. Directory rows already hold the rolled-up
-	// subtree size, and file rows hold their own size — either way, this is the
-	// correct delta to apply to ancestors. Summing across the LIKE pattern would
-	// double-count, since descendants are already accounted for in the parent
-	// directory's size column.
-	var targetSize sql.NullInt64
-	err = tx.QueryRowContext(ctx, `
-		SELECT size FROM entries
-		WHERE index_id = ? AND relative_path = ?;
-	`, indexID, relativePath).Scan(&targetSize)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	removedContribution, err := removedContributionForPath(ctx, tx, indexID, relativePath)
+	if err != nil {
 		return err
+	}
+	promotedGroups, err := promotedHardlinksForDelete(ctx, tx, indexID, relativePath)
+	if err != nil {
+		return fmt.Errorf("find hardlinks requiring promotion: %w", err)
 	}
 
 	// Delete all entries under this path (including the path itself)
@@ -817,11 +827,13 @@ func DeletePathRecursive(ctx context.Context, db *sql.DB, indexID int64, relativ
 		return err
 	}
 
-	// Propagate size changes to parent directories
-	if targetSize.Valid && targetSize.Int64 != 0 {
-		if err := UpdateParentDirectorySizes(ctx, tx, indexID, relativePath, -targetSize.Int64); err != nil {
+	if removedContribution != 0 {
+		if err := UpdateParentDirectorySizes(ctx, tx, indexID, relativePath, -removedContribution); err != nil {
 			return err
 		}
+	}
+	if err := promoteHardlinks(ctx, tx, indexID, promotedGroups); err != nil {
+		return err
 	}
 	if err := UpdateIndexMetadata(ctx, tx, indexID, -deletedDirs, -deletedFiles); err != nil {
 		return fmt.Errorf("update index metadata: %w", err)

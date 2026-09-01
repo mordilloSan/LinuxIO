@@ -17,7 +17,11 @@ type IndexEntry struct {
 	ModTime      time.Time
 	Type         string // "directory" or "file"
 	Hidden       bool
+	Device       uint64
 	Inode        uint64
+	// SizeContribution is the part of Size counted in ancestor aggregates.
+	// It is zero for duplicate paths to the same hard-linked allocation.
+	SizeContribution int64
 }
 
 // NormalizeIndexPath returns the canonical relative path representation used throughout the index:

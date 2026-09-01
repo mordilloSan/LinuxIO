@@ -16,21 +16,28 @@ func EntryFromFileInfo(path string, info os.FileInfo) IndexEntry {
 	if info.IsDir() {
 		typ = "directory"
 	}
+	size := info.Size()
+	var key devIno
+	if allocatedSize, _, fileKey, ok := getFileDetails(info.Sys()); ok {
+		size = int64(allocatedSize)
+		key = fileKey
+	}
 	return IndexEntry{
-		RelativePath: NormalizeIndexPath(path),
-		Name:         info.Name(),
-		Size:         info.Size(),
-		ModTime:      info.ModTime().In(time.UTC),
-		Type:         typ,
-		Hidden:       isHidden(info),
-		Inode:        inodeFromFileInfo(info),
+		RelativePath:     NormalizeIndexPath(path),
+		Name:             info.Name(),
+		Size:             size,
+		ModTime:          info.ModTime().In(time.UTC),
+		Type:             typ,
+		Hidden:           isHidden(info),
+		Device:           key.dev,
+		Inode:            key.ino,
+		SizeContribution: size,
 	}
 }
 
-func (idx *Index) handleFile(file os.FileInfo) (size uint64, shouldCountSize bool) {
+func (idx *Index) handleFile(file os.FileInfo) (size, contribution uint64, key devIno) {
 	var realSize uint64
 	var nlink uint64 = 1
-	var key devIno
 	canUseSyscall := false
 
 	if sys := file.Sys(); sys != nil {
@@ -46,19 +53,19 @@ func (idx *Index) handleFile(file os.FileInfo) (size uint64, shouldCountSize boo
 		idx.mu.Lock()
 		if _, exists := idx.processedInodes[key]; exists {
 			idx.mu.Unlock()
-			return realSize, false
+			return realSize, 0, key
 		}
 		idx.processedInodes[key] = struct{}{}
 		idx.totalSize += realSize
 		idx.mu.Unlock()
-		return realSize, true
+		return realSize, realSize, key
 	}
 
 	// It's a regular file.
 	idx.mu.Lock()
 	idx.totalSize += realSize
 	idx.mu.Unlock()
-	return realSize, true // Count size.
+	return realSize, realSize, key
 }
 
 func (idx *Index) incrementDirCount() {
@@ -94,17 +101,6 @@ func (idx *Index) incrementFileCount() {
 	idx.mu.Lock()
 	idx.NumFiles++
 	idx.mu.Unlock()
-}
-
-func inodeFromFileInfo(info os.FileInfo) uint64 {
-	if info == nil {
-		return 0
-	}
-	_, _, key, ok := getFileDetails(info.Sys())
-	if ok {
-		return key.ino
-	}
-	return 0
 }
 
 func getFileDetails(sys any) (uint64, uint64, devIno, bool) {

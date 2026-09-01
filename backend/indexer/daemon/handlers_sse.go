@@ -331,6 +331,11 @@ func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativeP
 		sendSSEError(sender, fmt.Sprintf("count prior entries: %v", countErr))
 		return
 	}
+	hardlinks, hardlinkErr := storage.SnapshotHardlinksUnderPath(ctx, tx, indexID, relativePath)
+	if hardlinkErr != nil {
+		sendSSEError(sender, fmt.Sprintf("snapshot hardlinks: %v", hardlinkErr))
+		return
+	}
 
 	index := indexing.Initialize(
 		"/",
@@ -353,7 +358,7 @@ func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativeP
 		return
 	}
 
-	newSize, finishErr := d.finishPathReindex(ctx, tx, indexID, relativePath, writer.ScanTime(), oldSize, oldDirs, oldFiles)
+	newSize, finishErr := d.finishPathReindex(ctx, tx, indexID, relativePath, writer.ScanTime(), oldSize, oldDirs, oldFiles, hardlinks)
 	if finishErr != nil {
 		sendSSEError(sender, finishErr.Error())
 		return
@@ -402,13 +407,16 @@ func reindexProgressCallback(operationID, operationPath string, sender sseEventS
 	}
 }
 
-func (d *daemon) finishPathReindex(ctx context.Context, tx *sql.Tx, indexID int64, relativePath string, scanTime, oldSize, oldDirs, oldFiles int64) (int64, error) {
+func (d *daemon) finishPathReindex(ctx context.Context, tx *sql.Tx, indexID int64, relativePath string, scanTime, oldSize, oldDirs, oldFiles int64, hardlinks *storage.HardlinkSnapshot) (int64, error) {
 	deleted, err := storage.CleanupDeletedEntriesUnderPath(ctx, tx, indexID, relativePath, scanTime)
 	if err != nil {
 		return 0, fmt.Errorf("cleanup deleted entries: %w", err)
 	}
 	if deleted > 0 {
 		slog.Info("cleaned up deleted entries under path", "deleted", deleted, "path", relativePath)
+	}
+	if reconcileErr := storage.ReconcileHardlinksAfterReindex(ctx, tx, indexID, relativePath, scanTime, hardlinks); reconcileErr != nil {
+		return 0, fmt.Errorf("reconcile hardlinks: %w", reconcileErr)
 	}
 
 	// Directory rows already aggregate descendants, so read the reindexed

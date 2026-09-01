@@ -126,6 +126,20 @@ Both configuration fields apply to the next scan without a daemon restart. The
 recurring interval is a systemd timer setting, not a YAML field. LinuxIO writes
 it through `indexer.set_timer_interval`.
 
+### Size accounting
+
+Sizes follow GNU `du` semantics within the configured scan scope. Files and
+directories use allocated bytes (`st_blocks * 512`), including each
+directory's own blocks. Hard-linked file data is counted once per
+`(device, inode)` pair, directory symlinks are recorded but not traversed, and
+deliberate exclusions remain outside the accounting scope rather than being
+reported as scan failures.
+
+The same invariant applies to full scans, scoped reindexes, and individual
+add/delete notifications. The database records hardlink identity and which
+path contributes the allocation so deleting or reindexing one link can promote
+a surviving link without changing the total.
+
 ## Operation
 
 ### Full index
@@ -166,7 +180,7 @@ notification:
 
 | Change | Daemon action |
 |--------|---------------|
-| Create or replace one entry | `POST /add` |
+| Create or replace one non-directory entry | `POST /add` |
 | Remove a path | `DELETE /delete` |
 | Copy or extract a directory tree | scoped reindex |
 | Move or rename | delete the old path and add or reindex the new path |
@@ -174,6 +188,8 @@ notification:
 These notifications update the cache; they are not part of the mutation's
 authorization or durability. A failed notification is logged and a later
 scoped or full index repairs the cache. There is no durable notification queue.
+`POST /add` rejects `/` and directories; use a scoped reindex for directory
+trees.
 
 ### Concurrency and recovery
 

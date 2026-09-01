@@ -316,6 +316,11 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	relPath := indexing.NormalizeIndexPath(payload.Path)
+	if relPath == "/" {
+		http.Error(w, "path must not be root; use /reindex", http.StatusBadRequest)
+		return
+	}
 	if !d.tryLockIndex() {
 		http.Error(w, "indexer already running", http.StatusConflict)
 		return
@@ -328,15 +333,23 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	relPath := indexing.NormalizeIndexPath(payload.Path)
 	cfg := d.configSnapshot()
-	if indexing.IsPathExcluded("/", configfile.EffectiveExcludePaths(configfile.Config{ExcludePaths: cfg.ExcludePaths}), relPath) {
+	if indexing.IsPathExcludedFromIndex(
+		"/",
+		configfile.EffectiveExcludePaths(configfile.Config{ExcludePaths: cfg.ExcludePaths}),
+		cfg.IncludeNetworkMounts,
+		relPath,
+	) {
 		writeJSON(w, api.OperationResponse{Status: "ok"})
 		return
 	}
 	info, err := os.Lstat(relPath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("stat path: %v", err), http.StatusNotFound)
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path must not be a directory; use /reindex", http.StatusBadRequest)
 		return
 	}
 	entry := indexing.EntryFromFileInfo(relPath, info)
