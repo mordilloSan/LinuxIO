@@ -85,7 +85,7 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 	// Ensure combinedPath has exactly one trailing slash to prevent double slashes in subdirectory paths
 	combinedPath := strings.TrimRight(adjustedPath, "/") + "/"
 	// Read directory contents
-	entries, err := dirInfo.ReadDir(-1)
+	files, err := readableDirEntries(dirInfo, combinedPath)
 	if err != nil {
 		return nil, err
 	}
@@ -103,23 +103,14 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 	dirHidden := isHidden(stat)
 	normalizedDir := NormalizeIndexPath(adjustedPath)
 
-	for _, dirEntry := range entries {
+	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		baseName := dirEntry.Name()
-		fullCombined := combinedPath + baseName
-		file, err := dirEntry.Info()
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				slog.Debug("skipping deleted filesystem entry", "path", fullCombined, "err", err)
-			} else {
-				slog.Warn("cannot inspect filesystem entry; entry missing from scan", "path", fullCombined, "err", err)
-			}
-			continue
-		}
 		hidden := isHidden(file)
 		isDir := file.IsDir()
+		baseName := file.Name()
+		fullCombined := combinedPath + baseName
 		if idx.shouldSkip(isDir, hidden, fullCombined) {
 			continue
 		}
@@ -156,6 +147,28 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 		Hidden:  dirHidden,
 	}
 	return dirFileInfo, nil
+}
+
+func readableDirEntries(dir *os.File, combinedPath string) ([]os.FileInfo, error) {
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]os.FileInfo, 0, len(entries))
+	for _, entry := range entries {
+		file, err := entry.Info()
+		if err == nil {
+			files = append(files, file)
+			continue
+		}
+		path := combinedPath + entry.Name()
+		if errors.Is(err, os.ErrNotExist) {
+			slog.Debug("skipping deleted filesystem entry", "path", path, "err", err)
+		} else {
+			slog.Warn("cannot inspect filesystem entry; entry missing from scan", "path", path, "err", err)
+		}
+	}
+	return files, nil
 }
 
 func (idx *Index) indexChildDirectory(ctx context.Context, dirPath string) (int64, error) {
