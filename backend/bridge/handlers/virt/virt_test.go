@@ -984,7 +984,7 @@ func TestDeleteVMRemovesOwnedCloudInitSeed(t *testing.T) {
 		managedCloudPath + "/linuxio-cloud-seed.qcow2",
 		managedCloudPath + "/linuxio-cloud-seed-seed.img",
 	} {
-		if !containsString(result.Removed, want) {
+		if !slices.Contains(result.Removed, want) {
 			t.Fatalf("removed = %#v, missing %q", result.Removed, want)
 		}
 	}
@@ -1739,10 +1739,6 @@ func testCreatedStorage(name, path string, sizeGB int) createdVMStorage {
 			SizeGB: sizeGB,
 		},
 	}
-}
-
-func containsString(values []string, want string) bool {
-	return slices.Contains(values, want)
 }
 
 func containsFATLongName(data []byte, value string) bool {

@@ -17,11 +17,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/indexer/indexing/iteminfo"
 )
 
-// dirMetadataKey normalizes directory paths to the format used as keys in dirMetadata.
-func dirMetadataKey(path string) string {
-	return NormalizeIndexPath(path)
-}
-
 // indexDirectory recursively indexes files and directories.
 func (idx *Index) indexDirectory(ctx context.Context, adjustedPath string) error {
 	if err := ctx.Err(); err != nil {
@@ -61,7 +56,7 @@ func (idx *Index) indexDirectory(ctx context.Context, adjustedPath string) error
 	}
 
 	idx.mu.Lock()
-	dirKey := dirMetadataKey(adjustedPath)
+	dirKey := NormalizeIndexPath(adjustedPath)
 	idx.dirMetadata[dirKey] = DirMetadata{
 		Size:    dirFileInfo.Size,
 		ModTime: dirFileInfo.ModTime,
@@ -105,7 +100,7 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 	totalSize := int64(dirSize)
 	dirHidden := isHidden(stat)
 	dirInode := inodeFromFileInfo(stat)
-	normalizedDir := dirMetadataKey(adjustedPath)
+	normalizedDir := NormalizeIndexPath(adjustedPath)
 
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
@@ -158,7 +153,7 @@ func (idx *Index) indexChildDirectory(ctx context.Context, dirPath string) (int6
 		return 0, err
 	}
 
-	dirMapKey := dirMetadataKey(dirPath)
+	dirMapKey := NormalizeIndexPath(dirPath)
 	var size int64
 	idx.mu.Lock()
 	if meta, exists := idx.dirMetadata[dirMapKey]; exists {

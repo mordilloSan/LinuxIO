@@ -181,10 +181,6 @@ func (s SystemSession) CallStore(method string, policy CallPolicy, args []any, o
 	return s.busObj.CallWithContext(s.ctx, method, policy.Flags(), args...).Store(out...)
 }
 
-func (i SystemInterface) Use(ctx context.Context, fn func(context.Context, *godbus.Conn, godbus.BusObject) error) error {
-	return i.Object.Use(ctx, fn)
-}
-
 func (i SystemInterface) Method(member string) string {
 	if member == "" {
 		return i.Name
@@ -193,13 +189,13 @@ func (i SystemInterface) Method(member string) string {
 }
 
 func (i SystemInterface) Call(ctx context.Context, member string, policy CallPolicy, args ...any) error {
-	return i.Use(ctx, func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
+	return i.Object.Use(ctx, func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
 		return obj.CallWithContext(ctx, i.Method(member), policy.Flags(), args...).Err
 	})
 }
 
 func (i SystemInterface) CallStore(ctx context.Context, member string, policy CallPolicy, args []any, out ...any) error {
-	return i.Use(ctx, func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
+	return i.Object.Use(ctx, func(ctx context.Context, _ *godbus.Conn, obj godbus.BusObject) error {
 		return obj.CallWithContext(ctx, i.Method(member), policy.Flags(), args...).Store(out...)
 	})
 }

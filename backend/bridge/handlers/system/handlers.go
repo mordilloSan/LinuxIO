@@ -3,6 +3,8 @@ package system
 import (
 	"context"
 
+	"github.com/shirou/gopsutil/v4/host"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -64,7 +66,7 @@ func handleGetMemoryInfo(ctx context.Context, _ apischema.NoRequest) (*apischema
 }
 
 func handleGetHostInfo(ctx context.Context, _ apischema.NoRequest) (apischema.HostInfo, error) {
-	result, err := FetchHostInfo(ctx)
+	result, err := host.InfoWithContext(ctx)
 	if err != nil {
 		return apischema.HostInfo{}, err
 	}
@@ -72,7 +74,7 @@ func handleGetHostInfo(ctx context.Context, _ apischema.NoRequest) (apischema.Ho
 }
 
 func handleGetUptime(ctx context.Context, _ apischema.NoRequest) (float64, error) {
-	uptimeSeconds, err := FetchUptimeSeconds(ctx)
+	uptimeSeconds, err := host.UptimeWithContext(ctx)
 	return float64(uptimeSeconds), err
 }
 

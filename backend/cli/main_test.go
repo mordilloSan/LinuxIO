@@ -104,12 +104,12 @@ func TestJournalTermsForMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := journalTermsForMode(tt.mode)
 			for _, term := range tt.wantIn {
-				if !containsString(got, term) {
+				if !slices.Contains(got, term) {
 					t.Fatalf("journalTermsForMode(%q) missing %q in %v", tt.mode, term, got)
 				}
 			}
 			for _, term := range tt.wantMiss {
-				if containsString(got, term) {
+				if slices.Contains(got, term) {
 					t.Fatalf("journalTermsForMode(%q) unexpectedly contains %q in %v", tt.mode, term, got)
 				}
 			}
@@ -200,10 +200,6 @@ func TestFormatJournalEntryOmitsHiddenLinuxIOFields(t *testing.T) {
 	if containsSubstring(got, "abc123") || containsSubstring(got, "component=") {
 		t.Fatalf("formatJournalEntry() = %q, unexpectedly included hidden fields", got)
 	}
-}
-
-func containsString(values []string, target string) bool {
-	return slices.Contains(values, target)
 }
 
 func containsSubstring(s, substr string) bool {

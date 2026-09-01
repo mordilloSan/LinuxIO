@@ -27,7 +27,7 @@ func Logoff(ctx context.Context, sessionID string) error {
 }
 
 func callLogin1Manager(ctx context.Context, method string, args ...any) error {
-	return withLogin1Session(ctx, func(session dbusclient.SystemSession) error {
+	return dbusclient.Login1Manager.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		if err := session.Call(
 			login1ManagerIface.Method(method),
 			dbusclient.CallPolicy{},
@@ -37,8 +37,4 @@ func callLogin1Manager(ctx context.Context, method string, args ...any) error {
 		}
 		return nil
 	})
-}
-
-func withLogin1Session(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
-	return dbusclient.Login1Manager.UseSession(ctx, fn)
 }

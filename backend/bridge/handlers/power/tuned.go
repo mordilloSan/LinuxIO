@@ -54,7 +54,7 @@ func Available(ctx context.Context) (bool, error) {
 
 func GetStatus(ctx context.Context) (apischema.PowerStatus, error) {
 	var status apischema.PowerStatus
-	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		status, err = getStatus(session)
 		return err
@@ -64,7 +64,7 @@ func GetStatus(ctx context.Context) (apischema.PowerStatus, error) {
 
 func StartTuned(ctx context.Context) (apischema.PowerStatus, error) {
 	var status apischema.PowerStatus
-	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		if err := ensureTunedRunning(session); err != nil {
 			status, _ = getStatus(session)
 			return err
@@ -83,7 +83,7 @@ func SetProfile(ctx context.Context, profile string) (apischema.PowerStatus, err
 	}
 
 	var status apischema.PowerStatus
-	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		status, err = getStatus(session)
 		if err != nil {
@@ -123,7 +123,7 @@ func SetProfile(ctx context.Context, profile string) (apischema.PowerStatus, err
 
 func DisableTuned(ctx context.Context) (apischema.PowerStatus, error) {
 	var status apischema.PowerStatus
-	err := withTunedSession(ctx, func(session dbusclient.SystemSession) error {
+	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		status, err = getStatus(session)
 		if err != nil {
@@ -144,10 +144,6 @@ func DisableTuned(ctx context.Context) (apischema.PowerStatus, error) {
 		return err
 	})
 	return status, err
-}
-
-func withTunedSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
-	return dbusclient.Tuned.UseSession(ctx, fn)
 }
 
 func getStatus(session dbusclient.SystemSession) (apischema.PowerStatus, error) {

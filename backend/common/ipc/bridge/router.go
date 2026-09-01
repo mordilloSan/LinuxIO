@@ -432,7 +432,7 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRun
 		policy := normalizedPolicy(route.Policy)
 		if policy.Timeout <= 0 {
 			defer close(executionDone)
-			return r.runRoute(ctx, task, request, route)
+			return route.Runner(ctx, task, request)
 		}
 
 		runCtx, cancel := context.WithTimeout(ctx, policy.Timeout)
@@ -441,7 +441,7 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRun
 		done := make(chan runnerResult, 1)
 		go func() {
 			defer close(executionDone)
-			result, err := r.runRoute(runCtx, task, request, route)
+			result, err := route.Runner(runCtx, task, request)
 			done <- runnerResult{result: result, err: err}
 		}()
 
@@ -455,10 +455,6 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRun
 			return nil, runCtx.Err()
 		}
 	}
-}
-
-func (r *Router) runRoute(ctx context.Context, task *Task, request any, route Route) (any, error) {
-	return route.Runner(ctx, task, request)
 }
 
 func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error) {

@@ -280,10 +280,6 @@ func (m *Manager) decode(b []byte) (*Session, error) {
 	return &s, nil
 }
 
-func (m *Manager) encode(s *Session) ([]byte, error) {
-	return json.Marshal(s)
-}
-
 func (m *Manager) storeExpiry(absolute time.Time) time.Time {
 	if m.cfg.GCInterval <= 0 {
 		return absolute
@@ -294,7 +290,7 @@ func (m *Manager) storeExpiry(absolute time.Time) time.Time {
 }
 
 func (m *Manager) commitSession(s *Session) error {
-	b, err := m.encode(s)
+	b, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
