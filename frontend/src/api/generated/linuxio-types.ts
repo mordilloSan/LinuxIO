@@ -517,14 +517,22 @@ export interface ContainerInfo {
 }
 
 export interface ContainerMetrics {
-  cpu_percent: number;
-  mem_usage: number;
-  mem_limit: number;
-  net_input: number;
-  net_output: number;
-  block_read: number;
-  block_write: number;
+  block_read_bytes_per_second?: number;
+  block_write_bytes_per_second?: number;
+  captured_at_ms?: number;
+  cpu_percent?: number;
+  memory_limit_bytes?: number;
+  memory_usage_bytes?: number;
+  network_receive_bytes_per_second?: number;
+  network_send_bytes_per_second?: number;
+  status: ContainerMetricsStatus;
 }
+
+export type ContainerMetricsStatus =
+  | "available"
+  | "stale"
+  | "unavailable"
+  | "not_running";
 
 export interface ContainerMount {
   Destination: string;

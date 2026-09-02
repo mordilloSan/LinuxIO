@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContainerInfo } from "@/api";
 import { render, screen } from "@/test/render";
@@ -12,7 +12,12 @@ const container: ContainerInfo = {
   State: "running",
   Status: "Up 2 hours",
   icon: undefined,
-  metrics: undefined,
+  metrics: {
+    status: "available",
+    cpu_percent: 12.3,
+    memory_usage_bytes: 64 * 1024 * 1024,
+    memory_limit_bytes: 128 * 1024 * 1024,
+  },
   updateAvailable: true,
 } as ContainerInfo;
 
@@ -61,6 +66,16 @@ vi.mock("@/components/gauge/MetricBar", () => ({
 }));
 
 describe("ContainerCard", () => {
+  beforeEach(() => {
+    container.metrics = {
+      status: "available",
+      cpu_percent: 12.3,
+      memory_usage_bytes: 64 * 1024 * 1024,
+      memory_limit_bytes: 128 * 1024 * 1024,
+    };
+    container.updateAvailable = true;
+  });
+
   it("shows the update-available indicator in compact view", () => {
     const { rerender } = render(
       <ContainerCard containerId={container.Id} selected={false} />,
@@ -72,5 +87,23 @@ describe("ContainerCard", () => {
     rerender(<ContainerCard containerId={container.Id} selected={false} />);
 
     expect(screen.queryByLabelText("Update available")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["stale", "Stale metrics"],
+    ["unavailable", "Metrics unavailable"],
+    ["not_running", "Container not running"],
+  ] as const)("shows the %s metric state", (status, label) => {
+    container.metrics = { status };
+
+    render(<ContainerCard containerId={container.Id} selected={false} />);
+
+    expect(screen.getByRole("status", { name: label })).toBeInTheDocument();
+  });
+
+  it("keeps the metric status affordance out of available cards", () => {
+    render(<ContainerCard containerId={container.Id} selected={false} />);
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

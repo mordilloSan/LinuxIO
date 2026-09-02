@@ -14,6 +14,7 @@ type AutoUpdateRebootPolicy string
 type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
+type ContainerMetricsStatus string
 type ConfigStorageMode string
 type TaskState string
 type MonitoringHistoryResolution string
@@ -31,6 +32,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
+	"ContainerMetricsStatus":        {"available", "stale", "unavailable", "not_running"},
 	"ConfigStorageMode":             {"home", "fallback", "memory"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
@@ -53,6 +55,11 @@ const (
 	DockerUpdateCheckStateAvailable   DockerUpdateCheckState = "available"
 	DockerUpdateCheckStateUncheckable DockerUpdateCheckState = "uncheckable"
 	DockerUpdateCheckStateError       DockerUpdateCheckState = "error"
+
+	ContainerMetricsStatusAvailable   ContainerMetricsStatus = "available"
+	ContainerMetricsStatusStale       ContainerMetricsStatus = "stale"
+	ContainerMetricsStatusUnavailable ContainerMetricsStatus = "unavailable"
+	ContainerMetricsStatusNotRunning  ContainerMetricsStatus = "not_running"
 )
 
 var ExtraTypes = []TypeSpec{
@@ -445,13 +452,15 @@ type ContainerEndpoint struct {
 }
 
 type ContainerMetrics struct {
-	CPUPercent float64 `json:"cpu_percent"`
-	MemUsage   uint64  `json:"mem_usage"`
-	MemLimit   uint64  `json:"mem_limit"`
-	NetInput   uint64  `json:"net_input"`
-	NetOutput  uint64  `json:"net_output"`
-	BlockRead  uint64  `json:"block_read"`
-	BlockWrite uint64  `json:"block_write"`
+	BlockReadBytesPerSecond      *float64               `json:"block_read_bytes_per_second,omitempty"`
+	BlockWriteBytesPerSecond     *float64               `json:"block_write_bytes_per_second,omitempty"`
+	CapturedAtMs                 *int64                 `json:"captured_at_ms,omitempty"`
+	CPUPercent                   *float64               `json:"cpu_percent,omitempty"`
+	MemoryLimitBytes             *uint64                `json:"memory_limit_bytes,omitempty"`
+	MemoryUsageBytes             *uint64                `json:"memory_usage_bytes,omitempty"`
+	NetworkReceiveBytesPerSecond *float64               `json:"network_receive_bytes_per_second,omitempty"`
+	NetworkSendBytesPerSecond    *float64               `json:"network_send_bytes_per_second,omitempty"`
+	Status                       ContainerMetricsStatus `json:"status"`
 }
 
 type ContainerHostConfig struct {

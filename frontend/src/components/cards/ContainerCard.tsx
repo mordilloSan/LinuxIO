@@ -174,11 +174,56 @@ const ContainerCardBody = ({
   }, [container.Id, name, startUpdate]);
 
   // ---- metrics ----
-  const cpuPercent = container.metrics?.cpu_percent ?? 0;
-  const memUsage = container.metrics?.mem_usage ?? 0;
-  const memLimit = container.metrics?.mem_limit ?? 0;
+  const cpuPercent = container.metrics?.cpu_percent;
+  const memUsage = container.metrics?.memory_usage_bytes;
+  const memLimit = container.metrics?.memory_limit_bytes;
   const memPercent =
-    memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
+    memUsage !== undefined && memLimit !== undefined && memLimit > 0
+      ? Math.min((memUsage / memLimit) * 100, 100)
+      : 0;
+
+  const metricsStatus = container.metrics?.status ?? "unavailable";
+  const metricsStatusLabel =
+    metricsStatus === "stale"
+      ? "Stale metrics"
+      : metricsStatus === "not_running"
+        ? "Container not running"
+        : "Metrics unavailable";
+  const memoryTooltip =
+    memUsage === undefined
+      ? metricsStatusLabel
+      : memLimit === undefined
+        ? `Memory Usage: ${formatFileSize(memUsage)} (limit unavailable)`
+        : `Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`;
+  const metricsStatusAffordance =
+    metricsStatus === "available" ? null : (
+      <AppTooltip arrow title={metricsStatusLabel}>
+        <span
+          aria-label={metricsStatusLabel}
+          role="status"
+          style={{
+            alignItems: "center",
+            color:
+              metricsStatus === "stale"
+                ? "var(--app-palette-warning-main)"
+                : "var(--app-palette-text-secondary)",
+            display: "flex",
+          }}
+        >
+          <Icon
+            aria-hidden
+            icon={
+              metricsStatus === "stale"
+                ? "mdi:clock-alert-outline"
+                : metricsStatus === "not_running"
+                  ? "mdi:pause-circle-outline"
+                  : "mdi:chart-timeline-variant-shimmer"
+            }
+            width={16}
+          />
+        </span>
+      </AppTooltip>
+    );
 
   const statusColor = getContainerStatusColor(
     getContainerDisplayState(container),
@@ -436,6 +481,7 @@ const ContainerCardBody = ({
                     </span>
                   </AppTooltip>
                 )}
+                {metricsStatusAffordance}
                 <StatusDot color={statusColor} size={8} />
               </div>
             </div>
@@ -487,6 +533,7 @@ const ContainerCardBody = ({
                 </span>
               </AppTooltip>
             )}
+            {metricsStatusAffordance}
             <StatusDot
               color={statusColor}
               tooltip={getContainerDisplayState(container)}
@@ -653,9 +700,7 @@ const ContainerCardBody = ({
               caption line, the tooltip keeping the memory limit detail. */}
           <div style={{ marginTop: 8, width: "100%" }}>
             {compactMetrics ? (
-              <AppTooltip
-                title={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
-              >
+              <AppTooltip title={memoryTooltip}>
                 <div
                   style={{
                     display: "flex",
@@ -675,7 +720,9 @@ const ContainerCardBody = ({
                       CPU
                     </span>
                     {" - "}
-                    {cpuPercent.toFixed(1)}%
+                    {cpuPercent === undefined
+                      ? "—"
+                      : `${cpuPercent.toFixed(1)}%`}
                   </AppTypography>
                   <AppTypography
                     color="text.secondary"
@@ -688,7 +735,7 @@ const ContainerCardBody = ({
                       MEM
                     </span>
                     {" - "}
-                    {formatFileSize(memUsage)}
+                    {memUsage === undefined ? "—" : formatFileSize(memUsage)}
                   </AppTypography>
                 </div>
               </AppTooltip>
@@ -697,16 +744,24 @@ const ContainerCardBody = ({
                 <MetricBar
                   color="var(--app-palette-primary-main)"
                   label="CPU"
-                  percent={cpuPercent}
-                  rightLabel={`${cpuPercent.toFixed(1)}%`}
+                  percent={cpuPercent ?? 0}
+                  rightLabel={
+                    cpuPercent === undefined
+                      ? "Unavailable"
+                      : `${cpuPercent.toFixed(1)}%`
+                  }
                   tooltip="CPU Usage"
                 />
                 <MetricBar
                   color="var(--app-palette-primary-main)"
                   label="MEM"
                   percent={memPercent}
-                  rightLabel={formatFileSize(memUsage)}
-                  tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+                  rightLabel={
+                    memUsage === undefined
+                      ? "Unavailable"
+                      : formatFileSize(memUsage)
+                  }
+                  tooltip={memoryTooltip}
                 />
               </>
             )}

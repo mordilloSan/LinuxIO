@@ -3,44 +3,22 @@ package docker
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/netip"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
-type dockerStatsPayload struct {
-	CPUStats struct {
-		CPUUsage struct {
-			TotalUsage  uint64   `json:"total_usage"`
-			PercpuUsage []uint64 `json:"percpu_usage"`
-		} `json:"cpu_usage"`
-		SystemCPUUsage uint64 `json:"system_cpu_usage"`
-	} `json:"cpu_stats"`
-	MemoryStats struct {
-		Usage uint64            `json:"usage"`
-		Limit uint64            `json:"limit"`
-		Stats map[string]uint64 `json:"stats"`
-	} `json:"memory_stats"`
-	Networks map[string]struct {
-		RxBytes uint64 `json:"rx_bytes"`
-		TxBytes uint64 `json:"tx_bytes"`
-	} `json:"networks"`
-	BlkioStats struct {
-		IoServiceBytesRecursive []struct {
-			Op    string `json:"op"`
-			Value uint64 `json:"value"`
-		} `json:"io_service_bytes_recursive"`
-	} `json:"blkio_stats"`
-}
+const containerMetricsTimeout = 2 * time.Second
 
 // List all containers with metrics.
 func ListContainers(ctx context.Context) ([]apischema.ContainerInfo, error) {
@@ -56,13 +34,27 @@ func ListContainers(ctx context.Context) ([]apischema.ContainerInfo, error) {
 	}
 
 	updateStatus := readUpdateStatusSnapshot()
+	metricsSnapshot := monitoring.ContainerMetricsSnapshot{}
+	var metricsErr error
+	if len(containers.Items) > 0 {
+		metricsCtx, cancel := context.WithTimeout(ctx, containerMetricsTimeout)
+		metricsSnapshot, metricsErr = monitoring.FetchContainerMetricsSnapshot(metricsCtx)
+		cancel()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if metricsErr != nil {
+			slog.Debug("container metrics unavailable", "component", "docker", "error", metricsErr)
+		}
+	}
+	now := time.Now()
 	enriched := make([]apischema.ContainerInfo, 0, len(containers.Items))
 
 	for _, ctr := range containers.Items {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		metrics := collectContainerMetrics(ctx, cli, ctr.ID)
+		metrics := containerMetricsFromSnapshot(ctr, metricsSnapshot, metricsErr, now)
 		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
 
 		info := containerInfoFromSummary(ctr, metrics, iconIdentifier, resolvedURL, proxyPort)
@@ -196,58 +188,47 @@ func containerMountsFromSummary(mounts []container.MountPoint) []apischema.Conta
 	return result
 }
 
-func collectContainerMetrics(ctx context.Context, cli *client.Client, containerID string) *apischema.ContainerMetrics {
-	metrics := &apischema.ContainerMetrics{}
-	statsResp, err := cli.ContainerStats(ctx, containerID, client.ContainerStatsOptions{})
-	if err != nil {
-		return metrics
+func containerMetricsFromSnapshot(
+	ctr container.Summary,
+	snapshot monitoring.ContainerMetricsSnapshot,
+	fetchErr error,
+	now time.Time,
+) *apischema.ContainerMetrics {
+	if ctr.State != container.StateRunning && ctr.State != container.StatePaused {
+		return &apischema.ContainerMetrics{Status: apischema.ContainerMetricsStatusNotRunning}
 	}
-	defer func() {
-		if cerr := statsResp.Body.Close(); cerr != nil {
-			slog.Warn("failed to close container stats body", "component", "docker", "container", containerID, "error", cerr)
-		}
-	}()
-
-	var stats dockerStatsPayload
-
-	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
-		return metrics
+	if fetchErr != nil || snapshot.CapturedAtMs <= 0 {
+		return &apischema.ContainerMetrics{Status: apischema.ContainerMetricsStatusUnavailable}
 	}
-	populateContainerCPUMetrics(metrics, stats)
-	populateContainerMemoryMetrics(metrics, stats)
-	populateContainerIOMetrics(metrics, stats)
-	return metrics
-}
 
-func populateContainerCPUMetrics(metrics *apischema.ContainerMetrics, stats dockerStatsPayload) {
-	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage)
-	systemDelta := float64(stats.CPUStats.SystemCPUUsage)
-	if systemDelta > 0 && len(stats.CPUStats.CPUUsage.PercpuUsage) > 0 {
-		metrics.CPUPercent = (cpuDelta / systemDelta) * float64(len(stats.CPUStats.CPUUsage.PercpuUsage)) * 100.0
+	sample, ok := snapshot.Samples[ctr.ID]
+	if !ok && len(ctr.ID) > 12 {
+		sample, ok = snapshot.Samples[ctr.ID[:12]]
 	}
-}
+	if !ok {
+		return &apischema.ContainerMetrics{Status: apischema.ContainerMetricsStatusUnavailable}
+	}
 
-func populateContainerMemoryMetrics(metrics *apischema.ContainerMetrics, stats dockerStatsPayload) {
-	memUsage := stats.MemoryStats.Usage
-	if inactiveFile, ok := stats.MemoryStats.Stats["inactive_file"]; ok && inactiveFile < memUsage {
-		memUsage -= inactiveFile
+	capturedAtMs := snapshot.CapturedAtMs
+	cpuPercent := sample.CPUPercent
+	memoryUsageBytes := sample.MemoryUsageBytes
+	networkReceiveBytesPerSecond := sample.NetworkReceiveBytesPerSecond
+	networkSendBytesPerSecond := sample.NetworkSendBytesPerSecond
+	status := apischema.ContainerMetricsStatusAvailable
+	freshFor := max(3*snapshot.CollectorInterval, time.Minute)
+	if now.Sub(time.UnixMilli(capturedAtMs)) > freshFor {
+		status = apischema.ContainerMetricsStatusStale
 	}
-	metrics.MemUsage = memUsage
-	metrics.MemLimit = stats.MemoryStats.Limit
-}
 
-func populateContainerIOMetrics(metrics *apischema.ContainerMetrics, stats dockerStatsPayload) {
-	for _, netStats := range stats.Networks {
-		metrics.NetInput += netStats.RxBytes
-		metrics.NetOutput += netStats.TxBytes
-	}
-	for _, entry := range stats.BlkioStats.IoServiceBytesRecursive {
-		switch entry.Op {
-		case "Read":
-			metrics.BlockRead += entry.Value
-		case "Write":
-			metrics.BlockWrite += entry.Value
-		}
+	return &apischema.ContainerMetrics{
+		BlockReadBytesPerSecond:      sample.BlockReadBytesPerSecond,
+		BlockWriteBytesPerSecond:     sample.BlockWriteBytesPerSecond,
+		CapturedAtMs:                 &capturedAtMs,
+		CPUPercent:                   &cpuPercent,
+		MemoryUsageBytes:             &memoryUsageBytes,
+		NetworkReceiveBytesPerSecond: &networkReceiveBytesPerSecond,
+		NetworkSendBytesPerSecond:    &networkSendBytesPerSecond,
+		Status:                       status,
 	}
 }
 

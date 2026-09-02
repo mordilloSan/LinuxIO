@@ -64,7 +64,7 @@ Explicitly excluded:
 | Area | What exists | Important gap |
 |------|-------------|---------------|
 | Containers | Cards and table, Compose grouping, start/stop/restart/remove, update status, logs, terminal, ports, networks, volumes, and current metrics | No typed inspect detail for health/config/resources/security; no pause/kill/redeploy/create flow; metrics have correctness and ownership problems |
-| Monitoring | Docker list polling enriches every container; host monitoring has persistent history and reusable charts | Docker history is not exposed per container; current CPU is not an interval rate; current network/block values are cumulative; historical block I/O is absent |
+| Monitoring | `go-monitoring` supplies one current container snapshot plus persistent per-container history and reusable charts | The agent still lacks full-ID persistence, sample/reset status, schema capabilities, Docker-scale CPU, and complete rollup semantics |
 | Compose | Project discovery, configured folders, multiple resolved config files, create/edit, sibling `.env`, validation, normalization, and lifecycle Tasks | No workspace tree, environment provenance, profile UI, resolved preview, contextual safety findings, or deployment history |
 | Images | Repository/tag/ID/size/created/usage data and deletion/pruning | No pull/tag/run/build, inspect/config, layer history, registry workflow, export, or vulnerability results |
 | Volumes | Create/delete/prune, usage, options, labels, and selected details | No content browser, export/import, clone, backup/restore, or attached-container safety workflow |
@@ -212,6 +212,12 @@ the deeper agent and history-schema work below does not.
   charts auto-scale above 100% rather than clipping multi-core use.
 - All-container series use the recorded container identity for rendering keys
   and add a short-ID suffix when multiple generations reuse a display name.
+- `docker.list_containers` reads one bounded current snapshot from the agent
+  instead of issuing sequential Docker stats requests. Current metrics carry a
+  capture time and an explicit available, stale, unavailable, or not-running
+  state; network and block I/O fields are named as per-second rates. Missing or
+  older-agent block telemetry remains unavailable without hiding CPU, memory,
+  or network data.
 
 Two roadmap assumptions turned out to be wrong about agent v1.7:
 
@@ -225,10 +231,9 @@ Two roadmap assumptions turned out to be wrong about agent v1.7:
   documented tolerance before any claim of parity with `docker stats`.
 
 Still open from the lists below: moving the CPU convention into the agent,
-sample status and schema versioning, rollups that do not count a missing
-container as zero, explicit counter-reset and recreation events, preserving
-full IDs, the point-in-time snapshot Call, and removing the sequential
-`ContainerStats` fan-out from `ListContainers`.
+historical sample status and schema versioning, rollups that do not count a
+missing container as zero, explicit counter-reset and recreation events,
+preserving full IDs, and the point-in-time snapshot Call.
 
 ### Backend
 
@@ -291,7 +296,7 @@ full IDs, the point-in-time snapshot Call, and removing the sequential
 - [ ] A stopped, missing, reset, old-agent, and monitoring-unavailable sample
       has a distinct tested presentation.
 - [ ] Recreated containers do not silently inherit another ID's history.
-- [ ] Listing containers performs no unbounded or sequential per-container
+- [x] Listing containers performs no unbounded or sequential per-container
       stats fan-out after migration.
 - [ ] Backend tests cover delta math, counter reset, rollup identity, missing
       samples, bounds, and older-agent compatibility.

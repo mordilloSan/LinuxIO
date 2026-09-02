@@ -234,10 +234,11 @@ const getContainerTableSignature = (container: ContainerInfo) => {
     container.updateCheckReason ?? "",
     container.updateCheckState ?? "",
     container.updateError ?? "",
+    container.metrics?.status ?? "",
     container.metrics?.cpu_percent?.toFixed(1) ?? "",
-    container.metrics?.mem_usage === undefined
+    container.metrics?.memory_usage_bytes === undefined
       ? ""
-      : formatFileSize(container.metrics.mem_usage),
+      : formatFileSize(container.metrics.memory_usage_bytes),
     networks,
     ports,
     mounts,
@@ -865,8 +866,8 @@ function VolumesCell({
 }
 
 function MetricsCell({ container }: { container: ContainerInfo }) {
-  const cpuPercent = container.metrics?.cpu_percent ?? 0;
-  const memUsage = container.metrics?.mem_usage ?? 0;
+  const cpuPercent = container.metrics?.cpu_percent;
+  const memUsage = container.metrics?.memory_usage_bytes;
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -876,7 +877,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
         style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
-        {cpuPercent.toFixed(1)}%
+        {cpuPercent === undefined ? "—" : `${cpuPercent.toFixed(1)}%`}
       </AppTypography>
       <AppTypography
         color="text.secondary"
@@ -884,7 +885,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
         style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
-        {formatFileSize(memUsage)}
+        {memUsage === undefined ? "—" : formatFileSize(memUsage)}
       </AppTypography>
     </div>
   );
@@ -1474,8 +1475,11 @@ const ContainerTable = ({
           align: "center",
           getCellRenderKey: containerCellRenderKey((container) => [
             container.Id,
-            (container.metrics?.cpu_percent ?? 0).toFixed(1),
-            formatFileSize(container.metrics?.mem_usage ?? 0),
+            container.metrics?.status ?? "",
+            container.metrics?.cpu_percent?.toFixed(1) ?? "",
+            container.metrics?.memory_usage_bytes === undefined
+              ? ""
+              : formatFileSize(container.metrics.memory_usage_bytes),
           ]),
           hideBelow: "xl",
           width: "110px",

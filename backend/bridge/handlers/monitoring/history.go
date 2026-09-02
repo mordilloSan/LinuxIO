@@ -437,7 +437,10 @@ func resolveMetricsListener(ctx context.Context) (network, address string, err e
 	if err != nil {
 		return "", "", err
 	}
+	return resolveMetricsListenerFromStatus(status)
+}
 
+func resolveMetricsListenerFromStatus(status apischema.MonitoringStatus) (network, address string, err error) {
 	var tcpAddress string
 	for _, listener := range status.Listeners {
 		if !listener.Active || !servesMetricsAPI(listener.APIs) {

@@ -8,7 +8,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { getDedupedPorts } from "@/utils/dockerContainer";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize, formatThroughput } from "@/utils/formaters";
 
 export type ContainerInfoSection =
   | "overview"
@@ -87,11 +87,21 @@ const ContainerInfoSections = ({
   );
 
   const metrics = container.metrics;
-  const cpuPercent = metrics?.cpu_percent ?? 0;
-  const memUsage = metrics?.mem_usage ?? 0;
-  const memLimit = metrics?.mem_limit ?? 0;
+  const cpuPercent = metrics?.cpu_percent;
+  const memUsage = metrics?.memory_usage_bytes;
+  const memLimit = metrics?.memory_limit_bytes;
   const memPercent =
-    memLimit > 0 ? Math.min((memUsage / memLimit) * 100, 100) : 0;
+    memUsage !== undefined && memLimit !== undefined && memLimit > 0
+      ? Math.min((memUsage / memLimit) * 100, 100)
+      : 0;
+  const memoryTooltip =
+    memUsage === undefined
+      ? "Memory metrics unavailable"
+      : memLimit === undefined
+        ? `Memory Usage: ${formatFileSize(memUsage)} (limit unavailable)`
+        : `Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`;
+  const formatRate = (value?: number) =>
+    value === undefined ? "Unavailable" : formatThroughput(value);
 
   const sectionStyle: CSSProperties = {
     display: "flex",
@@ -139,29 +149,37 @@ const ContainerInfoSections = ({
             <MetricBar
               color="var(--app-palette-primary-main)"
               label="CPU"
-              percent={cpuPercent}
-              rightLabel={`${cpuPercent.toFixed(1)}%`}
+              percent={cpuPercent ?? 0}
+              rightLabel={
+                cpuPercent === undefined
+                  ? "Unavailable"
+                  : `${cpuPercent.toFixed(1)}%`
+              }
               tooltip="CPU Usage"
             />
             <MetricBar
               color="var(--app-palette-primary-main)"
               label="MEM"
               percent={memPercent}
-              rightLabel={formatFileSize(memUsage)}
-              tooltip={`Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`}
+              rightLabel={
+                memUsage === undefined
+                  ? "Unavailable"
+                  : formatFileSize(memUsage)
+              }
+              tooltip={memoryTooltip}
             />
             <AppDivider style={{ marginBlock: "var(--app-space-4)" }} />
-            <InfoRow label="Net In">
-              {formatFileSize(metrics?.net_input)}
+            <InfoRow label="Net Receive rate">
+              {formatRate(metrics?.network_receive_bytes_per_second)}
             </InfoRow>
-            <InfoRow label="Net Out">
-              {formatFileSize(metrics?.net_output)}
+            <InfoRow label="Net Send rate">
+              {formatRate(metrics?.network_send_bytes_per_second)}
             </InfoRow>
-            <InfoRow label="Block Read">
-              {formatFileSize(metrics?.block_read)}
+            <InfoRow label="Block Read rate">
+              {formatRate(metrics?.block_read_bytes_per_second)}
             </InfoRow>
-            <InfoRow label="Block Write" noBorder>
-              {formatFileSize(metrics?.block_write)}
+            <InfoRow label="Block Write rate" noBorder>
+              {formatRate(metrics?.block_write_bytes_per_second)}
             </InfoRow>
           </div>
         );

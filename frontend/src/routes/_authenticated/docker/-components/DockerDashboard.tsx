@@ -178,12 +178,12 @@ const DockerDashboard = ({
   const totalMemUsage = useMemo(
     () =>
       runningContainers.reduce(
-        (sum, c) => sum + (c.metrics?.mem_usage ?? 0),
+        (sum, c) => sum + (c.metrics?.memory_usage_bytes ?? 0),
         0,
       ),
     [runningContainers],
   );
-  // Use system total RAM as the denominator. Per-container mem_limit equals
+  // Use system total RAM as the denominator. Per-container memory limit equals
   // the host's total RAM when no limit is set, so summing them multiplies it
   // by the container count and produces a wildly inflated number.
   const systemMemTotal = dockerInfo?.mem_total ?? 0;
