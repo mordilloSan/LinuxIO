@@ -39,6 +39,22 @@ func TestListDirectory(t *testing.T) {
 	assert.True(t, items["link"].CanOpenAsText)
 }
 
+func TestListDirectoryTreatsBundleNamedDirectoriesAsFolders(t *testing.T) {
+	tmpDir := t.TempDir()
+	createTestDir(t, tmpDir, ".bundle")
+	createTestDir(t, tmpDir, "Demo.app")
+
+	listing, err := ListDirectory(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{".bundle", "Demo.app"}, testItemNames(listing.Folders))
+	assert.Empty(t, listing.Files)
+
+	children, err := ListDirectoryChildren(context.Background(), tmpDir, true)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{".bundle", "Demo.app"}, children.Folders)
+	assert.Empty(t, children.Files)
+}
+
 func TestListDirectoryDoesNotReadContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	createTestFile(t, tmpDir, "nul", []byte("text\x00binary"))

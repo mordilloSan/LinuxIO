@@ -200,7 +200,7 @@ follows:
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
   `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,
   `update-frontend-screenshots`
-- backend checks: `golint`, `golint-only`, `test-backend`, `deadcode`,
+- backend checks: `golint`, `golint-only`, `test-backend`, `test-go`, `deadcode`,
   `deadcode-only`, `check-backend`, `test-auth`, `test-auth-protocol`,
   `test-auth-pam`, `test-updater`, `test-docker-update-integration`,
   `check-c-build-deps`

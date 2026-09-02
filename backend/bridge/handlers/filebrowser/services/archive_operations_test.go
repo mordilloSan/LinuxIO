@@ -1,13 +1,20 @@
 package services
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 // Helper function to create temporary test files/directories
@@ -330,4 +337,74 @@ func TestArchiveOperationsEdgeCases(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(10*1024*1024), size, "should correctly compute large file size")
 	})
+}
+
+func writeSingleEntryZip(t *testing.T, path, entryName string) {
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	zw := zip.NewWriter(f)
+	w, err := zw.Create(entryName)
+	require.NoError(t, err)
+	_, err = w.Write([]byte("pwned"))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	require.NoError(t, f.Close())
+}
+
+func writeSingleEntryTarGz(t *testing.T, path, entryName string) {
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: entryName, Typeflag: tar.TypeReg, Mode: 0o644, Size: 5}))
+	_, err = tw.Write([]byte("pwned"))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+	require.NoError(t, gw.Close())
+	require.NoError(t, f.Close())
+}
+
+func TestExtractArchiveStaysInsideDestination(t *testing.T) {
+	formats := []struct {
+		ext   string
+		write func(t *testing.T, path, entryName string)
+	}{
+		{".zip", writeSingleEntryZip},
+		{".tar.gz", writeSingleEntryTarGz},
+	}
+
+	for _, format := range formats {
+		t.Run("dotdot_entry"+format.ext, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			archivePath := filepath.Join(tmpDir, "archive"+format.ext)
+			format.write(t, archivePath, "../escape.txt")
+
+			require.Error(t, ExtractArchive(archivePath, filepath.Join(tmpDir, "dest"), nil, 0))
+			assert.NoFileExists(t, filepath.Join(tmpDir, "escape.txt"))
+		})
+
+		t.Run("relative_symlink_in_destination"+format.ext, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			archivePath := filepath.Join(tmpDir, "archive"+format.ext)
+			format.write(t, archivePath, "link/pwned.txt")
+			destDir := createTestDir(t, tmpDir, "dest")
+			outside := createTestDir(t, tmpDir, "outside")
+			require.NoError(t, os.Symlink("../outside", filepath.Join(destDir, "link")))
+
+			require.Error(t, ExtractArchive(archivePath, destDir, nil, 0))
+			assert.NoFileExists(t, filepath.Join(outside, "pwned.txt"))
+		})
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+func TestCopyWithCallbacksReportsProgressAfterWrite(t *testing.T) {
+	var progressed int64
+	opts := &ipc.OperationCallbacks{Progress: func(n int64) { progressed += n }}
+
+	require.Error(t, copyWithCallbacks(failingWriter{}, strings.NewReader("hello"), opts))
+	assert.Zero(t, progressed, "bytes that never reached the destination must not count as progress")
 }
