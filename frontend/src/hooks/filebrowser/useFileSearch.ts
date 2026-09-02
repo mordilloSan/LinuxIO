@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { CACHE_TTL_MS, linuxio, type SearchResult } from "@/api";
-import { useCapability } from "@/hooks/useCapabilities";
 
 interface UseFileSearchOptions {
   basePath?: string;
+  caseSensitive?: boolean;
   enabled?: boolean;
   limit?: number;
   query: string;
@@ -18,23 +18,28 @@ interface UseFileSearchResult {
   results: SearchResult[];
 }
 
+export const MIN_SEARCH_QUERY_LENGTH = 3;
+
+export const isSearchableQuery = (query: string) =>
+  Array.from(query.trim()).length >= MIN_SEARCH_QUERY_LENGTH;
+
 export const useFileSearch = ({
   query,
   limit = 100,
   basePath = "/",
+  caseSensitive = false,
   enabled = true,
 }: UseFileSearchOptions): UseFileSearchResult => {
-  const {
-    isEnabled: indexerEnabled,
-    reason: indexerReason,
-    status: indexerStatus,
-  } = useCapability("indexerAvailable");
-  const indexerDisabled = !indexerEnabled;
-  const shouldSearch = query.trim().length >= 2; // Minimum 2 characters
-  const queryEnabled = enabled && shouldSearch && !indexerDisabled;
+  const shouldSearch = isSearchableQuery(query);
+  const queryEnabled = enabled && shouldSearch;
+  const backendQuery = caseSensitive ? `case:exact ${query}` : query;
 
   const { data, isLoading, error } = useQuery({
-    ...linuxio.filebrowser.search({ query, limit: String(limit), basePath }),
+    ...linuxio.filebrowser.search({
+      query: backendQuery,
+      limit: String(limit),
+      basePath,
+    }),
     ...{
       enabled: queryEnabled,
       staleTime: CACHE_TTL_MS.THIRTY_SECONDS, // Search results stay fresh longer
@@ -45,18 +50,9 @@ export const useFileSearch = ({
     },
   });
 
-  const derivedError =
-    indexerDisabled && shouldSearch
-      ? new Error(
-          indexerStatus === "unknown"
-            ? indexerReason
-            : "Search is unavailable (indexer offline)",
-        )
-      : error instanceof Error
-        ? error
-        : null;
+  const derivedError = error instanceof Error ? error : null;
 
-  const isUnavailable = indexerDisabled && shouldSearch;
+  const isUnavailable = Boolean(derivedError) && shouldSearch;
 
   return {
     results: data?.results ?? [],

@@ -3,7 +3,6 @@ import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
-import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMobileActionsMenu from "@/components/ui/AppMobileActionsMenu";
 import AppPopover from "@/components/ui/AppPopover";
@@ -12,26 +11,31 @@ import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
-import { useCapability } from "@/hooks/useCapabilities";
 import { iconSize } from "@/theme/constants";
 import type { ViewMode } from "@/types/filebrowser";
 
+import FileBrowserSearch from "./FileBrowserSearch";
+
 interface FileBrowserHeaderActionsProps {
   isMobile: boolean;
+  onSearchCaseSensitiveChange: (value: boolean) => void;
   onSearchChange: (value: string) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
   searchQuery: string;
+  searchCaseSensitive: boolean;
   showHiddenFiles: boolean;
   viewMode: ViewMode;
 }
 
 const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
   isMobile,
+  onSearchCaseSensitiveChange,
   onSearchChange,
   onSwitchView,
   onToggleHiddenFiles,
   searchQuery,
+  searchCaseSensitive,
   showHiddenFiles,
   viewMode,
 }: FileBrowserHeaderActionsProps) {
@@ -42,8 +46,6 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
     useState<HTMLElement | null>(null);
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
-  const { isEnabled: indexerEnabled, reason: indexerReason } =
-    useCapability("indexerAvailable");
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
   const isIndexing = useIsIndexing();
 
@@ -92,16 +94,10 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
       />
       <AppActionIconButton
         ariaLabel="Index filesystem"
-        disabled={isIndexing || !indexerEnabled}
+        disabled={isIndexing}
         icon="mdi:sync"
         iconSize={20}
-        label={
-          isIndexing
-            ? "Indexing..."
-            : !indexerEnabled
-              ? indexerReason
-              : "Index filesystem"
-        }
+        label={isIndexing ? "Indexing..." : "Index filesystem"}
         loading={isIndexing}
         onClick={handleIndexer}
       />
@@ -181,10 +177,11 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
           role="search"
           style={{ width: "100%" }}
         >
-          <AppHeaderSearch
-            onChange={onSearchChange}
-            placeholder="Search files and folders..."
-            value={searchQuery}
+          <FileBrowserSearch
+            caseSensitive={searchCaseSensitive}
+            onCaseSensitiveChange={onSearchCaseSensitiveChange}
+            onSearchChange={onSearchChange}
+            searchQuery={searchQuery}
           />
         </div>
       </AppPopover>

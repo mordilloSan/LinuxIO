@@ -80,7 +80,6 @@ type Timing struct {
 type CapabilitiesAvailable struct {
 	DockerAvailable          bool `json:"docker_available"`
 	DockerUpdatesAvailable   bool `json:"docker_updates_available"`
-	IndexerAvailable         bool `json:"indexer_available"`
 	MonitoringAvailable      bool `json:"monitoring_available"`
 	LMSensorsAvailable       bool `json:"lm_sensors_available"`
 	MemoryInventoryAvailable bool `json:"memory_inventory_available"`
@@ -99,7 +98,6 @@ type CapabilitiesAvailable struct {
 type CapabilitiesError struct {
 	DockerError          *string `json:"docker_error,omitempty"`
 	DockerUpdatesError   *string `json:"docker_updates_error,omitempty"`
-	IndexerError         *string `json:"indexer_error,omitempty"`
 	MonitoringError      *string `json:"monitoring_error,omitempty"`
 	LMSensorsError       *string `json:"lm_sensors_error,omitempty"`
 	MemoryInventoryError *string `json:"memory_inventory_error,omitempty"`
@@ -282,10 +280,6 @@ func (m *Manager) decode(b []byte) (*Session, error) {
 	return &s, nil
 }
 
-func (m *Manager) encode(s *Session) ([]byte, error) {
-	return json.Marshal(s)
-}
-
 func (m *Manager) storeExpiry(absolute time.Time) time.Time {
 	if m.cfg.GCInterval <= 0 {
 		return absolute
@@ -296,7 +290,7 @@ func (m *Manager) storeExpiry(absolute time.Time) time.Time {
 }
 
 func (m *Manager) commitSession(s *Session) error {
-	b, err := m.encode(s)
+	b, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
@@ -370,7 +364,6 @@ func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session
 		return m.DeleteSession(sess.SessionID, reason)
 	})
 	slog.Info("session created",
-		"user", user.Username,
 		"session_ref", DiagnosticRef(sess.SessionID),
 		"privileged", privileged)
 	return sess, nil
@@ -408,7 +401,6 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	}
 	if s, err := m.decode(b); err == nil {
 		slog.Info("session deleted",
-			"user", s.User.Username,
 			"session_ref", DiagnosticRef(s.SessionID),
 			"reason", string(r))
 		m.broadcastOnDelete(s, r)
@@ -572,7 +564,6 @@ func (m *Manager) evictUserSessions(username string) {
 		if s.User.Username == username {
 			if deleteErr := m.st.Delete(tok); deleteErr != nil {
 				slog.Warn("failed deleting existing session",
-					"user", username,
 					"session_ref", DiagnosticRef(tok),
 					"error", deleteErr)
 				continue

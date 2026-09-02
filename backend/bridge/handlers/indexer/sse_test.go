@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -9,20 +10,21 @@ import (
 
 func collectEvents(t *testing.T, input string) ([]SSEEvent, error) {
 	t.Helper()
-	ctx := context.Background()
-	events, errCh := ReadSSE(ctx, strings.NewReader(input))
-
 	var result []SSEEvent
-	for evt := range events {
+	decoder := NewSSEDecoder(context.Background(), strings.NewReader(input))
+	for {
+		evt, err := decoder.Next()
+		if err == io.EOF {
+			return result, nil
+		}
+		if err != nil {
+			return result, err
+		}
 		result = append(result, evt)
 	}
-	if err, ok := <-errCh; ok && err != nil {
-		return result, err
-	}
-	return result, nil
 }
 
-func TestReadSSE_StandardFlow(t *testing.T) {
+func TestSSEDecoder_StandardFlow(t *testing.T) {
 	input := "event:started\ndata:{\"status\":\"ok\"}\n\nevent:complete\ndata:{\"done\":true}\n\n"
 
 	events, err := collectEvents(t, input)
@@ -40,7 +42,25 @@ func TestReadSSE_StandardFlow(t *testing.T) {
 	}
 }
 
-func TestReadSSE_MultilineData(t *testing.T) {
+func TestSSEDecoderReadsSynchronously(t *testing.T) {
+	decoder := NewSSEDecoder(context.Background(), strings.NewReader("event:progress\ndata:{\"status\":\"running\"}\n\nevent:complete\ndata:{}\n\n"))
+	first, err := decoder.Next()
+	if err != nil {
+		t.Fatalf("first event: %v", err)
+	}
+	if first.Type != "progress" || first.Data != `{"status":"running"}` {
+		t.Fatalf("first event = %#v", first)
+	}
+	second, err := decoder.Next()
+	if err != nil {
+		t.Fatalf("second event: %v", err)
+	}
+	if second.Type != "complete" || second.Data != "{}" {
+		t.Fatalf("second event = %#v", second)
+	}
+}
+
+func TestSSEDecoder_MultilineData(t *testing.T) {
 	input := "event:message\ndata:line1\ndata:line2\ndata:line3\n\n"
 
 	events, err := collectEvents(t, input)
@@ -55,7 +75,7 @@ func TestReadSSE_MultilineData(t *testing.T) {
 	}
 }
 
-func TestReadSSE_Comments(t *testing.T) {
+func TestSSEDecoder_Comments(t *testing.T) {
 	input := ": this is a comment\nevent:ping\ndata:hello\n\n"
 
 	events, err := collectEvents(t, input)
@@ -70,7 +90,7 @@ func TestReadSSE_Comments(t *testing.T) {
 	}
 }
 
-func TestReadSSE_CRLFLineEndings(t *testing.T) {
+func TestSSEDecoder_CRLFLineEndings(t *testing.T) {
 	input := "event:test\r\ndata:value\r\n\r\n"
 
 	events, err := collectEvents(t, input)
@@ -85,7 +105,7 @@ func TestReadSSE_CRLFLineEndings(t *testing.T) {
 	}
 }
 
-func TestReadSSE_EOFFlushesPartial(t *testing.T) {
+func TestSSEDecoder_EOFFlushesPartial(t *testing.T) {
 	// No trailing empty line — event should still be flushed on EOF
 	input := "event:partial\ndata:some data"
 
@@ -101,7 +121,7 @@ func TestReadSSE_EOFFlushesPartial(t *testing.T) {
 	}
 }
 
-func TestReadSSE_EmptyDataField(t *testing.T) {
+func TestSSEDecoder_EmptyDataField(t *testing.T) {
 	input := "event:empty\ndata:\n\n"
 
 	events, err := collectEvents(t, input)
@@ -116,52 +136,33 @@ func TestReadSSE_EmptyDataField(t *testing.T) {
 	}
 }
 
-func TestReadSSE_ContextCancellation(t *testing.T) {
+func TestSSEDecoder_ContextCancellation(t *testing.T) {
 	// Use a pipe; close the reader side to simulate what happens when
 	// an HTTP request context is cancelled (response body gets closed).
 	pr, pw := io.Pipe()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	events, errCh := ReadSSE(ctx, pr)
-
-	// Cancel context and close the reader to unblock the scanner.
 	cancel()
+	decoder := NewSSEDecoder(ctx, pr)
+
+	// Close the reader to unblock the scanner after cancellation.
 	pr.Close()
 	pw.Close()
 
-	// Drain — should complete quickly
-	var count int
-	for range events {
-		count++
-	}
-	if count != 0 {
-		t.Errorf("expected 0 events after cancel, got %d", count)
-	}
-
-	// errCh should be closed with no error (context cancellation is not reported)
-	if err, ok := <-errCh; ok && err != nil {
-		t.Errorf("unexpected error after cancel: %v", err)
+	if _, err := decoder.Next(); !errors.Is(err, context.Canceled) {
+		t.Errorf("error after cancel = %v, want context canceled", err)
 	}
 }
 
-func TestReadSSE_EOFIsCleanClose(t *testing.T) {
+func TestSSEDecoder_EOFIsCleanClose(t *testing.T) {
 	// Empty input — should produce no events and no error
-	events, errCh := ReadSSE(context.Background(), strings.NewReader(""))
-
-	var count int
-	for range events {
-		count++
-	}
-	if count != 0 {
-		t.Errorf("expected 0 events, got %d", count)
-	}
-
-	if err, ok := <-errCh; ok && err != nil {
-		t.Errorf("EOF should not produce error, got: %v", err)
+	decoder := NewSSEDecoder(context.Background(), strings.NewReader(""))
+	if _, err := decoder.Next(); !errors.Is(err, io.EOF) {
+		t.Errorf("error at EOF = %v, want EOF", err)
 	}
 }
 
-func TestReadSSE_EventTypeWithSpaces(t *testing.T) {
+func TestSSEDecoder_EventTypeWithSpaces(t *testing.T) {
 	input := "event:  progress  \ndata:42\n\n"
 
 	events, err := collectEvents(t, input)
@@ -176,7 +177,7 @@ func TestReadSSE_EventTypeWithSpaces(t *testing.T) {
 	}
 }
 
-func TestReadSSE_MultipleEmptyLines(t *testing.T) {
+func TestSSEDecoder_MultipleEmptyLines(t *testing.T) {
 	// Multiple consecutive empty lines should not produce empty events
 	input := "event:one\ndata:1\n\n\n\nevent:two\ndata:2\n\n"
 
@@ -189,7 +190,7 @@ func TestReadSSE_MultipleEmptyLines(t *testing.T) {
 	}
 }
 
-func TestReadSSE_LargeDataLine(t *testing.T) {
+func TestSSEDecoder_LargeDataLine(t *testing.T) {
 	large := strings.Repeat("x", 70*1024)
 	input := "event:progress\ndata:" + large + "\n\n"
 
@@ -202,5 +203,22 @@ func TestReadSSE_LargeDataLine(t *testing.T) {
 	}
 	if events[0].Data != large {
 		t.Fatalf("unexpected data size: got=%d want=%d", len(events[0].Data), len(large))
+	}
+}
+
+func TestSSEDecoder_BoundsAccumulatedEventData(t *testing.T) {
+	var b strings.Builder
+	for range 6 {
+		b.WriteString("event:progress\ndata:")
+		b.WriteString(strings.Repeat("x", 200*1024))
+		b.WriteString("\n")
+	}
+
+	_, err := collectEvents(t, b.String())
+	if err == nil {
+		t.Fatal("expected accumulated event data size error")
+	}
+	if !strings.Contains(err.Error(), "event data exceeds") {
+		t.Fatalf("error = %v, want event data limit", err)
 	}
 }

@@ -22,7 +22,13 @@ Its primary inspiration is [Cockpit](https://cockpit-project.org/): one place to
 
 This project also draws inspiration from many projects across the homelab ecosystem, including [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser), [Portainer](https://www.portainer.io/), [Homepage](https://gethomepage.dev/), [Unraid](https://unraid.net/), and many others.
 
-The file-management experience and visual style are intentionally very closely inspired by FileBrowser Quantum, and that influence is explicitly acknowledged.
+The file-management experience and visual style are intentionally very closely
+inspired by FileBrowser Quantum, as it fits very nicely into the app's theme so that influence is explicitly acknowledged.
+
+LinuxIO's filesystem indexer follows up on the work done by FileBrowser Quantum
+and builds on its indexing code, reworked as a dedicated LinuxIO
+service. The goal is to provide a low-memory filesystem index with an on-demand
+API, fast(ish) full indexing, and efficient query responses.
 
 Linux I/O combines workflows usually split across multiple tools:
 
@@ -42,6 +48,7 @@ Linux I/O combines workflows usually split across multiple tools:
 - **Docker Manager** - Container management
 - **WireGuard UI** - VPN configuration
 - **File Explorer** - Integrated file explorer
+- **Filesystem Indexer** - Fast search, directory sizes, and scheduled indexing
 - **User Accounts** - User management
 - **Share Manager** - Samba/NFS shares
 - **NetworkManager** - Network configuration
@@ -95,6 +102,15 @@ hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
 
+The first-party `linuxio-indexer` binary is installed with LinuxIO rather than
+through Capability Manager. Its root-only Unix API is socket activated at
+`/run/linuxio/indexer.sock`; the webserver keeps the daemon warm while it is
+running, and the daemon exits after a fixed 90-second idle grace once the
+webserver and active work are gone. A systemd timer requests periodic full indexing. Its two-field YAML
+configuration and rebuildable cache live under `/etc/linuxio/indexer` and
+`/var/lib/linuxio/indexer`; see the [filesystem indexer guide](docs/indexer.md)
+for permissions, lifecycle, and recovery.
+
 <details>
 <summary><strong>What gets installed?</strong></summary>
 
@@ -135,6 +151,7 @@ lists the architecture, API-contract, and frontend guides.
 
 - **Main Server**: Handles HTTP/HTTPS and WebSocket connections
 - **Bridge Process**: Per-user privileged operations with security isolation
+- **Indexer Process**: Socket-activated SQLite/scanner owner with idle shutdown
 
 ---
 
@@ -181,7 +198,10 @@ docs(readme): update installation instructions
 
 ## License
 
-This project is licensed under the [GNU General Public License v2.0](LICENSE).
+This project is licensed under the [Apache License 2.0](LICENSE).
+Third-party licenses and notices included in the filesystem indexer are
+listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and installed at
+`/usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md`.
 
 ---
 
@@ -189,7 +209,7 @@ This project is licensed under the [GNU General Public License v2.0](LICENSE).
 
 - [Cockpit](https://cockpit-project.org/) - Primary product inspiration and unified Linux operations model
 - [Arcane](https://github.com/getarcaneapp/arcane) - UI and interaction inspiration
-- [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser) - Strong inspiration for file-management UX and visual style
+- [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser) - File-management UX and visual inspiration, and the foundation for LinuxIO's filesystem indexer
 - [Unraid](https://unraid.net/) - Product and homelab management inspiration
 - [Mira Theme](https://mira.bootlab.io) - UI design
 - Many other open source and self-hosted projects that shaped LinuxIO's direction

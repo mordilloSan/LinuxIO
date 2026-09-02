@@ -323,9 +323,7 @@ const ActivitySection = ({
     </div>
     <AppDivider />
 
-    <div className="account-activity-section-body custom-scrollbar">
-      {children}
-    </div>
+    <div className="account-activity-section-body">{children}</div>
   </FrostedCard>
 );
 
@@ -382,10 +380,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
       />
 
       <>
-        <div
-          className="custom-scrollbar"
-          style={{ flex: 1, overflowX: "auto" }}
-        >
+        <div style={{ flex: 1, overflowX: "auto" }}>
           <div style={{ minWidth: "max-content" }}>
             <DetailRow label="Admin" noBorder>
               <DetailText color={adminColor}>

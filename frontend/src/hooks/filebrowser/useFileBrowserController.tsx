@@ -17,6 +17,7 @@ import { useFileDragAndDrop } from "@/hooks/filebrowser/useFileDragAndDrop";
 import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
 import { useFileMutations } from "@/hooks/filebrowser/useFileMutations";
 import { useFileQueries } from "@/hooks/filebrowser/useFileQueries";
+import { isSearchableQuery } from "@/hooks/filebrowser/useFileSearch";
 import {
   useFileSelection,
   useFileSelectionState,
@@ -24,7 +25,6 @@ import {
 import { useFileUpload } from "@/hooks/filebrowser/useFileUpload";
 import { useFileViewState } from "@/hooks/filebrowser/useFileViewState";
 import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidation";
-import { useCapability } from "@/hooks/useCapabilities";
 
 export interface FileBrowserController {
   contentProps: Omit<FileBrowserContentProps, "breadcrumbs">;
@@ -39,6 +39,7 @@ export function useFileBrowserController(
   const {
     actions: viewActions,
     contextMenuPosition,
+    searchCaseSensitive,
     searchQuery,
     showHiddenFiles,
     sortField,
@@ -94,8 +95,6 @@ export function useFileBrowserController(
     selectedPaths,
   } = selection;
   const { startDownload, startUpload } = useBackgroundTaskActions();
-  const { isEnabled: indexerEnabled, status: indexerStatus } =
-    useCapability("indexerAvailable");
 
   // Collision handling shared by paste and uploads: pre-check destinations,
   // prompt per conflicting item, never overwrite without an explicit choice.
@@ -150,10 +149,12 @@ export function useFileBrowserController(
     hasMultipleDetailTargets,
     listingQueryOptions,
   });
-  const { filteredResource, isSearchLoading } = useFileBrowserFilteredResource({
-    resource,
-    searchQuery,
-  });
+  const { filteredResource, searchError, isSearchLoading } =
+    useFileBrowserFilteredResource({
+      caseSensitive: searchCaseSensitive,
+      resource,
+      searchQuery,
+    });
 
   // Clipboard behaviors on top of the selection slice
   const { handleCopy, handleCut, handlePaste, selectedItems } =
@@ -296,6 +297,7 @@ export function useFileBrowserController(
 
   const selectedPathsCount = selectedPaths.size;
   const clipboardAvailable = clipboard !== null;
+  const searchActive = isSearchableQuery(searchQuery);
 
   const editorDialogs = useMemo(
     () => ({
@@ -359,7 +361,7 @@ export function useFileBrowserController(
       anchorPosition: contextMenuPosition,
       canCompress: canCompressSelection,
       canExtract: canExtractSelection,
-      canOpenContainingFolder: Boolean(searchQuery) && selectedPathsCount === 1,
+      canOpenContainingFolder: searchActive && selectedPathsCount === 1,
       canRename: selectedPathsCount === 1,
       canShowDetails,
       hasClipboard: clipboardAvailable,
@@ -400,7 +402,7 @@ export function useFileBrowserController(
       handlePaste,
       handleShowDetails,
       handleUpload,
-      searchQuery,
+      searchActive,
       selectedPathsCount,
       viewActions,
     ],
@@ -576,16 +578,16 @@ export function useFileBrowserController(
   const contentChrome = useMemo(
     () => ({
       editingPath,
-      indexerEnabled,
-      indexerStatus,
       isSavingFile,
       normalizedPath,
       onOpenDirectory: handleOpenDirectory,
+      onSearchCaseSensitiveChange: viewActions.setSearchCaseSensitive,
       onSearchChange: viewActions.setSearch,
       onSortChange: viewActions.changeSort,
       onSwitchView: viewActions.switchView,
       onToggleHiddenFiles: viewActions.toggleHiddenFiles,
       searchQuery,
+      searchCaseSensitive,
       showHiddenFiles,
       sortOrder,
       viewMode,
@@ -593,10 +595,9 @@ export function useFileBrowserController(
     [
       editingPath,
       handleOpenDirectory,
-      indexerEnabled,
-      indexerStatus,
       isSavingFile,
       normalizedPath,
+      searchCaseSensitive,
       searchQuery,
       showHiddenFiles,
       sortOrder,
@@ -608,10 +609,11 @@ export function useFileBrowserController(
   const contentData = useMemo(
     () => ({
       filteredResource,
+      searchError,
       isSearchLoading,
       resource,
     }),
-    [filteredResource, isSearchLoading, resource],
+    [filteredResource, searchError, isSearchLoading, resource],
   );
 
   const contentListing = useMemo(

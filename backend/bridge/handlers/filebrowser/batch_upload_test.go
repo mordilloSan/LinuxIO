@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 func TestParseUploadBatchRequestValidation(t *testing.T) {
@@ -266,6 +269,37 @@ func TestUploadBatchDirectoriesOnlyCompletesWithoutBytes(t *testing.T) {
 		}
 	}
 	waitTaskDone(t, task)
+}
+
+func TestUploadBatchCompletionReindexesDestinationOnce(t *testing.T) {
+	detachedIndexerUpdates.Wait()
+	dest := t.TempDir()
+	requests := recordIndexerRequests(t)
+	req := apischema.FileUploadBatchRequest{
+		Destination: dest,
+		Files: []apischema.FileUploadBatchEntry{
+			{Path: "a.txt", Size: "1"},
+			{Path: "sub/b.txt", Size: "1"},
+		},
+		Directories: []string{"sub"},
+	}
+
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
+	writeData(t, conn, []byte("ab"))
+	writeClose(t, conn)
+	result := waitResult(t, results)
+	if result.Status != "ok" {
+		t.Fatalf("result status = %q (error %q)", result.Status, result.Error)
+	}
+	waitTaskDone(t, task)
+	detachedIndexerUpdates.Wait()
+
+	assertIndexerRequests(t, *requests, []recordedIndexerRequest{{
+		method: http.MethodPost,
+		path:   indexerapi.RouteReindex,
+		query:  url.Values{"path": {dest}}.Encode(),
+	}})
 }
 
 func TestUploadBatchSkipsFailedItemAndContinues(t *testing.T) {

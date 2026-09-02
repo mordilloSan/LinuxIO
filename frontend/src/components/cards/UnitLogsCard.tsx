@@ -93,7 +93,6 @@ const UnitLogsLiveContent = ({
           </div>
         )}
         <AppTypography
-          className="custom-scrollbar"
           component="div"
           ref={logsBoxRef}
           style={{

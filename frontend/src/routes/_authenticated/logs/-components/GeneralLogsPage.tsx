@@ -444,7 +444,6 @@ const LogEntryDetails = ({
             </AppTypography>
           )}
           <AppPaper
-            className="custom-scrollbar"
             style={{
               padding: 8,
               backgroundColor: "var(--app-code-block-background)",

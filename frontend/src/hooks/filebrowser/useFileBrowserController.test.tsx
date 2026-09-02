@@ -22,10 +22,6 @@ const mocks = vi.hoisted(() => ({
     startDownload: vi.fn(),
     startUpload: vi.fn(),
   },
-  capability: {
-    isEnabled: true,
-    status: "available",
-  },
   dialogs: {
     actions: {
       clearPendingDelete: vi.fn(),
@@ -213,11 +209,13 @@ const mocks = vi.hoisted(() => ({
       clearSearch: vi.fn(),
       closeContextMenu: vi.fn(),
       openContextMenu: vi.fn(),
+      setSearchCaseSensitive: vi.fn(),
       setSearch: vi.fn(),
       switchView: vi.fn(),
       toggleHiddenFiles: vi.fn(),
     },
     contextMenuPosition: { left: 12, top: 24 },
+    searchCaseSensitive: true,
     searchQuery: "readme",
     showHiddenFiles: false,
     sortField: "name",
@@ -310,10 +308,6 @@ vi.mock("@/hooks/filebrowser/useListingInvalidation", () => ({
   useListingInvalidation: () => mocks.invalidateListing,
 }));
 
-vi.mock("@/hooks/useCapabilities", () => ({
-  useCapability: () => mocks.capability,
-}));
-
 const resource = {
   path: "/srv/projects",
   type: "directory",
@@ -384,9 +378,8 @@ describe("useFileBrowserController", () => {
 
     expect(result.current.contentProps).toMatchObject({
       chrome: {
-        indexerEnabled: true,
-        indexerStatus: "available",
         normalizedPath: "/srv/projects",
+        searchCaseSensitive: true,
         searchQuery: "readme",
         showHiddenFiles: false,
         sortOrder: "asc",

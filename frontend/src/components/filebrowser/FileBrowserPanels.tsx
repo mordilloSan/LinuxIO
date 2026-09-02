@@ -40,41 +40,6 @@ import type {
 
 const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
 
-interface IndexerUnavailableAlertProps {
-  status: string;
-}
-
-export const IndexerUnavailableAlert = ({
-  status,
-}: IndexerUnavailableAlertProps) => (
-  <AppAlert
-    severity="info"
-    style={{
-      marginLeft: 8,
-      marginRight: 8,
-      marginTop: 4,
-    }}
-  >
-    <AppAlertTitle>
-      {status === "unknown"
-        ? "Checking Indexer Availability"
-        : "Indexer API Unavailable"}
-    </AppAlertTitle>
-    {status === "unknown" ? (
-      <AppTypography variant="body2">
-        Directory size calculations and file search stay disabled until indexer
-        availability is confirmed.
-      </AppTypography>
-    ) : (
-      <AppTypography variant="body2">
-        Directory size calculations and file search are disabled. Start the{" "}
-        <strong>indexer.target</strong> or <strong>indexer.socket</strong> to
-        enable these features.
-      </AppTypography>
-    )}
-  </AppAlert>
-);
-
 interface FileDropOverlayProps {
   normalizedPath: string;
 }
@@ -476,7 +441,6 @@ export const FileBrowserUploadDialog = ({
         </AppTypography>
         {uploadEntries.length > 0 && (
           <ul
-            className="custom-scrollbar"
             style={{
               margin: 0,
               marginTop: 6,
@@ -615,7 +579,6 @@ export const FileBrowserConflictDialog = ({
           </AppButton>
         </div>
         <ul
-          className="custom-scrollbar"
           style={{
             listStyle: "none",
             margin: 0,

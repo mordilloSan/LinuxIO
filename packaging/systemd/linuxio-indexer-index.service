@@ -1,0 +1,26 @@
+[Unit]
+Description=Run the LinuxIO filesystem index
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+Requisite=linuxio-indexer.socket
+After=linuxio-indexer.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX
+AmbientCapabilities=
+CapabilityBoundingSet=

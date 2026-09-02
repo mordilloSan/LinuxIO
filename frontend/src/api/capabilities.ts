@@ -35,6 +35,8 @@ export interface CapabilityDef {
   };
   /** Display name in the capability manager. */
   label: string;
+  /** False for internal feature gates that have their own status UI. */
+  visibleInManager?: boolean;
   /** Text shown when the capability is reachable. */
   readyText: string;
   /** Message when status is "unavailable". */
@@ -88,18 +90,6 @@ export const CAPABILITIES = [
     icon: "mdi:update",
     reasonUnknown: "Docker update availability is still being checked.",
     reasonUnavailable: "The LinuxIO Docker update runner is unavailable.",
-  },
-  {
-    wire: "indexer",
-    state: "indexerAvailable",
-    label: "Indexer",
-    description: "Search, folder sizes, and Docker stack indexing",
-    readyText: "Indexer API is reachable.",
-    dependency: "linuxio indexer",
-    icon: "mdi:magnify-scan",
-    reasonUnknown: "Indexer availability is still being checked.",
-    reasonUnavailable: "Indexer API is unavailable.",
-    installable: { requiresPackageKit: false },
   },
   {
     wire: "monitoring",

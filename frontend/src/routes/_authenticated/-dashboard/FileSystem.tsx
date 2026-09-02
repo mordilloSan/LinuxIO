@@ -58,7 +58,6 @@ const FsStats = () => {
   return (
     <div
       aria-label="File systems"
-      className="custom-scrollbar"
       role="region"
       style={{
         maxHeight: 110,

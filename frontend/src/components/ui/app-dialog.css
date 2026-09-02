@@ -75,9 +75,6 @@ body.dialog-open #root {
   box-shadow: var(--app-elevation-24);
 }
 
-/* Scroll chrome comes from .custom-scrollbar (variables.css), which AppDialog
-   puts on the paper and content nodes. */
-
 /* ── title ─────────────────────────────────── */
 
 .app-dialog-title {

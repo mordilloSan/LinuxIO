@@ -54,7 +54,7 @@ var timedateIface = dbusclient.Timedate.Interface(dbusclient.TimedateIface)
 
 func readTimedateProperty(ctx context.Context, prop string) (string, error) {
 	var result string
-	err := withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
+	err := dbusclient.Timedate.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		result, err = dbusclient.GetProperty[string](session, session.Object(), dbusclient.TimedateIface, prop)
 		return err
@@ -64,7 +64,7 @@ func readTimedateProperty(ctx context.Context, prop string) (string, error) {
 
 func readTimedateBoolProperty(ctx context.Context, prop string) (bool, error) {
 	var result bool
-	err := withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
+	err := dbusclient.Timedate.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		var err error
 		result, err = dbusclient.GetProperty[bool](session, session.Object(), dbusclient.TimedateIface, prop)
 		return err
@@ -98,13 +98,9 @@ func SetServerTime(ctx context.Context, isoTime string) error {
 }
 
 func callTimedate(ctx context.Context, member string, args ...any) error {
-	return withTimedateSession(ctx, func(session dbusclient.SystemSession) error {
+	return dbusclient.Timedate.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		return session.Call(timedateIface.Method(member), dbusclient.CallPolicy{}, args...)
 	})
-}
-
-func withTimedateSession(ctx context.Context, fn func(dbusclient.SystemSession) error) error {
-	return dbusclient.Timedate.UseSession(ctx, fn)
 }
 
 func GetNTPServers(ctx context.Context) ([]string, error) {

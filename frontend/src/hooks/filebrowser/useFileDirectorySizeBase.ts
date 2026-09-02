@@ -1,5 +1,3 @@
-import { useCapability } from "@/hooks/useCapabilities";
-
 /**
  * Shared constants for directory size queries
  */
@@ -8,7 +6,7 @@ export const DIRECTORY_SIZE_CONFIG = {
   CACHE_PERSISTENCE: 24 * 60 * 60 * 1000, // 24 hours (gcTime)
   FAILED_RETRY_DELAY: 30 * 1000, // 30 seconds
   MAX_RETRIES: 2,
-  EXCLUDED_DIRECTORIES: ["/proc", "/dev", "/sys"],
+  EXCLUDED_DIRECTORIES: ["/proc", "/dev", "/sys", "/var/lib/linuxio/indexer"],
 } as const;
 
 /**
@@ -40,12 +38,9 @@ export const getDirectorySizeQueryOptions = () => ({
  */
 export const getDirectorySizeError = (
   error: Error | null,
-  indexerDisabled: boolean,
   shouldSkip: boolean,
 ): Error | null => {
-  if (indexerDisabled && !shouldSkip) {
-    return new Error("Directory size indexing is unavailable");
-  }
+  if (shouldSkip) return null;
   return error instanceof Error ? error : null;
 };
 
@@ -54,16 +49,9 @@ export const getDirectorySizeError = (
  */
 export const isDirectorySizeUnavailable = (
   error: Error | null,
-  data: any,
-  indexerDisabled: boolean,
   shouldSkip: boolean,
 ): boolean => {
-  const derivedError = getDirectorySizeError(
-    error,
-    indexerDisabled,
-    shouldSkip,
-  );
-  return (derivedError !== null && !data) || (indexerDisabled && !shouldSkip);
+  return getDirectorySizeError(error, shouldSkip) !== null;
 };
 
 /**
@@ -73,15 +61,6 @@ export const shouldEnableDirectorySizeQuery = (
   enabled: boolean,
   path: string | null | undefined,
   shouldSkip: boolean,
-  indexerDisabled: boolean,
 ): boolean => {
-  return enabled && !!path && !shouldSkip && !indexerDisabled;
-};
-
-/**
- * Get the current indexer availability status from AuthContext
- */
-export const useIndexerAvailability = () => {
-  const { isEnabled } = useCapability("indexerAvailable");
-  return !isEnabled;
+  return enabled && !!path && !shouldSkip;
 };

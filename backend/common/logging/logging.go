@@ -1,7 +1,6 @@
 package logging
 
 import (
-	"log"
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/logging/journald"
@@ -24,11 +23,6 @@ func Configure(identifier string, verbose bool) error {
 		return err
 	}
 
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
-
-	// Route standard-library log output through the default slog handler too.
-	log.SetFlags(0)
-	log.SetOutput(slog.NewLogLogger(logger.Handler(), slog.LevelInfo).Writer())
+	slog.SetDefault(slog.New(handler))
 	return nil
 }

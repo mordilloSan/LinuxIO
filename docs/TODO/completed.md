@@ -1,0 +1,127 @@
+# Completed or closed TODOs
+
+- [x] Completed the first-party indexer integration and simplification. LinuxIO
+  owns the root-only socket-activated service, timer, reduced configuration,
+  rebuildable cache, and browser Task recovery. The final design and operating
+  contract are documented in [Filesystem Indexer](../indexer.md).
+- [x] Documented indexer YAML/database/socket paths and bridge per-user
+  configuration storage. See
+  [Configuration and Storage Layout](../configuration-storage-layout.md).
+- [x] Completed resilient bridge configuration storage: independently persisted
+  core and UI documents now fall back from the authenticated home to
+  `/var/lib/linuxio/users/<uid>` and then memory; invalid core documents are
+  quarantined at startup; degraded storage is logged and surfaced in the UI.
+  See [Bridge Configuration Storage](../config-storage.md).
+- [x] Completed
+  File-Browser Read Paths and API Efficiency:
+  replaced `resource_get` with narrow listing, tree, text, and permission reads;
+  removed single-file sibling scans; added bounded cancellable enumeration; and
+  aligned frontend query ownership and invalidation with the focused contracts.
+- [x] Split bridge per-user state into bridge-owned functional settings and
+  frontend-produced UI snapshots, each independently created in its own
+  YAML file and lock; retained atomic flat-file writes and frontend-only UI
+  behavior while making the backend authoritative for persisted UI defaults;
+  made strict decode plus pure validation reset only the affected
+  file on content failure while I/O/security failures fail; removed legacy
+  conversion, permissive salvage, field repair, and filesystem-based Docker
+  folder mutation; made YAML, lock, and atomic replacement ownership follow
+  the authenticated UID/GID in privileged and unprivileged bridge modes. No
+  embedded database or JSON configuration was added.
+- [x] Closed the router policy settings question: the bridge `TaskPolicy`
+  values stay compile-time constants. They are cross-user admission limits, so
+  the per-user config file is the wrong scope, and no system-wide settings
+  store exists; revisit only if a real deployment hits a limit.
+- [x] Completed the phased native Docker update engine work: native registry
+  digest checks replaced Watchtower-based checks,
+  Compose-managed containers update through their Compose project, opted-in
+  standalone containers recreate transactionally with rollback, and scheduled
+  execution moved to a LinuxIO systemd runner.
+- [x] Completed Phases 1–5.5 of the
+  [API Reliability, Recovery, and Notifications Roadmap](./api-reliability-roadmap.md):
+  strict standard-library request decoding with an explicit safe-retry policy
+  and honest connection-loss outcomes; Task lifetime/owner scope and session
+  activity semantics; the durable `docker.update_container` Task proven with a
+  persistent operation record and external execution owner; app updates kept
+  session-bound with piped installer feedback and ordered post-result restart;
+  generic Task progress standardized while preserving typed route detail; and
+  visible, entity-scoped mutation feedback restored across the frontend.
+- [x] Completed the Call/Channel/Task transport migration: all Tasks use one
+  typed runner/result shape, ordinary handlers have no emitter, and
+  `TaskService` registers the reserved `tasks.*` Calls and Channels without a
+  special dispatch branch.
+- [x] **6. Total background-work review:** migrated bounded mutations to direct actions,
+  retained only real progress/recovery Tasks, added typed handler bindings and
+  compile-time route-mode endpoint safety, and eliminated contract drift.
+- [x] Moved the React Compiler backend from Babel to Oxc (2026-07-09), then
+  replaced the frozen general-transformer binding with the official dedicated
+  `oxc-transform-react` package and added separate reporting for recoverable
+  function bailouts and explicit compiler opt-outs (2026-08-16).
+- [x] Upgraded `oxc-transform-react` to 0.145.0, removed the temporary function-
+  outlining safeguard after `oxc-project/oxc#25548` shipped, aligned compiler
+  coverage with production, and passed the frontend, coverage, and browser gates
+  (2026-08-19).
+- [x] Replaced the custom React Compiler Vite plugin with the native
+  `@vitejs/plugin-react` 6.1 integration after upstream support shipped. Kept
+  React 19 compilation production-only in Vite, compiled production modules but
+  not test-only modules under Vitest, and left the browser fixture uncompiled.
+  Accepted the upstream integration's development JSX and source maps under
+  Vitest, warning diagnostics, and fatal-error handling after verifying the
+  resulting production, test, compiler-coverage, and browser behavior
+  (2026-08-23).
+- [x] Replaced the ESLint stack with Oxlint, tsgolint, and JS plugins.
+- [x] Completed the post-migration frontend UI architecture cleanup.
+- [x] Fixed file-browser progress updates rerendering the entire browser.
+- [x] Replaced per-item chmod with `filebrowser.chmod_batch`.
+- [x] Replaced the Job API with `useTaskAction` / `useTaskStreamAction` and
+  watch-based recovery; Query fetching has no Task lifecycle dependency.
+- [x] Fixed file-browser copy behavior for symlinks.
+- [x] Completed the file-browser batch-operation follow-ups.
+- [x] Implemented batch Tasks for copy, move, delete, and uploads.
+- [x] Implemented monitoring.
+- [x] Added virtualized rendering for logs and the file browser.
+- [x] Fixed invalid PackageKit `InfoEnum` debug output.
+- [x] Closed the TanStack Router migration proposal as not worthwhile.
+- [x] Split the Iconify registry into shell and route-specific chunks.
+- [x] Split `AuthGuard` into a lightweight gate and lazy authenticated
+  providers.
+- [x] Removed render-time state updates from the dashboard network card.
+- [x] Removed Space Grotesk and Material Icons in favor of local assets.
+- [x] Kept route preloading intent-based rather than preloading every route.
+- [x] Consolidated small utility helpers.
+- [x] Documented and enforced the bridge handler pattern.
+- [x] Generated the shared Go/React API contracts.
+- [x] Removed the binary protocol in favor of JSON.
+- [x] Stopped loading configuration on every page load.
+- [x] Aligned user configuration with the UI.
+- [x] Fixed the NFS distribution dependency.
+- [x] Implemented power management.
+- [x] Reviewed bridge and server logging.
+- [x] Removed `StartSimpleNetInfoSampler`.
+- [x] Moved chunk size into user configuration.
+- [x] Added configurable card/table view modes.
+- [x] Implemented Docker auto-update and the Docker Compose UI.
+- [x] Made builds reproducible from the same source tree.
+- [x] Fixed indexer status checks and calls.
+- [x] Added real streaming for service and Docker logs.
+- [x] Improved application-update progress feedback.
+- [x] Removed Gin.
+- [x] Adopted Quantum Filebrowser as the main navigator.
+- [x] Added login-time file-browser user provisioning.
+- [x] Added the session ID to file-browser headers.
+- [x] Removed the generated file-browser configuration after container creation.
+- [x] Ensured bridge cleanup terminates owned PTY sessions where required.
+- [x] Made the WebSocket persistent.
+- [x] Removed the main program's startup configuration-file requirement.
+- [x] Removed session IDs from the bridge socket and binary paths.
+- [x] Synchronized the global and file-browser themes.
+- [x] Consolidated post-login theme settings into one user configuration file.
+- [x] Separated bridge and server code.
+- [x] Reduced API calls when changing themes.
+- [x] Added a global read-only API for general information.
+- [x] Cancelled session-bound work when the bridge receives an exit command.
+- [x] Added WireGuard testing and latest-handshake reporting.
+- [x] Ensured session garbage collection also terminates its bridge.
+- [x] Tested multiple users.
+- [x] Added bridge-binary integrity validation.
+- [x] Multiplexed traffic over a single connection.
+- [x] Made update reporting more responsive with D-Bus/WebSocket events.

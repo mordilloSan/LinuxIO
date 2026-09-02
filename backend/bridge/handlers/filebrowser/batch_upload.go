@@ -253,10 +253,6 @@ func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 		t.mu.Lock()
 		t.succeeded++
 		t.mu.Unlock()
-
-		if info, err := root.Root.Stat(fsroot.ToRel(absPath)); err == nil {
-			notifyUploadedFile(absPath, info)
-		}
 	}
 }
 
@@ -344,7 +340,7 @@ func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
 		t.mu.Unlock()
 
 		if !failed {
-			if err := t.finalizeCurrent(session, current); err != nil {
+			if err := t.finalizeCurrent(session); err != nil {
 				slog.Debug("batch upload item failed", "path", current.absPath, "error", err)
 				t.recordFailure(current.relPath, err.Error())
 				t.cleanupCurrentTemp(session.root)
@@ -463,7 +459,7 @@ func (t *uploadBatchTransferTask) failCurrent(session *uploadBatchSession, cause
 	t.cleanupCurrentTemp(session.root)
 }
 
-func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession, current uploadBatchFile) error {
+func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession) error {
 	// Zero-size files never opened a buffer; create the (empty) temp now so
 	// every finalize is a rename of a fully-written buffer.
 	if err := t.ensurePrepared(session); err != nil {
@@ -481,9 +477,6 @@ func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession, c
 		return fmt.Errorf("finalize upload: %w", err)
 	}
 	restoreUploadedFile(session.root, finalRel, attrs)
-	if info, err := session.root.Root.Stat(finalRel); err == nil {
-		notifyUploadedFile(current.absPath, info)
-	}
 	return nil
 }
 
@@ -521,7 +514,16 @@ func (t *uploadBatchTransferTask) complete(stream net.Conn) error {
 	}
 	bytes := t.bytes
 	failed := len(t.failures)
+	succeeded := t.succeeded
 	t.mu.Unlock()
+	if succeeded > 0 {
+		runDetachedIndexerUpdate("upload_batch", func(ctx context.Context) error {
+			if err := requestIndexerReindex(ctx, t.destination); err != nil {
+				slog.Debug("batch upload indexer reconciliation failed", "path", t.destination, "error", err)
+			}
+			return nil
+		})
+	}
 
 	t.reportProgress("completed")
 	logWriteErr("ok+close", ipc.WriteResultOKAndClose(stream, 0, result))

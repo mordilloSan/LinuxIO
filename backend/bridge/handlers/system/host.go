@@ -7,17 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/shirou/gopsutil/v4/host"
 )
-
-func FetchHostInfo(ctx context.Context) (*host.InfoStat, error) {
-	return host.InfoWithContext(ctx)
-}
-
-func FetchUptimeSeconds(ctx context.Context) (uint64, error) {
-	return host.UptimeWithContext(ctx)
-}
 
 func GetCurrentServerTime(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {

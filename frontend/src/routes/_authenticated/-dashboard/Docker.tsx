@@ -267,7 +267,6 @@ const DockerContainers = () => {
   return (
     <>
       <div
-        className="custom-scrollbar"
         style={{
           display: "grid",
           gridTemplateColumns: isSmallUp

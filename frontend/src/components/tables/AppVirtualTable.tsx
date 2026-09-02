@@ -1168,7 +1168,7 @@ function AppVirtualTable<TData extends RowData>({
         )}
 
         <div
-          className="app-dt__scroll custom-scrollbar"
+          className="app-dt__scroll"
           onScroll={onScroll}
           ref={scrollRef}
           role="presentation"

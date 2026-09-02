@@ -90,7 +90,7 @@ func (b *dnfBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 			"DNF Automatic is configured to check without downloading; saving will switch it to download-only mode.",
 		)
 	}
-	if !dnfSupportsReboot(support, state.Options.RebootPolicy) {
+	if !slices.Contains(support.RebootPolicies, state.Options.RebootPolicy) {
 		state.Options.RebootPolicy = "never"
 	}
 
@@ -135,10 +135,6 @@ func dnf4RebootSupported(config *ini.File) bool {
 	default:
 		return false
 	}
-}
-
-func dnfSupportsReboot(support AutoUpdateOptionSupport, policy AutoUpdateRebootPolicy) bool {
-	return slices.Contains(support.RebootPolicies, policy)
 }
 
 func (b *dnfBackend) Apply(ctx context.Context, options AutoUpdateOptions) error {

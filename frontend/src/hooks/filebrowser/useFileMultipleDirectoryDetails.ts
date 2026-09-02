@@ -7,7 +7,6 @@ import { stripTrailingSlash } from "@/utils/path";
 import {
   getDirectorySizeQueryOptions,
   shouldSkipSizeCalculation,
-  useIndexerAvailability,
 } from "./useFileDirectorySizeBase";
 
 interface UseMultipleDirectoryDetailsResult {
@@ -32,17 +31,12 @@ export const useFileMultipleDirectoryDetails = (
       !shouldSkipSizeCalculation(path),
   );
 
-  const indexerDisabled = useIndexerAvailability();
-  const indexerUnavailableError = indexerDisabled
-    ? new Error("Directory size indexing is unavailable")
-    : null;
-
   // One dir_size query per directory - shares cache with useDirectorySize!
   const queries = useQueries({
     queries: directoryPaths.map((path) => ({
       ...linuxio.filebrowser.dir_size({ path: stripTrailingSlash(path) }),
       ...getDirectorySizeQueryOptions(),
-      enabled: !indexerDisabled,
+      enabled: true,
     })),
   });
 
@@ -71,9 +65,7 @@ export const useFileMultipleDirectoryDetails = (
     let itemError: Error | null = null;
 
     if (isDir) {
-      if (indexerDisabled) {
-        itemError = indexerUnavailableError;
-      } else if (query) {
+      if (query) {
         isLoading = query.isLoading;
         if (isLoading) {
           result.isAnyLoading = true;

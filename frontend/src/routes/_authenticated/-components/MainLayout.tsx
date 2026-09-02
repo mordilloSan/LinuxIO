@@ -144,7 +144,6 @@ const MainLayout = () => {
           )}
 
           <div
-            className="custom-scrollbar"
             style={{
               flex: 1,
               minHeight: 0,

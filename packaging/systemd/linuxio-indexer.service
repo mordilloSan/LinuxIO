@@ -1,0 +1,34 @@
+[Unit]
+Description=LinuxIO Filesystem Indexer
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+After=linuxio-indexer.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/linuxio-indexer --config-file /etc/linuxio/indexer/config.yaml
+Restart=on-failure
+RestartSec=5s
+Environment=SQLITE_TMPDIR=/var/lib/linuxio/indexer
+StateDirectory=linuxio/indexer
+StateDirectoryMode=0750
+
+# The scanner needs read access to the host filesystem, but writes only its
+# canonical config and index state.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/etc/linuxio/indexer /var/lib/linuxio/indexer
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+UMask=0027

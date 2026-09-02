@@ -111,7 +111,10 @@ func GetUnitFileState(ctx context.Context, name string) (string, error) {
 }
 
 func DaemonReload(ctx context.Context) error {
-	return reloadManager(ctx)
+	if err := managerIface.Call(ctx, "Reload", dbusclient.CallPolicy{}); err != nil {
+		return fmt.Errorf("reload systemd manager: %w", err)
+	}
+	return nil
 }
 
 func GetActiveState(ctx context.Context, name string) (string, error) {
@@ -247,13 +250,6 @@ func unmaskUnitFiles(ctx context.Context, names []string) error {
 		&changes,
 	); err != nil {
 		return fmt.Errorf("unmask unit files %s: %w", strings.Join(names, ", "), err)
-	}
-	return nil
-}
-
-func reloadManager(ctx context.Context) error {
-	if err := managerIface.Call(ctx, "Reload", dbusclient.CallPolicy{}); err != nil {
-		return fmt.Errorf("reload systemd manager: %w", err)
 	}
 	return nil
 }

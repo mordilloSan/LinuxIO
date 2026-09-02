@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from "react";
 
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import { useFileListKeyboardNavigation } from "@/hooks/filebrowser/useFileListKeyboardNavigation";
 import { useFileMarqueeSelection } from "@/hooks/filebrowser/useFileMarqueeSelection";
 import { useFileSubfolders } from "@/hooks/filebrowser/useFileSubfolders";
@@ -107,9 +108,12 @@ const DirectoryListing = ({
   const selectedPathsRef = useLatestRef(selectedPaths);
 
   // Fetch all subfolder sizes in one request
-  const { subfoldersMap, isLoading: isLoadingSubfolders } = useFileSubfolders(
-    resource.path,
-  );
+  const {
+    error: subfoldersError,
+    isLoading: isLoadingSubfolders,
+    isUnavailable: subfoldersUnavailable,
+    subfoldersMap,
+  } = useFileSubfolders(resource.path);
 
   const clearSelection = useCallback(() => {
     onSelectedPathsChange(new Set());
@@ -303,32 +307,41 @@ const DirectoryListing = ({
   }
 
   return (
-    <VirtualDirectoryItems
-      containerRef={containerRef}
-      cutPaths={cutPaths}
-      files={files}
-      folders={folders}
-      isLoadingSubfolders={isLoadingSubfolders}
-      isMarqueeSelecting={isSelecting}
-      onCancelRename={onCancelRename}
-      onConfirmRename={onConfirmRename}
-      onContainerMouseDown={handleContainerMouseDown}
-      onDownloadFile={onDownloadFile}
-      onFileClick={handleFileClick}
-      onFileContextMenu={handleItemContextMenu}
-      onFolderClick={handleFolderClick}
-      onFolderContextMenu={handleItemContextMenu}
-      onMarqueeMouseDown={handleMouseDown}
-      onOpenDirectory={onOpenDirectory}
-      renamingPath={renamingPath}
-      renamePendingPath={renamePendingPath}
-      renameProgressPct={renameProgressPct}
-      revealIndex={revealIndex}
-      selectedPaths={selectedPaths}
-      selectionBox={selectionBox}
-      subfoldersMap={subfoldersMap}
-      viewMode={viewMode}
-    />
+    <>
+      {subfoldersUnavailable && (
+        <AppAlert severity="warning">
+          <AppAlertTitle>Directory sizes unavailable</AppAlertTitle>
+          {subfoldersError?.message ??
+            "The indexer is unavailable; cached directory sizes are stale."}
+        </AppAlert>
+      )}
+      <VirtualDirectoryItems
+        containerRef={containerRef}
+        cutPaths={cutPaths}
+        files={files}
+        folders={folders}
+        isLoadingSubfolders={isLoadingSubfolders}
+        isMarqueeSelecting={isSelecting}
+        onCancelRename={onCancelRename}
+        onConfirmRename={onConfirmRename}
+        onContainerMouseDown={handleContainerMouseDown}
+        onDownloadFile={onDownloadFile}
+        onFileClick={handleFileClick}
+        onFileContextMenu={handleItemContextMenu}
+        onFolderClick={handleFolderClick}
+        onFolderContextMenu={handleItemContextMenu}
+        onMarqueeMouseDown={handleMouseDown}
+        onOpenDirectory={onOpenDirectory}
+        renamingPath={renamingPath}
+        renamePendingPath={renamePendingPath}
+        renameProgressPct={renameProgressPct}
+        revealIndex={revealIndex}
+        selectedPaths={selectedPaths}
+        selectionBox={selectionBox}
+        subfoldersMap={subfoldersMap}
+        viewMode={viewMode}
+      />
+    </>
   );
 };
 

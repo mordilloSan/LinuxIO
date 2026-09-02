@@ -5,6 +5,7 @@ import (
 
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 type AutoUpdateFrequency string
@@ -14,7 +15,6 @@ type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
 type ConfigStorageMode string
-type IndexerIntegrityCheck string
 type TaskState string
 type MonitoringHistoryResolution string
 type SensorReadingKind string
@@ -32,7 +32,6 @@ var StringEnums = map[string][]string{
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
 	"ConfigStorageMode":             {"home", "fallback", "memory"},
-	"IndexerIntegrityCheck":         {"full", "quick", "off"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
 	"SensorReadingKind":             {"number", "boolean"},
@@ -844,17 +843,6 @@ type UsersGroupsResponse struct {
 	Users  []string `json:"users"`
 }
 
-type IndexerStatusResponse struct {
-	DirsIndexed  int     `json:"dirs_indexed"`
-	FTSActive    bool    `json:"fts_active"`
-	FilesIndexed int     `json:"files_indexed"`
-	LastIndexed  *string `json:"last_indexed,omitempty"`
-	Running      bool    `json:"running"`
-	Status       string  `json:"status"`
-	TotalSize    int64   `json:"total_size"`
-	Warning      *string `json:"warning,omitempty"`
-}
-
 type AccountUser struct {
 	Gecos        string   `json:"gecos"`
 	GID          int      `json:"gid"`
@@ -1093,56 +1081,36 @@ type InstallCapabilityResult struct {
 	Warning   *string `json:"warning,omitempty"`
 }
 
+// IndexerConfig combines daemon-owned configuration with systemd scheduling.
 type IndexerConfig struct {
-	DBAutoVacuum         string                `json:"db_auto_vacuum"`
-	DBBusyTimeout        string                `json:"db_busy_timeout"`
-	DBConnMaxIdleTime    string                `json:"db_conn_max_idle_time"`
-	DBJournalMode        string                `json:"db_journal_mode"`
-	DBMaxIdleConns       int                   `json:"db_max_idle_conns"`
-	DBMaxOpenConns       int                   `json:"db_max_open_conns"`
-	DBPath               string                `json:"db_path"`
-	DBSynchronous        string                `json:"db_synchronous"`
-	FreshIndex           bool                  `json:"fresh_index"`
-	FTSSearch            bool                  `json:"fts_search"`
-	IncludeHidden        bool                  `json:"include_hidden"`
-	IncludeNetworkMounts bool                  `json:"include_network_mounts"`
-	IntegrityCheck       IndexerIntegrityCheck `json:"integrity_check"`
-	IndexName            string                `json:"index_name"`
-	IndexPath            string                `json:"index_path"`
-	Interval             string                `json:"interval"`
-	KeepIndexes          int                   `json:"keep_indexes"`
-	ListenAddr           string                `json:"listen_addr"`
-	SocketPath           string                `json:"socket_path"`
+	indexerapi.IndexerConfig
+	Interval string `json:"interval"`
+}
+
+type IndexerConfigPatch struct {
+	indexerapi.IndexerConfigPatch
 }
 
 type IndexerConfigSetResult struct {
-	Config          IndexerConfig `json:"config"`
-	RestartRequired bool          `json:"restart_required"`
+	Config IndexerConfig `json:"config"`
 }
 
 type IndexerTimerSetResult struct {
-	Config    IndexerConfig `json:"config"`
-	Interval  string        `json:"interval"`
-	TimerUnit string        `json:"timer_unit"`
+	Interval string `json:"interval"`
 }
 
 type IndexerDaemonStatus struct {
-	ActiveOperation *string `json:"active_operation,omitempty"`
-	ActivePath      *string `json:"active_path,omitempty"`
-	DatabaseSize    int64   `json:"database_size"`
-	FTSActive       bool    `json:"fts_active"`
-	LastIndexed     *string `json:"last_indexed,omitempty"`
-	NumDirs         int     `json:"num_dirs"`
-	NumFiles        int     `json:"num_files"`
-	Running         bool    `json:"running"`
-	SHMSize         int64   `json:"shm_size"`
-	Status          string  `json:"status"`
-	TotalEntries    int     `json:"total_entries"`
-	TotalIndexes    int     `json:"total_indexes"`
-	TotalOnDisk     int64   `json:"total_on_disk"`
-	TotalSize       int64   `json:"total_size"`
-	WALSize         int64   `json:"wal_size"`
-	Warning         *string `json:"warning,omitempty"`
+	ActiveOperation   *string `json:"active_operation,omitempty"`
+	ActiveOperationID *string `json:"active_operation_id,omitempty"`
+	ActivePath        *string `json:"active_path,omitempty"`
+	DatabaseSize      int64   `json:"database_size"`
+	LastIndexed       *string `json:"last_indexed,omitempty"`
+	NumDirs           int     `json:"num_dirs"`
+	NumFiles          int     `json:"num_files"`
+	Running           bool    `json:"running"`
+	Status            string  `json:"status"`
+	TotalSize         int64   `json:"total_size"`
+	Warning           *string `json:"warning,omitempty"`
 }
 
 type MonitoringListener struct {

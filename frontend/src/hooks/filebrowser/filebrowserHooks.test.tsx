@@ -389,6 +389,16 @@ describe("useFileViewState", () => {
     expect(result.current.searchQuery).toBe("");
   });
 
+  it("tracks case-sensitive search independently of the query", () => {
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+
+    expect(result.current.searchCaseSensitive).toBe(false);
+    act(() => result.current.actions.setSearchCaseSensitive(true));
+    expect(result.current.searchCaseSensitive).toBe(true);
+  });
+
   it("keeps state identity when clearing an already empty search", () => {
     const { result } = renderHook(() => useFileViewState(), {
       wrapper: configWrapper(),

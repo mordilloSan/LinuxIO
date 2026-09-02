@@ -206,7 +206,6 @@ export const AppDialog = ({
   };
   const mergedPaperClass = [
     "app-dialog__paper",
-    "custom-scrollbar",
     paperClassName,
     slotProps?.paper?.className,
   ]
@@ -302,7 +301,7 @@ export const AppDialogContent = ({
   ...props
 }: AppDialogContentProps) => (
   <div
-    className={`app-dialog-content custom-scrollbar ${className || ""}`.trim()}
+    className={`app-dialog-content ${className || ""}`.trim()}
     ref={ref}
     {...props}
   />

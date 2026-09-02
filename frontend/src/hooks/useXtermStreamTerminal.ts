@@ -191,10 +191,6 @@ export function useXtermStreamTerminal({
     const runReady = () => {
       if (disposed) return;
 
-      containerRef.current
-        ?.querySelector(".xterm-viewport")
-        ?.classList.add("custom-scrollbar");
-
       fitAndResize();
       const cleanup = handleReady(terminal);
       if (typeof cleanup === "function") {

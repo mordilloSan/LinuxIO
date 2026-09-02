@@ -176,9 +176,9 @@ const FileListRow = memo<FileListRowProps>(
         return ""; // Will render glow effect instead
       }
       if (effectiveSizeUnavailable) {
-        return ""; // Will render warning icon instead
+        return "Unavailable";
       }
-      if (effectiveSize !== undefined && effectiveSize !== 0) {
+      if (effectiveSize !== undefined) {
         return formatFileSize(effectiveSize, 1, "");
       }
       return "—";

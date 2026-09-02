@@ -39,7 +39,7 @@ const TabSelector = <TValue extends string>({
         ...style,
       }}
     >
-      <div className="tab-selector__scroller custom-scrollbar">
+      <div className="tab-selector__scroller">
         <div aria-label="Tabs" className="tab-selector__pills" role="tablist">
           {options.map((opt) => (
             <button

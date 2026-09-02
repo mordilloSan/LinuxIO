@@ -8,6 +8,7 @@ import type { FileResource } from "@/types/filebrowser";
 const useFileSearchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/filebrowser/useFileSearch", () => ({
+  isSearchableQuery: (query: string) => Array.from(query.trim()).length >= 3,
   useFileSearch: useFileSearchMock,
 }));
 
@@ -24,6 +25,7 @@ const directoryResource: FileResource = {
 
 function mockSearch(
   overrides: Partial<{
+    error: Error | null;
     isLoading: boolean;
     isUnavailable: boolean;
     results: SearchResult[];
@@ -40,6 +42,7 @@ function mockSearch(
 }
 
 function renderFiltered(params: {
+  caseSensitive?: boolean;
   resource?: FileResource;
   searchQuery: string;
 }) {
@@ -85,27 +88,60 @@ describe("useFileBrowserFilteredResource", () => {
     expect(result.current.filteredResource).toBe(fileResource);
   });
 
-  it("only enables the indexer search once the query reaches two characters", () => {
-    renderFiltered({ resource: directoryResource, searchQuery: "a" });
+  it("preserves the listing until the query reaches three characters", () => {
+    const { result } = renderFiltered({
+      resource: directoryResource,
+      searchQuery: "ab",
+    });
 
     expect(useFileSearchMock).toHaveBeenLastCalledWith({
       basePath: "/",
+      caseSensitive: false,
       enabled: false,
-      query: "a",
+      query: "ab",
+    });
+    expect(result.current.filteredResource).toBe(directoryResource);
+  });
+
+  it("forwards case-sensitive searches", () => {
+    renderFiltered({
+      caseSensitive: true,
+      resource: directoryResource,
+      searchQuery: "Alpha",
+    });
+
+    expect(useFileSearchMock).toHaveBeenLastCalledWith({
+      basePath: "/",
+      caseSensitive: true,
+      enabled: true,
+      query: "Alpha",
     });
   });
 
-  it("filters items client-side (case-insensitive) when the indexer is unavailable", () => {
-    mockSearch({ isUnavailable: true });
+  it("preserves the directory and surfaces service errors", () => {
+    const error = new Error("indexer service unavailable");
+    mockSearch({ error, isUnavailable: true });
 
     const { result } = renderFiltered({
       resource: directoryResource,
       searchQuery: "ALPHA",
     });
 
-    expect(
-      result.current.filteredResource?.items?.map((item) => item.name),
-    ).toEqual(["Alpha.txt"]);
+    expect(result.current.filteredResource).toBe(directoryResource);
+    expect(result.current.searchError).toBe(error);
+  });
+
+  it("preserves the directory and exposes search errors instead of showing an empty result", () => {
+    const error = new Error("indexer request failed");
+    mockSearch({ error });
+
+    const { result } = renderFiltered({
+      resource: directoryResource,
+      searchQuery: "ALPHA",
+    });
+
+    expect(result.current.filteredResource).toBe(directoryResource);
+    expect(result.current.searchError).toBe(error);
   });
 
   it("maps remote search results into file items", () => {

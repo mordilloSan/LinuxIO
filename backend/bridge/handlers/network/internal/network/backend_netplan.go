@@ -175,7 +175,7 @@ func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[
 	if updateErr != nil {
 		return updateErr
 	}
-	rendered, err := doc.render()
+	rendered, err := yaml.Marshal(doc.root)
 	if err != nil {
 		return err
 	}
@@ -216,10 +216,6 @@ func loadNetplanDoc(data []byte) (*netplanDoc, error) {
 		root = map[string]any{}
 	}
 	return &netplanDoc{root: root}, nil
-}
-
-func (d *netplanDoc) render() ([]byte, error) {
-	return yaml.Marshal(d.root)
 }
 
 func (d *netplanDoc) findInterfaceKind(iface string) (string, bool) {

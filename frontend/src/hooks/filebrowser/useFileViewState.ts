@@ -24,6 +24,7 @@ interface ContextMenuPosition {
 
 interface ViewState {
   contextMenuPosition: ContextMenuPosition | null;
+  searchCaseSensitive: boolean;
   searchQuery: string;
   sortField: SortField;
   sortOrder: SortOrder;
@@ -35,11 +36,13 @@ type ViewEvent =
   | { type: "clearSearch" }
   | { type: "closeContextMenu" }
   | { position: ContextMenuPosition; type: "openContextMenu" }
+  | { type: "setSearchCaseSensitive"; value: boolean }
   | { type: "setSearch"; value: string }
   | { type: "switchView" };
 
 const initialViewState: ViewState = {
   contextMenuPosition: null,
+  searchCaseSensitive: false,
   searchQuery: "",
   sortField: "name",
   sortOrder: "asc",
@@ -61,6 +64,8 @@ function viewReducer(state: ViewState, event: ViewEvent): ViewState {
       return { ...state, contextMenuPosition: event.position };
     case "setSearch":
       return { ...state, searchQuery: event.value };
+    case "setSearchCaseSensitive":
+      return { ...state, searchCaseSensitive: event.value };
     case "switchView": {
       const index = viewModes.indexOf(state.viewMode);
       return { ...state, viewMode: viewModes[(index + 1) % viewModes.length] };
@@ -73,6 +78,7 @@ interface ViewActions {
   clearSearch: () => void;
   closeContextMenu: () => void;
   openContextMenu: (position: ContextMenuPosition) => void;
+  setSearchCaseSensitive: (value: boolean) => void;
   setSearch: (value: string) => void;
   switchView: () => void;
   toggleHiddenFiles: () => void;
@@ -114,6 +120,8 @@ export const useFileViewState = (): ViewSlice => {
       closeContextMenu: () => dispatch({ type: "closeContextMenu" }),
       openContextMenu: (position) =>
         dispatch({ position, type: "openContextMenu" }),
+      setSearchCaseSensitive: (value) =>
+        dispatch({ type: "setSearchCaseSensitive", value }),
       setSearch: (value) => dispatch({ type: "setSearch", value }),
       switchView: () => dispatch({ type: "switchView" }),
       toggleHiddenFiles: () => setShowHiddenFiles((prev) => !prev),

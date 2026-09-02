@@ -20,7 +20,7 @@ Focused implementation and design details remain in their own documents:
 - [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
   run-summary, and journald ownership boundaries.
 
-The repository [`ToDo`](../../ToDo) links here instead of duplicating these
+The [TODO index](./README.md) links here instead of duplicating these
 plans.
 
 ## Principles
@@ -36,6 +36,9 @@ Make the smallest change that establishes a real invariant:
   generation; keep buffers, replay, retention, and persistent records bounded.
 - **Safety:** no blind mutation retry, explicit owner scope, validated privilege
   boundaries, atomic persistence, and honest unknown-outcome reporting.
+- **Recoverable events:** Every system-wide live event must have an
+  authoritative snapshot or persistent record. Events invalidate or announce
+  state; they do not become the state.
 - **Simple handlers:** transport, scheduling, persistence, and presentation do
   not leak into ordinary domain handlers.
 - **Native ownership:** systemd owns schedules and process execution, journald
@@ -99,15 +102,20 @@ Bridge
 ├── Task service
 │   ├── session Task          in memory, exact-session owner
 │   └── durable Task          persistent record + external execution owner
-├── alert service             lifecycle, user state, routing
+├── alert client              Calls + watch Channel over the alert daemon socket
 └── scheduled-run projection  definitions + bounded run summaries
+
+Alert daemon (root, standalone, socket-activated)
+├── alert lifecycle           dedup, resolution, per-user seen state
+└── routing and delivery      matchers and targets
 
 Native Linux owners
 ├── systemd service/timer     schedule and process state
 └── journald                  execution logs
 
 Server-side persistent state
-└── LinuxIO metadata store    alerts, user state, run summaries, delivery state
+├── alert daemon SQLite       alerts, seen state, delivery attempts
+└── scheduled-run directory   one bounded summary file per systemd invocation
 ~~~
 
 | Primitive | Execution owner | Loss behavior |
@@ -117,8 +125,8 @@ Server-side persistent state
 | Session Task | Bridge process | A watcher may detach; ending the owning session or bridge cancels the Task. |
 | Durable Task | External executor plus persistent operation record | A later bridge discovers the same operation by stable ID. |
 | Schedule | Native systemd timer and service | systemd owns activation and process state even when no bridge is connected. |
-| Run summary | Persistent LinuxIO metadata keyed to a systemd invocation | A reconnecting client can query bounded execution history and then open the corresponding journal. |
-| Alert | Persistent LinuxIO metadata store | A reconnecting client receives authoritative lifecycle and per-user seen state before live changes. |
+| Run summary | One bounded file per systemd invocation in a root-owned run directory | A reconnecting client can query bounded execution history and then open the corresponding journal. |
+| Alert | Standalone root alert daemon owning its own SQLite store | A reconnecting client receives authoritative lifecycle and per-user seen state before live changes. |
 | Delivery | Alert router plus configured target | Matchers select targets; retry and outcome state do not alter the source alert or run. |
 
 Task is a service composed from bounded control operations and Channels. It is
@@ -452,11 +460,13 @@ The domain is an alert lifecycle rather than a persisted toast list:
 - one snapshot-first watch Channel feeding the TanStack Query cache; and
 - Sonner as presentation only.
 
-Use a small SQLite metadata store when this phase lands. Seen state,
-deduplication, concurrent sessions, resolution, delivery attempts, and future
-run history are relational application semantics; replaying journald or
+A standalone root alert daemon, shaped like `linuxio-indexer` with its own
+service, socket, and SQLite file, owns this store; bridges are clients and never
+open the file. Seen state, deduplication, concurrent sessions, resolution, and
+delivery attempts are relational application semantics; replaying journald or
 rewriting per-user JSON snapshots is no longer the simpler reliable solution.
-Do not put raw logs, every toast, or progress frames in that database.
+Run history is not in this database. Do not put raw logs, every toast, or
+progress frames in it.
 
 ### Phase 6 exit criteria
 
@@ -478,10 +488,13 @@ journald owns stdout and stderr.
 
 LinuxIO persists only a bounded run summary: stable run and definition IDs,
 the exact unit and invocation identity, scheduled/started/finished timestamps,
-terminal state, exit status, and a concise result or error. The journal is
-opened by unit plus invocation identity; raw output is never copied into the
-metadata store. Unit operations use the existing D-Bus boundary rather than
-shelling out to `systemctl`.
+terminal state, exit status, and a concise result or error. Summaries are one
+file per invocation in a root-owned run directory, written by a short-lived
+worker binary from the generated unit's `ExecStartPre=` and `ExecStopPost=`,
+the `linuxio-docker-update` precedent; there is no scheduler daemon and no
+database. The journal is opened by unit plus invocation identity; raw output
+is never copied into the run directory. Unit operations use the existing D-Bus
+boundary rather than shelling out to `systemctl`.
 
 ### Phase 7 exit criteria
 
@@ -576,7 +589,7 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 - `scheduled-execution.md`: schedule, systemd unit, run-summary, and journald
   ownership.
 - this roadmap: phase ordering and cross-cutting decisions.
-- `ToDo`: one short entry linking this roadmap.
+- `TODO/README.md`: one short entry linking this roadmap.
 
 ## Definition of Done
 
@@ -597,4 +610,4 @@ This roadmap is complete when:
   to, rather than duplicate, journald logs;
 - no feature relies on a live event stream as its only recovery source;
 - measurements and fault tests meet the agreed gates;
-- the focused documents and `ToDo` match the implemented state.
+- the focused documents and TODO index match the implemented state.

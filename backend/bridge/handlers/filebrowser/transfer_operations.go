@@ -188,9 +188,9 @@ func restoreUploadedFile(root *fsroot.FSRoot, realRel string, attrs uploadAttrib
 	}
 }
 
-func notifyUploadedFile(path string, info os.FileInfo) {
+func notifyUploadedFile(path string) {
 	runDetachedIndexerUpdate("upload", func(ctx context.Context) error {
-		return addToIndexer(ctx, path, info)
+		return addToIndexer(ctx, path)
 	})
 }
 
@@ -640,8 +640,8 @@ func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot, file
 	}
 
 	restoreUploadedFile(root, finalRel, attrs)
-	if finalInfo, err := root.Root.Stat(finalRel); err == nil {
-		notifyUploadedFile(path, finalInfo)
+	if _, err := root.Root.Stat(finalRel); err == nil {
+		notifyUploadedFile(path)
 	}
 
 	result := FileUploadResult{Path: path, Size: bytes}

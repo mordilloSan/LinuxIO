@@ -318,7 +318,9 @@ const CapabilityManagerSection = () => {
 
   const rows = useMemo(
     () =>
-      CAPABILITIES.map((item) => {
+      CAPABILITIES.filter(
+        (item) => !("visibleInManager" in item) || item.visibleInManager,
+      ).map((item) => {
         const valueKey = `${item.wire}_available` as CapabilityValueKey;
         const errorKey = `${item.wire}_error` as CapabilityErrorKey;
         const status = getCapabilityStatus(latest[valueKey]);

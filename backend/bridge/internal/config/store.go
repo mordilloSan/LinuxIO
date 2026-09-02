@@ -56,15 +56,19 @@ func OpenUserStore(username string, targetUID, targetGID uint32) (*UserStore, er
 	if err != nil {
 		return nil, err
 	}
-	homeBase, homeErr := configBase(username)
+	homeBase, homeErr := Homedir(username)
 	return openUserStore(username, targetUID, owner, homeBase, homeErr), nil
 }
 
 func openUserStore(username string, targetUID uint32, owner fileOwnership, homeBase string, homeErr error) *UserStore {
 	if homeErr == nil {
-		store, err := openDiskUserStore(username, homeBase, homeBase, owner, StorageModeHome)
+		homeConfigBase, err := prepareHomeConfigBase(homeBase, owner)
 		if err == nil {
-			return store
+			store, openErr := openDiskUserStore(username, homeConfigBase, homeBase, owner, StorageModeHome)
+			if openErr == nil {
+				return store
+			}
+			err = openErr
 		}
 		homeErr = err
 	}
@@ -137,6 +141,41 @@ func openDiskUserStore(username, configBase, defaultBase string, owner fileOwner
 		return nil, err
 	}
 	return store, nil
+}
+
+func prepareHomeConfigBase(home string, owner fileOwnership) (string, error) {
+	configRoot := filepath.Join(home, ".config")
+	if err := prepareHomeConfigDirectory(configRoot, owner); err != nil {
+		return "", err
+	}
+	configBase := filepath.Join(configRoot, "linuxio")
+	if err := prepareHomeConfigDirectory(configBase, owner); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(configBase, 0o700); err != nil {
+		return "", fmt.Errorf("set home config directory permissions: %w", err)
+	}
+	return configBase, nil
+}
+
+func prepareHomeConfigDirectory(path string, owner fileOwnership) error {
+	created := false
+	if err := os.Mkdir(path, 0o700); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create home config directory %q: %w", path, err)
+		}
+	} else {
+		created = true
+	}
+	if created && owner.enforce {
+		if err := os.Chown(path, owner.uid, owner.gid); err != nil {
+			return fmt.Errorf("own home config directory %q: %w", path, err)
+		}
+	}
+	if err := owner.ensureDirectory(path); err != nil {
+		return fmt.Errorf("verify home config directory: %w", err)
+	}
+	return nil
 }
 
 func prepareFallbackConfigBase(path string, owner fileOwnership) error {
@@ -320,8 +359,8 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 		s.mu.RUnlock()
 		updated, err = applySettingsMutation(ctx, current, mutate)
 	} else {
-		err = withExclusiveConfigLockOwned(ctx, s.lockPath, s.owner, func() error {
-			current, readErr := readCoreLatestOwned(s.path, s.base)
+		err = runExclusive(ctx, s.lockPath, s.owner, func() error {
+			current, readErr := readCoreLatest(s.path, s.base)
 			if readErr != nil {
 				return fmt.Errorf("read core config: %w", readErr)
 			}
@@ -383,7 +422,7 @@ func (s *UserStore) ReplaceUI(ctx context.Context, replacement UIPreferences) (*
 	updated := cloneUIPreferences(next)
 	var err error
 	if s.mode != StorageModeMemory {
-		err = withExclusiveUILockOwned(ctx, s.uiLockPath, s.owner, func() error {
+		err = runExclusive(ctx, s.uiLockPath, s.owner, func() error {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
@@ -407,7 +446,7 @@ func (s *UserStore) ReplaceUI(ctx context.Context, replacement UIPreferences) (*
 // class of failure; symlink, type, and I/O failures are never repaired.
 var errInvalidCoreConfig = errors.New("invalid core config")
 
-func readCoreLatestOwned(path, base string) (*Settings, error) {
+func readCoreLatest(path, base string) (*Settings, error) {
 	exists, err := CheckConfig(path)
 	if err != nil {
 		return nil, err
@@ -452,7 +491,7 @@ func quarantineCoreConfig(path, timestamp string) (string, error) {
 // other failure is returned unchanged. UserStore.Update never calls this: a
 // mutation must not reset a file it could not read.
 func loadCoreOrQuarantineOwned(path, base string, owner fileOwnership) (*Settings, error) {
-	cfg, err := readCoreLatestOwned(path, base)
+	cfg, err := readCoreLatest(path, base)
 	if err == nil {
 		return cfg, nil
 	}
@@ -501,14 +540,6 @@ func readUILatestOwned(path string, owner fileOwnership) (*UIPreferences, error)
 	}
 	slog.Warn("UI config reset to defaults", "component", "config", "path", path, "error", parseErr)
 	return &replacement, nil
-}
-
-func withExclusiveConfigLockOwned(ctx context.Context, lockPath string, owner fileOwnership, fn func() error) error {
-	return runExclusive(ctx, lockPath, owner, fn)
-}
-
-func withExclusiveUILockOwned(ctx context.Context, lockPath string, owner fileOwnership, fn func() error) error {
-	return runExclusive(ctx, lockPath, owner, fn)
 }
 
 func runExclusive(ctx context.Context, lockPath string, owner fileOwnership, fn func() error) error {

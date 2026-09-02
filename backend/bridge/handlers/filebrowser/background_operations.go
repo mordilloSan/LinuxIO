@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -264,7 +263,7 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 			},
 			bridgetasks.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
+		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgetasks.TaskMetadata {
 			path := ""
 			if req.Path != nil {
 				path = *req.Path
@@ -458,9 +457,9 @@ func removeWithDebug(root *fsroot.FSRoot, targetRel, targetPath string) {
 	}
 }
 
-func notifyCompressedArchive(targetPath string, info os.FileInfo) {
+func notifyCompressedArchive(targetPath string) {
 	runDetachedIndexerUpdate("archive_create", func(ctx context.Context) error {
-		return addToIndexer(ctx, targetPath, info)
+		return addToIndexer(ctx, targetPath)
 	})
 }
 
@@ -492,32 +491,7 @@ func parseExtractRequest(req apischema.FileExtractRequest) (string, string, erro
 
 func notifyExtractedFiles(destination string) {
 	runDetachedIndexerUpdate("archive_extract", func(ctx context.Context) error {
-		walkRoot, err := fsroot.Open()
-		if err != nil {
-			return fmt.Errorf("open root for indexer walk: %w", err)
-		}
-		defer walkRoot.Close()
-
-		if err := walkRoot.WalkDir(destination, func(rel string, entry fs.DirEntry, walkErr error) error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if walkErr != nil {
-				return nil
-			}
-			info, infoErr := entry.Info()
-			if infoErr != nil {
-				return nil
-			}
-			absPath := utils.CleanAbsPath(rel)
-			if err := addToIndexer(ctx, absPath, info); err != nil {
-				slog.Debug("failed to update indexer for extracted path", "path", absPath, "error", err)
-			}
-			return nil
-		}); err != nil {
-			return fmt.Errorf("walk extracted destination: %w", err)
-		}
-		return nil
+		return requestIndexerReindex(ctx, destination)
 	})
 }
 
@@ -592,7 +566,7 @@ func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.
 	var archiveSize int64
 	if info, err := root.Root.Stat(targetRel); err == nil {
 		archiveSize = info.Size()
-		notifyCompressedArchive(targetPath, info)
+		notifyCompressedArchive(targetPath)
 	}
 
 	slog.Info("compress complete", "path", targetPath, "count", len(req.Paths), "size", archiveSize, "format", req.Format)
@@ -654,7 +628,7 @@ func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 func runIndexerTask(ctx context.Context, task *bridgetasks.Task, req apischema.OptionalPathRequest) (indexer.IndexerResult, error) {
 	path := "/"
 	if req.Path != nil && *req.Path != "" {
-		path = filepath.Clean(*req.Path)
+		path = utils.CleanAbsPath(*req.Path)
 	}
 	return runIndexerOperation(ctx, task, path, false)
 }
@@ -681,12 +655,12 @@ func runIndexerOperation(ctx context.Context, task *bridgetasks.Task, path strin
 
 	var err error
 	if attachOnly {
-		err = indexer.StreamIndexerAttach(ctx, cb)
+		err = indexer.StreamIndexerAttach(ctx, path, cb)
 	} else {
 		err = indexer.StreamIndexer(ctx, path, cb)
 		if err != nil && taskErr != nil && taskErr.Code == 409 {
 			taskErr = nil
-			err = indexer.StreamIndexerAttach(ctx, cb)
+			err = indexer.StreamIndexerAttach(ctx, path, cb)
 		}
 	}
 	if err != nil {

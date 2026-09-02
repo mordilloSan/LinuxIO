@@ -624,7 +624,7 @@ export function NavbarNotificationsDropdown() {
                 </p>
               </div>
             ) : (
-              <ul className="app-navbar-notifications__list custom-scrollbar">
+              <ul className="app-navbar-notifications__list">
                 {transfers.map((transfer) => (
                   <TransferItem
                     getTransferIcon={getTransferIcon}

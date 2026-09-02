@@ -157,7 +157,7 @@ function AppVirtualGrid<TItem>({
   return (
     <div
       aria-label={ariaLabel}
-      className={["custom-scrollbar", className].filter(Boolean).join(" ")}
+      className={className}
       onMouseDown={onMouseDown}
       onMouseDownCapture={onMouseDownCapture}
       ref={scrollRef}

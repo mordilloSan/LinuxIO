@@ -38,7 +38,6 @@ const ContainerDetailsPanel = ({
 
   return (
     <FrostedCard
-      className="custom-scrollbar"
       style={{
         padding: 12,
         height: "100%",

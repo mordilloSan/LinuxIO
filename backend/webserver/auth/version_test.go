@@ -81,6 +81,8 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 			return []byte("LinuxIO Bridge v2.3.4\n"), nil
 		case "linuxio-auth":
 			return []byte("LinuxIO Auth v3.4.5\n"), nil
+		case "linuxio-indexer":
+			return []byte("LinuxIO Indexer v5.6.7\n"), nil
 		case "linuxio":
 			return []byte("LinuxIO CLI v4.5.6\n"), nil
 		default:
@@ -94,6 +96,7 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 		"LinuxIO Web Server": "v9.9.9",
 		"LinuxIO Bridge":     "v2.3.4",
 		"LinuxIO Auth":       "v3.4.5",
+		"LinuxIO Indexer":    "v5.6.7",
 		"LinuxIO CLI":        "v4.5.6",
 	}
 	assertVersionMap(t, got, want)
@@ -131,6 +134,7 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 		{name: "linuxio", args: []string{"version", "--self"}},
 		{name: "linuxio-auth", args: []string{"version"}},
 		{name: "linuxio-bridge", args: []string{"version"}},
+		{name: "linuxio-indexer", args: []string{"--version"}},
 	}
 	if !slices.EqualFunc(gotCalls, wantCalls, func(a, b probeCall) bool {
 		return a.name == b.name && slices.Equal(a.args, b.args)
@@ -219,6 +223,8 @@ func TestVersionHandlerReturnsVersionsAndUsesSelfProbe(t *testing.T) {
 			return []byte("LinuxIO Bridge v2.3.4\n"), nil
 		case "linuxio-auth":
 			return []byte("LinuxIO Auth v3.4.5\n"), nil
+		case "linuxio-indexer":
+			return []byte("LinuxIO Indexer v5.6.7\n"), nil
 		case "linuxio":
 			return []byte("LinuxIO CLI v4.5.6\n"), nil
 		default:
@@ -245,6 +251,7 @@ func TestVersionHandlerReturnsVersionsAndUsesSelfProbe(t *testing.T) {
 		"LinuxIO Web Server": "v9.9.9",
 		"LinuxIO Bridge":     "v2.3.4",
 		"LinuxIO Auth":       "v3.4.5",
+		"LinuxIO Indexer":    "v5.6.7",
 		"LinuxIO CLI":        "v4.5.6",
 	}
 	assertVersionMap(t, got, want)

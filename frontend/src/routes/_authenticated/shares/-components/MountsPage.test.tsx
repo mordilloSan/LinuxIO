@@ -27,7 +27,6 @@ describe("MountsPage", () => {
     const nfsSection = screen.getByText("NFS").parentElement;
     const mountsContent = nfsSection?.parentElement;
 
-    expect(mountsContent).toHaveClass("custom-scrollbar");
     expect(mountsContent).toHaveStyle({
       display: "flex",
       flexDirection: "column",

@@ -118,7 +118,6 @@ const linuxio = {
     exists_batch: defineCallWithRequest("filebrowser.exists_batch"),
     extract: createTaskEndpoint("filebrowser", "extract", { kind: "object" }),
     index: createTaskEndpoint("filebrowser", "index", { kind: "object" }),
-    indexer_status: defineCall("filebrowser.indexer_status"),
     list_directory: defineCallWithRequest("filebrowser.list_directory"),
     move_batch: createTaskEndpoint("filebrowser", "move_batch", {
       kind: "object",

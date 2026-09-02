@@ -3,8 +3,14 @@ package indexer
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"strings"
+)
+
+const (
+	maxSSELineBytes      = 256 * 1024
+	maxSSEEventDataBytes = 1 << 20
 )
 
 // SSEEvent represents a single Server-Sent Event.
@@ -13,87 +19,89 @@ type SSEEvent struct {
 	Data string // From "data:" field(s), joined by "\n" for multiline data.
 }
 
-// ReadSSE reads Server-Sent Events from r and delivers them on the returned channel.
-//
-// Events are dispatched when an empty line is encountered (per the SSE spec).
-// Consecutive "data:" lines are joined with newlines.
-// Comment lines (starting with ":") are silently skipped.
-//
-// Error contract:
-//   - EOF is a clean close: the events channel is closed, nothing is sent on errCh.
-//   - Any non-EOF read error is sent as a single value on errCh (buffered, size 1).
-//   - If ctx is cancelled the goroutine exits without reporting an error.
-//   - Both channels are always closed when the goroutine exits.
-func ReadSSE(ctx context.Context, r io.Reader) (<-chan SSEEvent, <-chan error) {
-	events := make(chan SSEEvent, 4)
-	errCh := make(chan error, 1)
-
-	go func() {
-		defer close(events)
-		defer close(errCh)
-
-		scanner := bufio.NewScanner(r)
-		// Increase token limit above bufio.Scanner's 64 KiB default for larger JSON lines.
-		scanner.Buffer(make([]byte, 64*1024), 256*1024)
-		var currentType string
-		var dataParts []string
-
-		for scanner.Scan() {
-			if ctx.Err() != nil {
-				return
-			}
-			currentType, dataParts = processSSELine(scanner.Text(), currentType, dataParts, events, ctx)
-			if ctx.Err() != nil {
-				return
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			errCh <- err
-			return
-		}
-
-		flushSSEEvent(currentType, dataParts, events, ctx)
-	}()
-
-	return events, errCh
+// SSEDecoder reads one event at a time. It is used by request handlers so the
+// request context owns the only reader and no channel-producing goroutine can
+// outlive a callback that stops consuming events.
+type SSEDecoder struct {
+	ctx         context.Context
+	scanner     *bufio.Scanner
+	currentType string
+	dataParts   []string
+	dataBytes   int
 }
 
-func processSSELine(
-	line, currentType string,
-	dataParts []string,
-	events chan<- SSEEvent,
-	ctx context.Context,
-) (string, []string) {
+func NewSSEDecoder(ctx context.Context, r io.Reader) *SSEDecoder {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 64*1024), maxSSELineBytes)
+	return &SSEDecoder{ctx: ctx, scanner: scanner}
+}
+
+func (d *SSEDecoder) flushEvent() (SSEEvent, bool) {
+	if len(d.dataParts) == 0 && d.currentType == "" {
+		return SSEEvent{}, false
+	}
+	event := SSEEvent{Type: d.currentType, Data: strings.Join(d.dataParts, "\n")}
+	d.currentType = ""
+	d.dataParts = d.dataParts[:0]
+	d.dataBytes = 0
+	return event, true
+}
+
+func (d *SSEDecoder) appendDataLine(line string) error {
+	part := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	nextBytes := d.dataBytes + len(part)
+	if len(d.dataParts) > 0 {
+		nextBytes++
+	}
+	if nextBytes > maxSSEEventDataBytes {
+		return fmt.Errorf("SSE event data exceeds %d bytes", maxSSEEventDataBytes)
+	}
+	d.dataParts = append(d.dataParts, part)
+	d.dataBytes = nextBytes
+	return nil
+}
+
+func (d *SSEDecoder) consumeLine(line string) (SSEEvent, bool, error) {
 	if strings.HasPrefix(line, ":") {
-		return currentType, dataParts
+		return SSEEvent{}, false, nil
 	}
 	if line == "" {
-		flushSSEEvent(currentType, dataParts, events, ctx)
-		return "", dataParts[:0]
+		event, ok := d.flushEvent()
+		return event, ok, nil
 	}
 	if after, ok := strings.CutPrefix(line, "event:"); ok {
-		return strings.TrimSpace(after), dataParts
+		d.currentType = strings.TrimSpace(after)
+		return SSEEvent{}, false, nil
 	}
-	if after, ok := strings.CutPrefix(line, "data:"); ok {
-		return currentType, append(dataParts, strings.TrimSpace(after))
+	if strings.HasPrefix(line, "data:") {
+		return SSEEvent{}, false, d.appendDataLine(line)
 	}
-	return currentType, dataParts
+	return SSEEvent{}, false, nil
 }
 
-func flushSSEEvent(currentType string, dataParts []string, events chan<- SSEEvent, ctx context.Context) {
-	if len(dataParts) == 0 && currentType == "" {
-		return
+// Next returns the next complete event, io.EOF after the final partial event,
+// or the underlying parse/read error.
+func (d *SSEDecoder) Next() (SSEEvent, error) {
+	for d.scanner.Scan() {
+		if err := d.ctx.Err(); err != nil {
+			return SSEEvent{}, err
+		}
+		event, complete, err := d.consumeLine(d.scanner.Text())
+		if err != nil {
+			return SSEEvent{}, err
+		}
+		if complete {
+			return event, nil
+		}
 	}
-	evt := SSEEvent{
-		Type: currentType,
-		Data: strings.Join(dataParts, "\n"),
+	if err := d.ctx.Err(); err != nil {
+		return SSEEvent{}, err
 	}
-	select {
-	case events <- evt:
-	case <-ctx.Done():
+	if err := d.scanner.Err(); err != nil {
+		return SSEEvent{}, err
 	}
+	if event, ok := d.flushEvent(); ok {
+		return event, nil
+	}
+	return SSEEvent{}, io.EOF
 }

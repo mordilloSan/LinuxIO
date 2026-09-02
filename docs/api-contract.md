@@ -374,13 +374,16 @@ make omission impossible to define as reset-to-backend-default. The bridge and
 frontend are shipped together, and the schema parity tests and generated client
 cover all four route declarations.
 
-The bridge first stores `.linuxio-config.yaml` and `.linuxio-ui.yaml` in the
-authenticated user's home. If that store cannot be opened, it uses the
-UID-owned `/var/lib/linuxio/users/<uid>` fallback. If both disk stores fail,
-the bridge starts with in-memory defaults and accepts changes for that bridge
-session without writing files. `config.get` reports `storageMode` as `home`,
-`fallback`, or `memory`; the authenticated UI keeps a warning visible for both
-degraded modes and explains that memory-mode changes are temporary.
+The bridge first stores `config.yaml` and `ui.yaml` under the authenticated
+user's `$HOME/.config/linuxio` directory. If that store cannot be opened, it
+uses the UID-owned `/var/lib/linuxio/users/<uid>` fallback. If both disk stores
+fail, the bridge starts with in-memory defaults and accepts changes for that
+bridge session without writing files. Legacy `.linuxio-config.yaml`,
+`.linuxio-ui.yaml`, and their sidecar locks in `$HOME` are not read, migrated,
+or removed.
+`config.get` reports `storageMode` as `home`, `fallback`, or `memory`; the
+authenticated UI keeps a warning visible for both degraded modes and explains
+that memory-mode changes are temporary.
 
 Both disk stores use independent sidecar locks and atomic whole-file
 replacement. A missing or invalid UI file is written as `{}`. The bridge
@@ -394,7 +397,7 @@ wins.
 
 At bridge startup a core document
 that fails to decode or validate is renamed to
-`.linuxio-config.yaml.broken-<UTC timestamp>` and replaced with defaults; an
+`config.yaml.broken-<UTC timestamp>` and replaced with defaults; an
 existing quarantine name gets `(2)`, `(3)`, and so on rather than being
 overwritten. The bridge logs both paths at warning level and starts. Read,
 stat, symlink, lock, and write failures move startup to the next storage tier

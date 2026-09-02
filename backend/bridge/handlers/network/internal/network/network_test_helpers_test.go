@@ -2,7 +2,6 @@ package network
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -99,8 +98,4 @@ func requireCalls(t *testing.T, runner *fakeRunner, expected ...string) {
 			t.Fatalf("call %d: expected %q, got %q", i, call, runner.calls[i])
 		}
 	}
-}
-
-func errBoom() error {
-	return errors.New("boom")
 }

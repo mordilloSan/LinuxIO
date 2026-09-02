@@ -380,22 +380,22 @@ func parseATASmartTestStatus(ata *ataSmartData) (SmartTestStatus, bool) {
 	return SmartTestStatus{State: "failed", PercentComplete: 0, Message: st.String}, true
 }
 
-func parseNVMeSmartTestStatus(log *nvmeSelfTestLog) SmartTestStatus {
-	if opCode, ok := firstIntOrObjValue(log.CurrentSelfTestOp, log.CurrentSelfTestOperation); ok && opCode != 0 {
+func parseNVMeSmartTestStatus(testLog *nvmeSelfTestLog) SmartTestStatus {
+	if opCode, ok := firstIntOrObjValue(testLog.CurrentSelfTestOp, testLog.CurrentSelfTestOperation); ok && opCode != 0 {
 		return SmartTestStatus{
 			State:           "in_progress",
-			PercentComplete: nvmeCompletionPercent(log),
+			PercentComplete: nvmeCompletionPercent(testLog),
 		}
 	}
-	if result, ok := latestNVMeSelfTestResult(log); ok {
+	if result, ok := latestNVMeSelfTestResult(testLog); ok {
 		return nvmeResultCodeToStatus(*result.Value, result.String)
 	}
 	// NVMe block present but no actionable info -> idle.
 	return SmartTestStatus{State: "idle"}
 }
 
-func nvmeCompletionPercent(log *nvmeSelfTestLog) int {
-	pct, ok := firstIntOrObjValue(log.CurrentSelfTestCompletionPercent, log.CurrentSelfTestCompletion)
+func nvmeCompletionPercent(testLog *nvmeSelfTestLog) int {
+	pct, ok := firstIntOrObjValue(testLog.CurrentSelfTestCompletionPercent, testLog.CurrentSelfTestCompletion)
 	if !ok {
 		return 0
 	}
@@ -411,12 +411,12 @@ func firstIntOrObjValue(values ...*intOrObj) (int, bool) {
 	return 0, false
 }
 
-func latestNVMeSelfTestResult(log *nvmeSelfTestLog) (*nvmeSelfTestResult, bool) {
-	if len(log.Table) == 0 || log.Table[0].SelfTestResult == nil ||
-		log.Table[0].SelfTestResult.Value == nil {
+func latestNVMeSelfTestResult(testLog *nvmeSelfTestLog) (*nvmeSelfTestResult, bool) {
+	if len(testLog.Table) == 0 || testLog.Table[0].SelfTestResult == nil ||
+		testLog.Table[0].SelfTestResult.Value == nil {
 		return nil, false
 	}
-	return log.Table[0].SelfTestResult, true
+	return testLog.Table[0].SelfTestResult, true
 }
 
 // nvmeResultCodeToStatus maps the NVMe self-test result code to a status.

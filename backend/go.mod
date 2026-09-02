@@ -14,6 +14,7 @@ require (
 	github.com/klauspost/compress v1.19.2
 	github.com/klauspost/pgzip v1.2.6
 	github.com/libp2p/go-yamux/v5 v5.1.0
+	github.com/mattn/go-sqlite3 v1.14.48
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
 	github.com/opencontainers/go-digest v1.0.0

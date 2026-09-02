@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,7 +221,7 @@ interface-name=eth0
 [ipv4]
 method=auto
 `)
-	runner.fail("nmcli device reapply eth0", errBoom())
+	runner.fail("nmcli device reapply eth0", errors.New("boom"))
 	backend, err := detectNMConnectionBackend(env, "eth0")
 	if err != nil {
 		t.Fatalf("detectNMConnectionBackend: %v", err)

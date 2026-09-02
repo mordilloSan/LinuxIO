@@ -11,7 +11,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
@@ -62,7 +61,6 @@ type InstallCommand struct {
 }
 
 const (
-	OptionalComponentIndexer    = "indexer"
 	OptionalComponentMonitoring = "monitoring"
 )
 
@@ -88,16 +86,6 @@ var capabilityRegistry = []CapabilitySpec{
 		LogName: "Docker updates",
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(docker.CheckDockerUpdateRunnerInstalled())
-		},
-	},
-	{
-		Name:    "indexer",
-		LogName: "Indexer API",
-		Detect: func(ctx context.Context) (bool, string) {
-			return checkedCapability(filebrowser.CheckIndexerAvailability(ctx))
-		},
-		Install: &InstallSpec{
-			OptionalComponent: OptionalComponentIndexer,
 		},
 	},
 	{
@@ -215,7 +203,9 @@ var capabilityRegistry = []CapabilitySpec{
 		Name:    "avahi",
 		LogName: "Avahi mDNS",
 		Detect: func(ctx context.Context) (bool, string) {
-			ok, err := checkAvahiAvailability(ctx)
+			// BusNameActive (not Available) is intentional because Avahi only
+			// publishes mDNS records while the daemon is actually running.
+			ok, err := dbusclient.BusNameActive(ctx, "org.freedesktop.Avahi")
 			return checkedCapabilityErr(ok, err, errAvahiUnavailable)
 		},
 		Install: &InstallSpec{
@@ -329,8 +319,6 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.DockerAvailable, out.DockerError = ok, errPtr
 	case "docker_updates":
 		out.DockerUpdatesAvailable, out.DockerUpdatesError = ok, errPtr
-	case "indexer":
-		out.IndexerAvailable, out.IndexerError = ok, errPtr
 	case "monitoring":
 		out.MonitoringAvailable, out.MonitoringError = ok, errPtr
 	case "lm_sensors":
@@ -414,11 +402,3 @@ func buildCapabilitiesResponse(ctx context.Context) (apischema.CapabilitiesRespo
 }
 
 var errAvahiUnavailable = fmt.Errorf("avahi-daemon is not running")
-
-// checkAvahiAvailability uses BusNameActive (not Available) because Avahi only
-// publishes mDNS records while the daemon is actually running. An activatable-
-// but-stopped daemon would satisfy the looser check yet leave <hostname>.local
-// unreachable from the LAN.
-func checkAvahiAvailability(ctx context.Context) (bool, error) {
-	return dbusclient.BusNameActive(ctx, "org.freedesktop.Avahi")
-}

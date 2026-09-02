@@ -1,10 +1,49 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestParseLogsArgsIndexer(t *testing.T) {
+	mode, lines := parseLogsArgs([]string{"indexer", "25"})
+	if mode != "indexer" || lines != 25 {
+		t.Fatalf("parseLogsArgs = %q, %d; want indexer, 25", mode, lines)
+	}
+}
+
+func TestVerboseDropinState(t *testing.T) {
+	original := verboseDropins
+	t.Cleanup(func() { verboseDropins = original })
+	dir := t.TempDir()
+	verboseDropins = []struct {
+		path    string
+		content string
+	}{
+		{path: filepath.Join(dir, "webserver.conf")},
+		{path: filepath.Join(dir, "indexer.conf")},
+	}
+
+	if verboseEnabled() || verbosePartiallyEnabled() {
+		t.Fatal("missing drop-ins reported enabled")
+	}
+	if err := os.WriteFile(verboseDropins[0].path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if verboseEnabled() || !verbosePartiallyEnabled() {
+		t.Fatal("one drop-in did not report partial state")
+	}
+	if err := os.WriteFile(verboseDropins[1].path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !verboseEnabled() {
+		t.Fatal("both drop-ins did not report enabled")
+	}
+}
 
 func TestJournalTermsForMode(t *testing.T) {
 	tests := []struct {
@@ -41,12 +80,23 @@ func TestJournalTermsForMode(t *testing.T) {
 			},
 		},
 		{
+			name: "indexer",
+			mode: "indexer",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-indexer",
+				"_SYSTEMD_UNIT=linuxio-indexer.service",
+				"_SYSTEMD_UNIT=linuxio-indexer-index.service",
+				"_SYSTEMD_UNIT=linuxio-indexer-index.timer",
+			},
+		},
+		{
 			name: "all",
 			mode: "all",
 			wantIn: []string{
 				"SYSLOG_IDENTIFIER=linuxio-webserver",
 				"SYSLOG_IDENTIFIER=linuxio-bridge",
 				"SYSLOG_IDENTIFIER=linuxio-auth",
+				"SYSLOG_IDENTIFIER=linuxio-indexer",
 			},
 		},
 	}
@@ -55,12 +105,12 @@ func TestJournalTermsForMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := journalTermsForMode(tt.mode)
 			for _, term := range tt.wantIn {
-				if !containsString(got, term) {
+				if !slices.Contains(got, term) {
 					t.Fatalf("journalTermsForMode(%q) missing %q in %v", tt.mode, term, got)
 				}
 			}
 			for _, term := range tt.wantMiss {
-				if containsString(got, term) {
+				if slices.Contains(got, term) {
 					t.Fatalf("journalTermsForMode(%q) unexpectedly contains %q in %v", tt.mode, term, got)
 				}
 			}
@@ -91,7 +141,7 @@ func TestFormatJournalEntryUsesSyslogIdentifier(t *testing.T) {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
 	timestamp := time.Unix(0, 1_700_000_000_000_000*1_000).Format("2006/01/02 15:04:05")
-	if want := timestamp + " \033[32m[INFO]\033[0m bridge bridge started"; !containsSubstring(got, want) {
+	if want := timestamp + " \033[32m[INFO]\033[0m bridge bridge started"; !strings.Contains(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
 }
@@ -101,10 +151,10 @@ func TestFormatJournalEntryPrefersSyslogIdentifierOverUnit(t *testing.T) {
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := "\033[32m[INFO]\033[0m bridge bridge started"; !containsSubstring(got, want) {
+	if want := "\033[32m[INFO]\033[0m bridge bridge started"; !strings.Contains(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
-	if containsSubstring(got, "\033[32m[INFO]\033[0m auth bridge started") {
+	if strings.Contains(got, "\033[32m[INFO]\033[0m auth bridge started") {
 		t.Fatalf("formatJournalEntry() = %q, unexpectedly used systemd unit", got)
 	}
 }
@@ -114,7 +164,7 @@ func TestFormatJournalEntryIncludesLinuxIOFields(t *testing.T) {
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := "auth daemon: bridge spawned [privileged=true user=miguelmariz verbose=false]"; !containsSubstring(got, want) {
+	if want := "auth daemon: bridge spawned [privileged=true user=miguelmariz verbose=false]"; !strings.Contains(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
 }
@@ -124,7 +174,7 @@ func TestFormatJournalEntryIncludesErrorField(t *testing.T) {
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := `NFS server unavailable [error="exportfs not found (install nfs-kernel-server or nfs-utils)"]`; !containsSubstring(got, want) {
+	if want := `NFS server unavailable [error="exportfs not found (install nfs-kernel-server or nfs-utils)"]`; !strings.Contains(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
 }
@@ -135,7 +185,7 @@ func TestFormatJournalEntryIncludesBridgeRouteFields(t *testing.T) {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
 	want := `route completed [arg_count=0 duration=3.2ms mode=query outcome=success route=system.get_timezones user=miguelmariz]`
-	if !containsSubstring(got, want) {
+	if !strings.Contains(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}
 }
@@ -145,25 +195,10 @@ func TestFormatJournalEntryOmitsHiddenLinuxIOFields(t *testing.T) {
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if !containsSubstring(got, "bridge exec failed") {
+	if !strings.Contains(got, "bridge exec failed") {
 		t.Fatalf("formatJournalEntry() = %q, want message preserved", got)
 	}
-	if containsSubstring(got, "abc123") || containsSubstring(got, "component=") {
+	if strings.Contains(got, "abc123") || strings.Contains(got, "component=") {
 		t.Fatalf("formatJournalEntry() = %q, unexpectedly included hidden fields", got)
 	}
-}
-
-func containsString(values []string, target string) bool {
-	return slices.Contains(values, target)
-}
-
-func containsSubstring(s, substr string) bool {
-	return len(substr) == 0 || (len(s) >= len(substr) && func() bool {
-		for i := 0; i+len(substr) <= len(s); i++ {
-			if s[i:i+len(substr)] == substr {
-				return true
-			}
-		}
-		return false
-	}())
 }

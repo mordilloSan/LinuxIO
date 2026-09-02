@@ -24,7 +24,15 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleGetConfig(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerConfig, error) {
-	return FetchConfig(ctx)
+	cfg, err := FetchConfig(ctx)
+	if err != nil {
+		return apischema.IndexerConfig{}, err
+	}
+	interval, err := currentTimerInterval(ctx)
+	if err != nil {
+		return apischema.IndexerConfig{}, err
+	}
+	return apischema.IndexerConfig{IndexerConfig: cfg, Interval: interval}, nil
 }
 
 func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.IndexerDaemonStatus, error) {
@@ -33,17 +41,23 @@ func handleGetStatus(ctx context.Context, _ apischema.NoRequest) (apischema.Inde
 }
 
 func handleSetConfig(ctx context.Context, req apischema.IndexerConfigPatch) (apischema.IndexerConfigSetResult, error) {
-	raw, err := json.Marshal(req)
+	interval, err := currentTimerInterval(ctx)
 	if err != nil {
 		return apischema.IndexerConfigSetResult{}, err
 	}
-	cfg, restartRequired, err := UpdateConfig(ctx, raw)
+	raw, err := json.Marshal(req.IndexerConfigPatch)
+	if err != nil {
+		return apischema.IndexerConfigSetResult{}, err
+	}
+	cfg, err := UpdateConfig(ctx, raw)
 	if err != nil {
 		return apischema.IndexerConfigSetResult{}, err
 	}
 	return apischema.IndexerConfigSetResult{
-		Config:          cfg,
-		RestartRequired: restartRequired,
+		Config: apischema.IndexerConfig{
+			IndexerConfig: cfg,
+			Interval:      interval,
+		},
 	}, nil
 }
 

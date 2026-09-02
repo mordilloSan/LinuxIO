@@ -157,7 +157,7 @@ const UnitInfoPanelLive = ({
   const extraRows = renderInfoRows?.(info) ?? [];
 
   return (
-    <div className="custom-scrollbar" style={{ flex: 1, overflowX: "auto" }}>
+    <div style={{ flex: 1, overflowX: "auto" }}>
       <div style={{ minWidth: "max-content" }}>
         <DetailRow label="Path" noBorder>
           <AppTypography

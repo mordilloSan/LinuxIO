@@ -13,7 +13,6 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
   it("refreshes index-backed data after indexing", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["filebrowser.index"]).toEqual([
       ["linuxio", "indexer", "get_status"],
-      ["linuxio", "filebrowser", "indexer_status"],
       ["linuxio", "filebrowser", "search"],
       ["linuxio", "filebrowser", "dir_size"],
       ["linuxio", "filebrowser", "subfolders"],

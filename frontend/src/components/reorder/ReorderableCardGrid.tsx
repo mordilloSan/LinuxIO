@@ -217,7 +217,6 @@ function ReorderableCardGrid<TItem>({
     );
     body = fillAvailable ? (
       <div
-        className="custom-scrollbar"
         style={{
           flex: "1 1 0",
           minHeight: 0,

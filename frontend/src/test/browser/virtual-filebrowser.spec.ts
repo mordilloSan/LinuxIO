@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const scrollport =
-  '[data-testid="virtual-filebrowser-scrollport"] > .custom-scrollbar';
+const scrollport = '[data-testid="virtual-filebrowser-scrollport"] > div';
 
 async function settle(page: import("@playwright/test").Page) {
   await page.evaluate(
@@ -21,6 +20,53 @@ test.describe("virtual file browser geometry", () => {
     await expect(page.getByTestId("virtual-filebrowser-status")).toContainText(
       "items: 240",
     );
+  });
+
+  test("uses the global app scrollbar hover states", async ({ page }) => {
+    const scroller = page.locator(scrollport);
+    const scrollbarStyle = () =>
+      scroller.evaluate((element) => {
+        const style = getComputedStyle(element, "::-webkit-scrollbar-thumb");
+        return {
+          color: style.backgroundColor,
+          stateColor: getComputedStyle(element)
+            .getPropertyValue("--app-scrollbar-thumb-current")
+            .trim(),
+          width: getComputedStyle(
+            element,
+            "::-webkit-scrollbar",
+          ).getPropertyValue("width"),
+        };
+      });
+
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(127, 127, 127, 0.06)",
+      stateColor: "#7f7f7f0f",
+      width: "8px",
+    });
+
+    await scroller.hover();
+    await expect
+      .poll(async () => (await scrollbarStyle()).stateColor)
+      .toBe("#64646459");
+
+    const box = await scroller.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width - 4, box!.y + 8);
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(100, 100, 100, 0.45)",
+      stateColor: "#64646459",
+      width: "8px",
+    });
+
+    await page
+      .getByRole("heading", { name: "Virtual file browser fixture" })
+      .hover();
+    await expect.poll(scrollbarStyle).toEqual({
+      color: "rgba(127, 127, 127, 0.06)",
+      stateColor: "#7f7f7f0f",
+      width: "8px",
+    });
   });
 
   test("virtualizes a long list and reaches the final item", async ({

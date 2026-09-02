@@ -8,6 +8,7 @@ import bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 type IndexerProgress struct {
 	Status       string `json:"status,omitempty"`
 	Operation    string `json:"operation,omitempty"`
+	OperationID  string `json:"operation_id,omitempty"`
 	State        string `json:"state,omitempty"`
 	Message      string `json:"message,omitempty"`
 	Path         string `json:"path,omitempty"`
@@ -34,11 +35,11 @@ func (p IndexerProgress) ProgressEnvelope() bridgetask.TaskProgress {
 type IndexerResult struct {
 	Status         string `json:"status,omitempty"`
 	Operation      string `json:"operation,omitempty"`
+	OperationID    string `json:"operation_id,omitempty"`
 	Path           string `json:"path"`
 	FilesIndexed   int64  `json:"files_indexed"`
 	DirsIndexed    int64  `json:"dirs_indexed"`
 	TotalSize      int64  `json:"total_size"`
 	DurationMs     int64  `json:"duration_ms"`
-	DeletedIndexes int    `json:"deleted_indexes,omitempty"`
 	DeletedEntries int64  `json:"deleted_entries,omitempty"`
 }

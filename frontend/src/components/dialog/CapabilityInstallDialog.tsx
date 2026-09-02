@@ -228,7 +228,7 @@ const CapabilityInstallDialog = ({
           <div className="capability-install-dialog__output-animator">
             <div
               aria-hidden={!showOutput}
-              className="capability-install-dialog__output-scroller custom-scrollbar"
+              className="capability-install-dialog__output-scroller"
               id="capability-install-output"
               ref={outputBoxRef}
               style={{

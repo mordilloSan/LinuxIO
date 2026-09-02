@@ -10,6 +10,7 @@ import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import SortBar from "@/components/filebrowser/SortBar";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import type {
   FileItem,
   FileResource,
@@ -19,7 +20,7 @@ import type {
 } from "@/types/filebrowser";
 import { allowContextMenuProps } from "@/utils/contextMenu";
 
-import { FileDropOverlay, IndexerUnavailableAlert } from "./FileBrowserPanels";
+import { FileDropOverlay } from "./FileBrowserPanels";
 
 export interface FileBrowserSurfaceProps {
   isDragOver: boolean;
@@ -32,16 +33,16 @@ export interface FileBrowserSurfaceProps {
 
 export interface FileBrowserChromeProps {
   editingPath: string | null;
-  indexerEnabled: boolean;
-  indexerStatus: string;
   isSavingFile: boolean;
   normalizedPath: string;
   onOpenDirectory: (path: string) => void;
+  onSearchCaseSensitiveChange: (value: boolean) => void;
   onSearchChange: (value: string) => void;
   onSortChange: (field: SortField) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
   searchQuery: string;
+  searchCaseSensitive: boolean;
   showHiddenFiles: boolean;
   sortOrder: SortOrder;
   viewMode: ViewMode;
@@ -49,6 +50,7 @@ export interface FileBrowserChromeProps {
 
 export interface FileBrowserDataProps {
   filteredResource?: FileResource;
+  searchError?: Error | null;
   isSearchLoading: boolean;
   resource?: FileResource;
 }
@@ -116,17 +118,15 @@ const FileBrowserContent = ({
         <FileBrowserHeader
           breadcrumbs={breadcrumbs}
           isSaving={chrome.isSavingFile}
+          onSearchCaseSensitiveChange={chrome.onSearchCaseSensitiveChange}
           onSearchChange={chrome.onSearchChange}
           onSwitchView={chrome.onSwitchView}
           onToggleHiddenFiles={chrome.onToggleHiddenFiles}
           searchQuery={chrome.searchQuery}
+          searchCaseSensitive={chrome.searchCaseSensitive}
           showHiddenFiles={chrome.showHiddenFiles}
           viewMode={chrome.viewMode}
         />
-      )}
-
-      {!chrome.indexerEnabled && !chrome.editingPath && (
-        <IndexerUnavailableAlert status={chrome.indexerStatus} />
       )}
 
       <div
@@ -160,8 +160,16 @@ const FileBrowserContent = ({
         >
           {data.isSearchLoading && <ComponentLoader />}
 
+          {!chrome.editingPath && data.searchError && (
+            <AppAlert severity="error">
+              <AppAlertTitle>Search unavailable</AppAlertTitle>
+              {data.searchError.message}
+            </AppAlert>
+          )}
+
           {!chrome.editingPath &&
             !data.isSearchLoading &&
+            !data.searchError &&
             data.filteredResource &&
             data.filteredResource.type === "directory" && (
               <DirectoryListing

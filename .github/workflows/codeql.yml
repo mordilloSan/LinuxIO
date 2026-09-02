@@ -77,7 +77,7 @@ jobs:
         if: matrix.language == 'go'
         shell: bash
         run: |
-          make build-backend build-bridge build-cli SKIP_ENSURE_GO=1
+          make build-backend build-bridge build-cli build-indexer SKIP_ENSURE_GO=1
 
       - name: Build C auth helper
         if: matrix.language == 'c-cpp'

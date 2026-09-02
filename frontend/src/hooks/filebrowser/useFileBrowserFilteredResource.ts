@@ -1,44 +1,45 @@
 import { useMemo } from "react";
 
-import { useFileSearch } from "@/hooks/filebrowser/useFileSearch";
+import {
+  isSearchableQuery,
+  useFileSearch,
+} from "@/hooks/filebrowser/useFileSearch";
 import type { FileResource } from "@/types/filebrowser";
 
 interface UseFileBrowserFilteredResourceParams {
+  caseSensitive?: boolean;
   resource?: FileResource;
   searchQuery: string;
 }
 
 export const useFileBrowserFilteredResource = ({
+  caseSensitive = false,
   resource,
   searchQuery,
 }: UseFileBrowserFilteredResourceParams) => {
+  const searchEnabled = isSearchableQuery(searchQuery);
   const {
     results: searchResults,
+    error: queryError,
     isLoading: isSearchLoading,
-    isUnavailable: isSearchUnavailable,
   } = useFileSearch({
     query: searchQuery,
     basePath: "/",
-    enabled: searchQuery.trim().length >= 2,
+    caseSensitive,
+    enabled: searchEnabled,
   });
+  const searchError = queryError;
 
   const filteredResource = useMemo(() => {
-    if (!resource || !searchQuery.trim()) {
+    if (!resource || !searchEnabled) {
       return resource;
     }
     if (resource.type !== "directory" || !resource.items) {
       return resource;
     }
 
-    if (isSearchUnavailable) {
-      const lowerQuery = searchQuery.toLowerCase().trim();
-      const filteredItems = resource.items.filter((item) =>
-        item.name.toLowerCase().includes(lowerQuery),
-      );
-      return {
-        ...resource,
-        items: filteredItems,
-      };
+    if (searchError) {
+      return resource;
     }
 
     if (searchResults.length > 0) {
@@ -69,10 +70,11 @@ export const useFileBrowserFilteredResource = ({
       ...resource,
       items: [],
     };
-  }, [resource, searchQuery, searchResults, isSearchUnavailable]);
+  }, [resource, searchEnabled, searchError, searchResults]);
 
   return {
     filteredResource,
+    searchError,
     isSearchLoading: resource?.type === "directory" && isSearchLoading,
   };
 };

@@ -65,6 +65,7 @@ const FileCard = memo<FileCardProps>(
     showFullPath = false,
     directorySizeLoading = false,
     directorySizeError = null,
+    directorySizeUnavailable = false,
     onClick,
     onDoubleClick,
     onContextMenu,
@@ -134,6 +135,7 @@ const FileCard = memo<FileCardProps>(
       size: fetchedSize,
       isLoading: isSizeLoading,
       error: fetchError,
+      isUnavailable: isSizeUnavailable,
     } = useFileDirectorySize(path || "", needsIndividualDirSize);
 
     // Override size props with fetched data when displaying search results
@@ -144,6 +146,9 @@ const FileCard = memo<FileCardProps>(
     const effectiveSizeError = needsIndividualDirSize
       ? fetchError
       : directorySizeError;
+    const effectiveSizeUnavailable = needsIndividualDirSize
+      ? isSizeUnavailable
+      : directorySizeUnavailable;
 
     const formattedDate = useMemo(() => {
       if (!modTime) return "";
@@ -323,10 +328,12 @@ const FileCard = memo<FileCardProps>(
             title={effectiveSizeError?.message}
             variant="body2"
           >
-            {effectiveSizeLoading &&
-            (effectiveSize === undefined || effectiveSize === 0) ? (
+            {effectiveSizeUnavailable ? (
+              "Unavailable"
+            ) : effectiveSizeLoading &&
+              (effectiveSize === undefined || effectiveSize === 0) ? (
               <span className="file-size-pending">—</span>
-            ) : effectiveSize !== undefined && effectiveSize !== 0 ? (
+            ) : effectiveSize !== undefined ? (
               formatFileSize(effectiveSize, 1, "")
             ) : (
               "—"

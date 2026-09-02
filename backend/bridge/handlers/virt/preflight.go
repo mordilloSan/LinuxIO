@@ -224,11 +224,7 @@ func qemuSystemBinary() string {
 }
 
 func ovmfAvailable() bool {
-	return ovmfCodePath() != ""
-}
-
-func ovmfCodePath() string {
-	return findOVMFCodePath()
+	return findOVMFCodePath() != ""
 }
 
 func detectOVMFCodePath() string {
@@ -264,10 +260,10 @@ func firmwareDescriptorPaths() []string {
 
 func plainUEFIFirmwareExecutable(descriptor qemuFirmwareDescriptor) bool {
 	executable := descriptor.Mapping.Executable.Filename
-	return containsValue(descriptor.InterfaceTypes, "uefi") &&
+	return slices.Contains(descriptor.InterfaceTypes, "uefi") &&
 		firmwareTargetsArch(descriptor, "x86_64") &&
-		!containsValue(descriptor.Features, "secure-boot") &&
-		!containsValue(descriptor.Features, "requires-smm") &&
+		!slices.Contains(descriptor.Features, "secure-boot") &&
+		!slices.Contains(descriptor.Features, "requires-smm") &&
 		executable != "" &&
 		qemuReadable(executable)
 }
@@ -279,8 +275,4 @@ func firmwareTargetsArch(descriptor qemuFirmwareDescriptor, arch string) bool {
 		}
 	}
 	return false
-}
-
-func containsValue(values []string, want string) bool {
-	return slices.Contains(values, want)
 }

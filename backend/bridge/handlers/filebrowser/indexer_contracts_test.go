@@ -1,15 +1,19 @@
 package filebrowser
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestSearchResultFromIndexerExposesEditorEligibility(t *testing.T) {
 	got := searchResultFromIndexer(indexerSearchResult{
-		IsDir: new(false),
-		Path:  "/plain",
-		Type:  "file",
+		Path: "/plain",
+		Type: "file",
 	})
 	if !got.IsRegularFile || got.CanOpenAsText == nil || !*got.CanOpenAsText {
 		t.Fatalf("search result eligibility = %#v, want regular text file", got)
@@ -17,13 +21,7 @@ func TestSearchResultFromIndexerExposesEditorEligibility(t *testing.T) {
 }
 
 func TestSubfoldersFromIndexerUsesCanonicalSizeAndIgnoresBytes(t *testing.T) {
-	var upstream []indexerSubfolder
-	if err := json.Unmarshal([]byte(`[
-		{"path":"/data/cache","name":"cache","size":0,"bytes":8192,"mod_time":"2026-07-30T12:00:00Z"}
-	]`), &upstream); err != nil {
-		t.Fatal(err)
-	}
-
+	upstream := []indexerSubfolder{{Path: "/data/cache", Name: "cache"}}
 	got := subfoldersFromIndexer(upstream)
 	if len(got) != 1 {
 		t.Fatalf("subfolder count = %d, want 1", len(got))
@@ -47,18 +45,14 @@ func TestSubfoldersFromIndexerReturnsNonNilEmptySlice(t *testing.T) {
 	}
 }
 
-func TestSearchResultFromIndexerCanonicalizesTimestampAndPreservesFields(t *testing.T) {
-	var upstream indexerSearchResult
-	if err := json.Unmarshal([]byte(`{
-		"path":"/data/report.txt","name":"report.txt","type":"file","isDir":false,
-		"size":42,"inode":99,"mod_time":"canonical","modTime":"legacy-camel","modified":"legacy-old",
-		"total_size":0,"total_files":0,"total_dirs":0
-	}`), &upstream); err != nil {
-		t.Fatal(err)
+func TestSearchResultFromIndexerPreservesCanonicalFields(t *testing.T) {
+	modified := time.Date(2026, time.July, 30, 12, 0, 0, 0, time.UTC)
+	upstream := indexerSearchResult{
+		Path: "/data/report.txt", Name: "report.txt", Type: "file",
+		Size: 42, Inode: 99, ModTime: modified,
 	}
-
 	got := searchResultFromIndexer(upstream)
-	if got.ModTime != "canonical" || got.Path != "/data/report.txt" || got.Name != "report.txt" || got.IsDir || got.Size != 42 || got.CanOpenAsText == nil || !*got.CanOpenAsText {
+	if got.ModTime != "2026-07-30T12:00:00Z" || got.Path != "/data/report.txt" || got.Name != "report.txt" || got.IsDir || got.Size != 42 || got.CanOpenAsText == nil || !*got.CanOpenAsText {
 		t.Fatalf("search result = %#v, want canonical field preservation", got)
 	}
 
@@ -70,66 +64,15 @@ func TestSearchResultFromIndexerCanonicalizesTimestampAndPreservesFields(t *test
 	if err := json.Unmarshal(encoded, &public); err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := public["modTime"]; exists {
-		t.Fatalf("public result emitted legacy modTime alias: %s", encoded)
-	}
-	if _, exists := public["modified"]; exists {
-		t.Fatalf("public result emitted legacy modified alias: %s", encoded)
-	}
-	if want := `{"isDir":false,"isRegularFile":true,"mod_time":"canonical","name":"report.txt","path":"/data/report.txt","size":42,"canOpenAsText":true}`; string(encoded) != want {
-		t.Fatalf("public search JSON = %s, want %s (legacy aliases must not escape)", encoded, want)
+	if want := `{"isDir":false,"isRegularFile":true,"mod_time":"2026-07-30T12:00:00Z","name":"report.txt","path":"/data/report.txt","size":42,"canOpenAsText":true}`; string(encoded) != want {
+		t.Fatalf("public search JSON = %s, want %s", encoded, want)
 	}
 }
 
-func TestSearchResultFromIndexerTimestampAliasPrecedence(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		json string
-		want string
-	}{
-		{"canonical", `{"mod_time":"canonical","modTime":"camel","modified":"old"}`, "canonical"},
-		{"camel", `{"modTime":"camel","modified":"old"}`, "camel"},
-		{"old", `{"modified":"old"}`, "old"},
-		{"canonical empty still wins", `{"mod_time":"","modTime":"camel"}`, ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			var upstream indexerSearchResult
-			if err := json.Unmarshal([]byte(test.json), &upstream); err != nil {
-				t.Fatal(err)
-			}
-			if got := searchResultFromIndexer(upstream).ModTime; got != test.want {
-				t.Fatalf("mod_time = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
-
-func TestSearchResultFromIndexerNormalizesTypeAndDirectoryState(t *testing.T) {
-	trueValue := true
-	falseValue := false
-	for _, test := range []struct {
-		name     string
-		typeName string
-		isDir    *bool
-		path     string
-		wantType string
-		wantDir  bool
-	}{
-		{"folder", "folder", &falseValue, "/a", "directory", true},
-		{"dir", "dir", &falseValue, "/a", "directory", true},
-		{"directory", "directory", &falseValue, "/a", "directory", true},
-		{"file", "file", &trueValue, "/a", "file", false},
-		{"custom preserves type", "symlink", &trueValue, "/a", "symlink", true},
-		{"missing type legacy flag", "", &trueValue, "/a", "directory", true},
-		{"missing type trailing slash", "", nil, "/a/", "directory", true},
-		{"missing type file fallback", "", nil, "/a", "file", false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			gotType, gotDir := normalizeIndexerSearchType(test.typeName, test.isDir, test.path)
-			if gotType != test.wantType || gotDir != test.wantDir {
-				t.Fatalf("normalized = (%q, %t), want (%q, %t)", gotType, gotDir, test.wantType, test.wantDir)
-			}
-		})
+func TestSearchResultFromIndexerRecognizesDirectory(t *testing.T) {
+	got := searchResultFromIndexer(indexerSearchResult{Path: "/data", Type: "folder"})
+	if !got.IsDir || got.IsRegularFile || got.CanOpenAsText != nil {
+		t.Fatalf("directory result = %#v", got)
 	}
 }
 
@@ -137,5 +80,14 @@ func TestSearchResponseFromIndexerReturnsNonNilEmptyResults(t *testing.T) {
 	got := searchResponseFromIndexer("report", nil)
 	if got.Results == nil {
 		t.Fatalf("response = %#v, want non-nil empty results", got)
+	}
+}
+
+func TestSearchFilesRejectsShortQueries(t *testing.T) {
+	for _, query := range []string{"", "ab", "case:exact ab"} {
+		_, err := searchFiles(context.Background(), apischema.FileSearchRequest{Query: query})
+		if err == nil || !strings.Contains(err.Error(), "at least 3 characters") {
+			t.Fatalf("searchFiles(%q) error = %v, want minimum-length rejection", query, err)
+		}
 	}
 }

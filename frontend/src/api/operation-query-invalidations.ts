@@ -38,7 +38,6 @@ const FILEBROWSER_PERMISSION_KEYS = [
 
 const INDEXER_KEYS = [
   endpointQueryPrefix("indexer.get_status"),
-  endpointQueryPrefix("filebrowser.indexer_status"),
   endpointQueryPrefix("filebrowser.search"),
   endpointQueryPrefix("filebrowser.dir_size"),
   endpointQueryPrefix("filebrowser.subfolders"),

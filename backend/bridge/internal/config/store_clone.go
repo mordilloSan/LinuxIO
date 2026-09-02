@@ -10,7 +10,7 @@ func cloneSettings(in *Settings) *Settings {
 		return nil
 	}
 	out := *in
-	out.AppSettings = cloneAppSettings(in.AppSettings)
+	out.AppSettings = in.AppSettings
 	out.Docker = cloneDocker(in.Docker)
 	if in.Dismissals != nil {
 		dismissals := *in.Dismissals
@@ -41,10 +41,6 @@ func cloneUIPreferences(in *UIPreferences) *UIPreferences {
 		out.HardwareSections = &sections
 	}
 	return &out
-}
-
-func cloneAppSettings(in PersistedAppSettings) PersistedAppSettings {
-	return in
 }
 
 func cloneLayoutOrders(in map[string][]string) map[string][]string {

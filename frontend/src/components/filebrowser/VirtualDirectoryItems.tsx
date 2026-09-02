@@ -319,7 +319,6 @@ const VirtualDirectoryItems = ({
 
   return (
     <div
-      className="custom-scrollbar"
       onMouseDown={onMarqueeMouseDown}
       onMouseDownCapture={onContainerMouseDown}
       ref={containerRef}

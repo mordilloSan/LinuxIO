@@ -35,18 +35,6 @@ describe("capabilities helpers", () => {
     });
   });
 
-  it("defines indexer as an installable optional component", () => {
-    const indexer = CAPABILITIES.find(
-      (capability) => capability.wire === "indexer",
-    );
-
-    expect(indexer).toMatchObject({
-      dependency: "linuxio indexer",
-      installable: { requiresPackageKit: false },
-      state: "indexerAvailable",
-    });
-  });
-
   it("defines monitoring as an installable optional component", () => {
     const monitoring = CAPABILITIES.find(
       (capability) => capability.wire === "monitoring",
