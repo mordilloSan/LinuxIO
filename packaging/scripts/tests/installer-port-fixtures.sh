@@ -106,6 +106,8 @@ run_atomic_replacement_fixture "$LOCAL_INSTALLER"
 printf '   \033[1;32m✓\033[0m %s\n' "release and local atomic replacement"
 
 for installer in "$LOCAL_INSTALLER" "$RELEASE_INSTALLER"; do
+	doc_dir=$(bash -c "source '$installer'; printf '%s\\n' \"\$DOC_DIR\"")
+	assert_eq "/usr/share/linuxio/doc" "$doc_dir" "${installer} legacy-compatible license directory"
 	if [[ "$installer" == "$LOCAL_INSTALLER" ]]; then
 		license_line=$(grep -n -m1 '^[[:space:]]*Show 2 "Installing licenses' "$installer" | cut -d: -f1)
 		binary_line=$(grep -n -m1 '^[[:space:]]*Show 2 "Installing binaries' "$installer" | cut -d: -f1)
@@ -252,7 +254,7 @@ if grep -Eq '^Wants=.*linuxio-indexer-index.timer' "$INDEXER_TARGET"; then
 	fail "linuxio.target must not bypass the timer's enabled state"
 fi
 grep -Fqx 'WantedBy=linuxio.target' "${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.timer" || fail "index timer install relationship"
-grep -Fqx 'OnActiveSec=5m' "$INDEXER_TIMER" || fail "index timer must run soon after first activation"
+grep -Fqx 'OnActiveSec=1h' "$INDEXER_TIMER" || fail "index timer initial delay must match its default interval"
 grep -Fqx 'OnUnitActiveSec=1h' "$INDEXER_TIMER" || fail "index timer default recurring interval"
 if grep -Fqx 'Persistent=true' "${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.timer"; then
 	fail "Persistent has no effect on a monotonic timer"

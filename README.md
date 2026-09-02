@@ -201,7 +201,7 @@ docs(readme): update installation instructions
 This project is licensed under the [Apache License 2.0](LICENSE).
 Third-party licenses and notices included in the filesystem indexer are
 listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and installed at
-`/usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md`.
+`/usr/share/linuxio/doc/THIRD_PARTY_NOTICES.md`.
 
 ---
 

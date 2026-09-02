@@ -48,6 +48,7 @@ readonly LINUXIO_SOCKET_NAME="linuxio-webserver.socket"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly LINUXIO_PORT_MIN=8090
 readonly LINUXIO_PORT_MAX=8099
+readonly DOC_DIR="/usr/share/linuxio/doc"
 PORT=""
 
 linuxio_binary_names() {
@@ -261,13 +262,13 @@ main() {
 	# ========== INSTALL ==========
 	Header "Step 2/2 — Install"
 	Show 2 "Installing licenses..."
-	if ! atomic_replace_file "$REPO_ROOT/LICENSE" /usr/share/doc/linuxio/LICENSE 0644 root:root; then
+	if ! atomic_replace_file "$REPO_ROOT/LICENSE" "${DOC_DIR}/LICENSE" 0644 root:root; then
 		Show 1 "Failed to install license"
 	fi
-	if ! atomic_replace_file "$REPO_ROOT/docs/THIRD_PARTY_NOTICES.md" /usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md 0644 root:root; then
+	if ! atomic_replace_file "$REPO_ROOT/docs/THIRD_PARTY_NOTICES.md" "${DOC_DIR}/THIRD_PARTY_NOTICES.md" 0644 root:root; then
 		Show 1 "Failed to install third-party notices"
 	fi
-	Show 0 "Licenses installed to /usr/share/doc/linuxio"
+	Show 0 "Licenses installed to ${DOC_DIR}"
 
 	# Binaries
 	Show 2 "Installing binaries..."
@@ -441,7 +442,7 @@ main() {
 	echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth,linuxio-docker-update,linuxio-indexer}"
 	echo "  • Systemd files:   /etc/systemd/system/linuxio*"
 	echo "  • Configuration:   /etc/linuxio/indexer/config.yaml"
-	echo "  • Licenses:        /usr/share/doc/linuxio/"
+	echo "  • Licenses:        ${DOC_DIR}/"
 	echo "  • PAM config:      /etc/pam.d/linuxio"
 	echo "  • Issue updater:   /usr/share/linuxio/issue/"
 	echo ""

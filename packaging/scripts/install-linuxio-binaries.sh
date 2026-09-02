@@ -17,7 +17,9 @@ readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
 readonly DATA_DIR="/var/lib/linuxio"
-readonly DOC_DIR="/usr/share/doc/linuxio"
+# In-app updates run with the installed bridge's writable-path allowlist.
+# Keep mandatory release files under paths supported since v0.27.0.
+readonly DOC_DIR="/usr/share/linuxio/doc"
 readonly STAGING="/tmp/linuxio-install-$$"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly MINIMUM_INDEXER_RELEASE="v0.27.0"
@@ -350,15 +352,17 @@ install_pam_config() {
 }
 
 # Drop the Avahi service file so LinuxIO advertises itself on the LAN as
-# <hostname>.local once avahi-daemon is running. The file is harmless when
-# Avahi isn't installed — it just sits in /etc/avahi/services/ until it is.
+# <hostname>.local when Avahi is installed.
 install_avahi_service() {
 	Show 2 "Installing Avahi service file..."
 
 	local avahi_dir="/etc/avahi/services"
 	local avahi_file="${avahi_dir}/linuxio.service"
 
-	mkdir -p "$avahi_dir"
+	if [[ ! -d "$avahi_dir" ]]; then
+		Show 3 "Avahi not installed — mDNS advertisement skipped"
+		return 0
+	fi
 
 	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/avahi/services/linuxio.service" -o "$avahi_file"; then
 		Show 3 "Failed to download Avahi service file — mDNS advertisement skipped"
