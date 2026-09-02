@@ -27,6 +27,120 @@ packages must not delete administrator-owned files under `/usr/local` or
 - [ ] Do not add legacy migration, compatibility symlinks, source packages,
       extra release channels, or additional architectures in this work.
 
+## Required changes
+
+### 1. Keep the CLI name
+
+- [ ] Keep the current build output in `Makefile:21`:
+
+  ```make
+  cli_binary := $(bin_dir)/linuxio
+  ```
+
+- [ ] Install that file as `/usr/bin/linuxio` from the package-root target.
+- [ ] Do not build `linuxio-cli` or add a compatibility symlink.
+
+### 2. Separate public and private paths
+
+- [ ] Replace `BinDir` in `backend/common/version/version.go:5` with the
+      private executable location:
+
+  ```go
+  const LibexecDir = "/usr/libexec/linuxio"
+  ```
+
+- [ ] Do not add a `CLIPath` constant unless code genuinely needs to invoke
+      the CLI.
+- [ ] Use `LibexecDir` when the webserver spawns the bridge in
+      `backend/webserver/bridge/bridge.go:57`.
+- [ ] Update the Docker update worker path in
+      `backend/bridge/handlers/docker/auto_update_native.go:27`.
+- [ ] Update the authentication bridge path in
+      `backend/auth/linuxio-auth.c:64`.
+- [ ] Update every package-owned systemd `ExecStart` entry.
+- [ ] Update the verbose systemd drop-ins written by
+      `backend/cli/main.go:653`.
+
+### 3. Simplify `linuxio version`
+
+Native packaging guarantees that every file in the package has one version.
+
+- [ ] Remove `versionExecCommand` and the four private-binary subprocess
+      probes from `backend/cli/main.go:98`.
+- [ ] Remove `version --self`.
+- [ ] Make `linuxio version` print the package/build version.
+- [ ] Support the conventional `linuxio --version` with the same result.
+- [ ] Remove component-version probing from
+      `backend/webserver/auth/version.go:138`; it must not depend on all
+      LinuxIO binaries sharing one executable search path.
+
+### 4. Clarify help text
+
+- [ ] Use this simpler command summary:
+
+  ```text
+  LinuxIO system administration
+
+  linuxio status
+  linuxio logs [component] [lines]
+  linuxio start
+  linuxio stop
+  linuxio restart [--full]
+  linuxio verbose enable|disable|status
+  linuxio version
+  ```
+
+### 5. Add one handwritten man page
+
+- [x] Add `packaging/man/linuxio.8` in plain roff. Do not add a documentation
+      generator.
+- [x] Document the synopsis, commands, required privileges, files, systemd
+      units, and examples.
+- [ ] Install it in the DEB through `debian/linuxio.manpages`.
+- [ ] Include `%{_mandir}/man8/linuxio.8*` in the RPM. Let debhelper and RPM
+      packaging handle compression.
+
+### 6. Update tests and documentation
+
+- [ ] Remove component-probing and `--self` tests.
+- [ ] Test both `linuxio version` and `linuxio --version`.
+- [ ] Update systemd path assertions.
+- [ ] Update `docs/process-systemd-architecture.md:31`.
+- [ ] Add the man page to package-content tests.
+
+## Development workflow
+
+Keep `make localinstall` as the developer entry point, but make it exercise the
+same native package layout as a release. It must no longer copy binaries or
+systemd units itself.
+
+```text
+make localinstall
+  -> make fastbuild
+  -> select DEB or RPM from /etc/os-release
+  -> build the native package for the current distribution
+  -> install or reinstall that exact package with apt or dnf
+  -> restart linuxio.target after the package transaction
+```
+
+- [ ] Make package construction consume the exact outputs from `fastbuild`, so
+      all installed binaries carry the same build version.
+- [ ] Run the build and package construction unprivileged; elevate only the
+      package-manager install and the post-transaction service restart.
+- [ ] Keep `make dev` as the frontend hot-reload workflow against the installed
+      systemd backend.
+- [ ] Use `make localinstall` for the first development install and after
+      backend changes. Individual build targets only build; they do not
+      install.
+- [ ] Delete `packaging/scripts/localinstall.sh` after the package-based target
+      replaces it.
+- [ ] Remove `make reinstall` and the custom uninstall target. Native package
+      managers own reinstall and removal.
+- [ ] Implement package tooling and the package-based `make localinstall`
+      before simplifying version reporting; the one-version assumption is
+      valid only after every supported install path installs one complete
+      package.
+
 ## 1. Establish the package-owned filesystem layout
 
 Use this common layout:
@@ -91,9 +205,8 @@ Use this common layout:
       inside the package transaction.
 - [ ] On removal, stop and disable services while preserving application data.
 - [ ] Add `make package-deb` and `make package-rpm`.
-- [ ] Remove `make localinstall`, `make reinstall`, and the custom uninstall
-      target. Development installs use `apt install ./dist/*.deb` or
-      `dnf install ./dist/*.rpm`.
+- [ ] Replace the current `make localinstall` implementation with the
+      package-based development workflow above.
 
 ## 3. Publish signed static repositories
 
@@ -240,8 +353,15 @@ RPM Fedora build --/                         |
 - [ ] The same tests on the current and previous Fedora releases.
 - [ ] Fedora runtime smoke test with SELinux enforcing.
 - [ ] Package contents and ownership match the intended common layout.
+- [ ] The package exposes only `/usr/bin/linuxio`; all private executables are
+      under `/usr/libexec/linuxio` and are not required in `$PATH`.
+- [ ] `linuxio version` and `linuxio --version` report the package/build
+      version without executing another LinuxIO binary.
+- [ ] The DEB and RPM contain the `linuxio(8)` man page.
 - [ ] No package-owned files exist under `/usr/local`.
 - [ ] No package-owned base units exist under `/etc/systemd/system`.
+- [ ] `make localinstall` installs the package through APT or DNF and does not
+      copy package-owned files directly.
 - [ ] Install version A from each local signed repository, publish version B,
       and update A to B through PackageKit.
 - [ ] Verify a logged-in browser observes progress, survives the expected

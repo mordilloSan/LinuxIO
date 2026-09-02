@@ -1,0 +1,203 @@
+.TH LINUXIO 8 "September 2026" "LinuxIO" "System Administration"
+.SH NAME
+linuxio \- LinuxIO system administration
+.SH SYNOPSIS
+.B linuxio status
+.br
+.B linuxio logs
+.RI [ component ]
+.RI [ lines ]
+.br
+.B linuxio start
+.br
+.B linuxio stop
+.br
+.B linuxio restart
+.RB [ \-\-full ]
+.br
+.B linuxio verbose
+.BR enable | disable | status
+.br
+.B linuxio version
+.br
+.B linuxio \-\-version
+.SH DESCRIPTION
+.B linuxio
+is the public command for inspecting and administering the LinuxIO systemd
+services.
+The other LinuxIO executables are private implementation details installed
+under
+.IR /usr/libexec/linuxio .
+.SH COMMANDS
+.TP
+.B status
+List the loaded LinuxIO systemd units and their current states.
+.TP
+.B logs
+.RI [ component ]
+.RI [ lines ]
+Follow LinuxIO messages from the system journal.
+.I component
+may be
+.BR webserver ,
+.BR bridge ,
+.BR auth ,
+or
+.BR indexer .
+Without a component, messages from all LinuxIO components are shown.
+.I lines
+is the positive number of existing messages to show before following new
+messages; the default is 100.
+.TP
+.B start
+Start
+.BR linuxio.target .
+.TP
+.B stop
+Stop
+.BR linuxio.target .
+.TP
+.B restart
+.RB [ \-\-full ]
+Restart the LinuxIO control plane while leaving the listening webserver socket
+active.
+With
+.BR \-\-full ,
+restart the complete
+.BR linuxio.target .
+.TP
+.B verbose
+.BR enable | disable | status
+Enable, disable, or report verbose logging for the webserver and indexer.
+Enabling or disabling verbose logging writes systemd drop-ins, reloads systemd,
+and restarts LinuxIO.
+.TP
+.B version
+Print the installed package/build version.
+.TP
+.B \-\-version
+Print the installed package/build version.
+.SH PRIVILEGES
+.B status,
+.B version,
+and
+.B verbose status
+do not normally require elevated privileges.
+.PP
+.B logs
+requires permission to read the system journal, normally through root or
+membership in the
+.B systemd-journal
+or
+.B adm
+group.
+The LinuxIO package does not change user group membership.
+.PP
+.BR start ,
+.BR stop ,
+.BR restart ,
+.BR "verbose enable" ,
+and
+.B "verbose disable"
+require administrative authorization and are normally run with
+.BR sudo (8).
+.SH FILES
+.TP
+.I /etc/linuxio/
+Administrator-managed LinuxIO configuration.
+.TP
+.I /etc/pam.d/linuxio
+PAM configuration used for LinuxIO authentication.
+.TP
+.I /var/lib/linuxio/
+Persistent application data.
+.TP
+.I /run/linuxio/
+Runtime sockets and transient status data.
+.TP
+.I /usr/libexec/linuxio/
+Private LinuxIO executables managed by the package.
+.TP
+.I /usr/lib/systemd/system/linuxio*
+Package-owned systemd units.
+.TP
+.I /etc/systemd/system/linuxio-webserver.service.d/verbose.conf
+Verbose logging drop-in created by
+.BR "linuxio verbose enable" .
+.TP
+.I /etc/systemd/system/linuxio-indexer.service.d/verbose.conf
+Verbose logging drop-in created by
+.BR "linuxio verbose enable" .
+.SH SYSTEMD UNITS
+.TP
+.B linuxio.target
+Umbrella target for the LinuxIO application stack.
+.TP
+.B linuxio-webserver.socket
+Listens for browser connections and activates the webserver service.
+.TP
+.B linuxio-webserver.service
+Runs the LinuxIO webserver.
+.TP
+.B linuxio-auth.socket
+Accepts local authentication connections.
+.TP
+.B linuxio-auth@.service
+Runs one authentication worker for each accepted connection.
+.TP
+.B linuxio-indexer.socket
+Activates the filesystem indexer API.
+.TP
+.B linuxio-indexer.service
+Runs the filesystem indexer.
+.TP
+.B linuxio-indexer-index.timer
+Schedules periodic filesystem indexing through
+.BR linuxio-indexer-index.service .
+.SH EXAMPLES
+Show the state of all LinuxIO units:
+.PP
+.nf
+.B linuxio status
+.fi
+.PP
+Follow the latest 200 bridge log messages:
+.PP
+.nf
+.B linuxio logs bridge 200
+.fi
+.PP
+Restart the control plane:
+.PP
+.nf
+.B sudo linuxio restart
+.fi
+.PP
+Restart the complete LinuxIO stack:
+.PP
+.nf
+.B sudo linuxio restart \-\-full
+.fi
+.PP
+Enable verbose logging:
+.PP
+.nf
+.B sudo linuxio verbose enable
+.fi
+.PP
+Print the installed version:
+.PP
+.nf
+.B linuxio \-\-version
+.fi
+.SH EXIT STATUS
+The command exits with status 0 on success and a non-zero status when an
+argument is invalid or an operation fails.
+.SH SEE ALSO
+.BR systemctl (1),
+.BR journalctl (1),
+.BR systemd.unit (5),
+.BR systemd.service (5),
+.BR systemd.socket (5),
+.BR systemd.target (5),
+.BR sudo (8)
