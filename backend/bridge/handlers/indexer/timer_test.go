@@ -47,7 +47,7 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 
 	var dropIn, dropInPath string
 	var units []string
-	writeTimerDropIn = func(path string, data []byte, _ fs.FileMode) error {
+	writeTimerDropIn = func(path string, data []byte, _ fs.FileMode, _ ...int) error {
 		dropInPath = path
 		dropIn = string(data)
 		return nil

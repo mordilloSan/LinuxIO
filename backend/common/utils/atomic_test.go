@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestWriteFileAtomicOwnedSetsFileOwnership(t *testing.T) {
+func TestWriteFileAtomicSetsFileOwnership(t *testing.T) {
 	path := t.TempDir() + "/state.yaml"
 	uid, gid := os.Getuid(), os.Getgid()
 
-	if err := WriteFileAtomicOwned(path, []byte("state: ready\n"), 0o640, uid, gid); err != nil {
-		t.Fatalf("WriteFileAtomicOwned: %v", err)
+	if err := WriteFileAtomic(path, []byte("state: ready\n"), 0o640, uid, gid); err != nil {
+		t.Fatalf("WriteFileAtomic: %v", err)
 	}
 
 	info, err := os.Stat(path)
@@ -36,7 +36,7 @@ func TestWriteFileAtomicOwnedSetsFileOwnership(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomicOwnedRejectsInvalidOwnership(t *testing.T) {
+func TestWriteFileAtomicRejectsInvalidOwnership(t *testing.T) {
 	path := t.TempDir() + "/state.yaml"
 	for _, test := range []struct {
 		name string
@@ -48,9 +48,9 @@ func TestWriteFileAtomicOwnedRejectsInvalidOwnership(t *testing.T) {
 		{name: "negative gid", uid: os.Getuid(), gid: -1, want: "gid -1 is invalid"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := WriteFileAtomicOwned(path, []byte("state: ready\n"), 0o640, test.uid, test.gid)
+			err := WriteFileAtomic(path, []byte("state: ready\n"), 0o640, test.uid, test.gid)
 			if err == nil {
-				t.Fatal("WriteFileAtomicOwned succeeded with invalid ownership")
+				t.Fatal("WriteFileAtomic succeeded with invalid ownership")
 			}
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %q, want substring %q", err, test.want)
@@ -59,5 +59,15 @@ func TestWriteFileAtomicOwnedRejectsInvalidOwnership(t *testing.T) {
 				t.Fatalf("target exists after rejected ownership: %v", statErr)
 			}
 		})
+	}
+}
+
+func TestWriteFileAtomicRejectsIncompleteOwnership(t *testing.T) {
+	path := t.TempDir() + "/state.yaml"
+	if err := WriteFileAtomic(path, []byte("state: ready\n"), 0o640, os.Getuid()); err == nil {
+		t.Fatal("WriteFileAtomic succeeded with incomplete ownership")
+	}
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Fatalf("target exists after rejected ownership: %v", err)
 	}
 }

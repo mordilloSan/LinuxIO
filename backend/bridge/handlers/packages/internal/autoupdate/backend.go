@@ -39,7 +39,7 @@ type UpdateBackend interface {
 
 type backendHost struct {
 	readFile         func(string) ([]byte, error)
-	writeFileAtomic  func(string, []byte, fs.FileMode) error
+	writeFileAtomic  func(string, []byte, fs.FileMode, ...int) error
 	removeFile       func(string) error
 	fileExists       func(string) bool
 	getUnitFileState func(context.Context, string) (string, error)

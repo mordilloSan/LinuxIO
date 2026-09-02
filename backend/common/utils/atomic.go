@@ -12,27 +12,17 @@ import (
 // directory is written, fsynced, chmod-ed, closed, then renamed over path.
 // The parent directory is fsynced after the rename so the rename itself
 // survives a crash. The destination is validated upfront; refusing to clobber
-// symlinks, directories, or special files.
-func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
-	return writeFileAtomic(path, data, mode, nil)
-}
-
-// WriteFileAtomicOwned writes data to path atomically and assigns uid/gid to
-// the temporary inode before any data is written. The ownership therefore
-// follows the inode through the final rename.
-func WriteFileAtomicOwned(path string, data []byte, mode fs.FileMode, uid, gid int) error {
-	if err := validateOwnership(uid, gid); err != nil {
-		return fmt.Errorf("validate file ownership: %w", err)
+// symlinks, directories, or special files. An optional uid and gid assign
+// ownership to the temporary inode before it is written.
+func WriteFileAtomic(path string, data []byte, mode fs.FileMode, ownership ...int) error {
+	if len(ownership) != 0 && len(ownership) != 2 {
+		return errors.New("file ownership requires both uid and gid")
 	}
-	return writeFileAtomic(path, data, mode, &fileOwnership{uid: uid, gid: gid})
-}
-
-type fileOwnership struct {
-	uid int
-	gid int
-}
-
-func writeFileAtomic(path string, data []byte, mode fs.FileMode, ownership *fileOwnership) error {
+	if len(ownership) == 2 {
+		if err := validateOwnership(ownership[0], ownership[1]); err != nil {
+			return fmt.Errorf("validate file ownership: %w", err)
+		}
+	}
 	if err := validateDestination(path); err != nil {
 		return err
 	}
@@ -46,10 +36,10 @@ func writeFileAtomic(path string, data []byte, mode fs.FileMode, ownership *file
 	}
 	tmp := f.Name()
 	defer os.Remove(tmp)
-	if ownership != nil {
-		if err := f.Chown(ownership.uid, ownership.gid); err != nil {
+	if len(ownership) == 2 {
+		if err := f.Chown(ownership[0], ownership[1]); err != nil {
 			_ = f.Close()
-			return fmt.Errorf("chown temp %q to %d:%d: %w", tmp, ownership.uid, ownership.gid, err)
+			return fmt.Errorf("chown temp %q to %d:%d: %w", tmp, ownership[0], ownership[1], err)
 		}
 	}
 	if _, err := f.Write(data); err != nil {

@@ -56,7 +56,7 @@ func testEnv(t *testing.T) (Environment, *fakeRunner, string) {
 		IfupdownDir:     filepath.Join(root, "etc", "network", "interfaces.d"),
 		IfcfgDir:        filepath.Join(root, "etc", "sysconfig", "network-scripts"),
 		Runner:          runner,
-		WriteFile: func(path string, data []byte, mode fs.FileMode) error {
+		WriteFile: func(path string, data []byte, mode fs.FileMode, _ ...int) error {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return err
 			}

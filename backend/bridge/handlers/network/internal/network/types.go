@@ -47,7 +47,7 @@ type Environment struct {
 	IfupdownDir         string
 	IfcfgDir            string
 	Runner              CommandRunner
-	WriteFile           func(path string, data []byte, mode fs.FileMode) error
+	WriteFile           func(path string, data []byte, mode fs.FileMode, ownership ...int) error
 	RemoveFile          func(path string) error
 	ReadFile            func(path string) ([]byte, error)
 	InterfaceProbes     func(ctx context.Context) ([]InterfaceProbe, error)
