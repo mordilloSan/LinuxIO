@@ -62,11 +62,12 @@ scoped reindexing never start an independent daemon.
 | `linuxio-indexer-index.timer` | Periodic full-index schedule |
 | `linuxio-indexer-index.service` | Requests a full index from the daemon |
 
-The daemon is socket activated. The timer makes its first request after five
-minutes and then hourly by default. `linuxio-webserver.service` weakly starts
-the daemon and owns `/run/linuxio/webserver`, an activity marker that keeps the
-indexer warm while the webserver is running. The marker does not grant socket
-access.
+The daemon is socket activated. Starting the webserver only warms the daemon
+for queries; it does not request an index. The timer makes its first request
+after its configured interval, hourly by default, and repeats at that cadence.
+`linuxio-webserver.service` owns `/run/linuxio/webserver`, an activity marker
+that keeps the indexer warm while the webserver is running. The marker does not
+grant socket access.
 
 When the marker is absent and no request, event stream, or scan is active, the
 daemon exits after a 90-second idle grace. The socket remains ready to activate
