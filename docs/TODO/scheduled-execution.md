@@ -22,13 +22,15 @@ projection, and the user-facing history that systemd and journald do not model.
 | Process identity, environment, timeout, resource limits, overlap, and exit | systemd `.service` |
 | Standard output and error | journald |
 | Schedule definition and safe script reference | LinuxIO configuration |
-| Stable historical run summary | LinuxIO metadata database |
-| User-facing failure condition | LinuxIO alert service |
+| Stable historical run summary | root-owned LinuxIO run directory |
+| User-facing failure condition | LinuxIO alert daemon |
 | Live manual invocation | Task only when interactive progress/cancellation is useful |
 
-The bridge uses the existing systemd D-Bus boundary to create, enable, disable,
-start, stop, inspect, and remove units. Do not shell out to `systemctl` or build
-an in-process timing loop.
+The bridge renders unit files under `/etc/systemd/system` with the atomic write
+and D-Bus daemon-reload path the Docker auto-update timer already uses, and uses
+the existing systemd D-Bus boundary to enable, disable, start, stop, inspect,
+and remove them. Do not shell out to `systemctl` or build an in-process timing
+loop.
 
 ## Schedule definition
 
@@ -87,19 +89,42 @@ invocation identity, reusing the existing journal Channel and cursor behavior.
 Journal rotation may remove old diagnostic output while the bounded summary
 continues to state honestly that the run occurred.
 
-A small service-owned SQLite database is appropriate once stable run history
-ships. It can share the metadata database used by alerts while keeping schema
-and package ownership separate. Retention removes only terminal rows and never
-an active or unreconciled run.
+Run summaries are one bounded JSON file per invocation in a root-owned run
+directory, keyed by schedule ID and systemd invocation ID, the same shape as
+the durable-task file store in `backend/common/durabletask`. Concurrent
+schedules write different files, so there is no shared writer, no schema, no
+migration, and no database in the scheduler. Listing a schedule's recent runs is
+a directory read; nothing in the UI queries runs across schedules. The alert
+daemon's database is not used for runs. Retention deletes terminal files beyond
+a per-schedule bound and never an active or unreconciled run.
 
 ## Capturing executions while the bridge is absent
 
-Scheduling must continue with no logged-in user and no bridge process. The
-implementation therefore needs a system-owned reconciliation path that can
-associate each service activation with a run ID and commit its terminal
-summary. Acceptable designs include a narrow LinuxIO runner executable or a
-system service that observes only LinuxIO-managed units. The choice is deferred
-until implementation, but it must satisfy:
+Scheduling must continue with no logged-in user and no bridge process. A
+short-lived root worker binary, the `linuxio-docker-update` precedent, records
+each activation. The generated service runs the allow-listed script natively
+and brackets it with two worker calls:
+
+```ini
+[Service]
+Type=oneshot
+User=<policy user>
+Group=<policy group>
+TimeoutStartSec=<timeout>
+ExecStartPre=+/usr/local/bin/<worker> begin --schedule <id>
+ExecStart=<allow-listed script> <fixed arguments>
+ExecStopPost=+/usr/local/bin/<worker> finish --schedule <id>
+```
+
+`begin` writes the run file in the `running` state using `$INVOCATION_ID`.
+`finish` completes it from `$SERVICE_RESULT`, `$EXIT_CODE`, and `$EXIT_STATUS`,
+which systemd passes to `ExecStopPost=` even after a timeout kill, so the finish
+record does not depend on the script surviving. The `+` prefix runs both calls
+as root so they can write the root-owned directory while the script itself
+keeps the policy user and sandbox. No daemon observes units. If a run file has
+a `begin` and no `finish`, the bridge reconciles on read by asking systemd for
+the unit's invocation state and marks the run `unknown` when neither systemd
+nor the file proves an outcome. This design satisfies:
 
 - one run ID per accepted activation;
 - no duplicate execution during reconciliation;
@@ -131,7 +156,9 @@ a link to invocation-filtered logs. Editing timing never edits a run record.
 
 ## Alerts
 
-Scheduled execution emits meaningful source transitions to the alert service:
+Scheduled execution is an alert source. The worker's `finish` step posts
+transitions to the alert daemon's socket, and the bridge posts when it
+reconciles a run to `unknown`:
 
 - failure or unknown outcome raises or updates a stable alert keyed by schedule;
 - a later successful run resolves that condition when policy says the schedule
@@ -148,6 +175,6 @@ by the timer or runner.
 - Overlap, missed-run, timeout, privilege, cancellation, and deletion semantics
   have focused tests.
 - Each activation has one bounded summary and one exact journald correlation.
-- No raw logs are stored in the metadata database.
+- No raw logs are stored in run files.
 - Host restart produces proven state or `unknown`, never an invented success or
   replacement execution.

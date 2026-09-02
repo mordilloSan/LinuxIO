@@ -63,11 +63,18 @@ seen state.
 
 ## Persistence
 
-Use a small service-owned SQLite database for alert lifecycle, per-user seen
-state, bounded run summaries, and delivery attempts. These requirements involve
-deduplication, concurrent bridge sessions, independent state transitions, and
-bounded queries; a relational metadata store is simpler and more honest than
-rewriting per-user JSON snapshots or replaying journal history.
+A standalone root-owned alert daemon owns a small SQLite database for alert
+lifecycle, per-user seen state, and delivery attempts. It is shaped like
+`linuxio-indexer`: one job, its own sandboxed systemd service, its own database
+file, and its own Unix socket, with a client in the bridge. Bridges never open
+the database file. The bridge cannot be the owner: it is per session, runs as
+the login user, and exits with the session, while sources such as failed
+scheduled runs, Docker update failures, and storage health fire with no session
+present, and per-user scoping must be enforced by a process the user does not
+control. Deduplication, concurrent sessions, independent state transitions, and
+bounded queries are relational application semantics; a single-writer daemon
+over SQLite is simpler and more honest than rewriting per-user JSON snapshots
+or replaying journal history.
 
 SQLite is not the scheduler or log store. Never persist raw journal output,
 every toast, Task progress frames, arbitrary requests, credentials, arbitrary
@@ -80,10 +87,10 @@ Phase 6 starts with:
 - `alerts` — source identity, lifecycle, severity, safe presentation fields;
 - `alert_seen` — per-UID seen timestamp.
 
-The same metadata database may later add `scheduled_runs` for the bounded
-execution summaries defined in the scheduling plan (Phase 7), followed by
-`delivery_attempts` for target, transition, attempt time, outcome, and bounded
-retry state (Phase 8).
+Phase 8 adds `delivery_attempts` for target, transition, attempt time, outcome,
+and bounded retry state, because delivery is alert state. Scheduled-run
+summaries do not live here; the scheduling plan owns them in its own store and
+reaches this daemon only as an alert source.
 
 Notification target secrets remain in a separately protected configuration
 surface; they do not belong in alert rows or delivery history.
@@ -118,9 +125,11 @@ visible transitions, but it is never a history owner. Remove the current
 localStorage toast history only when the server-backed navbar cuts over.
 
 A slow watcher cannot block alert writes or accumulate an unbounded queue.
-Channel closure removes all subscriber resources. Multiple bridge processes
-observe database revision changes through a bounded reconciliation mechanism;
-an in-process subscriber map alone is not authoritative.
+Channel closure removes all subscriber resources. The daemon is the single
+revision authority: each bridge holds one server-sent-events subscription to
+the daemon socket, the same shape as the indexer watch path, and republishes
+coalesced revisions to its own Channel subscribers. Bridges do not poll the
+database or watch each other.
 
 ## Sources
 
@@ -156,14 +165,24 @@ administrative alert without recursively routing forever.
 
 ## Security and failure behavior
 
-- Every read and seen-state mutation is scoped to the authenticated UID.
-- Dismiss/restore and target configuration use explicit privilege checks.
+- The daemon socket is connectable by unprivileged bridges, unlike the
+  root-only indexer socket, because unprivileged sessions read alerts. The
+  kernel peer credential is the authority: a peer is the UID it connected as.
+  A root peer serves several sessions and may assert the session UID for
+  seen-state operations; every other peer is scoped to its own UID and the
+  bridge cannot widen that.
+- Every read and seen-state mutation is scoped to that UID.
+- Only root peers, meaning system units and root bridges, may create, update,
+  or resolve alerts. Dismiss/restore and target configuration also require a
+  root peer. Alerts raised by unprivileged sessions are out of the initial
+  scope; add them as a separate UID-owned relation if a product need appears.
 - Alert metadata and internal routes are allow-listed and length-bounded.
 - Database busy, full, migration, permission, and decode failures surface with
   operation context and never publish an uncommitted revision.
 - A source outcome is not rolled back when alert creation or delivery fails.
-- Retention removes only terminal run summaries, resolved alerts allowed by
-  policy, and old delivery attempts; active alerts are preserved.
+- Retention removes only resolved alerts allowed by policy and old delivery
+  attempts; active alerts are preserved. Run-summary retention belongs to the
+  scheduling plan.
 
 ## Initial completion criteria
 
