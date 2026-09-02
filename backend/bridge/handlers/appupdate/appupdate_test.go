@@ -53,6 +53,7 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 		"/etc/systemd/system",
 		"-/etc/motd.d",
 		"/usr/lib/tmpfiles.d",
+		"/usr/share/doc/linuxio",
 		"/usr/share/linuxio",
 		version.DataDir,
 	}

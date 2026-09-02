@@ -139,6 +139,7 @@ func updaterWritablePaths() []updaterWritablePath {
 		{path: "/etc/systemd/system"},
 		{path: "/etc/motd.d", optional: true},
 		{path: "/usr/lib/tmpfiles.d"},
+		{path: "/usr/share/doc/linuxio"},
 		{path: "/usr/share/linuxio"},
 		{path: version.DataDir},
 	}

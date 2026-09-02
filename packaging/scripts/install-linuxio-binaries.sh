@@ -96,6 +96,9 @@ atomic_replace_file() {
 	local owner="${4:-}"
 	local tmp
 
+	if ! mkdir -p "$(dirname "$dst")"; then
+		return 1
+	fi
 	tmp=$(mktemp "${dst}.new.XXXXXX") || return 1
 	if ! cp "$src" "$tmp" || ! chmod "$mode" "$tmp"; then
 		rm -f "$tmp"
@@ -272,7 +275,6 @@ install_binaries() {
 
 install_license_files() {
 	Show 2 "Installing licenses to ${BOLD}${DOC_DIR}${COLOUR_RESET}"
-	mkdir -p "$DOC_DIR"
 	if ! atomic_replace_file "${STAGING}/LICENSE" "${DOC_DIR}/LICENSE" 0644 root:root; then
 		Show 1 "Failed to install license"
 	fi
@@ -828,12 +830,12 @@ main() {
 			Show 1 "Checksum verification failed"
 		fi
 
-		Header "Step 3/5 — Install Binaries"
-		if ! install_binaries; then
-			Show 1 "Binary installation failed"
-		fi
+		Header "Step 3/5 — Install Release Files"
 		if ! install_license_files; then
 			Show 1 "License file installation failed"
+		fi
+		if ! install_binaries; then
+			Show 1 "Binary installation failed"
 		fi
 	else
 		Header "Steps 1-3 — Skipping binary installation"

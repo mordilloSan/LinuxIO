@@ -69,11 +69,11 @@ run_atomic_replacement_fixture() {
 		source "$installer"
 		local fixture_dir destination source_file
 		fixture_dir=$(mktemp -d)
-		destination="${fixture_dir}/linuxio-indexer"
+		destination="${fixture_dir}/install/bin/linuxio-indexer"
 		source_file="${fixture_dir}/linuxio-indexer.new"
-		printf 'old release\n' >"$destination"
 		printf 'new release\n' >"$source_file"
 		atomic_replace_file "$source_file" "$destination" 0644
+		[[ -d "${fixture_dir}/install/bin" ]] || fail "atomic replacement did not create the destination directory"
 		grep -Fqx 'new release' "$destination" || fail "atomic replacement did not install the new asset"
 		if compgen -G "${destination}.new.*" >/dev/null; then
 			fail "atomic replacement left a temporary asset"
@@ -104,6 +104,19 @@ printf '   \033[1;32m✓\033[0m %s\n' "release checksum verification"
 run_atomic_replacement_fixture "$RELEASE_INSTALLER"
 run_atomic_replacement_fixture "$LOCAL_INSTALLER"
 printf '   \033[1;32m✓\033[0m %s\n' "release and local atomic replacement"
+
+for installer in "$LOCAL_INSTALLER" "$RELEASE_INSTALLER"; do
+	if [[ "$installer" == "$LOCAL_INSTALLER" ]]; then
+		license_line=$(grep -n -m1 '^[[:space:]]*Show 2 "Installing licenses' "$installer" | cut -d: -f1)
+		binary_line=$(grep -n -m1 '^[[:space:]]*Show 2 "Installing binaries' "$installer" | cut -d: -f1)
+	else
+		license_line=$(grep -n -m1 '^[[:space:]]*if ! install_license_files; then' "$installer" | cut -d: -f1)
+		binary_line=$(grep -n -m1 '^[[:space:]]*if ! install_binaries; then' "$installer" | cut -d: -f1)
+	fi
+	[[ -n "$license_line" && -n "$binary_line" ]] || fail "${installer} install ordering could not be resolved"
+	((license_line < binary_line)) || fail "${installer} replaces binaries before licenses are safely installed"
+done
+printf '   \033[1;32m✓\033[0m %s\n' "licenses precede binary replacement"
 
 run_port_fixtures() {
 	local installer="$1"

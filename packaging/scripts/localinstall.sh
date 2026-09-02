@@ -82,7 +82,9 @@ atomic_replace_file() {
 	local owner="${4:-}"
 	local tmp
 
-	mkdir -p "$(dirname "$dst")"
+	if ! mkdir -p "$(dirname "$dst")"; then
+		return 1
+	fi
 	tmp=$(mktemp "${dst}.new.XXXXXX") || return 1
 	if ! cp "$src" "$tmp" || ! chmod "$mode" "$tmp"; then
 		rm -f "$tmp"
@@ -258,15 +260,6 @@ main() {
 
 	# ========== INSTALL ==========
 	Header "Step 2/2 — Install"
-	# Binaries
-	Show 2 "Installing binaries..."
-	for binary in "${binaries[@]}"; do
-		if ! atomic_replace_file "$REPO_ROOT/$binary" "/usr/local/bin/$binary" 0755 root:root; then
-			Show 1 "Failed to install ${binary}"
-		fi
-	done
-	Show 0 "Binaries installed to /usr/local/bin"
-
 	Show 2 "Installing licenses..."
 	if ! atomic_replace_file "$REPO_ROOT/LICENSE" /usr/share/doc/linuxio/LICENSE 0644 root:root; then
 		Show 1 "Failed to install license"
@@ -275,6 +268,15 @@ main() {
 		Show 1 "Failed to install third-party notices"
 	fi
 	Show 0 "Licenses installed to /usr/share/doc/linuxio"
+
+	# Binaries
+	Show 2 "Installing binaries..."
+	for binary in "${binaries[@]}"; do
+		if ! atomic_replace_file "$REPO_ROOT/$binary" "/usr/local/bin/$binary" 0755 root:root; then
+			Show 1 "Failed to install ${binary}"
+		fi
+	done
+	Show 0 "Binaries installed to /usr/local/bin"
 
 	# Systemd
 	Show 2 "Installing systemd service files..."
