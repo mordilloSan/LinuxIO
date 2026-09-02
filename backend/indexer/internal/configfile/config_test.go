@@ -52,7 +52,7 @@ func TestEffectiveExcludePathsAlwaysProtectsManagedPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/proc", "/dev", "/sys", "/var/lib/linuxio/indexer", "/srv/cache"} {
+	for _, path := range []string{"/proc", "/dev", "/sys", "/mnt/c", "/var/lib/linuxio/indexer", "/srv/cache"} {
 		if !slices.Contains(EffectiveExcludePaths(cfg), path) {
 			t.Fatalf("effective exclusions missing %q", path)
 		}

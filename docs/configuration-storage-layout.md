@@ -19,7 +19,7 @@ path and SQLite options are fixed, hidden entries are included, FTS is enabled,
 and one completed generation is retained.
 
 The effective exclusion set merges operator `exclude_paths` with the mandatory
-`/proc`, `/dev`, `/sys`, and `/var/lib/linuxio/indexer` exclusions. The
+`/proc`, `/dev`, `/sys`, `/mnt/c`, and `/var/lib/linuxio/indexer` exclusions. The
 mandatory paths cannot be removed through the config API.
 
 ## Per-user bridge files

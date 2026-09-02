@@ -99,7 +99,7 @@ include_network_mounts: false
 ```
 
 `exclude_paths` adds paths to the mandatory exclusions. The scanner always
-excludes `/proc`, `/dev`, `/sys`, and `/var/lib/linuxio/indexer`, so virtual
+excludes `/proc`, `/dev`, `/sys`, `/mnt/c`, and `/var/lib/linuxio/indexer`, so virtual
 filesystems and the database cannot index themselves. Mandatory exclusions
 cannot be removed through the file or API. Unknown fields and invalid values
 fail strict configuration decoding.
