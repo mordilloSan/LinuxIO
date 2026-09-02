@@ -1,12 +1,27 @@
 package session
 
 import (
+	"bytes"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+type sessionLogStore struct {
+	Store
+	deleteErr error
+}
+
+func (s *sessionLogStore) Delete(id string) error {
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	return s.Store.Delete(id)
+}
 
 func TestDiagnosticRefDoesNotExposeSessionCredential(t *testing.T) {
 	const credential = "0123456789abcdef0123456789abcdef"
@@ -29,6 +44,41 @@ func TestDiagnosticRefDoesNotExposeSessionCredential(t *testing.T) {
 	}
 	if got := DiagnosticRef(""); got != "" {
 		t.Fatalf("DiagnosticRef(empty) = %q, want empty", got)
+	}
+}
+
+func TestSessionLogsDoNotExposeUsername(t *testing.T) {
+	const username = "sensitive-user"
+
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	cfg := DefaultConfig
+	cfg.GCInterval = 0
+	cfg.SingleSessionPerUser = true
+	store := &sessionLogStore{Store: NewWithCleanupInterval(0)}
+	m := NewManager(store, cfg)
+	defer m.Close()
+
+	if _, err := m.CreateSession("deleted", User{Username: username}, false); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := m.DeleteSession("deleted", ReasonManual); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+
+	for _, id := range []string{"first", "second"} {
+		if id == "second" {
+			store.deleteErr = errors.New("delete failed")
+		}
+		if _, err := m.CreateSession(id, User{Username: username}, false); err != nil {
+			t.Fatalf("CreateSession(%q): %v", id, err)
+		}
+	}
+	if strings.Contains(logs.String(), username) {
+		t.Fatalf("session logs expose username: %q", logs.String())
 	}
 }
 

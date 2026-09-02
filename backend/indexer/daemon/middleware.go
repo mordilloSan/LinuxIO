@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
-	"strings"
 	"time"
 )
 
@@ -142,16 +141,4 @@ func authorizeTransportMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// httpErrorLogAdapter routes http.Server.ErrorLog output through slog.
-type httpErrorLogAdapter struct{}
-
-func (httpErrorLogAdapter) Write(p []byte) (int, error) {
-	msg := strings.TrimSpace(string(p))
-	if msg == "" {
-		return len(p), nil
-	}
-	slog.Warn("http server", "message", msg)
-	return len(p), nil
 }

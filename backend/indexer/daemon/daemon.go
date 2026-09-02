@@ -244,7 +244,7 @@ func (d *daemon) serveHTTP(ctx context.Context, listener net.Listener) error {
 	mux.HandleFunc(api.RouteConfig, d.handleConfig)
 
 	handler := d.activityMiddleware(loggerMiddleware(recoveryMiddleware(authorizeTransportMiddleware(mux))))
-	errorLog := log.New(httpErrorLogAdapter{}, "", 0)
+	errorLog := slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)
 
 	errCh := make(chan error, 1)
 	srv := newHTTPServer(handler, errorLog)

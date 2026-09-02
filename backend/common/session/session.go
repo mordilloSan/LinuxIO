@@ -364,7 +364,6 @@ func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session
 		return m.DeleteSession(sess.SessionID, reason)
 	})
 	slog.Info("session created",
-		"user", user.Username,
 		"session_ref", DiagnosticRef(sess.SessionID),
 		"privileged", privileged)
 	return sess, nil
@@ -402,7 +401,6 @@ func (m *Manager) DeleteSession(id string, r DeleteReason) error {
 	}
 	if s, err := m.decode(b); err == nil {
 		slog.Info("session deleted",
-			"user", s.User.Username,
 			"session_ref", DiagnosticRef(s.SessionID),
 			"reason", string(r))
 		m.broadcastOnDelete(s, r)
@@ -566,7 +564,6 @@ func (m *Manager) evictUserSessions(username string) {
 		if s.User.Username == username {
 			if deleteErr := m.st.Delete(tok); deleteErr != nil {
 				slog.Warn("failed deleting existing session",
-					"user", username,
 					"session_ref", DiagnosticRef(tok),
 					"error", deleteErr)
 				continue
