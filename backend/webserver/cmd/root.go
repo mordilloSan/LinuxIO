@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -123,7 +122,7 @@ func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *server
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
 		Handler:           handler,
-		ErrorLog:          log.New(web.HTTPErrorLogAdapter{}, "", 0),
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 		ReadHeaderTimeout: httpReadHeaderTimeout,
 		IdleTimeout:       httpIdleTimeout,
 	}, activity, nil

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -244,10 +243,9 @@ func (d *daemon) serveHTTP(ctx context.Context, listener net.Listener) error {
 	mux.HandleFunc(api.RouteConfig, d.handleConfig)
 
 	handler := d.activityMiddleware(loggerMiddleware(recoveryMiddleware(authorizeTransportMiddleware(mux))))
-	errorLog := slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)
 
 	errCh := make(chan error, 1)
-	srv := newHTTPServer(handler, errorLog)
+	srv := newHTTPServer(handler)
 	srv.ConnContext = unixConnContext
 	srv.BaseContext = func(net.Listener) context.Context { return ctx }
 	d.servers = append(d.servers, srv)
@@ -267,10 +265,10 @@ func (d *daemon) serveHTTP(ctx context.Context, listener net.Listener) error {
 	}
 }
 
-func newHTTPServer(handler http.Handler, errorLog *log.Logger) *http.Server {
+func newHTTPServer(handler http.Handler) *http.Server {
 	return &http.Server{
 		Handler:           handler,
-		ErrorLog:          errorLog,
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		// SSE responses can legitimately remain open for an entire index run.

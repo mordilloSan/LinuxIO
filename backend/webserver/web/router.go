@@ -242,16 +242,3 @@ func setContentType(w http.ResponseWriter, name string) {
 		}
 	}
 }
-
-// HTTPErrorLogAdapter adapts logger.Warnf to the log.Logger interface for http.Server.ErrorLog.
-type HTTPErrorLogAdapter struct{}
-
-func (HTTPErrorLogAdapter) Write(p []byte) (n int, err error) {
-	msg := strings.TrimSpace(string(p))
-	// Filter out noisy "TLS handshake error" messages from scanners
-	if strings.Contains(msg, "TLS handshake error") {
-		return len(p), nil
-	}
-	slog.Warn("http server", "message", msg)
-	return len(p), nil
-}
