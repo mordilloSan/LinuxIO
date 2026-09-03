@@ -74,6 +74,20 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
+  it("refreshes networks and containers after network attachment changes", () => {
+    const expected = [
+      ["linuxio", "docker", "list_networks"],
+      ["linuxio", "docker", "list_containers"],
+    ];
+
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.connect_network"]).toEqual(
+      expected,
+    );
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.disconnect_network"]).toEqual(
+      expected,
+    );
+  });
+
   it("refreshes container summaries and inspect data after lifecycle actions", () => {
     const stateKeys = [
       ["linuxio", "docker", "list_containers"],

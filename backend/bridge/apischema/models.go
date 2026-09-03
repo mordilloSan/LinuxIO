@@ -639,6 +639,7 @@ type DockerNetwork struct {
 	Labels     map[string]string                 `json:"Labels,omitempty"`
 	Name       string                            `json:"Name"`
 	Options    map[string]string                 `json:"Options,omitempty"`
+	Protected  bool                              `json:"Protected,omitempty"`
 	Scope      string                            `json:"Scope"`
 }
 
@@ -647,17 +648,25 @@ type DockerVolumeUsageData struct {
 	Size     int64 `json:"Size"`
 }
 
+type DockerVolumeContainer struct {
+	ID    string `json:"Id"`
+	Name  string `json:"Name"`
+	State string `json:"State"`
+}
+
 type DockerVolume struct {
-	ClusterVolume map[string]any         `json:"ClusterVolume,omitempty"`
-	CreatedAt     *string                `json:"CreatedAt,omitempty"`
-	Driver        string                 `json:"Driver"`
-	Labels        map[string]string      `json:"Labels,omitempty"`
-	Mountpoint    string                 `json:"Mountpoint"`
-	Name          string                 `json:"Name"`
-	Options       map[string]string      `json:"Options,omitempty"`
-	Scope         *string                `json:"Scope,omitempty"`
-	Status        map[string]any         `json:"Status,omitempty"`
-	UsageData     *DockerVolumeUsageData `json:"UsageData,omitempty"`
+	ClusterVolume        map[string]any          `json:"ClusterVolume,omitempty"`
+	Containers           []DockerVolumeContainer `json:"Containers,omitempty"`
+	CreatedAt            *string                 `json:"CreatedAt,omitempty"`
+	Driver               string                  `json:"Driver"`
+	Labels               map[string]string       `json:"Labels,omitempty"`
+	Mountpoint           string                  `json:"Mountpoint"`
+	MountpointAccessible bool                    `json:"MountpointAccessible,omitempty"`
+	Name                 string                  `json:"Name"`
+	Options              map[string]string       `json:"Options,omitempty"`
+	Scope                *string                 `json:"Scope,omitempty"`
+	Status               map[string]any          `json:"Status,omitempty"`
+	UsageData            *DockerVolumeUsageData  `json:"UsageData,omitempty"`
 }
 
 type DockerSystemInfo struct {

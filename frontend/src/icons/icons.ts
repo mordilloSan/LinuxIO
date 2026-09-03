@@ -42,7 +42,7 @@ addCollection({
   },
 });
 
-// mdi - 156 icons
+// mdi - 157 icons
 addCollection({
   prefix: "mdi",
   width: 24,
@@ -329,6 +329,9 @@ addCollection({
     },
     "lan-connect": {
       body: '<path fill="currentColor" d="M4 1c-1.11 0-2 .89-2 2v4c0 1.11.89 2 2 2H1v2h12V9h-3c1.11 0 2-.89 2-2V3c0-1.11-.89-2-2-2zm0 2h6v4H4zM3 13v7h7v-2H5v-5zm11 0c-1.11 0-2 .89-2 2v4c0 1.11.89 2 2 2h-3v2h12v-2h-3c1.11 0 2-.89 2-2v-4c0-1.11-.89-2-2-2zm0 2h6v4h-6z"/>',
+    },
+    "lan-disconnect": {
+      body: '<path fill="currentColor" d="M4 1c-1.11 0-2 .89-2 2v4c0 1.11.89 2 2 2H1v2h12V9h-3c1.11 0 2-.89 2-2V3c0-1.11-.89-2-2-2zm0 2h6v4H4zm10 10c-1.11 0-2 .89-2 2v4c0 1.11.89 2 2 2h-3v2h12v-2h-3c1.11 0 2-.89 2-2v-4c0-1.11-.89-2-2-2zm-10.12.46l-1.42 1.42L4.59 17l-2.13 2.12l1.42 1.42L6 18.41l2.12 2.13l1.42-1.42L7.41 17l2.13-2.12l-1.42-1.42L6 15.59zM14 15h6v4h-6z"/>',
     },
     layers: {
       body: '<path fill="currentColor" d="m12 16l7.36-5.73L21 9l-9-7l-9 7l1.63 1.27M12 18.54l-7.38-5.73L3 14.07l9 7l9-7l-1.63-1.27z"/>',

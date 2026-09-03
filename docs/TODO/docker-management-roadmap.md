@@ -1,6 +1,6 @@
 # Docker Management Plan
 
-> **Status:** Phase 2 complete; Phase 3 planned
+> **Status:** Phase 3 complete; Phase 4 planned
 
 LinuxIO will extend its current single-host Docker management without changing
 the Docker module's visual language. The work covers container lifecycle,
@@ -91,11 +91,11 @@ manual “roll back to an older version” interface remain deferred.
 
 ### Volumes
 
-- [ ] Finish Create Volume with name, driver, and optional labels.
-- [ ] Remove the current forced deletion and let Docker reject in-use volumes.
-- [ ] Show the containers that use each volume and their running state.
-- [ ] Add **Browse in Navigator** for an accessible volume mountpoint.
-- [ ] Add **Download backup** through the existing `filebrowser.archive` task.
+- [x] Finish Create Volume with name, driver, and optional labels.
+- [x] Remove the current forced deletion and let Docker reject in-use volumes.
+- [x] Show the containers that use each volume and their running state.
+- [x] Add **Browse in Navigator** for an accessible volume mountpoint.
+- [x] Add **Download backup** through the existing `filebrowser.archive` task.
 
 Navigator remains the only file-management interface. Download backup creates a
 ZIP archive and uses the current task progress and browser download flow. The
@@ -105,12 +105,12 @@ host mountpoint show an explanation instead of Browse and Backup actions.
 
 ### Networks
 
-- [ ] Send the existing Driver and Internal fields to Docker.
-- [ ] Add attachable, IPv6, subnet, and gateway fields.
-- [ ] Put driver options behind an Advanced section.
-- [ ] Connect an unattached container, with optional aliases.
-- [ ] Disconnect an attached container after confirmation.
-- [ ] Protect Docker's default networks and report in-use deletion errors.
+- [x] Send the existing Driver and Internal fields to Docker.
+- [x] Add attachable, IPv6, subnet, and gateway fields.
+- [x] Put driver options behind an Advanced section.
+- [x] Connect an unattached container, with optional aliases.
+- [x] Disconnect an attached container after confirmation.
+- [x] Protect Docker's default networks and report in-use deletion errors.
 
 The current network details panel and connected-container table host these
 actions. Docker requires recreation for network configuration changes, so this

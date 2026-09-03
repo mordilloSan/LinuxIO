@@ -125,6 +125,34 @@ type ContainerEditRequest struct {
 	Configuration ContainerConfiguration `json:"configuration"`
 }
 
+type DockerVolumeCreateRequest struct {
+	Name   string            `json:"name"`
+	Driver string            `json:"driver"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+type DockerNetworkCreateRequest struct {
+	Name       string            `json:"name"`
+	Driver     string            `json:"driver"`
+	Internal   bool              `json:"internal"`
+	Attachable bool              `json:"attachable"`
+	EnableIPv6 bool              `json:"enableIpv6"`
+	Subnet     string            `json:"subnet,omitempty"`
+	Gateway    string            `json:"gateway,omitempty"`
+	Options    map[string]string `json:"options,omitempty"`
+}
+
+type DockerNetworkConnectRequest struct {
+	NetworkID   string   `json:"networkId"`
+	ContainerID string   `json:"containerId"`
+	Aliases     []string `json:"aliases,omitempty"`
+}
+
+type DockerNetworkDisconnectRequest struct {
+	NetworkID   string `json:"networkId"`
+	ContainerID string `json:"containerId"`
+}
+
 // DockerContainerUpdateRequest identifies one durable native Docker update.
 // RunID is allocated by the client before the request so a retry after bridge
 // loss can reclaim the same persisted operation instead of starting another

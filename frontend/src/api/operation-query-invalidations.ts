@@ -117,7 +117,15 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.check_container_update": CONTAINER_IMAGE_KEYS,
   "docker.delete_image": [endpointQueryPrefix("docker.list_images")],
   "docker.create_network": [endpointQueryPrefix("docker.list_networks")],
+  "docker.connect_network": [
+    endpointQueryPrefix("docker.list_networks"),
+    endpointQueryPrefix("docker.list_containers"),
+  ],
   "docker.delete_network": [endpointQueryPrefix("docker.list_networks")],
+  "docker.disconnect_network": [
+    endpointQueryPrefix("docker.list_networks"),
+    endpointQueryPrefix("docker.list_containers"),
+  ],
   "docker.create_volume": [endpointQueryPrefix("docker.list_volumes")],
   "docker.delete_volume": [endpointQueryPrefix("docker.list_volumes")],
   "docker.compose_up": COMPOSE_KEYS,

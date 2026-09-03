@@ -10,6 +10,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { getMutationErrorMessage } from "@/utils/mutations";
 
 export interface BatchDeleteItem {
   key: string;
@@ -48,20 +49,25 @@ const BatchDeleteDialog = <T extends BatchDeleteItem>({
 
   const handleDelete = async () => {
     setIsDeleting(true);
-    const failures: string[] = [];
+    const failures: Array<{ error: unknown; label: string }> = [];
     // Sequential: Docker rejects concurrent removals of related resources.
     for (const item of items) {
       try {
         await onDeleteOne(item);
-      } catch {
-        failures.push(item.label);
+      } catch (error) {
+        failures.push({ error, label: item.label });
       }
     }
     setIsDeleting(false);
     if (failures.length > 0) {
-      toast.error(
-        `Failed to delete ${failures.length} of ${items.length} ${noun}${plural}${failureHint ? ` ${failureHint}` : ""}`,
-      );
+      const message =
+        failures.length === 1 && items.length === 1
+          ? getMutationErrorMessage(
+              failures[0].error,
+              `Failed to delete ${noun} "${failures[0].label}"`,
+            )
+          : `Failed to delete ${failures.length} of ${items.length} ${noun}${plural}`;
+      toast.error(`${message}${failureHint ? ` ${failureHint}` : ""}`);
     } else {
       toast.success(
         items.length === 1

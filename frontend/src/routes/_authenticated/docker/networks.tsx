@@ -11,6 +11,9 @@ export const Route = createFileRoute("/_authenticated/docker/networks")({
     ...optionalString(search, "network"),
   }),
   loader: (loaderArgs) =>
-    loadRouteQueries(loaderArgs, [linuxio.docker.list_networks]),
+    loadRouteQueries(loaderArgs, [
+      linuxio.docker.list_networks,
+      linuxio.docker.list_containers,
+    ]),
   component: DockerNetworksPage,
 });

@@ -909,7 +909,14 @@ export interface DockerNetwork {
   Labels?: Record<string, string>;
   Name: string;
   Options?: Record<string, string>;
+  Protected?: boolean;
   Scope: string;
+}
+
+export interface DockerNetworkConnectRequest {
+  networkId: string;
+  containerId: string;
+  aliases?: string[];
 }
 
 export interface DockerNetworkContainer {
@@ -918,6 +925,22 @@ export interface DockerNetworkContainer {
   IPv4Address?: string;
   IPv6Address?: string;
   MacAddress?: string;
+}
+
+export interface DockerNetworkCreateRequest {
+  name: string;
+  driver: string;
+  internal: boolean;
+  attachable: boolean;
+  enableIpv6: boolean;
+  subnet?: string;
+  gateway?: string;
+  options?: Record<string, string>;
+}
+
+export interface DockerNetworkDisconnectRequest {
+  networkId: string;
+  containerId: string;
 }
 
 export interface DockerNetworkIPAM {
@@ -1022,15 +1045,29 @@ export type DockerUpdateCheckState =
 
 export interface DockerVolume {
   ClusterVolume?: Record<string, unknown>;
+  Containers?: DockerVolumeContainer[];
   CreatedAt?: string;
   Driver: string;
   Labels?: Record<string, string>;
   Mountpoint: string;
+  MountpointAccessible?: boolean;
   Name: string;
   Options?: Record<string, string>;
   Scope?: string;
   Status?: Record<string, unknown>;
   UsageData?: DockerVolumeUsageData;
+}
+
+export interface DockerVolumeContainer {
+  Id: string;
+  Name: string;
+  State: string;
+}
+
+export interface DockerVolumeCreateRequest {
+  name: string;
+  driver: string;
+  labels?: Record<string, string>;
 }
 
 export interface DockerVolumeUsageData {
@@ -2626,6 +2663,11 @@ export interface LinuxIOSchema {
       request: ProjectNameRequest;
       result: ComposeActionResult;
     };
+    connect_network: {
+      input: [request: DockerNetworkConnectRequest];
+      request: DockerNetworkConnectRequest;
+      result: void;
+    };
     connect_to_proxy: {
       input: [containerId: string];
       request: ContainerIDRequest;
@@ -2637,13 +2679,13 @@ export interface LinuxIOSchema {
       result: ContainerConfigurationResult;
     };
     create_network: {
-      input: [name: string];
-      request: NameRequest;
+      input: [request: DockerNetworkCreateRequest];
+      request: DockerNetworkCreateRequest;
       result: void;
     };
     create_volume: {
-      input: [name: string];
-      request: NameRequest;
+      input: [request: DockerVolumeCreateRequest];
+      request: DockerVolumeCreateRequest;
       result: void;
     };
     delete_image: {
@@ -2663,6 +2705,11 @@ export interface LinuxIOSchema {
       result: void;
     };
     disable_caddy: { input: []; request: void; result: MessageResponse };
+    disconnect_network: {
+      input: [request: DockerNetworkDisconnectRequest];
+      request: DockerNetworkDisconnectRequest;
+      result: void;
+    };
     edit_container: {
       input: [request: ContainerEditRequest];
       request: ContainerEditRequest;
@@ -3497,6 +3544,10 @@ export interface LinuxIOCallSchema {
     request: ProjectNameRequest;
     result: ComposeActionResult;
   };
+  "docker.connect_network": {
+    request: DockerNetworkConnectRequest;
+    result: void;
+  };
   "docker.connect_to_proxy": {
     request: ContainerIDRequest;
     result: MessageResponse;
@@ -3505,8 +3556,11 @@ export interface LinuxIOCallSchema {
     request: ContainerCreateRequest;
     result: ContainerConfigurationResult;
   };
-  "docker.create_network": { request: NameRequest; result: void };
-  "docker.create_volume": { request: NameRequest; result: void };
+  "docker.create_network": {
+    request: DockerNetworkCreateRequest;
+    result: void;
+  };
+  "docker.create_volume": { request: DockerVolumeCreateRequest; result: void };
   "docker.delete_image": { request: ImageIDRequest; result: void };
   "docker.delete_network": { request: IDRequest; result: void };
   "docker.delete_stack": {
@@ -3515,6 +3569,10 @@ export interface LinuxIOCallSchema {
   };
   "docker.delete_volume": { request: NameRequest; result: void };
   "docker.disable_caddy": { request: void; result: MessageResponse };
+  "docker.disconnect_network": {
+    request: DockerNetworkDisconnectRequest;
+    result: void;
+  };
   "docker.edit_container": {
     request: ContainerEditRequest;
     result: ContainerConfigurationResult;
