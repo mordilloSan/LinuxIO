@@ -1,6 +1,6 @@
 # Docker Management Plan
 
-> **Status:** Phase 3 complete; Phase 4 planned
+> **Status:** Phase 3 and topology follow-up complete; Phase 4 planned
 
 LinuxIO will extend its current single-host Docker management without changing
 the Docker module's visual language. The work covers container lifecycle,
@@ -116,6 +116,11 @@ The current network details panel and connected-container table host these
 actions. Docker requires recreation for network configuration changes, so this
 plan does not add a misleading Edit Network action.
 
+### Topology follow-up
+
+- [x] Visualize Docker networks and their attached containers.
+- [x] Visualize host-wide published port bindings across containers.
+
 ## Phase 4: activity, audit, and Docker events
 
 Add an **Activity** Docker tab with three views.
@@ -160,8 +165,7 @@ separate from the audit log.
 - container commit, clone, rename, custom kill signals, and raw unredacted
   inspect JSON;
 - scheduled, encrypted, retained, or S3 volume backups and transactional
-  restores; and
-- network topology and host-wide ports visualizations.
+  restores.
 
 ## Verification
 

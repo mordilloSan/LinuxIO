@@ -32,6 +32,7 @@ import { Route as AuthenticatedDockerComposeRouteImport } from './routes/_authen
 import { Route as AuthenticatedDockerContainersRouteImport } from './routes/_authenticated/docker/containers'
 import { Route as AuthenticatedDockerImagesRouteImport } from './routes/_authenticated/docker/images'
 import { Route as AuthenticatedDockerNetworksRouteImport } from './routes/_authenticated/docker/networks'
+import { Route as AuthenticatedDockerTopologyRouteImport } from './routes/_authenticated/docker/topology'
 import { Route as AuthenticatedDockerVolumesRouteImport } from './routes/_authenticated/docker/volumes'
 import { Route as AuthenticatedFilebrowserSplatRouteImport } from './routes/_authenticated/filebrowser/$'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
@@ -182,6 +183,12 @@ const AuthenticatedDockerNetworksRoute =
     path: '/networks',
     getParentRoute: () => AuthenticatedDockerRouteRoute,
   } as any)
+const AuthenticatedDockerTopologyRoute =
+  AuthenticatedDockerTopologyRouteImport.update({
+    id: '/topology',
+    path: '/topology',
+    getParentRoute: () => AuthenticatedDockerRouteRoute,
+  } as any)
 const AuthenticatedDockerVolumesRoute =
   AuthenticatedDockerVolumesRouteImport.update({
     id: '/volumes',
@@ -303,6 +310,7 @@ export interface FileRoutesByFullPath {
   '/docker/containers': typeof AuthenticatedDockerContainersRoute
   '/docker/images': typeof AuthenticatedDockerImagesRoute
   '/docker/networks': typeof AuthenticatedDockerNetworksRoute
+  '/docker/topology': typeof AuthenticatedDockerTopologyRoute
   '/docker/volumes': typeof AuthenticatedDockerVolumesRoute
   '/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
@@ -336,6 +344,7 @@ export interface FileRoutesByTo {
   '/docker/containers': typeof AuthenticatedDockerContainersRoute
   '/docker/images': typeof AuthenticatedDockerImagesRoute
   '/docker/networks': typeof AuthenticatedDockerNetworksRoute
+  '/docker/topology': typeof AuthenticatedDockerTopologyRoute
   '/docker/volumes': typeof AuthenticatedDockerVolumesRoute
   '/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
@@ -379,6 +388,7 @@ export interface FileRoutesById {
   '/_authenticated/docker/containers': typeof AuthenticatedDockerContainersRoute
   '/_authenticated/docker/images': typeof AuthenticatedDockerImagesRoute
   '/_authenticated/docker/networks': typeof AuthenticatedDockerNetworksRoute
+  '/_authenticated/docker/topology': typeof AuthenticatedDockerTopologyRoute
   '/_authenticated/docker/volumes': typeof AuthenticatedDockerVolumesRoute
   '/_authenticated/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
   '/_authenticated/services/sockets': typeof AuthenticatedServicesSocketsRoute
@@ -422,6 +432,7 @@ export interface FileRouteTypes {
     | '/docker/containers'
     | '/docker/images'
     | '/docker/networks'
+    | '/docker/topology'
     | '/docker/volumes'
     | '/filebrowser/$'
     | '/services/sockets'
@@ -455,6 +466,7 @@ export interface FileRouteTypes {
     | '/docker/containers'
     | '/docker/images'
     | '/docker/networks'
+    | '/docker/topology'
     | '/docker/volumes'
     | '/filebrowser/$'
     | '/services/sockets'
@@ -497,6 +509,7 @@ export interface FileRouteTypes {
     | '/_authenticated/docker/containers'
     | '/_authenticated/docker/images'
     | '/_authenticated/docker/networks'
+    | '/_authenticated/docker/topology'
     | '/_authenticated/docker/volumes'
     | '/_authenticated/filebrowser/$'
     | '/_authenticated/services/sockets'
@@ -685,6 +698,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDockerNetworksRouteImport
       parentRoute: typeof AuthenticatedDockerRouteRoute
     }
+    '/_authenticated/docker/topology': {
+      id: '/_authenticated/docker/topology'
+      path: '/topology'
+      fullPath: '/docker/topology'
+      preLoaderRoute: typeof AuthenticatedDockerTopologyRouteImport
+      parentRoute: typeof AuthenticatedDockerRouteRoute
+    }
     '/_authenticated/docker/volumes': {
       id: '/_authenticated/docker/volumes'
       path: '/volumes'
@@ -828,6 +848,7 @@ interface AuthenticatedDockerRouteRouteChildren {
   AuthenticatedDockerContainersRoute: typeof AuthenticatedDockerContainersRoute
   AuthenticatedDockerImagesRoute: typeof AuthenticatedDockerImagesRoute
   AuthenticatedDockerNetworksRoute: typeof AuthenticatedDockerNetworksRoute
+  AuthenticatedDockerTopologyRoute: typeof AuthenticatedDockerTopologyRoute
   AuthenticatedDockerVolumesRoute: typeof AuthenticatedDockerVolumesRoute
   AuthenticatedDockerIndexRoute: typeof AuthenticatedDockerIndexRoute
 }
@@ -838,6 +859,7 @@ const AuthenticatedDockerRouteRouteChildren: AuthenticatedDockerRouteRouteChildr
     AuthenticatedDockerContainersRoute: AuthenticatedDockerContainersRoute,
     AuthenticatedDockerImagesRoute: AuthenticatedDockerImagesRoute,
     AuthenticatedDockerNetworksRoute: AuthenticatedDockerNetworksRoute,
+    AuthenticatedDockerTopologyRoute: AuthenticatedDockerTopologyRoute,
     AuthenticatedDockerVolumesRoute: AuthenticatedDockerVolumesRoute,
     AuthenticatedDockerIndexRoute: AuthenticatedDockerIndexRoute,
   }

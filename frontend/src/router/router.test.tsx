@@ -61,6 +61,7 @@ describe("generated application router", () => {
         "/docker/containers",
         "/docker/images",
         "/docker/networks",
+        "/docker/topology",
         "/docker/volumes",
         "/filebrowser/$",
         "/hardware",
