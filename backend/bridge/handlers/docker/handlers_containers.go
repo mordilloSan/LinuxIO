@@ -75,6 +75,17 @@ func (h dockerHandlers) handleRemoveContainer(ctx context.Context, req apischema
 	return RemoveContainer(ctx, req.ContainerID, req.Force)
 }
 
+func (h dockerHandlers) handleCreateContainer(ctx context.Context, req apischema.ContainerCreateRequest) (apischema.ContainerConfigurationResult, error) {
+	return CreateConfiguredContainer(ctx, req)
+}
+
+func (h dockerHandlers) handleEditContainer(ctx context.Context, req apischema.ContainerEditRequest) (apischema.ContainerConfigurationResult, error) {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return apischema.ContainerConfigurationResult{}, err
+	}
+	return EditConfiguredContainer(ctx, req)
+}
+
 func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ apischema.NoRequest) (apischema.DockerStartedFailedResponse, error) {
 	return StartAllStopped(ctx)
 }

@@ -131,6 +131,7 @@ func containerEndpointsFromSDK(endpoints map[string]*network.EndpointSettings) m
 			continue
 		}
 		result[name] = apischema.ContainerEndpoint{
+			Aliases:           append([]string(nil), endpoint.Aliases...),
 			Gateway:           addrString(endpoint.Gateway),
 			GlobalIPv6Address: optionalAddrString(endpoint.GlobalIPv6Address),
 			IPAddress:         addrString(endpoint.IPAddress),

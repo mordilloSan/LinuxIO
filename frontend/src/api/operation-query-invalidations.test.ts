@@ -96,6 +96,19 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       ...stateKeys,
       ["linuxio", "docker", "list_images"],
     ]);
+
+    const configurationKeys = [
+      ...stateKeys,
+      ["linuxio", "docker", "list_images"],
+      ["linuxio", "docker", "list_networks"],
+      ["linuxio", "docker", "list_volumes"],
+    ];
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.create_container"]).toEqual(
+      configurationKeys,
+    );
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.edit_container"]).toEqual(
+      configurationKeys,
+    );
   });
 
   it("refreshes selected account details after user mutations", () => {

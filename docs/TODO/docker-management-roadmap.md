@@ -1,6 +1,6 @@
 # Docker Management Plan
 
-> **Status:** Phase 1 complete; Phase 2 planned
+> **Status:** Phase 2 complete; Phase 3 planned
 
 LinuxIO will extend its current single-host Docker management without changing
 the Docker module's visual language. The work covers container lifecycle,
@@ -55,14 +55,14 @@ Remove require clear confirmation when they can interrupt work or destroy data.
 
 Use one container form for Create and Edit. It supports:
 
-- [ ] name and image;
-- [ ] command and entrypoint;
-- [ ] environment variables;
-- [ ] published ports;
-- [ ] named volumes and bind mounts;
-- [ ] networks and aliases;
-- [ ] restart policy; and
-- [ ] user and working directory.
+- [x] name and image;
+- [x] command and entrypoint;
+- [x] environment variables;
+- [x] published ports;
+- [x] named volumes and bind mounts;
+- [x] networks and aliases;
+- [x] restart policy; and
+- [x] user and working directory.
 
 Keep Basics open. Collapse optional sections unless they contain values. Create
 uses a local image or pulls the image when Docker cannot find it, then starts

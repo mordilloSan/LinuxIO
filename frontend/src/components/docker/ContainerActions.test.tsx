@@ -144,4 +144,25 @@ describe("ContainerActions", () => {
       { retryPolicy: "none" },
     );
   });
+
+  it("directs Compose-managed containers to their stack editor", async () => {
+    const { user } = render(
+      <ContainerActions
+        container={{
+          Id: "compose-id",
+          Labels: { "com.docker.compose.project": "example-stack" },
+          State: "running",
+        }}
+        mode="buttons"
+        name="example"
+        {...callbacks}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for example" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "Edit stack" })).toBeEnabled();
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
+  });
 });

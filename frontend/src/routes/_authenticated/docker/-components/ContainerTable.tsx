@@ -895,6 +895,7 @@ interface ActionsCellProps {
   // one menu to keep the name legible.
   compact: boolean;
   containerId: string;
+  labels?: Record<string, string>;
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
@@ -906,6 +907,7 @@ interface ActionsCellProps {
 const ActionsCell = memo(function ActionsCell({
   compact,
   containerId,
+  labels,
   name,
   onOpenLogs,
   onOpenTerminal,
@@ -916,7 +918,7 @@ const ActionsCell = memo(function ActionsCell({
   return (
     <ContainerActions
       actionPending={pending}
-      container={{ Id: containerId, State: state, url }}
+      container={{ Id: containerId, Labels: labels, State: state, url }}
       mode={compact ? "menu" : "icons"}
       name={name}
       onOpenLogs={() => onOpenLogs(containerId, name)}
@@ -1337,6 +1339,7 @@ const ContainerTable = ({
             <ActionsCell
               compact={compactActions}
               containerId={container.Id}
+              labels={container.Labels}
               name={name}
               onOpenLogs={openLogs}
               onOpenTerminal={openTerminal}
@@ -1361,6 +1364,7 @@ const ContainerTable = ({
             getContainerName(container),
             container.State,
             container.url,
+            getComposeProject(container),
             stoppingContainerIds.has(container.Id),
           ]),
         },

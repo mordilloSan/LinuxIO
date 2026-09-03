@@ -52,6 +52,7 @@ const inspect: ContainerInspectInfo = {
   name: "example",
   networks: {
     Teste_Default: {
+      Aliases: ["example"],
       Gateway: "172.20.0.1",
       GlobalIPv6Address: "2001:db8::2",
       IPAddress: "172.20.0.2",
@@ -108,7 +109,16 @@ const queryClient = new QueryClient({
   },
 });
 queryClient.setQueryData(linuxio.docker.list_containers.queryKey, [container]);
+queryClient.setQueryData(linuxio.docker.list_images.queryKey, [
+  {
+    Created: 1_788_428_800,
+    Id: "sha256:image-id",
+    RepoTags: ["example:latest"],
+    Size: 1024,
+  },
+]);
 queryClient.setQueryData(linuxio.docker.list_networks.queryKey, networks);
+queryClient.setQueryData(linuxio.docker.list_volumes.queryKey, []);
 queryClient.setQueryData(
   linuxio.docker.inspect_container({ containerId: container.Id }).queryKey,
   inspect,

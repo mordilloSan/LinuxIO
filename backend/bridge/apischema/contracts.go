@@ -89,6 +89,42 @@ type ContainerRemoveRequest struct {
 	Force       bool   `json:"force"`
 }
 
+type ContainerConfiguration struct {
+	Name             string                         `json:"name"`
+	Image            string                         `json:"image"`
+	Command          []string                       `json:"command"`
+	Entrypoint       []string                       `json:"entrypoint"`
+	Environment      []ContainerEnvironmentVariable `json:"environment"`
+	Ports            []ContainerPortBinding         `json:"ports"`
+	Mounts           []ContainerMountConfiguration  `json:"mounts"`
+	Networks         []ContainerNetworkAttachment   `json:"networks"`
+	RestartPolicy    ContainerRestartPolicy         `json:"restartPolicy"`
+	User             string                         `json:"user"`
+	WorkingDirectory string                         `json:"workingDirectory"`
+}
+
+type ContainerMountConfiguration struct {
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+	ReadOnly    bool   `json:"readOnly"`
+}
+
+type ContainerNetworkAttachment struct {
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases"`
+}
+
+type ContainerCreateRequest struct {
+	Configuration ContainerConfiguration `json:"configuration"`
+	Start         bool                   `json:"start"`
+}
+
+type ContainerEditRequest struct {
+	ContainerID   string                 `json:"containerId"`
+	Configuration ContainerConfiguration `json:"configuration"`
+}
+
 // DockerContainerUpdateRequest identifies one durable native Docker update.
 // RunID is allocated by the client before the request so a retry after bridge
 // loss can reclaim the same persisted operation instead of starting another

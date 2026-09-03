@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { lazy, Suspense, useState } from "react";
 
 import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -22,12 +23,17 @@ const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
 
 interface ContainerActionsProps {
   actionPending?: boolean;
-  container: Pick<ContainerInfo, "Id" | "State" | "updateAvailable" | "url">;
+  container: Pick<
+    ContainerInfo,
+    "Id" | "Labels" | "State" | "updateAvailable" | "url"
+  >;
   mode?: "buttons" | "icons" | "menu";
   name: string;
   onOpenLogs: () => void;
   onOpenTerminal: () => void;
 }
+
+const ContainerFormDialog = lazy(() => import("./ContainerFormDialog"));
 
 interface SecondaryAction {
   danger?: boolean;
@@ -49,7 +55,9 @@ const ContainerActions = ({
   const [confirmation, setConfirmation] = useState<"kill" | "remove" | null>(
     null,
   );
+  const [editOpen, setEditOpen] = useState(false);
   const [forceRemove, setForceRemove] = useState(false);
+  const navigate = useNavigate();
   const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
 
   const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
@@ -109,6 +117,8 @@ const ContainerActions = ({
     container.State === "created" || container.State === "exited";
   const canStop = container.State === "running" || container.State === "paused";
   const canRestart = canStop;
+  const composeProject =
+    container.Labels?.["com.docker.compose.project"]?.trim();
   const isUpdatePending = isUpdating(container.Id);
   const busy =
     actionPending ||
@@ -157,6 +167,18 @@ const ContainerActions = ({
       };
 
   const secondaryActions: SecondaryAction[] = [
+    {
+      icon: "mdi:pencil",
+      label: composeProject ? "Edit stack" : "Edit",
+      onClick: composeProject
+        ? () => {
+            void navigate({
+              to: "/docker/compose",
+              search: { stack: composeProject },
+            });
+          }
+        : () => setEditOpen(true),
+    },
     {
       disabled: !canRestart,
       icon: "mdi:restart",
@@ -424,6 +446,17 @@ const ContainerActions = ({
           </AppButton>
         </AppDialogActions>
       </GeneralDialog>
+
+      {editOpen && (
+        <Suspense fallback={null}>
+          <ContainerFormDialog
+            containerId={container.Id}
+            mode="edit"
+            onClose={() => setEditOpen(false)}
+            open
+          />
+        </Suspense>
+      )}
     </>
   );
 };

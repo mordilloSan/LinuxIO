@@ -107,6 +107,34 @@ test("keeps destructive container actions keyboard-safe and explicit", async ({
     .toBe(true);
 
   await page.getByRole("button", { name: "Actions for example" }).click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  const editDialog = page.getByRole("dialog", { name: "Edit example" });
+  await expect(editDialog).toBeVisible();
+  await expect(
+    editDialog.getByRole("heading", { name: "Basics" }),
+  ).toBeVisible();
+  await expect(
+    editDialog.getByRole("button", { name: "Command and entrypoint" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    editDialog.getByRole("button", { name: "Environment variables" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await editDialog
+    .getByRole("textbox", { name: /^Name/ })
+    .fill("renamed-example");
+  await editDialog.getByRole("button", { name: "Review changes" }).click();
+  const reviewDialog = page.getByRole("dialog", {
+    name: "Review changes to example",
+  });
+  await expect(reviewDialog).toContainText("briefly unavailable");
+  await expect(reviewDialog).toContainText("restored automatically");
+  await reviewDialog.getByRole("button", { name: "Back" }).click();
+  await page
+    .getByRole("dialog", { name: "Edit example" })
+    .getByRole("button", { name: "Cancel" })
+    .click();
+
+  await page.getByRole("button", { name: "Actions for example" }).click();
   await page.getByRole("menuitem", { name: "Kill" }).click();
   const killDialog = page.getByRole("dialog", { name: "Kill example?" });
   await expect(killDialog).toBeVisible();

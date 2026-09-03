@@ -478,7 +478,37 @@ export interface ConfigUISetPayload {
   terminalFontSize?: number;
 }
 
+export interface ContainerConfiguration {
+  name: string;
+  image: string;
+  command: string[];
+  entrypoint: string[];
+  environment: ContainerEnvironmentVariable[];
+  ports: ContainerPortBinding[];
+  mounts: ContainerMountConfiguration[];
+  networks: ContainerNetworkAttachment[];
+  restartPolicy: ContainerRestartPolicy;
+  user: string;
+  workingDirectory: string;
+}
+
+export interface ContainerConfigurationResult {
+  containerId: string;
+  name: string;
+}
+
+export interface ContainerCreateRequest {
+  configuration: ContainerConfiguration;
+  start: boolean;
+}
+
+export interface ContainerEditRequest {
+  containerId: string;
+  configuration: ContainerConfiguration;
+}
+
 export interface ContainerEndpoint {
+  Aliases?: string[];
   Gateway: string;
   GlobalIPv6Address?: string;
   IPAddress: string;
@@ -587,6 +617,18 @@ export interface ContainerMount {
   RW: boolean;
   Source: string;
   Type: string;
+}
+
+export interface ContainerMountConfiguration {
+  type: string;
+  source: string;
+  destination: string;
+  readOnly: boolean;
+}
+
+export interface ContainerNetworkAttachment {
+  name: string;
+  aliases: string[];
 }
 
 export interface ContainerNetworkSettings {
@@ -2589,6 +2631,11 @@ export interface LinuxIOSchema {
       request: ContainerIDRequest;
       result: MessageResponse;
     };
+    create_container: {
+      input: [request: ContainerCreateRequest];
+      request: ContainerCreateRequest;
+      result: ContainerConfigurationResult;
+    };
     create_network: {
       input: [name: string];
       request: NameRequest;
@@ -2616,6 +2663,11 @@ export interface LinuxIOSchema {
       result: void;
     };
     disable_caddy: { input: []; request: void; result: MessageResponse };
+    edit_container: {
+      input: [request: ContainerEditRequest];
+      request: ContainerEditRequest;
+      result: ContainerConfigurationResult;
+    };
     enable_caddy: { input: []; request: void; result: MessageResponse };
     get_caddy_status: { input: []; request: void; result: CaddyStatusResponse };
     get_compose_file_path: {
@@ -3449,6 +3501,10 @@ export interface LinuxIOCallSchema {
     request: ContainerIDRequest;
     result: MessageResponse;
   };
+  "docker.create_container": {
+    request: ContainerCreateRequest;
+    result: ContainerConfigurationResult;
+  };
   "docker.create_network": { request: NameRequest; result: void };
   "docker.create_volume": { request: NameRequest; result: void };
   "docker.delete_image": { request: ImageIDRequest; result: void };
@@ -3459,6 +3515,10 @@ export interface LinuxIOCallSchema {
   };
   "docker.delete_volume": { request: NameRequest; result: void };
   "docker.disable_caddy": { request: void; result: MessageResponse };
+  "docker.edit_container": {
+    request: ContainerEditRequest;
+    result: ContainerConfigurationResult;
+  };
   "docker.enable_caddy": { request: void; result: MessageResponse };
   "docker.get_caddy_status": { request: void; result: CaddyStatusResponse };
   "docker.get_compose_file_path": {

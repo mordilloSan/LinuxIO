@@ -140,7 +140,7 @@ func TestContainerInspectInfoFromSDK(t *testing.T) {
 		Mounts: []container.MountPoint{{Type: "volume", Name: "data", Source: "/var/lib/docker/volumes/data/_data", Destination: "/data", RW: true}},
 		NetworkSettings: &container.NetworkSettings{
 			Networks: map[string]*network.EndpointSettings{
-				"frontend": {IPAddress: netip.MustParseAddr("172.20.0.2")},
+				"frontend": {IPAddress: netip.MustParseAddr("172.20.0.2"), Aliases: []string{"example", "web"}},
 			},
 			Ports: network.PortMap{
 				httpPort: {{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: "8080"}},
@@ -169,7 +169,7 @@ func TestContainerInspectInfoFromSDK(t *testing.T) {
 	if len(got.Ports) != 2 || got.Ports[0].ContainerPort != 53 || got.Ports[0].HostPort != "" || got.Ports[1].ContainerPort != 80 || got.Ports[1].HostPort != "8080" {
 		t.Fatalf("ports = %#v", got.Ports)
 	}
-	if got.Networks["frontend"].IPAddress != "172.20.0.2" || len(got.Mounts) != 1 || got.Mounts[0].Destination != "/data" {
+	if got.Networks["frontend"].IPAddress != "172.20.0.2" || !reflect.DeepEqual(got.Networks["frontend"].Aliases, []string{"example", "web"}) || len(got.Mounts) != 1 || got.Mounts[0].Destination != "/data" {
 		t.Fatalf("networks/mounts = %#v / %#v", got.Networks, got.Mounts)
 	}
 }

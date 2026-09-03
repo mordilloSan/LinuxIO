@@ -57,6 +57,7 @@ const linuxio = {
     compose_stop: defineCallWithRequest("docker.compose_stop"),
     compose_up: defineCallWithRequest("docker.compose_up"),
     connect_to_proxy: defineCallWithRequest("docker.connect_to_proxy"),
+    create_container: defineCallWithRequest("docker.create_container"),
     create_network: defineCallWithRequest("docker.create_network"),
     create_volume: defineCallWithRequest("docker.create_volume"),
     delete_image: defineCallWithRequest("docker.delete_image"),
@@ -64,6 +65,7 @@ const linuxio = {
     delete_stack: defineCallWithRequest("docker.delete_stack"),
     delete_volume: defineCallWithRequest("docker.delete_volume"),
     disable_caddy: defineCall("docker.disable_caddy"),
+    edit_container: defineCallWithRequest("docker.edit_container"),
     enable_caddy: defineCall("docker.enable_caddy"),
     get_caddy_status: defineCall("docker.get_caddy_status"),
     get_compose_file_path: defineCallWithRequest(

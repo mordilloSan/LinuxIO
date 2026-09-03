@@ -11,6 +11,11 @@ const CONTAINER_IMAGE_KEYS = [
   ...CONTAINER_STATE_KEYS,
   endpointQueryPrefix("docker.list_images"),
 ];
+const CONTAINER_CONFIGURATION_KEYS = [
+  ...CONTAINER_IMAGE_KEYS,
+  endpointQueryPrefix("docker.list_networks"),
+  endpointQueryPrefix("docker.list_volumes"),
+];
 const COMPOSE_KEYS = [
   endpointQueryPrefix("docker.list_compose_projects"),
   endpointQueryPrefix("docker.list_containers"),
@@ -105,6 +110,8 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.start_all_stopped": CONTAINER_STATE_KEYS,
   "docker.stop_all_running": CONTAINER_STATE_KEYS,
   "docker.remove_container": CONTAINER_IMAGE_KEYS,
+  "docker.create_container": CONTAINER_CONFIGURATION_KEYS,
+  "docker.edit_container": CONTAINER_CONFIGURATION_KEYS,
   "docker.update_container": CONTAINER_IMAGE_KEYS,
   "docker.check_updates": CONTAINER_IMAGE_KEYS,
   "docker.check_container_update": CONTAINER_IMAGE_KEYS,

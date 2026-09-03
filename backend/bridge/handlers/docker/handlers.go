@@ -22,6 +22,8 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.unpause_container").HandleVoid(handlers.handleUnpauseContainer),
 		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.kill_container").HandleVoid(handlers.handleKillContainer),
 		apischema.Call[apischema.ContainerRemoveRequest, apischema.NoResponse]("docker.remove_container").HandleVoid(handlers.handleRemoveContainer),
+		apischema.Call[apischema.ContainerCreateRequest, apischema.ContainerConfigurationResult]("docker.create_container").Handle(handlers.handleCreateContainer),
+		apischema.Call[apischema.ContainerEditRequest, apischema.ContainerConfigurationResult]("docker.edit_container").Handle(handlers.handleEditContainer),
 		apischema.Call[apischema.NoRequest, []apischema.DockerImage]("docker.list_images", apischema.RetrySafe()).Handle(handlers.handleListImages),
 		apischema.Call[apischema.ImageIDRequest, apischema.NoResponse]("docker.delete_image").HandleVoid(handlers.handleDeleteImage),
 		apischema.Call[apischema.NoRequest, []apischema.DockerNetwork]("docker.list_networks", apischema.RetrySafe()).Handle(handlers.handleListNetworks),

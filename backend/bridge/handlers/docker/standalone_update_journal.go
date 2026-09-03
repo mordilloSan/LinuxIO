@@ -17,7 +17,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-const standaloneUpdateJournalVersion = 2
+const standaloneUpdateJournalVersion = 3
 
 var defaultStandaloneUpdateJournal = standaloneUpdateJournal{
 	path: filepath.Join(version.DataDir, "docker-update-transaction.json"),
@@ -37,6 +37,7 @@ type standaloneUpdateTransaction struct {
 	OriginalID         string                `json:"original_id"`
 	OriginalName       string                `json:"original_name"`
 	BackupName         string                `json:"backup_name"`
+	ReplacementName    string                `json:"replacement_name"`
 	ReplacementID      string                `json:"replacement_id,omitempty"`
 	OriginalRunning    bool                  `json:"original_running"`
 	ReplacementStarted bool                  `json:"replacement_started"`
@@ -70,15 +71,20 @@ func (j standaloneUpdateJournal) read() (standaloneUpdateTransaction, bool, erro
 	if err := json.Unmarshal(data, &tx); err != nil {
 		return standaloneUpdateTransaction{}, false, fmt.Errorf("parse standalone update transaction: %w", err)
 	}
-	if tx.Version == 1 {
+	switch tx.Version {
+	case 1:
 		// Version 1 transactions could only begin from a running container and
 		// always started the replacement before verification.
 		tx.OriginalRunning = true
 		tx.ReplacementStarted = true
-	} else if tx.Version != standaloneUpdateJournalVersion {
+		tx.ReplacementName = tx.OriginalName
+	case 2:
+		tx.ReplacementName = tx.OriginalName
+	case standaloneUpdateJournalVersion:
+	default:
 		return standaloneUpdateTransaction{}, false, fmt.Errorf("unsupported standalone update transaction version %d", tx.Version)
 	}
-	if tx.OriginalID == "" || tx.OriginalName == "" || tx.BackupName == "" {
+	if tx.OriginalID == "" || tx.OriginalName == "" || tx.BackupName == "" || tx.ReplacementName == "" {
 		return standaloneUpdateTransaction{}, false, errors.New("standalone update transaction is incomplete")
 	}
 	return tx, true, nil
@@ -143,10 +149,10 @@ func recoverPreparedStandaloneUpdate(
 	if originalName != tx.BackupName {
 		return fmt.Errorf("journaled rollback container %q has unexpected name %q", tx.OriginalID, originalName)
 	}
-	replacementResult, replacementErr := cli.ContainerInspect(ctx, tx.OriginalName, client.ContainerInspectOptions{})
+	replacementResult, replacementErr := cli.ContainerInspect(ctx, tx.ReplacementName, client.ContainerInspectOptions{})
 	if replacementErr == nil {
 		if replacementResult.Container.ID == tx.OriginalID {
-			return fmt.Errorf("journaled rollback container %q unexpectedly owns name %q", tx.OriginalID, tx.OriginalName)
+			return fmt.Errorf("journaled rollback container %q unexpectedly owns name %q", tx.OriginalID, tx.ReplacementName)
 		}
 		if _, err := cli.ContainerRemove(ctx, replacementResult.Container.ID, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
 			return fmt.Errorf("remove unverified replacement container %q: %w", replacementResult.Container.ID, err)
@@ -192,8 +198,8 @@ func recoverVerifiedStandaloneUpdate(
 		return fmt.Errorf("inspect journaled replacement container %q: %w", tx.ReplacementID, err)
 	}
 	replacement := replacementResult.Container
-	if strings.TrimPrefix(replacement.Name, "/") != tx.OriginalName || replacement.State == nil || replacement.State.Running != tx.ReplacementStarted {
-		return fmt.Errorf("journaled replacement container %q does not match the verified lifecycle state under name %q", tx.ReplacementID, tx.OriginalName)
+	if strings.TrimPrefix(replacement.Name, "/") != tx.ReplacementName || replacement.State == nil || replacement.State.Running != tx.ReplacementStarted {
+		return fmt.Errorf("journaled replacement container %q does not match the verified lifecycle state under name %q", tx.ReplacementID, tx.ReplacementName)
 	}
 	if _, err := cli.ContainerRemove(ctx, tx.OriginalID, client.ContainerRemoveOptions{}); err != nil && !errdefs.IsNotFound(err) {
 		return fmt.Errorf("remove journaled rollback container %q: %w", tx.BackupName, err)

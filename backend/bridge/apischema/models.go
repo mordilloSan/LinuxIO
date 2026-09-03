@@ -448,10 +448,11 @@ type ContainerMount struct {
 }
 
 type ContainerEndpoint struct {
-	Gateway           string  `json:"Gateway"`
-	GlobalIPv6Address *string `json:"GlobalIPv6Address,omitempty"`
-	IPAddress         string  `json:"IPAddress"`
-	MACAddress        *string `json:"MacAddress,omitempty"`
+	Aliases           []string `json:"Aliases,omitempty"`
+	Gateway           string   `json:"Gateway"`
+	GlobalIPv6Address *string  `json:"GlobalIPv6Address,omitempty"`
+	IPAddress         string   `json:"IPAddress"`
+	MACAddress        *string  `json:"MacAddress,omitempty"`
 }
 
 type ContainerMetrics struct {
@@ -551,6 +552,11 @@ type ContainerInspectInfo struct {
 	State            ContainerInspectState          `json:"state"`
 	User             string                         `json:"user"`
 	WorkingDirectory string                         `json:"workingDirectory"`
+}
+
+type ContainerConfigurationResult struct {
+	ContainerID string `json:"containerId"`
+	Name        string `json:"name"`
 }
 
 type DockerContainerAutoUpdateOptions struct {
