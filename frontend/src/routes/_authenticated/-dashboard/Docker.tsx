@@ -225,7 +225,7 @@ const DockerContainers = () => {
             ? stopContainer(request)
             : action === "restart"
               ? restartContainer(request)
-              : removeContainer(request);
+              : removeContainer({ ...request, force: false });
       handleMenuClose();
       void operation
         .then(() => {

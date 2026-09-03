@@ -78,13 +78,23 @@ describe("ContainerCard", () => {
 
   it("shows the update-available indicator in compact view", () => {
     const { rerender } = render(
-      <ContainerCard containerId={container.Id} selected={false} />,
+      <ContainerCard
+        containerId={container.Id}
+        key="available"
+        selected={false}
+      />,
     );
 
     expect(screen.getByLabelText("Update available")).toBeInTheDocument();
 
     container.updateAvailable = false;
-    rerender(<ContainerCard containerId={container.Id} selected={false} />);
+    rerender(
+      <ContainerCard
+        containerId={container.Id}
+        key="current"
+        selected={false}
+      />,
+    );
 
     expect(screen.queryByLabelText("Update available")).not.toBeInTheDocument();
   });

@@ -2,17 +2,11 @@ import { Icon } from "@iconify/react";
 import { getRouteApi } from "@tanstack/react-router";
 import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 
-import {
-  linuxio,
-  type ComposeProject,
-  type ContainerInfo,
-  type ContainerPort,
-  useCallMutation,
-} from "@/api";
+import type { ComposeProject, ContainerInfo, ContainerPort } from "@/api";
 import ComposeStackCard from "@/components/cards/ComposeStackCard";
+import ContainerActions from "@/components/docker/ContainerActions";
 import DockerIcon from "@/components/docker/DockerIcon";
 import DockerResourceDetailsLayout from "@/components/docker/DockerResourceDetailsLayout";
-import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -96,122 +90,19 @@ const ComposeContainerActions = memo(function ComposeContainerActions({
   onOpenTerminal,
 }: ComposeContainerActionsProps) {
   const name = getContainerName(container);
-  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
-  const { mutate: startContainer, isPending: isStarting } = useCallMutation(
-    linuxio.docker.start_container,
-    {
-      success: `Container ${name} started`,
-      error: `Failed to start ${name}`,
-      toast: DOCKER_TOAST_META,
-    },
-  );
-  const { mutate: stopContainer, isPending: isStopping } = useCallMutation(
-    linuxio.docker.stop_container,
-    {
-      success: `Container ${name} stopped`,
-      error: `Failed to stop ${name}`,
-      toast: DOCKER_TOAST_META,
-    },
-  );
-  const { mutate: restartContainer, isPending: isRestarting } = useCallMutation(
-    linuxio.docker.restart_container,
-    {
-      success: `Container ${name} restarted`,
-      error: `Failed to restart ${name}`,
-      toast: DOCKER_TOAST_META,
-    },
-  );
-  const updatePending = isUpdating(container.Id);
-  const { mutate: removeContainer, isPending: isRemoving } = useCallMutation(
-    linuxio.docker.remove_container,
-    {
-      success: `Container ${name} removed`,
-      error: `Failed to remove ${name}`,
-      toast: DOCKER_TOAST_META,
-    },
-  );
-  const actionPending =
-    isStarting || isStopping || isRestarting || updatePending || isRemoving;
-  const controlsDisabled = disabled || actionPending || updating;
-  const request = { containerId: container.Id };
 
   return (
     <div
-      aria-busy={actionPending || undefined}
       aria-label={`Actions for ${name}`}
       className="compose-container-actions"
       role="group"
     >
-      {container.State !== "running" && (
-        <AppActionIconButton
-          disabled={controlsDisabled}
-          icon="mdi:play"
-          iconSize={18}
-          label="Start container"
-          loading={isStarting}
-          onClick={() => startContainer(request)}
-        />
-      )}
-      {container.State === "running" && (
-        <AppActionIconButton
-          disabled={controlsDisabled}
-          icon="mdi:stop"
-          iconSize={18}
-          label="Stop container"
-          loading={isStopping}
-          onClick={() => stopContainer(request)}
-        />
-      )}
-      <AppActionIconButton
-        disabled={controlsDisabled}
-        icon="mdi:restart"
-        iconSize={18}
-        label="Restart container"
-        loading={isRestarting}
-        onClick={() => restartContainer(request)}
-      />
-      {container.updateAvailable && container.State === "running" && (
-        <AppActionIconButton
-          disabled={controlsDisabled}
-          icon="mdi:update"
-          iconSize={18}
-          label="Update container"
-          loading={updatePending}
-          onClick={() => startUpdate(container.Id, name)}
-        />
-      )}
-      <AppActionIconButton
-        disabled={controlsDisabled}
-        icon="mdi:file-document-outline"
-        iconSize={18}
-        label="View logs"
-        onClick={() => onOpenLogs(container)}
-      />
-      {container.State === "running" && (
-        <AppActionIconButton
-          disabled={controlsDisabled}
-          icon="mdi:console"
-          iconSize={18}
-          label="Open terminal"
-          onClick={() => onOpenTerminal(container)}
-        />
-      )}
-      {container.url && (
-        <AppActionIconButton
-          disabled={controlsDisabled}
-          icon="mdi:open-in-new"
-          iconSize={18}
-          label="Open app"
-          onClick={() => window.open(container.url, "_blank", "noopener")}
-        />
-      )}
-      <AppActionIconButton
-        disabled={controlsDisabled}
-        icon="mdi:delete"
-        iconSize={18}
-        label="Remove container"
-        loading={isRemoving}
-        onClick={() => removeContainer(request)}
+      <ContainerActions
+        actionPending={disabled}
+        container={container}
+        name={name}
+        onOpenLogs={() => onOpenLogs(container)}
+        onOpenTerminal={() => onOpenTerminal(container)}
       />
     </div>
   );

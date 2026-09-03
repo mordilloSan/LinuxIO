@@ -113,7 +113,7 @@ describe("useDockerUpdateCheck feedback", () => {
     await options.queryFn({ signal: new AbortController().signal });
 
     expect(mocks.checkQuery).toHaveBeenCalledOnce();
-    expect(mocks.invalidateQueries).toHaveBeenCalledTimes(3);
+    expect(mocks.invalidateQueries).toHaveBeenCalledTimes(4);
   });
 
   it("shows success feedback after a full successful scan", async () => {

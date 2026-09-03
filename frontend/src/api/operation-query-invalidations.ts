@@ -5,6 +5,7 @@ import { handlerQueryPrefix, endpointQueryPrefix } from "./query-keys";
 const CONTAINER_STATE_KEYS = [
   endpointQueryPrefix("docker.list_containers"),
   endpointQueryPrefix("docker.list_compose_projects"),
+  endpointQueryPrefix("docker.inspect_container"),
 ];
 const CONTAINER_IMAGE_KEYS = [
   ...CONTAINER_STATE_KEYS,
@@ -98,6 +99,9 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.start_container": CONTAINER_STATE_KEYS,
   "docker.stop_container": CONTAINER_STATE_KEYS,
   "docker.restart_container": CONTAINER_STATE_KEYS,
+  "docker.pause_container": CONTAINER_STATE_KEYS,
+  "docker.unpause_container": CONTAINER_STATE_KEYS,
+  "docker.kill_container": CONTAINER_STATE_KEYS,
   "docker.start_all_stopped": CONTAINER_STATE_KEYS,
   "docker.stop_all_running": CONTAINER_STATE_KEYS,
   "docker.remove_container": CONTAINER_IMAGE_KEYS,

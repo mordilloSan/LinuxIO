@@ -438,7 +438,10 @@ type ContainerPort struct {
 
 type ContainerMount struct {
 	Destination string `json:"Destination"`
+	Driver      string `json:"Driver,omitempty"`
 	Mode        string `json:"Mode"`
+	Name        string `json:"Name,omitempty"`
+	Propagation string `json:"Propagation,omitempty"`
 	RW          bool   `json:"RW"`
 	Source      string `json:"Source"`
 	Type        string `json:"Type"`
@@ -492,6 +495,62 @@ type ContainerInfo struct {
 	UpdateCheckState  *DockerUpdateCheckState   `json:"updateCheckState,omitempty"`
 	UpdateError       *string                   `json:"updateError,omitempty"`
 	URL               *string                   `json:"url,omitempty"`
+}
+
+type ContainerInspectState struct {
+	Dead       bool   `json:"dead"`
+	Error      string `json:"error"`
+	ExitCode   int    `json:"exitCode"`
+	FinishedAt string `json:"finishedAt"`
+	OOMKilled  bool   `json:"oomKilled"`
+	Paused     bool   `json:"paused"`
+	Restarting bool   `json:"restarting"`
+	Running    bool   `json:"running"`
+	StartedAt  string `json:"startedAt"`
+	Status     string `json:"status"`
+}
+
+type ContainerInspectHealth struct {
+	FailingStreak int    `json:"failingStreak"`
+	Status        string `json:"status"`
+}
+
+type ContainerRestartPolicy struct {
+	MaximumRetryCount int    `json:"maximumRetryCount"`
+	Name              string `json:"name"`
+}
+
+type ContainerEnvironmentVariable struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type ContainerPortBinding struct {
+	ContainerPort int    `json:"containerPort"`
+	HostIP        string `json:"hostIp"`
+	HostPort      string `json:"hostPort"`
+	Protocol      string `json:"protocol"`
+}
+
+type ContainerInspectInfo struct {
+	Command          []string                       `json:"command,omitempty"`
+	Created          string                         `json:"created"`
+	Entrypoint       []string                       `json:"entrypoint,omitempty"`
+	Environment      []ContainerEnvironmentVariable `json:"environment,omitempty"`
+	Health           *ContainerInspectHealth        `json:"health,omitempty"`
+	ID               string                         `json:"id"`
+	Image            string                         `json:"image"`
+	ImageID          string                         `json:"imageId"`
+	Labels           map[string]string              `json:"labels,omitempty"`
+	Mounts           []ContainerMount               `json:"mounts,omitempty"`
+	Name             string                         `json:"name"`
+	Networks         map[string]ContainerEndpoint   `json:"networks,omitempty"`
+	Ports            []ContainerPortBinding         `json:"ports,omitempty"`
+	RestartCount     int                            `json:"restartCount"`
+	RestartPolicy    ContainerRestartPolicy         `json:"restartPolicy"`
+	State            ContainerInspectState          `json:"state"`
+	User             string                         `json:"user"`
+	WorkingDirectory string                         `json:"workingDirectory"`
 }
 
 type DockerContainerAutoUpdateOptions struct {

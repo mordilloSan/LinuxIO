@@ -5,12 +5,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/netip"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -115,22 +117,27 @@ func containerNetworkSettingsFromSummary(settings *container.NetworkSettingsSumm
 		return nil
 	}
 
-	networks := make(map[string]apischema.ContainerEndpoint, len(settings.Networks))
-	for name, endpoint := range settings.Networks {
+	networks := containerEndpointsFromSDK(settings.Networks)
+	if len(networks) == 0 {
+		return nil
+	}
+	return &apischema.ContainerNetworkSettings{Networks: networks}
+}
+
+func containerEndpointsFromSDK(endpoints map[string]*network.EndpointSettings) map[string]apischema.ContainerEndpoint {
+	result := make(map[string]apischema.ContainerEndpoint, len(endpoints))
+	for name, endpoint := range endpoints {
 		if endpoint == nil {
 			continue
 		}
-		networks[name] = apischema.ContainerEndpoint{
+		result[name] = apischema.ContainerEndpoint{
 			Gateway:           addrString(endpoint.Gateway),
 			GlobalIPv6Address: optionalAddrString(endpoint.GlobalIPv6Address),
 			IPAddress:         addrString(endpoint.IPAddress),
 			MACAddress:        utils.OptionalString(endpoint.MacAddress.String()),
 		}
 	}
-	if len(networks) == 0 {
-		return nil
-	}
-	return &apischema.ContainerNetworkSettings{Networks: networks}
+	return result
 }
 
 func containerPortsFromSummary(ports []container.PortSummary) []apischema.ContainerPort {
@@ -169,7 +176,10 @@ func containerMountsFromSummary(mounts []container.MountPoint) []apischema.Conta
 	for _, mount := range mounts {
 		result = append(result, apischema.ContainerMount{
 			Destination: mount.Destination,
+			Driver:      mount.Driver,
 			Mode:        mount.Mode,
+			Name:        mount.Name,
+			Propagation: string(mount.Propagation),
 			RW:          mount.RW,
 			Source:      mount.Source,
 			Type:        string(mount.Type),
@@ -276,64 +286,276 @@ func optionalAddrString(value netip.Addr) *string {
 	return utils.OptionalString(addrString(value))
 }
 
-// Start a container by ID
-func StartContainer(ctx context.Context, id string) (any, error) {
+type containerInspector interface {
+	ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error)
+}
+
+type containerStarter interface {
+	ContainerStart(context.Context, string, client.ContainerStartOptions) (client.ContainerStartResult, error)
+}
+
+type containerStopper interface {
+	ContainerStop(context.Context, string, client.ContainerStopOptions) (client.ContainerStopResult, error)
+}
+
+type containerRestarter interface {
+	ContainerRestart(context.Context, string, client.ContainerRestartOptions) (client.ContainerRestartResult, error)
+}
+
+type containerPauser interface {
+	ContainerPause(context.Context, string, client.ContainerPauseOptions) (client.ContainerPauseResult, error)
+}
+
+type containerUnpauser interface {
+	ContainerUnpause(context.Context, string, client.ContainerUnpauseOptions) (client.ContainerUnpauseResult, error)
+}
+
+type containerKiller interface {
+	ContainerKill(context.Context, string, client.ContainerKillOptions) (client.ContainerKillResult, error)
+}
+
+type containerRemover interface {
+	ContainerRemove(context.Context, string, client.ContainerRemoveOptions) (client.ContainerRemoveResult, error)
+}
+
+func InspectContainer(ctx context.Context, id string) (apischema.ContainerInspectInfo, error) {
 	cli, err := getClient()
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return apischema.ContainerInspectInfo{}, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	if _, err := cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to start container: %w", err)
-	}
+	return inspectContainer(ctx, cli, id)
+}
 
-	return "started", nil
+func inspectContainer(ctx context.Context, cli containerInspector, id string) (apischema.ContainerInspectInfo, error) {
+	result, err := cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+	if err != nil {
+		return apischema.ContainerInspectInfo{}, fmt.Errorf("failed to inspect container: %w", err)
+	}
+	return containerInspectInfoFromSDK(result.Container), nil
+}
+
+func containerInspectInfoFromSDK(inspect container.InspectResponse) apischema.ContainerInspectInfo {
+	info := apischema.ContainerInspectInfo{
+		Created:      inspect.Created,
+		ID:           inspect.ID,
+		ImageID:      inspect.Image,
+		Mounts:       containerMountsFromSummary(inspect.Mounts),
+		Name:         strings.TrimPrefix(inspect.Name, "/"),
+		RestartCount: inspect.RestartCount,
+	}
+	if inspect.Config != nil {
+		info.Command = inspect.Config.Cmd
+		info.Entrypoint = inspect.Config.Entrypoint
+		info.Environment = containerEnvironmentFromSDK(inspect.Config.Env)
+		info.Image = inspect.Config.Image
+		info.Labels = inspect.Config.Labels
+		info.User = inspect.Config.User
+		info.WorkingDirectory = inspect.Config.WorkingDir
+	}
+	if inspect.HostConfig != nil {
+		info.RestartPolicy = apischema.ContainerRestartPolicy{
+			MaximumRetryCount: inspect.HostConfig.RestartPolicy.MaximumRetryCount,
+			Name:              string(inspect.HostConfig.RestartPolicy.Name),
+		}
+	}
+	if inspect.State != nil {
+		info.State = apischema.ContainerInspectState{
+			Dead:       inspect.State.Dead,
+			Error:      inspect.State.Error,
+			ExitCode:   inspect.State.ExitCode,
+			FinishedAt: inspect.State.FinishedAt,
+			OOMKilled:  inspect.State.OOMKilled,
+			Paused:     inspect.State.Paused,
+			Restarting: inspect.State.Restarting,
+			Running:    inspect.State.Running,
+			StartedAt:  inspect.State.StartedAt,
+			Status:     string(inspect.State.Status),
+		}
+		if inspect.State.Health != nil {
+			info.Health = &apischema.ContainerInspectHealth{
+				FailingStreak: inspect.State.Health.FailingStreak,
+				Status:        string(inspect.State.Health.Status),
+			}
+		}
+	}
+	if inspect.NetworkSettings != nil {
+		info.Networks = containerEndpointsFromSDK(inspect.NetworkSettings.Networks)
+		info.Ports = containerPortBindingsFromSDK(inspect.Config, inspect.NetworkSettings.Ports)
+	} else {
+		info.Ports = containerPortBindingsFromSDK(inspect.Config, nil)
+	}
+	return info
+}
+
+func containerEnvironmentFromSDK(environment []string) []apischema.ContainerEnvironmentVariable {
+	result := make([]apischema.ContainerEnvironmentVariable, 0, len(environment))
+	for _, value := range environment {
+		name, variableValue, _ := strings.Cut(value, "=")
+		result = append(result, apischema.ContainerEnvironmentVariable{Name: name, Value: variableValue})
+	}
+	slices.SortFunc(result, func(a, b apischema.ContainerEnvironmentVariable) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	return result
+}
+
+func containerPortBindingsFromSDK(config *container.Config, ports network.PortMap) []apischema.ContainerPortBinding {
+	allPorts := make(network.PortMap, len(ports))
+	if config != nil {
+		for port := range config.ExposedPorts {
+			allPorts[port] = nil
+		}
+	}
+	maps.Copy(allPorts, ports)
+
+	result := make([]apischema.ContainerPortBinding, 0, len(allPorts))
+	for port, bindings := range allPorts {
+		if len(bindings) == 0 {
+			result = append(result, apischema.ContainerPortBinding{
+				ContainerPort: int(port.Num()),
+				Protocol:      string(port.Proto()),
+			})
+			continue
+		}
+		for _, binding := range bindings {
+			result = append(result, apischema.ContainerPortBinding{
+				ContainerPort: int(port.Num()),
+				HostIP:        addrString(binding.HostIP),
+				HostPort:      binding.HostPort,
+				Protocol:      string(port.Proto()),
+			})
+		}
+	}
+	slices.SortFunc(result, func(a, b apischema.ContainerPortBinding) int {
+		if difference := cmp.Compare(a.ContainerPort, b.ContainerPort); difference != 0 {
+			return difference
+		}
+		if difference := strings.Compare(a.Protocol, b.Protocol); difference != 0 {
+			return difference
+		}
+		if difference := strings.Compare(a.HostIP, b.HostIP); difference != 0 {
+			return difference
+		}
+		return strings.Compare(a.HostPort, b.HostPort)
+	})
+	return result
+}
+
+// Start a container by ID
+func StartContainer(ctx context.Context, id string) error {
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	return startContainer(ctx, cli, id)
+}
+
+func startContainer(ctx context.Context, cli containerStarter, id string) error {
+	if _, err := cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
+		return fmt.Errorf("failed to start container: %w", err)
+	}
+	return nil
 }
 
 // Stop a container by ID
-func StopContainer(ctx context.Context, id string) (any, error) {
+func StopContainer(ctx context.Context, id string) error {
 	cli, err := getClient()
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
-
-	if _, err := cli.ContainerStop(ctx, id, client.ContainerStopOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to stop container: %w", err)
-	}
-
-	return "stopped", nil
+	return stopContainer(ctx, cli, id)
 }
 
-// Remove a container by ID
-func RemoveContainer(ctx context.Context, id string) (any, error) {
-	cli, err := getClient()
-	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+func stopContainer(ctx context.Context, cli containerStopper, id string) error {
+	if _, err := cli.ContainerStop(ctx, id, client.ContainerStopOptions{}); err != nil {
+		return fmt.Errorf("failed to stop container: %w", err)
 	}
-	defer releaseClient(cli)
-
-	if _, err := cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true}); err != nil {
-		return nil, fmt.Errorf("failed to remove container: %w", err)
-	}
-
-	return "removed", nil
+	return nil
 }
 
 // Restart a container by ID
-func RestartContainer(ctx context.Context, id string) (any, error) {
+func RestartContainer(ctx context.Context, id string) error {
 	cli, err := getClient()
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
+	return restartContainer(ctx, cli, id)
+}
 
+func restartContainer(ctx context.Context, cli containerRestarter, id string) error {
 	if _, err := cli.ContainerRestart(ctx, id, client.ContainerRestartOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to restart container: %w", err)
+		return fmt.Errorf("failed to restart container: %w", err)
 	}
+	return nil
+}
 
-	return "restarted", nil
+func PauseContainer(ctx context.Context, id string) error {
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	return pauseContainer(ctx, cli, id)
+}
+
+func pauseContainer(ctx context.Context, cli containerPauser, id string) error {
+	if _, err := cli.ContainerPause(ctx, id, client.ContainerPauseOptions{}); err != nil {
+		return fmt.Errorf("failed to pause container: %w", err)
+	}
+	return nil
+}
+
+func UnpauseContainer(ctx context.Context, id string) error {
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	return unpauseContainer(ctx, cli, id)
+}
+
+func unpauseContainer(ctx context.Context, cli containerUnpauser, id string) error {
+	if _, err := cli.ContainerUnpause(ctx, id, client.ContainerUnpauseOptions{}); err != nil {
+		return fmt.Errorf("failed to unpause container: %w", err)
+	}
+	return nil
+}
+
+func KillContainer(ctx context.Context, id string) error {
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	return killContainer(ctx, cli, id)
+}
+
+func killContainer(ctx context.Context, cli containerKiller, id string) error {
+	if _, err := cli.ContainerKill(ctx, id, client.ContainerKillOptions{Signal: "SIGKILL"}); err != nil {
+		return fmt.Errorf("failed to kill container: %w", err)
+	}
+	return nil
+}
+
+func RemoveContainer(ctx context.Context, id string, force bool) error {
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	return removeContainer(ctx, cli, id, force)
+}
+
+func removeContainer(ctx context.Context, cli containerRemover, id string, force bool) error {
+	if _, err := cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: force}); err != nil {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+	return nil
 }
 
 // StartAllStopped starts all exited/dead containers and returns counts.

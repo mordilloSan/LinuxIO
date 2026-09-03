@@ -84,6 +84,11 @@ type ContainerIDRequest struct {
 	ContainerID string `json:"containerId"`
 }
 
+type ContainerRemoveRequest struct {
+	ContainerID string `json:"containerId"`
+	Force       bool   `json:"force"`
+}
+
 // DockerContainerUpdateRequest identifies one durable native Docker update.
 // RunID is allocated by the client before the request so a retry after bridge
 // loss can reclaim the same persisted operation instead of starting another

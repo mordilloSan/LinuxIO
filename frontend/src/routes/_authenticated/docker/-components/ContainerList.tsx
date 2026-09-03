@@ -13,6 +13,7 @@ import { memo, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { linuxio, openChannel, type ContainerInfo } from "@/api";
 import ContainerCard from "@/components/cards/ContainerCard";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
+import ContainerResourceDetails from "@/components/docker/ContainerResourceDetails";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";
@@ -25,17 +26,13 @@ import {
   type ReorderableSurfaceDndProps,
 } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { useAppMediaQuery } from "@/theme";
-import { down } from "@/theme/breakpoints";
 import {
   CARD_GRID_SIZE_DENSE,
   DASHBOARD_CARD_SPACING,
-  DETAIL_PANEL_GAP,
   EASING_STANDARD,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
-import ContainerDetailsPanel from "./ContainerDetailsPanel";
 import { ContainerHistoryCards } from "./ContainerHistoryCards";
 import {
   ContainerStackBand,
@@ -154,13 +151,48 @@ const applyPreviewOrder = (
   return [...ordered, ...remaining.values()];
 };
 
+const SelectedContainerDetails = ({
+  container,
+  onClose,
+  stopping,
+}: {
+  container: ContainerInfo;
+  onClose: () => void;
+  stopping: boolean;
+}) => {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--app-space-12)",
+      }}
+    >
+      <ContainerResourceDetails
+        container={container}
+        onClose={onClose}
+        stopping={stopping}
+      />
+      <ContainerHistoryCards containerId={container.Id} />
+      <UnitLogsCard
+        createStream={(tail) =>
+          openChannel("docker.logs.follow", {
+            containerId: container.Id,
+            tail,
+          })
+        }
+        title="Container Logs"
+      />
+    </div>
+  );
+};
+
 const ContainerList = ({
   checkingUpdates = false,
   stoppingContainerIds = EMPTY_STOPPING_CONTAINER_IDS,
   viewMode = "card",
 }: ContainerListProps) => {
   const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
-  const isCompactLayout = useAppMediaQuery(down("md"));
   const navigate = dockerRouteApi.useNavigate();
   const searchParams = dockerRouteApi.useSearch();
   const selectedContainerId =
@@ -476,137 +508,12 @@ const ContainerList = ({
   if (selectedContainer) {
     return (
       <Suspense fallback={<AppTypography>Loading containers...</AppTypography>}>
-        <motion.div
-          layout="position"
-          transition={{
-            duration: transitionDuration,
-            ease: EASING_STANDARD,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--app-space-12)",
-            }}
-          >
-            <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              initial={{ opacity: 0, y: 14 }}
-              style={{
-                display: "grid",
-                gridTemplateColumns: isCompactLayout
-                  ? "minmax(0, 1fr)"
-                  : "minmax(max-content, min(25vw, 480px)) minmax(0, 1fr) minmax(0, 1fr)",
-                alignItems: "stretch",
-                gap: DETAIL_PANEL_GAP,
-              }}
-              transition={{
-                duration: transitionDuration,
-                delay: 0,
-                ease: EASING_STANDARD,
-              }}
-            >
-              <motion.div
-                animate={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: 12 }}
-                style={{
-                  minWidth: 0,
-                  display: "flex",
-                }}
-                transition={{
-                  duration: transitionDuration,
-                  delay: 0,
-                  ease: EASING_STANDARD,
-                }}
-              >
-                <ContainerCard
-                  actionPending={stoppingContainerIds.has(selectedContainer.Id)}
-                  containerId={selectedContainer.Id}
-                  onSelect={() => handleSelectContainer(selectedContainer.Id)}
-                  selected
-                />
-              </motion.div>
-              <motion.div
-                animate={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: 16 }}
-                style={{
-                  minWidth: 0,
-                  display: "flex",
-                }}
-                transition={{
-                  duration: transitionDuration,
-                  delay: 0.1,
-                  ease: EASING_STANDARD,
-                }}
-              >
-                <ContainerDetailsPanel
-                  container={selectedContainer}
-                  sections={["ports", "volumes"]}
-                  showStatus={false}
-                  subtitle="ports and volumes"
-                  title="Container"
-                />
-              </motion.div>
-              <motion.div
-                animate={{ opacity: 1, x: 0, y: 0 }}
-                initial={{
-                  opacity: 0,
-                  x: isCompactLayout ? 0 : 40,
-                  y: isCompactLayout ? 20 : 0,
-                }}
-                style={{
-                  minWidth: 0,
-                  display: "flex",
-                }}
-                transition={{
-                  duration: transitionDuration,
-                  delay: 0.2,
-                  ease: EASING_STANDARD,
-                }}
-              >
-                <ContainerDetailsPanel
-                  container={selectedContainer}
-                  onClose={() => updateSelectedContainer(null)}
-                />
-              </motion.div>
-            </motion.div>
-            <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              initial={{ opacity: 0, y: 18 }}
-              transition={{
-                duration: transitionDuration,
-                delay: 0.3,
-                ease: EASING_STANDARD,
-              }}
-            >
-              <ContainerHistoryCards
-                containerId={selectedContainer.Id}
-                key={selectedContainer.Id}
-              />
-            </motion.div>
-            <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              initial={{ opacity: 0, y: 20 }}
-              transition={{
-                duration: transitionDuration,
-                delay: 0.4,
-                ease: EASING_STANDARD,
-              }}
-            >
-              <UnitLogsCard
-                key={selectedContainer.Id}
-                createStream={(tail) =>
-                  openChannel("docker.logs.follow", {
-                    containerId: selectedContainer.Id,
-                    tail,
-                  })
-                }
-                title="Container Logs"
-              />
-            </motion.div>
-          </div>
-        </motion.div>
+        <SelectedContainerDetails
+          container={selectedContainer}
+          key={selectedContainer.Id}
+          onClose={() => updateSelectedContainer(null)}
+          stopping={stoppingContainerIds.has(selectedContainer.Id)}
+        />
       </Suspense>
     );
   }

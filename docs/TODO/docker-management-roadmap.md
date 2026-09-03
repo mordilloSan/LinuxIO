@@ -1,6 +1,6 @@
 # Docker Management Plan
 
-> **Status:** Planned
+> **Status:** Phase 1 complete; Phase 2 planned
 
 LinuxIO will extend its current single-host Docker management without changing
 the Docker module's visual language. The work covers container lifecycle,
@@ -31,10 +31,10 @@ Docker manager.
 
 Add typed API routes for:
 
-- [ ] inspect container;
-- [ ] pause and unpause container;
-- [ ] kill container with `SIGKILL`; and
-- [ ] remove container with an explicit `force` option.
+- [x] inspect container;
+- [x] pause and unpause container;
+- [x] kill container with `SIGKILL`; and
+- [x] remove container with an explicit `force` option.
 
 Keep start, stop, restart, update, logs, terminal, and monitoring behavior.
 

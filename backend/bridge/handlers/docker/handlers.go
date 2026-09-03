@@ -11,17 +11,17 @@ import (
 
 var Routes = apischema.CombineRoutes(routeBindings(runtime.Runtime{}, dockerHandlers{}).Routes(), dockerTaskRoutes)
 
-// Only 9 of these 42 routes can use the typed Handle: the rest call domain
-// functions that return bare `any` (containers, images, networks, volumes,
-// caddy, icons, folders, validation), so no declared result type here is
-// checked against what the handler actually produces. Tightening those
 func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, []apischema.ContainerInfo]("docker.list_containers", apischema.RetrySafe()).Handle(handlers.handleListContainers),
+		apischema.Call[apischema.ContainerIDRequest, apischema.ContainerInspectInfo]("docker.inspect_container", apischema.RetrySafe()).Handle(handlers.handleInspectContainer),
 		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.start_container").HandleVoid(handlers.handleStartContainer),
 		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.stop_container").HandleVoid(handlers.handleStopContainer),
-		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.remove_container").HandleVoid(handlers.handleRemoveContainer),
 		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.restart_container").HandleVoid(handlers.handleRestartContainer),
+		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.pause_container").HandleVoid(handlers.handlePauseContainer),
+		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.unpause_container").HandleVoid(handlers.handleUnpauseContainer),
+		apischema.Call[apischema.ContainerIDRequest, apischema.NoResponse]("docker.kill_container").HandleVoid(handlers.handleKillContainer),
+		apischema.Call[apischema.ContainerRemoveRequest, apischema.NoResponse]("docker.remove_container").HandleVoid(handlers.handleRemoveContainer),
 		apischema.Call[apischema.NoRequest, []apischema.DockerImage]("docker.list_images", apischema.RetrySafe()).Handle(handlers.handleListImages),
 		apischema.Call[apischema.ImageIDRequest, apischema.NoResponse]("docker.delete_image").HandleVoid(handlers.handleDeleteImage),
 		apischema.Call[apischema.NoRequest, []apischema.DockerNetwork]("docker.list_networks", apischema.RetrySafe()).Handle(handlers.handleListNetworks),

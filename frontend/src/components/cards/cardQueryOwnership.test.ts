@@ -576,6 +576,16 @@ const edgeContracts: EdgeContract[] = [
   {
     file: dockerContainerListFile,
     name: "ContainerList",
+    renders: ["SelectedContainerDetails"],
+  },
+  {
+    file: dockerContainerListFile,
+    name: "SelectedContainerDetails",
+    renders: ["ContainerResourceDetails"],
+  },
+  {
+    file: "components/docker/ContainerResourceDetails.tsx",
+    name: "ContainerResourceDetails",
     renders: ["ContainerCard"],
   },
   {

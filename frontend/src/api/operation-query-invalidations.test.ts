@@ -74,6 +74,30 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
+  it("refreshes container summaries and inspect data after lifecycle actions", () => {
+    const stateKeys = [
+      ["linuxio", "docker", "list_containers"],
+      ["linuxio", "docker", "list_compose_projects"],
+      ["linuxio", "docker", "inspect_container"],
+    ];
+
+    for (const route of [
+      "docker.start_container",
+      "docker.stop_container",
+      "docker.restart_container",
+      "docker.pause_container",
+      "docker.unpause_container",
+      "docker.kill_container",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(stateKeys);
+    }
+
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.remove_container"]).toEqual([
+      ...stateKeys,
+      ["linuxio", "docker", "list_images"],
+    ]);
+  });
+
   it("refreshes selected account details after user mutations", () => {
     const expected = [
       ["linuxio", "accounts", "list_users"],

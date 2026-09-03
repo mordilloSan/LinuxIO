@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -11,24 +12,67 @@ func (h dockerHandlers) handleListContainers(ctx context.Context, _ apischema.No
 	return ListContainers(ctx)
 }
 
+func validateContainerID(containerID string) error {
+	if strings.TrimSpace(containerID) == "" {
+		return bridgeipc.ErrInvalidArgs
+	}
+	return nil
+}
+
+func (h dockerHandlers) handleInspectContainer(ctx context.Context, req apischema.ContainerIDRequest) (apischema.ContainerInspectInfo, error) {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return apischema.ContainerInspectInfo{}, err
+	}
+	return InspectContainer(ctx, req.ContainerID)
+}
+
 func (h dockerHandlers) handleStartContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
-	_, err := StartContainer(ctx, req.ContainerID)
-	return err
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return StartContainer(ctx, req.ContainerID)
 }
 
 func (h dockerHandlers) handleStopContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
-	_, err := StopContainer(ctx, req.ContainerID)
-	return err
-}
-
-func (h dockerHandlers) handleRemoveContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
-	_, err := RemoveContainer(ctx, req.ContainerID)
-	return err
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return StopContainer(ctx, req.ContainerID)
 }
 
 func (h dockerHandlers) handleRestartContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
-	_, err := RestartContainer(ctx, req.ContainerID)
-	return err
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return RestartContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handlePauseContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return PauseContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleUnpauseContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return UnpauseContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleKillContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return KillContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleRemoveContainer(ctx context.Context, req apischema.ContainerRemoveRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return RemoveContainer(ctx, req.ContainerID, req.Force)
 }
 
 func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ apischema.NoRequest) (apischema.DockerStartedFailedResponse, error) {

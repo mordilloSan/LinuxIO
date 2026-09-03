@@ -485,6 +485,11 @@ export interface ContainerEndpoint {
   MacAddress?: string;
 }
 
+export interface ContainerEnvironmentVariable {
+  name: string;
+  value: string;
+}
+
 export interface ContainerHostConfig {
   NetworkMode?: string;
 }
@@ -516,6 +521,45 @@ export interface ContainerInfo {
   url?: string;
 }
 
+export interface ContainerInspectHealth {
+  failingStreak: number;
+  status: string;
+}
+
+export interface ContainerInspectInfo {
+  command?: string[];
+  created: string;
+  entrypoint?: string[];
+  environment?: ContainerEnvironmentVariable[];
+  health?: ContainerInspectHealth;
+  id: string;
+  image: string;
+  imageId: string;
+  labels?: Record<string, string>;
+  mounts?: ContainerMount[];
+  name: string;
+  networks?: Record<string, ContainerEndpoint>;
+  ports?: ContainerPortBinding[];
+  restartCount: number;
+  restartPolicy: ContainerRestartPolicy;
+  state: ContainerInspectState;
+  user: string;
+  workingDirectory: string;
+}
+
+export interface ContainerInspectState {
+  dead: boolean;
+  error: string;
+  exitCode: number;
+  finishedAt: string;
+  oomKilled: boolean;
+  paused: boolean;
+  restarting: boolean;
+  running: boolean;
+  startedAt: string;
+  status: string;
+}
+
 export interface ContainerMetrics {
   block_read_bytes_per_second?: number;
   block_write_bytes_per_second?: number;
@@ -536,7 +580,10 @@ export type ContainerMetricsStatus =
 
 export interface ContainerMount {
   Destination: string;
+  Driver?: string;
   Mode: string;
+  Name?: string;
+  Propagation?: string;
   RW: boolean;
   Source: string;
   Type: string;
@@ -558,6 +605,23 @@ export interface ContainerPort {
   PrivatePort: number;
   PublicPort?: number;
   Type: string;
+}
+
+export interface ContainerPortBinding {
+  containerPort: number;
+  hostIp: string;
+  hostPort: string;
+  protocol: string;
+}
+
+export interface ContainerRemoveRequest {
+  containerId: string;
+  force: boolean;
+}
+
+export interface ContainerRestartPolicy {
+  maximumRetryCount: number;
+  name: string;
 }
 
 export interface CountProgress {
@@ -2590,6 +2654,16 @@ export interface LinuxIOSchema {
       request: IdentifierRequest;
       result: DockerIconURIResponse;
     };
+    inspect_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: ContainerInspectInfo;
+    };
+    kill_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
+    };
     list_compose_projects: {
       input: [];
       request: void;
@@ -2599,10 +2673,15 @@ export interface LinuxIOSchema {
     list_images: { input: []; request: void; result: DockerImage[] };
     list_networks: { input: []; request: void; result: DockerNetwork[] };
     list_volumes: { input: []; request: void; result: DockerVolume[] };
-    reload_caddy: { input: []; request: void; result: MessageResponse };
-    remove_container: {
+    pause_container: {
       input: [containerId: string];
       request: ContainerIDRequest;
+      result: void;
+    };
+    reload_caddy: { input: []; request: void; result: MessageResponse };
+    remove_container: {
+      input: [request: ContainerRemoveRequest];
+      request: ContainerRemoveRequest;
       result: void;
     };
     restart_container: {
@@ -2639,6 +2718,11 @@ export interface LinuxIOSchema {
       input: [request: DockerSystemPruneRequest];
       request: DockerSystemPruneRequest;
       result: DockerSystemPruneResponse;
+    };
+    unpause_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
     };
     update_container: {
       input: [request: DockerContainerUpdateRequest];
@@ -3403,13 +3487,19 @@ export interface LinuxIOCallSchema {
     request: IdentifierRequest;
     result: DockerIconURIResponse;
   };
+  "docker.inspect_container": {
+    request: ContainerIDRequest;
+    result: ContainerInspectInfo;
+  };
+  "docker.kill_container": { request: ContainerIDRequest; result: void };
   "docker.list_compose_projects": { request: void; result: ComposeProject[] };
   "docker.list_containers": { request: void; result: ContainerInfo[] };
   "docker.list_images": { request: void; result: DockerImage[] };
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };
+  "docker.pause_container": { request: ContainerIDRequest; result: void };
   "docker.reload_caddy": { request: void; result: MessageResponse };
-  "docker.remove_container": { request: ContainerIDRequest; result: void };
+  "docker.remove_container": { request: ContainerRemoveRequest; result: void };
   "docker.restart_container": { request: ContainerIDRequest; result: void };
   "docker.set_container_auto_update": {
     request: DockerContainerAutoUpdateOptions;
@@ -3429,6 +3519,7 @@ export interface LinuxIOCallSchema {
     request: DockerSystemPruneRequest;
     result: DockerSystemPruneResponse;
   };
+  "docker.unpause_container": { request: ContainerIDRequest; result: void };
   "docker.validate_compose": {
     request: ValidateComposeRequest;
     result: ValidateComposeResponse;
