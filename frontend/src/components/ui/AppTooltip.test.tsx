@@ -17,9 +17,67 @@ const rect = (left: number, top: number, width: number, height: number) =>
 afterEach(() => {
   document.documentElement.removeAttribute("data-tab-navigation");
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("AppTooltip", () => {
+  it("observes trigger size only when copy support needs it", () => {
+    let observerCount = 0;
+    class CountingResizeObserver {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+
+      constructor() {
+        observerCount += 1;
+      }
+    }
+    vi.stubGlobal("ResizeObserver", CountingResizeObserver);
+
+    const view = render(
+      <AppTooltip title="Plain tooltip">
+        <button type="button">Target</button>
+      </AppTooltip>,
+    );
+    expect(observerCount).toBe(0);
+
+    view.rerender(
+      <AppTooltip copyText="copy me" title="Copy tooltip">
+        <button type="button">Target</button>
+      </AppTooltip>,
+    );
+    expect(observerCount).toBeGreaterThan(0);
+  });
+
+  it("drops the copy affordance when copyText is removed while mounted", () => {
+    const view = render(
+      <AppTooltip copyText="copy me" title="Copy tooltip">
+        <span data-testid="trigger">Target</span>
+      </AppTooltip>,
+    );
+    const trigger = screen.getByTestId("trigger");
+    Object.defineProperty(trigger, "scrollWidth", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(trigger, "clientWidth", {
+      configurable: true,
+      value: 100,
+    });
+    const wrapper = trigger.parentElement as HTMLElement;
+    fireEvent.mouseEnter(wrapper);
+    expect(wrapper).toHaveClass("app-tooltip-trigger--copy");
+
+    // No hover or resize follows the prop change, so nothing recomputes
+    // canCopy; the class must come from the current copyText instead.
+    view.rerender(
+      <AppTooltip title="Copy tooltip">
+        <span data-testid="trigger">Target</span>
+      </AppTooltip>,
+    );
+    expect(wrapper).not.toHaveClass("app-tooltip-trigger--copy");
+  });
+
   it("keeps a tooltip anchored near the right edge inside the viewport", async () => {
     vi.useFakeTimers();
     Object.defineProperty(window, "innerWidth", {

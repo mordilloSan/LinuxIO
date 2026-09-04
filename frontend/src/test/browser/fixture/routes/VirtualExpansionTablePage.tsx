@@ -10,7 +10,7 @@ interface FixtureRow {
   status: string;
 }
 
-const rows: FixtureRow[] = Array.from({ length: 180 }, (_, index) => ({
+const rows: FixtureRow[] = Array.from({ length: 2000 }, (_, index) => ({
   id: `virtual-row-${index}`,
   name: `Virtual row ${index}`,
   status: index % 3 === 0 ? "ready" : index % 3 === 1 ? "running" : "idle",
@@ -48,7 +48,7 @@ export default function VirtualExpansionTablePage() {
       }}
     >
       <h1>Virtual expansion fixture</h1>
-      <p>180 deterministic rows exercise native detail virtualization.</p>
+      <p>2000 deterministic rows exercise native detail virtualization.</p>
       <div
         data-testid="virtual-expansion-scrollport"
         style={{ height: 520, minHeight: 0, width: "100%" }}

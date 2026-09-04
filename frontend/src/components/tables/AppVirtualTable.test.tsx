@@ -12,6 +12,7 @@ const virtualizerSpies = vi.hoisted(() => ({
     | {
         estimateSize: (index: number) => number;
         getItemKey: (index: number) => string | number;
+        useAnimationFrameWithResizeObserver?: boolean;
       }
     | undefined,
 }));
@@ -24,14 +25,20 @@ vi.mock("@tanstack/react-virtual", async () => {
       count,
       estimateSize,
       getItemKey,
+      useAnimationFrameWithResizeObserver,
     }: {
       count: number;
       estimateSize: (index: number) => number;
       getItemKey: (index: number) => string | number;
+      useAnimationFrameWithResizeObserver?: boolean;
     }) => {
       const optionsRef = useRef({ count, estimateSize, getItemKey });
       optionsRef.current = { count, estimateSize, getItemKey };
-      virtualizerSpies.options = { estimateSize, getItemKey };
+      virtualizerSpies.options = {
+        estimateSize,
+        getItemKey,
+        useAnimationFrameWithResizeObserver,
+      };
 
       const virtualizerRef = useRef<{
         getTotalSize: () => number;
@@ -156,6 +163,9 @@ describe("AppVirtualTable", () => {
     );
     expect(virtualizerSpies.options?.estimateSize(0)).toBe(
       TABLE_ROW_MIN_HEIGHT,
+    );
+    expect(virtualizerSpies.options?.useAnimationFrameWithResizeObserver).toBe(
+      true,
     );
 
     view.rerender(<TestTable estimateRowHeight={72} />);

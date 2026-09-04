@@ -11,6 +11,7 @@ import {
   useState,
   type ChangeEvent,
   type MouseEvent,
+  type RefObject,
   type UIEvent,
 } from "react";
 
@@ -37,7 +38,7 @@ import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 // A fixed first page replaces the old "Lines" selector. Older entries are
 // fetched by cursor as the user scrolls, so choosing an up-front count no
 // longer changes which history is reachable.
-const INITIAL_PAGE_LINES = "500";
+const INITIAL_PAGE_LINES = "1500";
 // Live updates retain at least this many rows. Once history pages are loaded,
 // the retention window grows to preserve everything the user has reached.
 const INITIAL_BUFFER_LIMIT = 5000;
@@ -57,6 +58,9 @@ const SCROLL_LOAD_THRESHOLD_PX = 1200;
 // delay, giving up after MAX_RECONNECT_ATTEMPTS consecutive failures.
 const RECONNECT_DELAY_MS = 1500;
 const MAX_RECONNECT_ATTEMPTS = 3;
+// Logs are human-readable output, not animation. A short flush interval keeps
+// live updates responsive without rebuilding the table up to 60 times a second.
+const LIVE_FLUSH_INTERVAL_MS = 100;
 // Fallback: never leave the spinner up longer than this if the stream stays
 // silent and the backlog-complete signal is lost.
 const LOADING_FALLBACK_TIMEOUT_MS = 10_000;
@@ -336,22 +340,18 @@ const addIdentifiers = (
   return next ?? current;
 };
 
-const prependUniqueLogs = (
+const clearTimer = (timer: RefObject<number | null>) => {
+  if (timer.current !== null) {
+    window.clearTimeout(timer.current);
+    timer.current = null;
+  }
+};
+
+const prependLogs = (
   current: LogEntry[],
   incomingNewestFirst: LogEntry[],
   limit: number,
-): LogEntry[] => {
-  if (incomingNewestFirst.length === 0) return current;
-  const seen = new Set(current.map((log) => log.id));
-  const unique: LogEntry[] = [];
-  for (const log of incomingNewestFirst) {
-    if (seen.has(log.id)) continue;
-    seen.add(log.id);
-    unique.push(log);
-  }
-  if (unique.length === 0) return current;
-  return [...unique, ...current].slice(0, limit);
-};
+): LogEntry[] => [...incomingNewestFirst, ...current].slice(0, limit);
 
 const appendUniqueLogs = (
   current: LogEntry[],
@@ -523,11 +523,12 @@ const GeneralLogsPage = () => {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const loadingFallbackTimerRef = useRef<number | null>(null);
-  // Pending log entries waiting for the next animation-frame flush. Buffering
+  // Pending log entries waiting for the next timed flush. Buffering
   // here turns a per-line setState (potentially thousands per second on a
-  // chatty journal) into ~60 batched updates per second.
+  // chatty journal) into ten batched updates per second.
   const pendingLogsRef = useRef<LogEntry[]>([]);
-  const flushScheduledRef = useRef(false);
+  const seenLogIdsRef = useRef<Set<string>>(new Set());
+  const logFlushTimerRef = useRef<number | null>(null);
   const { streamRef, openStream, closeStream } = useLiveStream();
   const queryClient = useQueryClient();
 
@@ -539,20 +540,6 @@ const GeneralLogsPage = () => {
   }, [logs]);
 
   const { isOpen: muxIsOpen } = useStreamMux();
-  const clearReconnectTimer = useCallback(() => {
-    if (reconnectTimerRef.current !== null) {
-      window.clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-  }, []);
-
-  const clearLoadingFallbackTimer = useCallback(() => {
-    if (loadingFallbackTimerRef.current !== null) {
-      window.clearTimeout(loadingFallbackTimerRef.current);
-      loadingFallbackTimerRef.current = null;
-    }
-  }, []);
-
   const uniqueIdentifiers = useMemo(
     () => Array.from(identifierSet).sort(),
     [identifierSet],
@@ -606,25 +593,25 @@ const GeneralLogsPage = () => {
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [logs, liveMode]);
 
-  // Flush queued log entries on the next animation frame. Coalesces bursts so
-  // we don't pay React reconciliation cost per arriving line.
-  const scheduleFlush = useCallback(() => {
-    if (flushScheduledRef.current) return;
-    flushScheduledRef.current = true;
-    requestAnimationFrame(() => {
-      flushScheduledRef.current = false;
-      const pending = pendingLogsRef.current;
-      if (pending.length === 0) return;
-      pendingLogsRef.current = [];
-      // Pending arrived in chronological order; the table renders newest-first,
-      // so reverse before prepending.
-      const reversed = pending.reverse();
-      setLogs((prev) =>
-        prependUniqueLogs(prev, reversed, bufferLimitRef.current),
-      );
-      setIdentifierSet((prev) => addIdentifiers(prev, reversed));
-    });
-  }, []);
+  const flushPendingLogs = () => {
+    clearTimer(logFlushTimerRef);
+    const pending = pendingLogsRef.current;
+    if (pending.length === 0) return;
+    pendingLogsRef.current = [];
+    // Pending arrived in chronological order; the table renders newest-first,
+    // so reverse before prepending.
+    const reversed = pending.reverse();
+    setLogs((prev) => prependLogs(prev, reversed, bufferLimitRef.current));
+    setIdentifierSet((prev) => addIdentifiers(prev, reversed));
+  };
+
+  const scheduleFlush = () => {
+    if (logFlushTimerRef.current !== null) return;
+    logFlushTimerRef.current = window.setTimeout(
+      flushPendingLogs,
+      LIVE_FLUSH_INTERVAL_MS,
+    );
+  };
 
   const handleStreamOpenError = useEffectEvent(() => {
     queueMicrotask(() => {
@@ -634,40 +621,57 @@ const GeneralLogsPage = () => {
   });
 
   const handleStreamText = useEffectEvent((text: string) => {
-    if (!hasReceivedData.current) {
+    const firstFrame = !hasReceivedData.current;
+    if (firstFrame) {
       hasReceivedData.current = true;
       reconnectAttemptsRef.current = 0;
-      clearLoadingFallbackTimer();
+      clearTimer(loadingFallbackTimerRef);
       setIsLoading(false);
       setError(null);
     }
     const pending = pendingLogsRef.current;
+    const seen = seenLogIdsRef.current;
     // Frames are batched server-side and may carry many lines.
     for (const line of text.split("\n")) {
       if (!line) continue;
       const logEntry = parseLogEntry(line);
-      if (logEntry) {
+      if (logEntry && !seen.has(logEntry.id)) {
+        seen.add(logEntry.id);
         pending.push(logEntry);
         if (logEntry.cursor !== null) {
           newestCursorRef.current = logEntry.cursor;
         }
       }
     }
-    // rAF is paused in background tabs; bound this single-frame staging area.
+    // Bound the staging area if a very large frame arrives between flushes.
     // Navigated history is kept separately in logs and is not capped here.
     if (pending.length > INITIAL_BUFFER_LIMIT) {
       pending.splice(0, pending.length - INITIAL_BUFFER_LIMIT);
     }
+    const seenLimit = bufferLimitRef.current;
+    if (seen.size > seenLimit * 2) {
+      // Sets iterate in insertion order, so the tail is the newest ids.
+      // ponytail: trim in chunks; a ring buffer only pays off if profiling
+      // shows this infrequent O(buffer) copy matters in very long sessions.
+      seenLogIdsRef.current = new Set(Array.from(seen).slice(-seenLimit));
+    }
     if (pending.length > 0) {
       hasBufferedDataRef.current = true;
-      scheduleFlush();
+      // The first frame flips isLoading off in this same event; flush now so
+      // the loader never yields to an empty table while the timer runs.
+      if (firstFrame) {
+        flushPendingLogs();
+      } else {
+        scheduleFlush();
+      }
     }
   });
 
   const handleStreamProgress = useEffectEvent(
     (progress: GeneralLogsProgress) => {
       if (progress?.type === "backlog_complete") {
-        clearLoadingFallbackTimer();
+        clearTimer(loadingFallbackTimerRef);
+        flushPendingLogs();
         setIsLoading(false);
         if (!progress.resumed) {
           setBacklogTruncated(Boolean(progress.truncated));
@@ -686,7 +690,8 @@ const GeneralLogsPage = () => {
 
   const handleStreamResult = useEffectEvent(
     (result: { status: "ok" | "error"; error?: string }) => {
-      clearLoadingFallbackTimer();
+      clearTimer(loadingFallbackTimerRef);
+      flushPendingLogs();
       if (result.status === "error") {
         setError(result.error || "Log stream failed");
         setIsLoading(false);
@@ -695,7 +700,8 @@ const GeneralLogsPage = () => {
   );
 
   const handleStreamClosed = useEffectEvent(() => {
-    clearLoadingFallbackTimer();
+    clearTimer(loadingFallbackTimerRef);
+    flushPendingLogs();
     if (!hasReceivedData.current) {
       setIsLoading(false);
     }
@@ -741,7 +747,7 @@ const GeneralLogsPage = () => {
     });
 
     if (opened) {
-      clearLoadingFallbackTimer();
+      clearTimer(loadingFallbackTimerRef);
       loadingFallbackTimerRef.current = window.setTimeout(() => {
         loadingFallbackTimerRef.current = null;
         if (!hasReceivedData.current) {
@@ -789,8 +795,9 @@ const GeneralLogsPage = () => {
   ) => {
     setLiveMode(checked);
     if (!checked) {
-      clearReconnectTimer();
-      clearLoadingFallbackTimer();
+      clearTimer(reconnectTimerRef);
+      clearTimer(loadingFallbackTimerRef);
+      flushPendingLogs();
       closeStream();
       if (!hasReceivedData.current) {
         setIsLoading(false);
@@ -805,12 +812,14 @@ const GeneralLogsPage = () => {
   // Used by every filter change that needs to re-issue the backend stream.
   const resetBuffer = useCallback(() => {
     paginationGenerationRef.current += 1;
-    clearReconnectTimer();
-    clearLoadingFallbackTimer();
+    clearTimer(reconnectTimerRef);
+    clearTimer(loadingFallbackTimerRef);
+    clearTimer(logFlushTimerRef);
+    pendingLogsRef.current = [];
     closeStream();
     setLogs([]);
     setIdentifierSet(new Set());
-    pendingLogsRef.current = [];
+    seenLogIdsRef.current.clear();
     hasBufferedDataRef.current = false;
     newestCursorRef.current = null;
     reconnectAttemptsRef.current = 0;
@@ -823,7 +832,7 @@ const GeneralLogsPage = () => {
     setPaginationError(null);
     setError(null);
     setIsLoading(true);
-  }, [closeStream, clearReconnectTimer, clearLoadingFallbackTimer]);
+  }, [closeStream]);
 
   // Filter change handlers
   const handleTimePeriodChange = (value: string) => {
@@ -907,10 +916,6 @@ const GeneralLogsPage = () => {
 
   const loadOlderLogs = useCallback(async () => {
     if (isLoadingOlderRef.current || !hasMoreOlder) return;
-    // backlog_complete can arrive before the animation-frame buffer flushes
-    // its data rows. Keep hasMoreOlder intact so the next explicit scroll or
-    // "Load older logs" action can continue after that flush.
-    if (logs.length === 0) return;
     let boundaryCursor: string | null = null;
     for (let index = logs.length - 1; index >= 0; index -= 1) {
       if (logs[index].cursor !== null) {
@@ -1012,11 +1017,12 @@ const GeneralLogsPage = () => {
   useEffect(() => {
     return () => {
       paginationGenerationRef.current += 1;
-      clearReconnectTimer();
-      clearLoadingFallbackTimer();
+      clearTimer(reconnectTimerRef);
+      clearTimer(loadingFallbackTimerRef);
+      clearTimer(logFlushTimerRef);
       closeStream();
     };
-  }, [closeStream, clearReconnectTimer, clearLoadingFallbackTimer]);
+  }, [closeStream]);
 
   const filteredLogs = useMemo(() => {
     // Use the live input for substring matching so typing reflects immediately.

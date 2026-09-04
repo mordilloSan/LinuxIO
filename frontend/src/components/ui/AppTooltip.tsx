@@ -254,6 +254,8 @@ const AppTooltip = ({
   });
 
   useEffect(() => {
+    if (!copyText) return undefined;
+
     const target = getTarget();
     if (!target) return undefined;
 
@@ -272,7 +274,7 @@ const AppTooltip = ({
       observer.disconnect();
       window.removeEventListener("resize", refreshCopyAvailability);
     };
-  }, [getTarget, refreshCopyAvailability]);
+  }, [copyText, getTarget, refreshCopyAvailability]);
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -329,7 +331,7 @@ const AppTooltip = ({
       <span
         className={[
           "app-tooltip-trigger",
-          canCopy && "app-tooltip-trigger--copy",
+          copyText && canCopy && "app-tooltip-trigger--copy",
         ]
           .filter(Boolean)
           .join(" ")}

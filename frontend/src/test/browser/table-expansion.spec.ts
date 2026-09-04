@@ -69,6 +69,37 @@ test.describe("virtual native table expansion", () => {
     );
   });
 
+  test("keeps the viewport populated after large scrollbar jumps", async ({
+    page,
+  }) => {
+    const scrollport = page.locator(scrollSelector);
+
+    for (const ratio of [0.7, 0.15, 0.85]) {
+      const visibleRowCount = await scrollport.evaluate(
+        async (element, targetRatio) => {
+          const scrollportElement = element as HTMLElement;
+          scrollportElement.scrollTop =
+            (scrollportElement.scrollHeight - scrollportElement.clientHeight) *
+            targetRatio;
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+
+          const viewport = scrollportElement.getBoundingClientRect();
+          return Array.from(
+            scrollportElement.querySelectorAll(".app-dt__virtual-row"),
+          ).filter((node) => {
+            const row = node.getBoundingClientRect();
+            return row.bottom > viewport.top && row.top < viewport.bottom;
+          }).length;
+        },
+        ratio,
+      );
+
+      expect(visibleRowCount).toBeGreaterThan(0);
+    }
+  });
+
   test("keeps multiple details independent, updates dynamic growth, and reaches nested rows", async ({
     page,
   }) => {
