@@ -804,14 +804,16 @@ type FileUploadBatchRequest struct {
 	Overwrite   *bool                  `json:"overwrite,omitempty"`
 }
 
-// MonitoringConfigPatch mirrors the go-monitoring `config.set` command params.
+// MonitoringConfigPatch mirrors the linuxio-monitoring `config.set` command
+// params. Listeners require a daemon restart to take effect.
 type MonitoringConfigPatch struct {
-	CollectorInterval    *string              `json:"collector_interval,omitempty"`
-	SmartRefreshInterval *string              `json:"smart_refresh_interval,omitempty"`
-	History              *string              `json:"history,omitempty"`
-	HistoryRetention     *string              `json:"history_retention,omitempty"`
-	AllowRemoteCommands  *bool                `json:"allow_remote_commands,omitempty"`
-	Listeners            []MonitoringListener `json:"listeners,omitempty"`
+	CollectorInterval    *string               `json:"collector_interval,omitempty"`
+	DiskUsageCache       *string               `json:"disk_usage_cache,omitempty"`
+	History              *string               `json:"history,omitempty"`
+	HistoryIntervals     *map[string]string    `json:"history_intervals,omitempty"`
+	HistoryRetention     *string               `json:"history_retention,omitempty"`
+	Listeners            *[]MonitoringListener `json:"listeners,omitempty"`
+	SmartRefreshInterval *string               `json:"smart_refresh_interval,omitempty"`
 }
 
 type TaskListRequest struct {

@@ -3,10 +3,8 @@ package monitoring
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,24 +27,14 @@ var historyResolutions = map[apischema.MonitoringHistoryResolution]struct{}{
 	"1m": {}, "10m": {}, "20m": {}, "120m": {}, "480m": {},
 }
 
+// historyReadTimeout bounds one history read. controlClient stays unbounded so
+// long-running db.maintain commands survive, so the deadline lives here.
+var historyReadTimeout = 15 * time.Second
+
 // logicalCPUCount is injectable so history conversion tests can use a
 // deterministic CPU count while production requests retain gopsutil's
 // context-aware host query.
 var logicalCPUCount = cpu.CountsWithContext
-
-// newMetricsClient builds the HTTP client used to reach the agent's metrics
-// listener. Overridable in tests.
-var newMetricsClient = func(network, address string) *http.Client {
-	return &http.Client{
-		Timeout: 15 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				dialer := &net.Dialer{Timeout: 5 * time.Second}
-				return dialer.DialContext(ctx, network, address)
-			},
-		},
-	}
-}
 
 type historyEnvelope struct {
 	Resolution string        `json:"resolution"`
@@ -369,10 +357,8 @@ func fetchHistoryEnvelope(ctx context.Context, plugin string, req apischema.Moni
 		limit = defaultHistoryLimit
 	}
 
-	network, address, err := resolveMetricsListener(ctx)
-	if err != nil {
-		return historyEnvelope{}, err
-	}
+	ctx, cancel := context.WithTimeout(ctx, historyReadTimeout)
+	defer cancel()
 
 	query := url.Values{}
 	query.Set("resolution", string(req.Resolution))
@@ -388,19 +374,14 @@ func fetchHistoryEnvelope(ctx context.Context, plugin string, req apischema.Moni
 		query.Set("to", strconv.FormatInt(req.ToMs, 10))
 	}
 
-	host := "unix"
-	if network == "tcp" {
-		host = address
-	}
-	requestURL := fmt.Sprintf("http://%s/api/v1/%s/history?%s", host, plugin, query.Encode())
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/api/v1/"+plugin+"/history?"+query.Encode(), nil)
 	if err != nil {
 		return historyEnvelope{}, fmt.Errorf("create history request: %w", err)
 	}
 
-	resp, err := newMetricsClient(network, address).Do(httpReq)
+	resp, err := controlClient.Do(httpReq)
 	if err != nil {
-		return historyEnvelope{}, fmt.Errorf("monitoring metrics request: %w", err)
+		return historyEnvelope{}, fmt.Errorf("monitoring history request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -427,69 +408,4 @@ func agentErrorMessage(body []byte) string {
 		return payload.Error
 	}
 	return strings.TrimSpace(string(body))
-}
-
-// resolveMetricsListener finds an active agent listener that serves the
-// metrics API, preferring unix sockets over TCP. Wildcard TCP hosts are
-// rewritten to loopback since the bridge runs on the same machine.
-func resolveMetricsListener(ctx context.Context) (network, address string, err error) {
-	status, err := FetchStatus(ctx)
-	if err != nil {
-		return "", "", err
-	}
-	return resolveMetricsListenerFromStatus(status)
-}
-
-func resolveMetricsListenerFromStatus(status apischema.MonitoringStatus) (network, address string, err error) {
-	var tcpAddress string
-	for _, listener := range status.Listeners {
-		if !listener.Active || !servesMetricsAPI(listener.APIs) {
-			continue
-		}
-		addr := listener.EffectiveAddress
-		if addr == "" {
-			addr = listener.Address
-		}
-		if path, ok := unixSocketPath(addr); ok {
-			return "unix", path, nil
-		}
-		if tcpAddress == "" {
-			tcpAddress = normalizeTCPAddress(addr)
-		}
-	}
-	if tcpAddress != "" {
-		return "tcp", tcpAddress, nil
-	}
-	return "", "", errors.New("monitoring agent has no active metrics listener")
-}
-
-func servesMetricsAPI(apis []string) bool {
-	for _, api := range apis {
-		if strings.EqualFold(strings.TrimSpace(api), "metrics") {
-			return true
-		}
-	}
-	return false
-}
-
-func unixSocketPath(addr string) (string, bool) {
-	if path, ok := strings.CutPrefix(addr, "unix:"); ok {
-		return path, true
-	}
-	if strings.HasPrefix(addr, "/") {
-		return addr, true
-	}
-	return "", false
-}
-
-func normalizeTCPAddress(addr string) string {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
-	}
-	switch host {
-	case "", "::", "0.0.0.0":
-		return net.JoinHostPort("127.0.0.1", port)
-	}
-	return addr
 }

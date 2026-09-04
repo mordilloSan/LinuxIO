@@ -45,6 +45,7 @@ Linux I/O combines workflows usually split across multiple tools:
 
 - **PAM Authentication** - Login with your Linux credentials
 - **Live System Stats** - CPU, memory, disk, and network monitoring
+- **Metrics Daemon** - First-party `linuxio-monitoring` collector with metrics history
 - **Docker Manager** - Container management
 - **WireGuard UI** - VPN configuration
 - **File Explorer** - Integrated file explorer
@@ -101,6 +102,19 @@ On first startup, LinuxIO creates a managed self-signed certificate in
 hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
+
+The installer places seven binaries in `/usr/local/bin`: `linuxio`,
+`linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
+`linuxio-indexer`, and `linuxio-monitoring`.
+
+The first-party `linuxio-monitoring` binary is installed and enabled with
+LinuxIO rather than through Capability Manager. It samples the host, keeps the
+metrics history in `/var/lib/linuxio/monitoring/metrics.db`, and serves
+read-only metrics on `/run/linuxio/monitoring/api.sock` with commands behind the
+root-only `/run/linuxio/monitoring/control.sock`. Its strict YAML configuration
+lives at `/etc/linuxio/monitoring/config.yaml`; see the
+[monitoring daemon guide](docs/monitoring.md) for the sockets, sampling
+semantics, configuration fields, and troubleshooting.
 
 The first-party `linuxio-indexer` binary is installed with LinuxIO rather than
 through Capability Manager. Its root-only Unix API is socket activated at

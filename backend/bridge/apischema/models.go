@@ -1198,17 +1198,18 @@ type IndexerDaemonStatus struct {
 
 type MonitoringListener struct {
 	Address string   `json:"address"`
-	APIs    []string `json:"apis"`
 	Name    string   `json:"name"`
+	Plugins []string `json:"plugins,omitempty"`
 }
 
 type MonitoringConfig struct {
-	AllowRemoteCommands  bool                 `json:"allow_remote_commands"`
 	CollectorInterval    string               `json:"collector_interval"`
-	HistoryRetention     string               `json:"history_retention"`
-	SmartRefreshInterval string               `json:"smart_refresh_interval"`
+	DiskUsageCache       string               `json:"disk_usage_cache"`
 	History              string               `json:"history"`
+	HistoryIntervals     map[string]string    `json:"history_intervals"`
+	HistoryRetention     string               `json:"history_retention"`
 	Listeners            []MonitoringListener `json:"listeners"`
+	SmartRefreshInterval string               `json:"smart_refresh_interval"`
 	Version              int                  `json:"version"`
 }
 
@@ -1298,12 +1299,13 @@ type MonitoringListenerStatus struct {
 }
 
 type MonitoringConfigMeta struct {
-	CollectorInterval string   `json:"collector_interval"`
-	HistoryRetention  string   `json:"history_retention"`
-	HistoryPlugins    []string `json:"history_plugins"`
-	Path              string   `json:"path"`
-	Source            string   `json:"source"`
-	Version           int      `json:"version"`
+	CollectorInterval string            `json:"collector_interval"`
+	HistoryRetention  string            `json:"history_retention"`
+	HistoryPlugins    []string          `json:"history_plugins"`
+	HistoryIntervals  map[string]string `json:"history_intervals"`
+	Path              string            `json:"path"`
+	Source            string            `json:"source"`
+	Version           int               `json:"version"`
 }
 
 type MonitoringStatus struct {
@@ -1311,6 +1313,7 @@ type MonitoringStatus struct {
 	Config               MonitoringConfigMeta       `json:"config"`
 	DataDir              string                     `json:"data_dir"`
 	DBPath               string                     `json:"db_path"`
+	DBSizeBytes          int64                      `json:"db_size_bytes"`
 	Listeners            []MonitoringListenerStatus `json:"listeners,omitempty"`
 	Retention            map[string]string          `json:"retention"`
 	SmartRefreshInterval string                     `json:"smart_refresh_interval"`

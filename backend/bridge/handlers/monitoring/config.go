@@ -43,8 +43,9 @@ func decodeConfig(data json.RawMessage) (apischema.MonitoringConfig, error) {
 func patchIsEmpty(patch apischema.MonitoringConfigPatch) bool {
 	return patch.CollectorInterval == nil &&
 		patch.SmartRefreshInterval == nil &&
+		patch.DiskUsageCache == nil &&
 		patch.History == nil &&
+		patch.HistoryIntervals == nil &&
 		patch.HistoryRetention == nil &&
-		patch.AllowRemoteCommands == nil &&
-		len(patch.Listeners) == 0
+		patch.Listeners == nil
 }

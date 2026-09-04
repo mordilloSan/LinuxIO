@@ -42,8 +42,9 @@ may be
 .BR webserver ,
 .BR bridge ,
 .BR auth ,
+.BR indexer ,
 or
-.BR indexer .
+.BR monitoring .
 Without a component, messages from all LinuxIO components are shown.
 .I lines
 is the positive number of existing messages to show before following new
@@ -68,7 +69,8 @@ restart the complete
 .TP
 .B verbose
 .BR enable | disable | status
-Enable, disable, or report verbose logging for the webserver and indexer.
+Enable, disable, or report verbose logging for the webserver, indexer, and
+monitoring daemon.
 Enabling or disabling verbose logging writes systemd drop-ins, reloads systemd,
 and restarts LinuxIO.
 .TP
@@ -128,6 +130,10 @@ Verbose logging drop-in created by
 .I /etc/systemd/system/linuxio-indexer.service.d/verbose.conf
 Verbose logging drop-in created by
 .BR "linuxio verbose enable" .
+.TP
+.I /etc/systemd/system/linuxio-monitoring.service.d/verbose.conf
+Verbose logging drop-in created by
+.BR "linuxio verbose enable" .
 .SH SYSTEMD UNITS
 .TP
 .B linuxio.target
@@ -154,6 +160,9 @@ Runs the filesystem indexer.
 .B linuxio-indexer-index.timer
 Schedules periodic filesystem indexing through
 .BR linuxio-indexer-index.service .
+.TP
+.B linuxio-monitoring.service
+Runs the monitoring daemon that samples host metrics and keeps their history.
 .SH EXAMPLES
 Show the state of all LinuxIO units:
 .PP

@@ -58,7 +58,8 @@ linuxio_binary_names() {
 		linuxio-bridge \
 		linuxio-auth \
 		linuxio-docker-update \
-		linuxio-indexer
+		linuxio-indexer \
+		linuxio-monitoring
 }
 
 linuxio_systemd_units() {
@@ -73,7 +74,8 @@ linuxio_systemd_units() {
 		linuxio-indexer.socket \
 		linuxio-indexer.service \
 		linuxio-indexer-index.service \
-		linuxio-indexer-index.timer
+		linuxio-indexer-index.timer \
+		linuxio-monitoring.service
 }
 
 atomic_replace_file() {
@@ -329,7 +331,7 @@ main() {
 	if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
 		while IFS= read -r file; do
 			rel_path="${file#"$REPO_ROOT"/packaging/etc/linuxio/}"
-			if [[ "$rel_path" == "indexer/config.yaml" &&
+			if [[ ("$rel_path" == "indexer/config.yaml" || "$rel_path" == "monitoring/config.yaml") &&
 				-f "/etc/linuxio/$rel_path" ]]; then
 				Show 0 "/etc/linuxio/$rel_path already exists (not overwriting)"
 				continue
@@ -414,13 +416,16 @@ main() {
 	if [[ $enable_indexer_timer -eq 1 ]]; then
 		systemctl enable "$INDEXER_TIMER_UNIT_NAME" >/dev/null 2>&1
 	fi
+	systemctl enable linuxio-monitoring.service >/dev/null 2>&1
 	Show 0 "Services enabled"
 
 	Show 2 "Restarting LinuxIO..."
 	linuxio restart
 
-	# linuxio restart covers the control plane only; regenerate the login
-	# banner explicitly so an updated update-issue script takes effect now.
+	# linuxio restart covers the control plane only; restart the monitoring
+	# daemon and regenerate the login banner explicitly so an updated daemon
+	# and update-issue script take effect now.
+	systemctl restart linuxio-monitoring.service >/dev/null 2>&1 || true
 	systemctl restart linuxio-issue.service 2>/dev/null || true
 
 	sleep 2
@@ -439,9 +444,9 @@ main() {
 	echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
 	echo -e "${LINE}"
 	echo "Installed components:"
-	echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth,linuxio-docker-update,linuxio-indexer}"
+	echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth,linuxio-docker-update,linuxio-indexer,linuxio-monitoring}"
 	echo "  • Systemd files:   /etc/systemd/system/linuxio*"
-	echo "  • Configuration:   /etc/linuxio/indexer/config.yaml"
+	echo "  • Configuration:   /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml"
 	echo "  • Licenses:        ${DOC_DIR}/"
 	echo "  • PAM config:      /etc/pam.d/linuxio"
 	echo "  • Issue updater:   /usr/share/linuxio/issue/"

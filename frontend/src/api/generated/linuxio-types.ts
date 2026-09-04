@@ -1518,12 +1518,13 @@ export interface MonitoringCPUHistoryPoint {
 }
 
 export interface MonitoringConfig {
-  allow_remote_commands: boolean;
   collector_interval: string;
-  history_retention: string;
-  smart_refresh_interval: string;
+  disk_usage_cache: string;
   history: string;
+  history_intervals: Record<string, string>;
+  history_retention: string;
   listeners: MonitoringListener[];
+  smart_refresh_interval: string;
   version: number;
 }
 
@@ -1531,6 +1532,7 @@ export interface MonitoringConfigMeta {
   collector_interval: string;
   history_retention: string;
   history_plugins: string[];
+  history_intervals: Record<string, string>;
   path: string;
   source: string;
   version: number;
@@ -1538,11 +1540,12 @@ export interface MonitoringConfigMeta {
 
 export interface MonitoringConfigPatch {
   collector_interval?: string;
-  smart_refresh_interval?: string;
+  disk_usage_cache?: string;
   history?: string;
+  history_intervals?: Record<string, string>;
   history_retention?: string;
-  allow_remote_commands?: boolean;
   listeners?: MonitoringListener[];
+  smart_refresh_interval?: string;
 }
 
 export interface MonitoringConfigSetResult {
@@ -1589,8 +1592,8 @@ export type MonitoringHistoryResolution =
 
 export interface MonitoringListener {
   address: string;
-  apis: string[];
   name: string;
+  plugins?: string[];
 }
 
 export interface MonitoringListenerStatus {
@@ -1630,6 +1633,7 @@ export interface MonitoringStatus {
   config: MonitoringConfigMeta;
   data_dir: string;
   db_path: string;
+  db_size_bytes: number;
   listeners?: MonitoringListenerStatus[];
   retention: Record<string, string>;
   smart_refresh_interval: string;

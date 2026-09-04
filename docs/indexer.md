@@ -356,8 +356,9 @@ journalctl \
   --since today
 ```
 
-`sudo linuxio verbose enable` enables debug logging for the webserver and
-indexer service drop-ins. `sudo linuxio verbose disable` removes both.
+`sudo linuxio verbose enable` enables debug logging through service drop-ins for
+the webserver, the indexer and the monitoring daemon. `sudo linuxio verbose
+disable` removes them.
 
 Upgrades preserve compatible caches. If manual recovery is needed, stop
 LinuxIO, move `/var/lib/linuxio/indexer/indexer.db*` to a separate directory,

@@ -3,7 +3,10 @@ package system
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os/exec"
 	"strings"
 	"sync"
@@ -16,6 +19,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 // CapabilitySpec describes a single capability: how to detect it, how to
@@ -60,18 +64,7 @@ type InstallCommand struct {
 	Args []string
 }
 
-const (
-	OptionalComponentMonitoring = "monitoring"
-)
-
 const monitoringHealthTimeout = 5 * time.Second
-
-var (
-	monitoringCLILookPath = exec.LookPath
-	monitoringCLIOutput   = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		return exec.CommandContext(ctx, name, args...).CombinedOutput()
-	}
-)
 
 var capabilityRegistry = []CapabilitySpec{
 	{
@@ -90,15 +83,9 @@ var capabilityRegistry = []CapabilitySpec{
 	},
 	{
 		Name:    "monitoring",
-		LogName: "go-monitoring agent",
+		LogName: "linuxio-monitoring",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(checkMonitoringAvailability(ctx))
-		},
-		Install: &InstallSpec{
-			OptionalComponent: OptionalComponentMonitoring,
-			ServiceDebian:     "go-monitoring.service",
-			ServiceRHEL:       "go-monitoring.service",
-			EnableService:     true,
 		},
 	},
 	{
@@ -255,24 +242,30 @@ func checkDependencyCommand(command, dependencyName string) (bool, error) {
 	return true, nil
 }
 
+// monitoringHealthClient probes the daemon's world-readable API socket. The
+// daemon ships with LinuxIO, so detection only asks whether it is running.
+var monitoringHealthClient = &http.Client{
+	Timeout: monitoringHealthTimeout,
+	Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "unix", monitoringapi.APISocketPath)
+	}},
+}
+
 func checkMonitoringAvailability(ctx context.Context) (bool, error) {
-	if _, err := monitoringCLILookPath("go-monitoring"); err != nil {
-		return false, fmt.Errorf("go-monitoring not found (missing go-monitoring dependency)")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/healthz", nil)
+	if err != nil {
+		return false, err
 	}
-
-	checkCtx, cancel := context.WithTimeout(ctx, monitoringHealthTimeout)
-	defer cancel()
-
-	output, err := monitoringCLIOutput(checkCtx, "go-monitoring", "health")
-	if err == nil {
-		return true, nil
+	resp, err := monitoringHealthClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("linuxio-monitoring is not running: %w", err)
 	}
-
-	message := strings.TrimSpace(string(output))
-	if message != "" {
-		return false, fmt.Errorf("go-monitoring health failed: %s", message)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return false, fmt.Errorf("linuxio-monitoring health %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	return false, fmt.Errorf("go-monitoring health failed: %w", err)
+	return true, nil
 }
 
 func checkedCapability(ok bool, err error) (bool, string) {

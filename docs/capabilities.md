@@ -114,14 +114,14 @@ Installable capabilities set an `InstallSpec`. The runner
 does the work and streams per-stage progress:
 
 ```text
-resolve -> [install_asset] -> [install_package] -> [enable_service] -> [start_service] -> wait_service_active -> detect
+resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_service] -> wait_service_active -> detect
 ```
 
 - `detectDistroFamily()` reads `/etc/os-release` and classifies the host as
   `debian` or `rhel`; `pickByFamily` chooses the matching package/service name.
-- Optional LinuxIO-managed components such as go-monitoring install through a
-  component-specific asset/script step instead of PackageKit. The filesystem
-  indexer ships with LinuxIO and is not installed through Capability Manager.
+- The monitoring daemon ships with LinuxIO and is not installed through
+  Capability Manager; its capability reports daemon health. The filesystem
+  indexer ships with LinuxIO the same way.
 - Package installs go through PackageKit (`InstallByName`), so installable
   capabilities that have a package step require PackageKit to be available.
 - A distro-specific optional package may report a warning without preventing
@@ -144,7 +144,7 @@ resolve -> [install_asset] -> [install_package] -> [enable_service] -> [start_se
 | `OptionalPackageRHELFailureWarning` | Concise capability-specific consequence returned to the UI; raw package-manager errors remain in task output. |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
-| `OptionalComponent` | LinuxIO-managed non-package installer handled in `handlers/packages`. |
+| `OptionalComponent` | Names a LinuxIO-managed non-package installer. No capability sets it today, so `handlers/packages` rejects any value it is given. |
 | `RequiresDocker` | Optional-component prerequisite checked before install. |
 
 Omit `Install` entirely for capabilities with no UI install path (Docker, the

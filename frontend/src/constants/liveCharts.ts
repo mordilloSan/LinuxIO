@@ -9,7 +9,7 @@
  * at 50ms/px the chart advances 20×/s, which still reads as continuous.
  */
 export const LIVE_MILLIS_PER_PIXEL = 50;
-/** How far back to seed from go-monitoring history (15s samples). */
+/** How far back to seed from monitoring history (collector interval samples). */
 export const LIVE_BACKFILL_WINDOW_MS = 90_000;
 /** Buffers idle longer than this are cleared and re-seeded instead. */
 export const LIVE_STALE_AFTER_MS = 20_000;

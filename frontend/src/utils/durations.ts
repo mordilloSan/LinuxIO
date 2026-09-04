@@ -40,3 +40,24 @@ export const isGoDuration = (value: string) => {
 
   return matched && index === trimmed.length;
 };
+
+const GO_DURATION_UNIT_MS: Record<string, number> = {
+  ns: 1e-6,
+  us: 1e-3,
+  µs: 1e-3,
+  μs: 1e-3,
+  ms: 1,
+  s: 1_000,
+  m: 60_000,
+  h: 3_600_000,
+};
+
+/** Milliseconds for a non-negative Go duration string, or null when it is not one. */
+export const goDurationToMs = (value: string) => {
+  if (!isGoDuration(value)) return null;
+  let total = 0;
+  for (const match of value.trim().matchAll(GO_DURATION_PART_PATTERN)) {
+    total += Number(match[1]) * GO_DURATION_UNIT_MS[match[2]];
+  }
+  return total;
+};

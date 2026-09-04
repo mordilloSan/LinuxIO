@@ -79,7 +79,7 @@ Usage: linuxio <command> [options]
 
 Commands:
   status      Show status of all LinuxIO services
-  logs        Tail logs [webserver|bridge|auth|indexer] [lines] (default: all, 100)
+  logs        Tail logs [webserver|bridge|auth|indexer|monitoring] [lines] (default: all, 100)
   start       Start LinuxIO services
   stop        Stop LinuxIO services
   restart     Restart LinuxIO control plane [--full]
@@ -143,6 +143,15 @@ func showVersion(args []string) {
 		fmt.Printf("  %s\n", line)
 	} else {
 		fmt.Println("  linuxio-indexer: not found or error")
+	}
+
+	// Check linuxio-monitoring
+	out, err = versionExecCommand("linuxio-monitoring", "--version").CombinedOutput()
+	if err == nil {
+		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+		fmt.Printf("  %s\n", line)
+	} else {
+		fmt.Println("  linuxio-monitoring: not found or error")
 	}
 }
 
@@ -304,6 +313,8 @@ func parseLogsArgs(args []string) (string, int) {
 			mode = "auth"
 		case "indexer", "index":
 			mode = "indexer"
+		case "monitoring", "monitor":
+			mode = "monitoring"
 		}
 	}
 	return mode, lines
@@ -315,6 +326,7 @@ func journalTermsForMode(mode string) []string {
 		"SYSLOG_IDENTIFIER=linuxio-bridge",
 		"SYSLOG_IDENTIFIER=linuxio-auth",
 		"SYSLOG_IDENTIFIER=linuxio-indexer",
+		"SYSLOG_IDENTIFIER=linuxio-monitoring",
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
 		"_SYSTEMD_UNIT=linuxio-webserver.socket",
@@ -326,6 +338,7 @@ func journalTermsForMode(mode string) []string {
 		"_SYSTEMD_UNIT=linuxio-indexer.socket",
 		"_SYSTEMD_UNIT=linuxio-indexer-index.service",
 		"_SYSTEMD_UNIT=linuxio-indexer-index.timer",
+		"_SYSTEMD_UNIT=linuxio-monitoring.service",
 	}
 
 	switch mode {
@@ -350,6 +363,11 @@ func journalTermsForMode(mode string) []string {
 			"_SYSTEMD_UNIT=linuxio-indexer.socket",
 			"_SYSTEMD_UNIT=linuxio-indexer-index.service",
 			"_SYSTEMD_UNIT=linuxio-indexer-index.timer",
+		}
+	case "monitoring":
+		journalTerms = []string{
+			"SYSLOG_IDENTIFIER=linuxio-monitoring",
+			"_SYSTEMD_UNIT=linuxio-monitoring.service",
 		}
 	}
 	return journalTerms
@@ -663,6 +681,13 @@ ExecStart=/usr/local/bin/linuxio-webserver run -verbose
 		content: `[Service]
 ExecStart=
 ExecStart=/usr/local/bin/linuxio-indexer --config-file /etc/linuxio/indexer/config.yaml --verbose
+`,
+	},
+	{
+		path: "/etc/systemd/system/linuxio-monitoring.service.d/verbose.conf",
+		content: `[Service]
+ExecStart=
+ExecStart=/usr/local/bin/linuxio-monitoring run --config /etc/linuxio/monitoring/config.yaml --verbose
 `,
 	},
 }

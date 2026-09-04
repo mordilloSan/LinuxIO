@@ -13,33 +13,6 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-func statusResponseWithListeners(listeners string) string {
-	return `{
-		"ok": true,
-		"command": "status.get",
-		"data": {
-			"version": "1.2.3",
-			"data_dir": "/var/lib/go-monitoring",
-			"db_path": "/var/lib/go-monitoring/metrics.db",
-			"collector_interval": "15s",
-			"listeners": [` + listeners + `],
-			"config": {"path": "", "source": "loaded", "version": 1, "collector_interval": "15s", "history_plugins": ["cpu"], "history_retention": "720h"},
-			"retention": {"1m": "1h0m0s"}
-		}
-	}`
-}
-
-func withTestMetricsClient(t *testing.T, fn func(network, address string, req *http.Request) (*http.Response, error)) {
-	t.Helper()
-	orig := newMetricsClient
-	newMetricsClient = func(network, address string) *http.Client {
-		return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			return fn(network, address, req)
-		})}
-	}
-	t.Cleanup(func() { newMetricsClient = orig })
-}
-
 func withTestLogicalCPUCount(t *testing.T, fn func(context.Context, bool) (int, error)) {
 	t.Helper()
 	orig := logicalCPUCount
@@ -53,19 +26,7 @@ func withTestSingleLogicalCPU(t *testing.T) {
 }
 
 func TestFetchCPUHistoryFlattensPoints(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		cmd := decodeCommandRequest(t, req)
-		if cmd.Command != "status.get" {
-			t.Fatalf("command = %q, want status.get", cmd.Command)
-		}
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "192.168.1.66:45876", "effective_address": "192.168.1.66:45876", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(network, address string, req *http.Request) (*http.Response, error) {
-		if network != "tcp" || address != "192.168.1.66:45876" {
-			t.Fatalf("dial = %s %s, want tcp 192.168.1.66:45876", network, address)
-		}
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/api/v1/cpu/history" {
 			t.Fatalf("path = %s, want /api/v1/cpu/history", req.URL.Path)
 		}
@@ -105,13 +66,7 @@ func TestFetchCPUHistoryFlattensPoints(t *testing.T) {
 }
 
 func TestFetchNetworkHistorySplitsBandwidth(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/api/v1/network/history" {
 			t.Fatalf("path = %s, want /api/v1/network/history", req.URL.Path)
 		}
@@ -140,13 +95,7 @@ func TestFetchNetworkHistorySplitsBandwidth(t *testing.T) {
 }
 
 func TestFetchDiskIOHistorySplitsReadWrite(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/api/v1/diskio/history" {
 			t.Fatalf("path = %s, want /api/v1/diskio/history", req.URL.Path)
 		}
@@ -166,13 +115,7 @@ func TestFetchDiskIOHistorySplitsReadWrite(t *testing.T) {
 }
 
 func TestFetchMemoryHistoryDecodesStats(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
 		case "/api/v1/mem/history":
 			return jsonResponse(http.StatusOK, `{
@@ -206,13 +149,7 @@ func TestFetchMemoryHistoryDecodesStats(t *testing.T) {
 }
 
 func TestFetchMemoryHistoryToleratesMissingContainersHistory(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path == "/api/v1/containers/history" {
 			return jsonResponse(http.StatusNotFound, `{"error": "history not enabled for plugin"}`), nil
 		}
@@ -233,13 +170,7 @@ func TestFetchMemoryHistoryToleratesMissingContainersHistory(t *testing.T) {
 
 func TestFetchContainerHistoryMergesBlockIO(t *testing.T) {
 	withTestSingleLogicalCPU(t)
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
 		case "/api/v1/containers/history":
 			return jsonResponse(http.StatusOK, `{
@@ -300,13 +231,7 @@ func TestFetchContainerHistoryScalesCPUByLogicalCPUCount(t *testing.T) {
 		}
 		return 4, nil
 	})
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
 		case "/api/v1/containers/history":
 			return jsonResponse(http.StatusOK, `{
@@ -347,13 +272,7 @@ func TestFetchContainerHistoryReturnsLogicalCPUCountError(t *testing.T) {
 
 func TestFetchContainerHistoryToleratesMissingTelemetry(t *testing.T) {
 	withTestSingleLogicalCPU(t)
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path == "/api/v1/container_telemetry/history" {
 			return jsonResponse(http.StatusNotFound, `{"error": "unknown plugin"}`), nil
 		}
@@ -377,13 +296,7 @@ func TestFetchContainerHistoryToleratesMissingTelemetry(t *testing.T) {
 
 func TestFetchContainerHistoryDropsBlockIOBeyondTolerance(t *testing.T) {
 	withTestSingleLogicalCPU(t)
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path == "/api/v1/container_telemetry/history" {
 			// Two resolution steps away: too far to describe this bucket.
 			return jsonResponse(http.StatusOK, `{
@@ -408,45 +321,6 @@ func TestFetchContainerHistoryDropsBlockIOBeyondTolerance(t *testing.T) {
 	}
 }
 
-func TestFetchHistoryPrefersUnixMetricsListener(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "0.0.0.0:45876", "effective_address": "[::]:45876", "apis": ["metrics"], "active": true},
-			{"name": "control", "address": "unix:/run/go-monitoring/agent.sock", "effective_address": "/run/go-monitoring/agent.sock", "apis": ["commands", "metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(network, address string, _ *http.Request) (*http.Response, error) {
-		if network != "unix" || address != "/run/go-monitoring/agent.sock" {
-			t.Fatalf("dial = %s %s, want unix socket", network, address)
-		}
-		return jsonResponse(http.StatusOK, `{"resolution": "1m", "items": []}`), nil
-	})
-
-	if _, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"}); err != nil {
-		t.Fatalf("FetchCPUHistory: %v", err)
-	}
-}
-
-func TestFetchHistoryNormalizesWildcardTCPHost(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "0.0.0.0:45876", "effective_address": "[::]:45876", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(network, address string, _ *http.Request) (*http.Response, error) {
-		if network != "tcp" || address != "127.0.0.1:45876" {
-			t.Fatalf("dial = %s %s, want tcp 127.0.0.1:45876", network, address)
-		}
-		return jsonResponse(http.StatusOK, `{"resolution": "1m", "items": []}`), nil
-	})
-
-	if _, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"}); err != nil {
-		t.Fatalf("FetchCPUHistory: %v", err)
-	}
-}
-
 func TestFetchHistoryRejectsInvalidResolution(t *testing.T) {
 	_, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "5m"})
 	if !errors.Is(err, bridgeipc.ErrInvalidArgs) {
@@ -455,14 +329,8 @@ func TestFetchHistoryRejectsInvalidResolution(t *testing.T) {
 }
 
 func TestFetchHistoryResolvesRollingWindowAtRequestTime(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:45876", "effective_address": "127.0.0.1:45876", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
 	wantFrom := time.Now().Add(-time.Hour).UnixMilli()
-	withTestMetricsClient(t, func(_, _ string, req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		from, err := strconv.ParseInt(req.URL.Query().Get("from"), 10, 64)
 		if err != nil {
 			t.Fatalf("from query: %v", err)
@@ -500,33 +368,33 @@ func TestFetchHistoryRejectsOversizedLimit(t *testing.T) {
 	}
 }
 
-func TestFetchHistoryErrorsWithoutMetricsListener(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "control", "address": "unix:/run/go-monitoring/agent.sock", "effective_address": "/run/go-monitoring/agent.sock", "apis": ["commands"], "active": true}`,
-		)), nil
-	})
-
-	_, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
-	if err == nil || !strings.Contains(err.Error(), "no active metrics listener") {
-		t.Fatalf("err = %v, want no active metrics listener", err)
-	}
-}
-
 func TestFetchHistorySurfacesAgentError(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
-		decodeCommandRequest(t, req)
-		return jsonResponse(http.StatusOK, statusResponseWithListeners(
-			`{"name": "metrics", "address": "127.0.0.1:9000", "effective_address": "127.0.0.1:9000", "apis": ["metrics"], "active": true}`,
-		)), nil
-	})
-	withTestMetricsClient(t, func(_, _ string, _ *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(_ *http.Request) (*http.Response, error) {
 		return jsonResponse(http.StatusNotFound, `{"error": "history not enabled for plugin"}`), nil
 	})
 
 	_, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
 	if err == nil || !strings.Contains(err.Error(), "history not enabled for plugin") {
 		t.Fatalf("err = %v, want agent message", err)
+	}
+}
+
+func withTestHistoryReadTimeout(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	orig := historyReadTimeout
+	historyReadTimeout = timeout
+	t.Cleanup(func() { historyReadTimeout = orig })
+}
+
+func TestFetchHistoryBoundsSlowReads(t *testing.T) {
+	withTestHistoryReadTimeout(t, 50*time.Millisecond)
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})
+
+	_, err := FetchCPUHistory(context.Background(), apischema.MonitoringHistoryRequest{Resolution: "1m"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
 }

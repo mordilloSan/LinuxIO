@@ -11,6 +11,7 @@ tsconfig.tsbuildinfo
 /linuxio-bridge
 /linuxio-docker-update
 /linuxio-indexer
+/linuxio-monitoring
 
 # Logs and misc
 *.log

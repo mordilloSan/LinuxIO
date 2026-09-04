@@ -22,6 +22,7 @@ cli_binary := $(bin_dir)/linuxio
 auth_binary := $(bin_dir)/linuxio-auth
 docker_update_binary := $(bin_dir)/linuxio-docker-update
 indexer_binary := $(bin_dir)/linuxio-indexer
+monitoring_binary := $(bin_dir)/linuxio-monitoring
 
 # Quiet aliases capture complete target output in .cache/test-logs while
 # printing only a compact success/failure summary. Keep this list limited to
@@ -69,6 +70,8 @@ NVM_VERSION  ?= $(nvm_version)
 GOOS         ?= linux
 GOARCH       ?=
 GOAMD64      ?= v3
+# Host architecture, used to decide amd64-only build tags for a native build.
+GOARCH_HOST  ?= $(shell go env GOARCH 2>/dev/null || echo amd64)
 
 # --- Go project root autodetection ---
 backend_dir := $(if $(BACKEND_DIR),$(BACKEND_DIR),$(shell \
@@ -1193,7 +1196,7 @@ $(quiet_aliases):
 		exit "$$rc"; \
 	fi
 
-.PHONY: build-vite bundle-metrics compiler-coverage analyze build-leak-profile build-backend build-bridge check-c-build-deps build-auth build-cli build-docker-update build-indexer
+.PHONY: build-vite bundle-metrics compiler-coverage analyze build-leak-profile build-backend build-bridge check-c-build-deps build-auth build-cli build-docker-update build-indexer build-monitoring
 build-vite:
 	@echo ""
 	@echo "🏗️  Building frontend..."
@@ -1312,7 +1315,7 @@ build-auth:
 	  echo " checksec:"; checksec --file="$(auth_binary)" || true; \
 	fi
 
-go_binary_targets := build-bridge build-cli build-docker-update build-indexer
+go_binary_targets := build-bridge build-cli build-docker-update build-indexer build-monitoring
 
 build-bridge: go_binary_label := bridge
 build-bridge: go_binary_package := ./bridge
@@ -1335,6 +1338,15 @@ build-indexer: go_binary_output := $(indexer_binary)
 build-indexer: go_binary_ldflags := -s -w -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'
 build-indexer: go_binary_extra_env := CGO_ENABLED=1
 build-indexer: go_binary_tags := sqlite_fts5
+
+build-monitoring: go_binary_label := monitoring daemon
+build-monitoring: go_binary_package := ./monitoring
+build-monitoring: go_binary_output := $(monitoring_binary)
+build-monitoring: go_binary_ldflags := -s -w -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'
+build-monitoring: go_binary_extra_env := CGO_ENABLED=1
+# NVML is compiled only for amd64; other architectures use the stub. Deferred
+# expansion keeps `go env` out of every unrelated make invocation.
+build-monitoring: go_binary_tags = $(if $(filter amd64,$(if $(GOARCH),$(GOARCH),$(GOARCH_HOST))),glibc,)
 
 $(go_binary_targets): $(GO_BUILD_PREREQ)
 
@@ -1418,6 +1430,7 @@ _build-binaries: ensure-go check-c-build-deps
 	@$(MAKE) --no-print-directory build-cli SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-docker-update SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-indexer SKIP_ENSURE_GO=1
+	@$(MAKE) --no-print-directory build-monitoring SKIP_ENSURE_GO=1
 
 build: generate test build-vite build-bridge _build-binaries
 
@@ -1429,7 +1442,7 @@ generate: ensure-go ensure-node setup
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
 
 clean:
-	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" "$(indexer_binary)" || true
+	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" "$(indexer_binary)" "$(monitoring_binary)" || true
 	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(frontend_dir)/tsconfig.tsbuildinfo" || true
 	@rm -rf "$(cache_dir)" "$(frontend_node_modules_dir)" || true
 	@find "$(backend_frontend_dir)" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
@@ -1519,6 +1532,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-indexer    $(COLOR_RESET) Build the filesystem indexer"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-monitoring $(COLOR_RESET) Build the monitoring daemon"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-leak-profile$(COLOR_RESET) Build DEBUG webserver+bridge with localhost pprof + goroutine leak profile"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"

@@ -91,14 +91,14 @@ printf '   \033[1;32m✓\033[0m %s\n' "release architecture guard"
 (
 	# shellcheck disable=SC1090
 	source "$RELEASE_INSTALLER"
-	release_version_supported v0.27.0 || fail "v0.27.0 must be supported"
-	release_version_supported v0.27.1 || fail "v0.27.1 must be supported"
+	release_version_supported v0.28.0 || fail "v0.28.0 must be supported"
+	release_version_supported v0.28.1 || fail "v0.28.1 must be supported"
 	release_version_supported v1.0.0 || fail "v1.0.0 must be supported"
-	if release_version_supported v0.26.0; then
-		fail "v0.26.0 must be rejected before downloads"
+	if release_version_supported v0.27.0; then
+		fail "v0.27.0 must be rejected before downloads"
 	fi
 )
-printf '   \033[1;32m✓\033[0m %s\n' "first indexer release floor"
+printf '   \033[1;32m✓\033[0m %s\n' "first monitoring release floor"
 run_release_integrity_fixtures
 printf '   \033[1;32m✓\033[0m %s\n' "release checksum verification"
 run_atomic_replacement_fixture "$RELEASE_INSTALLER"
