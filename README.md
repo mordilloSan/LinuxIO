@@ -224,8 +224,8 @@ listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and install
 - [Cockpit](https://cockpit-project.org/) - Primary product inspiration and unified Linux operations model
 - [Arcane](https://github.com/getarcaneapp/arcane) - UI and interaction inspiration
 - [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser) - File-management UX and visual inspiration, and the foundation for LinuxIO's filesystem indexer
+- [Beszel](https://github.com/henrygd/beszel) - Server monitoring inspiration
 - [Unraid](https://unraid.net/) - Product and homelab management inspiration
-- [Mira Theme](https://mira.bootlab.io) - UI design
 - Many other open source and self-hosted projects that shaped LinuxIO's direction
 
 ---

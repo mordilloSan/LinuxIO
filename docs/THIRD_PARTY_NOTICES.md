@@ -14,9 +14,7 @@ distributed with LinuxIO as `LICENSE`.
 ## Beszel
 
 Portions of `linuxio-monitoring` derive from
-[Beszel](https://github.com/henrygd/beszel) by henrygd, by way of the
-go-monitoring fork at https://github.com/mordilloSan/go-monitoring, whose
-history before the import into LinuxIO is kept there.
+[Beszel](https://github.com/henrygd/beszel) by henrygd.
 
 MIT License
 
