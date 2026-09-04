@@ -32,6 +32,12 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
+import {
+  AlertCircleIcon,
+  AlertIcon,
+  BugIcon,
+  InformationIcon,
+} from "@/icons/svg";
 import { copyToClipboard } from "@/utils/clipboard";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
@@ -198,16 +204,13 @@ const getPriorityIcon = (priority: LogPriority) => {
     case LogPriority.ALERT:
     case LogPriority.CRITICAL:
     case LogPriority.ERROR:
-      return <Icon height={20} icon="mdi:alert-circle" width={20} />;
+      return <AlertCircleIcon height={20} width={20} />;
     case LogPriority.WARNING:
-      return <Icon height={20} icon="mdi:alert" width={20} />;
-    case LogPriority.INFO:
-    case LogPriority.NOTICE:
-      return <Icon height={20} icon="mdi:information" width={20} />;
+      return <AlertIcon height={20} width={20} />;
     case LogPriority.DEBUG:
-      return <Icon height={20} icon="mdi:bug" width={20} />;
+      return <BugIcon height={20} width={20} />;
     default:
-      return <Icon height={20} icon="mdi:information" width={20} />;
+      return <InformationIcon height={20} width={20} />;
   }
 };
 

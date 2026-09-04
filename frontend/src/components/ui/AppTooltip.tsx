@@ -254,29 +254,6 @@ const AppTooltip = ({
   });
 
   useEffect(() => {
-    if (!copyText) return undefined;
-
-    const target = getTarget();
-    if (!target) return undefined;
-
-    window.addEventListener("resize", refreshCopyAvailability);
-
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        window.removeEventListener("resize", refreshCopyAvailability);
-      };
-    }
-
-    const observer = new ResizeObserver(refreshCopyAvailability);
-    observer.observe(target);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", refreshCopyAvailability);
-    };
-  }, [copyText, getTarget, refreshCopyAvailability]);
-
-  useEffect(() => {
     if (!visible) return undefined;
 
     window.addEventListener("scroll", handleReposition, true);

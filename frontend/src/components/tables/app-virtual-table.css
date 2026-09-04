@@ -35,6 +35,20 @@
   min-width: 100%;
 }
 
+/* A scrollbar drag can move the viewport faster than rows mount. While the
+   virtualizer reports scrolling, paint the row rhythm on the body so the
+   not-yet-rendered region reads as empty rows instead of a void. The pitch
+   matches the row floor, so under mounted fixed-height rows it is invisible. */
+.app-dt__body--scrolling {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent var(--app-dt-row-min-height),
+    var(--app-dt-alt-bg) var(--app-dt-row-min-height),
+    var(--app-dt-alt-bg) calc(var(--app-dt-row-min-height) * 2)
+  );
+}
+
 /* Adjacent rows may form one sortable entry (a Docker stack, for example).
    The wrapper owns the DnD transform while each child remains an ordinary
    grid row, so column tracks and row surfaces stay unchanged. */

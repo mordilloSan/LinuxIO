@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("AppTooltip", () => {
-  it("observes trigger size only when copy support needs it", () => {
+  it("measures copy availability on hover instead of observing the trigger", () => {
     let observerCount = 0;
     class CountingResizeObserver {
       disconnect = vi.fn();
@@ -41,12 +41,15 @@ describe("AppTooltip", () => {
     );
     expect(observerCount).toBe(0);
 
+    // Copy support used to mount a ResizeObserver and a window resize listener
+    // per trigger; virtualized rows mount dozens per scroll frame, so the
+    // truncation check now runs in show() and on click instead.
     view.rerender(
       <AppTooltip copyText="copy me" title="Copy tooltip">
         <button type="button">Target</button>
       </AppTooltip>,
     );
-    expect(observerCount).toBeGreaterThan(0);
+    expect(observerCount).toBe(0);
   });
 
   it("drops the copy affordance when copyText is removed while mounted", () => {

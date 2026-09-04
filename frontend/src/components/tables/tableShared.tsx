@@ -48,6 +48,7 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { REORDER_HOLD_MS } from "@/constants/reorder";
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
+import { ChevronDownIcon } from "@/icons/svg";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import {
@@ -182,9 +183,8 @@ export function TableExpandCell({
             }}
             size="small"
           >
-            <Icon
+            <ChevronDownIcon
               height={22}
-              icon="mdi:chevron-down"
               style={{
                 transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
                 transition: `transform ${DETAIL_ANIMATION_CSS}`,

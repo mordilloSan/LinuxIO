@@ -1174,7 +1174,11 @@ function AppVirtualTable<TData extends RowData>({
           role="presentation"
         >
           <div
-            className="app-dt__body"
+            className={
+              virtualizer.isScrolling
+                ? "app-dt__body app-dt__body--scrolling"
+                : "app-dt__body"
+            }
             ref={virtualizer.containerRef}
             role="rowgroup"
           >

@@ -136,6 +136,9 @@ VITEST_MAX_WORKERS ?= 8
 VITEST_FILE ?=
 VITEST_TEST_NAME ?=
 export VITEST_FILE VITEST_MAX_WORKERS VITEST_TEST_NAME
+# Extra arguments for the Playwright browser suite, e.g. a single spec path:
+# make test-frontend-browser PLAYWRIGHT_ARGS=src/test/browser/router.spec.ts
+PLAYWRIGHT_ARGS ?=
 # Extra env vars / build tags injected into build-backend and build-bridge.
 # Normally empty; build-leak-profile sets them for pprof debug binaries.
 GO_BUILD_EXTRA_ENV ?=
@@ -733,7 +736,7 @@ test-frontend-browser: ensure-node setup
 	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
 	@cd "$(frontend_dir)" && ./node_modules/.bin/vite build --config config/vite.config.ts --configLoader native
 	@echo "🌐 Running frontend browser tests..."
-	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts
+	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts $(PLAYWRIGHT_ARGS)
 	@echo "✅ Frontend browser tests passed!"
 
 # Rewrites the screenshot baselines src/test/browser/styling-gallery.spec.ts

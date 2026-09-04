@@ -7,6 +7,7 @@ import { render, screen } from "@/test/render";
 import { TABLE_ROW_MIN_HEIGHT } from "@/theme/constants";
 
 const virtualizerSpies = vi.hoisted(() => ({
+  isScrolling: false,
   measure: vi.fn(),
   options: undefined as
     | {
@@ -50,6 +51,7 @@ vi.mock("@tanstack/react-virtual", async () => {
           size: number;
           start: number;
         }>;
+        isScrolling: boolean;
         measure: typeof virtualizerSpies.measure;
         measureElement: ReturnType<typeof vi.fn>;
         resizeItem: ReturnType<typeof vi.fn>;
@@ -68,6 +70,9 @@ vi.mock("@tanstack/react-virtual", async () => {
               size: 48,
               start: index * 48,
             })),
+          get isScrolling() {
+            return virtualizerSpies.isScrolling;
+          },
           measure: virtualizerSpies.measure,
           measureElement: vi.fn(),
           resizeItem: vi.fn(),
@@ -170,6 +175,17 @@ describe("AppVirtualTable", () => {
 
     view.rerender(<TestTable estimateRowHeight={72} />);
     expect(virtualizerSpies.options?.estimateSize(0)).toBe(72);
+  });
+
+  it("paints the row rhythm on the body only while scrolling", () => {
+    virtualizerSpies.isScrolling = true;
+    const view = render(<TestTable />);
+    const body = view.container.querySelector(".app-dt__body");
+    expect(body).toHaveClass("app-dt__body--scrolling");
+
+    virtualizerSpies.isScrolling = false;
+    view.rerender(<TestTable selectedRowId="one" />);
+    expect(body).not.toHaveClass("app-dt__body--scrolling");
   });
 
   it("renders only cells whose field render key changed", () => {
