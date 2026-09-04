@@ -311,7 +311,7 @@ func OpenContext(parent context.Context, path string, opts OpenOptions) (*sql.DB
 	}
 
 	// Use WAL for concurrent readers while streaming writes happen.
-	// auto_vacuum=INCREMENTAL to automatically reclaim space when deleting records.
+	// auto_vacuum=INCREMENTAL allows pruning to reclaim deleted generations.
 	// The path is URI-escaped (keeping '/' literal) inside a file: URI so that
 	// reserved characters like '?' or '#' in filenames cannot be misparsed as
 	// DSN parameters.

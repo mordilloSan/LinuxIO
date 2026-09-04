@@ -154,7 +154,7 @@ worker. The worker:
 3. walks `/`, applying mandatory and operator exclusions;
 4. streams entries into SQLite in batches and reports progress to the daemon;
 5. publishes the generation only after the scan succeeds;
-6. checkpoints SQLite and removes older completed generations.
+6. removes older completed generations, reclaims their pages, and checkpoints SQLite.
 
 Queries continue to use the previous completed generation during the scan. A
 failed or cancelled scan does not replace it. Ordinary per-entry filesystem

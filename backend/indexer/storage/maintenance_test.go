@@ -109,6 +109,43 @@ func TestPruneOldIndexesCountOnly(t *testing.T) {
 	}
 }
 
+func TestPruneOldIndexesReclaimsFreelist(t *testing.T) {
+	ctx, db, _ := setupTestDB(t)
+
+	for generation := 1; generation <= 2; generation++ {
+		result, execErr := db.ExecContext(ctx, `
+			INSERT INTO indexes (num_files, last_indexed) VALUES (1000, ?);
+		`, generation)
+		if execErr != nil {
+			t.Fatalf("insert index %d: %v", generation, execErr)
+		}
+		indexID, idErr := result.LastInsertId()
+		if idErr != nil {
+			t.Fatalf("read index %d id: %v", generation, idErr)
+		}
+		if _, execErr = db.ExecContext(ctx, `
+			WITH RECURSIVE counter(value) AS (
+				VALUES(1) UNION ALL SELECT value + 1 FROM counter WHERE value < 1000
+			)
+			INSERT INTO entries (index_id, relative_path, name, size, mod_time, type)
+			SELECT ?, printf('/%04d-%s', value, hex(zeroblob(256))), printf('%04d', value), 1, 1, 'file'
+			FROM counter;
+		`, indexID); execErr != nil {
+			t.Fatalf("insert entries for index %d: %v", generation, execErr)
+		}
+	}
+	if _, err := PruneOldIndexes(ctx, db, 1); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	var freePages int64
+	if err := db.QueryRowContext(ctx, `PRAGMA freelist_count;`).Scan(&freePages); err != nil {
+		t.Fatalf("read freelist count: %v", err)
+	}
+	if freePages != 0 {
+		t.Fatalf("freelist pages after prune = %d, want 0", freePages)
+	}
+}
+
 // TestPruneKeepsNewestOnLastIndexedTie covers the second-resolution tie:
 // two generations published within the same second must prune the OLDER row
 // (lower id), matching LatestIndexID's `last_indexed DESC, id DESC` order.
