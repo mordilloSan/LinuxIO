@@ -26,6 +26,7 @@ installTabNavigationIntent();
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
+const IconsPage = lazy(() => import("./routes/IconsPage"));
 const CodeEditorPage = lazy(() => import("./routes/CodeEditorPage"));
 const ContainerActionsPage = lazy(
   () => import("./routes/ContainerActionsPage"),
@@ -103,6 +104,11 @@ const accessibilityRoute = createRoute({
   component: AccessibilityPage,
   getParentRoute: () => rootRoute,
   path: "accessibility",
+});
+const iconsRoute = createRoute({
+  component: IconsPage,
+  getParentRoute: () => rootRoute,
+  path: "icons",
 });
 const codeEditorRoute = createRoute({
   component: CodeEditorPage,
@@ -185,6 +191,7 @@ const failedRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
+  iconsRoute,
   codeEditorRoute,
   containerActionsRoute,
   fileBrowserReadPathsRoute,

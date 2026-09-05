@@ -189,6 +189,14 @@ cleanup instead of failing.
 GitHub CLI authentication is provided by its normal credential mechanism; no
 credentials are stored in Make variables.
 
+## Distro and WireGuard icons
+
+The existing icon generator bundles the literal IDs in
+`frontend/src/icons/distro.ts`, including distro aliases and a Linux fallback.
+It also picks up WireGuard's existing capability icon. The Simple Icons package
+is a development dependency; only selected logos enter the generated bundle.
+Keep distro IDs explicit so the scanner can discover them.
+
 ## Target index
 
 `make help` is the concise target index. It groups the supported targets as

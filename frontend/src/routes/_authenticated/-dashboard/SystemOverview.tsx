@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { type HostInfo, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
+import { getDistroIcon } from "@/icons/distro";
 
 import DashboardStatRows from "./DashboardStatRows";
 import SetDateTimeDialog from "./SetDateTimeDialog";
@@ -103,7 +104,7 @@ const SystemOverview = () => {
 
   return (
     <DashboardCard
-      avatarIcon={`simple-icons:${platform}`}
+      avatarIcon={getDistroIcon(platform)}
       stats={<OverviewStats />}
       title="System Overview"
     />

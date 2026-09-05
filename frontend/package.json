@@ -57,6 +57,7 @@
     "@iconify-json/la": "^1.2.1",
     "@iconify-json/mdi": "^1.2.3",
     "@iconify-json/ph": "^1.2.2",
+    "@iconify-json/simple-icons": "^1.2.94",
     "@playwright/test": "^1.62.1",
     "@tanstack/eslint-plugin-query": "^5.102.8",
     "@tanstack/react-query-devtools": "^5.102.8",
