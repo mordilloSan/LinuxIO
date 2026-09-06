@@ -20,16 +20,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/store/storetest"
 )
 
-func createStoreDBWithVersion(t *testing.T, dataDir string, version int) {
-	t.Helper()
-
-	db, err := sql.Open("sqlite3", filepath.Join(dataDir, "metrics.db"))
-	require.NoError(t, err)
-	_, err = db.Exec(fmt.Sprintf("PRAGMA user_version = %d", version))
-	require.NoError(t, err)
-	require.NoError(t, db.Close())
-}
-
 func TestStoreSnapshotAndHistoryQueries(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
@@ -266,101 +256,14 @@ func TestStoreMovesAsideCorruptDatabaseAndRecreatesSchema(t *testing.T) {
 	require.NoError(t, store.WriteSnapshot(time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
 }
 
-func TestStoreDatabaseIntegrityMaintenanceAndReset(t *testing.T) {
-	tmpDir := t.TempDir()
-	s, err := OpenStore(tmpDir)
+func TestStoreDatabaseIntegrityAndVacuum(t *testing.T) {
+	s, err := OpenStore(t.TempDir())
 	require.NoError(t, err)
+	defer s.Close()
 
 	require.NoError(t, s.WriteSnapshot(time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
 	require.NoError(t, s.IntegrityCheck())
 	require.NoError(t, s.Vacuum())
-	require.NoError(t, CheckDatabase(tmpDir))
-	require.NoError(t, s.Close())
-
-	dbPath := filepath.Join(tmpDir, "metrics.db")
-	resetStore, moved, err := ResetDatabase(tmpDir)
-	require.NoError(t, err)
-	defer resetStore.Close()
-	require.NotEmpty(t, moved)
-	assert.FileExists(t, dbPath)
-
-	movedDBs, err := filepath.Glob(dbPath + ".reset-*")
-	require.NoError(t, err)
-	require.Len(t, movedDBs, 1)
-	require.NoError(t, resetStore.IntegrityCheck())
-	require.NoError(t, CheckDatabase(tmpDir))
-}
-
-func TestCheckDatabaseErrors(t *testing.T) {
-	t.Run("missing database", func(t *testing.T) {
-		err := CheckDatabase(t.TempDir())
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "stat metrics.db")
-	})
-
-	t.Run("obsolete schema", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		createStoreDBWithVersion(t, tmpDir, 3)
-
-		err := CheckDatabase(tmpDir)
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "obsolete metrics.db schema version 3")
-	})
-
-	t.Run("unsupported schema", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		createStoreDBWithVersion(t, tmpDir, 99)
-
-		err := CheckDatabase(tmpDir)
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported metrics.db schema version 99")
-	})
-}
-
-func TestStoreRepairValidDatabaseDoesNotMoveFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir)
-	require.NoError(t, err)
-	require.NoError(t, store.Close())
-
-	repaired, moved, err := RepairDatabase(tmpDir)
-
-	require.NoError(t, err)
-	defer repaired.Close()
-	assert.Empty(t, moved)
-	require.NoError(t, repaired.IntegrityCheck())
-}
-
-func TestStoreResetDatabaseWithoutExistingDB(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	resetStore, moved, err := ResetDatabase(tmpDir)
-
-	require.NoError(t, err)
-	defer resetStore.Close()
-	assert.Empty(t, moved)
-	assert.FileExists(t, filepath.Join(tmpDir, "metrics.db"))
-	require.NoError(t, resetStore.IntegrityCheck())
-}
-
-func TestStoreRepairMovesAsideCorruptDatabase(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "metrics.db")
-	require.NoError(t, os.WriteFile(dbPath, []byte("this is not sqlite"), 0600))
-
-	repaired, moved, err := RepairDatabase(tmpDir)
-	require.NoError(t, err)
-	defer repaired.Close()
-	require.NotEmpty(t, moved)
-
-	movedDBs, err := filepath.Glob(dbPath + ".repair-*")
-	require.NoError(t, err)
-	require.Len(t, movedDBs, 1)
-	require.NoError(t, repaired.IntegrityCheck())
-	require.NoError(t, CheckDatabase(tmpDir))
 }
 
 func TestStoreUnknownPluginHistory(t *testing.T) {

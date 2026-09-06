@@ -117,15 +117,14 @@ func TestDataDirIssue(t *testing.T) {
 	// Test with existing directory
 	t.Run("existing writable directory", func(t *testing.T) {
 		tempDir := t.TempDir()
-		require.NoError(t, dataDirIssue(tempDir, true))
-		require.NoError(t, dataDirIssue(tempDir, false))
+		require.NoError(t, dataDirIssue(tempDir))
 	})
 
 	// Test with non-existing directory
 	t.Run("non-existing dir", func(t *testing.T) {
 		tempDir := t.TempDir()
 		nonExistentDir := filepath.Join(tempDir, "does-not-exist")
-		err := dataDirIssue(nonExistentDir, true)
+		err := dataDirIssue(nonExistentDir)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, errDataDirMissing)
 	})
@@ -136,23 +135,21 @@ func TestDataDirIssue(t *testing.T) {
 		tempFile := filepath.Join(tempDir, "testfile")
 		require.NoError(t, os.WriteFile(tempFile, []byte("test"), 0644))
 
-		err := dataDirIssue(tempFile, false)
+		err := dataDirIssue(tempFile)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "is not a directory")
 	})
 
-	// A read-only directory is rejected for writable callers but accepted for
-	// read-only inspection.
+	// A read-only directory cannot serve as the agent's writable data directory.
 	t.Run("read-only directory", func(t *testing.T) {
 		if os.Getuid() == 0 {
 			t.Skip("root bypasses directory permissions")
 		}
 		readOnlyDir := makeReadOnlyDir(t)
 
-		err := dataDirIssue(readOnlyDir, true)
+		err := dataDirIssue(readOnlyDir)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not writable by uid")
-		assert.NoError(t, dataDirIssue(readOnlyDir, false))
 	})
 }
 
@@ -169,67 +166,6 @@ func TestGetDataDirExplicitNotWritable(t *testing.T) {
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), readOnlyDir)
 	assert.Contains(t, err.Error(), "not writable by uid")
-}
-
-func TestGetReadOnlyDataDir(t *testing.T) {
-	t.Run("explicit read-only dir is accepted", func(t *testing.T) {
-		if os.Getuid() == 0 {
-			t.Skip("root bypasses directory permissions")
-		}
-		readOnlyDir := makeReadOnlyDir(t)
-
-		result, err := GetReadOnlyDataDir(readOnlyDir)
-		require.NoError(t, err)
-		assert.Equal(t, readOnlyDir, result)
-	})
-
-	t.Run("explicit missing dir errors without creating it", func(t *testing.T) {
-		tempDir := t.TempDir()
-		missing := filepath.Join(tempDir, "absent")
-
-		_, err := GetReadOnlyDataDir(missing)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), missing)
-		assert.Contains(t, err.Error(), "does not exist")
-		assert.NoDirExists(t, missing)
-	})
-
-	t.Run("DATA_DIR environment variable wins over system dirs", func(t *testing.T) {
-		tempDir := t.TempDir()
-		// A database here must outrank one in /var/lib or the home directory.
-		require.NoError(t, os.WriteFile(DatabasePath(tempDir), []byte("db"), 0600))
-		t.Setenv("DATA_DIR", tempDir)
-
-		result, err := GetReadOnlyDataDir()
-		require.NoError(t, err)
-		assert.Equal(t, tempDir, result)
-	})
-}
-
-func TestReadOnlyDataDir(t *testing.T) {
-	t.Run("prefers a candidate holding a database", func(t *testing.T) {
-		empty := t.TempDir()
-		withDB := t.TempDir()
-		require.NoError(t, os.WriteFile(DatabasePath(withDB), []byte("db"), 0600))
-
-		assert.Equal(t, withDB, readOnlyDataDir([]string{empty, withDB}))
-	})
-
-	t.Run("falls back to the first readable candidate", func(t *testing.T) {
-		tempDir := t.TempDir()
-		missing := filepath.Join(tempDir, "absent")
-
-		assert.Equal(t, tempDir, readOnlyDataDir([]string{missing, tempDir}))
-	})
-
-	t.Run("falls back to the first candidate when nothing exists", func(t *testing.T) {
-		tempDir := t.TempDir()
-		first := filepath.Join(tempDir, "first")
-		second := filepath.Join(tempDir, "second")
-
-		assert.Equal(t, first, readOnlyDataDir([]string{first, second}))
-		assert.NoDirExists(t, first)
-	})
 }
 
 // makeReadOnlyDir returns a directory the current user cannot write to.
