@@ -253,6 +253,10 @@ plan does not add a misleading Edit Network action.
   selectable lists with the same inspector and published bindings.
   Match monitoring's shortened container IDs to Docker's full inventory IDs
   so CPU, memory, and network measurements reach the topology inspector/cards.
+  Layered grain streams travel in opposite RX/TX directions along active
+  attachments, with irregular spacing and soft edges. Their speed is decorative;
+  they reflect container totals, not per-network traffic, and share the pause
+  and reduced-motion controls.
 - [x] Add Storage topology with a read-only block-device and mount inventory,
   device-to-mount and application-path relationships, URL selection, backing
   device/LVM details, capacity and optional live disk activity. Preserve

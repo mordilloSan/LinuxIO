@@ -1,0 +1,68 @@
+.app-topology-edge {
+  --flow-delay: -0.27s;
+  fill: none;
+}
+
+.app-topology-edge:nth-child(3n) {
+  --flow-delay: -0.53s;
+}
+
+.app-topology-edge:nth-child(3n + 1) {
+  --flow-delay: -0.11s;
+}
+
+.app-topology-edge__line {
+  stroke: var(--app-palette-text-disabled);
+  stroke-width: 1px;
+  stroke-opacity: 0.6;
+}
+
+.app-topology-edge[data-highlighted="true"] .app-topology-edge__line {
+  stroke: var(--app-palette-primary-main);
+  stroke-opacity: 0.75;
+}
+
+.app-topology-edge__flow {
+  stroke: color-mix(in srgb, var(--app-chart-rx) 80%, var(--app-palette-text-primary));
+  stroke-linecap: round;
+  transform: translateY(-1.5px);
+}
+
+.app-topology-edge__flow[data-direction="reverse"] {
+  stroke: color-mix(in srgb, var(--app-chart-tx) 80%, var(--app-palette-text-primary));
+  transform: translateY(1.5px);
+}
+
+.app-topology-edge__ribbon {
+  stroke-width: 9px;
+  stroke-opacity: 0.035;
+}
+
+.app-topology-edge__grain {
+  stroke-dasharray: 0.1 3.9 0.1 6.9 0.1 2.9 0.1 8.9 0.1 4.9 0.1 7.9;
+  stroke-dashoffset: var(--flow-offset);
+}
+
+.app-topology-edge__grain:nth-child(2n) {
+  stroke-dasharray: 0.1 5.9 0.1 2.9 0.1 7.9 0.1 3.9 0.1 8.9 0.1 5.9;
+}
+
+@keyframes app-topology-flow {
+  from { stroke-dashoffset: var(--flow-offset); }
+  to { stroke-dashoffset: calc(var(--flow-offset) - 36px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-topology-edge__grain {
+    animation: app-topology-flow var(--flow-duration) linear infinite;
+    animation-delay: var(--flow-delay);
+  }
+
+  .app-topology-edge__flow[data-direction="reverse"] .app-topology-edge__grain {
+    animation-direction: reverse;
+  }
+
+  .app-topology-edge[data-paused="true"] .app-topology-edge__grain {
+    animation-play-state: paused;
+  }
+}

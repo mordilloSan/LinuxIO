@@ -42,8 +42,19 @@ available. Activity stops on a query error or when the sample timestamp does
 not advance for 15 seconds. Animation can be paused and respects reduced
 motion; numbers and selection remain available without animation.
 
+Layered grain streams flow in opposite read and write directions on measured
+connections. Irregular spacing, staggered timing, and fainter outer tracks
+give the streams width and soft edges using SVG and CSS animation.
+Device-to-volume links reflect device totals; application links use optional
+container block read/write totals with fresh container samples and running
+containers. Unmeasured application links (including VMs) remain static.
+Read-only mounts and container binds have no write grains.
+Grain speed is decorative, not a throughput scale. Grains stop for zero,
+missing, or expired measurements, and freeze when animation is paused.
+
 - Lines represent backing relationships and reported host paths. They do not
   measure I/O on a connection or attribute device traffic to an application.
+  Container activity is not attributed to individual mounts or paths.
 - The map compresses intermediate partitions and device-mapper layers; the
   inspector lists their reported parent relationships and LVM group metadata.
 - Application path matching does not resolve symlinks, VM image backing chains,

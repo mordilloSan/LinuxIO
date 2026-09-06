@@ -93,17 +93,6 @@
   overflow: visible;
 }
 
-.docker-topology__edge {
-  fill: none;
-  stroke: var(--app-palette-text-disabled);
-  stroke-width: 1.25px;
-}
-
-.docker-topology__edge[data-highlighted="true"] {
-  stroke: var(--app-palette-primary-main);
-  stroke-width: 2px;
-}
-
 .docker-topology__networks,
 .docker-topology__applications,
 .docker-topology__ports {

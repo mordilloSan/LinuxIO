@@ -194,6 +194,14 @@ export const storageFilesystems: FilesystemInfo[] = storageInventory.mounts
   });
 export const storageLive = (timestamp = Date.now()) => ({
   ...topologyLive(timestamp),
+  containers: {
+    captured_at_ms: timestamp,
+    items: topologyLive(timestamp).containers.items.map((item, index) => ({
+      ...item,
+      block_read_bytes_per_sec: (index + 1) * 16384,
+      block_write_bytes_per_sec: (index + 1) * 4096,
+    })),
+  },
   filesystems: storageFilesystems,
   disks: {
     nvme0n1: {

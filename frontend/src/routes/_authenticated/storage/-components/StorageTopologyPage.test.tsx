@@ -1,4 +1,4 @@
-import { act } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -257,6 +257,9 @@ describe("storage topology", () => {
   it("keeps block and mount inventory available without optional services", async () => {
     const { user } = await setup({}, false);
     expect(screen.getByText("Metrics unavailable")).toBeInTheDocument();
+    expect(document.querySelectorAll(".app-topology-edge__grain")).toHaveLength(
+      0,
+    );
     expect(
       screen.getByRole("button", { name: "Inspect mount point /srv/appdata" }),
     ).toBeInTheDocument();
@@ -284,6 +287,9 @@ describe("storage topology", () => {
 
   it("expires unchanged measurements and recovers when samples advance", async () => {
     const { client } = await setup();
+    expect(
+      document.querySelectorAll(".app-topology-edge__grain").length,
+    ).toBeGreaterThan(0);
     vi.useFakeTimers();
     const sample = storageLive(120000);
     vi.mocked(linuxio.monitoring.get_live.queryFn).mockResolvedValue(sample);
@@ -299,6 +305,9 @@ describe("storage topology", () => {
     expect(
       document.querySelectorAll('.storage-topology__rate[data-active="true"]'),
     ).toHaveLength(0);
+    expect(document.querySelectorAll(".app-topology-edge__grain")).toHaveLength(
+      0,
+    );
     await act(async () => {
       client.setQueryData(
         linuxio.monitoring.get_live.queryKey,
@@ -307,5 +316,58 @@ describe("storage topology", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(screen.getByText("Live activity")).toBeInTheDocument();
+    expect(
+      document.querySelectorAll(".app-topology-edge__grain").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("uses measured directions without attributing disk activity to applications", async () => {
+    const { client } = await setup();
+    // Four device links and three writable container links; the read-only
+    // media bind, stopped container, and unmeasured VM have no write grains.
+    expect(
+      document.querySelectorAll(
+        '.app-topology-edge__flow[data-direction="reverse"]',
+      ),
+    ).toHaveLength(7);
+    const sample = storageLive(120000);
+    sample.disks.nvme0n1.read_bytes_per_sec = 0;
+    sample.disks.sda.read_bytes_per_sec = 0;
+    sample.disks.sda.write_bytes_per_sec = 0;
+    sample.containers.items = sample.containers.items.slice(0, 1);
+    sample.containers.items[0].block_write_bytes_per_sec = 0;
+    await act(async () => {
+      client.setQueryData(linuxio.monitoring.get_live.queryKey, sample);
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          '.app-topology-edge__flow[data-direction="forward"]',
+        ),
+      ).toHaveLength(1),
+    );
+    expect(
+      document.querySelectorAll(
+        '.app-topology-edge__flow[data-direction="reverse"]',
+      ),
+    ).toHaveLength(3);
+    await act(async () => {
+      client.setQueryData(linuxio.monitoring.get_live.queryKey, {
+        ...sample,
+        captured_at_ms: 140000,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          '.app-topology-edge__flow[data-direction="forward"]',
+        ),
+      ).toHaveLength(0),
+    );
+    expect(
+      document.querySelectorAll(
+        '.app-topology-edge__flow[data-direction="reverse"]',
+      ),
+    ).toHaveLength(3);
   });
 });

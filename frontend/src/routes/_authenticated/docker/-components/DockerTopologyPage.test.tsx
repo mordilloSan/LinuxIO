@@ -1,4 +1,4 @@
-import { act } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -175,6 +175,9 @@ describe("Docker topology", () => {
 
   it("expires repeated samples and recovers when a new sample arrives", async () => {
     const { client } = await setup();
+    expect(
+      document.querySelectorAll(".app-topology-edge__grain").length,
+    ).toBeGreaterThan(0);
     vi.useFakeTimers();
     const repeatedSample = topologyLive(100001);
     vi.mocked(linuxio.monitoring.get_live.queryFn).mockResolvedValue(
@@ -190,6 +193,9 @@ describe("Docker topology", () => {
     expect(
       document.querySelectorAll('.docker-topology__rate[data-active="true"]'),
     ).toHaveLength(0);
+    expect(document.querySelectorAll(".app-topology-edge__grain")).toHaveLength(
+      0,
+    );
     await act(async () => {
       client.setQueryData(linuxio.monitoring.get_live.queryKey, {
         captured_at_ms: 120000,
@@ -211,6 +217,9 @@ describe("Docker topology", () => {
   it("works without monitoring and allows pausing animation", async () => {
     const { user } = await setup({}, false);
     expect(screen.getByText("Metrics unavailable")).toBeInTheDocument();
+    expect(document.querySelectorAll(".app-topology-edge__grain")).toHaveLength(
+      0,
+    );
     await user.click(screen.getByRole("button", { name: "Pause animation" }));
     expect(
       screen.getByRole("button", { name: "Resume animation" }),
@@ -218,6 +227,35 @@ describe("Docker topology", () => {
     expect(document.querySelector(".docker-topology-page")).toHaveAttribute(
       "data-paused",
       "true",
+    );
+  });
+
+  it("flows only in active directions and stops for stopped containers", async () => {
+    const { client } = await setup({ container: topologyNextcloudId });
+    const sample = topologyLive(100001);
+    sample.containers.items[0].rx_bytes_per_sec = 0;
+    await act(async () => {
+      client.setQueryData(linuxio.monitoring.get_live.queryKey, sample);
+    });
+    const selected = '.app-topology-edge[data-highlighted="true"]';
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(`${selected} [data-direction="forward"]`),
+      ).toHaveLength(0),
+    );
+    expect(
+      document.querySelectorAll(`${selected} [data-direction="reverse"]`),
+    ).toHaveLength(2);
+    await act(async () => {
+      client.setQueryData(
+        linuxio.docker.list_containers.queryKey,
+        containers.map((container) => ({ ...container, State: "exited" })),
+      );
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(".app-topology-edge__grain"),
+      ).toHaveLength(0),
     );
   });
 });

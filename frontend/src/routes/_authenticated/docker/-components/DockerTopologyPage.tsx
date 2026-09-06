@@ -8,6 +8,7 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppPaper from "@/components/ui/AppPaper";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
+import AppTopologyEdge from "@/components/ui/AppTopologyEdge";
 import AppTypography from "@/components/ui/AppTypography";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -278,18 +279,25 @@ const DockerTopologyPage = ({
               preserveAspectRatio="none"
               viewBox={`0 0 100 ${topology.height}`}
             >
-              {topology.edges.map((edge) => (
-                <path
-                  className="docker-topology__edge"
-                  d={edge.path}
-                  data-highlighted={
-                    selectedContainer?.Id === edge.container ||
-                    selectedNetwork?.Id === edge.network
-                  }
-                  key={`${edge.network}:${edge.container}`}
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
+              {topology.edges.map((edge) => {
+                const activity = metricsFor(
+                  topology.inventory.get(edge.container)!,
+                );
+                return (
+                  <AppTopologyEdge
+                    className="docker-topology__edge"
+                    d={edge.path}
+                    highlighted={
+                      selectedContainer?.Id === edge.container ||
+                      selectedNetwork?.Id === edge.network
+                    }
+                    key={`${edge.network}:${edge.container}`}
+                    forward={activity?.rx_bytes_per_sec}
+                    reverse={activity?.tx_bytes_per_sec}
+                    paused={paused}
+                  />
+                );
+              })}
             </svg>
             <ul
               aria-label="Docker networks"
@@ -449,7 +457,8 @@ const DockerTopologyPage = ({
               Network attachment
             </AppTypography>
             <AppTypography color="text.secondary" variant="caption">
-              ↓ Received · ↑ Sent · Activity is per container
+              ↓ Received · ↑ Sent · Grains show container totals, not
+              per-network traffic
             </AppTypography>
           </footer>
         </AppPaper>

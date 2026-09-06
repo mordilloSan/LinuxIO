@@ -10,6 +10,7 @@ import Chip from "@/components/ui/AppChip";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppPaper from "@/components/ui/AppPaper";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
+import AppTopologyEdge from "@/components/ui/AppTopologyEdge";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapabilityState } from "@/hooks/useCapabilities";
 import { formatFileSize, formatThroughput } from "@/utils/formaters";
@@ -170,6 +171,15 @@ export default function StorageTopologyPage({
     fresh && node.kind === "drive" && node.block
       ? live.data?.disks[node.block.kernelName]
       : undefined;
+  const containerSample = live.data?.containers;
+  const containerMetrics = new Map(
+    (fresh &&
+    containerSample &&
+    live.data.captured_at_ms - containerSample.captured_at_ms < 15000
+      ? containerSample.items
+      : []
+    ).map((item) => [item.id, item]),
+  );
   const smartFor = (node: StorageNode) =>
     fresh && node.block
       ? live.data?.smart[node.block.kernelName]?.data
@@ -263,19 +273,47 @@ export default function StorageTopologyPage({
                 viewBox={`0 0 1000 ${topology.height}`}
                 preserveAspectRatio="none"
               >
-                {topology.edges.map((edge) => (
-                  <path
-                    className="storage-topology__edge"
-                    key={`${edge.from}:${edge.to}`}
-                    d={edge.path}
-                    vectorEffect="non-scaling-stroke"
-                    data-highlighted={Boolean(
-                      selected &&
-                      related.has(edge.from) &&
-                      related.has(edge.to),
-                    )}
-                  />
-                ))}
+                {topology.edges.map((edge) => {
+                  const source = topology.inventory.get(edge.from)!;
+                  const target = topology.inventory.get(edge.to)!;
+                  const disk = ratesFor(source);
+                  const container = target.container;
+                  const activity =
+                    container?.State === "running"
+                      ? (containerMetrics.get(container.Id) ??
+                        containerMetrics.get(container.Id.slice(0, 12)))
+                      : undefined;
+                  const writable =
+                    !source.mount?.readOnly &&
+                    !target.mount?.readOnly &&
+                    (!container ||
+                      target.uses?.some(
+                        (use) => use.mountId === edge.from && !use.readOnly,
+                      ));
+                  return (
+                    <AppTopologyEdge
+                      className="storage-topology__edge"
+                      key={`${edge.from}:${edge.to}`}
+                      d={edge.path}
+                      highlighted={Boolean(
+                        selected &&
+                        related.has(edge.from) &&
+                        related.has(edge.to),
+                      )}
+                      forward={
+                        disk?.read_bytes_per_sec ??
+                        activity?.block_read_bytes_per_sec
+                      }
+                      reverse={
+                        writable
+                          ? (disk?.write_bytes_per_sec ??
+                            activity?.block_write_bytes_per_sec)
+                          : undefined
+                      }
+                      paused={paused}
+                    />
+                  );
+                })}
               </svg>
               {topology.columns.map((column, index) => (
                 <section
@@ -387,8 +425,9 @@ export default function StorageTopologyPage({
           )}
           <div className="storage-topology__legend">
             <AppTypography variant="caption" color="text.secondary">
-              Lines show backing devices and application host paths. Read/write
-              activity is measured per device.
+              Lines show backing devices and application host paths. Grains show
+              device or container read/write totals, not I/O attributed to each
+              path.
             </AppTypography>
           </div>
         </AppPaper>
