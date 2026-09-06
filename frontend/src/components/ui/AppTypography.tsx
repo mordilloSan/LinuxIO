@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from "react";
 
-import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
+import AppTooltip, {
+  useAutomaticTooltipSuppressed,
+} from "@/components/ui/AppTooltip";
 import type { ToastMeta } from "@/types/navigation";
 
 import "./app-typography.css";
@@ -121,7 +123,7 @@ const AppTypography = ({
   ...rest
 }: AppTypographyProps) => {
   const Tag = (component ?? VARIANT_ELEMENT[variant]) as ElementType;
-  const isInsideTooltip = useIsInsideAppTooltip();
+  const suppressAutomaticTooltip = useAutomaticTooltipSuppressed();
 
   const resolvedColor = color
     ? (COLOR_MAP[color as SemanticColor] ?? color)
@@ -150,7 +152,7 @@ const AppTypography = ({
       ? title.trim()
       : getPlainText(children);
   const showTruncatedTooltip = Boolean(
-    noWrap && tooltipText && !isInsideTooltip,
+    noWrap && tooltipText && !suppressAutomaticTooltip,
   );
   const resolvedCopyText =
     copyText === false

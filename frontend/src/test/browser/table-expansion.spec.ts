@@ -100,6 +100,64 @@ test.describe("virtual native table expansion", () => {
     }
   });
 
+  for (const scheme of ["dark", "light"] as const) {
+    test(`keeps rendered row colours unchanged with the ${scheme} scroll fallback`, async ({
+      page,
+    }, testInfo) => {
+      if (scheme === "light") {
+        await page.goto("/styling/light/virtual-expansion");
+        await expect(row(page, 0)).toBeVisible();
+        await settle(page);
+      }
+      const scrollport = page.locator(scrollSelector);
+      await scrollTo(page, 48_000);
+      await row(page, 1001).click();
+      await expect(page.getByTestId("detail-virtual-row-1001")).toBeVisible();
+      await row(page, 1002).hover();
+      await settle(page);
+      const body = scrollport.locator(":scope > .app-dt__body");
+      await expect(body).not.toHaveClass(/app-dt__body--scrolling/);
+      const idle = await scrollport.screenshot({ animations: "disabled" });
+
+      // Hold the scrolling paint state at the same offset to compare pixels,
+      // including the expanded detail's non-uniform height, without a timer race.
+      await body.evaluate((element) =>
+        element.classList.add("app-dt__body--scrolling"),
+      );
+      const gaps = await body.evaluate((element) => {
+        const before = getComputedStyle(element.firstElementChild!);
+        const after = getComputedStyle(element.lastElementChild!);
+        const rows = element.querySelectorAll(":scope > .app-dt__virtual-row");
+        const top = element.getBoundingClientRect().top;
+        return {
+          beforeImage: before.backgroundImage,
+          afterImage: after.backgroundImage,
+          beforeClip: before.clipPath,
+          afterClip: after.clipPath,
+          firstTop: rows[0].getBoundingClientRect().top - top,
+          lastBottom:
+            rows[rows.length - 1].getBoundingClientRect().bottom - top,
+        };
+      });
+      // The fallback still fills both offscreen gaps, without covering rows.
+      expect(gaps.beforeImage).toContain("repeating-linear-gradient");
+      expect(gaps.afterImage).toContain("repeating-linear-gradient");
+      expect(gaps.firstTop).toBeGreaterThan(0);
+      expect(gaps.beforeClip).toContain(`calc(100% - ${gaps.firstTop}px)`);
+      expect(gaps.afterClip).toContain(`inset(${gaps.lastBottom}px`);
+      const scrolling = await scrollport.screenshot({ animations: "disabled" });
+      await testInfo.attach("idle-rows", {
+        body: idle,
+        contentType: "image/png",
+      });
+      await testInfo.attach("scrolling-rows", {
+        body: scrolling,
+        contentType: "image/png",
+      });
+      expect(scrolling.equals(idle)).toBe(true);
+    });
+  }
+
   test("keeps multiple details independent, updates dynamic growth, and reaches nested rows", async ({
     page,
   }) => {

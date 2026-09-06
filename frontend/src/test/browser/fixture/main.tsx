@@ -44,6 +44,7 @@ const VirtualGridPage = lazy(() => import("./routes/VirtualGridPage"));
 const VirtualExpansionTablePage = lazy(
   () => import("./routes/VirtualExpansionTablePage"),
 );
+const GeneralLogsPage = lazy(() => import("./routes/GeneralLogsPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
 const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
@@ -149,6 +150,21 @@ const virtualExpansionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "tables/virtual-expansion",
 });
+const lightVirtualExpansionRoute = createRoute({
+  component: VirtualExpansionTablePage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/virtual-expansion",
+});
+const generalLogsRoute = createRoute({
+  component: GeneralLogsPage,
+  getParentRoute: () => rootRoute,
+  path: "logs",
+});
+const lightGeneralLogsRoute = createRoute({
+  component: GeneralLogsPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/logs",
+});
 const virtualFileBrowserRoute = createRoute({
   component: VirtualFileBrowserPage,
   getParentRoute: () => rootRoute,
@@ -248,6 +264,9 @@ const routeTree = rootRoute.addChildren([
   fillingTabsRoute,
   cardTabsRoute,
   virtualExpansionRoute,
+  lightVirtualExpansionRoute,
+  generalLogsRoute,
+  lightGeneralLogsRoute,
   virtualFileBrowserRoute,
   virtualGridRoute,
   stylingDarkRoute,

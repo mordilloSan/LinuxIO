@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
-import { render, screen } from "@/test/render";
+import AppTypography from "@/components/ui/AppTypography";
+import { act, fireEvent, render, screen } from "@/test/render";
 import { TABLE_ROW_MIN_HEIGHT } from "@/theme/constants";
 
 const virtualizerSpies = vi.hoisted(() => ({
@@ -159,6 +160,119 @@ function TestTable({
 }
 
 describe("AppVirtualTable", () => {
+  it("defers tooltip work on large jumps and restores it when scrolling settles", () => {
+    const fastColumns = columns.map((column) =>
+      column.id === "name"
+        ? {
+            ...column,
+            cell: (props: { row: { original: TableRow } }) => (
+              <AppTypography noWrap variant="caption">
+                {renderName(props)}
+              </AppTypography>
+            ),
+            meta: {
+              ...column.meta,
+              deferTooltipWhileScrolling: true,
+            },
+          }
+        : column,
+    );
+    renderName.mockClear();
+    renderStatus.mockClear();
+    const view = render(<TestTable tableColumns={fastColumns} />);
+    expect(
+      view.container.querySelectorAll(".app-dt__body .app-tooltip-trigger"),
+    ).toHaveLength(2);
+    const scrollport = view.container.querySelector(".app-dt__scroll")!;
+    Object.defineProperty(scrollport, "clientHeight", { value: 200 });
+    virtualizerSpies.isScrolling = true;
+    fireEvent.scroll(scrollport, { target: { scrollTop: 40 } });
+    expect(view.container.querySelector("[data-fast-scrolling]")).toBeNull();
+
+    fireEvent.scroll(scrollport, { target: { scrollTop: 2000 } });
+    expect(
+      view.container.querySelectorAll("[data-fast-scrolling]"),
+    ).toHaveLength(2);
+    const updatedRows = [
+      ...initialRows,
+      { id: "three", name: "Gamma", status: "idle" },
+    ];
+    view.rerender(<TestTable data={updatedRows} tableColumns={fastColumns} />);
+    expect(screen.getByText("Gamma")).toHaveClass(
+      "app-typo--caption",
+      "app-typo--nowrap",
+    );
+    expect(
+      screen.getByText("Gamma").closest("[data-fast-scrolling]"),
+    ).not.toBeNull();
+    expect(
+      view.container.querySelectorAll(".app-dt__body .app-tooltip-trigger"),
+    ).toHaveLength(0);
+    expect(renderName).toHaveBeenCalledTimes(5);
+    expect(renderStatus).toHaveBeenCalledTimes(3);
+
+    virtualizerSpies.isScrolling = false;
+    view.rerender(
+      <TestTable
+        data={updatedRows}
+        tableColumns={fastColumns}
+        selectedRowId="one"
+      />,
+    );
+    expect(view.container.querySelector("[data-fast-scrolling]")).toBeNull();
+    expect(renderName).toHaveBeenCalledTimes(8);
+    expect(renderStatus).toHaveBeenCalledTimes(3);
+    expect(
+      view.container.querySelectorAll(".app-dt__body .app-tooltip-trigger"),
+    ).toHaveLength(3);
+  });
+
+  it("retains interactive cells and restores full content on keyboard focus", () => {
+    const fastColumns: AppVirtualTableColumnDef<TableRow>[] = [
+      {
+        ...columns[0],
+        meta: { deferTooltipWhileScrolling: true },
+      },
+      {
+        id: "action",
+        cell: ({ row }) => (
+          <button type="button">Open {row.original.name}</button>
+        ),
+      },
+    ];
+    const view = render(
+      <TestTable
+        tableColumns={fastColumns}
+        expandedContent={({ original }) => (
+          <div>Details for {original.name}</div>
+        )}
+      />,
+    );
+    const scrollport = view.container.querySelector(".app-dt__scroll")!;
+    Object.defineProperty(scrollport, "clientHeight", { value: 200 });
+    const button = screen.getByRole("button", { name: "Open Alpha" });
+    virtualizerSpies.isScrolling = true;
+    fireEvent.scroll(scrollport, { target: { scrollTop: 2000 } });
+    expect(
+      view.container.querySelectorAll("[data-fast-scrolling]"),
+    ).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Open Alpha" })).toBe(button);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Expand row" })[0]);
+    expect(
+      view.container.querySelectorAll("[data-fast-scrolling]"),
+    ).toHaveLength(1);
+    expect(screen.getByText("Details for Alpha")).toBeVisible();
+
+    act(() => button.focus());
+    expect(button).toHaveFocus();
+    expect(view.container.querySelector("[data-fast-scrolling]")).toBeNull();
+    fireEvent.scroll(scrollport, { target: { scrollTop: 4000 } });
+    expect(view.container.querySelector("[data-fast-scrolling]")).toBeNull();
+    expect(button).toHaveFocus();
+    virtualizerSpies.isScrolling = false;
+  });
+
   it("exposes the canonical row floor and clamps low virtual estimates", () => {
     const view = render(<TestTable estimateRowHeight={40} />);
     const table = screen.getByRole("table");

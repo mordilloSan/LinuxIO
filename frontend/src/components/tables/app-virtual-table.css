@@ -35,11 +35,14 @@
   min-width: 100%;
 }
 
-/* A scrollbar drag can move the viewport faster than rows mount. While the
-   virtualizer reports scrolling, paint the row rhythm on the body so the
-   not-yet-rendered region reads as empty rows instead of a void. The pitch
-   matches the row floor, so under mounted fixed-height rows it is invisible. */
-.app-dt__body--scrolling {
+/* Paint fallback stripes only in the unrendered gaps. Mounted rows are
+   translucent, so a full-body background would tint their stripes twice. */
+.app-dt__scroll-gap {
+  display: none;
+  position: absolute;
+  inset: 0;
+  clip-path: inset(100%);
+  pointer-events: none;
   background: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -47,6 +50,11 @@
     var(--app-dt-alt-bg) var(--app-dt-row-min-height),
     var(--app-dt-alt-bg) calc(var(--app-dt-row-min-height) * 2)
   );
+  background-size: 100% calc(var(--app-dt-row-min-height) * 2);
+}
+
+.app-dt__body--scrolling > .app-dt__scroll-gap {
+  display: block;
 }
 
 /* Adjacent rows may form one sortable entry (a Docker stack, for example).

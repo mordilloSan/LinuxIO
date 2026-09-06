@@ -1220,6 +1220,7 @@ const GeneralLogsPage = () => {
           />
         ),
         meta: {
+          deferTooltipWhileScrolling: true,
           getCellRenderKey: (row) => {
             const log = row as LogEntry;
             return [log.id, log.priority];
@@ -1273,6 +1274,7 @@ const GeneralLogsPage = () => {
           </AppTypography>
         ),
         meta: {
+          deferTooltipWhileScrolling: true,
           getCellRenderKey: (row) => {
             const log = row as LogEntry;
             return [log.id, log.timestamp];
@@ -1289,6 +1291,7 @@ const GeneralLogsPage = () => {
           </AppTypography>
         ),
         meta: {
+          deferTooltipWhileScrolling: true,
           align: "left",
           getCellRenderKey: (row) => {
             const log = row as LogEntry;

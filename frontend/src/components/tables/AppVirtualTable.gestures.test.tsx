@@ -1,3 +1,4 @@
+import { useSortable } from "@dnd-kit/sortable";
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,8 @@ import { act, fireEvent, render, screen, waitFor } from "@/test/render";
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
 );
+
+vi.mock("@dnd-kit/sortable", { spy: true });
 
 interface SelectableRow {
   id: string;
@@ -208,6 +211,23 @@ describe("AppVirtualTable gestures", () => {
     getRowAttributes.mockClear();
     renderName.mockClear();
     renderStatus.mockClear();
+  });
+
+  it("registers sortable hooks only for tables that support reordering", () => {
+    vi.mocked(useSortable).mockClear();
+    const view = render(<TestTable />);
+    view.rerender(
+      <TestTable
+        data={[...tableRows, { id: "three", name: "Gamma", status: "running" }]}
+      />,
+    );
+    expect(screen.getByText("Gamma")).toBeVisible();
+    expect(useSortable).not.toHaveBeenCalled();
+    view.unmount();
+
+    render(<ReorderableSelectableTable />);
+    expect(useSortable).toHaveBeenCalledWith({ id: "one", disabled: false });
+    expect(useSortable).toHaveBeenCalledWith({ id: "two", disabled: false });
   });
 
   it("rerenders memoized cells when their render key changes", async () => {

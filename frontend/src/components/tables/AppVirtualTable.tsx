@@ -273,6 +273,7 @@ interface AppVirtualTableBodyRowProps<TData extends RowData> {
   hasDragColumn: boolean;
   hasExpandColumn: boolean;
   isExpanded: boolean;
+  isFastScrolling?: boolean;
   isInteractive: boolean;
   isSelected: boolean;
   onExpand: (row: Row<AppTableFeatures, TData>) => void;
@@ -302,18 +303,22 @@ function AppVirtualTableBodyRow<TData extends RowData>({
   hasDragColumn,
   hasExpandColumn,
   isExpanded,
+  isFastScrolling,
   isInteractive,
   isSelected,
   onExpand,
   onRowClick,
   onRowContextMenu,
   onRowDoubleClick,
+  reorder,
   renderRow,
   row,
   rowAttributes: providedRowAttributes,
   rowIndex,
   visibleCells,
-}: AppVirtualTableBodyRowProps<TData>) {
+}: AppVirtualTableBodyRowProps<TData> & {
+  reorder?: ReturnType<typeof useVirtualRowReorder>;
+}) {
   "use no memo";
   const rowAttributes = providedRowAttributes ?? getRowAttributes?.(row);
   const {
@@ -324,7 +329,7 @@ function AppVirtualTableBodyRow<TData extends RowData>({
     reorderListeners,
     reorderStyle,
     setReorderNodeRef,
-  } = useVirtualRowReorder(dnd, row);
+  } = reorder ?? {};
   const rowAttributeOnClick = rowAttributes?.onClick;
   const rowAttributeOnContextMenu = rowAttributes?.onContextMenu;
   const rowAttributeOnDoubleClick = rowAttributes?.onDoubleClick;
@@ -360,6 +365,10 @@ function AppVirtualTableBodyRow<TData extends RowData>({
           columnDef={cell.column.columnDef}
           key={cell.id}
           renderKey={getCellRenderKey(cell, rowIndex)}
+          deferTooltip={Boolean(
+            isFastScrolling &&
+            cell.column.columnDef.meta?.deferTooltipWhileScrolling,
+          )}
         />
       ))}
       {hasExpandColumn && (
@@ -489,6 +498,7 @@ function areAppVirtualTableBodyRowPropsEqual<TData extends RowData>(
     previous.hasDragColumn === next.hasDragColumn &&
     previous.hasExpandColumn === next.hasExpandColumn &&
     previous.isExpanded === next.isExpanded &&
+    previous.isFastScrolling === next.isFastScrolling &&
     previous.isInteractive === next.isInteractive &&
     previous.isSelected === next.isSelected &&
     previous.onExpand === next.onExpand &&
@@ -509,10 +519,22 @@ function areAppVirtualTableBodyRowPropsEqual<TData extends RowData>(
   );
 }
 
+function AppVirtualTableSortableBodyRow<TData extends RowData>(
+  props: AppVirtualTableBodyRowProps<TData>,
+) {
+  const reorder = useVirtualRowReorder(props.dnd, props.row);
+  return <AppVirtualTableBodyRow {...props} reorder={reorder} />;
+}
+
 const MemoizedAppVirtualTableBodyRow = memo(
   AppVirtualTableBodyRow,
   areAppVirtualTableBodyRowPropsEqual,
 ) as typeof AppVirtualTableBodyRow;
+
+const MemoizedAppVirtualTableSortableBodyRow = memo(
+  AppVirtualTableSortableBodyRow,
+  areAppVirtualTableBodyRowPropsEqual,
+) as typeof AppVirtualTableSortableBodyRow;
 
 interface AppVirtualTableSortableBodyGroupProps<TData extends RowData> {
   columnVersion: AppVirtualTableColumnDef<TData>[];
@@ -716,6 +738,10 @@ function AppVirtualTable<TData extends RowData>({
   );
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = scrollElementRef ?? internalScrollRef;
+  const beforeGapRef = useRef<HTMLDivElement>(null);
+  const afterGapRef = useRef<HTMLDivElement>(null);
+  const lastScrollOffsetRef = useRef(0);
+  const [isFastScrolling, setIsFastScrolling] = useState(false);
   const expandedRowIdsRef = useRef<Set<string>>(new Set());
   const detailAnimationFrameRefs = useRef<Map<string, number>>(new Map());
   const detailContentHeightsRef = useRef<Map<string, number>>(new Map());
@@ -894,6 +920,18 @@ function AppVirtualTable<TData extends RowData>({
     estimateSize: estimateVirtualItemSize,
     getItemKey: getVirtualItemKey,
     getScrollElement: () => scrollRef.current,
+    onChange: (instance) => {
+      // Follow direct DOM measurements too: expanding a detail can move the
+      // rendered bounds without a React render. No DOM measurement is needed.
+      // Clipping fixed backgrounds avoids relayout or restyling the rows.
+      const items = instance.getVirtualItems();
+      if (beforeGapRef.current) {
+        beforeGapRef.current.style.clipPath = `inset(0 0 calc(100% - ${items[0]?.start ?? 0}px))`;
+      }
+      if (afterGapRef.current) {
+        afterGapRef.current.style.clipPath = `inset(${items.at(-1)?.end ?? 0}px 0 0)`;
+      }
+    },
     overscan,
     useAnimationFrameWithResizeObserver: true,
   });
@@ -1122,6 +1160,36 @@ function AppVirtualTable<TData extends RowData>({
     ...(hasExpandColumn ? ["40px"] : []),
   ].join(" ");
   const virtualItems = virtualizer.getVirtualItems();
+  const hasScrollingCells = columns.some(
+    (column) => column.meta?.deferTooltipWhileScrolling,
+  );
+  // Disabled sortable hooks still register nodes and effects. Plain tables
+  // must not pay that cost on every newly visible row.
+  const BodyRow = dndOptions
+    ? MemoizedAppVirtualTableSortableBodyRow
+    : MemoizedAppVirtualTableBodyRow;
+
+  const handleScrollCapture = useCallback<UIEventHandler<HTMLDivElement>>(
+    (event) => {
+      const element = event.currentTarget;
+      if (event.target !== element) return;
+      const distance = Math.abs(
+        element.scrollTop - lastScrollOffsetRef.current,
+      );
+      lastScrollOffsetRef.current = element.scrollTop;
+      // Capture runs before the virtualizer's synchronous range update, so a
+      // new viewport mounts without automatic tooltip work. Keep this mode until the
+      // virtualizer's existing scroll-idle reset; ordinary wheel steps don't
+      // activate it, and focused controls keep their full row content.
+      const hasFocus = element.contains(document.activeElement);
+      const isJump = distance >= element.clientHeight;
+      const wasScrolling = virtualizer.isScrolling;
+      setIsFastScrolling(
+        (wasFast) => !hasFocus && (isJump || (wasScrolling && wasFast)),
+      );
+    },
+    [virtualizer],
+  );
 
   const handleExpandRow = useCallback((row: Row<AppTableFeatures, TData>) => {
     setMountedDetailRowIds((current) => {
@@ -1169,7 +1237,11 @@ function AppVirtualTable<TData extends RowData>({
 
         <div
           className="app-dt__scroll"
+          onFocusCapture={
+            hasScrollingCells ? () => setIsFastScrolling(false) : undefined
+          }
           onScroll={onScroll}
+          onScrollCapture={hasScrollingCells ? handleScrollCapture : undefined}
           ref={scrollRef}
           role="presentation"
         >
@@ -1182,6 +1254,11 @@ function AppVirtualTable<TData extends RowData>({
             ref={virtualizer.containerRef}
             role="rowgroup"
           >
+            <div
+              aria-hidden="true"
+              className="app-dt__scroll-gap"
+              ref={beforeGapRef}
+            />
             {virtualItems.map((virtualRow) => {
               const entry = virtualEntries[virtualRow.index];
 
@@ -1268,7 +1345,7 @@ function AppVirtualTable<TData extends RowData>({
                   key={entry.key}
                   ref={virtualizer.measureElement}
                 >
-                  <MemoizedAppVirtualTableBodyRow
+                  <BodyRow
                     canExpand={canExpand}
                     columnVersion={columns}
                     dnd={dndOptions}
@@ -1276,6 +1353,9 @@ function AppVirtualTable<TData extends RowData>({
                     hasDragColumn={isReorderEditing}
                     hasExpandColumn={hasExpandColumn}
                     isExpanded={isExpanded}
+                    isFastScrolling={
+                      isFastScrolling && virtualizer.isScrolling && !isExpanded
+                    }
                     isInteractive={
                       isInteractive || (rowClickExpands && canExpand)
                     }
@@ -1292,6 +1372,11 @@ function AppVirtualTable<TData extends RowData>({
                 </div>
               );
             })}
+            <div
+              aria-hidden="true"
+              className="app-dt__scroll-gap"
+              ref={afterGapRef}
+            />
           </div>
 
           {rows.length === 0 && <TableEmptyState message={emptyMessage} />}

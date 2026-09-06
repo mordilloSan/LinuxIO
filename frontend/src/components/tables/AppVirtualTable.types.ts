@@ -31,6 +31,11 @@ export interface AppVirtualTableColumnMeta {
     row: unknown,
     rowIndex: number,
   ) => AppVirtualTableCellRenderKey;
+  /**
+   * Defer automatic chip/text tooltips while large scroll jumps replace the
+   * viewport. Display cells keep their normal renderer and styles.
+   */
+  deferTooltipWhileScrolling?: boolean;
   headerClassName?: string;
   headerStyle?: CSSProperties;
   hideBelow?: AppVirtualTableBreakpoint;

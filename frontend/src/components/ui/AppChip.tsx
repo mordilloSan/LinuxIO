@@ -8,7 +8,9 @@ import {
   type Ref,
 } from "react";
 
-import AppTooltip, { useIsInsideAppTooltip } from "@/components/ui/AppTooltip";
+import AppTooltip, {
+  useAutomaticTooltipSuppressed,
+} from "@/components/ui/AppTooltip";
 
 import "./app-chip.css";
 
@@ -88,7 +90,7 @@ const AppChip = ({
   tabIndex,
   ...nativeProps
 }: AppChipProps) => {
-  const isInsideTooltip = useIsInsideAppTooltip();
+  const suppressAutomaticTooltip = useAutomaticTooltipSuppressed();
   const isPaletteColor = PALETTE_COLORS.has(color);
   const isInteractive = Boolean(onClick || onDelete);
   const chipClassName = [
@@ -128,7 +130,9 @@ const AppChip = ({
     typeof title === "string" && title.trim()
       ? title.trim()
       : getPlainText(label);
-  const showTruncatedTooltip = Boolean(tooltipText && !isInsideTooltip);
+  const showTruncatedTooltip = Boolean(
+    tooltipText && !suppressAutomaticTooltip,
+  );
 
   const chip = (
     <span

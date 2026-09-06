@@ -44,7 +44,9 @@ import {
 } from "@/components/tables/rowInteraction";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppTooltip from "@/components/ui/AppTooltip";
+import AppTooltip, {
+  AppTooltipSuppressionContext,
+} from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { REORDER_HOLD_MS } from "@/constants/reorder";
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
@@ -124,13 +126,16 @@ interface AppTableCellProps<TData extends RowData> {
   columnDef: AppVirtualTableColumnDef<TData>;
   renderKey: AppVirtualTableCellRenderKey;
   rowIndex?: number;
+  deferTooltip?: boolean;
 }
 
 function AppTableCell<TData extends RowData>({
   cell,
   columnDef,
+  deferTooltip,
 }: AppTableCellProps<TData>) {
   const meta = columnDef.meta;
+  const content = flexRender(columnDef.cell, cell.getContext());
 
   return (
     <div
@@ -138,6 +143,7 @@ function AppTableCell<TData extends RowData>({
         .filter(Boolean)
         .join(" ")}
       role="cell"
+      data-fast-scrolling={deferTooltip || undefined}
       style={{
         justifyContent: alignToJustify(meta?.align),
         textAlign: meta?.align,
@@ -145,7 +151,13 @@ function AppTableCell<TData extends RowData>({
         ...meta?.cellStyle,
       }}
     >
-      {flexRender(columnDef.cell, cell.getContext())}
+      {deferTooltip ? (
+        <AppTooltipSuppressionContext value={true}>
+          {content}
+        </AppTooltipSuppressionContext>
+      ) : (
+        content
+      )}
     </div>
   );
 }
@@ -156,6 +168,7 @@ export const MemoizedAppTableCell = memo(
     previous.cell.id === next.cell.id &&
     previous.columnDef === next.columnDef &&
     previous.rowIndex === next.rowIndex &&
+    previous.deferTooltip === next.deferTooltip &&
     areCellRenderKeysEqual(previous.renderKey, next.renderKey),
 ) as typeof AppTableCell;
 
