@@ -1,11 +1,12 @@
 import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { type ApiDisk, linuxio } from "@/api";
+import { type ApiDisk, linuxio, type MonitoringLive } from "@/api";
 import DashboardCard, {
   CardHeaderSelect,
 } from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { formatFileSize } from "@/utils/formaters";
 
 import DashboardStatRows from "./DashboardStatRows";
@@ -130,21 +131,25 @@ const DriveGraphPane = ({ selected }: DriveSelectionProps) => {
     [selected],
   );
 
-  const [{ data: driveName }, { data: diskThroughput }] = useSuspenseQueries({
+  const [{ data: driveName }, { data: disks }] = useSuspenseQueries({
     queries: [
       { ...linuxio.storage.get_drive_info, select: selectDriveName },
-      { ...linuxio.system.get_disk_throughput, refetchInterval: 1000 },
+      {
+        ...linuxio.monitoring.get_live,
+        refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+        select: (live: MonitoringLive) => live.disks ?? {},
+      },
     ],
   });
 
-  const device = diskThroughput?.devices.find((d) => d.name === driveName);
+  const device = driveName ? disks?.[driveName] : undefined;
 
   return (
     <div style={{ height: "90px", width: "100%", minWidth: 0 }}>
       <DriveGraph
         key={driveName}
-        readBytesPerSec={device?.readBytesPerSec ?? 0}
-        writeBytesPerSec={device?.writeBytesPerSec ?? 0}
+        readBytesPerSec={device?.read_bytes_per_sec ?? 0}
+        writeBytesPerSec={device?.write_bytes_per_sec ?? 0}
       />
     </div>
   );

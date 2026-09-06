@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useCallback, useState } from "react";
 
-import { linuxio, type SensorGroup } from "@/api";
+import { linuxio, type MonitoringLive, type SensorGroup } from "@/api";
 import HardwareTableCard from "@/components/cards/HardwareTableCard";
 import { SensorEmptyCard } from "@/components/cards/SensorEmptyCard";
 import SensorGroupCard from "@/components/cards/SensorGroupCard";
@@ -18,6 +18,7 @@ import AppCollapse from "@/components/ui/AppCollapse";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { cardHeight, DASHBOARD_CARD_SPACING } from "@/theme/constants";
@@ -32,10 +33,7 @@ import {
   MotherboardInfoCard,
   NetworkHistoryCard,
 } from "./HardwareHistoryCards";
-import {
-  hardwareSensorQueryOptions,
-  hardwareStableQueryOptions,
-} from "./hardwareQueryOptions";
+import { hardwareStableQueryOptions } from "./hardwareQueryOptions";
 
 export const selectVisibleSensorGroupIdentities = (
   groups: SensorGroup[] | null | undefined,
@@ -64,12 +62,14 @@ const getSystemInfoCardId = (card: { id: string }) => card.id;
 const getSensorGroupId = (group: { adapter: string; sourceIndex: number }) =>
   `${group.adapter}-${group.sourceIndex}`;
 
+const selectLiveSensorGroupIdentities = (live: MonitoringLive) =>
+  selectVisibleSensorGroupIdentities(live.sensors);
+
 function SensorReadings() {
   const { data: visibleSensorGroups } = useSuspenseQuery({
-    ...linuxio.system.get_sensor_info,
-    ...hardwareSensorQueryOptions,
-    refetchInterval: 5_000,
-    select: selectVisibleSensorGroupIdentities,
+    ...linuxio.monitoring.get_live,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+    select: selectLiveSensorGroupIdentities,
   });
   const sensorSummary = {
     adapters: visibleSensorGroups.length,

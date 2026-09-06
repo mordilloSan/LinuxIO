@@ -17,6 +17,7 @@ import { Route as AuthenticatedDockerRouteRouteImport } from './routes/_authenti
 import { Route as AuthenticatedHardwareRouteRouteImport } from './routes/_authenticated/hardware/route'
 import { Route as AuthenticatedLogsRouteRouteImport } from './routes/_authenticated/logs/route'
 import { Route as AuthenticatedNetworkRouteRouteImport } from './routes/_authenticated/network/route'
+import { Route as AuthenticatedProcessesRouteRouteImport } from './routes/_authenticated/processes/route'
 import { Route as AuthenticatedServicesRouteRouteImport } from './routes/_authenticated/services/route'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedSharesRouteRouteImport } from './routes/_authenticated/shares/route'
@@ -35,6 +36,7 @@ import { Route as AuthenticatedDockerNetworksRouteImport } from './routes/_authe
 import { Route as AuthenticatedDockerTopologyRouteImport } from './routes/_authenticated/docker/topology'
 import { Route as AuthenticatedDockerVolumesRouteImport } from './routes/_authenticated/docker/volumes'
 import { Route as AuthenticatedFilebrowserSplatRouteImport } from './routes/_authenticated/filebrowser/$'
+import { Route as AuthenticatedProcessesIndexRouteImport } from './routes/_authenticated/processes/index'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
 import { Route as AuthenticatedServicesSocketsRouteImport } from './routes/_authenticated/services/sockets'
 import { Route as AuthenticatedServicesTimersRouteImport } from './routes/_authenticated/services/timers'
@@ -92,6 +94,12 @@ const AuthenticatedNetworkRouteRoute =
   AuthenticatedNetworkRouteRouteImport.update({
     id: '/network',
     path: '/network',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedProcessesRouteRoute =
+  AuthenticatedProcessesRouteRouteImport.update({
+    id: '/processes',
+    path: '/processes',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedServicesRouteRoute =
@@ -201,6 +209,12 @@ const AuthenticatedFilebrowserSplatRoute =
     path: '/filebrowser/$',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedProcessesIndexRoute =
+  AuthenticatedProcessesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedProcessesRouteRoute,
+  } as any)
 const AuthenticatedServicesIndexRoute =
   AuthenticatedServicesIndexRouteImport.update({
     id: '/',
@@ -296,6 +310,7 @@ export interface FileRoutesByFullPath {
   '/hardware': typeof AuthenticatedHardwareRouteRoute
   '/logs': typeof AuthenticatedLogsRouteRoute
   '/network': typeof AuthenticatedNetworkRouteRoute
+  '/processes': typeof AuthenticatedProcessesRouteRouteWithChildren
   '/services': typeof AuthenticatedServicesRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRoute
   '/shares': typeof AuthenticatedSharesRouteRouteWithChildren
@@ -322,6 +337,7 @@ export interface FileRoutesByFullPath {
   '/vm/networks': typeof AuthenticatedVmNetworksRoute
   '/accounts/': typeof AuthenticatedAccountsIndexRoute
   '/docker/': typeof AuthenticatedDockerIndexRoute
+  '/processes/': typeof AuthenticatedProcessesIndexRoute
   '/services/': typeof AuthenticatedServicesIndexRoute
   '/shares/': typeof AuthenticatedSharesIndexRoute
   '/storage/': typeof AuthenticatedStorageIndexRoute
@@ -356,6 +372,7 @@ export interface FileRoutesByTo {
   '/vm/networks': typeof AuthenticatedVmNetworksRoute
   '/accounts': typeof AuthenticatedAccountsIndexRoute
   '/docker': typeof AuthenticatedDockerIndexRoute
+  '/processes': typeof AuthenticatedProcessesIndexRoute
   '/services': typeof AuthenticatedServicesIndexRoute
   '/shares': typeof AuthenticatedSharesIndexRoute
   '/storage': typeof AuthenticatedStorageIndexRoute
@@ -373,6 +390,7 @@ export interface FileRoutesById {
   '/_authenticated/hardware': typeof AuthenticatedHardwareRouteRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRouteRoute
   '/_authenticated/network': typeof AuthenticatedNetworkRouteRoute
+  '/_authenticated/processes': typeof AuthenticatedProcessesRouteRouteWithChildren
   '/_authenticated/services': typeof AuthenticatedServicesRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRoute
   '/_authenticated/shares': typeof AuthenticatedSharesRouteRouteWithChildren
@@ -400,6 +418,7 @@ export interface FileRoutesById {
   '/_authenticated/vm/networks': typeof AuthenticatedVmNetworksRoute
   '/_authenticated/accounts/': typeof AuthenticatedAccountsIndexRoute
   '/_authenticated/docker/': typeof AuthenticatedDockerIndexRoute
+  '/_authenticated/processes/': typeof AuthenticatedProcessesIndexRoute
   '/_authenticated/services/': typeof AuthenticatedServicesIndexRoute
   '/_authenticated/shares/': typeof AuthenticatedSharesIndexRoute
   '/_authenticated/storage/': typeof AuthenticatedStorageIndexRoute
@@ -418,6 +437,7 @@ export interface FileRouteTypes {
     | '/hardware'
     | '/logs'
     | '/network'
+    | '/processes'
     | '/services'
     | '/settings'
     | '/shares'
@@ -444,6 +464,7 @@ export interface FileRouteTypes {
     | '/vm/networks'
     | '/accounts/'
     | '/docker/'
+    | '/processes/'
     | '/services/'
     | '/shares/'
     | '/storage/'
@@ -478,6 +499,7 @@ export interface FileRouteTypes {
     | '/vm/networks'
     | '/accounts'
     | '/docker'
+    | '/processes'
     | '/services'
     | '/shares'
     | '/storage'
@@ -494,6 +516,7 @@ export interface FileRouteTypes {
     | '/_authenticated/hardware'
     | '/_authenticated/logs'
     | '/_authenticated/network'
+    | '/_authenticated/processes'
     | '/_authenticated/services'
     | '/_authenticated/settings'
     | '/_authenticated/shares'
@@ -521,6 +544,7 @@ export interface FileRouteTypes {
     | '/_authenticated/vm/networks'
     | '/_authenticated/accounts/'
     | '/_authenticated/docker/'
+    | '/_authenticated/processes/'
     | '/_authenticated/services/'
     | '/_authenticated/shares/'
     | '/_authenticated/storage/'
@@ -591,6 +615,13 @@ declare module '@tanstack/react-router' {
       path: '/network'
       fullPath: '/network'
       preLoaderRoute: typeof AuthenticatedNetworkRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/processes': {
+      id: '/_authenticated/processes'
+      path: '/processes'
+      fullPath: '/processes'
+      preLoaderRoute: typeof AuthenticatedProcessesRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/services': {
@@ -718,6 +749,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/filebrowser/$'
       preLoaderRoute: typeof AuthenticatedFilebrowserSplatRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/processes/': {
+      id: '/_authenticated/processes/'
+      path: '/'
+      fullPath: '/processes/'
+      preLoaderRoute: typeof AuthenticatedProcessesIndexRouteImport
+      parentRoute: typeof AuthenticatedProcessesRouteRoute
     }
     '/_authenticated/services/': {
       id: '/_authenticated/services/'
@@ -869,6 +907,20 @@ const AuthenticatedDockerRouteRouteWithChildren =
     AuthenticatedDockerRouteRouteChildren,
   )
 
+interface AuthenticatedProcessesRouteRouteChildren {
+  AuthenticatedProcessesIndexRoute: typeof AuthenticatedProcessesIndexRoute
+}
+
+const AuthenticatedProcessesRouteRouteChildren: AuthenticatedProcessesRouteRouteChildren =
+  {
+    AuthenticatedProcessesIndexRoute: AuthenticatedProcessesIndexRoute,
+  }
+
+const AuthenticatedProcessesRouteRouteWithChildren =
+  AuthenticatedProcessesRouteRoute._addFileChildren(
+    AuthenticatedProcessesRouteRouteChildren,
+  )
+
 interface AuthenticatedServicesRouteRouteChildren {
   AuthenticatedServicesSocketsRoute: typeof AuthenticatedServicesSocketsRoute
   AuthenticatedServicesTimersRoute: typeof AuthenticatedServicesTimersRoute
@@ -975,6 +1027,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHardwareRouteRoute: typeof AuthenticatedHardwareRouteRoute
   AuthenticatedLogsRouteRoute: typeof AuthenticatedLogsRouteRoute
   AuthenticatedNetworkRouteRoute: typeof AuthenticatedNetworkRouteRoute
+  AuthenticatedProcessesRouteRoute: typeof AuthenticatedProcessesRouteRouteWithChildren
   AuthenticatedServicesRouteRoute: typeof AuthenticatedServicesRouteRouteWithChildren
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRoute
   AuthenticatedSharesRouteRoute: typeof AuthenticatedSharesRouteRouteWithChildren
@@ -993,6 +1046,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHardwareRouteRoute: AuthenticatedHardwareRouteRoute,
   AuthenticatedLogsRouteRoute: AuthenticatedLogsRouteRoute,
   AuthenticatedNetworkRouteRoute: AuthenticatedNetworkRouteRoute,
+  AuthenticatedProcessesRouteRoute:
+    AuthenticatedProcessesRouteRouteWithChildren,
   AuthenticatedServicesRouteRoute: AuthenticatedServicesRouteRouteWithChildren,
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRoute,
   AuthenticatedSharesRouteRoute: AuthenticatedSharesRouteRouteWithChildren,

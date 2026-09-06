@@ -1,12 +1,13 @@
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   type ApiDisk,
   type FilesystemInfo,
   linuxio,
+  type MonitoringLive,
   type SmartTestResult,
   type Stream,
   type TaskProgress,
@@ -20,6 +21,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { TASK_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundTaskTypes";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -38,7 +40,7 @@ import {
   SmartAttributesTab,
   TabPanel,
 } from "./components";
-import type { DriveInfo, SmartData, SmartTestProgressEvent } from "./types";
+import type { DriveInfo, SmartTestProgressEvent } from "./types";
 import { parseSizeToBytes } from "./utils";
 
 const storageRouteApi = getRouteApi("/_authenticated/storage/");
@@ -89,6 +91,10 @@ const DriveDetails = ({
   smartmontoolsReason,
 }: DriveDetailsProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
+  const { mutate: refreshSmart } = useCallMutation(
+    linuxio.monitoring.refresh_smart,
+    { error: "Failed to refresh SMART data", toast: STORAGE_TOAST_META },
+  );
   const [tabIndex, setTabIndex] = useState(0);
   const [startPending, setStartPending] = useState<"short" | "long" | null>(
     null,
@@ -136,6 +142,7 @@ const DriveDetails = ({
       }));
       const label = testType === "short" ? "Short" : "Extended";
       if (finalStatus === "completed") {
+        refreshSmart();
         toast.success(
           `${label} self-test completed on /dev/${variables.device}`,
         );
@@ -227,21 +234,13 @@ const DriveDetails = ({
   const handleTabChange = (newValue: number) => {
     setTabIndex(newValue);
   };
-  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- narrows the generated `Record<string, unknown>` smart field to SmartData; not a no-op.
-  const smart = (rawDrive?.smart ?? drive.smart) as SmartData | undefined;
+  const smart = drive.smart;
   const power = drive.power;
   const isNvme =
     drive.transport === "nvme" ||
     drive.name.startsWith("nvme") ||
     rawDrive?.name.startsWith("nvme") === true;
   const smartData = smart;
-  const ataAttrs = smartData?.ata_smart_attributes?.table;
-  const smartError = rawDrive?.smartError;
-  const deviceInfo = smartData?.device;
-  const smartHealth = smartData?.smart_status;
-  const nvmeHealthRaw = smartData?.nvme_smart_health_information_log;
-  const selfTestLog = smartData?.ata_smart_self_test_log;
-  const nvmeSelfTestLog = smartData?.nvme_self_test_log;
   return (
     <AppCollapse in={expanded} unmountOnExit>
       <div>
@@ -276,22 +275,14 @@ const DriveDetails = ({
         </TabPanel>
 
         <TabPanel index={1} value={tabIndex}>
-          <SmartAttributesTab
-            ataAttrs={ataAttrs}
-            isNvme={isNvme}
-            smartData={smartData}
-            smartError={smartError}
-            nvmeHealthRaw={nvmeHealthRaw}
-          />
+          <SmartAttributesTab isNvme={isNvme} smartData={smartData} />
         </TabPanel>
 
         <TabPanel index={2} value={tabIndex}>
           <DriveInfoTab
-            deviceInfo={deviceInfo}
             drive={drive}
             rawDriveSize={rawDrive?.size}
             smartData={smartData}
-            smartHealth={smartHealth}
           />
         </TabPanel>
 
@@ -303,10 +294,10 @@ const DriveDetails = ({
 
         <TabPanel index={isNvme && power ? 4 : 3} value={tabIndex}>
           <SelfTestsTab
-            nvmeSelfTestLog={nvmeSelfTestLog}
+            nvmeSelfTestLog={smartData?.nvme_self_test_log}
             onRunTest={handleRunTest}
             percentage={testProgress?.percentage}
-            selfTestLog={selfTestLog}
+            selfTestLog={smartData?.ata_smart_self_test_log}
             smartmontoolsAvailable={smartmontoolsAvailable}
             smartmontoolsReason={smartmontoolsReason}
             startPending={startPending}
@@ -331,29 +322,25 @@ const DiskOverview = () => {
   >({});
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
-  const [
-    { data: rawDrivesData },
-    { data: filesystemsData },
-    { data: nfsMountsData },
-  ] = useSuspenseQueries({
-    queries: [
-      { ...linuxio.storage.get_drive_info, refetchInterval: 30000 },
-      { ...linuxio.system.get_fs_info, refetchInterval: 10000 },
-      { ...linuxio.storage.list_nfs_mounts, refetchInterval: 10000 },
-    ],
-  });
-  const rawDrives = useMemo(
-    () => (Array.isArray(rawDrivesData) ? rawDrivesData : []),
-    [rawDrivesData],
-  );
-  const filesystems = useMemo(
-    () => (Array.isArray(filesystemsData) ? filesystemsData : []),
-    [filesystemsData],
-  );
-  const nfsMounts = useMemo(
-    () => (Array.isArray(nfsMountsData) ? nfsMountsData : []),
-    [nfsMountsData],
-  );
+  const [{ data: rawDrivesData }, { data: liveData }, { data: nfsMountsData }] =
+    useSuspenseQueries({
+      queries: [
+        { ...linuxio.storage.get_drive_info, refetchInterval: 30000 },
+        {
+          ...linuxio.monitoring.get_live,
+          refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+          select: (live: MonitoringLive) => ({
+            filesystems: live.filesystems ?? [],
+            smart: live.smart ?? {},
+          }),
+        },
+        { ...linuxio.storage.list_nfs_mounts, refetchInterval: 10000 },
+      ],
+    });
+  const rawDrives = Array.isArray(rawDrivesData) ? rawDrivesData : [];
+  const liveSmart = liveData?.smart ?? {};
+  const filesystems = liveData?.filesystems ?? [];
+  const nfsMounts = Array.isArray(nfsMountsData) ? nfsMountsData : [];
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
     useCallMutation(linuxio.storage.unmount_filesystem, {
       success: () => {
@@ -416,43 +403,33 @@ const DiskOverview = () => {
       }),
     });
   };
-  const drives = useMemo<DriveInfo[]>(
-    () =>
-      rawDrives.map((d) => ({
-        name: d.name,
-        model: d.model,
-        sizeBytes: parseSizeToBytes(d.size),
-        transport: d.type ?? (d.name.startsWith("nvme") ? "nvme" : "unknown"),
-        vendor: d.vendor,
-        serial: d.serial,
-        ro: d.ro,
-        // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- narrows the generated `Record<string, unknown>` smart field to SmartData; not a no-op.
-        smart: d.smart as SmartData | undefined,
-        power: d.power,
-      })),
-    [rawDrives],
+  const drives: DriveInfo[] = rawDrives.map((d) => ({
+    name: d.name,
+    model: d.model,
+    sizeBytes: parseSizeToBytes(d.size),
+    transport: d.type ?? (d.name.startsWith("nvme") ? "nvme" : "unknown"),
+    vendor: d.vendor,
+    serial: d.serial,
+    ro: d.ro,
+    smart: liveSmart[d.name]?.data,
+    power: liveSmart[d.name]?.power,
+  }));
+  const nfsMountByMountpoint = new Map(
+    nfsMounts.map((mount) => [mount.mountpoint, mount]),
   );
-  const nfsMountByMountpoint = useMemo(
-    () => new Map(nfsMounts.map((mount) => [mount.mountpoint, mount])),
-    [nfsMounts],
-  );
-  const relevantFS = useMemo(
-    () =>
-      filesystems.filter((fs) => {
-        const mount = fs.mountpoint;
-        return (
-          fs.total > 0 &&
-          mount !== "" &&
-          !mount.startsWith("/var/lib/docker/") &&
-          !mount.startsWith("/sys/firmware/") &&
-          !mount.startsWith("/dev") &&
-          !mount.startsWith("/run") &&
-          !mount.startsWith("/proc") &&
-          !mount.startsWith("/sys/fs")
-        );
-      }),
-    [filesystems],
-  );
+  const relevantFS = filesystems.filter((fs) => {
+    const mount = fs.mountpoint;
+    return (
+      fs.total > 0 &&
+      mount !== "" &&
+      !mount.startsWith("/var/lib/docker/") &&
+      !mount.startsWith("/sys/firmware/") &&
+      !mount.startsWith("/dev") &&
+      !mount.startsWith("/run") &&
+      !mount.startsWith("/proc") &&
+      !mount.startsWith("/sys/fs")
+    );
+  });
   const handleFilesystemToggle = (filesystem: FilesystemInfo) => {
     setCreatingSubvolumeMountpoint(null);
     void navigate({

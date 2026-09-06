@@ -173,19 +173,19 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "network.set_ipv4": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.set_ipv4_manual": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.enable_connection": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.disable_connection": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.create_bridge": NETWORK_BRIDGE_KEYS,
   "network.start_bridge_handoff": NETWORK_BRIDGE_KEYS,
@@ -220,20 +220,20 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "storage.mount_cifs": [
     endpointQueryPrefix("storage.list_cifs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.unmount_cifs": [
     endpointQueryPrefix("storage.list_cifs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.remount_cifs": [endpointQueryPrefix("storage.list_cifs_mounts")],
   "storage.mount_nfs": [
     endpointQueryPrefix("storage.list_nfs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.unmount_nfs": [
     endpointQueryPrefix("storage.list_nfs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.remount_nfs": [endpointQueryPrefix("storage.list_nfs_mounts")],
   "storage.create_lv": [
@@ -251,10 +251,13 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "storage.unmount_filesystem": [
     endpointQueryPrefix("storage.list_nfs_mounts"),
     endpointQueryPrefix("storage.list_cifs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
-  "storage.run_smart_test": [endpointQueryPrefix("storage.get_drive_info")],
-  "storage.create_btrfs_subvolume": [endpointQueryPrefix("system.get_fs_info")],
+  "storage.run_smart_test": [endpointQueryPrefix("monitoring.get_live")],
+  "storage.create_btrfs_subvolume": [
+    endpointQueryPrefix("monitoring.get_live"),
+  ],
+  "monitoring.refresh_smart": [endpointQueryPrefix("monitoring.get_live")],
 
   "updates.set_auto_updates": [endpointQueryPrefix("updates.get_auto_updates")],
 

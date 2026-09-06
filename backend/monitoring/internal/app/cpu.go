@@ -3,6 +3,11 @@ package app
 import (
 	"context"
 	"math"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -14,6 +19,52 @@ var lastCpuTimes = make(map[uint16]cpu.TimesStat)
 var lastPerCoreCpuTimes = make(map[uint16][]cpu.TimesStat)
 var lastCpuSampleAt = make(map[uint16]time.Time)
 var cpuTimes = cpu.TimesWithContext
+
+var cpuSysfsRoot = "/sys/devices/system/cpu"
+
+// getCurrentFrequencies reads per-core scaling frequencies in numeric CPU
+// order. Missing/offline cores remain zero so values still line up with the
+// per-core usage slice.
+func getCurrentFrequencies(ctx context.Context) ([]float64, error) {
+	entries, err := os.ReadDir(cpuSysfsRoot)
+	if err != nil {
+		return nil, err
+	}
+	type coreDir struct {
+		name  string
+		index int
+	}
+	cores := make([]coreDir, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "cpu") {
+			continue
+		}
+		index, err := strconv.Atoi(strings.TrimPrefix(entry.Name(), "cpu"))
+		if err != nil {
+			continue
+		}
+		cores = append(cores, coreDir{name: entry.Name(), index: index})
+	}
+	sort.Slice(cores, func(i, j int) bool { return cores[i].index < cores[j].index })
+	if len(cores) == 0 {
+		return []float64{}, nil
+	}
+	frequencies := make([]float64, cores[len(cores)-1].index+1)
+	for _, core := range cores {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(filepath.Join(cpuSysfsRoot, core.name, "cpufreq", "scaling_cur_freq"))
+		if err != nil {
+			continue
+		}
+		value, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64)
+		if err == nil {
+			frequencies[core.index] = value / 1000
+		}
+	}
+	return frequencies, nil
+}
 
 // initializeCpuMetrics stores initial CPU times for the default 60-second cache interval.
 func initializeCpuMetrics(ctx context.Context) {

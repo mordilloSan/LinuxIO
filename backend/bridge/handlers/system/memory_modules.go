@@ -15,8 +15,18 @@ var memoryModulesRunCommand = func(ctx context.Context, name string, args ...str
 }
 
 var memoryModulesLookPath = exec.LookPath
+var memoryModulesCache hwSnapshotCache[[]apischema.MemoryModule]
 
 func FetchMemoryModules(ctx context.Context) ([]apischema.MemoryModule, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return memoryModulesCache.get(func() ([]apischema.MemoryModule, error) {
+		return fetchMemoryModules(ctx)
+	})
+}
+
+func fetchMemoryModules(ctx context.Context) ([]apischema.MemoryModule, error) {
 	if modules, err := fetchUdevMemoryModules(ctx); err == nil && len(modules) > 0 {
 		return modules, nil
 	} else if ctxErr := ctx.Err(); ctxErr != nil {

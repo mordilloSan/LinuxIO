@@ -16,5 +16,3 @@ export const LIVE_STALE_AFTER_MS = 20_000;
 
 /** Dashboard card polling: live gauges, memory, and slow-changing sensors. */
 export const DASHBOARD_REFETCH_FAST_MS = 1000;
-export const DASHBOARD_REFETCH_MEMORY_MS = 2000;
-export const DASHBOARD_REFETCH_SLOW_MS = 50_000;

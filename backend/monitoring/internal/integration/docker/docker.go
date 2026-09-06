@@ -2,15 +2,13 @@
 package docker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"runtime/pprof"
@@ -18,103 +16,73 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	mobycontainer "github.com/moby/moby/api/types/container"
+	mobysystem "github.com/moby/moby/api/types/system"
+	mobyclient "github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/deltatracker"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/integration/docker/dockerapi"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/utils"
 )
 
 const (
-	// Docker API timeout in milliseconds
-	dockerTimeoutMs = 2100
-	// Maximum realistic network speed (5 GB/s) to detect bad deltas
+	dockerTimeoutMs           = 2100
 	maxNetworkSpeedBps uint64 = 5e9
-	// Maximum conceivable memory usage of a container (100TB) to detect bad memory stats
-	maxMemoryUsage uint64 = 100 * 1024 * 1024 * 1024 * 1024
+	maxMemoryUsage     uint64 = 100 * 1024 * 1024 * 1024 * 1024
+	reseedMinWindow           = time.Second
 )
 
+var errDockerClientUnavailable = errors.New("docker client unavailable")
+
 type Manager struct {
-	onPodmanDetected     func()                      // Propagates runtime detail changes back to the app
-	client               *http.Client                // Client to query Docker API
-	wg                   sync.WaitGroup              // WaitGroup to wait for all goroutines to finish
-	sem                  chan struct{}               // Semaphore to limit concurrent container requests
-	containerStatsMutex  sync.RWMutex                // Mutex to prevent concurrent access to containerStatsMap
-	apiContainerList     []*dockerapi.Info           // List of containers from Docker API
-	containerStatsMap    map[string]*container.Stats // Keeps track of container stats
-	validIds             map[string]struct{}         // Map of valid container ids, used to prune invalid containers from containerStatsMap
-	goodDockerVersion    bool                        // Whether docker version is at least 25.0.0 (one-shot works correctly)
-	dockerVersionChecked bool                        // Whether a version probe has completed successfully
-	buf                  *bytes.Buffer               // Buffer to store and read response bodies
-	decoder              *json.Decoder               // Reusable JSON decoder that reads from buf
-	apiStats             *dockerapi.Stats            // Reusable API stats object
-	excludeContainers    []string                    // Patterns to exclude containers by name
-	usingPodman          bool                        // Whether the Docker Engine API is running on Podman
+	onPodmanDetected     func()
+	client               *mobyclient.Client
+	wg                   sync.WaitGroup
+	sem                  chan struct{}
+	containerStatsMutex  sync.RWMutex
+	containerStatsMap    map[string]*container.Stats
+	validIds             map[string]struct{}
+	goodDockerVersion    bool
+	dockerVersionChecked bool
+	excludeContainers    []string
+	usingPodman          atomic.Bool
+	libpodDetected       atomic.Bool
 
-	// Cache-time-aware tracking for CPU stats (similar to cpu.go)
-	// Maps cache time intervals to container-specific CPU usage tracking
-	lastCpuContainer map[uint16]map[string]uint64 // cacheTimeMs -> containerId -> last cpu container usage
-	lastCpuSystem    map[uint16]map[string]uint64 // cacheTimeMs -> containerId -> last cpu system usage
+	lastCpuContainer map[uint16]map[string]uint64
+	lastCpuSystem    map[uint16]map[string]uint64
 
-	// Network delta trackers - one per cache time to avoid interference
-	// cacheTimeMs -> DeltaTracker for network bytes sent/received
 	networkSentTrackers map[uint16]*deltatracker.DeltaTracker[string, uint64]
 	networkRecvTrackers map[uint16]*deltatracker.DeltaTracker[string, uint64]
-	lastNetworkReadTime map[uint16]map[string]time.Time // cacheTimeMs -> containerId -> last network read time
+	lastNetworkReadTime map[uint16]map[string]time.Time
 
-	// collectorKey names the cache time the collector owns, set once by the app
-	// right after construction so live keys can reseed from its baselines.
+	// collectorKey names the cache time the collector owns.
 	collectorKey uint16
 }
 
-// userAgentRoundTripper is a custom http.RoundTripper that adds a User-Agent header to all requests
-type userAgentRoundTripper struct {
-	rt        http.RoundTripper
-	userAgent string
-}
-
-// dockerVersionResponse contains the /version fields used for engine checks.
-type dockerVersionResponse struct {
-	Version    string `json:"Version"`
-	Components []struct {
-		Name string `json:"Name"`
-	} `json:"Components"`
-}
-
-// RoundTrip implements the http.RoundTripper interface
-func (u *userAgentRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("User-Agent", u.userAgent)
-	return u.rt.RoundTrip(req)
-}
-
-// Add goroutine to the queue
-func (d *Manager) queue(ctx context.Context) bool {
-	d.wg.Add(1)
-	if d.goodDockerVersion {
+func (dm *Manager) queue(ctx context.Context) bool {
+	dm.wg.Add(1)
+	if dm.goodDockerVersion {
 		select {
-		case d.sem <- struct{}{}:
+		case dm.sem <- struct{}{}:
 		case <-ctx.Done():
-			d.wg.Done()
+			dm.wg.Done()
 			return false
 		}
 	}
 	return true
 }
 
-// Remove goroutine from the queue
-func (d *Manager) dequeue() {
-	d.wg.Done()
-	if d.goodDockerVersion {
-		<-d.sem
+func (dm *Manager) dequeue() {
+	dm.wg.Done()
+	if dm.goodDockerVersion {
+		<-dm.sem
 	}
 }
 
-// shouldExcludeContainer checks if a container name matches any exclusion pattern
 func (dm *Manager) shouldExcludeContainer(name string) bool {
-	if len(dm.excludeContainers) == 0 {
-		return false
-	}
 	for _, pattern := range dm.excludeContainers {
 		if match, _ := path.Match(pattern, name); match {
 			return true
@@ -123,81 +91,64 @@ func (dm *Manager) shouldExcludeContainer(name string) bool {
 	return false
 }
 
-// Returns stats for all running containers with cache-time-aware delta tracking
+// GetStats returns stats for all running containers with cache-time-aware
+// delta tracking.
 //
 //nolint:gocognit // Container stats collection coordinates API probing, concurrency, and per-container error handling.
 func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*container.Stats, error) {
-	resp, err := dm.get(ctx, "http://localhost/containers/json")
+	if dm == nil || dm.client == nil {
+		return nil, errDockerClientUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	dm.initializeTracking()
+
+	list, err := dm.client.ContainerList(ctx, mobyclient.ContainerListOptions{})
 	if err != nil {
 		return nil, err
 	}
-
-	dm.apiContainerList = dm.apiContainerList[:0]
-	if err := dm.decode(resp, &dm.apiContainerList); err != nil {
-		return nil, err
-	}
-
-	// Detect Podman from Server header
-	serverHeader := resp.Header.Get("Server")
-	if !dm.usingPodman && detectPodmanFromHeader(serverHeader) {
-		dm.setIsPodman()
-	}
-
+	dm.syncPodmanDetection()
 	dm.ensureDockerVersionChecked(ctx)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Reseed before any updateContainerStats goroutine runs. containerStatsMutex
-	// is not held here, and ReseedFromCollector takes it itself.
 	dm.ReseedFromCollector(cacheTimeMs, dm.collectorKey)
+	containersLength := len(list.Items)
+	dm.validIds = make(map[string]struct{}, containersLength)
+	var failedContainers []*mobycontainer.Summary
 
-	containersLength := len(dm.apiContainerList)
-
-	// store valid ids to clean up old container ids from map
-	if dm.validIds == nil {
-		dm.validIds = make(map[string]struct{}, containersLength)
-	} else {
-		clear(dm.validIds)
-	}
-
-	var failedContainers []*dockerapi.Info
-
-	for _, ctr := range dm.apiContainerList {
+	for i := range list.Items {
 		if err := ctx.Err(); err != nil {
 			dm.wg.Wait()
 			return nil, err
 		}
-		ctr.IdShort = shortContainerID(ctr.Id)
-
-		// Skip this container if it matches the exclusion pattern
-		if dm.shouldExcludeContainer(ctr.Names[0][1:]) {
-			slog.Debug("Excluding container", "name", ctr.Names[0][1:])
+		ctr := list.Items[i]
+		id := shortContainerID(ctr.ID)
+		name := containerName(&ctr)
+		if dm.shouldExcludeContainer(name) {
+			slog.Debug("Excluding container", "name", name)
 			continue
 		}
 
-		dm.validIds[ctr.IdShort] = struct{}{}
-		// check if container is less than 1 minute old (possible restart)
-		// note: can't use Created field because it's not updated on restart
+		dm.validIds[id] = struct{}{}
+		// Created timestamps do not change on restart, so retain status-based
+		// restart detection.
 		if strings.Contains(ctr.Status, "second") {
-			// if so, remove old container data
-			dm.deleteContainerStatsSync(ctr.IdShort)
+			dm.deleteContainerStatsSync(id)
 		}
 		if !dm.queue(ctx) {
 			dm.wg.Wait()
 			return nil, ctx.Err()
 		}
-		go func(ctr *dockerapi.Info) {
+		go func(ctr mobycontainer.Summary) {
 			defer dm.dequeue()
-			// Labelled so a stats call that never returns names its container
-			// in the traceback and in the goroutineleak profile.
-			pprof.Do(ctx, pprof.Labels("component", "docker", "container", ctr.IdShort), func(ctx context.Context) {
-				err := dm.updateContainerStats(ctx, ctr, cacheTimeMs)
-				// if error, delete from map and add to failed list to retry
-				if err != nil {
+			pprof.Do(ctx, pprof.Labels("component", "docker", "container", shortContainerID(ctr.ID)), func(ctx context.Context) {
+				if err := dm.updateContainerStats(ctx, &ctr, cacheTimeMs); err != nil {
 					dm.containerStatsMutex.Lock()
-					delete(dm.containerStatsMap, ctr.IdShort)
-					failedContainers = append(failedContainers, ctr)
+					delete(dm.containerStatsMap, shortContainerID(ctr.ID))
+					failedContainers = append(failedContainers, &ctr)
 					dm.containerStatsMutex.Unlock()
 				}
 			})
@@ -209,27 +160,27 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 		return nil, err
 	}
 
-	// retry failed containers separately so we can run them in parallel (docker 24 bug)
+	// Legacy Docker versions require stats requests to be run in one batch.
+	// Retrying failed containers separately preserves the existing behavior.
 	if len(failedContainers) > 0 {
 		slog.Debug("Retrying failed containers", "count", len(failedContainers))
-		for i := range failedContainers {
+		for _, ctr := range failedContainers {
 			if err := ctx.Err(); err != nil {
 				dm.wg.Wait()
 				return nil, err
 			}
-			ctr := failedContainers[i]
 			if !dm.queue(ctx) {
 				dm.wg.Wait()
 				return nil, ctx.Err()
 			}
-			go func(ctr *dockerapi.Info) {
+			go func(ctr mobycontainer.Summary) {
 				defer dm.dequeue()
-				pprof.Do(ctx, pprof.Labels("component", "docker", "container", ctr.IdShort, "retry", "true"), func(ctx context.Context) {
-					if err2 := dm.updateContainerStats(ctx, ctr, cacheTimeMs); err2 != nil {
-						slog.Error("Error getting container stats", "err", err2)
+				pprof.Do(ctx, pprof.Labels("component", "docker", "container", shortContainerID(ctr.ID), "retry", "true"), func(ctx context.Context) {
+					if err := dm.updateContainerStats(ctx, &ctr, cacheTimeMs); err != nil {
+						slog.Error("Error getting container stats", "err", err)
 					}
 				})
-			}(ctr)
+			}(*ctr)
 		}
 		dm.wg.Wait()
 		if err := ctx.Err(); err != nil {
@@ -237,69 +188,52 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 		}
 	}
 
-	// populate final stats and remove old / invalid container stats
 	stats := make([]*container.Stats, 0, containersLength)
-	for id, v := range dm.containerStatsMap {
+	dm.containerStatsMutex.Lock()
+	for id, value := range dm.containerStatsMap {
 		if _, exists := dm.validIds[id]; !exists {
 			delete(dm.containerStatsMap, id)
-		} else {
-			stats = append(stats, v)
+			continue
 		}
+		stats = append(stats, value)
 	}
+	dm.containerStatsMutex.Unlock()
 
-	// prepare network trackers for next interval for this cache time
 	dm.cycleNetworkDeltasForCacheTime(cacheTimeMs)
-
 	return stats, nil
 }
 
 // GetContainerIdentities returns the running containers known to the runtime.
-// It intentionally uses /containers/json only: process attribution callers can
-// refresh identities without paying for a stats request per container.
 func (dm *Manager) GetContainerIdentities(ctx context.Context) ([]container.Identity, error) {
 	if dm == nil {
 		return nil, nil
 	}
+	if dm.client == nil {
+		return nil, errDockerClientUnavailable
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	resp, err := dm.get(ctx, "http://localhost/containers/json?all=false")
+	result, err := dm.client.ContainerList(ctx, mobyclient.ContainerListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("container list request failed: %s", resp.Status)
-	}
-	if !dm.usingPodman && detectPodmanFromHeader(resp.Header.Get("Server")) {
-		dm.setIsPodman()
-	}
-	var entries []dockerapi.Info
-	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
-		return nil, err
-	}
+	dm.syncPodmanDetection()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	identities := make([]container.Identity, 0, len(entries))
-	for i := range entries {
-		entry := &entries[i]
-		// all=false is the runtime-side filter; retain this guard for
-		// compatible engines that ignore the query or return stale entries.
-		if state := strings.TrimSpace(entry.State); state != "" && !strings.EqualFold(state, "running") {
+
+	identities := make([]container.Identity, 0, len(result.Items))
+	for i := range result.Items {
+		entry := &result.Items[i]
+		if state := strings.TrimSpace(string(entry.State)); state != "" && !strings.EqualFold(state, "running") {
 			continue
 		}
-		name := ""
-		if len(entry.Names) > 0 {
-			name = strings.TrimPrefix(strings.TrimSpace(entry.Names[0]), "/")
-		}
-		if dm.shouldExcludeContainer(name) {
+		name := containerName(entry)
+		if dm.shouldExcludeContainer(name) || strings.TrimSpace(entry.ID) == "" {
 			continue
 		}
-		fullID := strings.TrimSpace(entry.Id)
-		if fullID == "" {
-			continue
-		}
+		fullID := strings.TrimSpace(entry.ID)
 		identities = append(identities, container.Identity{
 			ID:     shortContainerID(fullID),
 			FullID: fullID,
@@ -309,6 +243,19 @@ func (dm *Manager) GetContainerIdentities(ctx context.Context) ([]container.Iden
 	return identities, nil
 }
 
+func containerName(ctr *mobycontainer.Summary) string {
+	if ctr == nil {
+		return ""
+	}
+	for _, rawName := range ctr.Names {
+		name := strings.TrimPrefix(strings.TrimSpace(rawName), "/")
+		if name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
 func shortContainerID(id string) string {
 	if len(id) > 12 {
 		return id[:12]
@@ -316,9 +263,43 @@ func shortContainerID(id string) string {
 	return id
 }
 
-// initializeCpuTracking initializes CPU tracking maps for a specific cache time interval
+func (dm *Manager) initializeTracking() {
+	dm.containerStatsMutex.Lock()
+	defer dm.containerStatsMutex.Unlock()
+	dm.initializeTrackingLocked()
+	if dm.sem == nil {
+		dm.sem = make(chan struct{}, 5)
+	}
+}
+
+func (dm *Manager) initializeTrackingLocked() {
+	if dm.containerStatsMap == nil {
+		dm.containerStatsMap = make(map[string]*container.Stats)
+	}
+	if dm.lastCpuContainer == nil {
+		dm.lastCpuContainer = make(map[uint16]map[string]uint64)
+	}
+	if dm.lastCpuSystem == nil {
+		dm.lastCpuSystem = make(map[uint16]map[string]uint64)
+	}
+	if dm.networkSentTrackers == nil {
+		dm.networkSentTrackers = make(map[uint16]*deltatracker.DeltaTracker[string, uint64])
+	}
+	if dm.networkRecvTrackers == nil {
+		dm.networkRecvTrackers = make(map[uint16]*deltatracker.DeltaTracker[string, uint64])
+	}
+	if dm.lastNetworkReadTime == nil {
+		dm.lastNetworkReadTime = make(map[uint16]map[string]time.Time)
+	}
+}
+
 func (dm *Manager) initializeCpuTracking(cacheTimeMs uint16) {
-	// Initialize cache time maps if they don't exist
+	if dm.lastCpuContainer == nil {
+		dm.lastCpuContainer = make(map[uint16]map[string]uint64)
+	}
+	if dm.lastCpuSystem == nil {
+		dm.lastCpuSystem = make(map[uint16]map[string]uint64)
+	}
 	if dm.lastCpuContainer[cacheTimeMs] == nil {
 		dm.lastCpuContainer[cacheTimeMs] = make(map[string]uint64)
 	}
@@ -327,105 +308,108 @@ func (dm *Manager) initializeCpuTracking(cacheTimeMs uint16) {
 	}
 }
 
-// getCpuPreviousValues returns previous CPU values for a container and cache time interval
-func (dm *Manager) getCpuPreviousValues(cacheTimeMs uint16, containerId string) (uint64, uint64) {
-	return dm.lastCpuContainer[cacheTimeMs][containerId], dm.lastCpuSystem[cacheTimeMs][containerId]
+func (dm *Manager) getCpuPreviousValues(cacheTimeMs uint16, containerID string) (uint64, uint64) {
+	return dm.lastCpuContainer[cacheTimeMs][containerID], dm.lastCpuSystem[cacheTimeMs][containerID]
 }
 
-// setCpuCurrentValues stores current CPU values for a container and cache time interval
-func (dm *Manager) setCpuCurrentValues(cacheTimeMs uint16, containerId string, cpuContainer, cpuSystem uint64) {
-	dm.lastCpuContainer[cacheTimeMs][containerId] = cpuContainer
-	dm.lastCpuSystem[cacheTimeMs][containerId] = cpuSystem
+func (dm *Manager) setCpuCurrentValues(cacheTimeMs uint16, containerID string, cpuContainer, cpuSystem uint64) {
+	dm.lastCpuContainer[cacheTimeMs][containerID] = cpuContainer
+	dm.lastCpuSystem[cacheTimeMs][containerID] = cpuSystem
 }
 
-// calculateMemoryUsage calculates memory usage from Docker API stats
-func calculateMemoryUsage(apiStats *dockerapi.Stats) (uint64, error) {
-	memCache := apiStats.MemoryStats.Stats.InactiveFile
+func calculateCPUPercentLinux(stats *mobycontainer.StatsResponse, previousContainer, previousSystem uint64) float64 {
+	if stats == nil || stats.CPUStats.CPUUsage.TotalUsage < previousContainer || stats.CPUStats.SystemUsage < previousSystem {
+		return 0
+	}
+	cpuDelta := stats.CPUStats.CPUUsage.TotalUsage - previousContainer
+	systemDelta := stats.CPUStats.SystemUsage - previousSystem
+	if systemDelta == 0 || previousContainer == 0 {
+		return 0
+	}
+	return float64(cpuDelta) / float64(systemDelta) * 100
+}
+
+func calculateMemoryUsage(stats *mobycontainer.StatsResponse) (uint64, error) {
+	if stats == nil {
+		return 0, errors.New("bad memory stats")
+	}
+	memCache := stats.MemoryStats.Stats["inactive_file"]
 	if memCache == 0 {
-		memCache = apiStats.MemoryStats.Stats.Cache
+		memCache = stats.MemoryStats.Stats["cache"]
 	}
-
-	usedDelta := apiStats.MemoryStats.Usage - memCache
-	if usedDelta <= 0 || usedDelta > maxMemoryUsage {
-		return 0, fmt.Errorf("bad memory stats")
+	if stats.MemoryStats.Usage <= memCache {
+		return 0, errors.New("bad memory stats")
 	}
-
-	return usedDelta, nil
+	usedMemory := stats.MemoryStats.Usage - memCache
+	if usedMemory > maxMemoryUsage {
+		return 0, errors.New("bad memory stats")
+	}
+	return usedMemory, nil
 }
 
-// getNetworkTracker returns the DeltaTracker for a specific cache time, creating it if needed
-func (dm *Manager) getNetworkTracker(cacheTimeMs uint16, isSent bool) *deltatracker.DeltaTracker[string, uint64] {
-	var trackers map[uint16]*deltatracker.DeltaTracker[string, uint64]
-	if isSent {
-		trackers = dm.networkSentTrackers
-	} else {
-		trackers = dm.networkRecvTrackers
+func (dm *Manager) getNetworkTracker(cacheTimeMs uint16, sent bool) *deltatracker.DeltaTracker[string, uint64] {
+	if sent {
+		if dm.networkSentTrackers == nil {
+			dm.networkSentTrackers = make(map[uint16]*deltatracker.DeltaTracker[string, uint64])
+		}
+		if dm.networkSentTrackers[cacheTimeMs] == nil {
+			dm.networkSentTrackers[cacheTimeMs] = deltatracker.NewDeltaTracker[string, uint64]()
+		}
+		return dm.networkSentTrackers[cacheTimeMs]
 	}
-
-	if trackers[cacheTimeMs] == nil {
-		trackers[cacheTimeMs] = deltatracker.NewDeltaTracker[string, uint64]()
+	if dm.networkRecvTrackers == nil {
+		dm.networkRecvTrackers = make(map[uint16]*deltatracker.DeltaTracker[string, uint64])
 	}
-
-	return trackers[cacheTimeMs]
+	if dm.networkRecvTrackers[cacheTimeMs] == nil {
+		dm.networkRecvTrackers[cacheTimeMs] = deltatracker.NewDeltaTracker[string, uint64]()
+	}
+	return dm.networkRecvTrackers[cacheTimeMs]
 }
 
-// cycleNetworkDeltasForCacheTime cycles the network delta trackers for a specific cache time
 func (dm *Manager) cycleNetworkDeltasForCacheTime(cacheTimeMs uint16) {
-	if dm.networkSentTrackers[cacheTimeMs] != nil {
+	if dm.networkSentTrackers != nil && dm.networkSentTrackers[cacheTimeMs] != nil {
 		dm.networkSentTrackers[cacheTimeMs].Cycle()
 	}
-	if dm.networkRecvTrackers[cacheTimeMs] != nil {
+	if dm.networkRecvTrackers != nil && dm.networkRecvTrackers[cacheTimeMs] != nil {
 		dm.networkRecvTrackers[cacheTimeMs].Cycle()
 	}
 }
 
-// calculateNetworkStats calculates network sent/receive deltas using DeltaTracker
-func (dm *Manager) calculateNetworkStats(ctr *dockerapi.Info, apiStats *dockerapi.Stats, name string, cacheTimeMs uint16) (uint64, uint64) {
-	var total_sent, total_recv uint64
-	for _, v := range apiStats.Networks {
-		total_sent += v.TxBytes
-		total_recv += v.RxBytes
+func (dm *Manager) calculateNetworkStats(containerID string, networks map[string]mobycontainer.NetworkStats, name string, cacheTimeMs uint16) (uint64, uint64) {
+	var totalSent, totalRecv uint64
+	for _, network := range networks {
+		totalSent += network.TxBytes
+		totalRecv += network.RxBytes
 	}
 
-	// Get the DeltaTracker for this specific cache time
 	sentTracker := dm.getNetworkTracker(cacheTimeMs, true)
 	recvTracker := dm.getNetworkTracker(cacheTimeMs, false)
+	sentTracker.Set(containerID, totalSent)
+	recvTracker.Set(containerID, totalRecv)
+	sentDeltaRaw := sentTracker.Delta(containerID)
+	recvDeltaRaw := recvTracker.Delta(containerID)
 
-	// Set current values in the cache-time-specific DeltaTracker
-	sentTracker.Set(ctr.IdShort, total_sent)
-	recvTracker.Set(ctr.IdShort, total_recv)
-
-	// Get deltas (bytes since last measurement)
-	sent_delta_raw := sentTracker.Delta(ctr.IdShort)
-	recv_delta_raw := recvTracker.Delta(ctr.IdShort)
-
-	// Calculate bytes per second using per-cache-time read time to avoid
-	// interference between different cache intervals (e.g. 1000ms vs 60000ms)
-	var sent_delta, recv_delta uint64
-	if prevReadTime, ok := dm.lastNetworkReadTime[cacheTimeMs][ctr.IdShort]; ok {
-		millisecondsElapsed := uint64(time.Since(prevReadTime).Milliseconds())
-		if millisecondsElapsed > 0 {
-			if sent_delta_raw > 0 {
-				sent_delta = sent_delta_raw * 1000 / millisecondsElapsed
-				if sent_delta > maxNetworkSpeedBps {
-					slog.Warn("Bad network delta", "container", name)
-					sent_delta = 0
-				}
-			}
-			if recv_delta_raw > 0 {
-				recv_delta = recv_delta_raw * 1000 / millisecondsElapsed
-				if recv_delta > maxNetworkSpeedBps {
-					slog.Warn("Bad network delta", "container", name)
-					recv_delta = 0
-				}
-			}
-		}
+	previousRead, ok := dm.lastNetworkReadTime[cacheTimeMs][containerID]
+	if !ok {
+		return 0, 0
 	}
-
-	return sent_delta, recv_delta
+	elapsedMs := time.Since(previousRead).Milliseconds()
+	if elapsedMs <= 0 {
+		return 0, 0
+	}
+	sentDelta := sentDeltaRaw * 1000 / uint64(elapsedMs)
+	recvDelta := recvDeltaRaw * 1000 / uint64(elapsedMs)
+	if sentDelta > maxNetworkSpeedBps {
+		slog.Warn("Bad network delta", "container", name)
+		sentDelta = 0
+	}
+	if recvDelta > maxNetworkSpeedBps {
+		slog.Warn("Bad network delta", "container", name)
+		recvDelta = 0
+	}
+	return sentDelta, recvDelta
 }
 
-// validateCpuPercentage checks if CPU percentage is within valid range
 func validateCpuPercentage(cpuPct float64, containerName string) error {
 	if cpuPct > 100 {
 		return fmt.Errorf("%s cpu pct greater than 100: %+v", containerName, cpuPct)
@@ -433,44 +417,40 @@ func validateCpuPercentage(cpuPct float64, containerName string) error {
 	return nil
 }
 
-// updateContainerStatsValues updates the final stats values
-func updateContainerStatsValues(stats *container.Stats, cpuPct float64, usedMemory uint64, sent_delta, recv_delta uint64, readTime time.Time) {
+func updateContainerStatsValues(stats *container.Stats, cpuPct float64, usedMemory uint64, sentDelta, recvDelta uint64, readTime time.Time) {
 	stats.Cpu = utils.TwoDecimals(cpuPct)
 	stats.Mem = utils.BytesToMegabytes(float64(usedMemory))
-	stats.Bandwidth = [2]uint64{sent_delta, recv_delta}
+	stats.Bandwidth = [2]uint64{sentDelta, recvDelta}
 	stats.PrevReadTime = readTime
 }
 
-// convertContainerPortsToString formats the ports of a container into a sorted, deduplicated string.
-// ctr.Ports is nilled out after processing so the slice is not accidentally reused.
-func convertContainerPortsToString(ctr *dockerapi.Info) string {
-	if len(ctr.Ports) == 0 {
+func convertContainerPortsToString(ports []mobycontainer.PortSummary) string {
+	if len(ports) == 0 {
 		return ""
 	}
-	sort.Slice(ctr.Ports, func(i, j int) bool {
-		return ctr.Ports[i].PublicPort < ctr.Ports[j].PublicPort
+	sort.Slice(ports, func(i, j int) bool {
+		return ports[i].PublicPort < ports[j].PublicPort
 	})
 	var builder strings.Builder
-	seenPorts := make(map[uint16]struct{})
-	for _, p := range ctr.Ports {
-		_, ok := seenPorts[p.PublicPort]
-		if p.PublicPort == 0 || ok {
+	seenPorts := make(map[uint16]struct{}, len(ports))
+	for _, port := range ports {
+		if port.PublicPort == 0 {
 			continue
 		}
-		seenPorts[p.PublicPort] = struct{}{}
+		if _, exists := seenPorts[port.PublicPort]; exists {
+			continue
+		}
+		seenPorts[port.PublicPort] = struct{}{}
 		if builder.Len() > 0 {
 			builder.WriteString(", ")
 		}
-		switch p.IP {
-		case "0.0.0.0", "::":
-		default:
-			builder.WriteString(p.IP)
+		ip := port.IP.String()
+		if port.IP.IsValid() && ip != "0.0.0.0" && ip != "::" {
+			builder.WriteString(ip)
 			builder.WriteByte(':')
 		}
-		builder.WriteString(strconv.Itoa(int(p.PublicPort)))
+		builder.WriteString(strconv.Itoa(int(port.PublicPort)))
 	}
-	// clear ports slice so it doesn't get reused and blend into next response
-	ctr.Ports = nil
 	return builder.String()
 }
 
@@ -479,187 +459,139 @@ func parseDockerStatus(status string) (string, container.DockerHealth) {
 	if trimmed == "" {
 		return "", container.DockerHealthNone
 	}
-
-	// Remove "About " from status
 	trimmed = strings.Replace(trimmed, "About ", "", 1)
 
 	statusText, healthText, found := strings.CutLast(trimmed, "(")
 	if !found || !strings.HasSuffix(trimmed, ")") {
 		return trimmed, container.DockerHealthNone
 	}
-
 	statusText = strings.TrimSpace(statusText)
 	if statusText == "" {
 		statusText = trimmed
 	}
-
 	healthText = strings.TrimSpace(strings.TrimSuffix(healthText, ")"))
-	// Some Docker statuses include a "health:" prefix inside the parentheses.
-	// Strip it so it maps correctly to the known health states.
-	if colonIdx := strings.IndexRune(healthText, ':'); colonIdx != -1 {
-		prefix := strings.ToLower(strings.TrimSpace(healthText[:colonIdx]))
+	if colonIndex := strings.IndexRune(healthText, ':'); colonIndex != -1 {
+		prefix := strings.ToLower(strings.TrimSpace(healthText[:colonIndex]))
 		if prefix == "health" || prefix == "health status" {
-			healthText = strings.TrimSpace(healthText[colonIdx+1:])
+			healthText = strings.TrimSpace(healthText[colonIndex+1:])
 		}
 	}
 	if health, ok := parseDockerHealthStatus(healthText); ok {
 		return statusText, health
 	}
-
 	return trimmed, container.DockerHealthNone
 }
 
-// parseDockerHealthStatus maps Docker health status strings to container.DockerHealth values
 func parseDockerHealthStatus(status string) (container.DockerHealth, bool) {
 	health, ok := container.DockerHealthStrings[strings.ToLower(strings.TrimSpace(status))]
 	return health, ok
 }
 
-// getPodmanContainerHealth fetches container health status from the container inspect endpoint.
-// Used for Podman which doesn't provide health status in the /containers/json endpoint as of March 2026.
-// https://github.com/containers/podman/issues/27786
 func (dm *Manager) getPodmanContainerHealth(ctx context.Context, containerID string) (container.DockerHealth, error) {
-	resp, err := dm.get(ctx, fmt.Sprintf("http://localhost/containers/%s/json", url.PathEscape(containerID)))
+	if dm == nil || dm.client == nil {
+		return container.DockerHealthNone, errDockerClientUnavailable
+	}
+	result, err := dm.client.ContainerInspect(ctx, containerID, mobyclient.ContainerInspectOptions{})
 	if err != nil {
 		return container.DockerHealthNone, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return container.DockerHealthNone, fmt.Errorf("container inspect request failed: %s", resp.Status)
+	if result.Container.State == nil || result.Container.State.Health == nil {
+		return container.DockerHealthNone, nil
 	}
-
-	var inspectInfo struct {
-		State struct {
-			Health struct {
-				Status string
-			}
-		}
+	health, ok := parseDockerHealthStatus(string(result.Container.State.Health.Status))
+	if !ok {
+		return container.DockerHealthNone, nil
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&inspectInfo); err != nil {
-		return container.DockerHealthNone, err
-	}
-
-	if health, ok := parseDockerHealthStatus(inspectInfo.State.Health.Status); ok {
-		return health, nil
-	}
-
-	return container.DockerHealthNone, nil
+	return health, nil
 }
 
-// Updates stats for individual container with cache-time-aware delta tracking
-func (dm *Manager) updateContainerStats(ctx context.Context, ctr *dockerapi.Info, cacheTimeMs uint16) error {
-	name := ctr.Names[0][1:]
-
-	resp, err := dm.get(ctx, fmt.Sprintf("http://localhost/containers/%s/stats?stream=0&one-shot=1", ctr.IdShort))
+func (dm *Manager) updateContainerStats(ctx context.Context, ctr *mobycontainer.Summary, cacheTimeMs uint16) error {
+	if ctr == nil || dm == nil || dm.client == nil {
+		return errDockerClientUnavailable
+	}
+	name := containerName(ctr)
+	result, err := dm.client.ContainerStats(ctx, ctr.ID, mobyclient.ContainerStatsOptions{
+		Stream:                false,
+		IncludePreviousSample: false,
+	})
 	if err != nil {
 		return err
 	}
+	defer result.Body.Close()
+
+	var apiStats mobycontainer.StatsResponse
+	if decodeErr := json.NewDecoder(result.Body).Decode(&apiStats); decodeErr != nil {
+		return decodeErr
+	}
 
 	statusText, health := parseDockerStatus(ctr.Status)
-
-	// Docker exposes Health.Status on /containers/json in API 1.52+.
-	// Podman currently requires falling back to the inspect endpoint as of March 2026.
-	// https://github.com/containers/podman/issues/27786
-	if ctr.Health.Status != "" {
-		if h, ok := parseDockerHealthStatus(ctr.Health.Status); ok {
-			health = h
+	if ctr.Health != nil && ctr.Health.Status != "" {
+		if parsedHealth, ok := parseDockerHealthStatus(string(ctr.Health.Status)); ok {
+			health = parsedHealth
 		}
-	} else if dm.usingPodman {
-		if podmanHealth, healthErr := dm.getPodmanContainerHealth(ctx, ctr.IdShort); healthErr == nil {
+	} else if dm.IsPodman() {
+		if podmanHealth, healthErr := dm.getPodmanContainerHealth(ctx, ctr.ID); healthErr == nil {
 			health = podmanHealth
 		}
 	}
 
+	id := shortContainerID(ctr.ID)
 	dm.containerStatsMutex.Lock()
 	defer dm.containerStatsMutex.Unlock()
+	dm.initializeTrackingLocked()
 
-	// add empty values if they doesn't exist in map
-	stats, initialized := dm.containerStatsMap[ctr.IdShort]
+	stats, initialized := dm.containerStatsMap[id]
 	if !initialized {
-		stats = &container.Stats{Name: name, Id: ctr.IdShort, FullID: ctr.Id, Image: ctr.Image}
-		dm.containerStatsMap[ctr.IdShort] = stats
+		stats = &container.Stats{Name: name, Id: id, FullID: ctr.ID, Image: ctr.Image}
+		dm.containerStatsMap[id] = stats
 	}
-
-	stats.Id = ctr.IdShort
-	stats.FullID = ctr.Id
+	stats.Name = name
+	stats.Id = id
+	stats.FullID = ctr.ID
+	stats.Image = ctr.Image
 	stats.Status = statusText
 	stats.Health = health
-
 	if len(ctr.Ports) > 0 {
-		stats.Ports = convertContainerPortsToString(ctr)
+		stats.Ports = convertContainerPortsToString(ctr.Ports)
 	}
-
-	// reset current stats
 	stats.Cpu = 0
 	stats.Mem = 0
 	stats.Bandwidth = [2]uint64{0, 0}
 
-	res := dm.apiStats
-	res.Networks = nil
-	if decodeErr := dm.decode(resp, res); decodeErr != nil {
-		return decodeErr
-	}
-
-	// Initialize CPU tracking for this cache time interval
 	dm.initializeCpuTracking(cacheTimeMs)
-
-	// Get previous CPU values
-	prevCpuContainer, prevCpuSystem := dm.getCpuPreviousValues(cacheTimeMs, ctr.IdShort)
-
-	cpuPct := res.CalculateCPUPercentLinux(prevCpuContainer, prevCpuSystem)
-
-	// Calculate memory usage
-	usedMemory, err := calculateMemoryUsage(res)
+	previousContainer, previousSystem := dm.getCpuPreviousValues(cacheTimeMs, id)
+	cpuPct := calculateCPUPercentLinux(&apiStats, previousContainer, previousSystem)
+	usedMemory, err := calculateMemoryUsage(&apiStats)
 	if err != nil {
-		return fmt.Errorf("%s - %w - see https://github.com/mordilloSan/go-monitoring/issues/144", name, err)
+		return fmt.Errorf("container %s memory: %w", name, err)
 	}
-
-	// Store current CPU stats for next calculation
-	currentCpuContainer := res.CPUStats.CPUUsage.TotalUsage
-	currentCpuSystem := res.CPUStats.SystemUsage
-	dm.setCpuCurrentValues(cacheTimeMs, ctr.IdShort, currentCpuContainer, currentCpuSystem)
-
-	// Validate CPU percentage
+	dm.setCpuCurrentValues(cacheTimeMs, id, apiStats.CPUStats.CPUUsage.TotalUsage, apiStats.CPUStats.SystemUsage)
 	if err := validateCpuPercentage(cpuPct, name); err != nil {
 		return err
 	}
 
-	// Calculate network stats using DeltaTracker
-	sent_delta, recv_delta := dm.calculateNetworkStats(ctr, res, name, cacheTimeMs)
-
-	// Store per-cache-time network read time for next rate calculation
 	if dm.lastNetworkReadTime[cacheTimeMs] == nil {
 		dm.lastNetworkReadTime[cacheTimeMs] = make(map[string]time.Time)
 	}
-	dm.lastNetworkReadTime[cacheTimeMs][ctr.IdShort] = time.Now()
-
-	// Update final stats values
-	updateContainerStatsValues(stats, cpuPct, usedMemory, sent_delta, recv_delta, res.Read)
-
+	sentDelta, recvDelta := dm.calculateNetworkStats(id, apiStats.Networks, name, cacheTimeMs)
+	dm.lastNetworkReadTime[cacheTimeMs][id] = time.Now()
+	updateContainerStatsValues(stats, cpuPct, usedMemory, sentDelta, recvDelta, apiStats.Read)
 	return nil
 }
 
-// SetCollectorKey records the cache time the collector uses. It is called once
-// after construction, before any GetStats request.
 func (dm *Manager) SetCollectorKey(key uint16) {
 	dm.collectorKey = key
 }
 
-// reseedMinWindow mirrors app.reseedMinWindow: a collector baseline younger
-// than this leaves a delta window of milliseconds, which reads as an amplified
-// rate. The app package cannot be imported here without an import cycle.
-const reseedMinWindow = time.Second
-
-// ReseedFromCollector copies the collector's per-container baselines onto a
-// live key whose newest read predates the collector's newest read, provided
-// that read is at least reseedMinWindow old.
+// ReseedFromCollector copies collector baselines onto a live key when the
+// collector sample is old enough to form a useful delta window.
 func (dm *Manager) ReseedFromCollector(cacheTimeMs, collectorKey uint16) {
-	if cacheTimeMs == collectorKey {
+	if dm == nil || cacheTimeMs == collectorKey {
 		return
 	}
 	dm.containerStatsMutex.Lock()
 	defer dm.containerStatsMutex.Unlock()
+	dm.initializeTrackingLocked()
 	collectorTimes := dm.lastNetworkReadTime[collectorKey]
 	if len(collectorTimes) == 0 {
 		return
@@ -689,88 +621,59 @@ func (dm *Manager) ReseedFromCollector(cacheTimeMs, collectorKey uint16) {
 	}
 }
 
-// Delete container stats from map using mutex
 func (dm *Manager) deleteContainerStatsSync(id string) {
 	dm.containerStatsMutex.Lock()
 	defer dm.containerStatsMutex.Unlock()
 	delete(dm.containerStatsMap, id)
-	for ct := range dm.lastCpuContainer {
-		delete(dm.lastCpuContainer[ct], id)
+	for cacheTime := range dm.lastCpuContainer {
+		delete(dm.lastCpuContainer[cacheTime], id)
 	}
-	for ct := range dm.lastCpuSystem {
-		delete(dm.lastCpuSystem[ct], id)
+	for cacheTime := range dm.lastCpuSystem {
+		delete(dm.lastCpuSystem[cacheTime], id)
 	}
-	for ct := range dm.lastNetworkReadTime {
-		delete(dm.lastNetworkReadTime[ct], id)
+	for cacheTime := range dm.lastNetworkReadTime {
+		delete(dm.lastNetworkReadTime[cacheTime], id)
 	}
 }
 
-// NewManager creates a new HTTP client for Docker or Podman API.
+// NewManager creates a native Moby client for Docker or Podman.
 func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 	dockerHost, exists := utils.GetEnv("DOCKER_HOST")
-	if exists {
-		// return nil if set to empty string
-		if dockerHost == "" {
-			return nil
-		}
-	} else {
+	if !exists {
 		dockerHost = getDockerHost()
 	}
+	if dockerHost == "" {
+		return nil
+	}
 
-	parsedURL, err := url.Parse(dockerHost)
+	parsedHost, err := mobyclient.ParseHostURL(dockerHost)
 	if err != nil {
 		slog.Error("Invalid DOCKER_HOST; Docker monitoring disabled", "host", dockerHost, "err", err)
 		return nil
 	}
-
-	transport := &http.Transport{
-		DisableCompression: true,
-		MaxConnsPerHost:    0,
-	}
-
-	switch parsedURL.Scheme {
-	case "unix":
-		transport.DialContext = func(ctx context.Context, proto, addr string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", parsedURL.Path)
-		}
-	case "tcp", "http":
-		transport.DialContext = func(ctx context.Context, proto, addr string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "tcp", parsedURL.Host)
-		}
-	case "https":
-		// Requests are built as plain http://, so a TLS endpoint would receive
-		// cleartext. Refuse it instead of silently downgrading.
+	if parsedHost.Scheme == "https" {
 		slog.Error("DOCKER_HOST https is not supported; Docker monitoring disabled", "host", dockerHost)
 		return nil
-	default:
-		slog.Error("Invalid DOCKER_HOST scheme; Docker monitoring disabled", "scheme", parsedURL.Scheme)
+	}
+	if parsedHost.Scheme != "unix" && parsedHost.Scheme != "tcp" && parsedHost.Scheme != "http" {
+		slog.Error("Invalid DOCKER_HOST scheme; Docker monitoring disabled", "scheme", parsedHost.Scheme)
 		return nil
 	}
 
-	// configurable timeout
-	timeout := time.Millisecond * time.Duration(dockerTimeoutMs)
-	if t, set := utils.GetEnv("DOCKER_TIMEOUT"); set {
-		timeout, err = time.ParseDuration(t)
+	timeout := time.Duration(dockerTimeoutMs) * time.Millisecond
+	if value, set := utils.GetEnv("DOCKER_TIMEOUT"); set {
+		timeout, err = time.ParseDuration(value)
 		if err != nil {
-			slog.Error("Invalid DOCKER_TIMEOUT; Docker monitoring disabled", "value", t, "err", err)
+			slog.Error("Invalid DOCKER_TIMEOUT; Docker monitoring disabled", "value", value, "err", err)
 			return nil
 		}
 		slog.Info("DOCKER_TIMEOUT", "timeout", timeout)
 	}
 
-	// Custom user-agent to avoid docker bug: https://github.com/docker/for-mac/issues/7575
-	userAgentTransport := &userAgentRoundTripper{
-		rt:        transport,
-		userAgent: "Docker-Client/",
-	}
-
-	// Read container exclusion patterns from environment variable
 	var excludeContainers []string
-	if excludeStr, set := utils.GetEnv("EXCLUDE_CONTAINERS"); set && excludeStr != "" {
-		parts := strings.SplitSeq(excludeStr, ",")
-		for part := range parts {
-			trimmed := strings.TrimSpace(part)
-			if trimmed != "" {
+	if excludeString, set := utils.GetEnv("EXCLUDE_CONTAINERS"); set && excludeString != "" {
+		for part := range strings.SplitSeq(excludeString, ",") {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
 				excludeContainers = append(excludeContainers, trimmed)
 			}
 		}
@@ -778,83 +681,112 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 	}
 
 	manager := &Manager{
-		onPodmanDetected: onPodmanDetected,
-		client: &http.Client{
-			Timeout:   timeout,
-			Transport: userAgentTransport,
-		},
-		containerStatsMap: make(map[string]*container.Stats),
-		sem:               make(chan struct{}, 5),
-		apiContainerList:  []*dockerapi.Info{},
-		apiStats:          &dockerapi.Stats{},
-		excludeContainers: excludeContainers,
-
-		// Initialize cache-time-aware tracking structures
+		onPodmanDetected:    onPodmanDetected,
+		sem:                 make(chan struct{}, 5),
+		containerStatsMap:   make(map[string]*container.Stats),
+		excludeContainers:   excludeContainers,
 		lastCpuContainer:    make(map[uint16]map[string]uint64),
 		lastCpuSystem:       make(map[uint16]map[string]uint64),
 		networkSentTrackers: make(map[uint16]*deltatracker.DeltaTracker[string, uint64]),
 		networkRecvTrackers: make(map[uint16]*deltatracker.DeltaTracker[string, uint64]),
 		lastNetworkReadTime: make(map[uint16]map[string]time.Time),
 	}
+	manager.client, err = mobyclient.New(
+		mobyclient.WithHost(dockerHost),
+		mobyclient.WithTimeout(timeout),
+		mobyclient.WithUserAgent("Docker-Client/"),
+		mobyclient.WithResponseHook(func(resp *http.Response) {
+			if resp != nil && detectPodmanFromHeader(resp.Header.Get("Server")) {
+				manager.libpodDetected.Store(true)
+			}
+		}),
+	)
+	if err != nil {
+		slog.Error("Invalid Docker client configuration; Docker monitoring disabled", "host", dockerHost, "err", err)
+		return nil
+	}
 
-	// Best-effort startup probe. If the engine is not ready yet, GetStats will
-	// retry after the first successful /containers/json request.
+	// Best-effort startup probe. If the engine is not ready, GetStats retries
+	// after the first successful container-list request.
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	_, _ = manager.checkDockerVersion(probeCtx)
-
 	return manager
 }
 
-// checkDockerVersion checks Docker version and sets goodDockerVersion if at least 25.0.0.
-// Versions before 25.0.0 have a bug with one-shot which requires all requests to be made in one batch.
+func getDockerHost() string {
+	socks := []string{"/var/run/docker.sock", fmt.Sprintf("/run/user/%v/podman/podman.sock", os.Getuid())}
+	for _, socket := range socks {
+		if _, err := os.Stat(socket); err == nil {
+			return "unix://" + socket
+		}
+	}
+	return "unix://" + socks[0]
+}
+
+// GetHostInfo fetches native Docker/Podman system information.
+func (dm *Manager) GetHostInfo(ctx context.Context) (info mobysystem.Info, err error) {
+	if dm == nil || dm.client == nil {
+		return info, nil
+	}
+	result, err := dm.client.Info(ctx, mobyclient.InfoOptions{})
+	if err != nil {
+		return info, err
+	}
+	return result.Info, nil
+}
+
+func (dm *Manager) IsPodman() bool {
+	if dm == nil {
+		return false
+	}
+	return dm.usingPodman.Load()
+}
+
+func (dm *Manager) syncPodmanDetection() {
+	if dm != nil && dm.libpodDetected.Load() {
+		dm.setIsPodman()
+	}
+}
+
+func (dm *Manager) setIsPodman() {
+	if dm.usingPodman.Swap(true) {
+		return
+	}
+	dm.goodDockerVersion = true
+	dm.dockerVersionChecked = true
+	if dm.onPodmanDetected != nil {
+		dm.onPodmanDetected()
+	}
+}
+
 func (dm *Manager) checkDockerVersion(ctx context.Context) (bool, error) {
-	resp, err := dm.get(ctx, "http://localhost/version")
+	if dm == nil || dm.client == nil {
+		return false, errDockerClientUnavailable
+	}
+	result, err := dm.client.ServerVersion(ctx, mobyclient.ServerVersionOptions{})
 	if err != nil {
 		return false, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		status := resp.Status
-		resp.Body.Close()
-		return false, fmt.Errorf("docker version request failed: %s", status)
+	dm.syncPodmanDetection()
+	switch {
+	case dm.libpodDetected.Load() || detectPodmanFromVersion(&result):
+		dm.setIsPodman()
+	case dockerMajorVersion(result.Version) > 24:
+		dm.goodDockerVersion = true
+	default:
+		slog.Info("Docker version is outdated; upgrade if possible", "version", result.Version)
 	}
-
-	var versionInfo dockerVersionResponse
-	serverHeader := resp.Header.Get("Server")
-	if err := dm.decode(resp, &versionInfo); err != nil {
-		return false, err
-	}
-
-	dm.applyDockerVersionInfo(serverHeader, &versionInfo)
 	dm.dockerVersionChecked = true
 	return true, nil
 }
 
-// ensureDockerVersionChecked retries the version probe after a successful
-// container list request.
 func (dm *Manager) ensureDockerVersionChecked(ctx context.Context) {
-	if dm.dockerVersionChecked {
-		return
-	}
-	if ctx.Err() != nil {
+	if dm.dockerVersionChecked || ctx.Err() != nil {
 		return
 	}
 	if _, err := dm.checkDockerVersion(ctx); err != nil {
 		slog.Debug("Failed to get Docker version", "err", err)
-	}
-}
-
-// applyDockerVersionInfo updates version-dependent behavior from engine metadata.
-func (dm *Manager) applyDockerVersionInfo(serverHeader string, versionInfo *dockerVersionResponse) {
-	if detectPodmanEngine(serverHeader, versionInfo) {
-		dm.setIsPodman()
-		return
-	}
-	// if version > 24, one-shot works correctly and we can limit concurrent operations
-	if dockerMajorVersion(versionInfo.Version) > 24 {
-		dm.goodDockerVersion = true
-	} else {
-		slog.Info(fmt.Sprintf("Docker %s is outdated. Upgrade if possible. See https://github.com/mordilloSan/go-monitoring/issues/58", versionInfo.Version))
 	}
 }
 
@@ -869,7 +801,6 @@ func dockerMajorVersion(version string) uint64 {
 	}
 	patch, _, _ := strings.Cut(patchAndSuffix, "-")
 	patch, _, _ = strings.Cut(patch, "+")
-
 	v, err := strconv.ParseUint(major, 10, 64)
 	if err != nil {
 		return 0
@@ -883,89 +814,11 @@ func dockerMajorVersion(version string) uint64 {
 	return v
 }
 
-// Decodes Docker API JSON response using a reusable buffer and decoder. Not thread safe.
-func (dm *Manager) decode(resp *http.Response, d any) error {
-	if dm.buf == nil {
-		// initialize buffer with 256kb starting size
-		dm.buf = bytes.NewBuffer(make([]byte, 0, 1024*256))
-		dm.decoder = json.NewDecoder(dm.buf)
-	}
-	defer resp.Body.Close()
-	defer dm.buf.Reset()
-	_, err := dm.buf.ReadFrom(resp.Body)
-	if err != nil {
-		return err
-	}
-	return dm.decoder.Decode(d)
-}
-
-// Test docker / podman sockets and return if one exists
-func getDockerHost() string {
-	scheme := "unix://"
-	socks := []string{"/var/run/docker.sock", fmt.Sprintf("/run/user/%v/podman/podman.sock", os.Getuid())}
-	for _, sock := range socks {
-		if _, err := os.Stat(sock); err == nil {
-			return scheme + sock
-		}
-	}
-	return scheme + socks[0]
-}
-
-// GetHostInfo fetches the system info from Docker
-func (dm *Manager) GetHostInfo(ctx context.Context) (info dockerapi.HostInfo, err error) {
-	if dm == nil {
-		return info, nil
-	}
-	resp, err := dm.get(ctx, "http://localhost/info")
-	if err != nil {
-		return info, err
-	}
-	defer resp.Body.Close()
-
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return info, err
-	}
-
-	return info, nil
-}
-
-func (dm *Manager) get(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	return dm.client.Do(req)
-}
-
-func (dm *Manager) IsPodman() bool {
-	if dm == nil {
-		return false
-	}
-	return dm.usingPodman
-}
-
-// setIsPodman sets the manager to Podman mode and updates system details accordingly.
-func (dm *Manager) setIsPodman() {
-	if dm.usingPodman {
-		return
-	}
-	dm.usingPodman = true
-	dm.goodDockerVersion = true
-	dm.dockerVersionChecked = true
-	// keep system details updated - this may be detected after startup if the
-	// container runtime is not ready yet.
-	if dm.onPodmanDetected != nil {
-		dm.onPodmanDetected()
-	}
-}
-
-// detectPodmanFromHeader identifies Podman from the Docker API server header.
 func detectPodmanFromHeader(server string) bool {
 	return strings.HasPrefix(server, "Libpod")
 }
 
-// detectPodmanFromVersion identifies Podman from the version payload.
-func detectPodmanFromVersion(versionInfo *dockerVersionResponse) bool {
+func detectPodmanFromVersion(versionInfo *mobyclient.ServerVersionResult) bool {
 	if versionInfo == nil {
 		return false
 	}
@@ -975,12 +828,4 @@ func detectPodmanFromVersion(versionInfo *dockerVersionResponse) bool {
 		}
 	}
 	return false
-}
-
-// detectPodmanEngine checks both header and version metadata for Podman.
-func detectPodmanEngine(serverHeader string, versionInfo *dockerVersionResponse) bool {
-	if detectPodmanFromHeader(serverHeader) {
-		return true
-	}
-	return detectPodmanFromVersion(versionInfo)
 }

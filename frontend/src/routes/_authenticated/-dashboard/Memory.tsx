@@ -1,31 +1,28 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 
-import { linuxio, type MemoryInfoResponse } from "@/api";
+import { linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
-import { DASHBOARD_REFETCH_MEMORY_MS } from "@/constants/liveCharts";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { formatFileSize } from "@/utils/formaters";
 
 import DashboardStatRows from "./DashboardStatRows";
 
-const calculatePercentage = (used: number, total: number) =>
-  ((used / total) * 100).toFixed(2);
-
-const selectRamUsagePercent = (memoryData: MemoryInfoResponse): number =>
-  memoryData?.system?.active
-    ? parseFloat(
-        calculatePercentage(memoryData.system.active, memoryData.system.total),
-      )
-    : 0;
+const selectRamUsagePercent = (memory: {
+  total_bytes: number;
+  used_bytes: number;
+}): number =>
+  memory.total_bytes > 0 ? (memory.used_bytes / memory.total_bytes) * 100 : 0;
 
 const MemoryStats = () => {
-  const { data: memoryData } = useSuspenseQuery({
-    ...linuxio.system.get_memory_info,
-    refetchInterval: DASHBOARD_REFETCH_MEMORY_MS,
+  const { data: memory } = useSuspenseQuery({
+    ...linuxio.monitoring.get_live,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+    select: (live) => live.memory,
   });
 
   const swapUsed = Math.max(
-    (memoryData?.system?.swapTotal ?? 0) - (memoryData?.system?.swapFree ?? 0),
+    (memory.swap_total_bytes ?? 0) - (memory.swap_free_bytes ?? 0),
     0,
   );
 
@@ -34,19 +31,19 @@ const MemoryStats = () => {
       rows={[
         {
           label: "Usage",
-          value: `${formatFileSize(memoryData?.system?.active ?? 0, 2)} / ${formatFileSize(memoryData?.system?.total ?? 0, 2)}`,
+          value: `${formatFileSize(memory.used_bytes ?? 0, 2)} / ${formatFileSize(memory.total_bytes ?? 0, 2)}`,
         },
         {
           label: "Swap",
-          value: `${formatFileSize(swapUsed, 2)} / ${formatFileSize(memoryData?.system?.swapTotal ?? 0, 2)}`,
+          value: `${formatFileSize(swapUsed, 2)} / ${formatFileSize(memory.swap_total_bytes ?? 0, 2)}`,
         },
         {
           label: "Docker",
-          value: formatFileSize(memoryData?.docker?.used ?? 0, 2),
+          value: formatFileSize(memory.docker_used_bytes ?? 0, 2),
         },
         {
           label: "ZFS ARC",
-          value: formatFileSize(memoryData?.zfs?.arc ?? 0, 2),
+          value: formatFileSize(memory.zfs_arc_bytes ?? 0, 2),
         },
       ]}
     />
@@ -55,9 +52,9 @@ const MemoryStats = () => {
 
 const MemoryGauge = () => {
   const { data: ramUsagePercentage } = useSuspenseQuery({
-    ...linuxio.system.get_memory_info,
-    refetchInterval: DASHBOARD_REFETCH_MEMORY_MS,
-    select: selectRamUsagePercent,
+    ...linuxio.monitoring.get_live,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+    select: (live) => selectRamUsagePercent(live.memory),
   });
 
   return (

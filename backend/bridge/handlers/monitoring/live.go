@@ -32,7 +32,13 @@ func FetchLive(ctx context.Context) (monitoringapi.Live, error) {
 	}
 	var live monitoringapi.Live
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxLivePayloadBytes)).Decode(&live); err != nil {
+		if ctx.Err() != nil {
+			return monitoringapi.Live{}, ctx.Err()
+		}
 		return monitoringapi.Live{}, fmt.Errorf("decode live payload: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return monitoringapi.Live{}, err
 	}
 	return live, nil
 }

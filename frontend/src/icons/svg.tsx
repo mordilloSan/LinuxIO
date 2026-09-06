@@ -126,6 +126,14 @@ export const CpuIcon = () => (
   </svg>
 );
 
+export const ProcessIcon = () => (
+  <svg {...s}>
+    <rect height="5" rx="1" width="18" x="3" y="4" />
+    <rect height="5" rx="1" width="18" x="3" y="15" />
+    <path d="M7 6.5h.01M7 17.5h.01M11 6.5h7M11 17.5h7" />
+  </svg>
+);
+
 export const FolderIcon = () => (
   <svg {...s}>
     <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />

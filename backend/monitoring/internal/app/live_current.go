@@ -69,7 +69,15 @@ func (a *App) CurrentPlugin(ctx context.Context, plugin string) (int64, json.Raw
 	}
 	switch plugin {
 	case store.PluginProcesses, store.PluginPrograms, store.PluginContainerTelemetry:
-		return a.currentProcessPlugin(ctx, plugin)
+		payloads, capturedAt, err := a.currentLiveProcessPayloads(ctx)
+		if err != nil {
+			return 0, nil, err
+		}
+		raw, ok := payloads[plugin]
+		if !ok {
+			return 0, nil, fmt.Errorf("unknown plugin %q", plugin)
+		}
+		return capturedAt.UTC().UnixMilli(), raw, nil
 	default:
 		return a.collectCurrentPlugin(ctx, plugin)
 	}
@@ -91,30 +99,25 @@ func (a *App) CurrentPlugins(ctx context.Context, plugins []string) (int64, map[
 		return sample.capturedAt, batch.raw, batch.errs
 	}
 
-	var identities []container.Identity
 	collectProcessBatch := batch.wantsAny(processPluginNames)
-	if collectProcessBatch {
-		var err error
-		identities, err = a.collectLiveContainerIdentities(ctx)
-		if err != nil {
-			batch.failRequested(err, processPluginNames...)
-			collectProcessBatch = false
-		}
-	}
 
 	// Written by the single system-batch group and read after wg.Wait().
 	var systemCapturedAt time.Time
+	var processCapturedAt time.Time
 	groups := []func(){
 		func() { systemCapturedAt = a.collectCurrentSystemBatch(ctx, batch) },
 		func() { a.collectCurrentStandaloneBatch(ctx, batch) },
 	}
 	if collectProcessBatch {
-		groups = append(groups, func() { a.collectCurrentProcessBatch(ctx, batch, identities) })
+		groups = append(groups, func() { processCapturedAt = a.collectCurrentProcessBatch(ctx, batch) })
 	}
 	runCurrentCollectionGroups(groups...)
 	capturedAt := systemCapturedAt
 	if capturedAt.IsZero() {
-		capturedAt = time.Now()
+		capturedAt = processCapturedAt
+		if capturedAt.IsZero() {
+			capturedAt = time.Now()
+		}
 	}
 	return capturedAt.UTC().UnixMilli(), batch.raw, batch.errs
 }
@@ -237,20 +240,21 @@ func (a *App) collectCurrentSystemBatch(ctx context.Context, batch *currentPlugi
 	return capturedAt
 }
 
-func (a *App) collectCurrentProcessBatch(ctx context.Context, batch *currentPluginBatch, identities []container.Identity) {
+func (a *App) collectCurrentProcessBatch(ctx context.Context, batch *currentPluginBatch) time.Time {
 	if !batch.wantsAny(processPluginNames) {
-		return
+		return time.Time{}
 	}
-	payloads, err := a.collectProcessPluginPayloadsWithIdentities(ctx, identities)
+	payloads, capturedAt, err := a.currentLiveProcessPayloads(ctx)
 	if err != nil {
 		batch.failRequested(err, processPluginNames...)
-		return
+		return time.Time{}
 	}
 	for _, plugin := range processPluginNames {
 		if batch.requested[plugin] {
 			batch.setRaw(plugin, payloads[plugin])
 		}
 	}
+	return capturedAt
 }
 
 func (a *App) collectCurrentStandaloneBatch(ctx context.Context, batch *currentPluginBatch) {
@@ -319,29 +323,6 @@ func (a *App) collectCurrentPlugin(ctx context.Context, plugin string) (int64, j
 
 	sampleKey := liveSampleKey(plugin)
 	return a.collectSystemPlugin(ctx, plugin, sampleKey, plugin == store.PluginContainers)
-}
-
-func (a *App) currentProcessPlugin(ctx context.Context, plugin string) (int64, json.RawMessage, error) {
-	payloads, err := a.collectProcessPluginPayloads(ctx)
-	if err != nil {
-		return 0, nil, err
-	}
-	raw, ok := payloads[plugin]
-	if !ok {
-		return 0, nil, fmt.Errorf("unknown plugin %q", plugin)
-	}
-	return time.Now().UTC().UnixMilli(), raw, nil
-}
-
-func (a *App) collectProcessPluginPayloads(ctx context.Context) (map[string]json.RawMessage, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	identities, err := a.collectLiveContainerIdentities(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return a.collectProcessPluginPayloadsWithIdentities(ctx, identities)
 }
 
 func (a *App) collectLiveContainerIdentities(ctx context.Context) ([]container.Identity, error) {
@@ -422,6 +403,7 @@ func (a *App) collectLiveCurrentData(ctx context.Context, sampleKey uint16, incl
 		details := a.systemInfoManager.systemDetails
 		data.Details = &details
 	}
+	a.detachLiveSampleLocked(data)
 	return data, nil
 }
 

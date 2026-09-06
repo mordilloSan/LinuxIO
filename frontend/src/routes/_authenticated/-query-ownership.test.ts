@@ -123,13 +123,13 @@ describe("targeted route query ownership", () => {
     expect(dashboardRoute).toContain("linuxio.system.get_health_summary");
     expect(dashboardRoute).toContain("context.access.dockerAvailable === true");
     expect(dashboardRoute).not.toContain(".queryOptions(");
-    expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(16);
+    expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(13);
     expect(hardwareRoute).toContain("sections.sensors");
     expect(hardwareRoute).toContain("sections.systemInfo");
     expect(hardwareRoute).toContain("sections.pciDevices");
     expect(hardwareRoute).toContain("sections.memoryModules");
     expect(hardwareRoute).not.toContain(".queryOptions(");
-    expect(hardwareRoute.match(/linuxio\./g)).toHaveLength(7);
+    expect(hardwareRoute.match(/linuxio\./g)).toHaveLength(8);
     expect(dashboardPage).toContain("<Suspense");
     expect(dashboardPage).toContain("<DashboardCardSkeleton");
     expect(dashboardPage).not.toContain("WidgetLoader");
@@ -157,13 +157,13 @@ describe("targeted route query ownership", () => {
       "hardware/-components/HardwareHistoryCards.tsx",
     );
 
-    expect(route).not.toContain("linuxio.monitoring.");
     for (const endpoint of [
       "get_cpu_history",
       "get_memory_history",
       "get_diskio_history",
       "get_network_history",
     ]) {
+      expect(route).not.toContain(`linuxio.monitoring.${endpoint}`);
       expect(cards).toContain(`linuxio.monitoring.${endpoint}`);
     }
   });

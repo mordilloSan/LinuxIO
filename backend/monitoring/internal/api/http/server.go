@@ -305,11 +305,15 @@ func (s *Server) handleSystemSummary(w http.ResponseWriter, r *http.Request) {
 // liveSectionPlugins maps live payload sections to the plugin allowlist a
 // configured listener may restrict.
 var liveSectionPlugins = map[string][]string{
-	"cpu":        {store.PluginCPU},
-	"memory":     {store.PluginMem, store.PluginSwap},
-	"disks":      {store.PluginDiskIO},
-	"interfaces": {store.PluginNetwork},
-	"containers": {store.PluginContainers, store.PluginContainerTelemetry},
+	"cpu":         {store.PluginCPU},
+	"memory":      {store.PluginMem, store.PluginSwap},
+	"disks":       {store.PluginDiskIO},
+	"interfaces":  {store.PluginNetwork},
+	"filesystems": {store.PluginFS},
+	"sensors":     {store.PluginSensors},
+	"gpus":        {store.PluginGPU},
+	"smart":       {store.PluginSmart},
+	"containers":  {store.PluginContainers, store.PluginContainerTelemetry},
 }
 
 func (s *Server) handleLive(plugins []string) http.HandlerFunc {
@@ -355,7 +359,7 @@ func (s *Server) handleLive(plugins []string) http.HandlerFunc {
 // allowlist does not cover, keeping the response shape byte-stable.
 func redactLiveSections(live *monitoringapi.Live, permitted func(string) bool) {
 	if !permitted("cpu") {
-		live.CPU = monitoringapi.LiveCPU{PerCorePercent: []float64{}}
+		live.CPU = monitoringapi.LiveCPU{PerCorePercent: []float64{}, FrequenciesMHz: []float64{}, Temperatures: map[string]float64{}}
 	}
 	if !permitted("memory") {
 		live.Memory = monitoringapi.LiveMemory{}
@@ -365,6 +369,18 @@ func redactLiveSections(live *monitoringapi.Live, permitted func(string) bool) {
 	}
 	if !permitted("interfaces") {
 		live.Interfaces = map[string]monitoringapi.LiveInterface{}
+	}
+	if !permitted("filesystems") {
+		live.Filesystems = []monitoringapi.FilesystemInfo{}
+	}
+	if !permitted("sensors") {
+		live.Sensors = []monitoringapi.SensorGroup{}
+	}
+	if !permitted("gpus") {
+		live.GPUs = map[string]monitoringapi.LiveGPU{}
+	}
+	if !permitted("smart") {
+		live.Smart = map[string]monitoringapi.LiveSmart{}
 	}
 	if !permitted("containers") {
 		live.Containers = monitoringapi.LiveContainers{Items: []monitoringapi.LiveContainer{}}

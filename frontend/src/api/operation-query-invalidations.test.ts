@@ -154,6 +154,12 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     }
   });
 
+  it("refreshes live SMART records after a daemon refresh", () => {
+    expect(OPERATION_QUERY_INVALIDATIONS["monitoring.refresh_smart"]).toEqual([
+      ["linuxio", "monitoring", "get_live"],
+    ]);
+  });
+
   it("invalidates only cacheable Call routes or handler prefixes", () => {
     for (const [route, keys] of Object.entries(OPERATION_QUERY_INVALIDATIONS)) {
       for (const queryKey of keys) {

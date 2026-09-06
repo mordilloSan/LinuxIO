@@ -356,6 +356,9 @@ func (gm *GPUManager) parseNvidiaData(output []byte) bool {
 		}
 		// update gpu data
 		gpu := gm.GpuDataMap[id]
+		if strings.Contains(id, ":") {
+			gpu.Address = normalizePCIAddress(id)
+		}
 		gpu.Temperature = temp
 		gpu.MemoryUsed = memoryUsage / mebibytesInAMegabyte
 		gpu.MemoryTotal = totalMemory / mebibytesInAMegabyte
@@ -459,9 +462,11 @@ func (gm *GPUManager) calculateGPUAverage(id string, gpu *system.GPUData, cacheK
 		// If GPU appears suspended (instantaneous values are 0), return zero values
 		// Otherwise return last known average for temporary collection gaps
 		if gpu.Temperature == 0 && gpu.MemoryUsed == 0 {
-			return system.GPUData{Name: gpu.Name}
+			return system.GPUData{Name: gpu.Name, Address: gpu.Address}
 		}
-		return gm.lastAvgData[id] // zero value if not found
+		average := gm.lastAvgData[id] // zero value if not found
+		average.Address = gpu.Address
+		return average
 	}
 
 	// Calculate new average
@@ -520,6 +525,7 @@ func (gm *GPUManager) calculateIntelGPUUsage(gpuAvg, gpu *system.GPUData, lastSn
 
 // updateInstantaneousValues updates values that should reflect current state, not averages
 func (gm *GPUManager) updateInstantaneousValues(gpuAvg *system.GPUData, gpu *system.GPUData) {
+	gpuAvg.Address = gpu.Address
 	gpuAvg.Temperature = utils.TwoDecimals(gpu.Temperature)
 	gpuAvg.MemoryUsed = utils.TwoDecimals(gpu.MemoryUsed)
 	gpuAvg.MemoryTotal = utils.TwoDecimals(gpu.MemoryTotal)

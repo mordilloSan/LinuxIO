@@ -147,10 +147,21 @@ additionally accept the finished collector sample through the handoff.
 Sleeping disks stay asleep: filesystem usage is served from the disk-usage cache
 when `collector.disk_usage_cache` is non-zero, and SMART data comes from the
 SMART cache on its own refresh interval, refreshed with `smartctl -n standby` so
-a standby drive keeps serving its cached record. Only counters and hwmon
-temperatures are sampled per collection; the daemon reads those through
-gopsutil's sysfs sensors (`backend/monitoring/internal/app/sensors.go`), not by
-running a helper program.
+a standby drive keeps serving its cached record. Drive power readings have a
+15-second cache. Each host collection also reads counters, CPU frequencies,
+hwmon temperatures, GPU measurements and the adapter readings from `sensors -j`.
+Missing sensor or SMART tools leave their optional sections empty.
+
+Live SMART records also include typed self-test history, NVMe health details
+and power counters for the storage page. The history writer projects them
+back to the original compact SMART fields before writing JSON to SQLite.
+
+Docker and Podman reads use the repository's Moby client for API negotiation,
+container listing, one-shot stats, version, host info and health inspection.
+The daemon retains its per-key CPU and network baselines, memory-cache
+subtraction, exclusion patterns and request deadlines. Docker 25 and newer
+and Podman use at most five concurrent stats requests; older Docker versions
+retain the batch behavior required by their one-shot stats endpoint.
 
 ## HTTP API
 
@@ -187,25 +198,44 @@ before it opens the sockets. There is no health file.
 
 `api.Live` (`backend/monitoring/api/live.go`) is a byte-precise, LinuxIO-shaped
 payload built for the bridge, which reads it over `api.sock`
-(`monitoring.FetchLive`) and uses it today for Docker container metrics:
+(`monitoring.FetchLive`). The unprivileged `monitoring.get_live` bridge route
+embeds this contract in the generated frontend API. Dashboard, hardware, network
+and storage views select measurements from this shared query:
 
 | Field | Content |
 |-------|---------|
 | `captured_at_ms` | Sample time in Unix milliseconds |
 | `uptime_seconds` | Host uptime |
-| `cpu` | Total percent, per-core percent, breakdown (user, system, iowait, steal, idle) and the three load averages |
+| `cpu` | Total percent, per-core percent, breakdown (user, system, iowait, steal, idle), three load averages, per-core MHz and CPU temperatures |
 | `memory` | Total, used, available, free, cached, buffers, shared, swap total, swap free, ZFS ARC and Docker-used bytes |
 | `disks` | Per physical block device: read and write bytes per second and operations per second |
 | `disk_io` | Host totals across those devices |
-| `interfaces` | Per interface: rx and tx bytes per second plus rx and tx byte totals |
+| `interfaces` | Per interface: rx and tx bytes per second, byte and packet totals, errors and drops |
+| `filesystems` | Per mount: device, mountpoint, filesystem type, byte usage, inode usage and read-only state |
+| `sensors` | Adapter groups and their labeled numeric or boolean readings |
+| `gpus` | GPU measurements keyed by PCI address, or collector ID when no address is available |
+| `smart` | Typed SMART records keyed by device name, with cached drive power readings |
 | `containers` | Own `captured_at_ms` and items with id, name, CPU percent (Docker's multi-core convention), memory bytes, rx and tx bytes per second, and block read and write bytes per second when container telemetry is fresh |
 
-The `filesystems`, `sensors`, `gpus` and `smart` sections of the approved design
-are not part of this payload yet, and the payload is not embedded in
-`apischema`: the dashboard still reads those values through the bridge's own
-`system.get_*` routes. Embedding `api.Live` in the public contract, exposing it
-as `monitoring.get_live`, and moving those four sections into it come with the
-later plans in [the plan document](TODO/linuxio-monitoring.md).
+The bridge caches successful CPU, GPU and motherboard identity reads for its
+process lifetime. Hosts without DMI expose empty motherboard fields so widgets
+can use system identity fallbacks or show unavailable values. Other DMI read
+errors remain retryable. Frontend identity queries use a day-long stale time
+without periodic refetching. GPU views join live measurements to that identity by PCI
+address. Drive inventory and network configuration remain managed bridge data.
+
+### Processes and programs
+
+The unprivileged `monitoring.get_processes` and `monitoring.get_programs` bridge
+routes read `/api/v1/processes` and `/api/v1/programs` through `api.sock`.
+Processes include command arguments, user, status, threads, CPU and memory
+usage, disk I/O rates and container attribution. The response also includes
+the daemon's process counts. Programs group CPU and memory usage by name and
+include their process count and PIDs.
+
+The authenticated `/processes` page polls every two seconds. Its virtualized
+table supports process/program views, sorting and text filtering. Process
+actions remain outside this read-only page.
 
 ### Plugin allowlist on configured listeners
 
@@ -221,6 +251,10 @@ Sections map to plugins as follows:
 | `memory` | `mem`, `swap` |
 | `disks` and `disk_io` | `diskio` |
 | `interfaces` | `network` |
+| `filesystems` | `fs` |
+| `sensors` | `sensors` |
+| `gpus` | `gpu` |
+| `smart` | `smart` |
 | `containers` | `containers`, `container_telemetry` |
 
 `captured_at_ms` and `uptime_seconds` are always present. The two fixed sockets
@@ -247,6 +281,11 @@ every command is correlatable in the journal.
 | `smart.refresh` | Refreshes the SMART cache now |
 | `db.check` | Integrity-checks the database |
 | `db.maintain` | Runs database maintenance |
+
+The bridge exposes `smart.refresh`, `db.check` and `db.maintain` as
+`monitoring.refresh_smart`, `monitoring.check_database` and
+`monitoring.maintain_database`. These routes require a privileged session and
+send commands through `control.sock`.
 
 `config.set` reports `restart_required: true` whenever the request carries a
 `listeners` key, identical or not, because listener changes only take effect on
@@ -332,14 +371,15 @@ packages.
 
 `lm_sensors` and `smartmontools` remain ordinary bridge-detected, installable
 capabilities, and the frontend keeps gating the sensor and SMART views on them.
-The daemon itself needs neither for temperatures — it reads hwmon through
-gopsutil — but it does shell out to `smartctl`, and when that binary is missing
-it leaves the SMART data empty rather than failing a collection.
+The daemon reads CPU temperatures through hwmon, adapter readings through
+`sensors -j`, and SMART records through `smartctl`. Missing helpers leave the
+corresponding optional readings empty.
 
-A daemon that is down does not break unrelated features: the bridge's live read
-returns `ErrUnavailable`, the Docker container list still renders with its
-per-container metrics marked `unavailable`, and the privileged history, status
-and configuration routes surface the error to the UI. See
+A daemon that is down does not break unrelated features: the bridge's public
+live route returns zero measurements with an unset capture time, process and
+program routes return empty lists, and Docker container metrics report
+`unavailable`. Privileged history, status and configuration routes surface the
+error to the UI. See
 [Capabilities](capabilities.md).
 
 ## Troubleshooting
@@ -396,5 +436,5 @@ delete, so the old history stays available for inspection.
 - [Capabilities](capabilities.md) — detection, gating and the install flow.
 - [Filesystem Indexer](indexer.md) — the other first-party daemon, same socket
   and privilege pattern.
-- [linuxio-monitoring plan](TODO/linuxio-monitoring.md) — the approved design,
-  including the parts still pending.
+- [linuxio-monitoring plan](TODO/linuxio-monitoring.md) — the approved design
+  and implementation record.

@@ -21,6 +21,8 @@ import "@/icons/icons";
 import "@/icons/shell";
 import "@/theme/variables.css";
 
+import ProcessesFixturePage from "./routes/ProcessesPage";
+
 installTabNavigationIntent();
 
 const UsersPage = lazy(() => import("./routes/UsersPage"));
@@ -165,6 +167,18 @@ const stylingLightRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "styling/light",
 });
+const processesRoute = createRoute({
+  component: ProcessesFixturePage,
+  getParentRoute: () => rootRoute,
+  path: "processes",
+  validateSearch: (search) => ({
+    filter:
+      typeof search.filter === "string" && search.filter
+        ? search.filter
+        : undefined,
+    view: search.view === "programs" ? ("programs" as const) : undefined,
+  }),
+});
 const accountsIndexRoute = createRoute({
   component: UsersPage,
   getParentRoute: () => accountsRoute,
@@ -203,6 +217,7 @@ const routeTree = rootRoute.addChildren([
   virtualGridRoute,
   stylingDarkRoute,
   stylingLightRoute,
+  processesRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

@@ -3,15 +3,12 @@ import type { CSSProperties, ReactNode } from "react";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 
-import type { DriveInfo } from "../types";
-import { getSmartNumber, getSmartString } from "../utils";
+import type { DriveInfo, SmartData } from "../types";
 
 interface DriveInfoTabProps {
-  deviceInfo?: Record<string, unknown>;
   drive: DriveInfo;
   rawDriveSize?: string;
-  smartData?: Record<string, unknown>;
-  smartHealth?: { passed?: boolean };
+  smartData?: SmartData;
 }
 
 interface DriveInfoRow {
@@ -39,8 +36,6 @@ export const DriveInfoTab = ({
   drive,
   rawDriveSize,
   smartData,
-  deviceInfo,
-  smartHealth,
 }: DriveInfoTabProps) => {
   const isNvme = drive.transport === "nvme";
   const rows: DriveInfoRow[] = [
@@ -49,7 +44,7 @@ export const DriveInfoTab = ({
     { property: "Vendor", value: drive.vendor || "N/A" },
     {
       property: "Firmware Version",
-      value: getSmartString(smartData?.firmware_version) || "N/A",
+      value: smartData?.firmware_version || "N/A",
     },
     { property: "Capacity", value: rawDriveSize || "N/A" },
     {
@@ -63,43 +58,33 @@ export const DriveInfoTab = ({
     rows.push(
       {
         property: "NVMe Version",
-        value: getSmartString(smartData?.nvme_version) || "N/A",
+        value:
+          smartData?.nvme_version?.string ??
+          smartData?.nvme_version?.value?.toString() ??
+          "N/A",
       },
       {
         property: "Number of Namespaces",
-        value:
-          getSmartNumber(smartData?.nvme_number_of_namespaces)?.toString() ||
-          "N/A",
+        value: smartData?.nvme_number_of_namespaces?.toString() ?? "N/A",
       },
     );
   }
 
-  if (deviceInfo) {
+  if (smartData?.device) {
     rows.push(
-      {
-        property: "Device Type",
-        value: getSmartString(deviceInfo.type) || "N/A",
-      },
-      {
-        property: "Protocol",
-        value: getSmartString(deviceInfo.protocol) || "N/A",
-      },
+      { property: "Device Type", value: smartData.device.type },
+      { property: "Protocol", value: smartData.device.protocol },
     );
   }
 
   rows.push({
     property: "SMART Health",
-    value:
-      smartHealth?.passed === true
-        ? "Passed"
-        : smartHealth?.passed === false
-          ? "Failed"
-          : "Unknown",
+    value: smartData?.smart_status || "Unknown",
     valueStyle: {
       color:
-        smartHealth?.passed === true
+        smartData?.smart_status === "PASSED"
           ? "var(--app-palette-success-main)"
-          : smartHealth?.passed === false
+          : smartData?.smart_status === "FAILED"
             ? "var(--app-palette-error-main)"
             : "inherit",
     },

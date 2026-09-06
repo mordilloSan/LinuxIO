@@ -49,6 +49,12 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 		"config.set",
 		"config.set_ui",
 		"system.get_cpu_info",
+		"monitoring.get_live",
+		"monitoring.get_processes",
+		"monitoring.get_programs",
+		"monitoring.refresh_smart",
+		"monitoring.check_database",
+		"monitoring.maintain_database",
 		"network.get_bridge_options",
 		"network.create_bridge",
 		"network.start_bridge_handoff",
@@ -86,7 +92,7 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 219; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 218; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeTask], 18; got != want {
@@ -197,10 +203,10 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
 	}
-	if count != 95 {
-		t.Fatalf("retry-safe Call count = %d, want 95", count)
+	if count != 93 {
+		t.Fatalf("retry-safe Call count = %d, want 93", count)
 	}
-	for _, route := range []string{"config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "tasks.get", "virt.preflight", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
+	for _, route := range []string{"config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "tasks.get", "virt.preflight", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
 			t.Errorf("%s should be explicitly retry-safe", route)
 		}
@@ -210,11 +216,9 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 		"docker.get_icon",
 		"docker.get_icon_uri",
 		"docker.start_container",
-		"network.get_interface_stats",
 		"network.get_network_info",
 		"network.create_bridge",
 		"network.start_bridge_handoff",
-		"system.get_disk_throughput",
 		"system.get_health_summary",
 		"system.get_updates_fast",
 		"tasks.cancel",
@@ -222,6 +226,18 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 	} {
 		if mustRoute(t, route).RetrySafe {
 			t.Errorf("%s should default to no retry", route)
+		}
+	}
+}
+
+func TestMonitoringMaintenanceRoutesArePrivileged(t *testing.T) {
+	for _, route := range []string{"monitoring.refresh_smart", "monitoring.check_database", "monitoring.maintain_database"} {
+		spec := mustRoute(t, route)
+		if !spec.Privileged {
+			t.Errorf("%s should be privileged", route)
+		}
+		if spec.RetrySafe {
+			t.Errorf("%s should not be retry-safe", route)
 		}
 	}
 }

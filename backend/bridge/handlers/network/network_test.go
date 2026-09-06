@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shirou/gopsutil/v4/net"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
 	bridgeruntime "github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -182,41 +180,6 @@ func TestMapBridgeOptionsPreservesCandidatesAndHostWarnings(t *testing.T) {
 	}
 }
 
-func TestNetworkInterfaceCountersReportTheSnapshotRaw(t *testing.T) {
-	snapshots := map[string]net.IOCountersStat{
-		"eth0": {
-			Name:        "eth0",
-			BytesRecv:   4096,
-			BytesSent:   2048,
-			PacketsRecv: 40,
-			PacketsSent: 20,
-			Errin:       3,
-			Errout:      2,
-			Dropin:      1,
-			Dropout:     5,
-		},
-	}
-
-	counters := networkInterfaceCounters("eth0", snapshots)
-
-	expected := apischema.NetworkInterfaceCounters{
-		RXBytes:   4096,
-		RXDropped: 1,
-		RXErrors:  3,
-		RXPackets: 40,
-		TXBytes:   2048,
-		TXDropped: 5,
-		TXErrors:  2,
-		TXPackets: 20,
-	}
-	if counters != expected {
-		t.Fatalf("expected %+v, got %+v", expected, counters)
-	}
-	if zero := networkInterfaceCounters("eth1", snapshots); zero != (apischema.NetworkInterfaceCounters{}) {
-		t.Fatalf("expected zero counters without a snapshot, got %+v", zero)
-	}
-}
-
 func withInstalledUnits(t *testing.T, units ...string) {
 	t.Helper()
 	installed := make(map[string]struct{}, len(units))
@@ -294,10 +257,7 @@ func TestLiveInterfaceInfoAlwaysSerialisesArrays(t *testing.T) {
 		stdnet.Interface{Name: "eth9"},
 		nil,
 		"",
-		map[string]net.IOCountersStat{},
-		1,
 	)
-
 	encoded, err := json.Marshal(info)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

@@ -160,6 +160,9 @@ func (gm *GPUManager) updateAmdGpuData(cardPath string) bool {
 		gpu = &system.GPUData{Name: getAmdGpuName(devicePath)}
 		gm.GpuDataMap[id] = gpu
 	}
+	if address, err := filepath.EvalSymlinks(devicePath); err == nil {
+		gpu.Address = normalizePCIAddress(filepath.Base(address))
+	}
 
 	if usageErr == nil {
 		gpu.Usage += usage

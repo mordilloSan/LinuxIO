@@ -3,10 +3,9 @@
 Each active plan has its own document:
 
 - [API reliability, recovery, and notifications](./api-reliability-roadmap.md)
-- [Docker management](./docker-management-roadmap.md)
+- [Docker management: activity, audit, and events](./docker-management-roadmap.md)
 - [Frontend task state unification](./frontend-task-state-unification.md)
 - [Frontend test coverage](./e2e-testing.md)
-- [linuxio-monitoring: import go-monitoring as a first-party service](./linuxio-monitoring.md)
 - [Notifications](./notifications.md)
 - [Scheduled execution](./scheduled-execution.md)
 - [VM bridged networking](./vm-bridge-networking-plan.md)

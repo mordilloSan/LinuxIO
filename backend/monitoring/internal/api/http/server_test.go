@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -732,24 +733,34 @@ func TestPluginAllowlistFiltersRoutes(t *testing.T) {
 
 func TestLiveRouteFiltersSectionsByAllowlist(t *testing.T) {
 	tests := []struct {
-		name           string
-		plugins        []string
-		wantInterfaces int
+		name         string
+		plugins      []string
+		wantSections []string
 	}{
-		{name: "lowercase", plugins: []string{"cpu"}},
+		{name: "lowercase", plugins: []string{"cpu"}, wantSections: []string{"cpu"}},
 		// NewRegistry lower-cases and trims the allowlist, so the live
 		// sections must be matched the same way.
-		{name: "mixed case", plugins: []string{"CPU"}},
+		{name: "mixed case", plugins: []string{"CPU"}, wantSections: []string{"cpu"}},
+		{name: "filesystem only", plugins: []string{"fs"}, wantSections: []string{"filesystems"}},
+		{name: "sensors only", plugins: []string{"sensors"}, wantSections: []string{"sensors"}},
+		{name: "GPU only", plugins: []string{"gpu"}, wantSections: []string{"gpus"}},
+		{name: "SMART only", plugins: []string{"smart"}, wantSections: []string{"smart"}},
 		// daemon.Listeners turns a configured empty plugin list into nil, which
 		// is the "all metrics plugins" allowlist.
-		{name: "nil means all plugins", plugins: nil, wantInterfaces: 1},
+		{name: "nil means all plugins", plugins: nil, wantSections: []string{"cpu", "interfaces", "filesystems", "sensors", "gpus", "smart"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := NewServer(Options{Live: func(context.Context) (monitoringapi.Live, error) {
 				return monitoringapi.Live{
-					CPU:        monitoringapi.LiveCPU{Percent: 50},
-					Interfaces: map[string]monitoringapi.LiveInterface{"eth0": {RxBytesPerSec: 1}},
+					CapturedAtMs:  1234,
+					UptimeSeconds: 5678,
+					CPU:           monitoringapi.LiveCPU{Percent: 50, FrequenciesMHz: []float64{3200}, Temperatures: map[string]float64{"package": 55}},
+					Interfaces:    map[string]monitoringapi.LiveInterface{"eth0": {RxBytesPerSec: 1}},
+					Filesystems:   []monitoringapi.FilesystemInfo{{Mountpoint: "/", Total: 1024}},
+					Sensors:       []monitoringapi.SensorGroup{{Adapter: "coretemp"}},
+					GPUs:          map[string]monitoringapi.LiveGPU{"0000:01:00.0": {}},
+					Smart:         map[string]monitoringapi.LiveSmart{"sda": {}},
 				}, nil
 			}})
 			handler := srv.HandlerFor(func() time.Duration { return time.Minute }, []string{"metrics"}, tt.plugins)
@@ -762,8 +773,18 @@ func TestLiveRouteFiltersSectionsByAllowlist(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &live); err != nil {
 				t.Fatal(err)
 			}
-			if live.CPU.Percent != 50 || len(live.Interfaces) != tt.wantInterfaces {
-				t.Fatalf("filtering failed: %+v", live)
+			assert.Equal(t, int64(1234), live.CapturedAtMs)
+			assert.Equal(t, uint64(5678), live.UptimeSeconds)
+			populated := map[string]bool{
+				"cpu":         live.CPU.Percent != 0 || len(live.CPU.FrequenciesMHz) > 0 || len(live.CPU.Temperatures) > 0,
+				"interfaces":  len(live.Interfaces) > 0,
+				"filesystems": len(live.Filesystems) > 0,
+				"sensors":     len(live.Sensors) > 0,
+				"gpus":        len(live.GPUs) > 0,
+				"smart":       len(live.Smart) > 0,
+			}
+			for section, present := range populated {
+				assert.Equal(t, slices.Contains(tt.wantSections, section), present, "live section %s", section)
 			}
 		})
 	}

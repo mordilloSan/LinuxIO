@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/defaults"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/utils"
@@ -30,6 +31,9 @@ type SmartManager struct {
 	refreshInterval  time.Duration // Interval between automatic SMART refreshes
 	lastRefresh      time.Time     // Last successful SMART refresh
 	lastRefreshError string        // Last SMART refresh error to avoid repeating identical warnings
+	powerMu          sync.Mutex
+	powerCache       map[string]*monitoringapi.DiskPowerData
+	powerAt          time.Time
 }
 
 type scanOutput struct {
@@ -923,6 +927,17 @@ func (sm *SmartManager) parseSmartForSata(output []byte) (bool, int) {
 	smartData.SmartStatus = getSmartStatus(smartData.Temperature, data.SmartStatus.Passed)
 	smartData.DiskName = data.Device.Name
 	smartData.DiskType = data.Device.Type
+	device := data.Device
+	smartData.Device = &device
+	smartData.AtaSmartSelfTestLog = data.AtaSmartSelfTestLog
+	if data.PowerOnTime != nil {
+		powerOnTime := *data.PowerOnTime
+		smartData.PowerOnTime = &powerOnTime
+	}
+	if data.PowerCycleCount != nil {
+		powerCycles := *data.PowerCycleCount
+		smartData.PowerCycleCount = &powerCycles
+	}
 
 	// get values from ata_device_statistics if necessary
 	var ataDeviceStats smart.AtaDeviceStatistics
@@ -1031,6 +1046,12 @@ func (sm *SmartManager) parseSmartForScsi(output []byte) (bool, int) {
 	smartData.SmartStatus = getSmartStatus(smartData.Temperature, data.SmartStatus.Passed)
 	smartData.DiskName = data.Device.Name
 	smartData.DiskType = data.Device.Type
+	device := data.Device
+	smartData.Device = &device
+	if data.PowerOnTime.Hours != 0 || data.PowerOnTime.Minutes != 0 {
+		powerOnTime := smart.SmartPowerOnTime{Hours: data.PowerOnTime.Hours, Minutes: data.PowerOnTime.Minutes}
+		smartData.PowerOnTime = &powerOnTime
+	}
 
 	attributes := make([]*smart.SmartAttribute, 0, 10)
 	attributes = append(attributes, &smart.SmartAttribute{Name: "PowerOnHours", RawValue: data.PowerOnTime.Hours})
@@ -1120,32 +1141,59 @@ func (sm *SmartManager) parseSmartForNvme(output []byte) (bool, int) {
 	if smartData.Capacity == 0 {
 		smartData.Capacity = data.NVMeTotalCapacity
 	}
-	smartData.Temperature = data.NVMeSmartHealthInformationLog.Temperature
+	if data.NVMeSmartHealthInformationLog != nil {
+		smartData.Temperature = data.NVMeSmartHealthInformationLog.Temperature
+	} else {
+		smartData.Temperature = uint8(max(data.Temperature.Current, 0))
+	}
 	smartData.SmartStatus = getSmartStatus(smartData.Temperature, data.SmartStatus.Passed)
 	smartData.DiskName = data.Device.Name
 	smartData.DiskType = data.Device.Type
+	device := data.Device
+	smartData.Device = &device
+	if data.PowerOnTime != nil {
+		powerOnTime := smart.SmartPowerOnTime{Hours: uint64(data.PowerOnTime.Hours)}
+		smartData.PowerOnTime = &powerOnTime
+	}
+	if data.PowerCycleCount != nil {
+		powerCycles := *data.PowerCycleCount
+		smartData.PowerCycleCount = &powerCycles
+	}
+	version := data.NVMeVersion
+	smartData.NVMeVersion = &version
+	namespaces := data.NVMeNumberOfNamespaces
+	if namespaces != 0 {
+		smartData.NVMeNumberOfNamespaces = &namespaces
+	}
+	smartData.NVMeSelfTestLog = data.NVMeSelfTestLog
+	if data.NVMeSmartHealthInformationLog != nil {
+		health := *data.NVMeSmartHealthInformationLog
+		smartData.NVMeSmartHealthInformationLog = &health
+	}
 
 	// nvme attributes does not follow the same format as ata attributes,
 	// so we manually map each field to SmartAttributes
-	log := data.NVMeSmartHealthInformationLog
-	smartData.Attributes = []*smart.SmartAttribute{
-		{Name: "CriticalWarning", RawValue: uint64(log.CriticalWarning)},
-		{Name: "Temperature", RawValue: uint64(log.Temperature)},
-		{Name: "AvailableSpare", RawValue: uint64(log.AvailableSpare)},
-		{Name: "AvailableSpareThreshold", RawValue: uint64(log.AvailableSpareThreshold)},
-		{Name: "PercentageUsed", RawValue: uint64(log.PercentageUsed)},
-		{Name: "DataUnitsRead", RawValue: log.DataUnitsRead},
-		{Name: "DataUnitsWritten", RawValue: log.DataUnitsWritten},
-		{Name: "HostReads", RawValue: uint64(log.HostReads)},
-		{Name: "HostWrites", RawValue: uint64(log.HostWrites)},
-		{Name: "ControllerBusyTime", RawValue: uint64(log.ControllerBusyTime)},
-		{Name: "PowerCycles", RawValue: uint64(log.PowerCycles)},
-		{Name: "PowerOnHours", RawValue: uint64(log.PowerOnHours)},
-		{Name: "UnsafeShutdowns", RawValue: uint64(log.UnsafeShutdowns)},
-		{Name: "MediaErrors", RawValue: uint64(log.MediaErrors)},
-		{Name: "NumErrLogEntries", RawValue: uint64(log.NumErrLogEntries)},
-		{Name: "WarningTempTime", RawValue: uint64(log.WarningTempTime)},
-		{Name: "CriticalCompTime", RawValue: uint64(log.CriticalCompTime)},
+	if data.NVMeSmartHealthInformationLog != nil {
+		log := data.NVMeSmartHealthInformationLog
+		smartData.Attributes = []*smart.SmartAttribute{
+			{Name: "CriticalWarning", RawValue: uint64(log.CriticalWarning)},
+			{Name: "Temperature", RawValue: uint64(log.Temperature)},
+			{Name: "AvailableSpare", RawValue: uint64(log.AvailableSpare)},
+			{Name: "AvailableSpareThreshold", RawValue: uint64(log.AvailableSpareThreshold)},
+			{Name: "PercentageUsed", RawValue: uint64(log.PercentageUsed)},
+			{Name: "DataUnitsRead", RawValue: log.DataUnitsRead},
+			{Name: "DataUnitsWritten", RawValue: log.DataUnitsWritten},
+			{Name: "HostReads", RawValue: uint64(log.HostReads)},
+			{Name: "HostWrites", RawValue: uint64(log.HostWrites)},
+			{Name: "ControllerBusyTime", RawValue: uint64(log.ControllerBusyTime)},
+			{Name: "PowerCycles", RawValue: uint64(log.PowerCycles)},
+			{Name: "PowerOnHours", RawValue: uint64(log.PowerOnHours)},
+			{Name: "UnsafeShutdowns", RawValue: uint64(log.UnsafeShutdowns)},
+			{Name: "MediaErrors", RawValue: uint64(log.MediaErrors)},
+			{Name: "NumErrLogEntries", RawValue: uint64(log.NumErrLogEntries)},
+			{Name: "WarningTempTime", RawValue: uint64(log.WarningTempTime)},
+			{Name: "CriticalCompTime", RawValue: uint64(log.CriticalCompTime)},
+		}
 	}
 
 	sm.SmartDataMap[keyName] = smartData

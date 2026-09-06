@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -56,8 +57,12 @@ type App struct {
 	telemetry   []container.Telemetry // Container telemetry from the last collector tick
 	telemetryAt time.Time             // Capture time of that telemetry; zero before the first tick
 
-	liveMu   sync.Mutex          // Protects liveRuns
-	liveRuns map[uint16]*liveRun // Newest live collection per sample key; see liveCurrentData
+	liveMu         sync.Mutex          // Protects liveRuns
+	liveRuns       map[uint16]*liveRun // Newest live collection per sample key; see liveCurrentData
+	liveProcessMu  sync.Mutex
+	liveProcessRun *liveProcessRun
+	// liveProcessCollect overrides process collection in focused tests.
+	liveProcessCollect func(context.Context) (map[string]json.RawMessage, error)
 	// collectLive overrides the live collection; nil in production, injected by tests.
 	collectLive func(ctx context.Context, key uint16, includeDetails, includeContainers bool) (*system.CombinedData, error)
 }

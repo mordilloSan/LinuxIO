@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	mobysystem "github.com/moby/moby/api/types/system"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/load"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/integration/docker/dockerapi"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/utils"
 )
 
@@ -32,7 +32,7 @@ type systemInfoManager struct {
 
 type containerRuntimeInfo interface {
 	IsPodman() bool
-	GetHostInfo(context.Context) (dockerapi.HostInfo, error)
+	GetHostInfo(context.Context) (mobysystem.Info, error)
 }
 
 func newSystemInfoManager() *systemInfoManager {
@@ -44,7 +44,7 @@ func (m *systemInfoManager) refreshSystemDetails(ctx context.Context, dockerMana
 	m.systemInfo.AgentVersion = version.Version
 
 	// get host info from Docker if available
-	var hostInfo dockerapi.HostInfo
+	var hostInfo mobysystem.Info
 
 	if dockerManager != nil {
 		m.systemDetails.Podman = dockerManager.IsPodman()
@@ -91,7 +91,10 @@ func (m *systemInfoManager) refreshSystemDetails(ctx context.Context, dockerMana
 	slog.Info("Detected CPU", "model", m.systemDetails.CpuModel, "cores", cores, "threads", threads, "arch", m.systemDetails.Arch)
 
 	// total memory
-	m.systemDetails.MemoryTotal = hostInfo.MemTotal
+	m.systemDetails.MemoryTotal = 0
+	if hostInfo.MemTotal > 0 {
+		m.systemDetails.MemoryTotal = uint64(hostInfo.MemTotal)
+	}
 	if m.systemDetails.MemoryTotal == 0 {
 		if v, err := mem.VirtualMemory(); err == nil {
 			m.systemDetails.MemoryTotal = v.Total

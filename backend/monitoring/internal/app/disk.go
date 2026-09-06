@@ -12,25 +12,28 @@ import (
 
 	"github.com/shirou/gopsutil/v4/disk"
 
+	commonutils "github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/utils"
 )
 
 // fsManager owns filesystem and disk I/O state previously held directly on App.
 type fsManager struct {
-	fsNames                []string                       // List of filesystem device names being monitored
-	fsStats                map[string]*system.FsStats     // Disk stats per filesystem
-	diskPrev               map[uint16]map[string]prevDisk // Previous disk I/O counters per cache interval
-	devicePrev             map[uint16]map[string]prevDisk // Previous per-block-device counters per cache interval
-	diskUsageCacheDuration time.Duration                  // How long to cache disk usage (avoids waking sleeping disks)
-	lastDiskUsageUpdate    time.Time                      // Last time disk usage was collected
+	fsNames                []string                        // List of filesystem device names being monitored
+	fsStats                map[string]*system.FsStats      // Disk stats per filesystem
+	diskPrev               map[uint16]map[string]prevDisk  // Previous disk I/O counters per cache interval
+	devicePrev             map[uint16]map[string]prevDisk  // Previous per-block-device counters per cache interval
+	diskUsageCacheDuration time.Duration                   // How long to cache disk usage (avoids waking sleeping disks)
+	lastDiskUsageUpdate    time.Time                       // Last time disk usage was collected
+	liveFilesystemCache    map[string]cachedLiveFilesystem // Usage cache keyed by mountpoint for the live API
 }
 
 // newFsManager constructs an fsManager with disk usage caching disabled.
 func newFsManager() *fsManager {
 	return &fsManager{
-		fsStats:  make(map[string]*system.FsStats),
-		diskPrev: make(map[uint16]map[string]prevDisk),
+		fsStats:             make(map[string]*system.FsStats),
+		diskPrev:            make(map[uint16]map[string]prevDisk),
+		liveFilesystemCache: make(map[string]cachedLiveFilesystem),
 	}
 }
 
@@ -170,7 +173,7 @@ func registerFilesystemStats(existing map[string]*system.FsStats, device, mountp
 		return "", nil, false
 	}
 
-	fsStats := &system.FsStats{Root: root, Mountpoint: mountpoint}
+	fsStats := &system.FsStats{Root: root, Mountpoint: mountpoint, Device: device}
 	if customName != "" {
 		fsStats.Name = customName
 	}
@@ -211,7 +214,7 @@ func (d *diskDiscovery) addConfiguredRootFs() bool {
 	// FILESYSTEM may name a physical disk absent from partitions (e.g. ZFS lists
 	// dataset paths like zroot/ROOT/default, not block devices).
 	if ioKey, match := findIoDevice(d.ctx.filesystem, d.ctx.diskIoCounters); match {
-		d.manager.fsStats[ioKey] = &system.FsStats{Root: true, Mountpoint: d.rootMountPoint}
+		d.manager.fsStats[ioKey] = &system.FsStats{Root: true, Mountpoint: d.rootMountPoint, Device: ioKey}
 		return true
 	}
 
@@ -252,7 +255,7 @@ func (d *diskDiscovery) addLastResortRootFs() {
 		}
 		slog.Warn("Root I/O device not detected; set FILESYSTEM to override")
 	}
-	d.manager.fsStats[rootKey] = &system.FsStats{Root: true, Mountpoint: d.rootMountPoint}
+	d.manager.fsStats[rootKey] = &system.FsStats{Root: true, Mountpoint: d.rootMountPoint, Device: rootKey}
 }
 
 // findPartitionByFilesystemSetting matches an EXTRA_FILESYSTEMS entry against a
@@ -389,7 +392,28 @@ func (m *fsManager) initializeDiskInfo(ctx context.Context) {
 	}
 
 	m.pruneDuplicateRootExtraFilesystems(ctx)
+	m.setFilesystemMetadata(partitions)
 	m.initializeDiskIoStats(diskIoCounters)
+}
+
+// setFilesystemMetadata fills the fields that only partition discovery knows
+// about. Usage itself is refreshed separately and can be cached for sleeping
+// extra disks.
+func (m *fsManager) setFilesystemMetadata(partitions []disk.PartitionStat) {
+	for _, partition := range partitions {
+		for _, stats := range m.fsStats {
+			if stats == nil || stats.Mountpoint != partition.Mountpoint {
+				continue
+			}
+			stats.Device = partition.Device
+			stats.FSType = partition.Fstype
+			stats.ReadOnly = hasReadOnlyOpt(partition.Opts)
+		}
+	}
+}
+
+func hasReadOnlyOpt(options []string) bool {
+	return commonutils.HasReadOnlyOpt(options)
 }
 
 func diskCounterNames(counters map[string]disk.IOCountersStat) []string {
@@ -598,6 +622,15 @@ func (m *fsManager) updateDiskUsage(ctx context.Context, systemStats *system.Sta
 		if d, err := disk.UsageWithContext(ctx, stats.Mountpoint); err == nil {
 			stats.DiskTotal = utils.BytesToGigabytes(d.Total)
 			stats.DiskUsed = utils.BytesToGigabytes(d.Used)
+			stats.TotalBytes = d.Total
+			stats.UsedBytes = d.Used
+			stats.FreeBytes = d.Free
+			stats.UsedPercent = d.UsedPercent
+			stats.UsageAt = time.Now()
+			stats.InodesTotal = d.InodesTotal
+			stats.InodesUsed = d.InodesUsed
+			stats.InodesFree = d.InodesFree
+			stats.InodesUsedPercent = d.InodesUsedPercent
 			if stats.Root {
 				systemStats.DiskTotal = utils.BytesToGigabytes(d.Total)
 				systemStats.DiskUsed = utils.BytesToGigabytes(d.Used)
@@ -612,6 +645,15 @@ func (m *fsManager) updateDiskUsage(ctx context.Context, systemStats *system.Sta
 			stats.DiskUsed = 0
 			stats.TotalRead = 0
 			stats.TotalWrite = 0
+			stats.TotalBytes = 0
+			stats.UsedBytes = 0
+			stats.FreeBytes = 0
+			stats.UsedPercent = 0
+			stats.UsageAt = time.Time{}
+			stats.InodesTotal = 0
+			stats.InodesUsed = 0
+			stats.InodesFree = 0
+			stats.InodesUsedPercent = 0
 		}
 	}
 

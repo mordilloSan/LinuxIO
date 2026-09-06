@@ -1,15 +1,14 @@
 import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { type HostInfo, linuxio } from "@/api";
+import { CACHE_TTL_MS, type HostInfo, linuxio } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { getDistroIcon } from "@/icons/distro";
 
 import DashboardStatRows from "./DashboardStatRows";
 import SetDateTimeDialog from "./SetDateTimeDialog";
 import SetHostnameDialog from "./SetHostnameDialog";
-
-const HOST_INFO_REFETCH_MS = 50000;
 
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);
@@ -41,14 +40,17 @@ interface OverviewRow {
 }
 
 const OverviewStats = () => {
-  const [{ data: hostInfo }, { data: uptime }, { data: serverTime }] =
+  const [{ data: hostInfo }, { data: live }, { data: serverTime }] =
     useSuspenseQueries({
       queries: [
         {
           ...linuxio.system.get_host_info,
-          refetchInterval: HOST_INFO_REFETCH_MS,
+          staleTime: CACHE_TTL_MS.ONE_DAY,
         },
-        { ...linuxio.system.get_uptime, refetchInterval: 30000 },
+        {
+          ...linuxio.monitoring.get_live,
+          refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+        },
         { ...linuxio.system.get_server_time, refetchInterval: 60000 },
       ],
     });
@@ -75,7 +77,7 @@ const OverviewStats = () => {
     },
     {
       label: "Uptime",
-      value: uptime != null ? formatUptime(uptime) : "---",
+      value: live ? formatUptime(live.uptime_seconds) : "---",
     },
   ];
 
@@ -98,7 +100,7 @@ const OverviewStats = () => {
 const SystemOverview = () => {
   const { data: platform } = useSuspenseQuery({
     ...linuxio.system.get_host_info,
-    refetchInterval: HOST_INFO_REFETCH_MS,
+    staleTime: CACHE_TTL_MS.ONE_DAY,
     select: selectPlatform,
   });
 

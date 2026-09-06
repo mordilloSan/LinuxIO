@@ -52,6 +52,9 @@ type Stats struct {
 	// payload. They are never persisted or serialised as plugin data.
 	MemoryBytes MemoryBytes                `json:"-" cbor:"-"`
 	DiskDevices map[string]DiskDeviceRates `json:"-" cbor:"-"`
+	// NetworkInterfaceCounters preserves the cumulative kernel counters for
+	// the live API; the legacy aggregate payload only retained byte totals.
+	NetworkInterfaceCounters map[string]NetworkInterfaceCounters `json:"-" cbor:"-"`
 }
 
 // MemoryBytes carries the raw memory counters behind the rounded gigabyte
@@ -63,6 +66,11 @@ type MemoryBytes struct {
 // DiskDeviceRates carries per-block-device I/O rates.
 type DiskDeviceRates struct {
 	ReadBytesPerSec, WriteBytesPerSec, ReadOpsPerSec, WriteOpsPerSec float64
+}
+
+type NetworkInterfaceCounters struct {
+	RxDropped, RxErrors, RxPackets uint64
+	TxDropped, TxErrors, TxPackets uint64
 }
 
 // Uint8Slice wraps []uint8 to customize JSON encoding while keeping CBOR efficient.
@@ -84,6 +92,7 @@ func (s Uint8Slice) MarshalJSON() ([]byte, error) {
 
 type GPUData struct {
 	Name        string             `json:"name" cbor:"0,keyasint"`
+	Address     string             `json:"-" cbor:"-"`
 	Temperature float64            `json:"-"`
 	MemoryUsed  float64            `json:"memory_used_mb,omitempty,omitzero" cbor:"1,keyasint,omitempty,omitzero"`
 	MemoryTotal float64            `json:"memory_total_mb,omitempty,omitzero" cbor:"2,keyasint,omitempty,omitzero"`
@@ -114,6 +123,18 @@ type FsStats struct {
 	MaxDiskWriteBytes uint64     `json:"max_disk_write_bytes_per_second,omitempty" cbor:"-"`
 	DiskIoStats       [6]float64 `json:"disk_io_stats,omitzero" cbor:"8,keyasint,omitzero"` // [read time %, write time %, io utilization %, r_await ms, w_await ms, weighted io %]
 	MaxDiskIoStats    [6]float64 `json:"max_disk_io_stats,omitzero" cbor:"-"`               // max values for DiskIoStats
+	Device            string     `json:"-" cbor:"-"`
+	FSType            string     `json:"-" cbor:"-"`
+	ReadOnly          bool       `json:"-" cbor:"-"`
+	InodesTotal       uint64     `json:"-" cbor:"-"`
+	InodesUsed        uint64     `json:"-" cbor:"-"`
+	InodesFree        uint64     `json:"-" cbor:"-"`
+	InodesUsedPercent float64    `json:"-" cbor:"-"`
+	TotalBytes        uint64     `json:"-" cbor:"-"`
+	UsedBytes         uint64     `json:"-" cbor:"-"`
+	FreeBytes         uint64     `json:"-" cbor:"-"`
+	UsedPercent       float64    `json:"-" cbor:"-"`
+	UsageAt           time.Time  `json:"-" cbor:"-"`
 }
 
 type NetIoStats struct {

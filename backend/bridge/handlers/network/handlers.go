@@ -14,7 +14,6 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	h := networkHandlers{rt: rt, handoff: validatingBridgeHandoffService{inner: newBridgeHandoffAdapter(rt)}}
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(h.handleGetNetworkInfo),
-		apischema.Call[apischema.NoRequest, []apischema.InterfaceStats]("network.get_interface_stats").Handle(h.handleGetInterfaceStats),
 		apischema.Call[apischema.NoRequest, apischema.NetworkBridgeOptions]("network.get_bridge_options", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleGetBridgeOptions),
 		apischema.Call[apischema.NetworkBridgeCreateRequest, apischema.NetworkBridgeCreateResult]("network.create_bridge", apischema.Privileged()).Handle(h.handleCreateBridge),
 		apischema.Call[apischema.NetworkBridgeHandoffRequest, apischema.NetworkBridgeHandoffStatus]("network.start_bridge_handoff", apischema.Privileged()).Handle(h.handleStartBridgeHandoff),
@@ -41,10 +40,6 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 func (h networkHandlers) handleGetNetworkInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.NetworkInterface, error) {
 	return GetNetworkInfo(ctx)
-}
-
-func (h networkHandlers) handleGetInterfaceStats(ctx context.Context, _ apischema.NoRequest) ([]apischema.InterfaceStats, error) {
-	return FetchInterfaceStats(ctx)
 }
 
 func (h networkHandlers) handleGetBridgeOptions(ctx context.Context, _ apischema.NoRequest) (apischema.NetworkBridgeOptions, error) {

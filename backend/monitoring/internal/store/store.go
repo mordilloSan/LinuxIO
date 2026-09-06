@@ -538,7 +538,7 @@ func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smart.Smart
 		currentItems = append(currentItems, SmartDeviceRecord{
 			ID:   id,
 			Key:  key,
-			Data: item,
+			Data: compactSmartData(item),
 		})
 	}
 
@@ -554,6 +554,20 @@ func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smart.Smart
 		return err
 	}
 	return nil
+}
+
+func compactSmartData(item smart.SmartData) smart.SmartData {
+	return smart.SmartData{
+		ModelName:       item.ModelName,
+		SerialNumber:    item.SerialNumber,
+		FirmwareVersion: item.FirmwareVersion,
+		Capacity:        item.Capacity,
+		SmartStatus:     item.SmartStatus,
+		DiskName:        item.DiskName,
+		DiskType:        item.DiskType,
+		Temperature:     item.Temperature,
+		Attributes:      item.Attributes,
+	}
 }
 
 func (s *Store) PluginHistory(ctx context.Context, plugin, resolution string, from, to int64, limit int) ([]HistoryRecord[json.RawMessage], error) {

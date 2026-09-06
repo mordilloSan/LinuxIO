@@ -316,4 +316,37 @@ test.describe("accessibility fixture controls", () => {
     await trigger.evaluate((element) => (element as HTMLElement).focus());
     await expect(page.getByRole("tooltip")).toHaveText("Collapse row");
   });
+
+  for (const triggerName of [
+    "Notification tooltip",
+    "Long monitoring details",
+  ]) {
+    test(`positions ${triggerName} without a render loop at the viewport edge`, async ({
+      page,
+    }) => {
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.setViewportSize({ width: 320, height: 240 });
+      const trigger = page.getByRole("button", { name: triggerName });
+      // Keyboard focus survives resizing even when the trigger moves away
+      // from the pointer, which would correctly dismiss a hover tooltip.
+      await page.keyboard.press("Tab");
+      await trigger.evaluate((element) => (element as HTMLElement).focus());
+      const tooltip = page.getByRole("tooltip");
+      await expect(tooltip).toBeVisible();
+      // Let the entrance animation finish, then exercise the resize path too.
+      await page.waitForTimeout(200);
+      await page.setViewportSize({ width: 360, height: 260 });
+      await expect(tooltip).toBeVisible();
+      await expect
+        .poll(async () => {
+          const bounds = await tooltip.boundingBox();
+          return Boolean(bounds && bounds.x >= 7.5 && bounds.y >= 7.5);
+        })
+        .toBe(true);
+      expect(errors).toEqual([]);
+      await trigger.evaluate((element) => (element as HTMLElement).blur());
+      await expect(tooltip).toHaveCount(0);
+    });
+  }
 });

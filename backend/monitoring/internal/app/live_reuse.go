@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	"maps"
 	"time"
 
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 )
 
@@ -21,6 +23,11 @@ type liveRun struct {
 	includeContainers bool
 	capturedAt        time.Time
 	data              *system.CombinedData
+	filesystems       []monitoringapi.FilesystemInfo
+	sensors           []monitoringapi.SensorGroup
+	frequencies       []float64
+	gpus              map[string]monitoringapi.LiveGPU
+	smart             map[string]monitoringapi.LiveSmart
 	err               error
 }
 
@@ -67,22 +74,59 @@ func (a *App) liveRunFor(key uint16, includeDetails, includeContainers bool) (_ 
 // report as captured_at. It never consults awaitCollectorSample: only the
 // plugin, all and summary routes take that handoff, App.Live does not.
 func (a *App) liveCurrentData(ctx context.Context, key uint16, includeDetails, includeContainers bool) (*system.CombinedData, time.Time, error) {
+	run, err := a.liveCurrentRun(ctx, key, includeDetails, includeContainers)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return run.data, run.capturedAt, nil
+}
+
+func (a *App) liveCurrentRun(ctx context.Context, key uint16, includeDetails, includeContainers bool) (*liveRun, error) {
 	for {
 		run, owned := a.liveRunFor(key, includeDetails, includeContainers)
 		if owned {
 			a.runLiveCollection(ctx, run, key, includeDetails, includeContainers)
-			return run.data, run.capturedAt, run.err
+			if run.err != nil {
+				return nil, run.err
+			}
+			return run, nil
 		}
 		select {
 		case <-ctx.Done():
-			return nil, time.Time{}, ctx.Err()
+			return nil, ctx.Err()
 		case <-run.done:
 		}
 		if run.err == nil {
-			return run.data, run.capturedAt, nil
+			return run, nil
 		}
 		// The shared collection failed; retry with a collection of our own.
 	}
+}
+
+func liveExtrasSnapshot(run *liveRun) (filesystems []monitoringapi.FilesystemInfo, sensors []monitoringapi.SensorGroup, frequencies []float64, gpus map[string]monitoringapi.LiveGPU, smart map[string]monitoringapi.LiveSmart) {
+	if run != nil {
+		filesystems = append([]monitoringapi.FilesystemInfo(nil), run.filesystems...)
+		sensors = append([]monitoringapi.SensorGroup(nil), run.sensors...)
+		frequencies = append([]float64(nil), run.frequencies...)
+		gpus = maps.Clone(run.gpus)
+		smart = maps.Clone(run.smart)
+	}
+	if filesystems == nil {
+		filesystems = []monitoringapi.FilesystemInfo{}
+	}
+	if sensors == nil {
+		sensors = []monitoringapi.SensorGroup{}
+	}
+	if frequencies == nil {
+		frequencies = []float64{}
+	}
+	if gpus == nil {
+		gpus = map[string]monitoringapi.LiveGPU{}
+	}
+	if smart == nil {
+		smart = map[string]monitoringapi.LiveSmart{}
+	}
+	return
 }
 
 // runLiveCollection collects into run with liveMu released and publishes the
@@ -90,11 +134,14 @@ func (a *App) liveCurrentData(ctx context.Context, key uint16, includeDetails, i
 // done: net/http recovers per connection, and a run left unpublished would
 // block every later request for its key until each caller's context expired.
 func (a *App) runLiveCollection(ctx context.Context, run *liveRun, key uint16, includeDetails, includeContainers bool) {
+	detachAfterCollection := a.collectLive != nil
 	defer func() {
 		if run.data == nil && run.err == nil {
 			run.err = errors.New("live collection did not complete")
 		}
-		a.detachLiveSample(run.data)
+		if detachAfterCollection {
+			a.detachLiveSample(run.data)
+		}
 		run.capturedAt = time.Now()
 		close(run.done)
 	}()
@@ -104,6 +151,27 @@ func (a *App) runLiveCollection(ctx context.Context, run *liveRun, key uint16, i
 		collect = a.collectLiveCurrentData
 	}
 	run.data, run.err = collect(ctx, key, includeDetails, includeContainers)
+	if run.err == nil && key == liveLiveSampleKey {
+		run.filesystems = a.filesystemInfo(ctx)
+		run.sensors = a.fetchLiveSensorsInfo(ctx)
+		run.frequencies, _ = getCurrentFrequencies(ctx)
+		if run.sensors == nil {
+			run.sensors = []monitoringapi.SensorGroup{}
+		}
+		run.gpus = a.currentLiveGPUInfoWithData(ctx, run.data.Stats.GPUData)
+		if run.gpus == nil {
+			run.gpus = map[string]monitoringapi.LiveGPU{}
+		}
+		if a.smartManager != nil {
+			run.smart = a.smartManager.currentLiveSmartData(ctx)
+		}
+		if run.smart == nil {
+			run.smart = map[string]monitoringapi.LiveSmart{}
+		}
+		if run.err == nil {
+			run.err = ctx.Err()
+		}
+	}
 }
 
 // detachLiveSample replaces the manager-owned pointers in a sample with
@@ -121,6 +189,13 @@ func (a *App) detachLiveSample(data *system.CombinedData) {
 	}
 	a.Lock()
 	defer a.Unlock()
+	a.detachLiveSampleLocked(data)
+}
+
+func (a *App) detachLiveSampleLocked(data *system.CombinedData) {
+	if data == nil {
+		return
+	}
 	for i, item := range data.Containers {
 		if item != nil {
 			copied := *item

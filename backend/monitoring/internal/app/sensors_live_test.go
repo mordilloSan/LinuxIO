@@ -1,4 +1,4 @@
-package system
+package app
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 const sensorsJSONFixture = `{
@@ -54,50 +54,50 @@ const sensorsJSONFixture = `{
 func TestFetchSensorsInfoParsesJSONReadings(t *testing.T) {
 	stubSensorsCommand(t, "success")
 
-	groups := FetchSensorsInfo(context.Background())
+	groups := fetchSensorsInfo(context.Background())
 	require.Len(t, groups, 2)
 
 	require.Equal(t, "coretemp-isa-0000", groups[0].Adapter)
-	require.Equal(t, []apischema.SensorReading{
-		{Label: "Core 0 (input)", Value: 48.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_input"},
-		{Label: "Core 0 (max)", Value: 95.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_max"},
-		{Label: "Core 0 (crit)", Value: 100.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp2_crit"},
-		{Label: "Core 0 (alarm)", Value: 0, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp2_alarm"},
-		{Label: "Package id 0 (input)", Value: 55.5, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_input"},
-		{Label: "Package id 0 (max)", Value: 95.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_max"},
-		{Label: "Package id 0 (crit)", Value: 100.0, Kind: apischema.SensorReadingKindNumber, Unit: "°C", Field: "temp1_crit"},
-		{Label: "Package id 0 (alarm)", Value: 1, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "temp1_alarm"},
+	require.Equal(t, []monitoringapi.SensorReading{
+		{Label: "Core 0 (input)", Value: 48.0, Kind: monitoringapi.SensorReadingKindNumber, Unit: "°C", Field: "temp2_input"},
+		{Label: "Core 0 (max)", Value: 95.0, Kind: monitoringapi.SensorReadingKindNumber, Unit: "°C", Field: "temp2_max"},
+		{Label: "Core 0 (crit)", Value: 100.0, Kind: monitoringapi.SensorReadingKindNumber, Unit: "°C", Field: "temp2_crit"},
+		{Label: "Core 0 (alarm)", Value: 0, Kind: monitoringapi.SensorReadingKindBoolean, Unit: "", Field: "temp2_alarm"},
+		{Label: "Package id 0 (input)", Value: 55.5, Kind: monitoringapi.SensorReadingKindNumber, Unit: "°C", Field: "temp1_input"},
+		{Label: "Package id 0 (max)", Value: 95.0, Kind: monitoringapi.SensorReadingKindNumber, Unit: "°C", Field: "temp1_max"},
+		{Label: "Package id 0 (crit)", Value: 100.0, Kind: monitoringapi.SensorReadingKindNumber, Unit: "°C", Field: "temp1_crit"},
+		{Label: "Package id 0 (alarm)", Value: 1, Kind: monitoringapi.SensorReadingKindBoolean, Unit: "", Field: "temp1_alarm"},
 	}, groups[0].Readings)
 
 	require.Equal(t, "nct6798-isa-0290", groups[1].Adapter)
-	require.Equal(t, []apischema.SensorReading{
-		{Label: "3VCC (input)", Value: 3.31, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_input"},
-		{Label: "3VCC (min)", Value: 3.14, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_min"},
-		{Label: "3VCC (max)", Value: 3.47, Kind: apischema.SensorReadingKindNumber, Unit: "V", Field: "in0_max"},
-		{Label: "fan1 (input)", Value: 1520.0, Kind: apischema.SensorReadingKindNumber, Unit: "RPM", Field: "fan1_input"},
-		{Label: "fan1 (alarm)", Value: 0, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "fan1_alarm"},
-		{Label: "intrusion0", Value: 1, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "alarm"},
-		{Label: "nested (subsystem / input)", Value: 65.2, Kind: apischema.SensorReadingKindNumber, Unit: "W", Field: "power1_input"},
-		{Label: "nested (subsystem / alarm)", Value: 0, Kind: apischema.SensorReadingKindBoolean, Unit: "", Field: "power1_alarm"},
+	require.Equal(t, []monitoringapi.SensorReading{
+		{Label: "3VCC (input)", Value: 3.31, Kind: monitoringapi.SensorReadingKindNumber, Unit: "V", Field: "in0_input"},
+		{Label: "3VCC (min)", Value: 3.14, Kind: monitoringapi.SensorReadingKindNumber, Unit: "V", Field: "in0_min"},
+		{Label: "3VCC (max)", Value: 3.47, Kind: monitoringapi.SensorReadingKindNumber, Unit: "V", Field: "in0_max"},
+		{Label: "fan1 (input)", Value: 1520.0, Kind: monitoringapi.SensorReadingKindNumber, Unit: "RPM", Field: "fan1_input"},
+		{Label: "fan1 (alarm)", Value: 0, Kind: monitoringapi.SensorReadingKindBoolean, Unit: "", Field: "fan1_alarm"},
+		{Label: "intrusion0", Value: 1, Kind: monitoringapi.SensorReadingKindBoolean, Unit: "", Field: "alarm"},
+		{Label: "nested (subsystem / input)", Value: 65.2, Kind: monitoringapi.SensorReadingKindNumber, Unit: "W", Field: "power1_input"},
+		{Label: "nested (subsystem / alarm)", Value: 0, Kind: monitoringapi.SensorReadingKindBoolean, Unit: "", Field: "power1_alarm"},
 	}, groups[1].Readings)
 }
 
 func TestFetchSensorsInfoReturnsNilOnMalformedJSON(t *testing.T) {
 	stubSensorsCommand(t, "malformed")
 
-	require.Nil(t, FetchSensorsInfo(context.Background()))
+	require.Nil(t, fetchSensorsInfo(context.Background()))
 }
 
 func TestFetchSensorsInfoReturnsNilOnCommandFailure(t *testing.T) {
 	stubSensorsCommand(t, "fail")
 
-	require.Nil(t, FetchSensorsInfo(context.Background()))
+	require.Nil(t, fetchSensorsInfo(context.Background()))
 }
 
 func TestGetTemperatureMapUsesInputReadingsOnly(t *testing.T) {
 	stubSensorsCommand(t, "success")
 
-	temps := getTemperatureMap(context.Background())
+	temps := cpuTemperatures(fetchSensorsInfo(context.Background()))
 	require.Equal(t, map[string]float64{
 		"core0":   48.0,
 		"package": 55.5,

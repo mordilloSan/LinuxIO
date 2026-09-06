@@ -83,6 +83,11 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
     refetchOnMount: false,
     select: selectNetworkInterface(name),
   });
+  const { data: liveIface } = useQuery({
+    ...linuxio.monitoring.get_live,
+    refetchInterval: SAMPLE_INTERVAL_MS,
+    select: (live) => (live.interfaces ?? {})[name],
+  });
 
   // TX shares the dashboard buffer. RX has a separate signed buffer because
   // the dashboard renders it above zero, while this focused chart renders
@@ -119,9 +124,8 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
   );
 
   const appendLatestTraffic = useEffectEvent(() => {
-    if (!iface) return;
-    appendLiveSample(rxInboundId, -iface.rx_speed / 1024);
-    appendLiveSample(txId, iface.tx_speed / 1024);
+    appendLiveSample(rxInboundId, -(liveIface?.rx_bytes_per_sec ?? 0) / 1024);
+    appendLiveSample(txId, (liveIface?.tx_bytes_per_sec ?? 0) / 1024);
   });
 
   // Append on a fixed interval, decoupled from React's render cycle.
@@ -165,13 +169,13 @@ const NetworkInterfaceTrafficGraphs = ({ name }: { name: string }) => {
             color="var(--app-chart-tx)"
             label="Sent"
             sign="+"
-            value={formatThroughput(iface.tx_speed)}
+            value={formatThroughput(liveIface?.tx_bytes_per_sec ?? 0)}
           />
           <TrafficLegend
             color="var(--app-chart-rx)"
             label="Received"
             sign="−"
-            value={formatThroughput(iface.rx_speed)}
+            value={formatThroughput(liveIface?.rx_bytes_per_sec ?? 0)}
           />
         </div>
       </FrostedCard>
@@ -254,6 +258,12 @@ const NetworkInterfaceList = () => {
     ...linuxio.network.get_network_info,
     refetchInterval: 1000,
     select: selectNetworkInterfaceIdentities,
+  });
+  // The list owns measurement polling; individual cards observe their slice.
+  useQuery({
+    ...linuxio.monitoring.get_live,
+    refetchInterval: SAMPLE_INTERVAL_MS,
+    select: () => null,
   });
 
   useEffect(() => {

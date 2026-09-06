@@ -279,20 +279,25 @@ const AppTooltip = ({
     // measurable box also avoids repeatedly applying an offset to (0, 0).
     if (rect.width === 0 && rect.height === 0) return;
 
+    // Oversized bubbles cannot satisfy both edges. Keep the leading edge
+    // visible instead of alternating between opposite overflow corrections.
+    const maxLeft = Math.max(
+      VIEWPORT_MARGIN,
+      window.innerWidth - VIEWPORT_MARGIN - rect.width,
+    );
+    const maxTop = Math.max(
+      VIEWPORT_MARGIN,
+      window.innerHeight - VIEWPORT_MARGIN - rect.height,
+    );
     const horizontalOffset =
-      rect.left < VIEWPORT_MARGIN
-        ? VIEWPORT_MARGIN - rect.left
-        : rect.right > window.innerWidth - VIEWPORT_MARGIN
-          ? window.innerWidth - VIEWPORT_MARGIN - rect.right
-          : 0;
+      Math.min(Math.max(rect.left, VIEWPORT_MARGIN), maxLeft) - rect.left;
     const verticalOffset =
-      rect.top < VIEWPORT_MARGIN
-        ? VIEWPORT_MARGIN - rect.top
-        : rect.bottom > window.innerHeight - VIEWPORT_MARGIN
-          ? window.innerHeight - VIEWPORT_MARGIN - rect.bottom
-          : 0;
+      Math.min(Math.max(rect.top, VIEWPORT_MARGIN), maxTop) - rect.top;
 
-    if (horizontalOffset === 0 && verticalOffset === 0) return;
+    // Browser layout rounds subpixels; chasing a tiny residual can keep this
+    // effect updating even though the rendered position does not change.
+    if (Math.abs(horizontalOffset) < 0.5 && Math.abs(verticalOffset) < 0.5)
+      return;
 
     setTooltipStyle({
       ...tooltipStyle,

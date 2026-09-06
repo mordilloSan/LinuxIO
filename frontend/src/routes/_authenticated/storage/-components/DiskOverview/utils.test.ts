@@ -4,9 +4,6 @@ import {
   formatDataUnits,
   formatPowerOnTime,
   getHealthColor,
-  getSmartNumber,
-  getSmartString,
-  getSmartValue,
   getTemperature,
   getTemperatureColor,
   parseSizeToBytes,
@@ -24,9 +21,9 @@ describe("DiskOverview utils", () => {
 
   it("maps SMART health to alert colors", () => {
     expect(getHealthColor(undefined)).toBe("default");
-    expect(getHealthColor({ smart_status: { passed: true } })).toBe("success");
-    expect(getHealthColor({ smart_status: { passed: false } })).toBe("error");
-    expect(getHealthColor({ smart_status: {} })).toBe("warning");
+    expect(getHealthColor({ smart_status: "PASSED" })).toBe("success");
+    expect(getHealthColor({ smart_status: "FAILED" })).toBe("error");
+    expect(getHealthColor({ smart_status: "UNKNOWN" })).toBe("warning");
   });
 
   it("formats power-on time and NVMe data units", () => {
@@ -37,14 +34,8 @@ describe("DiskOverview utils", () => {
     expect(formatDataUnits(2)).toContain("2 [");
   });
 
-  it("prefers NVMe temperature before ATA temperature", () => {
-    expect(
-      getTemperature({
-        nvme_smart_health_information_log: { temperature: 44 },
-        temperature: { current: 55 },
-      }),
-    ).toBe(44);
-    expect(getTemperature({ temperature: { current: 55 } })).toBe(55);
+  it("reads the typed SMART temperature", () => {
+    expect(getTemperature({ temperature_celsius: 44 })).toBe(44);
     expect(getTemperature()).toBeNull();
   });
 
@@ -53,16 +44,5 @@ describe("DiskOverview utils", () => {
     expect(getTemperatureColor(45)).toBe("success.main");
     expect(getTemperatureColor(51)).toBe("warning.main");
     expect(getTemperatureColor(71)).toBe("error.main");
-  });
-
-  it("extracts smart object values as strings or numbers", () => {
-    expect(getSmartValue(undefined)).toBeNull();
-    expect(getSmartValue("ok")).toBe("ok");
-    expect(getSmartValue({ string: "10 hours", value: 10 })).toBe("10 hours");
-    expect(getSmartValue({ string: "10 hours", value: 10 }, false)).toBe(10);
-    expect(getSmartNumber({ string: "12.5", value: 10 })).toBe(10);
-    expect(getSmartNumber("12.5")).toBe(12.5);
-    expect(getSmartNumber("n/a")).toBeNull();
-    expect(getSmartString({ string: "ready", value: 1 })).toBe("ready");
   });
 });

@@ -7,10 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
-
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 type LSBLKOutput struct {
@@ -33,13 +30,17 @@ type BlockDevice struct {
 // precompiled regexes
 var (
 	validDeviceNameRe = regexp.MustCompile(`^(sd[a-z]|hd[a-z]|nvme\d+n\d+)$`)
-	nvmePsRe          = regexp.MustCompile(`ps\s+(\d+)\s+:\s+mp:([\d.]+)W`)
-	nvmeStateRe       = regexp.MustCompile(`Power State:\s+(\d+)`)
 )
 
 func FetchDriveInfo(ctx context.Context) ([]DriveInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	out, err := exec.CommandContext(ctx, "lsblk", "-d", "-O", "-J").Output()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("failed to execute lsblk: %w", err)
 	}
 
@@ -56,14 +57,14 @@ func FetchDriveInfo(ctx context.Context) ([]DriveInfo, error) {
 		if dev.Type != "disk" {
 			continue
 		}
-		drives = append(drives, buildDriveInfo(ctx, dev))
+		drives = append(drives, buildDriveInfo(dev))
 	}
 
 	return drives, nil
 }
 
-func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
-	drive := DriveInfo{
+func buildDriveInfo(dev BlockDevice) DriveInfo {
+	return DriveInfo{
 		Name:   dev.Name,
 		Model:  strings.TrimSpace(dev.Model),
 		Serial: optionalString(strings.TrimSpace(dev.Serial)),
@@ -72,29 +73,6 @@ func buildDriveInfo(ctx context.Context, dev BlockDevice) DriveInfo {
 		Vendor: optionalString(strings.TrimSpace(dev.Vendor)),
 		RO:     dev.RO,
 	}
-
-	if smart, err := FetchSmartInfo(ctx, dev.Name); err != nil {
-		drive.SmartError = err.Error()
-	} else {
-		drive.Smart = smart
-		if drive.Vendor == nil {
-			if modelName, ok := smart["model_name"].(string); ok && modelName != "" {
-				if parts := strings.Fields(modelName); len(parts) > 0 {
-					drive.Vendor = optionalString(parts[0])
-				}
-			}
-		}
-	}
-
-	if isNVMeDevice(dev) {
-		if power, err := GetNVMePowerState(ctx, dev.Name); err != nil {
-			drive.PowerError = err.Error()
-		} else {
-			drive.Power = power
-		}
-	}
-
-	return drive
 }
 
 func optionalString(value string) *string {
@@ -102,116 +80,6 @@ func optionalString(value string) *string {
 		return nil
 	}
 	return &value
-}
-
-func isNVMeDevice(dev BlockDevice) bool {
-	// On some systems lsblk tran for NVMe may not be "nvme", so also check the name.
-	if strings.HasPrefix(dev.Name, "nvme") {
-		return true
-	}
-	return dev.Tran == "nvme"
-}
-
-func FetchSmartInfo(ctx context.Context, device string) (map[string]any, error) {
-	if !validDeviceNameRe.MatchString(device) {
-		return nil, errors.New("invalid device name")
-	}
-
-	smartctlPath, err := exec.LookPath("smartctl")
-	if err != nil {
-		return nil, fmt.Errorf("smartctl not found: %w", err)
-	}
-
-	cmd := exec.CommandContext(ctx, smartctlPath, "--json", "-x", "/dev/"+device)
-	out, runErr := cmd.Output()
-	smart, parseErr := parseSmartInfoJSON(out)
-	if parseErr == nil {
-		return smart, nil
-	}
-	if runErr != nil {
-		return nil, fmt.Errorf("smartctl failed for %s: %w", device, runErr)
-	}
-	return nil, fmt.Errorf("failed to parse smartctl output for %s: %w", device, parseErr)
-}
-
-func parseSmartInfoJSON(out []byte) (map[string]any, error) {
-	var parsed map[string]any
-	if err := json.Unmarshal(out, &parsed); err != nil {
-		return nil, err
-	}
-	return parsed, nil
-}
-
-func GetNVMePowerState(ctx context.Context, device string) (*apischema.DiskPowerData, error) {
-	// Step 1: Get supported power states
-	cmd := exec.CommandContext(ctx, "nvme", "id-ctrl", "/dev/"+device)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run nvme id-ctrl for %s: %w", device, err)
-	}
-
-	var states []apischema.DiskPowerState
-	for line := range strings.SplitSeq(string(out), "\n") {
-		match := nvmePsRe.FindStringSubmatch(line)
-		if len(match) != 3 {
-			continue
-		}
-
-		stateNum, parseErr := strconv.Atoi(match[1])
-		if parseErr != nil {
-			continue
-		}
-		maxPower, powerErr := strconv.ParseFloat(match[2], 64)
-		if powerErr != nil {
-			continue
-		}
-
-		states = append(states, apischema.DiskPowerState{
-			State:       stateNum,
-			MaxPowerW:   maxPower,
-			Description: strings.TrimSpace(line),
-		})
-	}
-
-	if len(states) == 0 {
-		return nil, fmt.Errorf("no power states found for %s", device)
-	}
-
-	currentState, estimated := resolveCurrentNVMePowerState(ctx, device, states)
-
-	return &apischema.DiskPowerData{
-		CurrentState: currentState,
-		EstimatedW:   estimated,
-		States:       states,
-	}, nil
-}
-
-func resolveCurrentNVMePowerState(ctx context.Context, device string, states []apischema.DiskPowerState) (int, float64) {
-	cmd := exec.CommandContext(ctx, "nvme", "smart-log", "/dev/"+device)
-	out, err := cmd.Output()
-	if err != nil {
-		if len(states) > 0 {
-			return -1, states[0].MaxPowerW
-		}
-		return -1, 0
-	}
-
-	match := nvmeStateRe.FindStringSubmatch(string(out))
-	if len(match) == 2 {
-		if s, err := strconv.Atoi(match[1]); err == nil {
-			for _, ps := range states {
-				if ps.State == s {
-					return s, ps.MaxPowerW
-				}
-			}
-			return s, 0
-		}
-	}
-
-	if len(states) > 0 {
-		return -1, states[0].MaxPowerW
-	}
-	return -1, 0
 }
 
 // RunSmartTest starts a SMART self-test on the specified device.

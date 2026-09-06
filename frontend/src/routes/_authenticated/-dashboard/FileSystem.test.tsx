@@ -4,21 +4,23 @@ import { render, screen } from "@/test/render";
 
 import FsInfoCard from "./FileSystem";
 
+const mocks = vi.hoisted(() => ({
+  data: Array.from({ length: 6 }, (_, index) => ({
+    device: `/dev/test${index}`,
+    free: 500,
+    fstype: "ext4",
+    mountpoint: `/mnt/test${index}`,
+    total: 1000,
+    used: 500,
+    usedPercent: 50,
+  })),
+}));
+
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...actual,
-    useSuspenseQuery: () => ({
-      data: Array.from({ length: 6 }, (_, index) => ({
-        device: `/dev/test${index}`,
-        free: 500,
-        fstype: "ext4",
-        mountpoint: `/mnt/test${index}`,
-        total: 1000,
-        used: 500,
-        usedPercent: 50,
-      })),
-    }),
+    useSuspenseQuery: () => ({ data: mocks.data }),
   };
 });
 
@@ -33,5 +35,14 @@ describe("FsInfoCard", () => {
       overflowY: "auto",
     });
     expect(screen.getByText("/mnt/test5")).toBeInTheDocument();
+  });
+
+  it("renders an unavailable state when the daemon has no live filesystems", () => {
+    mocks.data = [];
+    render(<FsInfoCard />);
+
+    expect(
+      screen.getByText("No system information available."),
+    ).toBeInTheDocument();
   });
 });

@@ -46,6 +46,7 @@ Linux I/O combines workflows usually split across multiple tools:
 - **PAM Authentication** - Login with your Linux credentials
 - **Live System Stats** - CPU, memory, disk, and network monitoring
 - **Metrics Daemon** - First-party `linuxio-monitoring` collector with metrics history
+- **Processes** - Live process and program tables with CPU, memory, disk I/O, and container attribution
 - **Docker Manager** - Container management
 - **WireGuard UI** - VPN configuration
 - **File Explorer** - Integrated file explorer

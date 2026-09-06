@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/store/storetest"
 )
 
@@ -64,6 +65,56 @@ func TestStoreSnapshotAndHistoryQueries(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(tmpDir, "metrics.db"))
 	require.NoError(t, err)
+}
+
+func TestWriteSmartDevicesPersistsCompactData(t *testing.T) {
+	store, err := OpenStore(t.TempDir(), Options{HistoryPlugins: []string{PluginSmart}})
+	require.NoError(t, err)
+	defer store.Close()
+
+	namespaces := uint64(2)
+	powerCycles := uint64(430)
+	item := smart.SmartData{
+		ModelName:              "P3-2TB",
+		SerialNumber:           "serial",
+		FirmwareVersion:        "X0104A0",
+		Capacity:               2_048,
+		SmartStatus:            "PASSED",
+		DiskName:               "/dev/sda",
+		DiskType:               "sat",
+		Temperature:            31,
+		Attributes:             []*smart.SmartAttribute{{ID: 5, Name: "Power", RawValue: 42}},
+		Device:                 &smart.DeviceInfo{Name: "/dev/sda", Type: "sat"},
+		AtaSmartSelfTestLog:    &smart.SmartSelfTestLog{Standard: &smart.SmartSelfTestStandardLog{Count: 1}},
+		NVMeVersion:            &smart.NVMeVersionInfo{String: "1.4"},
+		NVMeNumberOfNamespaces: &namespaces,
+		PowerOnTime:            &smart.SmartPowerOnTime{Hours: 4_399},
+		PowerCycleCount:        &powerCycles,
+	}
+
+	capturedAt := time.Now().UTC().UnixMilli()
+	require.NoError(t, store.WriteSmartDevices(capturedAt, map[string]smart.SmartData{"serial": item}))
+	records, err := store.PluginHistory(context.Background(), PluginSmart, resolution1m, 0, capturedAt, 10)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+
+	var envelopes []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(records[0].Stats, &envelopes))
+	require.Len(t, envelopes, 1)
+	var persisted map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(envelopes[0]["Data"], &persisted))
+	require.Len(t, persisted, 9)
+	for _, field := range []string{"model_name", "serial_number", "firmware_version", "capacity_bytes", "smart_status", "disk_name", "disk_type", "temperature_celsius", "attributes"} {
+		assert.Contains(t, persisted, field)
+	}
+	for _, field := range []string{"device", "ata_smart_self_test_log", "nvme_version", "nvme_number_of_namespaces", "power_on_time", "power_cycle_count"} {
+		assert.NotContains(t, persisted, field)
+	}
+	assert.JSONEq(t, `{"model_name":"P3-2TB","serial_number":"serial","firmware_version":"X0104A0","capacity_bytes":2048,"smart_status":"PASSED","disk_name":"/dev/sda","disk_type":"sat","temperature_celsius":31,"attributes":[{"id":5,"name":"Power","raw_value":42}]}`, string(envelopes[0]["Data"]))
+	assert.NotNil(t, item.Device)
+	assert.NotNil(t, item.AtaSmartSelfTestLog)
+	assert.NotNil(t, item.NVMeVersion)
+	assert.NotNil(t, item.PowerOnTime)
 }
 
 func TestStoreMigratesV4AndV5ToV7HistoryOnly(t *testing.T) {

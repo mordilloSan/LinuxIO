@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { MonitoringNetworkHistoryPoint, NetworkInterface } from "@/api";
+import type {
+  LiveInterface,
+  MonitoringNetworkHistoryPoint,
+  NetworkInterface,
+} from "@/api";
+import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import { testNetworkInterface } from "@/test/networkInterface";
 import { render, screen } from "@/test/render";
 
@@ -11,7 +16,8 @@ import NetworkInterfaceStatsCard, {
 import { networkHistorySeries } from "./NetworkTrafficHistoryCard";
 
 const mocks = vi.hoisted(() => ({
-  interfaces: [] as unknown[],
+  interfaces: [] as NetworkInterface[],
+  live: { interfaces: {} },
 }));
 
 vi.mock("@iconify/react", () => ({
@@ -24,11 +30,22 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...actual,
-    useQuery: ({ select }: { select?: (data: unknown) => unknown }) => ({
-      data: select ? select(mocks.interfaces) : mocks.interfaces,
-      error: null,
-      isLoading: false,
-    }),
+    useQuery: ({
+      queryKey,
+      select,
+    }: {
+      queryKey?: readonly unknown[];
+      select?: (data: unknown) => unknown;
+    }) => {
+      const data = queryKey?.includes("get_live")
+        ? mocks.live
+        : mocks.interfaces;
+      return {
+        data: select ? select(data) : data,
+        error: null,
+        isLoading: false,
+      };
+    },
   };
 });
 
@@ -48,6 +65,32 @@ const rowValue = (rows: StatRows, label: string) =>
 const withInterfaces = (...interfaces: NetworkInterface[]) => {
   mocks.interfaces = interfaces;
 };
+
+const withLiveInterface = (name: string, live: LiveInterface) => {
+  mocks.live = { interfaces: { [name]: live } };
+};
+
+it("keeps throughput on interface cards using the live monitoring sample", () => {
+  withInterfaces(testNetworkInterface());
+  withLiveInterface("eth0", {
+    rx_bytes_per_sec: 2048,
+    tx_bytes_per_sec: 1024,
+    rx_bytes_total: 0,
+    tx_bytes_total: 0,
+    rx_packets: 0,
+    tx_packets: 0,
+    rx_errors: 0,
+    tx_errors: 0,
+    rx_dropped: 0,
+    tx_dropped: 0,
+  });
+  render(
+    <NetworkInterfaceCard name="eth0" type="ethernet" onToggle={() => {}} />,
+  );
+  expect(
+    screen.getByText("RX/s: 2.0 kB/s | TX/s: 1.0 kB/s"),
+  ).toBeInTheDocument();
+});
 
 describe("networkInterfaceStatRows", () => {
   it("reports the link, the driver and the managing backend", () => {
@@ -97,20 +140,18 @@ describe("networkInterfaceStatRows", () => {
       false,
     );
 
-    const rows = networkInterfaceStatRows(
-      testNetworkInterface({
-        counters: {
-          rx_bytes: 2048,
-          rx_dropped: 0,
-          rx_errors: 4,
-          rx_packets: 12,
-          tx_bytes: 1024,
-          tx_dropped: 7,
-          tx_errors: 0,
-          tx_packets: 6,
-        },
-      }),
-    );
+    const rows = networkInterfaceStatRows(testNetworkInterface(), {
+      rx_bytes_per_sec: 0,
+      tx_bytes_per_sec: 0,
+      rx_bytes_total: 2048,
+      tx_bytes_total: 1024,
+      rx_dropped: 0,
+      rx_errors: 4,
+      rx_packets: 12,
+      tx_dropped: 7,
+      tx_errors: 0,
+      tx_packets: 6,
+    });
 
     expect(rowValue(rows, "Sent")).toBe("1 KB · 6 pkt");
     expect(rowValue(rows, "Received")).toBe("2 KB · 12 pkt");
@@ -119,6 +160,15 @@ describe("networkInterfaceStatRows", () => {
     expect(rows.find((row) => row.label === "Dropped (tx/rx)")?.warn).toBe(
       true,
     );
+  });
+
+  it("uses zeroes while the live sample is unavailable", () => {
+    const rows = networkInterfaceStatRows(testNetworkInterface());
+
+    expect(rowValue(rows, "Sent")).toBe("0 Bytes · 0 pkt");
+    expect(rowValue(rows, "Received")).toBe("0 Bytes · 0 pkt");
+    expect(rowValue(rows, "Errors (tx/rx)")).toBe("0 / 0");
+    expect(rowValue(rows, "Dropped (tx/rx)")).toBe("0 / 0");
   });
 });
 
@@ -129,9 +179,23 @@ describe("NetworkInterfaceStatsCard", () => {
       testNetworkInterface({ mtu: 1500, name: "eth0" }),
     );
 
+    withLiveInterface("eth1", {
+      rx_bytes_per_sec: 0,
+      tx_bytes_per_sec: 0,
+      rx_bytes_total: 2048,
+      tx_bytes_total: 1024,
+      rx_dropped: 0,
+      rx_errors: 0,
+      rx_packets: 12,
+      tx_dropped: 0,
+      tx_errors: 0,
+      tx_packets: 6,
+    });
+
     render(<NetworkInterfaceStatsCard name="eth1" />);
 
     expect(screen.getByText("1400")).toBeTruthy();
+    expect(screen.getByText("1 KB · 6 pkt")).toBeTruthy();
   });
 
   it("renders nothing while the interface is absent from the cache", () => {

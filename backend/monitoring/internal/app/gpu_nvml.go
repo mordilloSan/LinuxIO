@@ -260,6 +260,7 @@ func (c *nvmlCollector) collect() {
 			c.gm.GpuDataMap[id] = &system.GPUData{Name: c.names[i]}
 		}
 		gpu := c.gm.GpuDataMap[id]
+		gpu.Address = normalizePCIAddress(bdf)
 
 		if bdf != "" && !c.isGPUActive(bdf) {
 			slog.Debug("NVML: GPU is suspended, skipping", "bdf", bdf)

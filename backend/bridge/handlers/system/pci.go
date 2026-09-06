@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -13,8 +14,11 @@ func FetchPCIDevices(ctx context.Context) ([]apischema.PCIDevice, error) {
 	}
 	// ghw has no context support; ctx is accepted for consistent handler flow.
 	info, err := cachedPCIInfo()
-	if err != nil || info == nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve PCI information: %w", err)
+	}
+	if info == nil {
+		return nil, errors.New("failed to retrieve PCI information: empty result")
 	}
 
 	devices := make([]apischema.PCIDevice, 0, len(info.Devices))

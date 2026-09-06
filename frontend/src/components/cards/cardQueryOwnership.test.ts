@@ -245,11 +245,16 @@ const hookContracts: HookContract[] = [
     name: "DriveGraphPane",
     hooks: { useSuspenseQueries: 1 },
   },
-  ...["NetworkHeader", "NetworkStats", "NetworkGraphPane"].map((name) => ({
+  ...["NetworkHeader", "NetworkStats"].map((name) => ({
     file: dashboardRoute("Network"),
     name,
     hooks: { useSuspenseQuery: 1 },
   })),
+  {
+    file: dashboardRoute("Network"),
+    name: "NetworkGraphPane",
+    hooks: { useSuspenseQuery: 2 },
+  },
 
   // Docker card identities, query-free shell, and live cache body.
   {
@@ -269,12 +274,12 @@ const hookContracts: HookContract[] = [
   {
     file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
     name: "NetworkInterfaceList",
-    hooks: { useSuspenseQuery: 1 },
+    hooks: { useQuery: 1, useSuspenseQuery: 1 },
   },
   {
     file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
     name: "NetworkInterfaceTrafficGraphs",
-    hooks: { useQuery: 1 },
+    hooks: { useQuery: 2 },
   },
   {
     file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
@@ -288,6 +293,11 @@ const hookContracts: HookContract[] = [
   {
     file: "components/cards/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceCardContent",
+    hooks: { useQuery: 1 },
+  },
+  {
+    file: "components/cards/NetworkInterfaceCard.tsx",
+    name: "NetworkInterfaceRates",
     hooks: { useQuery: 1 },
   },
 
@@ -371,7 +381,7 @@ const hookContracts: HookContract[] = [
   {
     file: "routes/_authenticated/network/-components/NetworkInterfaceStatsCard.tsx",
     name: "NetworkInterfaceStatsCard",
-    hooks: { useQuery: 1 },
+    hooks: { useQuery: 2 },
   },
   {
     file: "routes/_authenticated/network/-components/NetworkInterfaceLogsCard.tsx",
@@ -462,13 +472,6 @@ const selectContracts: SelectContract[] = [
     select: "selectDetails",
   },
   {
-    file: dashboardRoute("Network"),
-    name: "NetworkGraphPane",
-    hook: "useSuspenseQuery",
-    memoized: true,
-    select: "selectThroughput",
-  },
-  {
     file: dashboardRoute("Drive"),
     name: "Drive",
     hook: "useSuspenseQuery",
@@ -533,7 +536,7 @@ const selectContracts: SelectContract[] = [
     file: "routes/_authenticated/hardware/-components/HardwarePage.tsx",
     name: "SensorReadings",
     hook: "useSuspenseQuery",
-    select: "selectVisibleSensorGroupIdentities",
+    select: "selectLiveSensorGroupIdentities",
   },
   {
     file: "components/cards/SensorGroupCard.tsx",
@@ -753,15 +756,15 @@ describe("card query ownership", () => {
     const cacheOnly: ComponentRef[] = [
       {
         file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
-        name: "NetworkInterfaceTrafficGraphs",
-      },
-      {
-        file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
         name: "NetworkInterfaceConfigurationCards",
       },
       {
         file: "components/cards/NetworkInterfaceCard.tsx",
         name: "NetworkInterfaceCardContent",
+      },
+      {
+        file: "components/cards/NetworkInterfaceCard.tsx",
+        name: "NetworkInterfaceRates",
       },
       { file: "components/cards/WireguardPeerCard.tsx", name: "usePeer" },
       {
@@ -788,11 +791,12 @@ describe("card query ownership", () => {
     }
   });
 
-  it("keeps one polling observer in each active list or standalone live owner", () => {
-    const pollingOwners: ComponentRef[] = [
+  it("keeps polling in the active list or standalone live owner", () => {
+    const pollingOwners: (ComponentRef & { count?: number })[] = [
       {
         file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
         name: "NetworkInterfaceList",
+        count: 2,
       },
       {
         file: dockerContainerListFile,
@@ -831,6 +835,14 @@ describe("card query ownership", () => {
         file: "components/cards/UnitInfoPanelCard.tsx",
         name: "UnitInfoPanelLive",
       },
+      {
+        file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
+        name: "NetworkInterfaceTrafficGraphs",
+      },
+      {
+        file: "routes/_authenticated/network/-components/NetworkInterfaceStatsCard.tsx",
+        name: "NetworkInterfaceStatsCard",
+      },
     ];
 
     for (const contract of pollingOwners) {
@@ -838,7 +850,9 @@ describe("card query ownership", () => {
       const pollingCalls = directQueryCalls(component).filter((call) =>
         call.getText(component.sourceFile).includes("refetchInterval:"),
       );
-      expect(pollingCalls, `${contract.file}:${contract.name}`).toHaveLength(1);
+      expect(pollingCalls, `${contract.file}:${contract.name}`).toHaveLength(
+        contract.count ?? 1,
+      );
     }
   });
 

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 )
@@ -23,6 +25,9 @@ func TestBuildLiveMapsSample(t *testing.T) {
 				"nvme0n1": {ReadBytesPerSec: 300, WriteBytesPerSec: 0},
 			},
 			NetworkInterfaces: map[string][4]uint64{"eth0": {1000, 2000, 30000, 40000}},
+			NetworkInterfaceCounters: map[string]system.NetworkInterfaceCounters{"eth0": {
+				RxDropped: 1, RxErrors: 2, RxPackets: 3, TxDropped: 4, TxErrors: 5, TxPackets: 6,
+			}},
 		},
 		Info: system.Info{Uptime: 4242},
 		Containers: []*container.Stats{
@@ -49,6 +54,7 @@ func TestBuildLiveMapsSample(t *testing.T) {
 	if eth.TxBytesPerSec != 1000 || eth.RxBytesPerSec != 2000 || eth.TxBytesTotal != 30000 || eth.RxBytesTotal != 40000 {
 		t.Fatalf("eth0 = %+v", eth)
 	}
+	require.Equal(t, []uint64{1, 2, 3, 4, 5, 6}, []uint64{eth.RxDropped, eth.RxErrors, eth.RxPackets, eth.TxDropped, eth.TxErrors, eth.TxPackets})
 	if len(live.Containers.Items) != 1 {
 		t.Fatalf("containers = %+v", live.Containers)
 	}

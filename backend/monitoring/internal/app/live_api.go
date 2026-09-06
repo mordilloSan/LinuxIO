@@ -18,16 +18,20 @@ func (a *App) Live(ctx context.Context) (monitoringapi.Live, error) {
 	if err := ctx.Err(); err != nil {
 		return monitoringapi.Live{}, err
 	}
-	data, capturedAt, err := a.liveCurrentData(ctx, liveSampleKey(liveLiveEndpoint), true, true)
+	run, err := a.liveCurrentRun(ctx, liveSampleKey(liveLiveEndpoint), true, true)
 	if err != nil {
 		return monitoringapi.Live{}, err
 	}
+	data, capturedAt := run.data, run.capturedAt
 	threads := 0
 	if data.Details != nil {
 		threads = data.Details.Threads
 	}
 	telemetry, telemetryAt := a.lastTelemetry()
-	return buildLive(data, capturedAt, threads, telemetry, telemetryAt, 3*a.CollectorInterval()), nil
+	live := buildLive(data, capturedAt, threads, telemetry, telemetryAt, 3*a.CollectorInterval())
+	live.Filesystems, live.Sensors, live.CPU.FrequenciesMHz, live.GPUs, live.Smart = liveExtrasSnapshot(run)
+	live.CPU.Temperatures = cpuTemperatures(live.Sensors)
+	return live, nil
 }
 
 func (a *App) lastTelemetry() ([]container.Telemetry, time.Time) {
@@ -52,6 +56,8 @@ func buildLive(data *system.CombinedData, capturedAt time.Time, threads int, tel
 			Percent:        stats.Cpu,
 			PerCorePercent: make([]float64, 0, len(stats.CpuCoresUsage)),
 			LoadAverage:    stats.LoadAvg,
+			FrequenciesMHz: []float64{},
+			Temperatures:   map[string]float64{},
 		},
 		Memory: monitoringapi.LiveMemory{
 			TotalBytes:     stats.MemoryBytes.Total,
@@ -65,9 +71,13 @@ func buildLive(data *system.CombinedData, capturedAt time.Time, threads int, tel
 			SwapFreeBytes:  stats.MemoryBytes.SwapFree,
 			ZFSArcBytes:    stats.MemoryBytes.ZFSArc,
 		},
-		Disks:      map[string]monitoringapi.LiveDiskRates{},
-		Interfaces: map[string]monitoringapi.LiveInterface{},
-		Containers: monitoringapi.LiveContainers{CapturedAtMs: capturedAt.UTC().UnixMilli(), Items: []monitoringapi.LiveContainer{}},
+		Disks:       map[string]monitoringapi.LiveDiskRates{},
+		Interfaces:  map[string]monitoringapi.LiveInterface{},
+		Filesystems: []monitoringapi.FilesystemInfo{},
+		Sensors:     []monitoringapi.SensorGroup{},
+		GPUs:        map[string]monitoringapi.LiveGPU{},
+		Smart:       map[string]monitoringapi.LiveSmart{},
+		Containers:  monitoringapi.LiveContainers{CapturedAtMs: capturedAt.UTC().UnixMilli(), Items: []monitoringapi.LiveContainer{}},
 	}
 	for _, core := range stats.CpuCoresUsage {
 		live.CPU.PerCorePercent = append(live.CPU.PerCorePercent, float64(core))
@@ -89,6 +99,16 @@ func buildLive(data *system.CombinedData, capturedAt time.Time, threads int, tel
 		live.Interfaces[name] = monitoringapi.LiveInterface{
 			TxBytesPerSec: float64(values[0]), RxBytesPerSec: float64(values[1]),
 			TxBytesTotal: values[2], RxBytesTotal: values[3],
+		}
+		if counters, ok := stats.NetworkInterfaceCounters[name]; ok {
+			iface := live.Interfaces[name]
+			iface.RxDropped = counters.RxDropped
+			iface.RxErrors = counters.RxErrors
+			iface.RxPackets = counters.RxPackets
+			iface.TxDropped = counters.TxDropped
+			iface.TxErrors = counters.TxErrors
+			iface.TxPackets = counters.TxPackets
+			live.Interfaces[name] = iface
 		}
 	}
 

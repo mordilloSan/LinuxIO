@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useId, type ReactNode } from "react";
 
+import type { SmartData } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
@@ -9,12 +10,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
-interface DriveSmartData {
-  nvme_smart_health_information_log?: { temperature?: unknown };
-  smart_status?: { passed?: boolean };
-  temperature?: { current?: unknown };
-}
-
 export interface DriveCardProps {
   children?: ReactNode;
   expanded: boolean;
@@ -22,29 +17,12 @@ export interface DriveCardProps {
   name: string;
   onClick: () => void;
   sizeBytes: number;
-  smart?: DriveSmartData;
+  smart?: SmartData;
   transport: string;
 }
 
-const getSmartNumber = (value: unknown): number | null => {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const parsed = parseFloat(value.replace(/,/g, ""));
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  if (value && typeof value === "object") {
-    return getSmartNumber((value as { value?: unknown }).value);
-  }
-  return null;
-};
-
-const getTemperature = (smart?: DriveSmartData): number | null => {
-  if (!smart) return null;
-  return getSmartNumber(
-    smart.nvme_smart_health_information_log?.temperature ??
-      smart.temperature?.current ??
-      null,
-  );
+const getTemperature = (smart?: SmartData): number | null => {
+  return smart?.temperature_celsius ?? null;
 };
 
 const getTemperatureColor = (temp: number | null): string => {
@@ -55,12 +33,11 @@ const getTemperatureColor = (temp: number | null): string => {
 };
 
 const getHealthColor = (
-  smart?: DriveSmartData,
+  smart?: SmartData,
 ): "success" | "error" | "warning" | "default" => {
   if (!smart?.smart_status) return "default";
-  const passed = smart.smart_status.passed;
-  if (passed === true) return "success";
-  if (passed === false) return "error";
+  if (smart.smart_status === "PASSED") return "success";
+  if (smart.smart_status === "FAILED") return "error";
   return "warning";
 };
 

@@ -12,11 +12,7 @@ import {
 } from "@/routes/-loader";
 
 import HardwarePage from "./-components/HardwarePage";
-import {
-  hardwareGpuQueryOptions,
-  hardwareSensorQueryOptions,
-  hardwareStableQueryOptions,
-} from "./-components/hardwareQueryOptions";
+import { hardwareStableQueryOptions } from "./-components/hardwareQueryOptions";
 
 const access = {
   requiredCapabilities: ["lmSensorsAvailable"],
@@ -30,11 +26,7 @@ export const Route = createFileRoute("/_authenticated/hardware")({
     const sections = ui.hardwareSections;
 
     const queries: LoaderQueryOptions[] = [];
-    if (sections.sensors)
-      queries.push({
-        ...linuxio.system.get_sensor_info,
-        ...hardwareSensorQueryOptions,
-      });
+    if (sections.sensors) queries.push(linuxio.monitoring.get_live);
     if (sections.pciDevices)
       queries.push({
         ...linuxio.system.get_pci_devices,
@@ -53,7 +45,8 @@ export const Route = createFileRoute("/_authenticated/hardware")({
         },
         { ...linuxio.system.get_system_info, ...hardwareStableQueryOptions },
         { ...linuxio.system.get_cpu_info, ...hardwareStableQueryOptions },
-        { ...linuxio.system.get_gpu_info, ...hardwareGpuQueryOptions },
+        { ...linuxio.system.get_gpu_info, ...hardwareStableQueryOptions },
+        linuxio.monitoring.get_live,
       );
     }
 

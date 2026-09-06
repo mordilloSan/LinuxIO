@@ -178,6 +178,9 @@ func (m *networkManager) ensureNetworkInterfacesMap(systemStats *system.Stats) {
 	if systemStats.NetworkInterfaces == nil {
 		systemStats.NetworkInterfaces = make(map[string][4]uint64, 0)
 	}
+	if systemStats.NetworkInterfaceCounters == nil {
+		systemStats.NetworkInterfaceCounters = make(map[string]system.NetworkInterfaceCounters)
+	}
 }
 
 // loadAndTickNetBaseline returns the NetIoStats baseline and milliseconds elapsed, updating time
@@ -236,6 +239,10 @@ func (m *networkManager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed u
 			}
 		}
 		systemStats.NetworkInterfaces[v.Name] = [4]uint64{upDelta, downDelta, v.BytesSent, v.BytesRecv}
+		systemStats.NetworkInterfaceCounters[v.Name] = system.NetworkInterfaceCounters{
+			RxDropped: v.Dropin, RxErrors: v.Errin, RxPackets: v.PacketsRecv,
+			TxDropped: v.Dropout, TxErrors: v.Errout, TxPackets: v.PacketsSent,
+		}
 	}
 
 	return totalBytesSent, totalBytesRecv
