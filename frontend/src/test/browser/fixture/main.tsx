@@ -45,6 +45,8 @@ const VirtualExpansionTablePage = lazy(
   () => import("./routes/VirtualExpansionTablePage"),
 );
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
+const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
+const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
 
 const DARK_THEME = buildAppTheme("DARK");
 const LIGHT_THEME = buildAppTheme("LIGHT");
@@ -167,6 +169,39 @@ const stylingLightRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "styling/light",
 });
+const topologySearch = (search: Record<string, unknown>) => ({
+  container:
+    typeof search.container === "string" ? search.container : undefined,
+  network: typeof search.network === "string" ? search.network : undefined,
+});
+const dockerTopologyRoute = createRoute({
+  component: DockerTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "docker/topology",
+  validateSearch: topologySearch,
+});
+const lightTopologyRoute = createRoute({
+  component: DockerTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/topology",
+  validateSearch: topologySearch,
+});
+const storageTopologyRoute = createRoute({
+  component: StorageTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "storage/topology",
+  validateSearch: (search) => ({
+    node: typeof search.node === "string" ? search.node : undefined,
+  }),
+});
+const lightStorageTopologyRoute = createRoute({
+  component: StorageTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/storage-topology",
+  validateSearch: (search) => ({
+    node: typeof search.node === "string" ? search.node : undefined,
+  }),
+});
 const processesRoute = createRoute({
   component: ProcessesFixturePage,
   getParentRoute: () => rootRoute,
@@ -217,6 +252,10 @@ const routeTree = rootRoute.addChildren([
   virtualGridRoute,
   stylingDarkRoute,
   stylingLightRoute,
+  dockerTopologyRoute,
+  lightTopologyRoute,
+  storageTopologyRoute,
+  lightStorageTopologyRoute,
   processesRoute,
 ]);
 const router = createRouter({

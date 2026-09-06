@@ -226,6 +226,7 @@ const linuxio = {
     create_lv: defineCallWithRequest("storage.create_lv"),
     delete_lv: defineCallWithRequest("storage.delete_lv"),
     get_drive_info: defineCall("storage.get_drive_info"),
+    get_topology: defineCall("storage.get_topology"),
     list_cifs_mounts: defineCall("storage.list_cifs_mounts"),
     list_cifs_shares: defineCallWithRequest("storage.list_cifs_shares"),
     list_lvs: defineCall("storage.list_lvs"),

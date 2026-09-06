@@ -244,3 +244,18 @@ plan does not add a misleading Edit Network action.
 
 - [x] Visualize Docker networks and their attached containers.
 - [x] Visualize host-wide published port bindings across containers.
+- [x] Add an interactive topology map with application icons, collapsible
+  Compose groups, URL-backed container/network selection, and an inspector.
+  Connections represent network attachments; live RX/TX activity represents
+  container totals, not per-connection or per-port traffic. Activity expires
+  when samples stop advancing, supports pausing animation and reduced motion,
+  and remains optional when monitoring is unavailable. Narrow layouts use
+  selectable lists with the same inspector and published bindings.
+  Match monitoring's shortened container IDs to Docker's full inventory IDs
+  so CPU, memory, and network measurements reach the topology inspector/cards.
+- [x] Add Storage topology with a read-only block-device and mount inventory,
+  device-to-mount and application-path relationships, URL selection, backing
+  device/LVM details, capacity and optional live disk activity. Preserve
+  multi-parent devices and nested memory mount boundaries; support keyboard
+  navigation, narrow layouts, reduced motion, and paused/stale activity.
+  See [Storage Topology](../storage-topology.md) for ownership and limits.

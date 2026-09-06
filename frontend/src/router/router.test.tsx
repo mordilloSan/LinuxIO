@@ -81,6 +81,7 @@ describe("generated application router", () => {
         "/storage",
         "/storage/",
         "/storage/lvm",
+        "/storage/topology",
         "/terminal",
         "/updates",
         "/updates/",

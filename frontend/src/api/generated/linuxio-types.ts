@@ -2251,6 +2251,28 @@ export interface StackNameRequest {
   stackName: string;
 }
 
+export interface StorageBlockDevice {
+  path: string;
+  name: string;
+  kernelName: string;
+  type: string;
+  sizeBytes: number;
+  fsType: string;
+  mountpoints: string[];
+  parents: string[];
+  model: string;
+  serial: string;
+  transport: string;
+  readOnly: boolean;
+}
+
+export interface StorageMount {
+  device: string;
+  path: string;
+  fsType: string;
+  readOnly: boolean;
+}
+
 export interface StorageMountResult {
   success: boolean;
   mountpoint?: string;
@@ -2261,6 +2283,11 @@ export interface StoragePathResult {
   success: boolean;
   mountpoint?: string;
   path?: string;
+}
+
+export interface StorageTopologyInventory {
+  devices: StorageBlockDevice[];
+  mounts: StorageMount[];
 }
 
 export interface StorageWarningResult {
@@ -3400,6 +3427,11 @@ export interface LinuxIOSchema {
       result: SuccessResponse;
     };
     get_drive_info: { input: []; request: void; result: ApiDisk[] };
+    get_topology: {
+      input: [];
+      request: void;
+      result: StorageTopologyInventory;
+    };
     list_cifs_mounts: { input: []; request: void; result: CIFSMount[] };
     list_cifs_shares: {
       input: [server: string];
@@ -4034,6 +4066,7 @@ export interface LinuxIOCallSchema {
     result: SuccessResponse;
   };
   "storage.get_drive_info": { request: void; result: ApiDisk[] };
+  "storage.get_topology": { request: void; result: StorageTopologyInventory };
   "storage.list_cifs_mounts": { request: void; result: CIFSMount[] };
   "storage.list_cifs_shares": { request: ServerRequest; result: string[] };
   "storage.list_lvs": { request: void; result: LogicalVolume[] };

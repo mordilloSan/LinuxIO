@@ -116,6 +116,35 @@ type ApiDisk struct {
 	Vendor *string `json:"vendor,omitempty"`
 }
 
+// StorageBlockDevice describes kernel-reported backing relationships. A device
+// can have several parents (RAID, multipath, or an LV spanning several PVs).
+type StorageBlockDevice struct {
+	Path        string   `json:"path"`
+	Name        string   `json:"name"`
+	KernelName  string   `json:"kernelName"`
+	Type        string   `json:"type"`
+	SizeBytes   uint64   `json:"sizeBytes"`
+	FSType      string   `json:"fsType"`
+	Mountpoints []string `json:"mountpoints"`
+	Parents     []string `json:"parents"`
+	Model       string   `json:"model"`
+	Serial      string   `json:"serial"`
+	Transport   string   `json:"transport"`
+	ReadOnly    bool     `json:"readOnly"`
+}
+
+type StorageMount struct {
+	Device   string `json:"device"`
+	Path     string `json:"path"`
+	FSType   string `json:"fsType"`
+	ReadOnly bool   `json:"readOnly"`
+}
+
+type StorageTopologyInventory struct {
+	Devices []StorageBlockDevice `json:"devices"`
+	Mounts  []StorageMount       `json:"mounts"`
+}
+
 type MotherboardInfo struct {
 	Baseboard MotherboardBaseboard `json:"baseboard"`
 	BIOS      MotherboardBIOS      `json:"bios"`

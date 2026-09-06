@@ -44,6 +44,7 @@ import { Route as AuthenticatedSharesIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedSharesMountsRouteImport } from './routes/_authenticated/shares/mounts'
 import { Route as AuthenticatedStorageIndexRouteImport } from './routes/_authenticated/storage/index'
 import { Route as AuthenticatedStorageLvmRouteImport } from './routes/_authenticated/storage/lvm'
+import { Route as AuthenticatedStorageTopologyRouteImport } from './routes/_authenticated/storage/topology'
 import { Route as AuthenticatedUpdatesIndexRouteImport } from './routes/_authenticated/updates/index'
 import { Route as AuthenticatedUpdatesHistoryRouteImport } from './routes/_authenticated/updates/history'
 import { Route as AuthenticatedVmIndexRouteImport } from './routes/_authenticated/vm/index'
@@ -256,6 +257,12 @@ const AuthenticatedStorageLvmRoute = AuthenticatedStorageLvmRouteImport.update({
   path: '/lvm',
   getParentRoute: () => AuthenticatedStorageRouteRoute,
 } as any)
+const AuthenticatedStorageTopologyRoute =
+  AuthenticatedStorageTopologyRouteImport.update({
+    id: '/topology',
+    path: '/topology',
+    getParentRoute: () => AuthenticatedStorageRouteRoute,
+  } as any)
 const AuthenticatedUpdatesIndexRoute =
   AuthenticatedUpdatesIndexRouteImport.update({
     id: '/',
@@ -332,6 +339,7 @@ export interface FileRoutesByFullPath {
   '/services/timers': typeof AuthenticatedServicesTimersRoute
   '/shares/mounts': typeof AuthenticatedSharesMountsRoute
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
+  '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/vm/images': typeof AuthenticatedVmImagesRoute
   '/vm/networks': typeof AuthenticatedVmNetworksRoute
@@ -367,6 +375,7 @@ export interface FileRoutesByTo {
   '/services/timers': typeof AuthenticatedServicesTimersRoute
   '/shares/mounts': typeof AuthenticatedSharesMountsRoute
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
+  '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/vm/images': typeof AuthenticatedVmImagesRoute
   '/vm/networks': typeof AuthenticatedVmNetworksRoute
@@ -413,6 +422,7 @@ export interface FileRoutesById {
   '/_authenticated/services/timers': typeof AuthenticatedServicesTimersRoute
   '/_authenticated/shares/mounts': typeof AuthenticatedSharesMountsRoute
   '/_authenticated/storage/lvm': typeof AuthenticatedStorageLvmRoute
+  '/_authenticated/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/_authenticated/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/_authenticated/vm/images': typeof AuthenticatedVmImagesRoute
   '/_authenticated/vm/networks': typeof AuthenticatedVmNetworksRoute
@@ -459,6 +469,7 @@ export interface FileRouteTypes {
     | '/services/timers'
     | '/shares/mounts'
     | '/storage/lvm'
+    | '/storage/topology'
     | '/updates/history'
     | '/vm/images'
     | '/vm/networks'
@@ -494,6 +505,7 @@ export interface FileRouteTypes {
     | '/services/timers'
     | '/shares/mounts'
     | '/storage/lvm'
+    | '/storage/topology'
     | '/updates/history'
     | '/vm/images'
     | '/vm/networks'
@@ -539,6 +551,7 @@ export interface FileRouteTypes {
     | '/_authenticated/services/timers'
     | '/_authenticated/shares/mounts'
     | '/_authenticated/storage/lvm'
+    | '/_authenticated/storage/topology'
     | '/_authenticated/updates/history'
     | '/_authenticated/vm/images'
     | '/_authenticated/vm/networks'
@@ -806,6 +819,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStorageLvmRouteImport
       parentRoute: typeof AuthenticatedStorageRouteRoute
     }
+    '/_authenticated/storage/topology': {
+      id: '/_authenticated/storage/topology'
+      path: '/topology'
+      fullPath: '/storage/topology'
+      preLoaderRoute: typeof AuthenticatedStorageTopologyRouteImport
+      parentRoute: typeof AuthenticatedStorageRouteRoute
+    }
     '/_authenticated/updates/': {
       id: '/_authenticated/updates/'
       path: '/'
@@ -957,12 +977,14 @@ const AuthenticatedSharesRouteRouteWithChildren =
 
 interface AuthenticatedStorageRouteRouteChildren {
   AuthenticatedStorageLvmRoute: typeof AuthenticatedStorageLvmRoute
+  AuthenticatedStorageTopologyRoute: typeof AuthenticatedStorageTopologyRoute
   AuthenticatedStorageIndexRoute: typeof AuthenticatedStorageIndexRoute
 }
 
 const AuthenticatedStorageRouteRouteChildren: AuthenticatedStorageRouteRouteChildren =
   {
     AuthenticatedStorageLvmRoute: AuthenticatedStorageLvmRoute,
+    AuthenticatedStorageTopologyRoute: AuthenticatedStorageTopologyRoute,
     AuthenticatedStorageIndexRoute: AuthenticatedStorageIndexRoute,
   }
 

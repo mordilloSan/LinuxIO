@@ -10,6 +10,25 @@ import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 const MODES = ROUTE_MODES as Record<string, string>;
 
 describe("OPERATION_QUERY_INVALIDATIONS", () => {
+  it("refreshes storage topology after volume and mount changes", () => {
+    for (const action of [
+      "create_lv",
+      "resize_lv",
+      "delete_lv",
+      "mount_nfs",
+      "unmount_nfs",
+      "remount_nfs",
+      "mount_cifs",
+      "unmount_cifs",
+      "remount_cifs",
+      "unmount_filesystem",
+      "create_btrfs_subvolume",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`storage.${action}`]).toContainEqual(
+        ["linuxio", "storage", "get_topology"],
+      );
+    }
+  });
   it("refreshes index-backed data after indexing", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["filebrowser.index"]).toEqual([
       ["linuxio", "indexer", "get_status"],

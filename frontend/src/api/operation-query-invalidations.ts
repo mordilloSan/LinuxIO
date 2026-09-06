@@ -219,42 +219,59 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   ],
 
   "storage.mount_cifs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_cifs_mounts"),
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.unmount_cifs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_cifs_mounts"),
     endpointQueryPrefix("monitoring.get_live"),
   ],
-  "storage.remount_cifs": [endpointQueryPrefix("storage.list_cifs_mounts")],
+  "storage.remount_cifs": [
+    endpointQueryPrefix("storage.list_cifs_mounts"),
+    endpointQueryPrefix("storage.get_topology"),
+    endpointQueryPrefix("monitoring.get_live"),
+  ],
   "storage.mount_nfs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_nfs_mounts"),
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.unmount_nfs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_nfs_mounts"),
     endpointQueryPrefix("monitoring.get_live"),
   ],
-  "storage.remount_nfs": [endpointQueryPrefix("storage.list_nfs_mounts")],
+  "storage.remount_nfs": [
+    endpointQueryPrefix("storage.list_nfs_mounts"),
+    endpointQueryPrefix("storage.get_topology"),
+    endpointQueryPrefix("monitoring.get_live"),
+  ],
   "storage.create_lv": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_lvs"),
     endpointQueryPrefix("storage.list_vgs"),
   ],
   "storage.resize_lv": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_lvs"),
     endpointQueryPrefix("storage.list_vgs"),
   ],
   "storage.delete_lv": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_lvs"),
     endpointQueryPrefix("storage.list_vgs"),
   ],
   "storage.unmount_filesystem": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_nfs_mounts"),
     endpointQueryPrefix("storage.list_cifs_mounts"),
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.run_smart_test": [endpointQueryPrefix("monitoring.get_live")],
   "storage.create_btrfs_subvolume": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "monitoring.refresh_smart": [endpointQueryPrefix("monitoring.get_live")],

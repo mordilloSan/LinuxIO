@@ -1,6 +1,6 @@
 module github.com/mordilloSan/LinuxIO/backend
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/containerd/errdefs v1.0.0
