@@ -354,7 +354,7 @@ because they are host facts rather than timings: `NICS` (interface filter),
 `GPU_COLLECTOR`, `SKIP_GPU` and `INTEL_GPU_DEVICE`, `SMART_DEVICES`,
 `SMART_DEVICES_SEPARATOR` and `EXCLUDE_SMART`, `EXTRA_FILESYSTEMS` and
 `FILESYSTEM`, `MEM_CALC`, `DOCKER_HOST`, `DOCKER_TIMEOUT` and
-`EXCLUDE_CONTAINERS`, and `HTTP_LOG` for per-request logging. Set them with a
+`EXCLUDE_CONTAINERS`, and `HTTP_LOG` for per-request logging at debug level. Set them with a
 systemd drop-in on `linuxio-monitoring.service`. An invalid `DOCKER_HOST` or
 `DOCKER_TIMEOUT` disables Docker monitoring with a logged error instead of
 stopping the daemon, and `https://` Docker hosts are refused because the

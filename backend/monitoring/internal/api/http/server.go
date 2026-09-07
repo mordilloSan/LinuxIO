@@ -195,7 +195,7 @@ func logRequests(next http.Handler) http.Handler {
 			rec.status = http.StatusOK
 		}
 
-		slog.Info("HTTP request",
+		slog.Debug("HTTP request",
 			"method", r.Method,
 			"path", r.URL.RequestURI(),
 			"status", rec.status,

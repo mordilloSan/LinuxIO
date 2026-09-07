@@ -636,7 +636,8 @@ func TestRequestLoggingEnabled(t *testing.T) {
 func TestLogRequestsWritesRequestLog(t *testing.T) {
 	var buf bytes.Buffer
 	originalLogger := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	var level slog.LevelVar
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: &level})))
 	t.Cleanup(func() { slog.SetDefault(originalLogger) })
 
 	handler := logRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -647,9 +648,14 @@ func TestLogRequestsWritesRequestLog(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
+	assert.Empty(t, buf.String(), "request logs should be suppressed at info level")
+	level.Set(slog.LevelDebug)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
 
 	logLine := buf.String()
 	assert.Equal(t, http.StatusCreated, rec.Code)
+	assert.Contains(t, logLine, "level=DEBUG")
 	assert.Contains(t, logLine, "msg=\"HTTP request\"")
 	assert.Contains(t, logLine, "method=POST")
 	assert.Contains(t, logLine, "path=\"/api/v1/smart/refresh?force=true\"")
@@ -662,7 +668,7 @@ func TestLogRequestsWritesRequestLog(t *testing.T) {
 func TestRoutesCanDisableRequestLogging(t *testing.T) {
 	var buf bytes.Buffer
 	originalLogger := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(originalLogger) })
 
 	server := newHTTPTestServer(t)
