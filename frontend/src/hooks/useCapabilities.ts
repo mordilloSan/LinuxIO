@@ -10,6 +10,7 @@ import {
   capabilityStateFromWire,
   emptyCapabilityState,
 } from "@/api/capabilities";
+import linuxio from "@/api/generated/client";
 import useAuth from "@/hooks/useAuth";
 import { useConfigUserId } from "@/hooks/useConfig";
 
@@ -76,6 +77,7 @@ export const useCapabilityState = (): CapabilityState => {
     Error,
     CapabilityState
   >({
+    queryFn: linuxio.system.get_capabilities.queryFn,
     queryKey: capabilitiesQueryKey(userId),
     enabled: false,
     select: capabilityStateFromWire,
@@ -91,6 +93,7 @@ export const useCapabilityState = (): CapabilityState => {
 export const useCapabilitiesResponse = (): Partial<CapabilitiesResponse> => {
   const userId = useConfigUserId();
   const { data } = useQuery<Partial<CapabilitiesResponse>>({
+    queryFn: linuxio.system.get_capabilities.queryFn,
     queryKey: capabilitiesQueryKey(userId),
     enabled: false,
   });

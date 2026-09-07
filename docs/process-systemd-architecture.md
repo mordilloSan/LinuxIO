@@ -15,6 +15,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | Authenticate (PAM) and launch a session | `linuxio-auth` | Needs **root** for PAM + privilege drop → kept tiny, written in C, audited, socket-activated per connection. |
 | Execute user-facing operations | `linuxio-bridge` | Runs with **exactly the logged-in user's** privileges (or root only when the user is privileged). One process per login. |
 | Maintain the filesystem index | `linuxio-indexer` | Needs broad read access but a narrow write boundary → isolated, sandboxed, and socket activated. |
+| Sample and store host metrics | `linuxio-monitoring` | Needs **root** for SMART, hwmon, GPU and the Docker socket, and must keep sampling with no session open → one long-running collector, read-only metrics on a world-readable socket, commands behind a root-only one. |
 | Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. |
 
 ## Binaries
@@ -27,6 +28,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged) | per login session | **yamux server**; executes operations |
 | `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled or durable update operation | Docker update worker |
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
+| `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
 
 These binaries install to `/usr/local/bin/`. The CLI is a thin management
 front-end; the remaining processes are independently constrained by their
@@ -46,6 +48,7 @@ the auth/bridge launch protocol.
 | `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only |
 | `linuxio-docker-update` | `help`/`-h`/`--help` | `run [--config PATH]` for the managed timer and `run-operation --id ID` for transient durable work |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
+| `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [--config PATH] [--verbose]`; used by `linuxio-monitoring.service` |
 
 The private indexer modes are an implementation protocol between the daemon and
 its systemd units, not alternate administration paths. Indexer status,
@@ -65,6 +68,8 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 │  └─ linuxio-indexer.service        runs the managed daemon; exits when idle
 ├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
 │  └─ linuxio-indexer-index.service asks the daemon for a full index
+├─ linuxio-monitoring.service        runs `linuxio-monitoring run`; root; owns
+│                                    /run/linuxio/monitoring/{api,control}.sock
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group
 └─ linuxio-issue.service             oneshot: updates the login issue/MOTD
 ```
@@ -82,6 +87,17 @@ Key unit facts (see `packaging/systemd/`):
   authenticated user is sudo-authorized and the bridge remains root. The
   service writes only its canonical config and `/var/lib/linuxio/indexer`
   state. See the [filesystem indexer guide](./indexer.md).
+- **`linuxio-monitoring.service`** — `Type=simple`, `User=root`,
+  `Restart=on-failure`, `ExecReload` sends `SIGHUP`. It is not socket-activated
+  and has no idle exit, because history must be sampled whether or not a browser
+  is connected. systemd owns `RuntimeDirectory`, `StateDirectory` and
+  `ConfigurationDirectory` under `linuxio/monitoring`; `ProtectSystem=strict`
+  leaves `/var/lib/linuxio/monitoring` and `/etc/linuxio/monitoring` as the only
+  writable paths. The daemon creates both of its sockets itself:
+  `/run/linuxio/monitoring/api.sock` (mode `0666`, read-only metrics) and
+  `/run/linuxio/monitoring/control.sock` (mode `0600` plus an `SO_PEERCRED`
+  uid-0 check, metrics and commands). See the
+  [monitoring daemon guide](./monitoring.md).
 - **`linuxio-bridge-socket-user.service`** — `Type=oneshot`, `DynamicUser=yes`, `User=linuxio-bridge-socket`, `Before=linuxio-auth.socket`. Its only job is to make the `linuxio-bridge-socket` user/group exist *before* the auth socket is created with that group ownership.
 
 ### The `linuxio-bridge-socket` group trick
@@ -158,11 +174,13 @@ The webserver keeps its end of the socket it dialed; it is now wired straight to
 | Auth ↔ bridge | PAM authentication + root-side sudoers query + `fork`/privilege drop | bridge stays root only when sudoers permits the exact bridge command; otherwise it starts with the user's uid/gid |
 | Webserver ↔ bridge | inherited socket fd + yamux | webserver never gains the bridge's privileges; just relays bytes |
 | Bridge ↔ indexer socket | privileged route metadata + `root:root 0600` Unix socket | only a sudo-authorized root bridge reaches the machine-wide index |
+| Bridge ↔ monitoring `api.sock` | `root:root 0666` Unix socket, read-only metrics API, no commands | any local process may read measurements it could already read from `/proc`; nothing can be mutated through it |
+| Bridge ↔ monitoring `control.sock` | privileged route metadata + `root:root 0600` Unix socket + `SO_PEERCRED` uid-0 check | only a sudo-authorized root bridge reaches history, configuration and commands |
 | Webserver → bridge launch | embedded SHA-256 pin (`version.BridgeSHA256`), checked by `validateBridgeHash` | a tampered/substituted bridge binary won't be spawned |
 
 ## Build & Install
 
-The `Makefile` produces six release artifacts:
+The `Makefile` produces seven release artifacts:
 
 | Target | Output | Notes |
 |--------|--------|-------|
@@ -172,8 +190,9 @@ The `Makefile` produces six release artifacts:
 | `make build-auth` | `linuxio-auth` | C; hardened flags (RELRO, PIE, FORTIFY, stack-clash, LTO), links `libpam` + `libsystemd` |
 | `make build-docker-update` | `linuxio-docker-update` | Go; transient Docker update worker |
 | `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled |
+| `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
 
-`make build` / `make fastbuild` build all six; the internal `_build-binaries` step hashes the freshly built `linuxio-bridge` and passes it as `BRIDGE_SHA256` into the webserver build so the pin always matches. Install via `make localinstall` (`packaging/scripts/localinstall.sh`):
+`make build` / `make fastbuild` build all seven; the internal `_build-binaries` step hashes the freshly built `linuxio-bridge` and passes it as `BRIDGE_SHA256` into the webserver build so the pin always matches. Install via `make localinstall` (`packaging/scripts/localinstall.sh`):
 
 - binaries → `/usr/local/bin/`
 - units → `/etc/systemd/system/linuxio*`
@@ -185,11 +204,11 @@ The `Makefile` produces six release artifacts:
 
 ```
 linuxio status              # list all linuxio* units with colored state
-linuxio logs [web|bridge|auth|indexer] [N]   # tail journald, filtered per component
+linuxio logs [web|bridge|auth|indexer|monitoring] [N]   # tail journald, filtered per component
 linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
-linuxio verbose enable|disable|status   # toggle debug logging for webserver and indexer
+linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring
 linuxio version [--self]    # versions of CLI + each installed component
 ```
 
@@ -210,11 +229,13 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
+| Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` (`build-*`, `_build-binaries`) |
 
 ## See Also
 
 - [Server Yamux Protocol](./server-yamux-protocol.md) — what flows over the webserver↔bridge connection (byte relay + mux framing).
+- [Monitoring Daemon](./monitoring.md) — the metrics collector, its two sockets, sampling semantics, and configuration.
 - [Privilege Pattern](./privilege_pattern.md) — declaring privileged routes inside the bridge.
 - [API Contract](./api-contract.md) — Go-owned API contract and generated frontend client.
 - [Production Diagnostic Data Policy](./production-diagnostics.md) — credentials and safe correlation data across diagnostic sinks.

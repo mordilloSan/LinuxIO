@@ -48,6 +48,7 @@ readonly LINUXIO_SOCKET_NAME="linuxio-webserver.socket"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly LINUXIO_PORT_MIN=8090
 readonly LINUXIO_PORT_MAX=8099
+readonly DOC_DIR="/usr/share/linuxio/doc"
 PORT=""
 
 linuxio_binary_names() {
@@ -57,7 +58,8 @@ linuxio_binary_names() {
 		linuxio-bridge \
 		linuxio-auth \
 		linuxio-docker-update \
-		linuxio-indexer
+		linuxio-indexer \
+		linuxio-monitoring
 }
 
 linuxio_systemd_units() {
@@ -72,7 +74,8 @@ linuxio_systemd_units() {
 		linuxio-indexer.socket \
 		linuxio-indexer.service \
 		linuxio-indexer-index.service \
-		linuxio-indexer-index.timer
+		linuxio-indexer-index.timer \
+		linuxio-monitoring.service
 }
 
 atomic_replace_file() {
@@ -82,7 +85,9 @@ atomic_replace_file() {
 	local owner="${4:-}"
 	local tmp
 
-	mkdir -p "$(dirname "$dst")"
+	if ! mkdir -p "$(dirname "$dst")"; then
+		return 1
+	fi
 	tmp=$(mktemp "${dst}.new.XXXXXX") || return 1
 	if ! cp "$src" "$tmp" || ! chmod "$mode" "$tmp"; then
 		rm -f "$tmp"
@@ -258,6 +263,15 @@ main() {
 
 	# ========== INSTALL ==========
 	Header "Step 2/2 — Install"
+	Show 2 "Installing licenses..."
+	if ! atomic_replace_file "$REPO_ROOT/LICENSE" "${DOC_DIR}/LICENSE" 0644 root:root; then
+		Show 1 "Failed to install license"
+	fi
+	if ! atomic_replace_file "$REPO_ROOT/docs/THIRD_PARTY_NOTICES.md" "${DOC_DIR}/THIRD_PARTY_NOTICES.md" 0644 root:root; then
+		Show 1 "Failed to install third-party notices"
+	fi
+	Show 0 "Licenses installed to ${DOC_DIR}"
+
 	# Binaries
 	Show 2 "Installing binaries..."
 	for binary in "${binaries[@]}"; do
@@ -266,15 +280,6 @@ main() {
 		fi
 	done
 	Show 0 "Binaries installed to /usr/local/bin"
-
-	Show 2 "Installing licenses..."
-	if ! atomic_replace_file "$REPO_ROOT/LICENSE" /usr/share/doc/linuxio/LICENSE 0644 root:root; then
-		Show 1 "Failed to install license"
-	fi
-	if ! atomic_replace_file "$REPO_ROOT/docs/THIRD_PARTY_NOTICES.md" /usr/share/doc/linuxio/THIRD_PARTY_NOTICES.md 0644 root:root; then
-		Show 1 "Failed to install third-party notices"
-	fi
-	Show 0 "Licenses installed to /usr/share/doc/linuxio"
 
 	# Systemd
 	Show 2 "Installing systemd service files..."
@@ -326,7 +331,7 @@ main() {
 	if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
 		while IFS= read -r file; do
 			rel_path="${file#"$REPO_ROOT"/packaging/etc/linuxio/}"
-			if [[ "$rel_path" == "indexer/config.yaml" &&
+			if [[ ("$rel_path" == "indexer/config.yaml" || "$rel_path" == "monitoring/config.yaml") &&
 				-f "/etc/linuxio/$rel_path" ]]; then
 				Show 0 "/etc/linuxio/$rel_path already exists (not overwriting)"
 				continue
@@ -411,13 +416,16 @@ main() {
 	if [[ $enable_indexer_timer -eq 1 ]]; then
 		systemctl enable "$INDEXER_TIMER_UNIT_NAME" >/dev/null 2>&1
 	fi
+	systemctl enable linuxio-monitoring.service >/dev/null 2>&1
 	Show 0 "Services enabled"
 
 	Show 2 "Restarting LinuxIO..."
 	linuxio restart
 
-	# linuxio restart covers the control plane only; regenerate the login
-	# banner explicitly so an updated update-issue script takes effect now.
+	# linuxio restart covers the control plane only; restart the monitoring
+	# daemon and regenerate the login banner explicitly so an updated daemon
+	# and update-issue script take effect now.
+	systemctl restart linuxio-monitoring.service >/dev/null 2>&1 || true
 	systemctl restart linuxio-issue.service 2>/dev/null || true
 
 	sleep 2
@@ -436,10 +444,10 @@ main() {
 	echo -e " ${GREEN}${BOLD}Installation complete!${COLOUR_RESET}"
 	echo -e "${LINE}"
 	echo "Installed components:"
-	echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth,linuxio-docker-update,linuxio-indexer}"
+	echo "  • Binaries:        /usr/local/bin/{linuxio,linuxio-webserver,linuxio-bridge,linuxio-auth,linuxio-docker-update,linuxio-indexer,linuxio-monitoring}"
 	echo "  • Systemd files:   /etc/systemd/system/linuxio*"
-	echo "  • Configuration:   /etc/linuxio/indexer/config.yaml"
-	echo "  • Licenses:        /usr/share/doc/linuxio/"
+	echo "  • Configuration:   /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml"
+	echo "  • Licenses:        ${DOC_DIR}/"
 	echo "  • PAM config:      /etc/pam.d/linuxio"
 	echo "  • Issue updater:   /usr/share/linuxio/issue/"
 	echo ""

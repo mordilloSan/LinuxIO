@@ -6,12 +6,15 @@ import (
 	"log/slog"
 	"net/netip"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 const linuxIONetworkName = "linuxio-docker"
@@ -124,6 +127,7 @@ func dockerNetworkFromSDK(summary network.Summary, inspect network.Inspect) apis
 		Labels:     cloneStringMap(summary.Labels),
 		Name:       summary.Name,
 		Options:    cloneStringMap(summary.Options),
+		Protected:  isDockerDefaultNetwork(summary.Name),
 		Scope:      summary.Scope,
 	}
 	if !summary.Created.IsZero() {
@@ -212,33 +216,168 @@ func netipMapToStrings(values map[string]netip.Addr) map[string]string {
 	return result
 }
 
-// Delete a network
-func DeleteDockerNetwork(ctx context.Context, name string) (any, error) {
-	cli, err := getClient()
-	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
-	}
-	defer releaseClient(cli)
-
-	if _, err := cli.NetworkRemove(ctx, name, client.NetworkRemoveOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to remove network: %w", err)
-	}
-
-	return nil, nil
+type networkRemover interface {
+	NetworkInspect(context.Context, string, client.NetworkInspectOptions) (client.NetworkInspectResult, error)
+	NetworkRemove(context.Context, string, client.NetworkRemoveOptions) (client.NetworkRemoveResult, error)
 }
 
-// Create a volume
-func CreateDockerNetwork(ctx context.Context, name string) (any, error) {
+func isDockerDefaultNetwork(name string) bool {
+	switch name {
+	case "bridge", "host", "none":
+		return true
+	default:
+		return false
+	}
+}
+
+func DeleteDockerNetwork(ctx context.Context, id string) error {
 	cli, err := getClient()
 	if err != nil {
-		return nil, fmt.Errorf("docker client error: %w", err)
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	return deleteDockerNetwork(ctx, cli, id)
+}
+
+func deleteDockerNetwork(ctx context.Context, cli networkRemover, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return bridgeipc.NewError("network ID is required", 400)
+	}
+	inspected, err := cli.NetworkInspect(ctx, id, client.NetworkInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("inspect network before removal: %w", err)
+	}
+	if isDockerDefaultNetwork(inspected.Network.Name) {
+		return bridgeipc.NewError(fmt.Sprintf("Docker default network %q cannot be deleted", inspected.Network.Name), 409)
+	}
+	if _, err := cli.NetworkRemove(ctx, id, client.NetworkRemoveOptions{}); err != nil {
+		if errdefs.IsConflict(err) {
+			return bridgeipc.NewError(fmt.Sprintf("network %q is in use: %v", inspected.Network.Name, err), 409)
+		}
+		return fmt.Errorf("failed to remove network %q: %w", inspected.Network.Name, err)
+	}
+	return nil
+}
+
+func CreateDockerNetwork(ctx context.Context, request apischema.DockerNetworkCreateRequest) error {
+	name, options, err := networkCreateOptions(request)
+	if err != nil {
+		return bridgeipc.NewError(err.Error(), 400)
+	}
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
 
-	network, err := cli.NetworkCreate(ctx, name, client.NetworkCreateOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network: %w", err)
+	if _, err := cli.NetworkCreate(ctx, name, options); err != nil {
+		return fmt.Errorf("failed to create network %q: %w", name, err)
 	}
+	return nil
+}
 
-	return network, nil
+func networkCreateOptions(request apischema.DockerNetworkCreateRequest) (string, client.NetworkCreateOptions, error) {
+	name := strings.TrimSpace(request.Name)
+	if !containerNamePattern.MatchString(name) {
+		return "", client.NetworkCreateOptions{}, fmt.Errorf("network name must start with an alphanumeric character and contain only alphanumeric characters, underscores, periods, or hyphens")
+	}
+	driver := strings.TrimSpace(request.Driver)
+	if driver == "" {
+		return "", client.NetworkCreateOptions{}, fmt.Errorf("network driver is required")
+	}
+	options, err := normalizedDockerStringMap(request.Options, "network driver options")
+	if err != nil {
+		return "", client.NetworkCreateOptions{}, err
+	}
+	createOptions := client.NetworkCreateOptions{
+		Driver: driver, Internal: request.Internal, Attachable: request.Attachable,
+		EnableIPv6: new(request.EnableIPv6), Options: options,
+	}
+	subnetText := strings.TrimSpace(request.Subnet)
+	gatewayText := strings.TrimSpace(request.Gateway)
+	if subnetText == "" {
+		if gatewayText != "" {
+			return "", client.NetworkCreateOptions{}, fmt.Errorf("a subnet is required when a gateway is set")
+		}
+		return name, createOptions, nil
+	}
+	subnet, err := netip.ParsePrefix(subnetText)
+	if err != nil || subnet != subnet.Masked() {
+		return "", client.NetworkCreateOptions{}, fmt.Errorf("subnet must be a valid masked CIDR prefix")
+	}
+	if subnet.Addr().Is6() && !request.EnableIPv6 {
+		return "", client.NetworkCreateOptions{}, fmt.Errorf("IPv6 must be enabled for an IPv6 subnet")
+	}
+	ipamConfig := network.IPAMConfig{Subnet: subnet}
+	if gatewayText != "" {
+		gateway, err := netip.ParseAddr(gatewayText)
+		if err != nil || !subnet.Contains(gateway) {
+			return "", client.NetworkCreateOptions{}, fmt.Errorf("gateway must be a valid address inside the subnet")
+		}
+		ipamConfig.Gateway = gateway
+	}
+	createOptions.IPAM = &network.IPAM{Driver: "default", Config: []network.IPAMConfig{ipamConfig}}
+	return name, createOptions, nil
+}
+
+func ConnectDockerNetwork(ctx context.Context, request apischema.DockerNetworkConnectRequest) error {
+	networkID, containerID, aliases, err := networkConnectionInput(request.NetworkID, request.ContainerID, request.Aliases)
+	if err != nil {
+		return bridgeipc.NewError(err.Error(), 400)
+	}
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	connectOptions := client.NetworkConnectOptions{Container: containerID}
+	if len(aliases) > 0 {
+		connectOptions.EndpointConfig = &network.EndpointSettings{Aliases: aliases}
+	}
+	if _, err := cli.NetworkConnect(ctx, networkID, connectOptions); err != nil {
+		return fmt.Errorf("connect container to network: %w", err)
+	}
+	return nil
+}
+
+func DisconnectDockerNetwork(ctx context.Context, request apischema.DockerNetworkDisconnectRequest) error {
+	networkID, containerID, _, err := networkConnectionInput(request.NetworkID, request.ContainerID, nil)
+	if err != nil {
+		return bridgeipc.NewError(err.Error(), 400)
+	}
+	cli, err := getClient()
+	if err != nil {
+		return fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+	if _, err := cli.NetworkDisconnect(ctx, networkID, client.NetworkDisconnectOptions{Container: containerID}); err != nil {
+		return fmt.Errorf("disconnect container from network: %w", err)
+	}
+	return nil
+}
+
+func networkConnectionInput(networkID, containerID string, aliases []string) (string, string, []string, error) {
+	networkID = strings.TrimSpace(networkID)
+	containerID = strings.TrimSpace(containerID)
+	if networkID == "" || containerID == "" {
+		return "", "", nil, fmt.Errorf("network ID and container ID are required")
+	}
+	if len(aliases) > maxDockerResourceEntries {
+		return "", "", nil, fmt.Errorf("network aliases cannot contain more than %d entries", maxDockerResourceEntries)
+	}
+	seen := make(map[string]struct{}, len(aliases))
+	normalized := make([]string, 0, len(aliases))
+	for _, alias := range aliases {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			continue
+		}
+		if _, exists := seen[alias]; exists {
+			continue
+		}
+		seen[alias] = struct{}{}
+		normalized = append(normalized, alias)
+	}
+	return networkID, containerID, normalized, nil
 }

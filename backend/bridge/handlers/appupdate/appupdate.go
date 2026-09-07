@@ -132,6 +132,8 @@ type updaterWritablePath struct {
 }
 
 func updaterWritablePaths() []updaterWritablePath {
+	// Installed bridges launch future release installers, so mandatory
+	// installer destinations must remain within these paths.
 	return []updaterWritablePath{
 		{path: version.BinDir},
 		{path: "/etc/linuxio"},

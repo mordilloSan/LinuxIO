@@ -90,7 +90,7 @@ func directoryEntryIsDirectory(ctx context.Context, root *fsroot.FSRoot, dirPath
 	if err != nil {
 		return false, err
 	}
-	return iteminfo.IsDirectory(targetInfo.info), nil
+	return targetInfo.info.IsDir(), nil
 }
 
 func withDirectoryEntries(ctx context.Context, path string, fn func(*fsroot.FSRoot, string, os.FileInfo) error) error {
@@ -167,7 +167,7 @@ func directoryItem(ctx context.Context, root *fsroot.FSRoot, dirPath string, ent
 	if err != nil {
 		return iteminfo.ItemInfo{}, false, err
 	}
-	isDir := iteminfo.IsDirectory(targetInfo.info)
+	isDir := targetInfo.info.IsDir()
 	item := iteminfo.ItemInfo{
 		Name:          entry.Name(),
 		ModTime:       targetInfo.info.ModTime(),

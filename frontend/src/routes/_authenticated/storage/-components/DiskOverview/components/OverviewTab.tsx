@@ -2,7 +2,7 @@ import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 
 import type { DriveInfo } from "../types";
-import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
+import { formatDataUnits, formatPowerOnTime } from "../utils";
 
 interface OverviewTabProps {
   drive: DriveInfo;
@@ -13,20 +13,14 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
   const power = drive.power;
   const isNvme = drive.transport === "nvme";
   const nvmeHealth = smart?.nvme_smart_health_information_log;
-  const ataAttrs = smart?.ata_smart_attributes?.table;
-
-  const temperature = getSmartNumber(
-    nvmeHealth?.temperature ?? smart?.temperature?.current,
-  );
-  const powerOnHours = getSmartNumber(
-    nvmeHealth?.power_on_hours ?? smart?.power_on_time?.hours,
-  );
-  const powerCycles = getSmartNumber(
-    nvmeHealth?.power_cycles ?? smart?.power_cycle_count,
-  );
-  const percentageUsed = getSmartNumber(nvmeHealth?.percentage_used);
-  const dataRead = getSmartNumber(nvmeHealth?.data_units_read);
-  const dataWritten = getSmartNumber(nvmeHealth?.data_units_written);
+  const temperature = smart?.temperature_celsius;
+  const powerOnHours =
+    nvmeHealth?.power_on_hours ?? smart?.power_on_time?.hours;
+  const powerCycles = nvmeHealth?.power_cycles ?? smart?.power_cycle_count;
+  const percentageUsed = nvmeHealth?.percentage_used;
+  const dataRead = nvmeHealth?.data_units_read;
+  const dataWritten = nvmeHealth?.data_units_written;
+  const ataAttrs = smart?.attributes ?? [];
 
   const findAtaAttr = (id: number) => ataAttrs?.find((a) => a.id === id);
   const reallocatedSectors = findAtaAttr(5);
@@ -96,7 +90,7 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
               marginBottom: 8,
             }}
           >
-            {temperature !== null && (
+            {temperature !== undefined && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Temperature
@@ -116,7 +110,7 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
                 </AppTypography>
               </div>
             )}
-            {powerOnHours !== null && (
+            {powerOnHours !== undefined && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Power On Time
@@ -126,7 +120,7 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
                 </AppTypography>
               </div>
             )}
-            {powerCycles !== null && (
+            {powerCycles !== undefined && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Power Cycles
@@ -136,7 +130,7 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
                 </AppTypography>
               </div>
             )}
-            {isNvme && percentageUsed !== null && (
+            {isNvme && percentageUsed !== undefined && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Life Used
@@ -156,7 +150,7 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
                 </AppTypography>
               </div>
             )}
-            {isNvme && dataRead !== null && (
+            {isNvme && dataRead !== undefined && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Data Read
@@ -166,13 +160,23 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
                 </AppTypography>
               </div>
             )}
-            {isNvme && dataWritten !== null && (
+            {isNvme && dataWritten !== undefined && (
               <div>
                 <AppTypography color="text.secondary" variant="body2">
                   Data Written
                 </AppTypography>
                 <AppTypography fontWeight={500} variant="body2">
                   {formatDataUnits(dataWritten)}
+                </AppTypography>
+              </div>
+            )}
+            {!isNvme && smart.smart_status && (
+              <div>
+                <AppTypography color="text.secondary" variant="body2">
+                  SMART Health
+                </AppTypography>
+                <AppTypography fontWeight={500} variant="body2">
+                  {smart.smart_status}
                 </AppTypography>
               </div>
             )}
@@ -183,14 +187,14 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
                 </AppTypography>
                 <AppTypography
                   color={
-                    (getSmartNumber(reallocatedSectors.raw?.value) ?? 0) > 0
+                    reallocatedSectors.raw_value > 0
                       ? "warning"
                       : "text.primary"
                   }
                   fontWeight={500}
                   variant="body2"
                 >
-                  {getSmartNumber(reallocatedSectors.raw?.value) ?? "N/A"}
+                  {reallocatedSectors.raw_value.toLocaleString()}
                 </AppTypography>
               </div>
             )}
@@ -201,14 +205,12 @@ export const OverviewTab = ({ drive }: OverviewTabProps) => {
                 </AppTypography>
                 <AppTypography
                   color={
-                    (getSmartNumber(pendingSectors.raw?.value) ?? 0) > 0
-                      ? "warning"
-                      : "text.primary"
+                    pendingSectors.raw_value > 0 ? "warning" : "text.primary"
                   }
                   fontWeight={500}
                   variant="body2"
                 >
-                  {getSmartNumber(pendingSectors.raw?.value) ?? "N/A"}
+                  {pendingSectors.raw_value.toLocaleString()}
                 </AppTypography>
               </div>
             )}

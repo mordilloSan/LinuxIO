@@ -507,6 +507,7 @@ func updateStandaloneContainerWithDependenciesAndPolicyAndProgress(
 		OriginalID:      before.ID,
 		OriginalName:    result.ContainerName,
 		BackupName:      backupName,
+		ReplacementName: result.ContainerName,
 		OriginalRunning: before.State != nil && before.State.Running,
 	}
 	if tx.OriginalRunning {

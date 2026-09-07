@@ -2,12 +2,39 @@ package system
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/host"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
+
+var hostInfoCache hwSnapshotCache[apischema.HostInfo]
+
+func FetchHostInfo(ctx context.Context) (apischema.HostInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return apischema.HostInfo{}, err
+	}
+	return hostInfoCache.get(func() (apischema.HostInfo, error) {
+		value, err := host.InfoWithContext(ctx)
+		if err != nil {
+			return apischema.HostInfo{}, err
+		}
+		if value == nil {
+			return apischema.HostInfo{}, fmt.Errorf("host information unavailable")
+		}
+		result := hostInfoToAPI(value)
+		if result == (apischema.HostInfo{}) {
+			return apischema.HostInfo{}, fmt.Errorf("host information unavailable")
+		}
+		return result, nil
+	})
+}
 
 func GetCurrentServerTime(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {

@@ -193,21 +193,25 @@ jobs:
         env: { GOOS: linux, GOARCH: amd64 }
         run: make build-indexer SKIP_ENSURE_GO=1
 
+      - name: Build monitoring daemon
+        env: { GOOS: linux, GOARCH: amd64 }
+        run: make build-monitoring SKIP_ENSURE_GO=1
+
       - name: Make artifacts executable
-        run: chmod +x linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer
+        run: chmod +x linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring
 
       - name: Create tarball
         id: create_tarball
         run: |
           cp docs/THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.md
           TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
-          tar czvf "$TAR" linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer LICENSE THIRD_PARTY_NOTICES.md
+          tar czvf "$TAR" linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring LICENSE THIRD_PARTY_NOTICES.md
           echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
 
       - name: Generate checksums
         run: |
           # Generate checksums for binaries and tarball
-          sha256sum linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer LICENSE THIRD_PARTY_NOTICES.md ./*.tar.gz > SHA256SUMS
+          sha256sum linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring LICENSE THIRD_PARTY_NOTICES.md ./*.tar.gz > SHA256SUMS
           echo "=== Binary Checksums ==="
           cat SHA256SUMS
 
@@ -225,6 +229,10 @@ jobs:
           chmod +x linuxio-indexer
           ./linuxio-indexer --version || { echo "Filesystem indexer verification failed"; exit 1; }
           echo "✓ linuxio-indexer runs correctly"
+
+          chmod +x linuxio-monitoring
+          ./linuxio-monitoring --version || { echo "Monitoring daemon verification failed"; exit 1; }
+          echo "✓ linuxio-monitoring runs correctly"
 
           # Verify linuxio-webserver runs correctly
           chmod +x linuxio-webserver
@@ -285,6 +293,7 @@ jobs:
             linuxio-auth
             linuxio-docker-update
             linuxio-indexer
+            linuxio-monitoring
             LICENSE
             THIRD_PARTY_NOTICES.md
             SHA256SUMS

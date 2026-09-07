@@ -71,7 +71,7 @@ func ResolveSymlinksAt(ctx context.Context, root *fsroot.FSRoot, path string) (s
 			continue
 		}
 
-		isDir := IsDirectory(info)
+		isDir := info.IsDir()
 		return cleanPath, isDir, nil
 	}
 }

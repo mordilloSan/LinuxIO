@@ -3,8 +3,6 @@ package system
 import (
 	"context"
 
-	"github.com/shirou/gopsutil/v4/host"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
@@ -17,16 +15,10 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, apischema.CapabilitiesResponse]("system.get_capabilities", apischema.RetrySafe()).Handle(handleGetCapabilities),
 		apischema.Call[apischema.NoRequest, *apischema.CPUInfoResponse]("system.get_cpu_info", apischema.RetrySafe()).Handle(handleGetCPUInfo),
-		apischema.Call[apischema.NoRequest, []apischema.SensorGroup]("system.get_sensor_info", apischema.RetrySafe()).Handle(handleGetSensorInfo),
 		apischema.Call[apischema.NoRequest, apischema.MotherboardInfo]("system.get_motherboard_info", apischema.RetrySafe()).Handle(handleGetMotherboardInfo),
-		apischema.Call[apischema.NoRequest, *apischema.MemoryInfoResponse]("system.get_memory_info", apischema.RetrySafe()).Handle(handleGetMemoryInfo),
 		apischema.Call[apischema.NoRequest, apischema.HostInfo]("system.get_host_info", apischema.RetrySafe()).Handle(handleGetHostInfo),
-		apischema.Call[apischema.NoRequest, float64]("system.get_uptime", apischema.RetrySafe()).Handle(handleGetUptime),
-		apischema.Call[apischema.NoRequest, []apischema.FilesystemInfo]("system.get_fs_info", apischema.RetrySafe()).Handle(handleGetFilesystemInfo),
-		apischema.Call[apischema.NoRequest, []apischema.ProcessInfo]("system.get_processes", apischema.RetrySafe()).Handle(handleGetProcesses),
 		apischema.Call[apischema.NoRequest, []apischema.GpuDevice]("system.get_gpu_info", apischema.RetrySafe()).Handle(handleGetGPUInfo),
 		apischema.Call[apischema.NoRequest, *apischema.UpdatesFastResponse]("system.get_updates_fast").Handle(handleGetUpdatesFast),
-		apischema.Call[apischema.NoRequest, apischema.DiskThroughputResponse]("system.get_disk_throughput").Handle(handleGetDiskThroughput),
 		apischema.Call[apischema.NoRequest, *apischema.SystemInfo]("system.get_system_info", apischema.RetrySafe()).Handle(handleGetSystemInfo),
 		apischema.Call[apischema.NoRequest, []apischema.PCIDevice]("system.get_pci_devices", apischema.RetrySafe()).Handle(handleGetPCIDevices),
 		apischema.Call[apischema.NoRequest, []apischema.MemoryModule]("system.get_memory_modules", apischema.RetrySafe()).Handle(handleGetMemoryModules),
@@ -52,54 +44,20 @@ func handleGetCPUInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.CP
 	return FetchCPUInfo(ctx)
 }
 
-func handleGetSensorInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.SensorGroup, error) {
-	return FetchSensorsInfo(ctx), nil
-}
-
 func handleGetMotherboardInfo(ctx context.Context, _ apischema.NoRequest) (apischema.MotherboardInfo, error) {
-	result, err := FetchBaseboardInfo(ctx)
-	return result, err
-}
-
-func handleGetMemoryInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.MemoryInfoResponse, error) {
-	return FetchMemoryInfo(ctx)
+	return FetchBaseboardInfo(ctx)
 }
 
 func handleGetHostInfo(ctx context.Context, _ apischema.NoRequest) (apischema.HostInfo, error) {
-	result, err := host.InfoWithContext(ctx)
-	if err != nil {
-		return apischema.HostInfo{}, err
-	}
-	return hostInfoToAPI(result), nil
-}
-
-func handleGetUptime(ctx context.Context, _ apischema.NoRequest) (float64, error) {
-	uptimeSeconds, err := host.UptimeWithContext(ctx)
-	return float64(uptimeSeconds), err
-}
-
-func handleGetFilesystemInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.FilesystemInfo, error) {
-	result, err := FetchFileSystemInfo(ctx, false)
-	return result, err
-}
-
-func handleGetProcesses(ctx context.Context, _ apischema.NoRequest) ([]apischema.ProcessInfo, error) {
-	result, err := FetchProcesses(ctx)
-	return result, err
+	return FetchHostInfo(ctx)
 }
 
 func handleGetGPUInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.GpuDevice, error) {
-	result, err := FetchGPUInfo(ctx)
-	return result, err
+	return FetchGPUInfo(ctx)
 }
 
 func handleGetUpdatesFast(ctx context.Context, _ apischema.NoRequest) (*apischema.UpdatesFastResponse, error) {
 	return GetUpdatesFast(ctx)
-}
-
-func handleGetDiskThroughput(ctx context.Context, _ apischema.NoRequest) (apischema.DiskThroughputResponse, error) {
-	result, err := FetchDiskThroughput(ctx)
-	return result, err
 }
 
 func handleGetSystemInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.SystemInfo, error) {

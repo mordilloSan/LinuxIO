@@ -10,6 +10,25 @@ import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 const MODES = ROUTE_MODES as Record<string, string>;
 
 describe("OPERATION_QUERY_INVALIDATIONS", () => {
+  it("refreshes storage topology after volume and mount changes", () => {
+    for (const action of [
+      "create_lv",
+      "resize_lv",
+      "delete_lv",
+      "mount_nfs",
+      "unmount_nfs",
+      "remount_nfs",
+      "mount_cifs",
+      "unmount_cifs",
+      "remount_cifs",
+      "unmount_filesystem",
+      "create_btrfs_subvolume",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`storage.${action}`]).toContainEqual(
+        ["linuxio", "storage", "get_topology"],
+      );
+    }
+  });
   it("refreshes index-backed data after indexing", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["filebrowser.index"]).toEqual([
       ["linuxio", "indexer", "get_status"],
@@ -74,6 +93,57 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
+  it("refreshes networks and containers after network attachment changes", () => {
+    const expected = [
+      ["linuxio", "docker", "list_networks"],
+      ["linuxio", "docker", "list_containers"],
+    ];
+
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.connect_network"]).toEqual(
+      expected,
+    );
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.disconnect_network"]).toEqual(
+      expected,
+    );
+  });
+
+  it("refreshes container summaries and inspect data after lifecycle actions", () => {
+    const stateKeys = [
+      ["linuxio", "docker", "list_containers"],
+      ["linuxio", "docker", "list_compose_projects"],
+      ["linuxio", "docker", "inspect_container"],
+    ];
+
+    for (const route of [
+      "docker.start_container",
+      "docker.stop_container",
+      "docker.restart_container",
+      "docker.pause_container",
+      "docker.unpause_container",
+      "docker.kill_container",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(stateKeys);
+    }
+
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.remove_container"]).toEqual([
+      ...stateKeys,
+      ["linuxio", "docker", "list_images"],
+    ]);
+
+    const configurationKeys = [
+      ...stateKeys,
+      ["linuxio", "docker", "list_images"],
+      ["linuxio", "docker", "list_networks"],
+      ["linuxio", "docker", "list_volumes"],
+    ];
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.create_container"]).toEqual(
+      configurationKeys,
+    );
+    expect(OPERATION_QUERY_INVALIDATIONS["docker.edit_container"]).toEqual(
+      configurationKeys,
+    );
+  });
+
   it("refreshes selected account details after user mutations", () => {
     const expected = [
       ["linuxio", "accounts", "list_users"],
@@ -101,6 +171,12 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
         MODES[route],
       );
     }
+  });
+
+  it("refreshes live SMART records after a daemon refresh", () => {
+    expect(OPERATION_QUERY_INVALIDATIONS["monitoring.refresh_smart"]).toEqual([
+      ["linuxio", "monitoring", "get_live"],
+    ]);
   });
 
   it("invalidates only cacheable Call routes or handler prefixes", () => {

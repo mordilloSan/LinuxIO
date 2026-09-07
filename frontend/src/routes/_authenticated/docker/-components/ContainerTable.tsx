@@ -21,6 +21,7 @@ import {
   type ContainerPort,
   useCallMutation,
 } from "@/api";
+import ContainerActions from "@/components/docker/ContainerActions";
 import DockerIcon from "@/components/docker/DockerIcon";
 import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -35,13 +36,11 @@ import type {
   AppTableFeatures,
 } from "@/components/tables/AppVirtualTable.types";
 import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppIconButton from "@/components/ui/AppIconButton";
-import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -234,10 +233,11 @@ const getContainerTableSignature = (container: ContainerInfo) => {
     container.updateCheckReason ?? "",
     container.updateCheckState ?? "",
     container.updateError ?? "",
+    container.metrics?.status ?? "",
     container.metrics?.cpu_percent?.toFixed(1) ?? "",
-    container.metrics?.mem_usage === undefined
+    container.metrics?.memory_usage_bytes === undefined
       ? ""
-      : formatFileSize(container.metrics.mem_usage),
+      : formatFileSize(container.metrics.memory_usage_bytes),
     networks,
     ports,
     mounts,
@@ -865,8 +865,8 @@ function VolumesCell({
 }
 
 function MetricsCell({ container }: { container: ContainerInfo }) {
-  const cpuPercent = container.metrics?.cpu_percent ?? 0;
-  const memUsage = container.metrics?.mem_usage ?? 0;
+  const cpuPercent = container.metrics?.cpu_percent;
+  const memUsage = container.metrics?.memory_usage_bytes;
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -876,7 +876,7 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
         style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
-        {cpuPercent.toFixed(1)}%
+        {cpuPercent === undefined ? "—" : `${cpuPercent.toFixed(1)}%`}
       </AppTypography>
       <AppTypography
         color="text.secondary"
@@ -884,17 +884,10 @@ function MetricsCell({ container }: { container: ContainerInfo }) {
         style={{ fontVariantNumeric: "tabular-nums" }}
         variant="body2"
       >
-        {formatFileSize(memUsage)}
+        {memUsage === undefined ? "—" : formatFileSize(memUsage)}
       </AppTypography>
     </div>
   );
-}
-
-interface ContainerAction {
-  icon: string;
-  label: string;
-  loading?: boolean;
-  onClick: () => void;
 }
 
 interface ActionsCellProps {
@@ -902,6 +895,7 @@ interface ActionsCellProps {
   // one menu to keep the name legible.
   compact: boolean;
   containerId: string;
+  labels?: Record<string, string>;
   name: string;
   onOpenLogs: (containerId: string, containerName: string) => void;
   onOpenTerminal: (containerId: string, containerName: string) => void;
@@ -913,6 +907,7 @@ interface ActionsCellProps {
 const ActionsCell = memo(function ActionsCell({
   compact,
   containerId,
+  labels,
   name,
   onOpenLogs,
   onOpenTerminal,
@@ -920,166 +915,15 @@ const ActionsCell = memo(function ActionsCell({
   state,
   url,
 }: ActionsCellProps) {
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
-    linuxio.docker.start_container,
-    {
-      success: `Container ${name} started`,
-      error: `Failed to start ${name}`,
-      toast: DOCKER_TOAST_META,
-    },
-  );
-  const { mutate: stopContainer, isPending: isStopPending } = useCallMutation(
-    linuxio.docker.stop_container,
-    {
-      success: `Container ${name} stopped`,
-      error: `Failed to stop ${name}`,
-      toast: DOCKER_TOAST_META,
-    },
-  );
-  const { mutate: restartContainer, isPending: isRestartPending } =
-    useCallMutation(linuxio.docker.restart_container, {
-      success: `Container ${name} restarted`,
-      error: `Failed to restart ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
-  const { mutate: removeContainer, isPending: isRemovePending } =
-    useCallMutation(linuxio.docker.remove_container, {
-      success: `Container ${name} removed`,
-      error: `Failed to remove ${name}`,
-      toast: DOCKER_TOAST_META,
-    });
-  const rowBusy =
-    pending ||
-    isStartPending ||
-    isStopPending ||
-    isRestartPending ||
-    isRemovePending;
-  const pendingActionLabel =
-    pending || isStopPending
-      ? "Stopping"
-      : isStartPending
-        ? "Starting"
-        : isRestartPending
-          ? "Restarting"
-          : isRemovePending
-            ? "Removing"
-            : undefined;
-
-  const actions: ContainerAction[] = [
-    state === "running"
-      ? {
-          icon: "mdi:stop",
-          label: "Stop",
-          loading: pending || isStopPending,
-          onClick: () => stopContainer({ containerId }),
-        }
-      : {
-          icon: "mdi:play",
-          label: "Start",
-          loading: isStartPending,
-          onClick: () => startContainer({ containerId }),
-        },
-    {
-      icon: "mdi:restart",
-      label: "Restart",
-      loading: isRestartPending,
-      onClick: () => restartContainer({ containerId }),
-    },
-    {
-      icon: "mdi:delete",
-      label: "Remove",
-      loading: isRemovePending,
-      onClick: () => removeContainer({ containerId }),
-    },
-    {
-      icon: "mdi:file-document-outline",
-      label: "Logs",
-      onClick: () => onOpenLogs(containerId, name),
-    },
-    {
-      icon: "mdi:console",
-      label: "Terminal",
-      onClick: () => onOpenTerminal(containerId, name),
-    },
-    ...(url
-      ? [
-          {
-            icon: "mdi:open-in-new",
-            label: "Open App",
-            onClick: () => window.open(url, "_blank", "noopener"),
-          },
-        ]
-      : []),
-  ];
-
-  if (compact) {
-    return (
-      <>
-        <AppActionIconButton
-          ariaLabel={
-            pendingActionLabel
-              ? `${pendingActionLabel} ${name}`
-              : `Actions for ${name}`
-          }
-          disabled={rowBusy}
-          icon="mdi:dots-vertical"
-          iconSize={20}
-          loading={rowBusy}
-          onClick={(event) => setMenuAnchor(event.currentTarget)}
-          tooltip={false}
-        />
-        <AppMenu
-          anchorEl={menuAnchor}
-          minWidth={160}
-          onClose={() => setMenuAnchor(null)}
-          open={Boolean(menuAnchor)}
-        >
-          {actions.map((action) => (
-            <AppMenuItem
-              disabled={rowBusy}
-              key={action.label}
-              onClick={() => {
-                setMenuAnchor(null);
-                action.onClick();
-              }}
-              startAdornment={<Icon icon={action.icon} width={18} />}
-            >
-              {action.label}
-            </AppMenuItem>
-          ))}
-        </AppMenu>
-      </>
-    );
-  }
-
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "flex-end",
-        alignItems: "center",
-        gap: 2,
-      }}
-    >
-      {actions.map((action) => (
-        // The outer tooltip wraps a span because a disabled button emits no
-        // hover events of its own.
-        <AppTooltip key={action.label} title={action.label}>
-          <span>
-            <AppActionIconButton
-              disabled={rowBusy && !action.loading}
-              icon={action.icon}
-              iconSize={16}
-              label={action.label}
-              loading={action.loading}
-              onClick={action.onClick}
-              tooltip={false}
-            />
-          </span>
-        </AppTooltip>
-      ))}
-    </div>
+    <ContainerActions
+      actionPending={pending}
+      container={{ Id: containerId, Labels: labels, State: state, url }}
+      mode={compact ? "menu" : "icons"}
+      name={name}
+      onOpenLogs={() => onOpenLogs(containerId, name)}
+      onOpenTerminal={() => onOpenTerminal(containerId, name)}
+    />
   );
 });
 
@@ -1474,8 +1318,11 @@ const ContainerTable = ({
           align: "center",
           getCellRenderKey: containerCellRenderKey((container) => [
             container.Id,
-            (container.metrics?.cpu_percent ?? 0).toFixed(1),
-            formatFileSize(container.metrics?.mem_usage ?? 0),
+            container.metrics?.status ?? "",
+            container.metrics?.cpu_percent?.toFixed(1) ?? "",
+            container.metrics?.memory_usage_bytes === undefined
+              ? ""
+              : formatFileSize(container.metrics.memory_usage_bytes),
           ]),
           hideBelow: "xl",
           width: "110px",
@@ -1492,6 +1339,7 @@ const ContainerTable = ({
             <ActionsCell
               compact={compactActions}
               containerId={container.Id}
+              labels={container.Labels}
               name={name}
               onOpenLogs={openLogs}
               onOpenTerminal={openTerminal}
@@ -1510,12 +1358,13 @@ const ContainerTable = ({
           cellStyle: { gap: 2, paddingInline: 8 },
           // A compact row holds nothing but the menu button, so the rest of the
           // track goes back to the name.
-          width: compactActions ? "56px" : "215px",
+          width: compactActions ? "56px" : "76px",
           getCellRenderKey: containerCellRenderKey((container) => [
             container.Id,
             getContainerName(container),
             container.State,
             container.url,
+            getComposeProject(container),
             stoppingContainerIds.has(container.Id),
           ]),
         },

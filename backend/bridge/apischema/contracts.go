@@ -84,6 +84,75 @@ type ContainerIDRequest struct {
 	ContainerID string `json:"containerId"`
 }
 
+type ContainerRemoveRequest struct {
+	ContainerID string `json:"containerId"`
+	Force       bool   `json:"force"`
+}
+
+type ContainerConfiguration struct {
+	Name             string                         `json:"name"`
+	Image            string                         `json:"image"`
+	Command          []string                       `json:"command"`
+	Entrypoint       []string                       `json:"entrypoint"`
+	Environment      []ContainerEnvironmentVariable `json:"environment"`
+	Ports            []ContainerPortBinding         `json:"ports"`
+	Mounts           []ContainerMountConfiguration  `json:"mounts"`
+	Networks         []ContainerNetworkAttachment   `json:"networks"`
+	RestartPolicy    ContainerRestartPolicy         `json:"restartPolicy"`
+	User             string                         `json:"user"`
+	WorkingDirectory string                         `json:"workingDirectory"`
+}
+
+type ContainerMountConfiguration struct {
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+	ReadOnly    bool   `json:"readOnly"`
+}
+
+type ContainerNetworkAttachment struct {
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases"`
+}
+
+type ContainerCreateRequest struct {
+	Configuration ContainerConfiguration `json:"configuration"`
+	Start         bool                   `json:"start"`
+}
+
+type ContainerEditRequest struct {
+	ContainerID   string                 `json:"containerId"`
+	Configuration ContainerConfiguration `json:"configuration"`
+}
+
+type DockerVolumeCreateRequest struct {
+	Name   string            `json:"name"`
+	Driver string            `json:"driver"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+type DockerNetworkCreateRequest struct {
+	Name       string            `json:"name"`
+	Driver     string            `json:"driver"`
+	Internal   bool              `json:"internal"`
+	Attachable bool              `json:"attachable"`
+	EnableIPv6 bool              `json:"enableIpv6"`
+	Subnet     string            `json:"subnet,omitempty"`
+	Gateway    string            `json:"gateway,omitempty"`
+	Options    map[string]string `json:"options,omitempty"`
+}
+
+type DockerNetworkConnectRequest struct {
+	NetworkID   string   `json:"networkId"`
+	ContainerID string   `json:"containerId"`
+	Aliases     []string `json:"aliases,omitempty"`
+}
+
+type DockerNetworkDisconnectRequest struct {
+	NetworkID   string `json:"networkId"`
+	ContainerID string `json:"containerId"`
+}
+
 // DockerContainerUpdateRequest identifies one durable native Docker update.
 // RunID is allocated by the client before the request so a retry after bridge
 // loss can reclaim the same persisted operation instead of starting another
@@ -735,14 +804,16 @@ type FileUploadBatchRequest struct {
 	Overwrite   *bool                  `json:"overwrite,omitempty"`
 }
 
-// MonitoringConfigPatch mirrors the go-monitoring `config.set` command params.
+// MonitoringConfigPatch mirrors the linuxio-monitoring `config.set` command
+// params. Listeners require a daemon restart to take effect.
 type MonitoringConfigPatch struct {
-	CollectorInterval    *string              `json:"collector_interval,omitempty"`
-	SmartRefreshInterval *string              `json:"smart_refresh_interval,omitempty"`
-	History              *string              `json:"history,omitempty"`
-	HistoryRetention     *string              `json:"history_retention,omitempty"`
-	AllowRemoteCommands  *bool                `json:"allow_remote_commands,omitempty"`
-	Listeners            []MonitoringListener `json:"listeners,omitempty"`
+	CollectorInterval    *string               `json:"collector_interval,omitempty"`
+	DiskUsageCache       *string               `json:"disk_usage_cache,omitempty"`
+	History              *string               `json:"history,omitempty"`
+	HistoryIntervals     *map[string]string    `json:"history_intervals,omitempty"`
+	HistoryRetention     *string               `json:"history_retention,omitempty"`
+	Listeners            *[]MonitoringListener `json:"listeners,omitempty"`
+	SmartRefreshInterval *string               `json:"smart_refresh_interval,omitempty"`
 }
 
 type TaskListRequest struct {

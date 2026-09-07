@@ -58,7 +58,6 @@ func (p InstallCapabilityProgress) ProgressEnvelope() bridgetask.TaskProgress {
 
 const (
 	stageResolve        = "resolve"
-	stageInstallAsset   = "install_asset"
 	stageInstallPackage = "install_package"
 	stagePostInstall    = "post_install"
 	stageEnableService  = "enable_service"
@@ -150,9 +149,7 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 	}
 
 	if spec.Install.OptionalComponent != "" {
-		if err := installOptionalComponent(ctx, task, spec); err != nil {
-			return apischema.InstallCapabilityResult{}, err
-		}
+		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown optional component %q for capability %q", spec.Install.OptionalComponent, spec.Name)
 	}
 
 	optionalPackageWarning, err := installCapabilityDependencies(ctx, task, family, name, spec.LogName, pkg, spec.Install)
@@ -264,18 +261,6 @@ var (
 	capabilityCommandExec     = exec.CommandContext
 )
 
-// runCapabilityCommand executes a capability-owned command while forwarding
-// stdout and stderr as separate records. Each pipe has an owner goroutine and
-// the command is always context-bound, so cancellation closes the process and
-// lets both readers exit before the function returns.
-func runCapabilityCommand(ctx context.Context, name string, args []string, report func(InstallCapabilityOutput)) error {
-	return runCapabilityProcess(ctx, name, args, nil, nil, report)
-}
-
-func runCapabilityScript(ctx context.Context, name string, args []string, script []byte, report func(InstallCapabilityOutput)) error {
-	return runCapabilityProcess(ctx, name, args, bytes.NewReader(script), append(os.Environ(), "DEBIAN_FRONTEND=noninteractive"), report)
-}
-
 type capabilityProcessOutput struct {
 	mu      sync.Mutex
 	readErr error
@@ -349,18 +334,16 @@ func (o *capabilityProcessOutput) commandError(ctx context.Context, name string,
 	return fmt.Errorf("%s: %w", name, waitErr)
 }
 
-func runCapabilityProcess(ctx context.Context, name string, args []string, stdin io.Reader, env []string, report func(InstallCapabilityOutput)) error {
+// runCapabilityCommand executes a capability-owned command while forwarding
+// stdout and stderr as separate records. Each pipe has an owner goroutine and
+// the command is always context-bound, so cancellation closes the process and
+// lets both readers exit before the function returns.
+func runCapabilityCommand(ctx context.Context, name string, args []string, report func(InstallCapabilityOutput)) error {
 	path, err := capabilityCommandLookPath(name)
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", name, err)
 	}
 	cmd := capabilityCommandExec(ctx, path, args...)
-	if env != nil {
-		cmd.Env = env
-	}
-	if stdin != nil {
-		cmd.Stdin = stdin
-	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("capture %s stdout: %w", name, err)
@@ -400,15 +383,6 @@ func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgetask.T
 		return fmt.Errorf("docker is required to install %s", spec.LogName)
 	}
 	return nil
-}
-
-func installOptionalComponent(ctx context.Context, task *bridgetask.Task, spec system.CapabilitySpec) error {
-	switch spec.Install.OptionalComponent {
-	case system.OptionalComponentMonitoring:
-		return installMonitoring(ctx, task)
-	default:
-		return fmt.Errorf("unknown optional component %q for capability %q", spec.Install.OptionalComponent, spec.Name)
-	}
 }
 
 func reportProgress(task *bridgetask.Task, stage, message string, pct uint32) {

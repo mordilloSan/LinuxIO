@@ -11,9 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/shirou/gopsutil/v4/net"
 	"github.com/vishvananda/netlink"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -22,19 +20,10 @@ import (
 
 var (
 	networkMutationMu sync.Mutex
-	networkStatsMu    sync.Mutex
-	lastNetStats      = make(map[string]net.IOCountersStat)
-	lastTimestamp     int64
 	networkEnv        = networkbackend.DefaultEnvironment()
 )
 
 func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
-	networkStatsMu.Lock()
-	defer networkStatsMu.Unlock()
-
-	snapshotMap, now, interval := currentNetworkSnapshot()
-	defer func() { lastTimestamp = now }()
-
 	ifaces, err := stdnet.Interfaces()
 	if err != nil {
 		return nil, err
@@ -48,7 +37,7 @@ func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		info := liveInterfaceInfo(iface, dns, gateways[iface.Name], snapshotMap, interval)
+		info := liveInterfaceInfo(iface, dns, gateways[iface.Name])
 		if cfg, ok, err := networkbackend.ReadConfigBestEffort(networkEnv, iface.Name); err == nil && ok {
 			mergeConfiguredState(&info, cfg)
 		} else if err != nil {
@@ -244,26 +233,13 @@ func beginNetworkMutation(ctx context.Context) (func(), error) {
 	return networkMutationMu.Unlock, nil
 }
 
-func currentNetworkSnapshot() (map[string]net.IOCountersStat, int64, int64) {
-	snapshots, _ := net.IOCounters(true)
-	snapshotMap := make(map[string]net.IOCountersStat, len(snapshots))
-	for _, snapshot := range snapshots {
-		snapshotMap[snapshot.Name] = snapshot
-	}
-	now := time.Now().Unix()
-	return snapshotMap, now, max(now-lastTimestamp, 1)
-}
-
 func liveInterfaceInfo(
 	iface stdnet.Interface,
 	defaultDNS []string,
 	gateway string,
-	snapshotMap map[string]net.IOCountersStat,
-	interval int64,
 ) apischema.NetworkInterface {
 	addrs, _ := iface.Addrs()
 	ip4s := collectIPv4Addresses(addrs)
-	rxSpeed, txSpeed := networkInterfaceSpeed(iface.Name, snapshotMap, interval)
 	// Stays "unknown" unless an on-disk backend claims the interface; the
 	// pointer is always set so the field is never silently absent.
 	ipv4Method := "unknown"
@@ -279,9 +255,6 @@ func liveInterfaceInfo(
 		Carrier:    networkInterfaceCarrier(iface.Name),
 		State:      int(interfaceState(iface)),
 		IPv4:       ip4s,
-		RXSpeed:    rxSpeed,
-		TXSpeed:    txSpeed,
-		Counters:   networkInterfaceCounters(iface.Name, snapshotMap),
 		DNS:        append(make([]string, 0, len(defaultDNS)), defaultDNS...),
 		Gateway:    gateway,
 		IPv4Method: &ipv4Method,
@@ -443,40 +416,6 @@ func networkInterfaceCarrier(name string) *bool {
 		return &carrier
 	}
 	return nil
-}
-
-// The same snapshot the rates are derived from, reported raw. An interface
-// with no snapshot yields zeros, which is what the kernel reports for a
-// freshly created device anyway.
-func networkInterfaceCounters(name string, snapshotMap map[string]net.IOCountersStat) apischema.NetworkInterfaceCounters {
-	snapshot, ok := snapshotMap[name]
-	if !ok {
-		return apischema.NetworkInterfaceCounters{}
-	}
-	return apischema.NetworkInterfaceCounters{
-		RXBytes:   snapshot.BytesRecv,
-		RXDropped: snapshot.Dropin,
-		RXErrors:  snapshot.Errin,
-		RXPackets: snapshot.PacketsRecv,
-		TXBytes:   snapshot.BytesSent,
-		TXDropped: snapshot.Dropout,
-		TXErrors:  snapshot.Errout,
-		TXPackets: snapshot.PacketsSent,
-	}
-}
-
-func networkInterfaceSpeed(name string, snapshotMap map[string]net.IOCountersStat, interval int64) (float64, float64) {
-	snapshot, ok := snapshotMap[name]
-	if !ok {
-		return 0, 0
-	}
-	var rxSpeed, txSpeed float64
-	if prev, ok := lastNetStats[name]; ok {
-		rxSpeed = float64(snapshot.BytesRecv-prev.BytesRecv) / float64(interval)
-		txSpeed = float64(snapshot.BytesSent-prev.BytesSent) / float64(interval)
-	}
-	lastNetStats[name] = snapshot
-	return rxSpeed, txSpeed
 }
 
 func mergeConfiguredState(info *apischema.NetworkInterface, cfg networkbackend.InterfaceConfig) {

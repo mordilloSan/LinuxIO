@@ -1,9 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { linuxio, type MotherboardInfo } from "@/api";
+import {
+  CACHE_TTL_MS,
+  linuxio,
+  type MonitoringLive,
+  type SensorGroup,
+} from "@/api";
 import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
-import { DASHBOARD_REFETCH_SLOW_MS } from "@/constants/liveCharts";
+import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
 
 import DashboardStatRows from "./DashboardStatRows";
@@ -16,8 +22,8 @@ const MotherboardTempBadge = () => {
   );
 
   const selectBadge = useCallback(
-    (motherboardInfo: MotherboardInfo) => {
-      const sensors = motherboardInfo?.temperatures?.sensors ?? {};
+    (live: MonitoringLive) => {
+      const sensors = selectMotherboardTemperatures(live.sensors ?? []);
       const keys = Object.keys(sensors);
       const defaultMbSensor =
         keys.find((key) => key.startsWith("mb")) ?? keys[0];
@@ -40,8 +46,8 @@ const MotherboardTempBadge = () => {
   );
 
   const { data: badge } = useQuery({
-    ...linuxio.system.get_motherboard_info,
-    refetchInterval: DASHBOARD_REFETCH_SLOW_MS,
+    ...linuxio.monitoring.get_live,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectBadge,
   });
 
@@ -63,10 +69,46 @@ const MotherboardTempBadge = () => {
   );
 };
 
+const selectMotherboardTemperatures = (
+  groups: SensorGroup[],
+): Record<string, number> => {
+  const sensors: Record<string, number> = {};
+  let index = 0;
+
+  for (const group of groups) {
+    const adapter = group.adapter.toLowerCase();
+    if (/(coretemp|k10temp|zenpower|nvme|hdd|ssd|drive|gpu)/.test(adapter)) {
+      continue;
+    }
+    for (const reading of group.readings) {
+      const label = reading.label.toLowerCase();
+      const unit = reading.unit.toLowerCase();
+      const isInput = isPrimarySensorReading(reading);
+      const isBoardReading =
+        adapter.includes("acpitz") ||
+        label.includes("board") ||
+        label.includes("system") ||
+        label.includes("systin") ||
+        label.includes("mb") ||
+        label.startsWith("temp1");
+      if (
+        reading.kind === "number" &&
+        (unit === "c" || unit === "°c") &&
+        isInput &&
+        isBoardReading
+      ) {
+        sensors[`mb${index}`] = reading.value;
+        index += 1;
+      }
+    }
+  }
+  return sensors;
+};
+
 const MotherboardStats = () => {
   const { data: motherboardInfo } = useQuery({
     ...linuxio.system.get_motherboard_info,
-    refetchInterval: DASHBOARD_REFETCH_SLOW_MS,
+    staleTime: CACHE_TTL_MS.ONE_DAY,
   });
 
   const board = [

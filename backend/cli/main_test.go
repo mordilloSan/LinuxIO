@@ -90,6 +90,15 @@ func TestJournalTermsForMode(t *testing.T) {
 			},
 		},
 		{
+			name: "monitoring",
+			mode: "monitoring",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-monitoring",
+				"_SYSTEMD_UNIT=linuxio-monitoring.service",
+			},
+			wantMiss: []string{"SYSLOG_IDENTIFIER=linuxio-indexer"},
+		},
+		{
 			name: "all",
 			mode: "all",
 			wantIn: []string{
@@ -97,6 +106,8 @@ func TestJournalTermsForMode(t *testing.T) {
 				"SYSLOG_IDENTIFIER=linuxio-bridge",
 				"SYSLOG_IDENTIFIER=linuxio-auth",
 				"SYSLOG_IDENTIFIER=linuxio-indexer",
+				"SYSLOG_IDENTIFIER=linuxio-monitoring",
+				"_SYSTEMD_UNIT=linuxio-monitoring.service",
 			},
 		},
 	}

@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type SyntheticEvent } from "react";
 
 import { linuxio, type DockerNetwork, useCallMutation } from "@/api";
 import NetworkCard from "@/components/cards/NetworkCard";
@@ -14,9 +14,11 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
+import AppCollapse from "@/components/ui/AppCollapse";
 import {
   AppDialogActions,
   AppDialogContent,
+  AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
@@ -25,6 +27,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import SectionHeader from "@/components/ui/SectionHeader";
 import { useFocusedResourceParam } from "@/hooks/useFocusedResourceParam";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -37,10 +40,13 @@ import {
   wrappableChipStyle,
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
+import { getContainerName } from "@/utils/dockerContainer";
+import { parseDockerKeyValueLines } from "@/utils/dockerKeyValues";
 
 import "./network-list.css";
 
 const DOCKER_TOAST_META = { label: "Open Docker", to: "/docker" } as const;
+const DOCKER_RESOURCE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 
 interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -156,12 +162,21 @@ const CreateNetworkDialog = ({
   const [networkName, setNetworkName] = useState("");
   const [driver, setDriver] = useState("bridge");
   const [internal, setInternal] = useState(false);
+  const [attachable, setAttachable] = useState(false);
+  const [enableIpv6, setEnableIpv6] = useState(false);
+  const [subnet, setSubnet] = useState("");
+  const [gateway, setGateway] = useState("");
+  const [optionsText, setOptionsText] = useState("");
+  const [advanced, setAdvanced] = useState(false);
+  const [formError, setFormError] = useState<string>();
+  const parsedOptions = parseDockerKeyValueLines(optionsText);
+  const trimmedName = networkName.trim();
 
   const { mutate: createNetwork, isPending: isCreating } = useCallMutation(
     linuxio.docker.create_network,
     {
       success: () => {
-        toast.success(`Network "${networkName}" created successfully`);
+        toast.success(`Network "${trimmedName}" created`);
         handleClose();
       },
       error: "Failed to create network",
@@ -169,85 +184,210 @@ const CreateNetworkDialog = ({
     },
   );
 
-  const nameTaken = networkName && existingNames.includes(networkName);
-  const isValidName = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(networkName);
+  const nameTaken = existingNames.includes(trimmedName);
+  const isValidName = DOCKER_RESOURCE_NAME.test(trimmedName);
 
-  const handleCreate = () => {
-    if (!networkName || nameTaken || !isValidName) return;
-    createNetwork({ name: networkName });
+  const handleCreate = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!trimmedName || !driver.trim()) {
+      setFormError("Name and driver are required.");
+      return;
+    }
+    if (nameTaken) {
+      setFormError("Choose a network name that is not already in use.");
+      return;
+    }
+    if (!isValidName) {
+      setFormError(
+        "Name must start with an alphanumeric character and use only letters, numbers, underscores, periods, or hyphens.",
+      );
+      return;
+    }
+    if (gateway.trim() && !subnet.trim()) {
+      setFormError("Enter a subnet when a gateway is set.");
+      return;
+    }
+    if (parsedOptions.error) {
+      setFormError(parsedOptions.error);
+      return;
+    }
+    setFormError(undefined);
+    createNetwork({
+      name: trimmedName,
+      driver: driver.trim(),
+      internal,
+      attachable,
+      enableIpv6,
+      subnet: subnet.trim() || undefined,
+      gateway: gateway.trim() || undefined,
+      options:
+        Object.keys(parsedOptions.values).length > 0
+          ? parsedOptions.values
+          : undefined,
+    });
   };
 
   const handleClose = () => {
     setNetworkName("");
     setDriver("bridge");
     setInternal(false);
+    setAttachable(false);
+    setEnableIpv6(false);
+    setSubnet("");
+    setGateway("");
+    setOptionsText("");
+    setAdvanced(false);
+    setFormError(undefined);
     onClose();
   };
 
   return (
-    <GeneralDialog fullWidth maxWidth="xs" onClose={handleClose} open={open}>
-      <AppDialogTitle>Create Network</AppDialogTitle>
-      <AppDialogContent>
-        <div style={{ marginTop: "var(--app-space-8)" }}>
-          <AppTextField
-            autoFocus
-            disabled={isCreating}
-            error={!!nameTaken || (networkName.length > 0 && !isValidName)}
-            fullWidth
-            helperText={
-              nameTaken
-                ? "This network name already exists."
-                : networkName.length > 0 && !isValidName
-                  ? "Name must start with alphanumeric and contain only alphanumeric, _, ., or -"
-                  : ""
-            }
-            label="Network Name"
-            onChange={(e) => setNetworkName(e.target.value)}
-            value={networkName}
-          />
-          <AppSelect
-            disabled={isCreating}
-            fullWidth
-            label="Driver"
-            onChange={(e) => setDriver(e.target.value)}
-            style={{ marginBlock: 8 }}
-            value={driver}
+    <GeneralDialog
+      aria-label="Create network"
+      fullWidth
+      maxWidth="xs"
+      onClose={isCreating ? undefined : handleClose}
+      open={open}
+    >
+      <form onSubmit={handleCreate}>
+        <AppDialogTitle>Create Network</AppDialogTitle>
+        <AppDialogContent>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--app-space-12)",
+              marginTop: "var(--app-space-8)",
+            }}
           >
-            <option value="bridge">bridge</option>
-            <option value="host">host</option>
-            <option value="overlay">overlay</option>
-            <option value="macvlan">macvlan</option>
-            <option value="none">none</option>
-          </AppSelect>
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={internal}
-                disabled={isCreating}
-                onChange={(e) => setInternal(e.target.checked)}
+            <AppTextField
+              autoFocus
+              disabled={isCreating}
+              error={nameTaken || (networkName.length > 0 && !isValidName)}
+              fullWidth
+              helperText={
+                nameTaken
+                  ? "This network name already exists."
+                  : networkName.length > 0 && !isValidName
+                    ? "Use letters, numbers, underscores, periods, or hyphens."
+                    : undefined
+              }
+              label="Name"
+              name="network-name"
+              onChange={(event) => setNetworkName(event.target.value)}
+              required
+              value={networkName}
+            />
+            <AppSelect
+              disabled={isCreating}
+              fullWidth
+              label="Driver"
+              onChange={(event) => setDriver(event.target.value)}
+              value={driver}
+            >
+              <option value="bridge">bridge</option>
+              <option value="host">host</option>
+              <option value="overlay">overlay</option>
+              <option value="macvlan">macvlan</option>
+              <option value="none">none</option>
+            </AppSelect>
+            <AppFormControlLabel
+              control={
+                <AppSwitch
+                  checked={internal}
+                  disabled={isCreating}
+                  onChange={(event) => setInternal(event.target.checked)}
+                />
+              }
+              label="Internal network (no external connectivity)"
+            />
+            <AppFormControlLabel
+              control={
+                <AppSwitch
+                  checked={attachable}
+                  disabled={isCreating}
+                  onChange={(event) => setAttachable(event.target.checked)}
+                />
+              }
+              label="Allow manual container attachment"
+            />
+            <AppFormControlLabel
+              control={
+                <AppSwitch
+                  checked={enableIpv6}
+                  disabled={isCreating}
+                  onChange={(event) => setEnableIpv6(event.target.checked)}
+                />
+              }
+              label="Enable IPv6"
+            />
+            <AppTextField
+              disabled={isCreating}
+              fullWidth
+              label="Subnet"
+              name="network-subnet"
+              onChange={(event) => setSubnet(event.target.value)}
+              placeholder={enableIpv6 ? "2001:db8::/64" : "172.20.0.0/16"}
+              value={subnet}
+            />
+            <AppTextField
+              disabled={isCreating}
+              error={Boolean(gateway.trim() && !subnet.trim())}
+              fullWidth
+              helperText={
+                gateway.trim() && !subnet.trim()
+                  ? "Enter a subnet before setting a gateway."
+                  : undefined
+              }
+              label="Gateway"
+              name="network-gateway"
+              onChange={(event) => setGateway(event.target.value)}
+              placeholder={enableIpv6 ? "2001:db8::1" : "172.20.0.1"}
+              value={gateway}
+            />
+            <section>
+              <SectionHeader
+                controlsId="network-driver-options"
+                expanded={advanced}
+                onToggle={() => setAdvanced((current) => !current)}
+                title="Advanced"
               />
-            }
-            label="Internal network (no external connectivity)"
-            style={{ marginTop: 4 }}
-          />
-        </div>
-      </AppDialogContent>
-      <AppDialogActions>
-        <AppButton
-          color="secondary"
-          disabled={isCreating}
-          onClick={handleClose}
-        >
-          Cancel
-        </AppButton>
-        <AppButton
-          disabled={!networkName || !!nameTaken || !isValidName || isCreating}
-          onClick={handleCreate}
-          variant="contained"
-        >
-          {isCreating ? "Creating..." : "Create"}
-        </AppButton>
-      </AppDialogActions>
+              <AppCollapse in={advanced} unmountOnExit>
+                <div id="network-driver-options">
+                  <AppTextField
+                    disabled={isCreating}
+                    error={Boolean(parsedOptions.error)}
+                    fullWidth
+                    helperText={
+                      parsedOptions.error ??
+                      "Optional, one key=value driver option per line."
+                    }
+                    label="Driver options"
+                    multiline
+                    name="network-driver-options"
+                    onChange={(event) => setOptionsText(event.target.value)}
+                    rows={4}
+                    value={optionsText}
+                  />
+                </div>
+              </AppCollapse>
+            </section>
+            {formError && (
+              <AppTypography color="error" role="alert" variant="body2">
+                {formError}
+              </AppTypography>
+            )}
+          </div>
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton disabled={isCreating} onClick={handleClose} type="button">
+            Cancel
+          </AppButton>
+          <AppButton disabled={isCreating} type="submit" variant="contained">
+            {isCreating ? "Creating…" : "Create network"}
+          </AppButton>
+        </AppDialogActions>
+      </form>
     </GeneralDialog>
   );
 };
@@ -256,7 +396,36 @@ const getNetworkId = (network: { Id: string }) => network.Id;
 
 const dockerRouteApi = getRouteApi("/_authenticated/docker/networks");
 
-const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
+const NetworkDetailsContent = ({
+  connectDisabled,
+  network,
+  onConnect,
+  onDisconnect,
+}: {
+  connectDisabled: boolean;
+  network: DockerNetwork;
+  onConnect: () => void;
+  onDisconnect: (container: ConnectedContainerRow) => void;
+}) => {
+  const columns: AppVirtualTableColumnDef<ConnectedContainerRow>[] = [
+    ...connectedContainerColumns,
+    {
+      id: "actions",
+      header: "Actions",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <AppActionIconButton
+          ariaLabel={`Disconnect container ${row.original.name}`}
+          color="var(--app-palette-error-main)"
+          icon="mdi:lan-disconnect"
+          iconSize={18}
+          label="Disconnect container"
+          onClick={() => onDisconnect(row.original)}
+        />
+      ),
+      meta: { align: "right", width: "80px" },
+    },
+  ];
   return (
     <div className="expand-panel">
       <div>
@@ -343,6 +512,15 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
             variant="soft"
           />
         </div>
+        {network.Protected && (
+          <AppTypography
+            color="text.secondary"
+            style={{ marginTop: "var(--app-space-4)" }}
+            variant="body2"
+          >
+            Docker default networks cannot be deleted.
+          </AppTypography>
+        )}
       </div>
       <div>
         <AppTypography gutterBottom variant="subtitle2">
@@ -435,7 +613,14 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
         <AppTypography gutterBottom variant="subtitle2">
           <b>Labels:</b>
         </AppTypography>
-        <div className="expand-panel__chips">
+        <div
+          style={{
+            alignItems: "flex-start",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--app-space-4)",
+          }}
+        >
           {Object.entries(network.Labels ?? {}).length ? (
             Object.entries(network.Labels ?? {}).map(([key, value]) => (
               <Chip
@@ -455,14 +640,31 @@ const NetworkDetailsContent = ({ network }: { network: DockerNetwork }) => {
         </div>
       </div>
       <div>
-        <AppTypography gutterBottom variant="subtitle2">
-          <b>Connected Containers:</b>
-        </AppTypography>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: "var(--app-space-8)",
+            justifyContent: "space-between",
+          }}
+        >
+          <AppTypography gutterBottom variant="subtitle2">
+            <b>Connected Containers:</b>
+          </AppTypography>
+          <AppButton
+            disabled={connectDisabled}
+            onClick={onConnect}
+            size="small"
+            variant="outlined"
+          >
+            Connect container
+          </AppButton>
+        </div>
         {Object.entries(network.Containers ?? {}).length ? (
           <AppVirtualTable
             ariaLabel="Connected containers"
             className="network-connected-table"
-            columns={connectedContainerColumns}
+            columns={columns}
             data={Object.entries(network.Containers ?? {}).map(
               ([id, info]) => ({
                 endpointId: info.EndpointID || "",
@@ -504,10 +706,20 @@ const NetworkList = ({
     },
   });
   const networks = rawNetworks;
+  const { data: containers } = useSuspenseQuery({
+    ...linuxio.docker.list_containers,
+    refetchInterval: 10000,
+  });
+  const toast = useScopedToast(DOCKER_TOAST_META);
 
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [connectContainerId, setConnectContainerId] = useState("");
+  const [aliases, setAliases] = useState("");
+  const [disconnectTarget, setDisconnectTarget] =
+    useState<ConnectedContainerRow | null>(null);
 
   const updateFocusedNetwork = useCallback(
     (networkId: string | null) => {
@@ -540,6 +752,12 @@ const NetworkList = ({
     items: surface.items,
     onClear: () => updateFocusedNetwork(null),
   });
+  const connectedContainerIds = new Set(
+    Object.keys(focusedNetwork?.Containers ?? {}),
+  );
+  const unattachedContainers = containers.filter(
+    (container) => !connectedContainerIds.has(container.Id),
+  );
 
   // Create network handler
   const handleCreateNetwork = useCallback(() => {
@@ -552,6 +770,27 @@ const NetworkList = ({
   const { mutateAsync: deleteNetwork } = useCallMutation(
     linuxio.docker.delete_network,
   );
+  const { mutate: connectNetwork, isPending: isConnecting } = useCallMutation(
+    linuxio.docker.connect_network,
+    {
+      success: () => {
+        toast.success("Container connected to network");
+        setConnectDialogOpen(false);
+        setAliases("");
+      },
+      error: "Failed to connect container",
+      toast: DOCKER_TOAST_META,
+    },
+  );
+  const { mutate: disconnectNetwork, isPending: isDisconnecting } =
+    useCallMutation(linuxio.docker.disconnect_network, {
+      success: () => {
+        toast.success("Container disconnected from network");
+        setDisconnectTarget(null);
+      },
+      error: "Failed to disconnect container",
+      toast: DOCKER_TOAST_META,
+    });
   const handleDeleteSuccess = () => {
     updateFocusedNetwork(null);
   };
@@ -561,6 +800,23 @@ const NetworkList = ({
       updateFocusedNetwork(network.Id),
     [updateFocusedNetwork],
   );
+  const openConnectDialog = () => {
+    setConnectContainerId(unattachedContainers[0]?.Id ?? "");
+    setAliases("");
+    setConnectDialogOpen(true);
+  };
+  const handleConnect = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!focusedNetwork || !connectContainerId) return;
+    connectNetwork({
+      networkId: focusedNetwork.Id,
+      containerId: connectContainerId,
+      aliases: aliases
+        .split(",")
+        .map((alias) => alias.trim())
+        .filter(Boolean),
+    });
+  };
 
   // Stable column defs — see docs/table-row-gestures.md: a rebuilt array
   // remounts every cell subtree on the press that arms the reorder hold.
@@ -754,14 +1010,16 @@ const NetworkList = ({
           summary={
             <NetworkCard
               actions={
-                <AppActionIconButton
-                  ariaLabel={`Delete network ${focusedNetwork.Name}`}
-                  color="var(--app-palette-error-main)"
-                  icon="mdi:delete"
-                  iconSize={18}
-                  label="Delete network"
-                  onClick={() => setDeleteDialogOpen(true)}
-                />
+                focusedNetwork.Protected ? undefined : (
+                  <AppActionIconButton
+                    ariaLabel={`Delete network ${focusedNetwork.Name}`}
+                    color="var(--app-palette-error-main)"
+                    icon="mdi:delete"
+                    iconSize={18}
+                    label="Delete network"
+                    onClick={() => setDeleteDialogOpen(true)}
+                  />
+                )
               }
               network={focusedNetwork}
               selected
@@ -769,7 +1027,12 @@ const NetworkList = ({
           }
           title={focusedNetwork.Name}
         >
-          <NetworkDetailsContent network={focusedNetwork} />
+          <NetworkDetailsContent
+            connectDisabled={unattachedContainers.length === 0}
+            network={focusedNetwork}
+            onConnect={openConnectDialog}
+            onDisconnect={setDisconnectTarget}
+          />
         </DockerResourceDetailsLayout>
       ) : viewMode === "card" ? (
         filtered.length > 0 ? (
@@ -822,6 +1085,129 @@ const NetworkList = ({
         onClose={() => setCreateDialogOpen(false)}
         open={createDialogOpen}
       />
+
+      <GeneralDialog
+        aria-label={
+          focusedNetwork
+            ? `Connect container to ${focusedNetwork.Name}`
+            : "Connect container to network"
+        }
+        fullWidth
+        maxWidth="xs"
+        onClose={
+          isConnecting
+            ? undefined
+            : () => {
+                setConnectDialogOpen(false);
+                setAliases("");
+              }
+        }
+        open={connectDialogOpen && Boolean(focusedNetwork)}
+      >
+        <form onSubmit={handleConnect}>
+          <AppDialogTitle>
+            Connect Container to {focusedNetwork?.Name}
+          </AppDialogTitle>
+          <AppDialogContent>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--app-space-12)",
+                marginTop: "var(--app-space-8)",
+              }}
+            >
+              <AppSelect
+                disabled={isConnecting}
+                fullWidth
+                label="Container"
+                onChange={(event) => setConnectContainerId(event.target.value)}
+                value={connectContainerId}
+              >
+                {unattachedContainers.map((container) => (
+                  <option key={container.Id} value={container.Id}>
+                    {getContainerName(container)} ({container.State})
+                  </option>
+                ))}
+              </AppSelect>
+              <AppTextField
+                disabled={isConnecting}
+                fullWidth
+                helperText="Optional, separated with commas."
+                label="Aliases"
+                name="network-aliases"
+                onChange={(event) => setAliases(event.target.value)}
+                placeholder="api, web"
+                value={aliases}
+              />
+            </div>
+          </AppDialogContent>
+          <AppDialogActions>
+            <AppButton
+              disabled={isConnecting}
+              onClick={() => {
+                setConnectDialogOpen(false);
+                setAliases("");
+              }}
+              type="button"
+            >
+              Cancel
+            </AppButton>
+            <AppButton
+              disabled={isConnecting || !connectContainerId}
+              type="submit"
+              variant="contained"
+            >
+              {isConnecting ? "Connecting…" : "Connect container"}
+            </AppButton>
+          </AppDialogActions>
+        </form>
+      </GeneralDialog>
+
+      <GeneralDialog
+        aria-label={
+          disconnectTarget
+            ? `Disconnect ${disconnectTarget.name} from ${focusedNetwork?.Name}?`
+            : "Disconnect container from network?"
+        }
+        fullWidth
+        maxWidth="xs"
+        onClose={isDisconnecting ? undefined : () => setDisconnectTarget(null)}
+        open={Boolean(disconnectTarget && focusedNetwork)}
+      >
+        <AppDialogTitle>
+          Disconnect {disconnectTarget?.name} from {focusedNetwork?.Name}?
+        </AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>
+            The container will immediately lose access to this network and its
+            connected services.
+          </AppDialogContentText>
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton
+            disabled={isDisconnecting}
+            onClick={() => setDisconnectTarget(null)}
+          >
+            Cancel
+          </AppButton>
+          <AppButton
+            color="error"
+            disabled={isDisconnecting}
+            onClick={() => {
+              if (focusedNetwork && disconnectTarget) {
+                disconnectNetwork({
+                  networkId: focusedNetwork.Id,
+                  containerId: disconnectTarget.id,
+                });
+              }
+            }}
+            variant="contained"
+          >
+            {isDisconnecting ? "Disconnecting…" : "Disconnect container"}
+          </AppButton>
+        </AppDialogActions>
+      </GeneralDialog>
 
       <BatchDeleteDialog
         items={

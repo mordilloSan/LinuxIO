@@ -2,7 +2,8 @@ package storage
 
 import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-// DriveInfo represents a disk returned from lsblk plus best-effort SMART/NVMe enrichment.
+// DriveInfo represents inventory returned from lsblk. Live SMART and power
+// data belongs to the monitoring daemon; self-test mutations remain here.
 type DriveInfo = apischema.ApiDisk
 
 // LVM command JSON output structures (for parsing pvs/vgs/lvs --reportformat json)

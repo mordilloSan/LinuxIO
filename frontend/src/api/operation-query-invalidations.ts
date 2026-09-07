@@ -5,10 +5,16 @@ import { handlerQueryPrefix, endpointQueryPrefix } from "./query-keys";
 const CONTAINER_STATE_KEYS = [
   endpointQueryPrefix("docker.list_containers"),
   endpointQueryPrefix("docker.list_compose_projects"),
+  endpointQueryPrefix("docker.inspect_container"),
 ];
 const CONTAINER_IMAGE_KEYS = [
   ...CONTAINER_STATE_KEYS,
   endpointQueryPrefix("docker.list_images"),
+];
+const CONTAINER_CONFIGURATION_KEYS = [
+  ...CONTAINER_IMAGE_KEYS,
+  endpointQueryPrefix("docker.list_networks"),
+  endpointQueryPrefix("docker.list_volumes"),
 ];
 const COMPOSE_KEYS = [
   endpointQueryPrefix("docker.list_compose_projects"),
@@ -98,15 +104,28 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.start_container": CONTAINER_STATE_KEYS,
   "docker.stop_container": CONTAINER_STATE_KEYS,
   "docker.restart_container": CONTAINER_STATE_KEYS,
+  "docker.pause_container": CONTAINER_STATE_KEYS,
+  "docker.unpause_container": CONTAINER_STATE_KEYS,
+  "docker.kill_container": CONTAINER_STATE_KEYS,
   "docker.start_all_stopped": CONTAINER_STATE_KEYS,
   "docker.stop_all_running": CONTAINER_STATE_KEYS,
   "docker.remove_container": CONTAINER_IMAGE_KEYS,
+  "docker.create_container": CONTAINER_CONFIGURATION_KEYS,
+  "docker.edit_container": CONTAINER_CONFIGURATION_KEYS,
   "docker.update_container": CONTAINER_IMAGE_KEYS,
   "docker.check_updates": CONTAINER_IMAGE_KEYS,
   "docker.check_container_update": CONTAINER_IMAGE_KEYS,
   "docker.delete_image": [endpointQueryPrefix("docker.list_images")],
   "docker.create_network": [endpointQueryPrefix("docker.list_networks")],
+  "docker.connect_network": [
+    endpointQueryPrefix("docker.list_networks"),
+    endpointQueryPrefix("docker.list_containers"),
+  ],
   "docker.delete_network": [endpointQueryPrefix("docker.list_networks")],
+  "docker.disconnect_network": [
+    endpointQueryPrefix("docker.list_networks"),
+    endpointQueryPrefix("docker.list_containers"),
+  ],
   "docker.create_volume": [endpointQueryPrefix("docker.list_volumes")],
   "docker.delete_volume": [endpointQueryPrefix("docker.list_volumes")],
   "docker.compose_up": COMPOSE_KEYS,
@@ -154,19 +173,19 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "network.set_ipv4": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.set_ipv4_manual": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.enable_connection": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.disable_connection": [
     endpointQueryPrefix("network.get_network_info"),
-    endpointQueryPrefix("network.get_interface_stats"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.create_bridge": NETWORK_BRIDGE_KEYS,
   "network.start_bridge_handoff": NETWORK_BRIDGE_KEYS,
@@ -200,42 +219,62 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   ],
 
   "storage.mount_cifs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_cifs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.unmount_cifs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_cifs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
-  "storage.remount_cifs": [endpointQueryPrefix("storage.list_cifs_mounts")],
+  "storage.remount_cifs": [
+    endpointQueryPrefix("storage.list_cifs_mounts"),
+    endpointQueryPrefix("storage.get_topology"),
+    endpointQueryPrefix("monitoring.get_live"),
+  ],
   "storage.mount_nfs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_nfs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.unmount_nfs": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_nfs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
-  "storage.remount_nfs": [endpointQueryPrefix("storage.list_nfs_mounts")],
+  "storage.remount_nfs": [
+    endpointQueryPrefix("storage.list_nfs_mounts"),
+    endpointQueryPrefix("storage.get_topology"),
+    endpointQueryPrefix("monitoring.get_live"),
+  ],
   "storage.create_lv": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_lvs"),
     endpointQueryPrefix("storage.list_vgs"),
   ],
   "storage.resize_lv": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_lvs"),
     endpointQueryPrefix("storage.list_vgs"),
   ],
   "storage.delete_lv": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_lvs"),
     endpointQueryPrefix("storage.list_vgs"),
   ],
   "storage.unmount_filesystem": [
+    endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("storage.list_nfs_mounts"),
     endpointQueryPrefix("storage.list_cifs_mounts"),
-    endpointQueryPrefix("system.get_fs_info"),
+    endpointQueryPrefix("monitoring.get_live"),
   ],
-  "storage.run_smart_test": [endpointQueryPrefix("storage.get_drive_info")],
-  "storage.create_btrfs_subvolume": [endpointQueryPrefix("system.get_fs_info")],
+  "storage.run_smart_test": [endpointQueryPrefix("monitoring.get_live")],
+  "storage.create_btrfs_subvolume": [
+    endpointQueryPrefix("storage.get_topology"),
+    endpointQueryPrefix("monitoring.get_live"),
+  ],
+  "monitoring.refresh_smart": [endpointQueryPrefix("monitoring.get_live")],
 
   "updates.set_auto_updates": [endpointQueryPrefix("updates.get_auto_updates")],
 

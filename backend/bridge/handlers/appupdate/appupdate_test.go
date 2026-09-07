@@ -46,7 +46,7 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 		t.Fatal("missing ReadWritePaths property")
 	}
 
-	expectedPaths := []string{
+	legacyPaths := []string{
 		version.BinDir,
 		"/etc/linuxio",
 		"/etc/pam.d",
@@ -56,10 +56,8 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 		"/usr/share/linuxio",
 		version.DataDir,
 	}
-	for _, path := range expectedPaths {
-		if !strings.Contains(" "+readWritePaths+" ", " "+path+" ") {
-			t.Fatalf("ReadWritePaths missing %q: %q", path, readWritePaths)
-		}
+	if got := strings.Fields(readWritePaths); !slices.Equal(got, legacyPaths) {
+		t.Fatalf("ReadWritePaths = %q, want legacy-compatible paths %q", got, legacyPaths)
 	}
 	if strings.Contains(" "+readWritePaths+" ", " /etc ") {
 		t.Fatalf("ReadWritePaths should use explicit subpaths, got %q", readWritePaths)

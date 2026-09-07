@@ -2,96 +2,62 @@ package system
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/load"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-// ---------- Helpers ----------
+var cpuInfoCache hwSnapshotCache[*apischema.CPUInfoResponse]
 
-func getCurrentFrequencies(ctx context.Context) ([]float64, error) {
-	var freqs []float64
-	const basePath = "/sys/devices/system/cpu"
-
-	entries, err := os.ReadDir(basePath)
-	if err != nil {
+func FetchCPUInfo(ctx context.Context) (*apischema.CPUInfoResponse, error) {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
-	for _, entry := range entries {
+	return cpuInfoCache.get(func() (*apischema.CPUInfoResponse, error) {
+		info, err := cpu.InfoWithContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(info) == 0 {
+			return nil, fmt.Errorf("cpu information unavailable")
+		}
+		counts, err := cpu.CountsWithContext(ctx, true)
+		if err != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if counts <= 0 {
+			counts = len(info)
+		}
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "cpu") {
-			continue
-		}
-
-		cpuPath := filepath.Join(basePath, entry.Name(), "cpufreq", "scaling_cur_freq")
-		data, err := os.ReadFile(cpuPath)
-		if err != nil {
-			continue // skip offline or inaccessible cores
-		}
-
-		kHzStr := strings.TrimSpace(string(data))
-		kHz, err := strconv.ParseFloat(kHzStr, 64)
-		if err != nil {
-			continue
-		}
-
-		freqs = append(freqs, kHz/1000.0) // MHz
-	}
-
-	return freqs, nil
+		return &apischema.CPUInfoResponse{
+			VendorID:  info[0].VendorID,
+			ModelName: info[0].ModelName,
+			Family:    info[0].Family,
+			Model:     info[0].Model,
+			MHz:       readBaseFrequencyMHz(),
+			Cores:     counts,
+		}, nil
+	})
 }
 
-// NOTE: Assuming you already have getTemperatureMap() elsewhere in this package.
-// If it returns nil or errors, we'll just send an empty map.
-func safeTemperatureMap(ctx context.Context) map[string]float64 {
-	m := getTemperatureMap(ctx)
-	if m == nil {
-		return map[string]float64{}
-	}
-	// Filter to CPU-related temps only
-	cpuTemps := make(map[string]float64, len(m))
-	for k, v := range m {
-		if strings.HasPrefix(k, "core") || k == "package" {
-			cpuTemps[k] = v
+func readBaseFrequencyMHz() float64 {
+	for _, name := range []string{"cpuinfo_base_freq", "base_frequency", "cpuinfo_max_freq"} {
+		data, err := os.ReadFile(filepath.Join("/sys/devices/system/cpu/cpu0/cpufreq", name))
+		if err != nil {
+			continue
+		}
+		value, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64)
+		if err == nil && value > 0 {
+			return value / 1000
 		}
 	}
-	return cpuTemps
-}
-
-// ---------- Fetchers ----------
-
-func FetchCPUInfo(ctx context.Context) (*apischema.CPUInfoResponse, error) {
-	info, err := cpu.InfoWithContext(ctx)
-	if err != nil || len(info) == 0 {
-		return nil, err
-	}
-
-	percent, _ := cpu.PercentWithContext(ctx, 0, true) // per-core usage snapshot (%)
-	counts, _ := cpu.CountsWithContext(ctx, true)      // logical cores
-	loadAvg, _ := load.AvgWithContext(ctx)
-	currentFreqs, _ := getCurrentFrequencies(ctx)
-
-	cpuData := info[0]
-
-	return &apischema.CPUInfoResponse{
-		VendorID:           cpuData.VendorID,
-		ModelName:          cpuData.ModelName,
-		Family:             cpuData.Family,
-		Model:              cpuData.Model,
-		MHz:                cpuData.Mhz,
-		CurrentFrequencies: currentFreqs,
-		Cores:              counts,
-		LoadAverage:        loadAvg,
-		PerCoreUsage:       percent,
-		Temperature:        safeTemperatureMap(ctx),
-	}, nil
+	return 0
 }

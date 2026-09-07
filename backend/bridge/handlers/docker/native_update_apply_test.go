@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -849,6 +850,42 @@ func TestStandaloneUpdateJournalRetriesVerifiedBackupCleanup(t *testing.T) {
 	}
 }
 
+func TestStandaloneEditJournalRecoversPreparedRenamedReplacement(t *testing.T) {
+	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	tx := standaloneUpdateTransaction{
+		Phase:           standaloneUpdatePrepared,
+		OriginalID:      "old-container",
+		OriginalName:    "web",
+		BackupName:      standaloneBackupName("old-container"),
+		ReplacementName: "renamed-web",
+		OriginalRunning: true,
+	}
+	if err := journal.write(tx); err != nil {
+		t.Fatalf("write journal: %v", err)
+	}
+	fake := newStandaloneUpdateFake()
+	backup := standaloneTestInspect()
+	backup.Name = "/" + tx.BackupName
+	backup.State = &container.State{Status: container.StateExited}
+	replacement := readyContainer("replacement", "sha256:new")
+	replacement.Name = "/renamed-web"
+	fake.inspectResults[tx.OriginalID] = backup
+	fake.inspectResults[tx.ReplacementName] = replacement
+
+	if err := recoverStandaloneUpdate(context.Background(), fake, journal); err != nil {
+		t.Fatalf("recoverStandaloneUpdate: %v", err)
+	}
+	for _, call := range []string{
+		"remove:replacement:true",
+		"rename:old-container:web",
+		"start:old-container",
+	} {
+		if !slices.Contains(fake.calls, call) {
+			t.Errorf("calls %q do not contain %q", fake.calls, call)
+		}
+	}
+}
+
 func TestStandaloneUpdateJournalDoesNotSweepUnjournaledBackups(t *testing.T) {
 	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
 	fake := newStandaloneUpdateFake()
@@ -941,19 +978,21 @@ func (f *fakeImagePullResponse) JSONMessages(context.Context) iter.Seq2[jsonstre
 }
 
 type fakeNativeUpdateClient struct {
-	calls           []string
-	pulledImage     client.ImageInspectResult
-	pullErr         error
-	pullWaitErr     error
-	pullCloseErr    error
-	imageInspectErr error
-	inspectResults  map[string]container.InspectResponse
-	startErrors     map[string]error
-	renameErrors    map[string]error
-	removeErrors    map[string]error
-	stopErr         error
-	createErr       error
-	containerItems  []container.Summary
+	calls            []string
+	pulledImage      client.ImageInspectResult
+	pullErr          error
+	pullWaitErr      error
+	pullCloseErr     error
+	imageInspectErr  error
+	imageInspectErrs []error
+	inspectResults   map[string]container.InspectResponse
+	startErrors      map[string]error
+	renameErrors     map[string]error
+	removeErrors     map[string]error
+	stopErr          error
+	createErr        error
+	createOptions    []client.ContainerCreateOptions
+	containerItems   []container.Summary
 }
 
 func (f *fakeNativeUpdateClient) ImageInspect(
@@ -962,6 +1001,11 @@ func (f *fakeNativeUpdateClient) ImageInspect(
 	_ ...client.ImageInspectOption,
 ) (client.ImageInspectResult, error) {
 	f.calls = append(f.calls, "inspect-image:"+imageRef)
+	if len(f.imageInspectErrs) > 0 {
+		err := f.imageInspectErrs[0]
+		f.imageInspectErrs = f.imageInspectErrs[1:]
+		return f.pulledImage, err
+	}
 	return f.pulledImage, f.imageInspectErr
 }
 
@@ -1029,6 +1073,7 @@ func (f *fakeNativeUpdateClient) ContainerCreate(
 	options client.ContainerCreateOptions,
 ) (client.ContainerCreateResult, error) {
 	f.calls = append(f.calls, "create:"+options.Name)
+	f.createOptions = append(f.createOptions, options)
 	if f.createErr != nil {
 		return client.ContainerCreateResult{}, f.createErr
 	}

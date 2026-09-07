@@ -21,11 +21,11 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
-func withTestMonitoringClient(t *testing.T, fn roundTripFunc) {
+func withTestControlClient(t *testing.T, fn roundTripFunc) {
 	t.Helper()
-	orig := monitoringClient
-	monitoringClient = &http.Client{Transport: fn}
-	t.Cleanup(func() { monitoringClient = orig })
+	orig := controlClient
+	controlClient = &http.Client{Transport: fn}
+	t.Cleanup(func() { controlClient = orig })
 }
 
 func withFastCommandRetry(t *testing.T) {
@@ -65,7 +65,7 @@ func jsonResponse(status int, body string) *http.Response {
 }
 
 func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		cmd := decodeCommandRequest(t, req)
 		if cmd.Command != "config.get" {
 			t.Fatalf("command = %q, want config.get", cmd.Command)
@@ -80,10 +80,10 @@ func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
 				"version": 1,
 				"collector_interval": "15s",
 				"smart_refresh_interval": "1h",
+				"disk_usage_cache": "5m",
 				"history": "cpu,mem",
-				"allow_remote_commands": true,
 				"history_retention": "720h",
-				"listeners": [{"name": "metrics", "address": "127.0.0.1:45876", "apis": ["metrics"]}]
+				"listeners": [{"name": "metrics", "address": "127.0.0.1:45876", "plugins": ["cpu"]}]
 			}
 		}`), nil
 	})
@@ -94,15 +94,13 @@ func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
 	}
 	if cfg.CollectorInterval != "15s" ||
 		cfg.SmartRefreshInterval != "1h" ||
+		cfg.DiskUsageCache != "5m" ||
 		cfg.History != "cpu,mem" ||
-		cfg.HistoryRetention != "720h" ||
-		!cfg.AllowRemoteCommands {
+		cfg.HistoryRetention != "720h" {
 		t.Fatalf("config = %#v", cfg)
 	}
-	if cfg.HistoryRetention != "720h" {
-		t.Fatalf("history_retention = %q", cfg.HistoryRetention)
-	}
-	if len(cfg.Listeners) != 1 || cfg.Listeners[0].Name != "metrics" {
+	if len(cfg.Listeners) != 1 || cfg.Listeners[0].Name != "metrics" ||
+		len(cfg.Listeners[0].Plugins) != 1 || cfg.Listeners[0].Plugins[0] != "cpu" {
 		t.Fatalf("listeners = %#v", cfg.Listeners)
 	}
 }
@@ -110,7 +108,7 @@ func TestFetchConfigSendsConfigGetCommand(t *testing.T) {
 func TestRunCommandRetriesTransientSocketErrors(t *testing.T) {
 	withFastCommandRetry(t)
 	attempts := 0
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		attempts++
 		if attempts == 1 {
 			return nil, os.ErrNotExist
@@ -141,7 +139,7 @@ func TestRunCommandRetriesTransientSocketErrors(t *testing.T) {
 }
 
 func TestUpdateConfigSendsPatchAndReadsRestartRequired(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		cmd := decodeCommandRequest(t, req)
 		if cmd.Command != "config.set" {
 			t.Fatalf("command = %q, want config.set", cmd.Command)
@@ -177,7 +175,7 @@ func TestUpdateConfigSendsPatchAndReadsRestartRequired(t *testing.T) {
 }
 
 func TestUpdateConfigSendsSmartRefreshIntervalPatch(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		cmd := decodeCommandRequest(t, req)
 		if cmd.Command != "config.set" {
 			t.Fatalf("command = %q, want config.set", cmd.Command)
@@ -209,7 +207,7 @@ func TestUpdateConfigSendsSmartRefreshIntervalPatch(t *testing.T) {
 }
 
 func TestUpdateConfigSendsListenersPatch(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		cmd := decodeCommandRequest(t, req)
 		if cmd.Command != "config.set" {
 			t.Fatalf("command = %q, want config.set", cmd.Command)
@@ -229,15 +227,16 @@ func TestUpdateConfigSendsListenersPatch(t *testing.T) {
 				"collector_interval": "30s",
 				"history": "cpu",
 				"history_retention": "720h",
-				"listeners": [{"name": "metrics", "address": "0.0.0.0:45876", "apis": ["metrics"]}]
+				"listeners": [{"name": "metrics", "address": "0.0.0.0:45876", "plugins": ["cpu"]}]
 			}
 		}`), nil
 	})
 
+	listeners := []apischema.MonitoringListener{
+		{Name: "metrics", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}},
+	}
 	cfg, restartRequired, err := UpdateConfig(context.Background(), apischema.MonitoringConfigPatch{
-		Listeners: []apischema.MonitoringListener{
-			{Name: "metrics", Address: "0.0.0.0:45876", APIs: []string{"metrics"}},
-		},
+		Listeners: &listeners,
 	})
 	if err != nil {
 		t.Fatalf("UpdateConfig: %v", err)
@@ -261,7 +260,7 @@ func TestUpdateConfigRejectsEmptyPatch(t *testing.T) {
 }
 
 func TestRunCommandSurfacesAgentError(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		decodeCommandRequest(t, req)
 		return jsonResponse(http.StatusBadRequest, `{
 			"ok": false,
@@ -280,7 +279,7 @@ func TestRunCommandSurfacesAgentError(t *testing.T) {
 }
 
 func TestFetchStatusDecodesMeta(t *testing.T) {
-	withTestMonitoringClient(t, func(req *http.Request) (*http.Response, error) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
 		cmd := decodeCommandRequest(t, req)
 		if cmd.Command != "status.get" {
 			t.Fatalf("command = %q, want status.get", cmd.Command)
@@ -290,12 +289,15 @@ func TestFetchStatusDecodesMeta(t *testing.T) {
 			"command": "status.get",
 			"data": {
 				"version": "1.2.3",
-				"data_dir": "/var/lib/go-monitoring",
-				"db_path": "/var/lib/go-monitoring/metrics.db",
+				"data_dir": "/var/lib/linuxio/monitoring",
+				"db_path": "/var/lib/linuxio/monitoring/metrics.db",
 				"collector_interval": "15s",
 				"smart_refresh_interval": "12h",
-				"listeners": [{"name": "control", "address": "unix:/run/go-monitoring/agent.sock", "effective_address": "unix:/run/go-monitoring/agent.sock", "apis": ["commands"], "active": true}],
-				"config": {"path": "/etc/go-monitoring/config.json", "source": "loaded", "version": 1, "collector_interval": "15s", "history_plugins": ["cpu"], "history_retention": "720h"},
+				"listeners": [
+					{"name": "api", "address": "unix:/run/linuxio/monitoring/api.sock", "effective_address": "unix:/run/linuxio/monitoring/api.sock", "apis": ["metrics"], "active": true},
+					{"name": "control", "address": "unix:/run/linuxio/monitoring/control.sock", "effective_address": "unix:/run/linuxio/monitoring/control.sock", "apis": ["commands", "metrics"], "active": true}
+				],
+				"config": {"path": "/etc/linuxio/monitoring/config.yaml", "source": "loaded", "version": 1, "collector_interval": "15s", "history_plugins": ["cpu"], "history_retention": "720h"},
 				"retention": {"raw": "48h"}
 			}
 		}`), nil
@@ -305,13 +307,60 @@ func TestFetchStatusDecodesMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchStatus: %v", err)
 	}
-	if status.Version != "1.2.3" || status.DBPath != "/var/lib/go-monitoring/metrics.db" {
+	if status.Version != "1.2.3" || status.DBPath != "/var/lib/linuxio/monitoring/metrics.db" {
 		t.Fatalf("status = %#v", status)
 	}
-	if len(status.Listeners) != 1 || !status.Listeners[0].Active {
+	if len(status.Listeners) != 2 || status.Listeners[0].Name != "api" || status.Listeners[1].Name != "control" {
 		t.Fatalf("listeners = %#v", status.Listeners)
 	}
 	if status.Config.Source != "loaded" || status.Retention["raw"] != "48h" {
 		t.Fatalf("config meta = %#v retention = %#v", status.Config, status.Retention)
+	}
+}
+
+func TestUpdateConfigSendsEmptyListenerList(t *testing.T) {
+	withFastCommandRetry(t)
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
+		cmd := decodeCommandRequest(t, req)
+		if cmd.Command != "config.set" {
+			t.Fatalf("command = %q", cmd.Command)
+		}
+		if !strings.Contains(string(cmd.Params), `"listeners":[]`) {
+			t.Fatalf("params must carry an explicit empty listener list: %s", cmd.Params)
+		}
+		return jsonResponse(http.StatusOK, `{"ok": true, "command": "config.set", "restart_required": true, "data": {"version": 1, "collector_interval": "1m0s", "smart_refresh_interval": "1h0m0s", "disk_usage_cache": "0s", "history_retention": "720h0m0s", "history": "cpu", "listeners": []}}`), nil
+	})
+
+	empty := []apischema.MonitoringListener{}
+	cfg, restart, err := UpdateConfig(context.Background(), apischema.MonitoringConfigPatch{Listeners: &empty})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restart || len(cfg.Listeners) != 0 {
+		t.Fatalf("restart=%v listeners=%v", restart, cfg.Listeners)
+	}
+}
+
+func TestUpdateConfigSendsHistoryIntervalsAlone(t *testing.T) {
+	withTestControlClient(t, func(req *http.Request) (*http.Response, error) {
+		cmd := decodeCommandRequest(t, req)
+		if params := string(cmd.Params); !strings.Contains(params, `"history_intervals":{"containers":"5m"}`) {
+			t.Fatalf("params missing history_intervals: %s", params)
+		}
+		return jsonResponse(http.StatusOK, `{
+			"ok": true,
+			"command": "config.set",
+			"data": {"version": 1, "collector_interval": "1m", "history": "cpu", "history_intervals": {"containers": "5m0s"}, "history_retention": "720h", "listeners": []}
+		}`), nil
+	})
+
+	cfg, _, err := UpdateConfig(context.Background(), apischema.MonitoringConfigPatch{
+		HistoryIntervals: &map[string]string{"containers": "5m"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+	if cfg.HistoryIntervals["containers"] != "5m0s" {
+		t.Fatalf("config = %#v", cfg)
 	}
 }

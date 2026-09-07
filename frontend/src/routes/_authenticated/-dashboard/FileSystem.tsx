@@ -3,6 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { linuxio, type FilesystemInfo } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { formatFileSize } from "@/utils/formaters";
 
 const isRelevantMount = (fs: FilesystemInfo): boolean => {
@@ -22,8 +23,9 @@ const isRelevantMount = (fs: FilesystemInfo): boolean => {
 
 const FsStats = () => {
   const { data: fsInfo } = useSuspenseQuery({
-    ...linuxio.system.get_fs_info,
-    refetchInterval: 2000,
+    ...linuxio.monitoring.get_live,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+    select: (live) => live.filesystems ?? [],
   });
 
   const renderFsProgressBars = () => {

@@ -35,16 +35,18 @@ describe("capabilities helpers", () => {
     });
   });
 
-  it("defines monitoring as an installable optional component", () => {
+  it("defines monitoring as a built-in component", () => {
     const monitoring = CAPABILITIES.find(
       (capability) => capability.wire === "monitoring",
     );
 
     expect(monitoring).toMatchObject({
-      dependency: "go-monitoring",
-      installable: { requiresPackageKit: false },
+      dependency: "linuxio-monitoring",
       state: "monitoringAvailable",
     });
+    // Built-in components have no install path, so the key is absent
+    // (CapabilityManagerSection reads it with the same `in` check).
+    expect(monitoring && "installable" in monitoring).toBe(false);
   });
 
   it("parses untrusted capability JSON safely", () => {

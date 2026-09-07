@@ -17,10 +17,12 @@ readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
 readonly DATA_DIR="/var/lib/linuxio"
-readonly DOC_DIR="/usr/share/doc/linuxio"
+# In-app updates run with the installed bridge's writable-path allowlist.
+# Keep mandatory release files under paths supported since v0.27.0.
+readonly DOC_DIR="/usr/share/linuxio/doc"
 readonly STAGING="/tmp/linuxio-install-$$"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
-readonly MINIMUM_INDEXER_RELEASE="v0.27.0"
+readonly MINIMUM_MONITORING_RELEASE="v0.28.0"
 ENABLE_INDEXER_TIMER=0
 # Recovery-asset policy: a versioned install downloads immutable release
 # binaries, but intentionally fetches current-main configuration, PAM, MOTD,
@@ -49,13 +51,13 @@ release_version_supported() {
 
 	local major=$((10#${BASH_REMATCH[1]}))
 	local minor=$((10#${BASH_REMATCH[2]}))
-	((major > 0 || (major == 0 && minor >= 27)))
+	((major > 0 || (major == 0 && minor >= 28)))
 }
 
 require_release_version() {
 	local requested="$1"
 	if [[ -n "$requested" ]] && ! release_version_supported "$requested"; then
-		Show 1 "LinuxIO releases before ${MINIMUM_INDEXER_RELEASE} are not supported by this installer"
+		Show 1 "LinuxIO releases before ${MINIMUM_MONITORING_RELEASE} are not supported by this installer"
 	fi
 }
 
@@ -66,7 +68,8 @@ release_binary_names() {
 		linuxio-bridge \
 		linuxio-auth \
 		linuxio-docker-update \
-		linuxio-indexer
+		linuxio-indexer \
+		linuxio-monitoring
 }
 
 release_download_assets() {
@@ -86,7 +89,8 @@ release_systemd_units() {
 		linuxio-indexer.socket \
 		linuxio-indexer.service \
 		linuxio-indexer-index.service \
-		linuxio-indexer-index.timer
+		linuxio-indexer-index.timer \
+		linuxio-monitoring.service
 }
 
 atomic_replace_file() {
@@ -96,6 +100,9 @@ atomic_replace_file() {
 	local owner="${4:-}"
 	local tmp
 
+	if ! mkdir -p "$(dirname "$dst")"; then
+		return 1
+	fi
 	tmp=$(mktemp "${dst}.new.XXXXXX") || return 1
 	if ! cp "$src" "$tmp" || ! chmod "$mode" "$tmp"; then
 		rm -f "$tmp"
@@ -272,7 +279,6 @@ install_binaries() {
 
 install_license_files() {
 	Show 2 "Installing licenses to ${BOLD}${DOC_DIR}${COLOUR_RESET}"
-	mkdir -p "$DOC_DIR"
 	if ! atomic_replace_file "${STAGING}/LICENSE" "${DOC_DIR}/LICENSE" 0644 root:root; then
 		Show 1 "Failed to install license"
 	fi
@@ -307,26 +313,29 @@ install_config_files() {
 		Show 0 "${disallowed_file} already exists (not overwriting)"
 	fi
 
-	local indexer_dir="${CONFIG_DIR}/indexer"
-	if [[ ! -d "$indexer_dir" ]]; then
-		mkdir -p "$indexer_dir"
-		chown root:root "$indexer_dir"
-		chmod 0755 "$indexer_dir"
-	fi
-	local indexer_file="${indexer_dir}/config.yaml"
-	if [[ ! -f "$indexer_file" ]]; then
-		Show 2 "Downloading indexer configuration..."
-		local indexer_staged="${STAGING}/indexer-config.yaml"
-		if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/linuxio/indexer/config.yaml" -o "$indexer_staged"; then
-			Show 1 "Failed to download indexer configuration"
+	local component component_dir component_file component_staged
+	for component in indexer monitoring; do
+		component_dir="${CONFIG_DIR}/${component}"
+		if [[ ! -d "$component_dir" ]]; then
+			mkdir -p "$component_dir"
+			chown root:root "$component_dir"
+			chmod 0755 "$component_dir"
 		fi
-		if ! atomic_replace_file "$indexer_staged" "$indexer_file" 0644 root:root; then
-			Show 1 "Failed to install indexer configuration"
+		component_file="${component_dir}/config.yaml"
+		if [[ -f "$component_file" ]]; then
+			Show 0 "${component_file} already exists (not overwriting)"
+			continue
 		fi
-		Show 0 "Created ${indexer_file}"
-	else
-		Show 0 "${indexer_file} already exists (not overwriting)"
-	fi
+		Show 2 "Downloading ${component} configuration..."
+		component_staged="${STAGING}/${component}-config.yaml"
+		if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/linuxio/${component}/config.yaml" -o "$component_staged"; then
+			Show 1 "Failed to download ${component} configuration"
+		fi
+		if ! atomic_replace_file "$component_staged" "$component_file" 0644 root:root; then
+			Show 1 "Failed to install ${component} configuration"
+		fi
+		Show 0 "Created ${component_file}"
+	done
 
 	return 0
 }
@@ -348,15 +357,17 @@ install_pam_config() {
 }
 
 # Drop the Avahi service file so LinuxIO advertises itself on the LAN as
-# <hostname>.local once avahi-daemon is running. The file is harmless when
-# Avahi isn't installed — it just sits in /etc/avahi/services/ until it is.
+# <hostname>.local when Avahi is installed.
 install_avahi_service() {
 	Show 2 "Installing Avahi service file..."
 
 	local avahi_dir="/etc/avahi/services"
 	local avahi_file="${avahi_dir}/linuxio.service"
 
-	mkdir -p "$avahi_dir"
+	if [[ ! -d "$avahi_dir" ]]; then
+		Show 3 "Avahi not installed — mDNS advertisement skipped"
+		return 0
+	fi
 
 	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/avahi/services/linuxio.service" -o "$avahi_file"; then
 		Show 3 "Failed to download Avahi service file — mDNS advertisement skipped"
@@ -639,6 +650,14 @@ enable_services() {
 			Show 3 "Failed to enable ${INDEXER_TIMER_UNIT_NAME}"
 		fi
 	fi
+	if systemctl enable linuxio-monitoring.service >/dev/null 2>&1; then
+		Show 0 "Enabled linuxio-monitoring.service"
+	else
+		Show 3 "Failed to enable linuxio-monitoring.service"
+	fi
+	# The control-plane restart (here or deferred to the caller) does not cover
+	# the monitoring daemon, so move it onto the installed binary now.
+	systemctl restart linuxio-monitoring.service >/dev/null 2>&1 || true
 
 	return 0
 }
@@ -698,6 +717,12 @@ verify_installation() {
 		Show 3 "linuxio-indexer did not run successfully"
 	fi
 
+	if "${BIN_DIR}/linuxio-monitoring" --version >/dev/null 2>&1; then
+		Show 0 "linuxio-monitoring: working"
+	else
+		Show 3 "linuxio-monitoring did not run successfully"
+	fi
+
 	if systemctl is-enabled linuxio.target >/dev/null 2>&1; then
 		Show 0 "linuxio.target is enabled"
 	else
@@ -715,7 +740,7 @@ verify_installation() {
 	else
 		Show 3 "Configuration directory not found"
 	fi
-	for config_file in "${CONFIG_DIR}/config.yaml" "${CONFIG_DIR}/indexer/config.yaml"; do
+	for config_file in "${CONFIG_DIR}/config.yaml" "${CONFIG_DIR}/indexer/config.yaml" "${CONFIG_DIR}/monitoring/config.yaml"; do
 		if [[ -f "$config_file" ]]; then
 			Show 0 "${config_file} installed"
 		else
@@ -828,12 +853,12 @@ main() {
 			Show 1 "Checksum verification failed"
 		fi
 
-		Header "Step 3/5 — Install Binaries"
-		if ! install_binaries; then
-			Show 1 "Binary installation failed"
-		fi
+		Header "Step 3/5 — Install Release Files"
 		if ! install_license_files; then
 			Show 1 "License file installation failed"
+		fi
+		if ! install_binaries; then
+			Show 1 "Binary installation failed"
 		fi
 	else
 		Header "Steps 1-3 — Skipping binary installation"
@@ -907,7 +932,7 @@ Usage: $(basename "$0") [OPTIONS] [VERSION]
 Downloads and installs LinuxIO with all required system configuration.
 
 Arguments:
-  VERSION           Optional release tag (v0.27.0 or newer). If omitted, installs latest.
+  VERSION           Optional release tag (v0.28.0 or newer). If omitted, installs latest.
 
 Options:
   --dry-run         Validate writable install targets and exit
@@ -916,17 +941,17 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring
   - Systemd:      /etc/systemd/system/linuxio*
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and /run/linuxio/icons)
   - PAM:          /etc/pam.d/linuxio
-  - Config:       /etc/linuxio/indexer/config.yaml, /etc/linuxio/disallowed-users
+  - Config:       /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml, /etc/linuxio/disallowed-users
   - Licenses:     ${DOC_DIR}/
   - Avahi mDNS:   /etc/avahi/services/linuxio.service (advertises <hostname>.local)
 
 Examples:
   $(basename "$0")                 # Install latest release
-  $(basename "$0") v0.27.0         # Install specific version
+  $(basename "$0") v0.28.0         # Install specific version
   $(basename "$0") --dry-run       # Validate updater write access without installing
   $(basename "$0") --skip-binaries # Only install config/systemd/pam
 

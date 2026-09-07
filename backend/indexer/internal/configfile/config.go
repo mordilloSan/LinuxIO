@@ -23,7 +23,7 @@ const (
 	SearchLimit       = 100
 )
 
-var mandatoryExcludePaths = []string{"/proc", "/dev", "/sys", "/var/lib/linuxio/indexer"}
+var mandatoryExcludePaths = []string{"/proc", "/dev", "/sys", "/var/lib/linuxio/indexer", "/mnt/c"}
 
 type Config = api.IndexerConfig
 type Patch = api.IndexerConfigPatch

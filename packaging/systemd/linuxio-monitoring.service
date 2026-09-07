@@ -1,0 +1,40 @@
+[Unit]
+Description=LinuxIO Monitoring
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root: SMART, the Docker socket, hwmon and GPU collectors need host devices.
+User=root
+Group=root
+ExecStart=/usr/local/bin/linuxio-monitoring run --config /etc/linuxio/monitoring/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+StateDirectory=linuxio/monitoring
+StateDirectoryMode=0750
+ConfigurationDirectory=linuxio/monitoring
+RuntimeDirectory=linuxio/monitoring
+RuntimeDirectoryMode=0755
+
+# Host metrics, SMART and GPU collectors need real /proc, /sys, sockets and
+# devices, so the hardening avoids private devices, network and proc.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/linuxio/monitoring /etc/linuxio/monitoring
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectClock=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=linuxio.target

@@ -29,6 +29,7 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.MountpointRequest, apischema.StorageMountResult]("storage.unmount_filesystem").Handle(handleUnmountFilesystem),
 	apischema.Call[apischema.MountpointNameRequest, apischema.StoragePathResult]("storage.create_btrfs_subvolume").Handle(handleCreateBtrfsSubvolume),
 	apischema.Call[apischema.NoRequest, []apischema.ApiDisk]("storage.get_drive_info", apischema.RetrySafe()).Handle(handleGetDriveInfo),
+	apischema.Call[apischema.NoRequest, apischema.StorageTopologyInventory]("storage.get_topology", apischema.RetrySafe()).Handle(handleGetTopology),
 )
 
 var Routes = apischema.CombineRoutes(api.Routes(), smartTestRoutes)
@@ -257,4 +258,8 @@ func handleCreateBtrfsSubvolume(ctx context.Context, req apischema.MountpointNam
 
 func handleGetDriveInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.ApiDisk, error) {
 	return FetchDriveInfo(ctx)
+}
+
+func handleGetTopology(ctx context.Context, _ apischema.NoRequest) (apischema.StorageTopologyInventory, error) {
+	return GetTopology(ctx)
 }

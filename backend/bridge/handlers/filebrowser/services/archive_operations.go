@@ -3,7 +3,6 @@ package services
 import (
 	"archive/tar"
 	"context"
-	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -366,19 +365,27 @@ func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallback
 	if err := root.Root.Chmod(relPath(destination), PermDir); err != nil {
 		return err
 	}
+	// Entries are written through a root scoped to the destination, so the
+	// kernel-level checks reject both ".." escapes and pre-existing symlinks
+	// that point outside it.
+	dest, destErr := root.Root.OpenRoot(relPath(destination))
+	if destErr != nil {
+		return destErr
+	}
+	defer dest.Close()
 
 	lowerName := strings.ToLower(archivePath)
 	switch {
 	case strings.HasSuffix(lowerName, ".zip"):
-		return extractZip(root, archivePath, destination, opts, extractWorkers)
+		return extractZip(root, dest, archivePath, destination, opts, extractWorkers)
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
-		return extractTarGz(root, archivePath, destination, opts)
+		return extractTarGz(root, dest, archivePath, destination, opts)
 	default:
 		return ipc.ErrUnsupportedFormat
 	}
 }
 
-func extractZip(root *fsroot.FSRoot, archivePath, destination string, opts *ipc.OperationCallbacks, extractWorkers int) error {
+func extractZip(root *fsroot.FSRoot, dest *os.Root, archivePath, destination string, opts *ipc.OperationCallbacks, extractWorkers int) error {
 	archiveFile, err := root.Root.Open(relPath(archivePath))
 	if err != nil {
 		return err
@@ -396,10 +403,10 @@ func extractZip(root *fsroot.FSRoot, archivePath, destination string, opts *ipc.
 	}
 
 	safeOpts := synchronizedOperationCallbacks(opts)
-	if err := extractZipDirectories(root, reader, destination, opts, safeOpts); err != nil {
+	if err := extractZipDirectories(dest, reader, destination, opts, safeOpts); err != nil {
 		return err
 	}
-	return extractZipFiles(root, reader, destination, opts, safeOpts, extractWorkers)
+	return extractZipFiles(dest, reader, destination, opts, safeOpts, extractWorkers)
 }
 
 func synchronizedOperationCallbacks(opts *ipc.OperationCallbacks) *ipc.OperationCallbacks {
@@ -422,13 +429,13 @@ func synchronizedOperationCallbacks(opts *ipc.OperationCallbacks) *ipc.Operation
 	return nil
 }
 
-func extractZipDirectories(root *fsroot.FSRoot, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks) error {
+func extractZipDirectories(dest *os.Root, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks) error {
 	for _, file := range reader.File {
 		if opts.IsCancelled() {
 			return ipc.ErrAborted
 		}
 		if file.FileInfo().IsDir() {
-			if err := extractZipEntry(root, file, destination, safeOpts); err != nil {
+			if err := extractZipEntry(dest, file, destination, safeOpts); err != nil {
 				return err
 			}
 		}
@@ -436,7 +443,7 @@ func extractZipDirectories(root *fsroot.FSRoot, reader *zip.Reader, destination 
 	return nil
 }
 
-func extractZipFiles(root *fsroot.FSRoot, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks, extractWorkers int) error {
+func extractZipFiles(dest *os.Root, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks, extractWorkers int) error {
 	if extractWorkers <= 0 {
 		extractWorkers = runtime.GOMAXPROCS(0)
 	}
@@ -457,30 +464,30 @@ func extractZipFiles(root *fsroot.FSRoot, reader *zip.Reader, destination string
 			if opts.IsCancelled() {
 				return ipc.ErrAborted
 			}
-			return extractZipEntry(root, f, destination, safeOpts)
+			return extractZipEntry(dest, f, destination, safeOpts)
 		})
 	}
 	return g.Wait()
 }
 
-func extractZipEntry(root *fsroot.FSRoot, file *zip.File, destination string, opts *ipc.OperationCallbacks) error {
-	targetPath := filepath.Clean(filepath.Join(destination, file.Name))
-	if !isWithinBase(destination, targetPath) {
-		return fmt.Errorf("illegal file path in archive: %s", file.Name)
+func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *ipc.OperationCallbacks) error {
+	targetPath, rel, relErr := archiveEntryTarget(destination, file.Name)
+	if relErr != nil {
+		return relErr
 	}
 
 	if file.FileInfo().IsDir() {
-		if err := root.Root.MkdirAll(relPath(targetPath), PermDir); err != nil {
+		if err := dest.MkdirAll(rel, PermDir); err != nil {
 			return err
 		}
-		if err := root.Root.Chmod(relPath(targetPath), PermDir); err != nil {
+		if err := dest.Chmod(rel, PermDir); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
 		return nil
 	}
 
-	if err := root.Root.MkdirAll(relPath(filepath.Dir(targetPath)), PermDir); err != nil {
+	if err := dest.MkdirAll(filepath.Dir(rel), PermDir); err != nil {
 		return err
 	}
 
@@ -490,7 +497,7 @@ func extractZipEntry(root *fsroot.FSRoot, file *zip.File, destination string, op
 	}
 	defer reader.Close()
 
-	writer, err := root.Root.OpenFile(relPath(targetPath), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, PermFile)
+	writer, err := dest.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, PermFile)
 	if err != nil {
 		return err
 	}
@@ -500,14 +507,14 @@ func extractZipEntry(root *fsroot.FSRoot, file *zip.File, destination string, op
 		return err
 	}
 
-	if err := root.Root.Chmod(relPath(targetPath), PermFile); err != nil {
+	if err := dest.Chmod(rel, PermFile); err != nil {
 		return err
 	}
 	opts.ReportComplete(targetPath)
 	return nil
 }
 
-func extractTarGz(root *fsroot.FSRoot, archivePath, destination string, opts *ipc.OperationCallbacks) error {
+func extractTarGz(root *fsroot.FSRoot, dest *os.Root, archivePath, destination string, opts *ipc.OperationCallbacks) error {
 	file, err := root.Root.Open(relPath(archivePath))
 	if err != nil {
 		return err
@@ -539,7 +546,7 @@ func extractTarGz(root *fsroot.FSRoot, archivePath, destination string, opts *ip
 			return err
 		}
 
-		if err := extractTarEntry(root, header, tarReader, destination, cancelOnlyCallbacks(opts)); err != nil {
+		if err := extractTarEntry(dest, header, tarReader, destination, cancelOnlyCallbacks(opts)); err != nil {
 			return err
 		}
 	}
@@ -570,27 +577,27 @@ func cancelOnlyCallbacks(opts *ipc.OperationCallbacks) *ipc.OperationCallbacks {
 	}
 }
 
-func extractTarEntry(root *fsroot.FSRoot, header *tar.Header, tarReader *tar.Reader, destination string, opts *ipc.OperationCallbacks) error {
-	targetPath := filepath.Clean(filepath.Join(destination, header.Name))
-	if !isWithinBase(destination, targetPath) {
-		return fmt.Errorf("illegal file path in archive: %s", header.Name)
+func extractTarEntry(dest *os.Root, header *tar.Header, tarReader *tar.Reader, destination string, opts *ipc.OperationCallbacks) error {
+	targetPath, rel, relErr := archiveEntryTarget(destination, header.Name)
+	if relErr != nil {
+		return relErr
 	}
 
 	switch header.Typeflag {
 	case tar.TypeDir:
-		if err := root.Root.MkdirAll(relPath(targetPath), PermDir); err != nil {
+		if err := dest.MkdirAll(rel, PermDir); err != nil {
 			return err
 		}
-		if err := root.Root.Chmod(relPath(targetPath), PermDir); err != nil {
+		if err := dest.Chmod(rel, PermDir); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
 		return nil
 	case tar.TypeReg:
-		if err := root.Root.MkdirAll(relPath(filepath.Dir(targetPath)), PermDir); err != nil {
+		if err := dest.MkdirAll(filepath.Dir(rel), PermDir); err != nil {
 			return err
 		}
-		outFile, err := root.Root.OpenFile(relPath(targetPath), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, PermFile)
+		outFile, err := dest.OpenFile(rel, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, PermFile)
 		if err != nil {
 			return err
 		}
@@ -601,7 +608,7 @@ func extractTarEntry(root *fsroot.FSRoot, header *tar.Header, tarReader *tar.Rea
 		if err := outFile.Close(); err != nil {
 			return err
 		}
-		if err := root.Root.Chmod(relPath(targetPath), PermFile); err != nil {
+		if err := dest.Chmod(rel, PermFile); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
@@ -614,15 +621,13 @@ func extractTarEntry(root *fsroot.FSRoot, header *tar.Header, tarReader *tar.Rea
 	}
 }
 
-func isWithinBase(baseDir, targetPath string) bool {
-	baseDir = filepath.Clean(baseDir)
-	targetPath = filepath.Clean(targetPath)
-
-	rel, err := filepath.Rel(baseDir, targetPath)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+// archiveEntryTarget returns an entry's absolute target path (for progress
+// reporting) and its path relative to destination (for the destination root).
+// A ".." prefix is left in place so the os.Root rejects the escape.
+func archiveEntryTarget(destination, name string) (targetPath, rel string, err error) {
+	targetPath = filepath.Clean(filepath.Join(destination, name))
+	rel, err = filepath.Rel(destination, targetPath)
+	return targetPath, rel, err
 }
 
 // addFile adds a file or directory to an archive (zip or tar.gz)
@@ -797,10 +802,10 @@ func copyWithCallbacks(dst io.Writer, src io.Reader, opts *ipc.OperationCallback
 		}
 		n, rerr := src.Read(buf)
 		if n > 0 {
-			opts.ReportProgress(int64(n))
 			if _, werr := dst.Write(buf[:n]); werr != nil {
 				return werr
 			}
+			opts.ReportProgress(int64(n))
 		}
 		if rerr == io.EOF {
 			return nil

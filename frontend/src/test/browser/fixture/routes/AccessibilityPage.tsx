@@ -97,6 +97,22 @@ export default function AccessibilityPage() {
           <AppTextField aria-label="Tooltip query" />
         </AppTooltip>
       </div>
+      <div style={{ position: "fixed", top: "8.25px", right: "8.25px" }}>
+        <AppTooltip arrow placement="top" title="Notifications">
+          <AppIconButton aria-label="Notification tooltip">
+            <span aria-hidden="true">♧</span>
+          </AppIconButton>
+        </AppTooltip>
+      </div>
+      <div style={{ position: "fixed", top: "96px", right: "8px" }}>
+        <AppTooltip
+          contentWidth
+          placement="top"
+          title={`Monitoring details\n${"Device status unavailable\n".repeat(80)}`}
+        >
+          <AppButton>Long monitoring details</AppButton>
+        </AppTooltip>
+      </div>
       <div style={{ height: "1600px" }} />
     </main>
   );

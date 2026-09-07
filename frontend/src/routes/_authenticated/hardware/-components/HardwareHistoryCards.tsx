@@ -1,12 +1,7 @@
-import {
-  useQuery,
-  useSuspenseQueries,
-  useSuspenseQuery,
-} from "@tanstack/react-query";
+import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
-import type { GpuDevice } from "@/api";
-import { linuxio } from "@/api";
+import { linuxio, type GpuDevice, type MonitoringLive } from "@/api";
 import HardwareCard from "@/components/cards/HardwareCard";
 import {
   historyCardMessage,
@@ -21,21 +16,24 @@ import {
   type HistoryLiveProps,
 } from "@/components/charts/HistoryCard";
 import AppSelect from "@/components/ui/AppSelect";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
 import { formatThroughput } from "@/utils/formaters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
-import {
-  hardwareGpuQueryOptions,
-  hardwareStableQueryOptions,
-} from "./hardwareQueryOptions";
+import { hardwareStableQueryOptions } from "./hardwareQueryOptions";
 
 // ─── GPU helpers ──────────────────────────────────────────────────────────────
 
 const getPrimaryGpu = (gpus: GpuDevice[] | undefined): GpuDevice | undefined =>
-  gpus?.find((gpu) => gpu.boot_vga) ?? gpus?.[0];
+  gpus?.[0];
 
-const getGpuVramSummary = (gpu: GpuDevice | undefined): string => {
+interface GpuMemory {
+  memory_total_bytes?: number;
+  memory_used_bytes?: number;
+}
+
+const getGpuVramSummary = (gpu: GpuMemory | undefined): string => {
   if (!gpu) {
     return "—";
   }
@@ -53,9 +51,7 @@ const getGpuDriverSummary = (gpu: GpuDevice | undefined): string => {
     return "—";
   }
 
-  return (
-    gpu.driver_version || gpu.driver_module || gpu.driver || gpu.drm_card || "—"
-  );
+  return gpu.driver_version || gpu.driver || gpu.drm_card || "—";
 };
 
 // ─── Info cards ───────────────────────────────────────────────────────────────
@@ -186,10 +182,15 @@ export const BIOSInfoCard = () => {
 
 export const GPUInfoCard = () => {
   const [selectedGpuAddress, setSelectedGpuAddress] = useState("");
-  const { data: gpus } = useSuspenseQuery({
-    ...linuxio.system.get_gpu_info,
-    ...hardwareGpuQueryOptions,
-    refetchInterval: 15_000,
+  const [{ data: gpus }, { data: liveGpus }] = useSuspenseQueries({
+    queries: [
+      { ...linuxio.system.get_gpu_info, ...hardwareStableQueryOptions },
+      {
+        ...linuxio.monitoring.get_live,
+        refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+        select: (live: MonitoringLive) => live.gpus ?? {},
+      },
+    ],
   });
 
   const primaryGpu = useMemo(
@@ -200,6 +201,9 @@ export const GPUInfoCard = () => {
   );
   const gpuCount = gpus?.length ?? 0;
   const selectedValue = primaryGpu?.address ?? "";
+  const primaryLiveGpu = primaryGpu
+    ? liveGpus?.[primaryGpu.address]
+    : undefined;
 
   return (
     <HardwareCard
@@ -248,7 +252,7 @@ export const GPUInfoCard = () => {
               },
               {
                 label: "VRAM",
-                value: getGpuVramSummary(primaryGpu),
+                value: getGpuVramSummary(primaryLiveGpu ?? primaryGpu),
               },
             ]
           : [

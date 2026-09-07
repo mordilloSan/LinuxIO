@@ -5,6 +5,7 @@ export const DOCKER_TABS = [
   { label: "Containers", to: "/docker/containers" },
   { label: "Stacks", to: "/docker/compose" },
   { label: "Networks", to: "/docker/networks" },
+  { label: "Topology", to: "/docker/topology" },
   { label: "Volumes", to: "/docker/volumes" },
   { label: "Images", to: "/docker/images" },
 ] as const satisfies readonly RoutedTab[];

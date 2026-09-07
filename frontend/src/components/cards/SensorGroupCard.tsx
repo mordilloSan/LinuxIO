@@ -1,8 +1,12 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
 
-import { linuxio, type SensorGroup, type SensorReading } from "@/api";
+import {
+  linuxio,
+  type MonitoringLive,
+  type SensorGroup,
+  type SensorReading,
+} from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import MetricBar from "@/components/gauge/MetricBar";
@@ -114,12 +118,10 @@ const selectSensorGroup =
   };
 
 const SensorGroupCardLive = ({ adapter, sourceIndex }: SensorGroupIdentity) => {
-  const selectGroup = useMemo(
-    () => selectSensorGroup({ adapter, sourceIndex }),
-    [adapter, sourceIndex],
-  );
+  const selectGroup = (live: MonitoringLive) =>
+    selectSensorGroup({ adapter, sourceIndex })(live.sensors ?? []);
   const { data: group } = useQuery({
-    ...linuxio.system.get_sensor_info,
+    ...linuxio.monitoring.get_live,
     refetchOnMount: false,
     select: selectGroup,
   });

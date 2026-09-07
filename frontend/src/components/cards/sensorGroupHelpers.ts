@@ -40,6 +40,8 @@ export const formatNumericSensorValue = (
 };
 
 export const isPrimarySensorReading = (reading: SensorReading): boolean => {
+  if (reading.field)
+    return reading.field === "input" || reading.field.endsWith("_input");
   const { suffix } = getSensorLabelMeta(reading.label);
   return suffix === null || suffix === "input";
 };

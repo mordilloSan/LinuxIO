@@ -111,6 +111,7 @@ describe("useSidebarItems", () => {
       "Shares",
       "Wireguard",
       "Hardware",
+      "Processes",
       "Navigator",
       "Terminal",
       "Settings",

@@ -98,6 +98,16 @@ const WALKED_SCOPE_PREFIXES = ["routes/", "hooks/"];
 // them. Shrink this list over time; never grow it without a structural reason.
 const SHARED_SUSPENSE_OWNERS = [
   {
+    file: "components/docker/ContainerResourceDetails.tsx",
+    endpoint: "docker.inspect_container",
+    renderedBy: ["/_authenticated/docker/containers"],
+  },
+  {
+    file: "components/docker/ContainerResourceDetails.tsx",
+    endpoint: "docker.list_networks",
+    renderedBy: ["/_authenticated/docker/containers"],
+  },
+  {
     // Reachable from five routes across three branches, but accounts/ and
     // docker/containers import only the non-suspending `DetailRow` export from
     // this module. The suspending `UnitInfoPanel` is rendered exclusively by

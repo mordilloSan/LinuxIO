@@ -218,6 +218,33 @@ E: MEMORY_DEVICE_0_SIZE=8589934592
 	}
 }
 
+func TestFetchMemoryModulesCachesSuccessfulInventory(t *testing.T) {
+	calls := 0
+	restore := stubMemoryModuleCommands(t,
+		func(_ context.Context, name string, _ ...string) ([]byte, error) {
+			if name != "udevadm" {
+				t.Fatalf("unexpected command %q", name)
+			}
+			calls++
+			return []byte(`P: /devices/virtual/dmi/id
+E: MEMORY_ARRAY_NUM_DEVICES=1
+E: MEMORY_DEVICE_0_SIZE=8589934592
+`), nil
+		},
+		nil,
+	)
+	defer restore()
+
+	for range 2 {
+		if _, err := FetchMemoryModules(context.Background()); err != nil {
+			t.Fatalf("FetchMemoryModules() error = %v", err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("udevadm calls = %d, want one cached load", calls)
+	}
+}
+
 func TestCheckMemoryModuleInventoryAvailabilityUsesDMIDecodeFallback(t *testing.T) {
 	restore := stubMemoryModuleCommands(t,
 		func(_ context.Context, name string, _ ...string) ([]byte, error) {
@@ -276,6 +303,7 @@ func stubMemoryModuleCommands(
 	lookPath func(string) (string, error),
 ) func() {
 	t.Helper()
+	memoryModulesCache = hwSnapshotCache[[]apischema.MemoryModule]{}
 	originalRunCommand := memoryModulesRunCommand
 	originalLookPath := memoryModulesLookPath
 	memoryModulesRunCommand = run
@@ -285,5 +313,6 @@ func stubMemoryModuleCommands(
 	return func() {
 		memoryModulesRunCommand = originalRunCommand
 		memoryModulesLookPath = originalLookPath
+		memoryModulesCache = hwSnapshotCache[[]apischema.MemoryModule]{}
 	}
 }

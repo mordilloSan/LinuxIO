@@ -27,7 +27,18 @@ func FetchCPUSummary(ctx context.Context) string {
 	return cpuInfo[0].ModelName
 }
 
+var systemInfoCache hwSnapshotCache[*apischema.SystemInfo]
+
 func FetchSystemInfo(ctx context.Context) (*apischema.SystemInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return systemInfoCache.get(func() (*apischema.SystemInfo, error) {
+		return fetchSystemInfo(ctx)
+	})
+}
+
+func fetchSystemInfo(ctx context.Context) (*apischema.SystemInfo, error) {
 	info := &apischema.SystemInfo{}
 	ghwLogger := slog.Default()
 
@@ -58,6 +69,12 @@ func FetchSystemInfo(ctx context.Context) (*apischema.SystemInfo, error) {
 	}
 
 	info.CPUSummary = FetchCPUSummary(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if *info == (apischema.SystemInfo{}) {
+		return nil, fmt.Errorf("system information unavailable")
+	}
 
 	return info, nil
 }

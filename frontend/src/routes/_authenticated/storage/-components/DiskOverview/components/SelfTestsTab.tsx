@@ -1,3 +1,9 @@
+import type {
+  NVMeSelfTestLog,
+  NVMeSelfTestLogEntry,
+  SmartSelfTestEntry,
+  SmartSelfTestLog,
+} from "@/api";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppButton from "@/components/ui/AppButton";
@@ -8,53 +14,21 @@ import AppTypography from "@/components/ui/AppTypography";
 import { getSmartNumber, getSmartString } from "../utils";
 
 interface SelfTestsTabProps {
-  nvmeSelfTestLog?: {
-    table?: unknown[];
-  };
+  nvmeSelfTestLog?: NVMeSelfTestLog;
   onRunTest: (testType: "short" | "long") => void;
   percentage?: number;
-  selfTestLog?: {
-    standard?: {
-      table?: unknown[];
-    };
-  };
+  selfTestLog?: SmartSelfTestLog;
   smartmontoolsAvailable: boolean;
   smartmontoolsReason?: string;
   startPending: "short" | "long" | null;
 }
 
-interface StandardSelfTestRow {
-  lifetime_hours?: unknown;
-  num?: unknown;
-  status?: {
-    passed?: boolean;
-    string?: unknown;
-    value?: unknown;
-  };
-  type?: {
-    string?: unknown;
-    value?: unknown;
-  };
-}
-
-interface NvmeSelfTestRow {
-  power_on_hours?: unknown;
-  self_test_code?: {
-    string?: unknown;
-    value?: unknown;
-  };
-  self_test_result?: {
-    string?: unknown;
-    value?: unknown;
-  };
-}
-
-const standardSelfTestColumns: AppVirtualTableColumnDef<StandardSelfTestRow>[] =
+const standardSelfTestColumns: AppVirtualTableColumnDef<SmartSelfTestEntry>[] =
   [
     {
       id: "number",
       header: "#",
-      cell: ({ row }) => getSmartNumber(row.original.num) ?? row.index + 1,
+      cell: ({ row }) => row.original.num ?? row.index + 1,
     },
     {
       id: "type",
@@ -67,9 +41,14 @@ const standardSelfTestColumns: AppVirtualTableColumnDef<StandardSelfTestRow>[] =
       cell: ({ row }) => (
         <span
           style={{
-            color: row.original.status?.passed
-              ? "var(--app-palette-success-main)"
-              : "var(--app-palette-error-main)",
+            color:
+              row.original.status?.passed === true ||
+              getSmartNumber(row.original.status) === 0
+                ? "var(--app-palette-success-main)"
+                : row.original.status?.passed === false ||
+                    getSmartNumber(row.original.status) !== null
+                  ? "var(--app-palette-error-main)"
+                  : "inherit",
           }}
         >
           {getSmartString(row.original.status) || "Unknown"}
@@ -85,7 +64,7 @@ const standardSelfTestColumns: AppVirtualTableColumnDef<StandardSelfTestRow>[] =
     },
   ];
 
-const nvmeSelfTestColumns: AppVirtualTableColumnDef<NvmeSelfTestRow>[] = [
+const nvmeSelfTestColumns: AppVirtualTableColumnDef<NVMeSelfTestLogEntry>[] = [
   {
     id: "type",
     header: "Type",
@@ -128,10 +107,8 @@ export const SelfTestsTab = ({
   const testActionsDisabled = startPending !== null || !smartmontoolsAvailable;
   const displayPercent =
     percentage !== undefined ? Math.max(0, Math.min(100, percentage)) : 0;
-  const standardRows =
-    (selfTestLog?.standard?.table as StandardSelfTestRow[] | undefined) ?? [];
-  const nvmeRows =
-    (nvmeSelfTestLog?.table as NvmeSelfTestRow[] | undefined) ?? [];
+  const standardRows = selfTestLog?.standard?.table ?? [];
+  const nvmeRows = nvmeSelfTestLog?.table ?? [];
 
   return (
     <>
@@ -228,9 +205,7 @@ export const SelfTestsTab = ({
           density="compact"
           emptyMessage="No self-test history available."
           fillAvailable={false}
-          getRowId={(entry, index) =>
-            String(getSmartNumber(entry.num) ?? index)
-          }
+          getRowId={(_, index) => String(index)}
           maxHeight={400}
           variant="embedded"
         />

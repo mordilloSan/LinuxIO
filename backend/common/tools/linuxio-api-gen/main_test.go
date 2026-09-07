@@ -23,6 +23,9 @@ func TestRenderClientEmitsCallsAndSkipsChannels(t *testing.T) {
 	}
 	for _, expected := range []string{
 		`get_cpu_info: defineCall("system.get_cpu_info")`,
+		`get_live: defineCall("monitoring.get_live")`,
+		`get_processes: defineCall("monitoring.get_processes")`,
+		`get_programs: defineCall("monitoring.get_programs")`,
 		`start_container: defineCallWithRequest("docker.start_container")`,
 		`list_containers: defineCall("docker.list_containers")`,
 		`set_hostname: defineCallWithRequest("hostname.set_hostname")`,
@@ -81,6 +84,9 @@ func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 		"export type RouteName = keyof typeof ROUTE_MODES;",
 		"export const RETRY_SAFE_CALLS = {",
 		`"system.get_cpu_info": true`,
+		`"monitoring.get_live": true`,
+		`"monitoring.get_processes": true`,
+		`"monitoring.get_programs": true`,
 		"export function isRetrySafeCall(route: string): boolean",
 		"export type RouteModeFor<R extends string> =",
 		`"terminal.open": "duplex"`,
@@ -112,6 +118,10 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		`"datetime.get_timezone": { request: void; result: string };`,
 		`"datetime.set_timezone": { request: TimezoneRequest; result: void };`,
 		`"system.get_cpu_info": { request: void; result: CPUInfoResponse };`,
+		`"monitoring.get_live": { request: void; result: MonitoringLive };`,
+		"export interface MonitoringLive",
+		"gpus: Record<string, LiveGPU>;",
+		"export interface LiveGPU",
 		`"docker.start_container": { request: ContainerIDRequest; result: void };`,
 		"export type CallRoute = keyof LinuxIOCallSchema;",
 		"export type NoRequestCallRoute",
@@ -161,9 +171,16 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 	for _, unexpected := range []string{
 		"terminal.open:",
 		"tasks.watch:",
+		`"system.get_memory_info"`,
+		`"system.get_disk_throughput"`,
+		`"system.get_uptime"`,
+		`"system.get_fs_info"`,
+		`"system.get_sensor_info"`,
+		`"system.get_processes"`,
+		`"network.get_interface_stats"`,
 	} {
 		if strings.Contains(out, unexpected) {
-			t.Fatalf("generated endpoint types include duplex route %s", unexpected)
+			t.Fatalf("generated endpoint types include unexpected route %s", unexpected)
 		}
 	}
 

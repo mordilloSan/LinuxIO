@@ -25,7 +25,7 @@ func newFakeAutoUpdateHost() (*fakeAutoUpdateHost, backendHost) {
 			}
 			return append([]byte(nil), data...), nil
 		},
-		writeFileAtomic: func(path string, data []byte, _ fs.FileMode) error {
+		writeFileAtomic: func(path string, data []byte, _ fs.FileMode, _ ...int) error {
 			fake.calls = append(fake.calls, "write:"+path)
 			fake.files[path] = append([]byte(nil), data...)
 			return nil

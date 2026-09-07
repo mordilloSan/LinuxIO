@@ -155,30 +155,29 @@ describe("ComposeList expanded-container mutation feedback", () => {
     );
 
     await user.click(
-      alphaActions.getByRole("button", { name: "Update container" }),
+      alphaActions.getByRole("button", { name: "Actions for alpha" }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "Update" }));
     expect(mocks.startUpdate).toHaveBeenCalledWith(alpha.Id, "alpha");
     expect(
-      betaActions.getByRole("button", { name: "Restart container" }),
+      betaActions.getByRole("button", { name: "Actions for beta" }),
     ).toBeEnabled();
-    expect(
-      screen.getByRole("group", { name: "Actions for beta" }),
-    ).not.toHaveAttribute("aria-busy");
 
     await user.click(
-      betaActions.getByRole("button", { name: "Restart container" }),
+      betaActions.getByRole("button", { name: "Actions for beta" }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "Restart" }));
     await waitFor(() => {
       expect(
         within(
-          betaActions.getByRole("button", { name: "Restart container" }),
+          betaActions.getByRole("button", { name: "Restarting beta" }),
         ).getByRole("progressbar"),
       ).toBeInTheDocument();
     });
 
     expect(
       within(
-        betaActions.getByRole("button", { name: "Restart container" }),
+        betaActions.getByRole("button", { name: "Restarting beta" }),
       ).getByRole("progressbar"),
     ).toBeInTheDocument();
 
@@ -189,7 +188,7 @@ describe("ComposeList expanded-container mutation feedback", () => {
     await waitFor(() => {
       expect(
         within(
-          betaActions.getByRole("button", { name: "Restart container" }),
+          betaActions.getByRole("button", { name: "Actions for beta" }),
         ).queryByRole("progressbar"),
       ).not.toBeInTheDocument();
     });

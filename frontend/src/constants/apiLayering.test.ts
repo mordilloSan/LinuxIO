@@ -57,6 +57,8 @@ const STREAM_PRIMITIVES = [
 const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   // Mux bootstrap owns init/close across sign-in/sign-out.
   "contexts/AuthContext.tsx",
+  // Browser fixture bootstrap owns its local journal stream connection.
+  "test/browser/fixture/routes/GeneralLogsPage.tsx",
   // Router loader transport readiness (the only routing-level mux primitive).
   "routes/-loader.ts",
   // App-update stream lifecycle (mux handle + frame decoding).

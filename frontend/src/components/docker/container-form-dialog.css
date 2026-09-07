@@ -1,0 +1,101 @@
+.container-form-dialog__form {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  min-height: 0;
+}
+
+.container-form-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-20);
+}
+
+.container-form-dialog__grid,
+.container-form-dialog__runtime-grid {
+  display: grid;
+  gap: var(--app-space-16);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: var(--app-space-8);
+}
+
+.container-form-dialog__section {
+  border-top: 1px solid var(--app-palette-divider);
+  padding-top: var(--app-space-12);
+}
+
+.container-form-dialog__section-content,
+.container-form-dialog__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+}
+
+.container-form-dialog__section-content {
+  padding-bottom: var(--app-space-4);
+}
+
+.container-form-dialog__environment-row,
+.container-form-dialog__network-row,
+.container-form-dialog__mount-row,
+.container-form-dialog__port-row {
+  align-items: center;
+  display: grid;
+  gap: var(--app-space-8);
+}
+
+.container-form-dialog__environment-row,
+.container-form-dialog__network-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.container-form-dialog__mount-row {
+  grid-template-columns: minmax(110px, 0.6fr) minmax(0, 1fr) minmax(0, 1fr) auto auto;
+}
+
+.container-form-dialog__port-row {
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 0.7fr) minmax(110px, 0.8fr) minmax(100px, 0.6fr) auto;
+}
+
+.container-form-dialog__checkbox,
+.container-form-dialog__loading {
+  align-items: center;
+  display: flex;
+  gap: var(--app-space-8);
+}
+
+.container-form-dialog__loading {
+  justify-content: center;
+  min-height: 120px;
+}
+
+.container-form-dialog__changes {
+  margin-block: var(--app-space-16);
+  padding-inline-start: var(--app-space-24);
+}
+
+@media (max-width: 760px) {
+  .container-form-dialog__grid,
+  .container-form-dialog__runtime-grid,
+  .container-form-dialog__environment-row,
+  .container-form-dialog__network-row,
+  .container-form-dialog__mount-row,
+  .container-form-dialog__port-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .container-form-dialog__environment-row,
+  .container-form-dialog__network-row,
+  .container-form-dialog__mount-row,
+  .container-form-dialog__port-row {
+    border-bottom: 1px solid var(--app-palette-divider);
+    padding-bottom: var(--app-space-12);
+  }
+
+  .container-form-dialog__environment-row > button,
+  .container-form-dialog__network-row > button,
+  .container-form-dialog__mount-row > button,
+  .container-form-dialog__port-row > button {
+    justify-self: end;
+  }
+}

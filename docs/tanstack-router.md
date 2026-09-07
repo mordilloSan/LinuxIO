@@ -614,6 +614,7 @@ inherits its ancestor's.
 | `/storage` | `storage/route.tsx` | — | — | — | — |
 | `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs` | — |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
+| `/storage/topology` | `storage/topology.tsx` | `loadRouteQueries` ×1 | — | `node` | — |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/updates` | `updates/route.tsx` | — | — | — | — |
 | `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |

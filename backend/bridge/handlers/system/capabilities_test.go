@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -257,24 +259,31 @@ func assertTopLevelCapabilityJSON(t *testing.T, data []byte, name, marker string
 	}
 }
 
-func TestCheckMonitoringAvailabilityRunsHealth(t *testing.T) {
-	withMonitoringCLI(t,
-		func(name string) (string, error) {
-			if name != "go-monitoring" {
-				t.Fatalf("look path name = %q", name)
-			}
-			return "/usr/bin/go-monitoring", nil
-		},
-		func(_ context.Context, name string, args ...string) ([]byte, error) {
-			if name != "go-monitoring" {
-				t.Fatalf("command name = %q", name)
-			}
-			if len(args) != 1 || args[0] != "health" {
-				t.Fatalf("command args = %v, want [health]", args)
-			}
-			return []byte("ok\n"), nil
-		},
-	)
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func withMonitoringHealth(t *testing.T, fn roundTripFunc) {
+	t.Helper()
+	orig := monitoringHealthClient
+	monitoringHealthClient = &http.Client{Transport: fn}
+	t.Cleanup(func() { monitoringHealthClient = orig })
+}
+
+func TestCheckMonitoringAvailabilityProbesHealthz(t *testing.T) {
+	withMonitoringHealth(t, func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/healthz" {
+			t.Fatalf("path = %s, want /healthz", req.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{},
+			Body:       io.NopCloser(strings.NewReader(`{"status":"ok"}`)),
+		}, nil
+	})
 
 	ok, err := checkMonitoringAvailability(context.Background())
 	if err != nil {
@@ -285,22 +294,32 @@ func TestCheckMonitoringAvailabilityRunsHealth(t *testing.T) {
 	}
 }
 
-func TestMonitoringCapabilityInstallSpec(t *testing.T) {
+func TestCheckMonitoringAvailabilityReportsUnhealthyBody(t *testing.T) {
+	withMonitoringHealth(t, func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Status:     "503 Service Unavailable",
+			Header:     http.Header{},
+			Body:       io.NopCloser(strings.NewReader("latest tick is stale\n")),
+		}, nil
+	})
+
+	ok, err := checkMonitoringAvailability(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "latest tick is stale") {
+		t.Fatalf("error = %v, want health body", err)
+	}
+	if ok {
+		t.Fatal("checkMonitoringAvailability returned true")
+	}
+}
+
+func TestMonitoringCapabilityIsNotInstallable(t *testing.T) {
 	spec, ok := CapabilitySpecByName("monitoring")
 	if !ok {
 		t.Fatal("monitoring capability not registered")
 	}
-	if spec.Install == nil {
-		t.Fatal("monitoring capability is not installable")
-	}
-	if spec.Install.OptionalComponent != OptionalComponentMonitoring {
-		t.Fatalf("optional component = %q, want %q", spec.Install.OptionalComponent, OptionalComponentMonitoring)
-	}
-	if spec.Install.ServiceDebian != "go-monitoring.service" || spec.Install.ServiceRHEL != "go-monitoring.service" {
-		t.Fatalf("service names = %q/%q, want go-monitoring.service", spec.Install.ServiceDebian, spec.Install.ServiceRHEL)
-	}
-	if !spec.Install.EnableService {
-		t.Fatal("monitoring installer should enable the service")
+	if spec.Install != nil {
+		t.Fatalf("install spec = %#v, want nil: the daemon ships with LinuxIO", spec.Install)
 	}
 }
 
@@ -354,60 +373,4 @@ func TestLMSensorsInstallPostInstallCommand(t *testing.T) {
 	if got, want := spec.Install.PostInstall.Args, []string{"--auto"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("post-install args = %v, want %v", got, want)
 	}
-}
-
-func TestCheckMonitoringAvailabilityReportsHealthOutput(t *testing.T) {
-	withMonitoringCLI(t,
-		func(string) (string, error) {
-			return "/usr/bin/go-monitoring", nil
-		},
-		func(context.Context, string, ...string) ([]byte, error) {
-			return []byte("latest tick is stale\n"), errors.New("exit status 1")
-		},
-	)
-
-	ok, err := checkMonitoringAvailability(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "latest tick is stale") {
-		t.Fatalf("error = %v, want health output", err)
-	}
-	if ok {
-		t.Fatal("checkMonitoringAvailability returned true")
-	}
-}
-
-func TestCheckMonitoringAvailabilityReportsMissingBinary(t *testing.T) {
-	withMonitoringCLI(t,
-		func(string) (string, error) {
-			return "", errors.New("missing")
-		},
-		func(context.Context, string, ...string) ([]byte, error) {
-			t.Fatal("health command should not run when binary is missing")
-			return nil, nil
-		},
-	)
-
-	ok, err := checkMonitoringAvailability(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "go-monitoring not found") {
-		t.Fatalf("error = %v, want missing binary error", err)
-	}
-	if ok {
-		t.Fatal("checkMonitoringAvailability returned true")
-	}
-}
-
-func withMonitoringCLI(
-	t *testing.T,
-	lookPath func(string) (string, error),
-	output func(context.Context, string, ...string) ([]byte, error),
-) {
-	t.Helper()
-
-	origLookPath := monitoringCLILookPath
-	origOutput := monitoringCLIOutput
-	monitoringCLILookPath = lookPath
-	monitoringCLIOutput = output
-	t.Cleanup(func() {
-		monitoringCLILookPath = origLookPath
-		monitoringCLIOutput = origOutput
-	})
 }

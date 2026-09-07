@@ -22,8 +22,11 @@ export const formatFileSize = (
 
   const k = 1024;
   const dm = Math.max(0, decimals);
-  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB"];
+  const i = Math.min(
+    sizes.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(k)),
+  );
 
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };

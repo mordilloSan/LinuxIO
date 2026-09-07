@@ -10,16 +10,6 @@ export const testNetworkInterface = (
 ): NetworkInterface => ({
   carrier: true,
   config_backend: "nmconnection",
-  counters: {
-    rx_bytes: 0,
-    rx_dropped: 0,
-    rx_errors: 0,
-    rx_packets: 0,
-    tx_bytes: 0,
-    tx_dropped: 0,
-    tx_errors: 0,
-    tx_packets: 0,
-  },
   dns: [],
   driver: "e1000e",
   duplex: "full",
@@ -30,10 +20,8 @@ export const testNetworkInterface = (
   mtu: 1500,
   name: "eth0",
   operstate: "up",
-  rx_speed: 0,
   speed: "1000",
   state: 100,
-  tx_speed: 0,
   type: "ethernet",
   ...overrides,
 });

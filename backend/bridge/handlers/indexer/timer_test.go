@@ -47,7 +47,7 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 
 	var dropIn, dropInPath string
 	var units []string
-	writeTimerDropIn = func(path string, data []byte, _ fs.FileMode) error {
+	writeTimerDropIn = func(path string, data []byte, _ fs.FileMode, _ ...int) error {
 		dropInPath = path
 		dropIn = string(data)
 		return nil
@@ -69,7 +69,7 @@ func TestSetTimerIntervalUpdatesSystemd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetTimerInterval: %v", err)
 	}
-	wantDropIn := "[Timer]\nOnUnitActiveSec=\nOnUnitActiveSec=30m0s\n"
+	wantDropIn := "[Timer]\nOnActiveSec=\nOnActiveSec=30m0s\nOnUnitActiveSec=\nOnUnitActiveSec=30m0s\n"
 	if dropInPath != indexerTimerDropInPath || dropIn != wantDropIn {
 		t.Fatalf("path=%q drop-in=%q", dropInPath, dropIn)
 	}

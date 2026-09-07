@@ -1,29 +1,6 @@
-import type { DiskPowerData } from "@/api";
+import type { DiskPowerData, SmartData } from "@/api";
 
-export interface SmartAttribute {
-  id: number;
-  name: string;
-  raw?: { string?: string; value?: unknown };
-  thresh: number;
-  value: number;
-  worst: number;
-}
-
-export interface SmartData extends Record<string, unknown> {
-  ata_smart_attributes?: { table?: SmartAttribute[] };
-  ata_smart_self_test_log?: { standard?: { table?: unknown[] } };
-  device?: Record<string, unknown>;
-  firmware_version?: unknown;
-  model_name?: unknown;
-  nvme_number_of_namespaces?: unknown;
-  nvme_self_test_log?: { table?: unknown[] };
-  nvme_smart_health_information_log?: Record<string, unknown>;
-  nvme_version?: unknown;
-  power_cycle_count?: unknown;
-  power_on_time?: { hours?: unknown };
-  smart_status?: { passed?: boolean };
-  temperature?: { current?: unknown };
-}
+export type { SmartAttribute, SmartData } from "@/api";
 
 export interface DriveInfo {
   model: string;

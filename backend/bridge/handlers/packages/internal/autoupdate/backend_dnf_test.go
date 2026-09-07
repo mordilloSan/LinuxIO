@@ -330,7 +330,7 @@ func (f *fakeDNFHost) host() backendHost {
 			}
 			return slices.Clone(data), nil
 		},
-		writeFileAtomic: func(path string, data []byte, _ fs.FileMode) error {
+		writeFileAtomic: func(path string, data []byte, _ fs.FileMode, _ ...int) error {
 			f.operations = append(f.operations, "write:"+path)
 			if err := f.errors["write:"+path]; err != nil {
 				return err

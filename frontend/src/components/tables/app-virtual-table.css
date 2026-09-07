@@ -35,6 +35,28 @@
   min-width: 100%;
 }
 
+/* Paint fallback stripes only in the unrendered gaps. Mounted rows are
+   translucent, so a full-body background would tint their stripes twice. */
+.app-dt__scroll-gap {
+  display: none;
+  position: absolute;
+  inset: 0;
+  clip-path: inset(100%);
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent var(--app-dt-row-min-height),
+    var(--app-dt-alt-bg) var(--app-dt-row-min-height),
+    var(--app-dt-alt-bg) calc(var(--app-dt-row-min-height) * 2)
+  );
+  background-size: 100% calc(var(--app-dt-row-min-height) * 2);
+}
+
+.app-dt__body--scrolling > .app-dt__scroll-gap {
+  display: block;
+}
+
 /* Adjacent rows may form one sortable entry (a Docker stack, for example).
    The wrapper owns the DnD transform while each child remains an ordinary
    grid row, so column tracks and row surfaces stay unchanged. */

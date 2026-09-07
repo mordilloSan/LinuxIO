@@ -22,6 +22,7 @@ cli_binary := $(bin_dir)/linuxio
 auth_binary := $(bin_dir)/linuxio-auth
 docker_update_binary := $(bin_dir)/linuxio-docker-update
 indexer_binary := $(bin_dir)/linuxio-indexer
+monitoring_binary := $(bin_dir)/linuxio-monitoring
 
 # Quiet aliases capture complete target output in .cache/test-logs while
 # printing only a compact success/failure summary. Keep this list limited to
@@ -42,6 +43,7 @@ quiet_targets := \
 	setup-frontend-browser \
 	test-frontend-browser \
 	test-backend \
+	test-go \
 	test-auth \
 	test-auth-protocol \
 	test-auth-pam \
@@ -68,6 +70,8 @@ NVM_VERSION  ?= $(nvm_version)
 GOOS         ?= linux
 GOARCH       ?=
 GOAMD64      ?= v3
+# Host architecture, used to decide amd64-only build tags for a native build.
+GOARCH_HOST  ?= $(shell go env GOARCH 2>/dev/null || echo amd64)
 
 # --- Go project root autodetection ---
 backend_dir := $(if $(BACKEND_DIR),$(BACKEND_DIR),$(shell \
@@ -132,6 +136,9 @@ VITEST_MAX_WORKERS ?= 8
 VITEST_FILE ?=
 VITEST_TEST_NAME ?=
 export VITEST_FILE VITEST_MAX_WORKERS VITEST_TEST_NAME
+# Extra arguments for the Playwright browser suite, e.g. a single spec path:
+# make test-frontend-browser PLAYWRIGHT_ARGS=src/test/browser/router.spec.ts
+PLAYWRIGHT_ARGS ?=
 # Extra env vars / build tags injected into build-backend and build-bridge.
 # Normally empty; build-leak-profile sets them for pprof debug binaries.
 GO_BUILD_EXTRA_ENV ?=
@@ -536,7 +543,7 @@ update-deps: ensure-node ensure-go
 	@echo "✅ Go dependencies updated to latest!"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
-.PHONY: lint tsc lint-ci golint test check-actions check-systemd check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
+.PHONY: lint tsc lint-ci golint test check-actions check-systemd check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend test-go deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
 check-actions:
 	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint is required" >&2; exit 1; }
 	@actionlint
@@ -729,7 +736,7 @@ test-frontend-browser: ensure-node setup
 	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
 	@cd "$(frontend_dir)" && ./node_modules/.bin/vite build --config config/vite.config.ts --configLoader native
 	@echo "🌐 Running frontend browser tests..."
-	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts
+	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts $(PLAYWRIGHT_ARGS)
 	@echo "✅ Frontend browser tests passed!"
 
 # Rewrites the screenshot baselines src/test/browser/styling-gallery.spec.ts
@@ -972,10 +979,16 @@ golint-only:
 # GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
 # interleavings (races only surface on interleavings that actually happen).
 test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol test-auth-pam
+	@$(MAKE) --no-print-directory test-go
+
+# Go unit tests only. Narrow with GO_TEST_PKGS and GO_TEST_FLAGS, e.g.
+#   make test-go GO_TEST_PKGS=./bridge/handlers/filebrowser/... GO_TEST_FLAGS='-run TestExtract'
+GO_TEST_PKGS ?= ./...
+test-go: $(GO_BUILD_PREREQ)
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running Go unit tests with race detector (backend)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
-		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test ./... -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test $(GO_TEST_PKGS) -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
 		| grep --line-buffered -v '\[no test files\]' \
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"
@@ -984,8 +997,8 @@ deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only
 
 # Scan with tests for wholly unreachable code, then without tests to surface
-# production APIs kept alive only by tests. testdbus is deliberately test-only
-# cross-package infrastructure and is the sole production-scan exclusion.
+# production APIs kept alive only by tests. Exclude intentional cross-package
+# test helpers from the production scan only; the test scan still checks them.
 deadcode-only:
 	@$(PRINTC) "$(COLOR_CYAN)🔎 Scanning backend for dead code (informational)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
@@ -1000,7 +1013,7 @@ deadcode-only:
 			cache_key="$$( \
 				{ \
 					printf '%s\n' 'linuxio-deadcode-cache-v1' '-test ./...' './...' \
-						'exclude bridge/internal/dbusclient/testdbus/'; \
+						'exclude cross-package test helpers'; \
 					$(sha256_cmd) < "$(repo_root)/Makefile"; \
 					$(sha256_cmd) < "$(deadcode)"; \
 					$(sha256_cmd) < "$(GO_BIN)"; \
@@ -1060,7 +1073,10 @@ deadcode-only:
 		production_out="$$(cat "$$scan_dir/production.out")"; \
 		production_status="$$(cat "$$scan_dir/production.status")"; \
 		if [ $$production_status -eq 0 ]; then \
-			production_out="$$(printf '%s\n' "$$production_out" | grep -v '^bridge/internal/dbusclient/testdbus/' || true)"; \
+			production_out="$$(printf '%s\n' "$$production_out" | grep -Ev \
+				-e '^bridge/internal/dbusclient/testdbus/' \
+				-e '^common/peercred/peercred\.go:[0-9]+:[0-9]+: unreachable func: WithCredForTest$$' \
+				-e '^monitoring/internal/store/storetest/sample\.go:[0-9]+:[0-9]+: unreachable func: SampleCombinedData$$' || true)"; \
 		fi; \
 		if [ $$test_status -ne 0 ] || [ $$production_status -ne 0 ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode scan could not complete (informational, not failing):$(COLOR_RESET)"; \
@@ -1186,7 +1202,7 @@ $(quiet_aliases):
 		exit "$$rc"; \
 	fi
 
-.PHONY: build-vite bundle-metrics compiler-coverage analyze build-leak-profile build-backend build-bridge check-c-build-deps build-auth build-cli build-docker-update build-indexer
+.PHONY: build-vite bundle-metrics compiler-coverage analyze build-leak-profile build-backend build-bridge check-c-build-deps build-auth build-cli build-docker-update build-indexer build-monitoring
 build-vite:
 	@echo ""
 	@echo "🏗️  Building frontend..."
@@ -1305,7 +1321,7 @@ build-auth:
 	  echo " checksec:"; checksec --file="$(auth_binary)" || true; \
 	fi
 
-go_binary_targets := build-bridge build-cli build-docker-update build-indexer
+go_binary_targets := build-bridge build-cli build-docker-update build-indexer build-monitoring
 
 build-bridge: go_binary_label := bridge
 build-bridge: go_binary_package := ./bridge
@@ -1328,6 +1344,15 @@ build-indexer: go_binary_output := $(indexer_binary)
 build-indexer: go_binary_ldflags := -s -w -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'
 build-indexer: go_binary_extra_env := CGO_ENABLED=1
 build-indexer: go_binary_tags := sqlite_fts5
+
+build-monitoring: go_binary_label := monitoring daemon
+build-monitoring: go_binary_package := ./monitoring
+build-monitoring: go_binary_output := $(monitoring_binary)
+build-monitoring: go_binary_ldflags := -s -w -X '$(MODULE_PATH)/common/version.Version=$(GIT_VERSION)' -X '$(MODULE_PATH)/common/version.CommitSHA=$(GIT_COMMIT_SHORT)' -X '$(MODULE_PATH)/common/version.BuildTime=$(BUILD_TIME)'
+build-monitoring: go_binary_extra_env := CGO_ENABLED=1
+# NVML is compiled only for amd64; other architectures use the stub. Deferred
+# expansion keeps `go env` out of every unrelated make invocation.
+build-monitoring: go_binary_tags = $(if $(filter amd64,$(if $(GOARCH),$(GOARCH),$(GOARCH_HOST))),glibc,)
 
 $(go_binary_targets): $(GO_BUILD_PREREQ)
 
@@ -1411,6 +1436,7 @@ _build-binaries: ensure-go check-c-build-deps
 	@$(MAKE) --no-print-directory build-cli SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-docker-update SKIP_ENSURE_GO=1
 	@$(MAKE) --no-print-directory build-indexer SKIP_ENSURE_GO=1
+	@$(MAKE) --no-print-directory build-monitoring SKIP_ENSURE_GO=1
 
 build: generate test build-vite build-bridge _build-binaries
 
@@ -1422,7 +1448,7 @@ generate: ensure-go ensure-node setup
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
 
 clean:
-	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" "$(indexer_binary)" || true
+	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" "$(indexer_binary)" "$(monitoring_binary)" || true
 	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(frontend_dir)/tsconfig.tsbuildinfo" || true
 	@rm -rf "$(cache_dir)" "$(frontend_node_modules_dir)" || true
 	@find "$(backend_frontend_dir)" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
@@ -1483,6 +1509,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make setup-frontend-browser$(COLOR_RESET) Install Playwright Chromium"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-frontend-browser$(COLOR_RESET) Build frontend + run router browser tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-backend$(COLOR_RESET) Run Go + C backend tests (used by 'make test' + CI)"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-go$(COLOR_RESET)      Run Go unit tests only (GO_TEST_PKGS=./pkg/... GO_TEST_FLAGS='-run X' to narrow)"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth        $(COLOR_RESET) Run C authentication helper tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-protocol$(COLOR_RESET) Run cross-language (C<->Go) auth protocol frame tests"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-auth-pam    $(COLOR_RESET) Run hermetic PAM integration tests (pam_wrapper)"
@@ -1511,6 +1538,7 @@ help:
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-backend    $(COLOR_RESET) Build Go backend binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-bridge     $(COLOR_RESET) Build Go bridge binary"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-indexer    $(COLOR_RESET) Build the filesystem indexer"
+	@$(PRINTC) "$(COLOR_YELLOW)    make build-monitoring $(COLOR_RESET) Build the monitoring daemon"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-leak-profile$(COLOR_RESET) Build DEBUG webserver+bridge with localhost pprof + goroutine leak profile"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-auth       $(COLOR_RESET) Build the PAM authentication helper"
 	@$(PRINTC) "$(COLOR_YELLOW)    make build-cli        $(COLOR_RESET) Build the CLI tool"

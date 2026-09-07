@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createElement, type ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import { emptyCapabilityState } from "@/api/capabilities";
 import {
@@ -6,7 +8,10 @@ import {
   getCapabilityStatus,
   hasAccessPolicy,
   isCapabilityEnabled,
+  useCapabilitiesResponse,
+  useCapabilityState,
 } from "@/hooks/useCapabilities";
+import { createTestQueryClient, renderHook } from "@/test/render";
 
 describe("capability access helpers", () => {
   it("normalizes capability status", () => {
@@ -41,6 +46,22 @@ describe("capability access helpers", () => {
     );
     expect(getCapabilityReason("dockerAvailable", "unavailable")).toMatch(
       /unavailable/i,
+    );
+  });
+
+  it("subscribes to the capability cache with a query function", () => {
+    const consoleError = vi.spyOn(console, "error");
+    const client = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+
+    renderHook(
+      () => ({ state: useCapabilityState(), wire: useCapabilitiesResponse() }),
+      { wrapper },
+    );
+
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining("No queryFn was passed"),
     );
   });
 });

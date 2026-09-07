@@ -482,6 +482,18 @@ func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, pro
 	}
 	runStats.DeletedEntries = stats.DeletedEntries
 
+	if progress != nil {
+		progress.Step("Checkpointing database")
+	}
+	if stats, err := storage.WALCheckpointTruncate(ctx, db); err != nil {
+		slog.Warn("WAL checkpoint failed after index", "err", err)
+	} else {
+		slog.Info("WAL checkpoint complete after index", "duration", stats.Duration, "busy", stats.Busy, "log", stats.Log, "checkpointed", stats.Checkpointed)
+	}
+	if err := storage.ReleaseSQLiteMemory(ctx, db); err != nil {
+		slog.Warn("failed to release SQLite memory after index", "err", err)
+	}
+
 	slog.Info("index complete, subprocess exiting")
 	runStats.Duration = time.Since(start)
 	return runStats, nil
@@ -549,18 +561,6 @@ func runIndex(ctx context.Context, db *sql.DB, cfg configfile.Config, progress I
 		"size", index.GetTotalSize(),
 		"skipped_dirs", index.SkippedDirCount(),
 	)
-
-	if progress != nil {
-		progress.Step("Checkpointing database")
-	}
-	if stats, err := storage.WALCheckpointTruncate(ctx, db); err != nil {
-		slog.Warn("WAL checkpoint failed after index", "err", err)
-	} else {
-		slog.Info("WAL checkpoint complete after index", "duration", stats.Duration, "busy", stats.Busy, "log", stats.Log, "checkpointed", stats.Checkpointed)
-	}
-	if err := storage.ReleaseSQLiteMemory(ctx, db); err != nil {
-		slog.Warn("failed to release SQLite memory after index", "err", err)
-	}
 
 	return IndexRunStats{
 		Files:       int64(index.NumFiles),

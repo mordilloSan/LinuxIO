@@ -1,5 +1,5 @@
 // Package monitoring provides shared utilities for communicating with the
-// go-monitoring agent over its command unix socket.
+// linuxio-monitoring daemon over its two unix sockets.
 package monitoring
 
 import (
@@ -14,30 +14,38 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
-const (
-	commandSocketPath      = "/run/go-monitoring/agent.sock"
-	maxCommandPayloadBytes = 1 << 20
-)
+const maxCommandPayloadBytes = 1 << 20
 
 var (
 	commandRetryInterval = 150 * time.Millisecond
 	commandRetryTimeout  = 5 * time.Second
 )
 
-// monitoringClient is the HTTP client for the go-monitoring command socket.
-var monitoringClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			dialer := &net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}
-			return dialer.DialContext(ctx, "unix", commandSocketPath)
+// ErrUnavailable marks a daemon that cannot be reached.
+var ErrUnavailable = errors.New("linuxio-monitoring unavailable")
+
+func unixClient(socketPath string, timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+				return dialer.DialContext(ctx, "unix", socketPath)
+			},
 		},
-	},
+	}
 }
+
+// controlClient reaches control.sock: commands and privileged history reads.
+// apiClient reaches api.sock: live reads any session may perform.
+var (
+	controlClient = unixClient(monitoringapi.ControlSocketPath, 0)
+	apiClient     = unixClient(monitoringapi.APISocketPath, 15*time.Second)
+)
 
 type commandRequest struct {
 	Command string          `json:"command"`
@@ -105,7 +113,7 @@ func doCommandRequest(ctx context.Context, command string, payload []byte) (*htt
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := monitoringClient.Do(req)
+		resp, err := controlClient.Do(req)
 		if err == nil {
 			return resp, nil
 		}

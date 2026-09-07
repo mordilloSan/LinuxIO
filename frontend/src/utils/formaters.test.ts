@@ -23,6 +23,8 @@ describe("formaters", () => {
     expect(formatFileSize(0)).toBe("0 Bytes");
     expect(formatFileSize(1536, 1)).toBe("1.5 KB");
     expect(formatFileSize(1024 * 1024, 0)).toBe("1 MB");
+    expect(formatFileSize(4.1 * 1024 ** 5, 1)).toBe("4.1 PB");
+    expect(formatFileSize(2 ** 70, 1)).toBe("1024 EB");
   });
 
   it("formats dates with sensible fallback", () => {

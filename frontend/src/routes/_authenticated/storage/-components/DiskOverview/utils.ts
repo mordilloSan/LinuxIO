@@ -1,3 +1,4 @@
+import type { SmartValue } from "@/api";
 import { formatFileSize } from "@/utils/formaters";
 
 import type { DriveInfo, SmartData } from "./types";
@@ -31,9 +32,8 @@ export const getHealthColor = (
   smart: DriveInfo["smart"] | undefined,
 ): "success" | "error" | "warning" | "default" => {
   if (!smart?.smart_status) return "default";
-  const passed = smart.smart_status.passed;
-  if (passed === true) return "success";
-  if (passed === false) return "error";
+  if (smart.smart_status === "PASSED") return "success";
+  if (smart.smart_status === "FAILED") return "error";
   return "warning";
 };
 
@@ -55,12 +55,7 @@ export const formatDataUnits = (units?: number): string => {
 };
 
 export const getTemperature = (smart?: SmartData): number | null => {
-  if (!smart) return null;
-  return getSmartNumber(
-    smart.nvme_smart_health_information_log?.temperature ??
-      smart.temperature?.current ??
-      null,
-  );
+  return smart?.temperature_celsius ?? null;
 };
 
 export const getTemperatureColor = (temp: number | null): string => {
@@ -71,13 +66,13 @@ export const getTemperatureColor = (temp: number | null): string => {
 };
 
 export const getSmartValue = (
-  val: unknown,
+  val: SmartValue | number | string | undefined,
   preferString = true,
 ): string | number | null => {
   if (val === undefined || val === null) return null;
   if (typeof val === "string" || typeof val === "number") return val;
   if (typeof val === "object") {
-    const obj = val as { string?: unknown; value?: unknown };
+    const obj = val;
     if (preferString && typeof obj.string === "string") return obj.string;
     const nested = getSmartValue(obj.value, preferString);
     if (nested !== null) return nested;
@@ -86,7 +81,9 @@ export const getSmartValue = (
   return null;
 };
 
-export const getSmartNumber = (val: unknown): number | null => {
+export const getSmartNumber = (
+  val: SmartValue | number | string | undefined,
+): number | null => {
   const result = getSmartValue(val, false);
   if (typeof result === "number") return result;
   if (typeof result === "string") {
@@ -96,7 +93,9 @@ export const getSmartNumber = (val: unknown): number | null => {
   return null;
 };
 
-export const getSmartString = (val: unknown): string | null => {
+export const getSmartString = (
+  val: SmartValue | number | string | undefined,
+): string | null => {
   const result = getSmartValue(val, true);
   return result !== null ? String(result) : null;
 };

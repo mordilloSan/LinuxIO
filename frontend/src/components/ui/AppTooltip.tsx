@@ -1,6 +1,5 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useEffectEvent,
@@ -10,6 +9,7 @@ import {
   type CSSProperties,
   type FocusEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -47,9 +47,11 @@ export interface AppTooltipProps {
   toastMeta?: ToastMeta;
 }
 
-const AppTooltipTriggerContext = createContext(false);
+// Automatic tooltips are suppressed inside explicit tooltips and fast table cells.
+export const AppTooltipSuppressionContext = createContext(false);
 
-export const useIsInsideAppTooltip = () => useContext(AppTooltipTriggerContext);
+export const useAutomaticTooltipSuppressed = () =>
+  useContext(AppTooltipSuppressionContext);
 
 // Distance (px) from the trigger edge to the tooltip bubble — matches MUI default.
 const OFFSET = 8;
@@ -120,99 +122,182 @@ function hasTruncatedContent(element: Element): boolean {
   return Array.from(element.children).some(hasTruncatedContent);
 }
 
-const AppTooltip = ({
+function tooltipTarget(wrapper: HTMLSpanElement | null) {
+  return wrapper?.firstElementChild ?? wrapper;
+}
+
+interface TooltipContentProps extends Pick<
+  AppTooltipProps,
+  | "title"
+  | "arrow"
+  | "placement"
+  | "className"
+  | "contentWidth"
+  | "copyText"
+  | "onlyWhenTruncated"
+> {
+  request: number;
+  wrapperRef: RefObject<HTMLSpanElement | null>;
+  onCopyAvailabilityChange: (canCopy: boolean) => void;
+  onClose: () => void;
+}
+
+function TooltipContent({
   title,
-  children,
   arrow = false,
   placement = "bottom",
   className,
   contentWidth = false,
   copyText,
-  copySuccessMessage = "Copied to clipboard",
-  copyErrorMessage = "Failed to copy",
   onlyWhenTruncated = false,
-  toastMeta,
-}: AppTooltipProps) => {
-  const [visible, setVisible] = useState(false);
-  const [canCopy, setCanCopy] = useState(false);
-  const [tooltipStyle, setTooltipStyle] = useState<CSSProperties>({});
-  const wrapperRef = useRef<HTMLSpanElement>(null);
+  request,
+  wrapperRef,
+  onCopyAvailabilityChange,
+  onClose,
+}: TooltipContentProps) {
+  const [tooltipStyle, setTooltipStyle] = useState<CSSProperties | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visible = tooltipStyle !== null;
 
-  const getTarget = useCallback(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return null;
-
-    return (wrapper.firstElementChild as HTMLElement | null) ?? wrapper;
-  }, []);
-
-  const isTargetTruncated = useCallback(() => {
-    const target = getTarget();
-    return target ? hasTruncatedContent(target) : false;
-  }, [getTarget]);
-
-  const refreshCopyAvailability = useCallback(() => {
-    const nextCanCopy = Boolean(copyText && isTargetTruncated());
-    setCanCopy((current) => (current === nextCanCopy ? current : nextCanCopy));
-    return nextCanCopy;
-  }, [copyText, isTargetTruncated]);
-
-  const shouldShowTooltip = useCallback(() => {
-    if (!onlyWhenTruncated) return true;
-
-    return isTargetTruncated();
-  }, [isTargetTruncated, onlyWhenTruncated]);
-
-  const updatePosition = useCallback(() => {
-    const target = getTarget();
+  const updatePosition = useEffectEvent(() => {
+    const target = tooltipTarget(wrapperRef.current);
     if (!target) return;
 
+    const isTruncated =
+      (copyText || onlyWhenTruncated) && hasTruncatedContent(target);
+    onCopyAvailabilityChange(Boolean(copyText && isTruncated));
+    if (onlyWhenTruncated && !isTruncated) {
+      onClose();
+      return;
+    }
     setTooltipStyle(calcStyle(placement, target.getBoundingClientRect()));
-  }, [getTarget, placement]);
+  });
 
-  const show = useCallback(() => {
-    refreshCopyAvailability();
-    // Re-arming has to cancel first. A trigger can be entered and focused
-    // within the same 100ms, and overwriting the handle orphaned the earlier
-    // timer: hide() only ever holds the newest one, so the orphan fired after
-    // the pointer had already left and put the bubble back on a page with
-    // nothing left to dismiss it.
-    if (enterTimer.current) clearTimeout(enterTimer.current);
-    enterTimer.current = setTimeout(() => {
-      enterTimer.current = null;
-      if (!shouldShowTooltip()) {
-        setVisible(false);
-        return;
-      }
+  useEffect(() => {
+    const timer = setTimeout(updatePosition, 100);
+    return () => clearTimeout(timer);
+    // A repeated enter/focus restarts the delay even when content is unchanged.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
+  }, [request]);
 
-      updatePosition();
-      setVisible(true);
-    }, 100);
-  }, [refreshCopyAvailability, shouldShowTooltip, updatePosition]);
+  useEffect(() => {
+    if (!visible) return undefined;
 
-  const hide = useCallback(() => {
-    if (enterTimer.current) clearTimeout(enterTimer.current);
-    enterTimer.current = null;
-    setVisible(false);
-  }, []);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
 
-  const handleFocus = useCallback(
-    (event: FocusEvent<HTMLSpanElement>) => {
-      // Focus tooltips follow the same policy as focus rings: only explicit Tab
-      // navigation opts in. Pointer focus, Escape, and programmatic restoration
-      // leave the bubble hidden. Text-entry controls remain excluded.
-      if (
-        isTabNavigationActive() &&
-        event.target.matches(":not(input, textarea, select, [contenteditable])")
-      ) {
-        show();
-      }
-    },
-    [show],
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [visible]);
+
+  // The initial style anchors the bubble to its trigger. Once it is in the
+  // portal we can measure its rendered dimensions and nudge that anchor back
+  // into the viewport when it would otherwise overflow an edge.
+  useLayoutEffect(() => {
+    if (!tooltipStyle) return;
+
+    const tooltip = tooltipRef.current;
+    if (!tooltip) return;
+
+    const rect = tooltip.getBoundingClientRect();
+    // jsdom and hidden elements have no layout box to clamp. Waiting for a
+    // measurable box also avoids repeatedly applying an offset to (0, 0).
+    if (rect.width === 0 && rect.height === 0) return;
+
+    // Oversized bubbles cannot satisfy both edges. Keep the leading edge
+    // visible instead of alternating between opposite overflow corrections.
+    const maxLeft = Math.max(
+      VIEWPORT_MARGIN,
+      window.innerWidth - VIEWPORT_MARGIN - rect.width,
+    );
+    const maxTop = Math.max(
+      VIEWPORT_MARGIN,
+      window.innerHeight - VIEWPORT_MARGIN - rect.height,
+    );
+    const horizontalOffset =
+      Math.min(Math.max(rect.left, VIEWPORT_MARGIN), maxLeft) - rect.left;
+    const verticalOffset =
+      Math.min(Math.max(rect.top, VIEWPORT_MARGIN), maxTop) - rect.top;
+
+    // Browser layout rounds subpixels; chasing a tiny residual can keep this
+    // effect updating even though the rendered position does not change.
+    if (Math.abs(horizontalOffset) < 0.5 && Math.abs(verticalOffset) < 0.5)
+      return;
+
+    setTooltipStyle({
+      ...tooltipStyle,
+      left: (Number(tooltipStyle.left) || 0) + horizontalOffset,
+      top: (Number(tooltipStyle.top) || 0) + verticalOffset,
+    });
+  }, [tooltipStyle]);
+
+  if (!tooltipStyle) return null;
+
+  return createPortal(
+    <div
+      className={[
+        "app-tooltip",
+        `app-tooltip--${placement}`,
+        arrow && "app-tooltip--arrow",
+        contentWidth && "app-tooltip--content-width",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      role="tooltip"
+      ref={tooltipRef}
+      style={tooltipStyle}
+    >
+      {title}
+    </div>,
+    document.body,
   );
+}
 
-  const handleClick = useCallback(async () => {
+const AppTooltip = ({
+  title,
+  children,
+  copyText,
+  copySuccessMessage = "Copied to clipboard",
+  copyErrorMessage = "Failed to copy",
+  toastMeta,
+  ...contentProps
+}: AppTooltipProps) => {
+  const [request, setRequest] = useState<number | null>(null);
+  const [canCopy, setCanCopy] = useState(false);
+  const wrapperRef = useRef<HTMLSpanElement>(null);
+
+  function refreshCopyAvailability() {
+    const target = tooltipTarget(wrapperRef.current);
+    const nextCanCopy = Boolean(
+      copyText && target && hasTruncatedContent(target),
+    );
+    setCanCopy(nextCanCopy);
+    return nextCanCopy;
+  }
+
+  function show() {
+    refreshCopyAvailability();
+    setRequest((current) => (current ?? 0) + 1);
+  }
+
+  function hide() {
+    setRequest(null);
+  }
+
+  function handleFocus(event: FocusEvent<HTMLSpanElement>) {
+    // Pointer focus and programmatic restoration do not open tooltips.
+    if (
+      isTabNavigationActive() &&
+      event.target.matches(":not(input, textarea, select, [contenteditable])")
+    ) {
+      show();
+    }
+  }
+
+  async function handleClick() {
     if (!copyText || !refreshCopyAvailability()) return;
 
     try {
@@ -227,100 +312,7 @@ const AppTooltip = ({
         toastMeta ? { meta: toastMeta } : undefined,
       );
     }
-  }, [
-    copyErrorMessage,
-    copySuccessMessage,
-    copyText,
-    refreshCopyAvailability,
-    toastMeta,
-  ]);
-
-  useEffect(
-    () => () => {
-      if (enterTimer.current) clearTimeout(enterTimer.current);
-    },
-    [],
-  );
-
-  const handleReposition = useEffectEvent(() => {
-    refreshCopyAvailability();
-
-    if (!shouldShowTooltip()) {
-      setVisible(false);
-      return;
-    }
-
-    updatePosition();
-  });
-
-  useEffect(() => {
-    const target = getTarget();
-    if (!target) return undefined;
-
-    window.addEventListener("resize", refreshCopyAvailability);
-
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        window.removeEventListener("resize", refreshCopyAvailability);
-      };
-    }
-
-    const observer = new ResizeObserver(refreshCopyAvailability);
-    observer.observe(target);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", refreshCopyAvailability);
-    };
-  }, [getTarget, refreshCopyAvailability]);
-
-  useEffect(() => {
-    if (!visible) return undefined;
-
-    window.addEventListener("scroll", handleReposition, true);
-    window.addEventListener("resize", handleReposition);
-
-    return () => {
-      window.removeEventListener("scroll", handleReposition, true);
-      window.removeEventListener("resize", handleReposition);
-    };
-  }, [visible]);
-
-  // The initial style anchors the bubble to its trigger. Once it is in the
-  // portal we can measure its rendered dimensions and nudge that anchor back
-  // into the viewport when it would otherwise overflow an edge.
-  useLayoutEffect(() => {
-    if (!visible) return;
-
-    const tooltip = tooltipRef.current;
-    if (!tooltip) return;
-
-    const rect = tooltip.getBoundingClientRect();
-    // jsdom and hidden elements have no layout box to clamp. Waiting for a
-    // measurable box also avoids repeatedly applying an offset to (0, 0).
-    if (rect.width === 0 && rect.height === 0) return;
-
-    const horizontalOffset =
-      rect.left < VIEWPORT_MARGIN
-        ? VIEWPORT_MARGIN - rect.left
-        : rect.right > window.innerWidth - VIEWPORT_MARGIN
-          ? window.innerWidth - VIEWPORT_MARGIN - rect.right
-          : 0;
-    const verticalOffset =
-      rect.top < VIEWPORT_MARGIN
-        ? VIEWPORT_MARGIN - rect.top
-        : rect.bottom > window.innerHeight - VIEWPORT_MARGIN
-          ? window.innerHeight - VIEWPORT_MARGIN - rect.bottom
-          : 0;
-
-    if (horizontalOffset === 0 && verticalOffset === 0) return;
-
-    setTooltipStyle({
-      ...tooltipStyle,
-      left: (Number(tooltipStyle.left) || 0) + horizontalOffset,
-      top: (Number(tooltipStyle.top) || 0) + verticalOffset,
-    });
-  }, [tooltipStyle, visible]);
+  }
 
   if (!title) return <>{children}</>;
 
@@ -329,7 +321,7 @@ const AppTooltip = ({
       <span
         className={[
           "app-tooltip-trigger",
-          canCopy && "app-tooltip-trigger--copy",
+          copyText && canCopy && "app-tooltip-trigger--copy",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -340,30 +332,22 @@ const AppTooltip = ({
         onMouseLeave={hide}
         ref={wrapperRef}
       >
-        <AppTooltipTriggerContext.Provider value>
+        <AppTooltipSuppressionContext.Provider value>
           {children}
-        </AppTooltipTriggerContext.Provider>
+        </AppTooltipSuppressionContext.Provider>
       </span>
-      {visible &&
-        createPortal(
-          <div
-            className={[
-              "app-tooltip",
-              `app-tooltip--${placement}`,
-              arrow && "app-tooltip--arrow",
-              contentWidth && "app-tooltip--content-width",
-              className,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            role="tooltip"
-            ref={tooltipRef}
-            style={tooltipStyle}
-          >
-            {title}
-          </div>,
-          document.body,
-        )}
+      {/* Keep the trigger in place while interaction mounts the costly work. */}
+      {request !== null && (
+        <TooltipContent
+          {...contentProps}
+          copyText={copyText}
+          onClose={hide}
+          onCopyAvailabilityChange={setCanCopy}
+          request={request}
+          title={title}
+          wrapperRef={wrapperRef}
+        />
+      )}
     </>
   );
 };

@@ -1,11 +1,10 @@
 package apischema
 
 import (
-	"github.com/shirou/gopsutil/v4/load"
-
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 type AutoUpdateFrequency string
@@ -14,10 +13,10 @@ type AutoUpdateRebootPolicy string
 type AutoUpdateBackend string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
+type ContainerMetricsStatus string
 type ConfigStorageMode string
 type TaskState string
 type MonitoringHistoryResolution string
-type SensorReadingKind string
 type TableCardViewMode string
 type Theme string
 type NavigationMode string
@@ -31,28 +30,33 @@ var StringEnums = map[string][]string{
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
+	"ContainerMetricsStatus":        {"available", "stale", "unavailable", "not_running"},
 	"ConfigStorageMode":             {"home", "fallback", "memory"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled"},
 	"MonitoringHistoryResolution":   {"1m", "10m", "20m", "120m", "480m"},
-	"SensorReadingKind":             {"number", "boolean"},
-	"TableCardViewMode":             {"card", "table"},
-	"Theme":                         {"LIGHT", "DARK"},
-	"NavigationMode":                {"sidebar", "dock"},
-	"DockTileColors":                {"accent", "mono", "neutral", "vibrant"},
-	"ValidationIssueType":           {"error", "warning"},
-	"VMImagePresetID":               {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
-	"VMSourceType":                  {"iso", "imagePreset"},
-	"NetworkBridgeHandoffState":     {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
+	// SensorReadingKind is defined by the shared monitoring API; keeping its
+	// generator metadata here preserves the public literal union.
+	"SensorReadingKind":         {"number", "boolean"},
+	"TableCardViewMode":         {"card", "table"},
+	"Theme":                     {"LIGHT", "DARK"},
+	"NavigationMode":            {"sidebar", "dock"},
+	"DockTileColors":            {"accent", "mono", "neutral", "vibrant"},
+	"ValidationIssueType":       {"error", "warning"},
+	"VMImagePresetID":           {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
+	"VMSourceType":              {"iso", "imagePreset"},
+	"NetworkBridgeHandoffState": {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
 }
 
 const (
-	SensorReadingKindNumber  SensorReadingKind = "number"
-	SensorReadingKindBoolean SensorReadingKind = "boolean"
-
 	DockerUpdateCheckStateCurrent     DockerUpdateCheckState = "current"
 	DockerUpdateCheckStateAvailable   DockerUpdateCheckState = "available"
 	DockerUpdateCheckStateUncheckable DockerUpdateCheckState = "uncheckable"
 	DockerUpdateCheckStateError       DockerUpdateCheckState = "error"
+
+	ContainerMetricsStatusAvailable   ContainerMetricsStatus = "available"
+	ContainerMetricsStatusStale       ContainerMetricsStatus = "stale"
+	ContainerMetricsStatusUnavailable ContainerMetricsStatus = "unavailable"
+	ContainerMetricsStatusNotRunning  ContainerMetricsStatus = "not_running"
 )
 
 var ExtraTypes = []TypeSpec{
@@ -62,134 +66,88 @@ var ExtraTypes = []TypeSpec{
 }
 
 type CPUInfoResponse struct {
-	Cores              int                `json:"cores"`
-	CurrentFrequencies []float64          `json:"currentFrequencies"`
-	Family             string             `json:"family"`
-	LoadAverage        *load.AvgStat      `json:"loadAverage,omitempty"`
-	MHz                float64            `json:"mhz"`
-	Model              string             `json:"model"`
-	ModelName          string             `json:"modelName"`
-	PerCoreUsage       []float64          `json:"perCoreUsage"`
-	Temperature        map[string]float64 `json:"temperature"`
-	VendorID           string             `json:"vendorId"`
-}
-
-type MemoryInfoResponse struct {
-	Docker MemoryDockerInfo `json:"docker"`
-	System MemorySystemInfo `json:"system"`
-	ZFS    MemoryZFSInfo    `json:"zfs"`
-}
-
-type MemoryDockerInfo struct {
-	Used uint64 `json:"used"`
-}
-
-type MemorySystemInfo struct {
-	Total     uint64 `json:"total"`
-	Active    uint64 `json:"active"`
-	SwapTotal uint64 `json:"swapTotal"`
-	SwapFree  uint64 `json:"swapFree"`
-}
-
-type MemoryZFSInfo struct {
-	ARC uint64 `json:"arc"`
+	Cores     int     `json:"cores"`
+	Family    string  `json:"family"`
+	MHz       float64 `json:"mhz"`
+	Model     string  `json:"model"`
+	ModelName string  `json:"modelName"`
+	VendorID  string  `json:"vendorId"`
 }
 
 type GpuDevice struct {
-	ActualFreqMHz          *float64 `json:"actual_freq_mhz,omitempty"`
 	Address                string   `json:"address"`
-	BoostFreqMHz           *float64 `json:"boost_freq_mhz,omitempty"`
 	BootVGA                *bool    `json:"boot_vga,omitempty"`
 	ClassName              *string  `json:"class_name,omitempty"`
-	ConnectedDisplays      *int     `json:"connected_displays,omitempty"`
-	CurrentFreqMHz         *float64 `json:"current_freq_mhz,omitempty"`
 	DeviceID               string   `json:"device_id"`
-	DisplayNames           []string `json:"display_names,omitempty"`
 	Driver                 string   `json:"driver"`
 	DriverModule           *string  `json:"driver_module,omitempty"`
 	DriverVersion          *string  `json:"driver_version,omitempty"`
 	DRMCard                *string  `json:"drm_card,omitempty"`
-	FanPercent             *float64 `json:"fan_percent,omitempty"`
-	FanRPM                 *float64 `json:"fan_rpm,omitempty"`
+	BoostFreqMHz           *float64 `json:"boost_freq_mhz,omitempty"`
 	GTTTotalBytes          *uint64  `json:"gtt_total_bytes,omitempty"`
-	GTTUsedBytes           *uint64  `json:"gtt_used_bytes,omitempty"`
-	LinkSpeed              *string  `json:"link_speed,omitempty"`
-	LinkWidth              *string  `json:"link_width,omitempty"`
 	MaxFreqMHz             *float64 `json:"max_freq_mhz,omitempty"`
 	MaxLinkSpeed           *string  `json:"max_link_speed,omitempty"`
 	MaxLinkWidth           *string  `json:"max_link_width,omitempty"`
-	MemoryFreeBytes        *uint64  `json:"memory_free_bytes,omitempty"`
 	MemoryTotalBytes       *uint64  `json:"memory_total_bytes,omitempty"`
-	MemoryUsedBytes        *uint64  `json:"memory_used_bytes,omitempty"`
 	MinFreqMHz             *float64 `json:"min_freq_mhz,omitempty"`
 	Model                  string   `json:"model"`
 	NUMANode               *int     `json:"numa_node,omitempty"`
-	PowerDrawWatts         *float64 `json:"power_draw_watts,omitempty"`
-	PowerLimitWatts        *float64 `json:"power_limit_watts,omitempty"`
-	PowerState             *string  `json:"power_state,omitempty"`
 	ProgrammingInterface   *string  `json:"programming_interface,omitempty"`
 	RawClass               *string  `json:"raw_class,omitempty"`
-	RC6ResidencyMS         *float64 `json:"rc6_residency_ms,omitempty"`
-	RequestedFreqMHz       *float64 `json:"requested_freq_mhz,omitempty"`
 	Revision               string   `json:"revision"`
 	RP0FreqMHz             *float64 `json:"rp0_freq_mhz,omitempty"`
 	RP1FreqMHz             *float64 `json:"rp1_freq_mhz,omitempty"`
 	RPNFreqMHz             *float64 `json:"rpn_freq_mhz,omitempty"`
-	RuntimeStatus          *string  `json:"runtime_status,omitempty"`
 	SubclassName           *string  `json:"subclass_name,omitempty"`
 	Subsystem              string   `json:"subsystem"`
 	SubsystemID            string   `json:"subsystem_id"`
-	TemperatureC           *float64 `json:"temperature_c,omitempty"`
-	UtilizationPercent     *float64 `json:"utilization_percent,omitempty"`
 	Vendor                 string   `json:"vendor"`
 	VendorID               string   `json:"vendor_id"`
 	VisibleMemoryTotalByte *uint64  `json:"visible_memory_total_bytes,omitempty"`
-	VisibleMemoryUsedBytes *uint64  `json:"visible_memory_used_bytes,omitempty"`
-}
-
-type SensorReading struct {
-	Field string            `json:"-"`
-	Kind  SensorReadingKind `json:"kind"`
-	Label string            `json:"label"`
-	Unit  string            `json:"unit"`
-	Value float64           `json:"value"`
-}
-
-type SensorGroup struct {
-	Adapter  string          `json:"adapter"`
-	Readings []SensorReading `json:"readings"`
-}
-
-type DiskPowerState struct {
-	Description string  `json:"description"`
-	MaxPowerW   float64 `json:"maxPowerW"`
-	State       int     `json:"state"`
-}
-
-type DiskPowerData struct {
-	CurrentState int              `json:"currentState"`
-	EstimatedW   float64          `json:"estimatedW"`
-	States       []DiskPowerState `json:"states"`
 }
 
 type ApiDisk struct {
-	Model      string         `json:"model"`
-	Name       string         `json:"name"`
-	Power      *DiskPowerData `json:"power,omitempty"`
-	PowerError string         `json:"powerError,omitempty"`
-	RO         bool           `json:"ro"`
-	Serial     *string        `json:"serial,omitempty"`
-	Size       string         `json:"size"`
-	Smart      map[string]any `json:"smart,omitempty"`
-	SmartError string         `json:"smartError,omitempty"`
-	Type       *string        `json:"type,omitempty"`
-	Vendor     *string        `json:"vendor,omitempty"`
+	Model  string  `json:"model"`
+	Name   string  `json:"name"`
+	RO     bool    `json:"ro"`
+	Serial *string `json:"serial,omitempty"`
+	Size   string  `json:"size"`
+	Type   *string `json:"type,omitempty"`
+	Vendor *string `json:"vendor,omitempty"`
+}
+
+// StorageBlockDevice describes kernel-reported backing relationships. A device
+// can have several parents (RAID, multipath, or an LV spanning several PVs).
+type StorageBlockDevice struct {
+	Path        string   `json:"path"`
+	Name        string   `json:"name"`
+	KernelName  string   `json:"kernelName"`
+	Type        string   `json:"type"`
+	SizeBytes   uint64   `json:"sizeBytes"`
+	FSType      string   `json:"fsType"`
+	Mountpoints []string `json:"mountpoints"`
+	Parents     []string `json:"parents"`
+	Model       string   `json:"model"`
+	Serial      string   `json:"serial"`
+	Transport   string   `json:"transport"`
+	ReadOnly    bool     `json:"readOnly"`
+}
+
+type StorageMount struct {
+	Device   string `json:"device"`
+	Path     string `json:"path"`
+	FSType   string `json:"fsType"`
+	ReadOnly bool   `json:"readOnly"`
+}
+
+type StorageTopologyInventory struct {
+	Devices []StorageBlockDevice `json:"devices"`
+	Mounts  []StorageMount       `json:"mounts"`
 }
 
 type MotherboardInfo struct {
-	Baseboard    MotherboardBaseboard     `json:"baseboard"`
-	BIOS         MotherboardBIOS          `json:"bios"`
-	Temperatures *MotherboardTemperatures `json:"temperatures,omitempty"`
+	Baseboard MotherboardBaseboard `json:"baseboard"`
+	BIOS      MotherboardBIOS      `json:"bios"`
 }
 
 type MotherboardBaseboard struct {
@@ -200,10 +158,6 @@ type MotherboardBaseboard struct {
 type MotherboardBIOS struct {
 	Vendor  string `json:"vendor"`
 	Version string `json:"version"`
-}
-
-type MotherboardTemperatures struct {
-	Sensors map[string]float64 `json:"sensors"`
 }
 
 type HostInfo struct {
@@ -278,34 +232,29 @@ type DistroInfo struct {
 	Version  string `json:"version"`
 }
 
-type ProcessInfo struct {
-	Running bool `json:"running"`
+// MonitoringLive embeds the daemon's shared live wire contract so the bridge
+// generator flattens the fields into the public route result.
+type MonitoringLive struct {
+	monitoringapi.Live
 }
 
-type InterfaceStats struct {
-	IPv4    []string `json:"ipv4"`
-	MAC     string   `json:"mac"`
-	Name    string   `json:"name"`
-	RXSpeed float64  `json:"rx_speed"`
-	Speed   string   `json:"speed"`
-	TXSpeed float64  `json:"tx_speed"`
+type MonitoringProcessesResponse struct {
+	CapturedAtMs int64                      `json:"captured_at_ms"`
+	Count        monitoringapi.ProcessCount `json:"count"`
+	Items        []monitoringapi.Process    `json:"items"`
 }
 
-type DiskThroughputDevice struct {
-	Name             string  `json:"name"`
-	ReadBytesPerSec  float64 `json:"readBytesPerSec"`
-	ReadOpsPerSec    float64 `json:"readOpsPerSec"`
-	WriteBytesPerSec float64 `json:"writeBytesPerSec"`
-	WriteOpsPerSec   float64 `json:"writeOpsPerSec"`
+type MonitoringProgramsResponse struct {
+	CapturedAtMs int64                   `json:"captured_at_ms"`
+	Items        []monitoringapi.Program `json:"items"`
 }
 
-type DiskThroughputResponse struct {
-	Devices          []DiskThroughputDevice `json:"devices"`
-	IntervalSeconds  float64                `json:"intervalSeconds"`
-	ReadBytesPerSec  float64                `json:"readBytesPerSec"`
-	ReadOpsPerSec    float64                `json:"readOpsPerSec"`
-	WriteBytesPerSec float64                `json:"writeBytesPerSec"`
-	WriteOpsPerSec   float64                `json:"writeOpsPerSec"`
+type MonitoringSmartRefreshResult struct {
+	Refreshed bool `json:"refreshed"`
+}
+
+type MonitoringDatabaseResult struct {
+	Path string `json:"path"`
 }
 
 type NetworkInterface struct {
@@ -316,27 +265,24 @@ type NetworkInterface struct {
 	// ConfigBackend names the on-disk configuration source the bridge detected
 	// for this interface (netplan, nmconnection, systemd-networkd, ifupdown,
 	// ifcfg). Empty when no backend claims it.
-	ConfigBackend string                   `json:"config_backend,omitempty"`
-	Counters      NetworkInterfaceCounters `json:"counters"`
-	DNS           []string                 `json:"dns"`
-	Driver        string                   `json:"driver,omitempty"`
-	Duplex        string                   `json:"duplex"`
-	Gateway       string                   `json:"gateway"`
-	IPv4          []string                 `json:"ipv4"`
-	IPv4Method    *string                  `json:"ipv4_method,omitempty"`
+	ConfigBackend string   `json:"config_backend,omitempty"`
+	DNS           []string `json:"dns"`
+	Driver        string   `json:"driver,omitempty"`
+	Duplex        string   `json:"duplex"`
+	Gateway       string   `json:"gateway"`
+	IPv4          []string `json:"ipv4"`
+	IPv4Method    *string  `json:"ipv4_method,omitempty"`
 	// LogUnit is the installed systemd unit whose journal covers this
 	// interface's stack, resolved from ConfigBackend. Empty when none of the
 	// candidate units exist, which is the signal to offer no log view.
-	LogUnit   string  `json:"log_unit,omitempty"`
-	MAC       string  `json:"mac"`
-	MTU       int     `json:"mtu"`
-	Name      string  `json:"name"`
-	OperState string  `json:"operstate"`
-	RXSpeed   float64 `json:"rx_speed"`
-	Speed     string  `json:"speed"`
-	State     int     `json:"state"`
-	TXSpeed   float64 `json:"tx_speed"`
-	Type      string  `json:"type"`
+	LogUnit   string `json:"log_unit,omitempty"`
+	MAC       string `json:"mac"`
+	MTU       int    `json:"mtu"`
+	Name      string `json:"name"`
+	OperState string `json:"operstate"`
+	Speed     string `json:"speed"`
+	State     int    `json:"state"`
+	Type      string `json:"type"`
 }
 
 // NetworkBridgeCandidate is one wired interface that can, or cannot, be used
@@ -385,36 +331,6 @@ type NetworkBridgeHandoffStatus struct {
 	Error       string                    `json:"error,omitempty"`
 }
 
-// NetworkInterfaceCounters carries the kernel's cumulative per-interface
-// counters. They count from boot but the kernel resets them with the device,
-// so a link that has been down and back up starts over. Rates live in
-// RXSpeed/TXSpeed; these are the totals the rates are derived from.
-type NetworkInterfaceCounters struct {
-	RXBytes   uint64 `json:"rx_bytes"`
-	RXDropped uint64 `json:"rx_dropped"`
-	RXErrors  uint64 `json:"rx_errors"`
-	RXPackets uint64 `json:"rx_packets"`
-	TXBytes   uint64 `json:"tx_bytes"`
-	TXDropped uint64 `json:"tx_dropped"`
-	TXErrors  uint64 `json:"tx_errors"`
-	TXPackets uint64 `json:"tx_packets"`
-}
-
-type FilesystemInfo struct {
-	Device            string   `json:"device"`
-	Free              uint64   `json:"free"`
-	FSType            string   `json:"fstype"`
-	InodesFree        *uint64  `json:"inodesFree,omitempty"`
-	InodesTotal       *uint64  `json:"inodesTotal,omitempty"`
-	InodesUsed        *uint64  `json:"inodesUsed,omitempty"`
-	InodesUsedPercent *float64 `json:"inodesUsedPercent,omitempty"`
-	Mountpoint        string   `json:"mountpoint"`
-	ReadOnly          *bool    `json:"readOnly,omitempty"`
-	Total             uint64   `json:"total"`
-	Used              uint64   `json:"used"`
-	UsedPercent       float64  `json:"usedPercent"`
-}
-
 type ResourceStatData struct {
 	Group       string `json:"group"`
 	Mode        string `json:"mode"`
@@ -431,27 +347,33 @@ type ContainerPort struct {
 
 type ContainerMount struct {
 	Destination string `json:"Destination"`
+	Driver      string `json:"Driver,omitempty"`
 	Mode        string `json:"Mode"`
+	Name        string `json:"Name,omitempty"`
+	Propagation string `json:"Propagation,omitempty"`
 	RW          bool   `json:"RW"`
 	Source      string `json:"Source"`
 	Type        string `json:"Type"`
 }
 
 type ContainerEndpoint struct {
-	Gateway           string  `json:"Gateway"`
-	GlobalIPv6Address *string `json:"GlobalIPv6Address,omitempty"`
-	IPAddress         string  `json:"IPAddress"`
-	MACAddress        *string `json:"MacAddress,omitempty"`
+	Aliases           []string `json:"Aliases,omitempty"`
+	Gateway           string   `json:"Gateway"`
+	GlobalIPv6Address *string  `json:"GlobalIPv6Address,omitempty"`
+	IPAddress         string   `json:"IPAddress"`
+	MACAddress        *string  `json:"MacAddress,omitempty"`
 }
 
 type ContainerMetrics struct {
-	CPUPercent float64 `json:"cpu_percent"`
-	MemUsage   uint64  `json:"mem_usage"`
-	MemLimit   uint64  `json:"mem_limit"`
-	NetInput   uint64  `json:"net_input"`
-	NetOutput  uint64  `json:"net_output"`
-	BlockRead  uint64  `json:"block_read"`
-	BlockWrite uint64  `json:"block_write"`
+	BlockReadBytesPerSecond      *float64               `json:"block_read_bytes_per_second,omitempty"`
+	BlockWriteBytesPerSecond     *float64               `json:"block_write_bytes_per_second,omitempty"`
+	CapturedAtMs                 *int64                 `json:"captured_at_ms,omitempty"`
+	CPUPercent                   *float64               `json:"cpu_percent,omitempty"`
+	MemoryLimitBytes             *uint64                `json:"memory_limit_bytes,omitempty"`
+	MemoryUsageBytes             *uint64                `json:"memory_usage_bytes,omitempty"`
+	NetworkReceiveBytesPerSecond *float64               `json:"network_receive_bytes_per_second,omitempty"`
+	NetworkSendBytesPerSecond    *float64               `json:"network_send_bytes_per_second,omitempty"`
+	Status                       ContainerMetricsStatus `json:"status"`
 }
 
 type ContainerHostConfig struct {
@@ -483,6 +405,67 @@ type ContainerInfo struct {
 	UpdateCheckState  *DockerUpdateCheckState   `json:"updateCheckState,omitempty"`
 	UpdateError       *string                   `json:"updateError,omitempty"`
 	URL               *string                   `json:"url,omitempty"`
+}
+
+type ContainerInspectState struct {
+	Dead       bool   `json:"dead"`
+	Error      string `json:"error"`
+	ExitCode   int    `json:"exitCode"`
+	FinishedAt string `json:"finishedAt"`
+	OOMKilled  bool   `json:"oomKilled"`
+	Paused     bool   `json:"paused"`
+	Restarting bool   `json:"restarting"`
+	Running    bool   `json:"running"`
+	StartedAt  string `json:"startedAt"`
+	Status     string `json:"status"`
+}
+
+type ContainerInspectHealth struct {
+	FailingStreak int    `json:"failingStreak"`
+	Status        string `json:"status"`
+}
+
+type ContainerRestartPolicy struct {
+	MaximumRetryCount int    `json:"maximumRetryCount"`
+	Name              string `json:"name"`
+}
+
+type ContainerEnvironmentVariable struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type ContainerPortBinding struct {
+	ContainerPort int    `json:"containerPort"`
+	HostIP        string `json:"hostIp"`
+	HostPort      string `json:"hostPort"`
+	Protocol      string `json:"protocol"`
+}
+
+type ContainerInspectInfo struct {
+	Command          []string                       `json:"command,omitempty"`
+	Created          string                         `json:"created"`
+	Entrypoint       []string                       `json:"entrypoint,omitempty"`
+	Environment      []ContainerEnvironmentVariable `json:"environment,omitempty"`
+	Health           *ContainerInspectHealth        `json:"health,omitempty"`
+	ID               string                         `json:"id"`
+	Image            string                         `json:"image"`
+	ImageID          string                         `json:"imageId"`
+	Labels           map[string]string              `json:"labels,omitempty"`
+	Mounts           []ContainerMount               `json:"mounts,omitempty"`
+	Name             string                         `json:"name"`
+	Networks         map[string]ContainerEndpoint   `json:"networks,omitempty"`
+	Ports            []ContainerPortBinding         `json:"ports,omitempty"`
+	RestartCount     int                            `json:"restartCount"`
+	RestartPolicy    ContainerRestartPolicy         `json:"restartPolicy"`
+	State            ContainerInspectState          `json:"state"`
+	User             string                         `json:"user"`
+	WorkingDirectory string                         `json:"workingDirectory"`
+}
+
+type ContainerConfigurationResult struct {
+	ContainerID string `json:"containerId"`
+	Name        string `json:"name"`
 }
 
 type DockerContainerAutoUpdateOptions struct {
@@ -565,6 +548,7 @@ type DockerNetwork struct {
 	Labels     map[string]string                 `json:"Labels,omitempty"`
 	Name       string                            `json:"Name"`
 	Options    map[string]string                 `json:"Options,omitempty"`
+	Protected  bool                              `json:"Protected,omitempty"`
 	Scope      string                            `json:"Scope"`
 }
 
@@ -573,17 +557,25 @@ type DockerVolumeUsageData struct {
 	Size     int64 `json:"Size"`
 }
 
+type DockerVolumeContainer struct {
+	ID    string `json:"Id"`
+	Name  string `json:"Name"`
+	State string `json:"State"`
+}
+
 type DockerVolume struct {
-	ClusterVolume map[string]any         `json:"ClusterVolume,omitempty"`
-	CreatedAt     *string                `json:"CreatedAt,omitempty"`
-	Driver        string                 `json:"Driver"`
-	Labels        map[string]string      `json:"Labels,omitempty"`
-	Mountpoint    string                 `json:"Mountpoint"`
-	Name          string                 `json:"Name"`
-	Options       map[string]string      `json:"Options,omitempty"`
-	Scope         *string                `json:"Scope,omitempty"`
-	Status        map[string]any         `json:"Status,omitempty"`
-	UsageData     *DockerVolumeUsageData `json:"UsageData,omitempty"`
+	ClusterVolume        map[string]any          `json:"ClusterVolume,omitempty"`
+	Containers           []DockerVolumeContainer `json:"Containers,omitempty"`
+	CreatedAt            *string                 `json:"CreatedAt,omitempty"`
+	Driver               string                  `json:"Driver"`
+	Labels               map[string]string       `json:"Labels,omitempty"`
+	Mountpoint           string                  `json:"Mountpoint"`
+	MountpointAccessible bool                    `json:"MountpointAccessible,omitempty"`
+	Name                 string                  `json:"Name"`
+	Options              map[string]string       `json:"Options,omitempty"`
+	Scope                *string                 `json:"Scope,omitempty"`
+	Status               map[string]any          `json:"Status,omitempty"`
+	UsageData            *DockerVolumeUsageData  `json:"UsageData,omitempty"`
 }
 
 type DockerSystemInfo struct {
@@ -1115,17 +1107,18 @@ type IndexerDaemonStatus struct {
 
 type MonitoringListener struct {
 	Address string   `json:"address"`
-	APIs    []string `json:"apis"`
 	Name    string   `json:"name"`
+	Plugins []string `json:"plugins,omitempty"`
 }
 
 type MonitoringConfig struct {
-	AllowRemoteCommands  bool                 `json:"allow_remote_commands"`
 	CollectorInterval    string               `json:"collector_interval"`
-	HistoryRetention     string               `json:"history_retention"`
-	SmartRefreshInterval string               `json:"smart_refresh_interval"`
+	DiskUsageCache       string               `json:"disk_usage_cache"`
 	History              string               `json:"history"`
+	HistoryIntervals     map[string]string    `json:"history_intervals"`
+	HistoryRetention     string               `json:"history_retention"`
 	Listeners            []MonitoringListener `json:"listeners"`
+	SmartRefreshInterval string               `json:"smart_refresh_interval"`
 	Version              int                  `json:"version"`
 }
 
@@ -1215,12 +1208,13 @@ type MonitoringListenerStatus struct {
 }
 
 type MonitoringConfigMeta struct {
-	CollectorInterval string   `json:"collector_interval"`
-	HistoryRetention  string   `json:"history_retention"`
-	HistoryPlugins    []string `json:"history_plugins"`
-	Path              string   `json:"path"`
-	Source            string   `json:"source"`
-	Version           int      `json:"version"`
+	CollectorInterval string            `json:"collector_interval"`
+	HistoryRetention  string            `json:"history_retention"`
+	HistoryPlugins    []string          `json:"history_plugins"`
+	HistoryIntervals  map[string]string `json:"history_intervals"`
+	Path              string            `json:"path"`
+	Source            string            `json:"source"`
+	Version           int               `json:"version"`
 }
 
 type MonitoringStatus struct {
@@ -1228,6 +1222,7 @@ type MonitoringStatus struct {
 	Config               MonitoringConfigMeta       `json:"config"`
 	DataDir              string                     `json:"data_dir"`
 	DBPath               string                     `json:"db_path"`
+	DBSizeBytes          int64                      `json:"db_size_bytes"`
 	Listeners            []MonitoringListenerStatus `json:"listeners,omitempty"`
 	Retention            map[string]string          `json:"retention"`
 	SmartRefreshInterval string                     `json:"smart_refresh_interval"`

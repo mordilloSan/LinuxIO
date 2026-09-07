@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 
-import { linuxio, type NetworkInterface } from "@/api";
+import { linuxio, type LiveInterface, type NetworkInterface } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { CARD_PADDING_LG, GAP_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -38,6 +39,7 @@ const formatPackets = (bytes: number, packets: number): string =>
  */
 export const networkInterfaceStatRows = (
   iface: NetworkInterface,
+  live?: LiveInterface,
 ): StatRow[] => [
   { label: "Link", value: formatLink(iface) },
   { label: "MTU", value: `${iface.mtu}` },
@@ -45,21 +47,21 @@ export const networkInterfaceStatRows = (
   { label: "Managed by", value: iface.config_backend || "Unmanaged" },
   {
     label: "Sent",
-    value: formatPackets(iface.counters.tx_bytes, iface.counters.tx_packets),
+    value: formatPackets(live?.tx_bytes_total ?? 0, live?.tx_packets ?? 0),
   },
   {
     label: "Received",
-    value: formatPackets(iface.counters.rx_bytes, iface.counters.rx_packets),
+    value: formatPackets(live?.rx_bytes_total ?? 0, live?.rx_packets ?? 0),
   },
   {
     label: "Errors (tx/rx)",
-    value: `${iface.counters.tx_errors} / ${iface.counters.rx_errors}`,
-    warn: iface.counters.tx_errors > 0 || iface.counters.rx_errors > 0,
+    value: `${live?.tx_errors ?? 0} / ${live?.rx_errors ?? 0}`,
+    warn: (live?.tx_errors ?? 0) > 0 || (live?.rx_errors ?? 0) > 0,
   },
   {
     label: "Dropped (tx/rx)",
-    value: `${iface.counters.tx_dropped} / ${iface.counters.rx_dropped}`,
-    warn: iface.counters.tx_dropped > 0 || iface.counters.rx_dropped > 0,
+    value: `${live?.tx_dropped ?? 0} / ${live?.rx_dropped ?? 0}`,
+    warn: (live?.tx_dropped ?? 0) > 0 || (live?.rx_dropped ?? 0) > 0,
   },
 ];
 
@@ -68,6 +70,11 @@ const NetworkInterfaceStatsCard = ({ name }: { name: string }) => {
     ...linuxio.network.get_network_info,
     refetchOnMount: false,
     select: selectNetworkInterface(name),
+  });
+  const { data: liveIface } = useQuery({
+    ...linuxio.monitoring.get_live,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+    select: (live) => (live.interfaces ?? {})[name],
   });
 
   if (!iface) return null;
@@ -95,7 +102,7 @@ const NetworkInterfaceStatsCard = ({ name }: { name: string }) => {
         title="Statistics"
       />
       <div style={{ display: "flex", flexDirection: "column" }}>
-        {networkInterfaceStatRows(iface).map((row) => (
+        {networkInterfaceStatRows(iface, liveIface).map((row) => (
           <div
             key={row.label}
             style={{

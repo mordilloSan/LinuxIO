@@ -21,12 +21,18 @@ import "@/icons/icons";
 import "@/icons/shell";
 import "@/theme/variables.css";
 
+import ProcessesFixturePage from "./routes/ProcessesPage";
+
 installTabNavigationIntent();
 
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
+const IconsPage = lazy(() => import("./routes/IconsPage"));
 const CodeEditorPage = lazy(() => import("./routes/CodeEditorPage"));
+const ContainerActionsPage = lazy(
+  () => import("./routes/ContainerActionsPage"),
+);
 const FileBrowserReadPathsPage = lazy(
   () => import("./routes/FileBrowserReadPathsPage"),
 );
@@ -38,7 +44,10 @@ const VirtualGridPage = lazy(() => import("./routes/VirtualGridPage"));
 const VirtualExpansionTablePage = lazy(
   () => import("./routes/VirtualExpansionTablePage"),
 );
+const GeneralLogsPage = lazy(() => import("./routes/GeneralLogsPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
+const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
+const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
 
 const DARK_THEME = buildAppTheme("DARK");
 const LIGHT_THEME = buildAppTheme("LIGHT");
@@ -101,10 +110,20 @@ const accessibilityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "accessibility",
 });
+const iconsRoute = createRoute({
+  component: IconsPage,
+  getParentRoute: () => rootRoute,
+  path: "icons",
+});
 const codeEditorRoute = createRoute({
   component: CodeEditorPage,
   getParentRoute: () => rootRoute,
   path: "editor",
+});
+const containerActionsRoute = createRoute({
+  component: ContainerActionsPage,
+  getParentRoute: () => rootRoute,
+  path: "docker/container-actions",
 });
 const fileBrowserReadPathsRoute = createRoute({
   component: FileBrowserReadPathsPage,
@@ -131,6 +150,21 @@ const virtualExpansionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "tables/virtual-expansion",
 });
+const lightVirtualExpansionRoute = createRoute({
+  component: VirtualExpansionTablePage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/virtual-expansion",
+});
+const generalLogsRoute = createRoute({
+  component: GeneralLogsPage,
+  getParentRoute: () => rootRoute,
+  path: "logs",
+});
+const lightGeneralLogsRoute = createRoute({
+  component: GeneralLogsPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/logs",
+});
 const virtualFileBrowserRoute = createRoute({
   component: VirtualFileBrowserPage,
   getParentRoute: () => rootRoute,
@@ -150,6 +184,51 @@ const stylingLightRoute = createRoute({
   component: StylingGalleryPage,
   getParentRoute: () => rootRoute,
   path: "styling/light",
+});
+const topologySearch = (search: Record<string, unknown>) => ({
+  container:
+    typeof search.container === "string" ? search.container : undefined,
+  network: typeof search.network === "string" ? search.network : undefined,
+});
+const dockerTopologyRoute = createRoute({
+  component: DockerTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "docker/topology",
+  validateSearch: topologySearch,
+});
+const lightTopologyRoute = createRoute({
+  component: DockerTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/topology",
+  validateSearch: topologySearch,
+});
+const storageTopologyRoute = createRoute({
+  component: StorageTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "storage/topology",
+  validateSearch: (search) => ({
+    node: typeof search.node === "string" ? search.node : undefined,
+  }),
+});
+const lightStorageTopologyRoute = createRoute({
+  component: StorageTopologyPage,
+  getParentRoute: () => rootRoute,
+  path: "styling/light/storage-topology",
+  validateSearch: (search) => ({
+    node: typeof search.node === "string" ? search.node : undefined,
+  }),
+});
+const processesRoute = createRoute({
+  component: ProcessesFixturePage,
+  getParentRoute: () => rootRoute,
+  path: "processes",
+  validateSearch: (search) => ({
+    filter:
+      typeof search.filter === "string" && search.filter
+        ? search.filter
+        : undefined,
+    view: search.view === "programs" ? ("programs" as const) : undefined,
+  }),
 });
 const accountsIndexRoute = createRoute({
   component: UsersPage,
@@ -177,16 +256,26 @@ const failedRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
+  iconsRoute,
   codeEditorRoute,
+  containerActionsRoute,
   fileBrowserReadPathsRoute,
   growingTabsRoute,
   fillingTabsRoute,
   cardTabsRoute,
   virtualExpansionRoute,
+  lightVirtualExpansionRoute,
+  generalLogsRoute,
+  lightGeneralLogsRoute,
   virtualFileBrowserRoute,
   virtualGridRoute,
   stylingDarkRoute,
   stylingLightRoute,
+  dockerTopologyRoute,
+  lightTopologyRoute,
+  storageTopologyRoute,
+  lightStorageTopologyRoute,
+  processesRoute,
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

@@ -1,0 +1,406 @@
+.docker-topology-page {
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  padding-bottom: var(--app-space-16);
+}
+
+.docker-topology__toolbar,
+.docker-topology__tools,
+.docker-topology__counts,
+.docker-topology__map-header,
+.docker-topology__legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--app-space-12);
+}
+
+.docker-topology__toolbar {
+  justify-content: space-between;
+  padding-block: var(--app-space-8) var(--app-space-24);
+}
+
+.docker-topology__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: var(--app-space-16);
+}
+
+.docker-topology__map,
+.docker-topology__inspector {
+  min-width: 0;
+  border-radius: var(--app-radius-lg);
+  box-shadow: none;
+  background: var(--app-palette-background-paper);
+}
+
+.docker-topology__map {
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+.docker-topology__map-header {
+  justify-content: space-between;
+  min-height: 64px;
+  padding: var(--app-space-16) var(--app-space-24);
+  border-bottom: 1px solid var(--app-palette-divider);
+}
+
+.docker-topology__counts {
+  gap: var(--app-space-24);
+  color: var(--app-palette-text-secondary);
+}
+
+.docker-topology__counts strong {
+  color: var(--app-palette-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.docker-topology__canvas {
+  position: relative;
+  height: var(--topology-height);
+  background-color: var(--app-palette-background-default);
+  background-image: radial-gradient(
+    var(--app-palette-divider) 0.8px,
+    transparent 0.8px
+  );
+  background-size: 24px 24px;
+}
+
+.docker-topology__column-label {
+  position: absolute;
+  top: 24px;
+  color: var(--app-palette-text-secondary);
+}
+
+.docker-topology__column-label--networks {
+  left: 24px;
+}
+.docker-topology__column-label--apps {
+  right: 24px;
+  width: 280px;
+}
+
+.docker-topology__edges {
+  position: absolute;
+  left: 240px;
+  top: 0;
+  width: calc(100% - 544px);
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.docker-topology__networks,
+.docker-topology__applications,
+.docker-topology__ports {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.docker-topology__networks > li {
+  position: absolute;
+  left: 24px;
+  top: var(--node-top, 76px);
+  width: 216px;
+}
+
+.docker-topology__group {
+  position: absolute;
+  right: 24px;
+  top: var(--node-top);
+  width: 280px;
+  height: var(--group-height);
+}
+
+.docker-topology__group[data-stack="true"]::before {
+  content: "";
+  position: absolute;
+  inset: -8px -8px 4px;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-card);
+  pointer-events: none;
+}
+
+.docker-topology__node.app-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: var(--app-space-12);
+  height: 96px;
+  width: 100%;
+  min-width: 0;
+  padding: var(--app-space-12) var(--app-space-16);
+  background: var(--app-palette-background-paper);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  text-align: start;
+}
+
+.docker-topology__container-node.app-btn {
+  margin-bottom: 16px;
+}
+.docker-topology__node.app-btn:hover {
+  border-color: var(--app-palette-text-secondary);
+}
+.docker-topology__node.app-btn[aria-pressed="true"] {
+  border-color: var(--app-palette-primary-main);
+  box-shadow: 0 0 0 1px var(--app-palette-primary-main);
+}
+.docker-topology__node[data-related="false"] {
+  background: var(--app-palette-background-default);
+}
+
+.docker-topology__node.app-btn:focus-visible,
+.docker-topology__stack-header.app-btn:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 4px;
+}
+
+.docker-topology__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-12);
+  min-width: 0;
+}
+
+.docker-topology__app-icon,
+.docker-topology__network-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.docker-topology__network-icon {
+  color: var(--app-palette-primary-main);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-action-hover);
+}
+
+.docker-topology__copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--app-space-2);
+}
+
+.docker-topology__state {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--app-radius-pill);
+  flex-shrink: 0;
+}
+.docker-topology__activity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--app-space-12);
+}
+.docker-topology__rate {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-4);
+  overflow: hidden;
+  padding-bottom: var(--app-space-2);
+  color: var(--app-palette-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.docker-topology__rate--rx > span:first-child {
+  color: var(--app-chart-rx);
+}
+.docker-topology__rate--tx > span:first-child {
+  color: var(--app-chart-tx);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .docker-topology-page[data-paused="false"] .docker-topology__rate[data-active="true"]::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 12px;
+    height: 1px;
+    background: var(--app-chart-rx);
+    animation: docker-topology-activity 2s linear infinite;
+  }
+  .docker-topology-page[data-paused="false"] .docker-topology__rate--tx[data-active="true"]::after {
+    background: var(--app-chart-tx);
+    animation-direction: reverse;
+  }
+}
+
+@keyframes docker-topology-activity {
+  from {
+    transform: translateX(-12px);
+  }
+  to {
+    transform: translateX(120px);
+  }
+}
+
+.docker-topology__stack-header.app-btn {
+  display: flex;
+  justify-content: start;
+  gap: var(--app-space-8);
+  height: 40px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 var(--app-space-8);
+  text-align: start;
+}
+.docker-topology__stack-header > :nth-child(2) {
+  flex: 1;
+}
+.docker-topology__legend {
+  justify-content: space-between;
+  border-top: 1px solid var(--app-palette-divider);
+  padding: var(--app-space-12) var(--app-space-24);
+}
+.docker-topology__line-key {
+  display: inline-block;
+  vertical-align: middle;
+  width: 24px;
+  border-top: 1px solid var(--app-palette-text-disabled);
+  margin-right: var(--app-space-8);
+}
+.docker-topology__inspector {
+  padding: var(--app-space-24);
+}
+.docker-topology__detail-title {
+  margin-block: var(--app-space-8) var(--app-space-16);
+  overflow-wrap: anywhere;
+}
+.docker-topology__detail-value {
+  margin-top: var(--app-space-12);
+  overflow-wrap: anywhere;
+}
+.docker-topology__metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--app-space-16);
+  margin-block: var(--app-space-24) var(--app-space-12);
+  font-variant-numeric: tabular-nums;
+}
+.docker-topology__section-title {
+  margin-top: var(--app-space-24);
+  margin-bottom: var(--app-space-8);
+}
+.docker-topology__detail-item,
+.docker-topology__ports > li {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding-block: var(--app-space-8);
+  gap: var(--app-space-4);
+}
+.docker-topology__detail-item .app-btn,
+.docker-topology__ports .app-btn {
+  padding: 0;
+  min-width: 0;
+  min-height: 24px;
+  max-width: 100%;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.docker-topology__mono {
+  overflow-wrap: anywhere;
+  font-family: var(--app-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.docker-topology__open-resource {
+  margin-top: var(--app-space-16);
+}
+.docker-topology__note {
+  display: block;
+  margin-top: var(--app-space-24);
+  padding-top: var(--app-space-16);
+  border-top: 1px solid var(--app-palette-divider);
+}
+.docker-topology__applications > .docker-topology__empty {
+  position: absolute;
+  top: 76px;
+  right: 24px;
+  width: 280px;
+}
+.docker-topology__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@container (max-width: 1040px) {
+  .docker-topology__workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 620px) {
+  .docker-topology__canvas {
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--app-space-16);
+    padding: var(--app-space-16);
+  }
+  .docker-topology__edges {
+    display: none;
+  }
+  .docker-topology__column-label {
+    position: static;
+    width: auto;
+  }
+  .docker-topology__column-label--apps {
+    order: 2;
+  }
+  .docker-topology__applications {
+    order: 3;
+  }
+  .docker-topology__networks,
+  .docker-topology__applications {
+    display: flex;
+    flex-direction: column;
+    gap: var(--app-space-16);
+  }
+  .docker-topology__networks > li,
+  .docker-topology__group,
+  .docker-topology__applications > .docker-topology__empty {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: auto;
+  }
+  .docker-topology__node.app-btn {
+    height: auto;
+    min-height: 96px;
+  }
+  .docker-topology__container-node.app-btn {
+    margin-bottom: 0;
+  }
+  .docker-topology__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--app-space-12);
+  }
+  .docker-topology__group[data-stack="true"]::before {
+    inset: -8px;
+  }
+  .docker-topology__map-header,
+  .docker-topology__legend,
+  .docker-topology__inspector {
+    padding: var(--app-space-16);
+  }
+  .docker-topology__counts {
+    gap: var(--app-space-12);
+  }
+}

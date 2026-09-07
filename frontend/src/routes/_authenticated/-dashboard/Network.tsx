@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { type InterfaceStats, linuxio } from "@/api";
+import { linuxio, type NetworkInterface } from "@/api";
 import DashboardCard, {
   CardHeaderSelect,
   CardStatusDot,
@@ -12,7 +12,7 @@ import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import DashboardStatRows from "./DashboardStatRows";
 import NetworkGraph from "./NetworkGraph";
 
-const filterInterfaces = (interfaces: InterfaceStats[]): InterfaceStats[] =>
+const filterInterfaces = (interfaces: NetworkInterface[]): NetworkInterface[] =>
   interfaces.filter(
     (iface) =>
       !iface.name.startsWith("veth") &&
@@ -22,9 +22,9 @@ const filterInterfaces = (interfaces: InterfaceStats[]): InterfaceStats[] =>
   );
 
 const resolveInterface = (
-  interfaces: InterfaceStats[],
+  interfaces: NetworkInterface[],
   selected: string,
-): InterfaceStats | undefined =>
+): NetworkInterface | undefined =>
   interfaces.find((iface) => iface.name === selected) ?? interfaces[0];
 
 interface InterfaceSelectionProps {
@@ -36,7 +36,7 @@ const NetworkHeader = ({
   selected,
 }: InterfaceSelectionProps & { onSelect: (name: string) => void }) => {
   const selectHeader = useCallback(
-    (interfaces: InterfaceStats[]) => {
+    (interfaces: NetworkInterface[]) => {
       const filtered = filterInterfaces(interfaces);
       const current = resolveInterface(filtered, selected);
 
@@ -50,7 +50,7 @@ const NetworkHeader = ({
   );
 
   const { data: header } = useSuspenseQuery({
-    ...linuxio.network.get_interface_stats,
+    ...linuxio.network.get_network_info,
     refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectHeader,
   });
@@ -69,7 +69,7 @@ const NetworkHeader = ({
 
 const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
   const selectDetails = useCallback(
-    (interfaces: InterfaceStats[]) => {
+    (interfaces: NetworkInterface[]) => {
       const current = resolveInterface(filterInterfaces(interfaces), selected);
 
       return current
@@ -84,7 +84,7 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
   );
 
   const { data: details } = useSuspenseQuery({
-    ...linuxio.network.get_interface_stats,
+    ...linuxio.network.get_network_info,
     refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectDetails,
   });
@@ -107,25 +107,24 @@ const NetworkStats = ({ selected }: InterfaceSelectionProps) => {
 };
 
 const NetworkGraphPane = ({ selected }: InterfaceSelectionProps) => {
-  const selectThroughput = useCallback(
-    (interfaces: InterfaceStats[]) => {
-      const current = resolveInterface(filterInterfaces(interfaces), selected);
-
+  const { data: name } = useSuspenseQuery({
+    ...linuxio.network.get_network_info,
+    select: (interfaces) =>
+      resolveInterface(filterInterfaces(interfaces), selected)?.name ?? "",
+  });
+  const { data: throughput } = useSuspenseQuery({
+    ...linuxio.monitoring.get_live,
+    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+    select: (live) => {
+      const current = name ? (live.interfaces ?? {})[name] : undefined;
       return current
         ? {
-            name: current.name,
-            rx: current.rx_speed / 1024,
-            tx: current.tx_speed / 1024,
+            name,
+            rx: current.rx_bytes_per_sec / 1024,
+            tx: current.tx_bytes_per_sec / 1024,
           }
         : null;
     },
-    [selected],
-  );
-
-  const { data: throughput } = useSuspenseQuery({
-    ...linuxio.network.get_interface_stats,
-    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
-    select: selectThroughput,
   });
 
   if (!throughput) {

@@ -62,11 +62,12 @@ scoped reindexing never start an independent daemon.
 | `linuxio-indexer-index.timer` | Periodic full-index schedule |
 | `linuxio-indexer-index.service` | Requests a full index from the daemon |
 
-The daemon is socket activated. The timer makes its first request after five
-minutes and then hourly by default. `linuxio-webserver.service` weakly starts
-the daemon and owns `/run/linuxio/webserver`, an activity marker that keeps the
-indexer warm while the webserver is running. The marker does not grant socket
-access.
+The daemon is socket activated. Starting the webserver only warms the daemon
+for queries; it does not request an index. The timer makes its first request
+after its configured interval, hourly by default, and repeats at that cadence.
+`linuxio-webserver.service` owns `/run/linuxio/webserver`, an activity marker
+that keeps the indexer warm while the webserver is running. The marker does not
+grant socket access.
 
 When the marker is absent and no request, event stream, or scan is active, the
 daemon exits after a 90-second idle grace. The socket remains ready to activate
@@ -98,7 +99,7 @@ include_network_mounts: false
 ```
 
 `exclude_paths` adds paths to the mandatory exclusions. The scanner always
-excludes `/proc`, `/dev`, `/sys`, and `/var/lib/linuxio/indexer`, so virtual
+excludes `/proc`, `/dev`, `/sys`, `/mnt/c`, and `/var/lib/linuxio/indexer`, so virtual
 filesystems and the database cannot index themselves. Mandatory exclusions
 cannot be removed through the file or API. Unknown fields and invalid values
 fail strict configuration decoding.
@@ -153,7 +154,7 @@ worker. The worker:
 3. walks `/`, applying mandatory and operator exclusions;
 4. streams entries into SQLite in batches and reports progress to the daemon;
 5. publishes the generation only after the scan succeeds;
-6. checkpoints SQLite and removes older completed generations.
+6. removes older completed generations, reclaims their pages, and checkpoints SQLite.
 
 Queries continue to use the previous completed generation during the scan. A
 failed or cancelled scan does not replace it. Ordinary per-entry filesystem
@@ -355,8 +356,9 @@ journalctl \
   --since today
 ```
 
-`sudo linuxio verbose enable` enables debug logging for the webserver and
-indexer service drop-ins. `sudo linuxio verbose disable` removes both.
+`sudo linuxio verbose enable` enables debug logging through service drop-ins for
+the webserver, the indexer and the monitoring daemon. `sudo linuxio verbose
+disable` removes them.
 
 Upgrades preserve compatible caches. If manual recovery is needed, stop
 LinuxIO, move `/var/lib/linuxio/indexer/indexer.db*` to a separate directory,

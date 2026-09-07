@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,21 +13,28 @@ import (
 // ==== Logic ====
 
 func FetchBaseboardInfo(ctx context.Context) (apischema.MotherboardInfo, error) {
-	return fetchBaseboardInfo(ctx, "/sys/class/dmi/id", getTemperatureMap)
+	if err := ctx.Err(); err != nil {
+		return apischema.MotherboardInfo{}, err
+	}
+	return motherboardInfoCache.get(func() (apischema.MotherboardInfo, error) {
+		return fetchBaseboardInfo(ctx, "/sys/class/dmi/id")
+	})
 }
 
-func fetchBaseboardInfo(
-	ctx context.Context,
-	basePath string,
-	fetchTemperatures func(context.Context) map[string]float64,
-) (apischema.MotherboardInfo, error) {
+var motherboardInfoCache hwSnapshotCache[apischema.MotherboardInfo]
+
+func fetchBaseboardInfo(ctx context.Context, basePath string) (apischema.MotherboardInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.MotherboardInfo{}, err
 	}
 
+	var firstOperationalErr error
 	read := func(name string) string {
 		b, err := os.ReadFile(filepath.Join(basePath, name))
 		if err != nil {
+			if firstOperationalErr == nil && !errors.Is(err, os.ErrNotExist) {
+				firstOperationalErr = err
+			}
 			return ""
 		}
 		return strings.TrimSpace(string(b))
@@ -43,18 +51,11 @@ func fetchBaseboardInfo(
 		},
 	}
 
-	// Include all temperature sensors except CPU-specific ones
-	tempMap := fetchTemperatures(ctx)
 	if err := ctx.Err(); err != nil {
 		return apischema.MotherboardInfo{}, err
 	}
-	mbTemps := make(map[string]float64)
-	for key, value := range tempMap {
-		if !strings.HasPrefix(key, "core") && key != "package" {
-			mbTemps[key] = value
-		}
+	if firstOperationalErr != nil {
+		return info, firstOperationalErr
 	}
-	info.Temperatures = &apischema.MotherboardTemperatures{Sensors: mbTemps}
-
 	return info, nil
 }

@@ -1,0 +1,263 @@
+.storage-topology-page {
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  padding-bottom: var(--app-space-16);
+}
+.storage-topology__toolbar,
+.storage-topology__tools,
+.storage-topology__map-header,
+.storage-topology__counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--app-space-12);
+}
+.storage-topology__toolbar {
+  justify-content: space-between;
+  padding-block: var(--app-space-8) var(--app-space-24);
+}
+.storage-topology__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: var(--app-space-16);
+}
+.storage-topology__map,
+.storage-topology__inspector {
+  min-width: 0;
+  border-radius: var(--app-radius-lg);
+  box-shadow: none;
+  background: var(--app-palette-background-paper);
+}
+.storage-topology__map {
+  container: storage-map / inline-size;
+  overflow: hidden;
+}
+.storage-topology__map-header {
+  justify-content: space-between;
+  min-height: 64px;
+  padding: var(--app-space-16) var(--app-space-24);
+  border-bottom: 1px solid var(--app-palette-divider);
+}
+.storage-topology__counts {
+  gap: var(--app-space-16);
+  color: var(--app-palette-text-secondary);
+}
+.storage-topology__counts strong {
+  color: var(--app-palette-text-primary);
+}
+.storage-topology__canvas {
+  position: relative;
+  height: var(--storage-height);
+  background-color: var(--app-palette-background-default);
+  background-image: radial-gradient(var(--app-palette-divider) 0.8px, transparent 0.8px);
+  background-size: 24px 24px;
+}
+.storage-topology__edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.storage-topology__column {
+  position: absolute;
+  left: var(--storage-left);
+  width: 24%;
+  height: 100%;
+}
+.storage-topology__column-label {
+  position: absolute;
+  top: 24px;
+  color: var(--app-palette-text-secondary);
+}
+.storage-topology__column-empty {
+  margin-top: 90px;
+}
+.storage-topology__nodes,
+.storage-topology__backing,
+.storage-topology__connections {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.storage-topology__nodes > li {
+  position: absolute;
+  top: var(--storage-top);
+  width: 100%;
+}
+.storage-topology__node.app-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: var(--app-space-8);
+  width: 100%;
+  height: 120px;
+  min-width: 0;
+  padding: var(--app-space-12);
+  text-align: start;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-background-paper);
+}
+.storage-topology__node.app-btn:hover {
+  border-color: var(--app-palette-text-secondary);
+}
+.storage-topology__node.app-btn[aria-pressed="true"] {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+.storage-topology__node.app-btn[data-related="false"] {
+  background: var(--app-palette-background-default);
+}
+.storage-topology__node.app-btn:focus-visible,
+.storage-topology__connections .app-btn:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 4px;
+}
+.storage-topology__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-12);
+  min-width: 0;
+}
+.storage-topology__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  color: var(--app-palette-text-secondary);
+}
+.storage-topology__copy,
+.storage-topology__usage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.storage-topology__drive-meta,
+.storage-topology__activity {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.storage-topology__activity,
+.storage-topology__usage,
+.storage-topology__facts,
+.storage-topology__counts {
+  font-variant-numeric: tabular-nums;
+}
+.storage-topology__rate {
+  position: relative;
+  padding-bottom: 4px;
+  overflow: hidden;
+}
+.storage-topology__rate::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--app-palette-divider);
+}
+.storage-topology__rate[data-active="true"]::after {
+  background: var(--app-palette-primary-main);
+}
+.storage-topology__legend {
+  padding: var(--app-space-16) var(--app-space-24);
+  border-top: 1px solid var(--app-palette-divider);
+}
+.storage-topology__inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+  padding: var(--app-space-24);
+  overflow-wrap: anywhere;
+}
+.storage-topology__detail-title:focus {
+  outline: none;
+}
+.storage-topology__detail-title:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 4px;
+}
+.storage-topology__facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--app-space-8) var(--app-space-12);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.storage-topology__facts dt {
+  color: var(--app-palette-text-secondary);
+}
+.storage-topology__facts dd {
+  margin: 0;
+  text-align: end;
+}
+.storage-topology__facts .storage-topology__path {
+  grid-column: 1 / -1;
+  text-align: start;
+  font-family: var(--app-font-mono);
+}
+.storage-topology__detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  padding-top: var(--app-space-12);
+  border-top: 1px solid var(--app-palette-divider);
+}
+.storage-topology__backing > li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-block: var(--app-space-8);
+}
+.storage-topology__connections .app-btn {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--app-space-12);
+  min-height: 44px;
+  width: 100%;
+  text-align: start;
+}
+.storage-topology__connections svg {
+  flex-shrink: 0;
+}
+.storage-topology__empty,
+.storage-topology__summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--app-space-12);
+  padding: var(--app-space-32) var(--app-space-16);
+}
+@keyframes storage-topology-activity {
+  from { transform: translateX(-14px); }
+  to { transform: translateX(110px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .storage-topology-page[data-paused="false"] .storage-topology__rate[data-active="true"]::after {
+    width: 14px;
+    animation: storage-topology-activity 2s linear infinite;
+  }
+  .storage-topology-page[data-paused="false"] .storage-topology__rate[data-direction="write"][data-active="true"]::after {
+    animation-direction: reverse;
+  }
+}
+@container (max-width: 1160px) {
+  .storage-topology__workspace { grid-template-columns: minmax(0, 1fr); }
+}
+@container storage-map (max-width: 820px) {
+  .storage-topology__canvas { height: auto; padding: var(--app-space-16); }
+  .storage-topology__edges { display: none; }
+  .storage-topology__column { position: static; width: auto; height: auto; margin-bottom: var(--app-space-24); }
+  .storage-topology__column-label { position: static; margin-bottom: var(--app-space-12); }
+  .storage-topology__column-empty { margin-top: 0; }
+  .storage-topology__nodes { display: grid; gap: var(--app-space-12); }
+  .storage-topology__nodes > li { position: static; }
+  .storage-topology__node.app-btn { height: auto; min-height: 120px; }
+}

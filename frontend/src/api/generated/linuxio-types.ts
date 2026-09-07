@@ -116,13 +116,9 @@ export interface AlertIDRequest {
 export interface ApiDisk {
   model: string;
   name: string;
-  power?: DiskPowerData;
-  powerError?: string;
   ro: boolean;
   serial?: string;
   size: string;
-  smart?: Record<string, unknown>;
-  smartError?: string;
   type?: string;
   vendor?: string;
 }
@@ -186,12 +182,6 @@ export interface AutoUpdateState {
   support: AutoUpdateOptionSupport;
 }
 
-export interface AvgStat {
-  load1: number;
-  load5: number;
-  load15: number;
-}
-
 export interface BatchPathRequest {
   paths: string[];
 }
@@ -244,14 +234,10 @@ export interface CIFSMountRequest {
 
 export interface CPUInfoResponse {
   cores: number;
-  currentFrequencies: number[];
   family: string;
-  loadAverage?: AvgStat;
   mhz: number;
   model: string;
   modelName: string;
-  perCoreUsage: number[];
-  temperature: Record<string, number>;
   vendorId: string;
 }
 
@@ -478,11 +464,46 @@ export interface ConfigUISetPayload {
   terminalFontSize?: number;
 }
 
+export interface ContainerConfiguration {
+  name: string;
+  image: string;
+  command: string[];
+  entrypoint: string[];
+  environment: ContainerEnvironmentVariable[];
+  ports: ContainerPortBinding[];
+  mounts: ContainerMountConfiguration[];
+  networks: ContainerNetworkAttachment[];
+  restartPolicy: ContainerRestartPolicy;
+  user: string;
+  workingDirectory: string;
+}
+
+export interface ContainerConfigurationResult {
+  containerId: string;
+  name: string;
+}
+
+export interface ContainerCreateRequest {
+  configuration: ContainerConfiguration;
+  start: boolean;
+}
+
+export interface ContainerEditRequest {
+  containerId: string;
+  configuration: ContainerConfiguration;
+}
+
 export interface ContainerEndpoint {
+  Aliases?: string[];
   Gateway: string;
   GlobalIPv6Address?: string;
   IPAddress: string;
   MacAddress?: string;
+}
+
+export interface ContainerEnvironmentVariable {
+  name: string;
+  value: string;
 }
 
 export interface ContainerHostConfig {
@@ -516,22 +537,84 @@ export interface ContainerInfo {
   url?: string;
 }
 
-export interface ContainerMetrics {
-  cpu_percent: number;
-  mem_usage: number;
-  mem_limit: number;
-  net_input: number;
-  net_output: number;
-  block_read: number;
-  block_write: number;
+export interface ContainerInspectHealth {
+  failingStreak: number;
+  status: string;
 }
+
+export interface ContainerInspectInfo {
+  command?: string[];
+  created: string;
+  entrypoint?: string[];
+  environment?: ContainerEnvironmentVariable[];
+  health?: ContainerInspectHealth;
+  id: string;
+  image: string;
+  imageId: string;
+  labels?: Record<string, string>;
+  mounts?: ContainerMount[];
+  name: string;
+  networks?: Record<string, ContainerEndpoint>;
+  ports?: ContainerPortBinding[];
+  restartCount: number;
+  restartPolicy: ContainerRestartPolicy;
+  state: ContainerInspectState;
+  user: string;
+  workingDirectory: string;
+}
+
+export interface ContainerInspectState {
+  dead: boolean;
+  error: string;
+  exitCode: number;
+  finishedAt: string;
+  oomKilled: boolean;
+  paused: boolean;
+  restarting: boolean;
+  running: boolean;
+  startedAt: string;
+  status: string;
+}
+
+export interface ContainerMetrics {
+  block_read_bytes_per_second?: number;
+  block_write_bytes_per_second?: number;
+  captured_at_ms?: number;
+  cpu_percent?: number;
+  memory_limit_bytes?: number;
+  memory_usage_bytes?: number;
+  network_receive_bytes_per_second?: number;
+  network_send_bytes_per_second?: number;
+  status: ContainerMetricsStatus;
+}
+
+export type ContainerMetricsStatus =
+  | "available"
+  | "stale"
+  | "unavailable"
+  | "not_running";
 
 export interface ContainerMount {
   Destination: string;
+  Driver?: string;
   Mode: string;
+  Name?: string;
+  Propagation?: string;
   RW: boolean;
   Source: string;
   Type: string;
+}
+
+export interface ContainerMountConfiguration {
+  type: string;
+  source: string;
+  destination: string;
+  readOnly: boolean;
+}
+
+export interface ContainerNetworkAttachment {
+  name: string;
+  aliases: string[];
 }
 
 export interface ContainerNetworkSettings {
@@ -550,6 +633,35 @@ export interface ContainerPort {
   PrivatePort: number;
   PublicPort?: number;
   Type: string;
+}
+
+export interface ContainerPortBinding {
+  containerPort: number;
+  hostIp: string;
+  hostPort: string;
+  protocol: string;
+}
+
+export interface ContainerRemoveRequest {
+  containerId: string;
+  force: boolean;
+}
+
+export interface ContainerRestartPolicy {
+  maximumRetryCount: number;
+  name: string;
+}
+
+export interface Count {
+  total: number;
+  running: number;
+  sleeping: number;
+  stopped?: number;
+  zombie?: number;
+  blocked?: number;
+  idle?: number;
+  thread: number;
+  pid_max?: number;
 }
 
 export interface CountProgress {
@@ -593,6 +705,13 @@ export interface DeleteStackResult {
   files_deleted: boolean;
   message: string;
   project: string;
+}
+
+export interface DeviceInfo {
+  name: string;
+  info_name: string;
+  type: string;
+  protocol: string;
 }
 
 export interface DeviceTestTypeRequest {
@@ -659,23 +778,6 @@ export interface DiskPowerState {
   description: string;
   maxPowerW: number;
   state: number;
-}
-
-export interface DiskThroughputDevice {
-  name: string;
-  readBytesPerSec: number;
-  readOpsPerSec: number;
-  writeBytesPerSec: number;
-  writeOpsPerSec: number;
-}
-
-export interface DiskThroughputResponse {
-  devices: DiskThroughputDevice[];
-  intervalSeconds: number;
-  readBytesPerSec: number;
-  readOpsPerSec: number;
-  writeBytesPerSec: number;
-  writeOpsPerSec: number;
 }
 
 export interface Dismissals {
@@ -795,7 +897,14 @@ export interface DockerNetwork {
   Labels?: Record<string, string>;
   Name: string;
   Options?: Record<string, string>;
+  Protected?: boolean;
   Scope: string;
+}
+
+export interface DockerNetworkConnectRequest {
+  networkId: string;
+  containerId: string;
+  aliases?: string[];
 }
 
 export interface DockerNetworkContainer {
@@ -804,6 +913,22 @@ export interface DockerNetworkContainer {
   IPv4Address?: string;
   IPv6Address?: string;
   MacAddress?: string;
+}
+
+export interface DockerNetworkCreateRequest {
+  name: string;
+  driver: string;
+  internal: boolean;
+  attachable: boolean;
+  enableIpv6: boolean;
+  subnet?: string;
+  gateway?: string;
+  options?: Record<string, string>;
+}
+
+export interface DockerNetworkDisconnectRequest {
+  networkId: string;
+  containerId: string;
 }
 
 export interface DockerNetworkIPAM {
@@ -908,15 +1033,29 @@ export type DockerUpdateCheckState =
 
 export interface DockerVolume {
   ClusterVolume?: Record<string, unknown>;
+  Containers?: DockerVolumeContainer[];
   CreatedAt?: string;
   Driver: string;
   Labels?: Record<string, string>;
   Mountpoint: string;
+  MountpointAccessible?: boolean;
   Name: string;
   Options?: Record<string, string>;
   Scope?: string;
   Status?: Record<string, unknown>;
   UsageData?: DockerVolumeUsageData;
+}
+
+export interface DockerVolumeContainer {
+  Id: string;
+  Name: string;
+  State: string;
+}
+
+export interface DockerVolumeCreateRequest {
+  name: string;
+  driver: string;
+  labels?: Record<string, string>;
 }
 
 export interface DockerVolumeUsageData {
@@ -1087,55 +1226,35 @@ export interface GeneralLogsPageResponse {
 }
 
 export interface GpuDevice {
-  actual_freq_mhz?: number;
   address: string;
-  boost_freq_mhz?: number;
   boot_vga?: boolean;
   class_name?: string;
-  connected_displays?: number;
-  current_freq_mhz?: number;
   device_id: string;
-  display_names?: string[];
   driver: string;
   driver_module?: string;
   driver_version?: string;
   drm_card?: string;
-  fan_percent?: number;
-  fan_rpm?: number;
+  boost_freq_mhz?: number;
   gtt_total_bytes?: number;
-  gtt_used_bytes?: number;
-  link_speed?: string;
-  link_width?: string;
   max_freq_mhz?: number;
   max_link_speed?: string;
   max_link_width?: string;
-  memory_free_bytes?: number;
   memory_total_bytes?: number;
-  memory_used_bytes?: number;
   min_freq_mhz?: number;
   model: string;
   numa_node?: number;
-  power_draw_watts?: number;
-  power_limit_watts?: number;
-  power_state?: string;
   programming_interface?: string;
   raw_class?: string;
-  rc6_residency_ms?: number;
-  requested_freq_mhz?: number;
   revision: string;
   rp0_freq_mhz?: number;
   rp1_freq_mhz?: number;
   rpn_freq_mhz?: number;
-  runtime_status?: string;
   subclass_name?: string;
   subsystem: string;
   subsystem_id: string;
-  temperature_c?: number;
-  utilization_percent?: number;
   vendor: string;
   vendor_id: string;
   visible_memory_total_bytes?: number;
-  visible_memory_used_bytes?: number;
 }
 
 export interface GroupNameRequest {
@@ -1157,6 +1276,17 @@ export interface HostnameRequest {
 
 export interface IDRequest {
   id: string;
+}
+
+export interface IOCounters {
+  read_count?: number;
+  write_count?: number;
+  read_bytes?: number;
+  write_bytes?: number;
+  disk_read_bytes?: number;
+  disk_write_bytes?: number;
+  disk_read_bytes_per_second?: number;
+  disk_write_bytes_per_second?: number;
 }
 
 export interface IPv4ManualRequest {
@@ -1278,15 +1408,6 @@ export interface InterfaceRequest {
   iface: string;
 }
 
-export interface InterfaceStats {
-  ipv4: string[];
-  mac: string;
-  name: string;
-  rx_speed: number;
-  speed: string;
-  tx_speed: number;
-}
-
 export interface IntervalRequest {
   interval: string;
 }
@@ -1300,6 +1421,112 @@ export interface JobSettings {
   progressMinIntervalMs: number;
 }
 
+export interface LiveCPU {
+  percent: number;
+  per_core_percent: number[];
+  breakdown: LiveCPUBreakdown;
+  load_average: number[];
+  frequencies_mhz: number[];
+  temperatures: Record<string, number>;
+}
+
+export interface LiveCPUBreakdown {
+  user: number;
+  system: number;
+  iowait: number;
+  steal: number;
+  idle: number;
+}
+
+export interface LiveContainer {
+  id: string;
+  name: string;
+  cpu_percent: number;
+  memory_bytes: number;
+  rx_bytes_per_sec: number;
+  tx_bytes_per_sec: number;
+  block_read_bytes_per_sec?: number;
+  block_write_bytes_per_sec?: number;
+}
+
+export interface LiveContainers {
+  captured_at_ms: number;
+  items: LiveContainer[];
+}
+
+export interface LiveDiskRates {
+  read_bytes_per_sec: number;
+  write_bytes_per_sec: number;
+  read_ops_per_sec: number;
+  write_ops_per_sec: number;
+}
+
+export interface LiveGPU {
+  actual_freq_mhz?: number;
+  boost_freq_mhz?: number;
+  connected_displays?: number;
+  current_freq_mhz?: number;
+  display_names?: string[];
+  fan_percent?: number;
+  fan_rpm?: number;
+  gtt_total_bytes?: number;
+  gtt_used_bytes?: number;
+  link_speed?: string;
+  link_width?: string;
+  max_freq_mhz?: number;
+  max_link_speed?: string;
+  max_link_width?: string;
+  memory_free_bytes?: number;
+  memory_total_bytes?: number;
+  memory_used_bytes?: number;
+  min_freq_mhz?: number;
+  power_draw_watts?: number;
+  power_limit_watts?: number;
+  power_state?: string;
+  rc6_residency_ms?: number;
+  requested_freq_mhz?: number;
+  rp0_freq_mhz?: number;
+  rp1_freq_mhz?: number;
+  rpn_freq_mhz?: number;
+  runtime_status?: string;
+  temperature_c?: number;
+  utilization_percent?: number;
+  visible_memory_total_bytes?: number;
+  visible_memory_used_bytes?: number;
+}
+
+export interface LiveInterface {
+  rx_bytes_per_sec: number;
+  tx_bytes_per_sec: number;
+  rx_bytes_total: number;
+  tx_bytes_total: number;
+  rx_dropped: number;
+  rx_errors: number;
+  rx_packets: number;
+  tx_dropped: number;
+  tx_errors: number;
+  tx_packets: number;
+}
+
+export interface LiveMemory {
+  total_bytes: number;
+  used_bytes: number;
+  available_bytes: number;
+  free_bytes: number;
+  cached_bytes: number;
+  buffers_bytes: number;
+  shared_bytes: number;
+  swap_total_bytes: number;
+  swap_free_bytes: number;
+  zfs_arc_bytes: number;
+  docker_used_bytes: number;
+}
+
+export interface LiveSmart {
+  data: SmartData;
+  power?: DiskPowerData;
+}
+
 export interface LogicalVolume {
   attributes: string;
   fsType: string;
@@ -1311,14 +1538,14 @@ export interface LogicalVolume {
   vgName: string;
 }
 
-export interface MemoryDockerInfo {
-  used: number;
-}
-
-export interface MemoryInfoResponse {
-  docker: MemoryDockerInfo;
-  system: MemorySystemInfo;
-  zfs: MemoryZFSInfo;
+export interface MemoryInfo {
+  rss: number;
+  vms: number;
+  hwm?: number;
+  data?: number;
+  stack?: number;
+  locked?: number;
+  swap?: number;
 }
 
 export interface MemoryModule {
@@ -1329,17 +1556,6 @@ export interface MemoryModule {
   state: string;
   technology: string;
   type: string;
-}
-
-export interface MemorySystemInfo {
-  total: number;
-  active: number;
-  swapTotal: number;
-  swapFree: number;
-}
-
-export interface MemoryZFSInfo {
-  arc: number;
 }
 
 export interface MessageResponse {
@@ -1367,12 +1583,13 @@ export interface MonitoringCPUHistoryPoint {
 }
 
 export interface MonitoringConfig {
-  allow_remote_commands: boolean;
   collector_interval: string;
-  history_retention: string;
-  smart_refresh_interval: string;
+  disk_usage_cache: string;
   history: string;
+  history_intervals: Record<string, string>;
+  history_retention: string;
   listeners: MonitoringListener[];
+  smart_refresh_interval: string;
   version: number;
 }
 
@@ -1380,6 +1597,7 @@ export interface MonitoringConfigMeta {
   collector_interval: string;
   history_retention: string;
   history_plugins: string[];
+  history_intervals: Record<string, string>;
   path: string;
   source: string;
   version: number;
@@ -1387,11 +1605,12 @@ export interface MonitoringConfigMeta {
 
 export interface MonitoringConfigPatch {
   collector_interval?: string;
-  smart_refresh_interval?: string;
+  disk_usage_cache?: string;
   history?: string;
+  history_intervals?: Record<string, string>;
   history_retention?: string;
-  allow_remote_commands?: boolean;
   listeners?: MonitoringListener[];
+  smart_refresh_interval?: string;
 }
 
 export interface MonitoringConfigSetResult {
@@ -1413,6 +1632,10 @@ export interface MonitoringContainerSample {
   recv_bytes_per_sec: number;
   read_bytes_per_sec?: number;
   write_bytes_per_sec?: number;
+}
+
+export interface MonitoringDatabaseResult {
+  path: string;
 }
 
 export interface MonitoringDiskIOHistoryPoint {
@@ -1438,8 +1661,8 @@ export type MonitoringHistoryResolution =
 
 export interface MonitoringListener {
   address: string;
-  apis: string[];
   name: string;
+  plugins?: string[];
 }
 
 export interface MonitoringListenerStatus {
@@ -1448,6 +1671,21 @@ export interface MonitoringListenerStatus {
   apis: string[];
   effective_address: string;
   name: string;
+}
+
+export interface MonitoringLive {
+  captured_at_ms: number;
+  uptime_seconds: number;
+  cpu: LiveCPU;
+  memory: LiveMemory;
+  disks: Record<string, LiveDiskRates>;
+  disk_io: LiveDiskRates;
+  interfaces: Record<string, LiveInterface>;
+  filesystems: FilesystemInfo[];
+  sensors: SensorGroup[];
+  gpus: Record<string, LiveGPU>;
+  smart: Record<string, LiveSmart>;
+  containers: LiveContainers;
 }
 
 export interface MonitoringMemoryHistoryPoint {
@@ -1474,11 +1712,27 @@ export interface MonitoringNetworkRates {
   recv_bytes_per_sec: number;
 }
 
+export interface MonitoringProcessesResponse {
+  captured_at_ms: number;
+  count: Count;
+  items: Process[];
+}
+
+export interface MonitoringProgramsResponse {
+  captured_at_ms: number;
+  items: Program[];
+}
+
+export interface MonitoringSmartRefreshResult {
+  refreshed: boolean;
+}
+
 export interface MonitoringStatus {
   collector_interval: string;
   config: MonitoringConfigMeta;
   data_dir: string;
   db_path: string;
+  db_size_bytes: number;
   listeners?: MonitoringListenerStatus[];
   retention: Record<string, string>;
   smart_refresh_interval: string;
@@ -1498,11 +1752,6 @@ export interface MotherboardBaseboard {
 export interface MotherboardInfo {
   baseboard: MotherboardBaseboard;
   bios: MotherboardBIOS;
-  temperatures?: MotherboardTemperatures;
-}
-
-export interface MotherboardTemperatures {
-  sensors: Record<string, number>;
 }
 
 export interface MountpointNameRequest {
@@ -1553,6 +1802,47 @@ export interface NFSMount {
 
 export interface NTPServersRequest {
   servers: string[];
+}
+
+export interface NVMeSelfTestLog {
+  current_self_test_op?: SmartValue;
+  current_self_test_completion_percent?: SmartValue;
+  current_self_test_operation?: SmartValue;
+  current_self_test_completion?: SmartValue;
+  table?: NVMeSelfTestLogEntry[];
+}
+
+export interface NVMeSelfTestLogEntry {
+  power_on_hours?: SmartValue;
+  self_test_code?: SmartValue;
+  self_test_result?: SmartValue;
+}
+
+export interface NVMeSmartHealthInformationLog {
+  nsid?: number;
+  critical_warning: number;
+  temperature: number;
+  available_spare: number;
+  available_spare_threshold: number;
+  percentage_used: number;
+  data_units_read: number;
+  data_units_written: number;
+  host_reads: number;
+  host_writes: number;
+  controller_busy_time: number;
+  power_cycles: number;
+  power_on_hours: number;
+  unsafe_shutdowns: number;
+  media_errors: number;
+  num_err_log_entries: number;
+  warning_temp_time: number;
+  critical_comp_time: number;
+  temperature_sensors: number[];
+}
+
+export interface NVMeVersionInfo {
+  string?: string;
+  value?: number;
 }
 
 export interface NameRequest {
@@ -1619,7 +1909,6 @@ export interface NetworkBridgeOptions {
 export interface NetworkInterface {
   carrier?: boolean;
   config_backend?: string;
-  counters: NetworkInterfaceCounters;
   dns: string[];
   driver?: string;
   duplex: string;
@@ -1631,22 +1920,9 @@ export interface NetworkInterface {
   mtu: number;
   name: string;
   operstate: string;
-  rx_speed: number;
   speed: string;
   state: number;
-  tx_speed: number;
   type: string;
-}
-
-export interface NetworkInterfaceCounters {
-  rx_bytes: number;
-  rx_dropped: number;
-  rx_errors: number;
-  rx_packets: number;
-  tx_bytes: number;
-  tx_dropped: number;
-  tx_errors: number;
-  tx_packets: number;
 }
 
 export interface OfflineUpdatesResponse {
@@ -1740,12 +2016,34 @@ export interface PowerStatus {
   tuned_unit_file_state: string;
 }
 
-export interface ProcessInfo {
-  running: boolean;
+export interface Process {
+  pid: number;
+  name: string;
+  cmdline?: string[];
+  username?: string;
+  status?: string;
+  num_threads?: number;
+  cpu_percent: number;
+  memory_percent: number;
+  memory_info: MemoryInfo;
+  nice?: number;
+  create_time?: number;
+  io_counters: IOCounters;
+  container_id?: string;
+  container_name?: string;
 }
 
 export interface ProfileRequest {
   profile: string;
+}
+
+export interface Program {
+  name: string;
+  count: number;
+  cpu_percent: number;
+  memory_percent: number;
+  memory_rss_bytes: number;
+  pids?: number[];
 }
 
 export interface ProjectNameRequest {
@@ -1794,6 +2092,7 @@ export interface SensorGroup {
 }
 
 export interface SensorReading {
+  field?: string;
   kind: SensorReadingKind;
   label: string;
   unit: string;
@@ -1854,6 +2153,61 @@ export interface ShareUpdateSambaRequest {
   properties: Record<string, string>;
 }
 
+export interface SmartAttribute {
+  id?: number;
+  name: string;
+  value?: number;
+  worst?: number;
+  threshold?: number;
+  raw_value: number;
+  raw_string?: string;
+  when_failed?: string;
+}
+
+export interface SmartData {
+  model_name?: string;
+  serial_number?: string;
+  firmware_version?: string;
+  capacity_bytes?: number;
+  smart_status?: string;
+  disk_name?: string;
+  disk_type?: string;
+  temperature_celsius?: number;
+  attributes?: SmartAttribute[];
+  device?: DeviceInfo;
+  ata_smart_self_test_log?: SmartSelfTestLog;
+  nvme_version?: NVMeVersionInfo;
+  nvme_number_of_namespaces?: number;
+  nvme_smart_health_information_log?: NVMeSmartHealthInformationLog;
+  nvme_self_test_log?: NVMeSelfTestLog;
+  power_on_time?: SmartPowerOnTime;
+  power_cycle_count?: number;
+}
+
+export interface SmartPowerOnTime {
+  hours?: number;
+  minutes?: number;
+}
+
+export interface SmartSelfTestEntry {
+  num?: number;
+  type?: SmartValue;
+  status?: SmartValue;
+  lifetime_hours?: number;
+}
+
+export interface SmartSelfTestLog {
+  standard?: SmartSelfTestStandardLog;
+}
+
+export interface SmartSelfTestStandardLog {
+  revision?: number;
+  table?: SmartSelfTestEntry[];
+  count?: number;
+  error_count_total?: number;
+  error_count_outdated?: number;
+}
+
 export interface SmartTestProgress {
   type: string;
   device?: string;
@@ -1870,6 +2224,13 @@ export interface SmartTestResult {
   status: string;
   message: string;
   duration?: number;
+}
+
+export interface SmartValue {
+  value?: number;
+  string?: string;
+  passed?: boolean;
+  remaining_percent?: number;
 }
 
 export interface Socket {
@@ -1890,6 +2251,28 @@ export interface StackNameRequest {
   stackName: string;
 }
 
+export interface StorageBlockDevice {
+  path: string;
+  name: string;
+  kernelName: string;
+  type: string;
+  sizeBytes: number;
+  fsType: string;
+  mountpoints: string[];
+  parents: string[];
+  model: string;
+  serial: string;
+  transport: string;
+  readOnly: boolean;
+}
+
+export interface StorageMount {
+  device: string;
+  path: string;
+  fsType: string;
+  readOnly: boolean;
+}
+
 export interface StorageMountResult {
   success: boolean;
   mountpoint?: string;
@@ -1900,6 +2283,11 @@ export interface StoragePathResult {
   success: boolean;
   mountpoint?: string;
   path?: string;
+}
+
+export interface StorageTopologyInventory {
+  devices: StorageBlockDevice[];
+  mounts: StorageMount[];
 }
 
 export interface StorageWarningResult {
@@ -2512,19 +2900,29 @@ export interface LinuxIOSchema {
       request: ProjectNameRequest;
       result: ComposeActionResult;
     };
+    connect_network: {
+      input: [request: DockerNetworkConnectRequest];
+      request: DockerNetworkConnectRequest;
+      result: void;
+    };
     connect_to_proxy: {
       input: [containerId: string];
       request: ContainerIDRequest;
       result: MessageResponse;
     };
+    create_container: {
+      input: [request: ContainerCreateRequest];
+      request: ContainerCreateRequest;
+      result: ContainerConfigurationResult;
+    };
     create_network: {
-      input: [name: string];
-      request: NameRequest;
+      input: [request: DockerNetworkCreateRequest];
+      request: DockerNetworkCreateRequest;
       result: void;
     };
     create_volume: {
-      input: [name: string];
-      request: NameRequest;
+      input: [request: DockerVolumeCreateRequest];
+      request: DockerVolumeCreateRequest;
       result: void;
     };
     delete_image: {
@@ -2544,6 +2942,16 @@ export interface LinuxIOSchema {
       result: void;
     };
     disable_caddy: { input: []; request: void; result: MessageResponse };
+    disconnect_network: {
+      input: [request: DockerNetworkDisconnectRequest];
+      request: DockerNetworkDisconnectRequest;
+      result: void;
+    };
+    edit_container: {
+      input: [request: ContainerEditRequest];
+      request: ContainerEditRequest;
+      result: ContainerConfigurationResult;
+    };
     enable_caddy: { input: []; request: void; result: MessageResponse };
     get_caddy_status: { input: []; request: void; result: CaddyStatusResponse };
     get_compose_file_path: {
@@ -2582,6 +2990,16 @@ export interface LinuxIOSchema {
       request: IdentifierRequest;
       result: DockerIconURIResponse;
     };
+    inspect_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: ContainerInspectInfo;
+    };
+    kill_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
+    };
     list_compose_projects: {
       input: [];
       request: void;
@@ -2591,10 +3009,15 @@ export interface LinuxIOSchema {
     list_images: { input: []; request: void; result: DockerImage[] };
     list_networks: { input: []; request: void; result: DockerNetwork[] };
     list_volumes: { input: []; request: void; result: DockerVolume[] };
-    reload_caddy: { input: []; request: void; result: MessageResponse };
-    remove_container: {
+    pause_container: {
       input: [containerId: string];
       request: ContainerIDRequest;
+      result: void;
+    };
+    reload_caddy: { input: []; request: void; result: MessageResponse };
+    remove_container: {
+      input: [request: ContainerRemoveRequest];
+      request: ContainerRemoveRequest;
       result: void;
     };
     restart_container: {
@@ -2631,6 +3054,11 @@ export interface LinuxIOSchema {
       input: [request: DockerSystemPruneRequest];
       request: DockerSystemPruneRequest;
       result: DockerSystemPruneResponse;
+    };
+    unpause_container: {
+      input: [containerId: string];
+      request: ContainerIDRequest;
+      result: void;
     };
     update_container: {
       input: [request: DockerContainerUpdateRequest];
@@ -2802,6 +3230,11 @@ export interface LinuxIOSchema {
   };
 
   monitoring: {
+    check_database: {
+      input: [];
+      request: void;
+      result: MonitoringDatabaseResult;
+    };
     get_config: { input: []; request: void; result: MonitoringConfig };
     get_container_history: {
       input: [request: MonitoringHistoryRequest];
@@ -2818,6 +3251,7 @@ export interface LinuxIOSchema {
       request: MonitoringHistoryRequest;
       result: MonitoringDiskIOHistoryPoint[];
     };
+    get_live: { input: []; request: void; result: MonitoringLive };
     get_memory_history: {
       input: [request: MonitoringHistoryRequest];
       request: MonitoringHistoryRequest;
@@ -2828,7 +3262,27 @@ export interface LinuxIOSchema {
       request: MonitoringHistoryRequest;
       result: MonitoringNetworkHistoryPoint[];
     };
+    get_processes: {
+      input: [];
+      request: void;
+      result: MonitoringProcessesResponse;
+    };
+    get_programs: {
+      input: [];
+      request: void;
+      result: MonitoringProgramsResponse;
+    };
     get_status: { input: []; request: void; result: MonitoringStatus };
+    maintain_database: {
+      input: [];
+      request: void;
+      result: MonitoringDatabaseResult;
+    };
+    refresh_smart: {
+      input: [];
+      request: void;
+      result: MonitoringSmartRefreshResult;
+    };
     restart: { input: []; request: void; result: void };
     set_config: {
       input: [request: MonitoringConfigPatch];
@@ -2868,7 +3322,6 @@ export interface LinuxIOSchema {
       request: void;
       result: NetworkBridgeOptions;
     };
-    get_interface_stats: { input: []; request: void; result: InterfaceStats[] };
     get_network_info: { input: []; request: void; result: NetworkInterface[] };
     revert_bridge_handoff: {
       input: [operationId: string];
@@ -2974,6 +3427,11 @@ export interface LinuxIOSchema {
       result: SuccessResponse;
     };
     get_drive_info: { input: []; request: void; result: ApiDisk[] };
+    get_topology: {
+      input: [];
+      request: void;
+      result: StorageTopologyInventory;
+    };
     list_cifs_mounts: { input: []; request: void; result: CIFSMount[] };
     list_cifs_shares: {
       input: [server: string];
@@ -3054,12 +3512,6 @@ export interface LinuxIOSchema {
       result: CapabilitiesResponse;
     };
     get_cpu_info: { input: []; request: void; result: CPUInfoResponse };
-    get_disk_throughput: {
-      input: [];
-      request: void;
-      result: DiskThroughputResponse;
-    };
-    get_fs_info: { input: []; request: void; result: FilesystemInfo[] };
     get_gpu_info: { input: []; request: void; result: GpuDevice[] };
     get_health_summary: {
       input: [];
@@ -3067,17 +3519,13 @@ export interface LinuxIOSchema {
       result: SystemHealthSummary;
     };
     get_host_info: { input: []; request: void; result: HostInfo };
-    get_memory_info: { input: []; request: void; result: MemoryInfoResponse };
     get_memory_modules: { input: []; request: void; result: MemoryModule[] };
     get_motherboard_info: { input: []; request: void; result: MotherboardInfo };
     get_pci_devices: { input: []; request: void; result: PCIDevice[] };
-    get_processes: { input: []; request: void; result: ProcessInfo[] };
-    get_sensor_info: { input: []; request: void; result: SensorGroup[] };
     get_server_time: { input: []; request: void; result: string };
     get_system_info: { input: []; request: void; result: SystemInfo };
     get_timezones: { input: []; request: void; result: string[] };
     get_updates_fast: { input: []; request: void; result: UpdatesFastResponse };
-    get_uptime: { input: []; request: void; result: number };
     install_capability: {
       input: [capability: string];
       request: CapabilityRequest;
@@ -3353,12 +3801,23 @@ export interface LinuxIOCallSchema {
     request: ProjectNameRequest;
     result: ComposeActionResult;
   };
+  "docker.connect_network": {
+    request: DockerNetworkConnectRequest;
+    result: void;
+  };
   "docker.connect_to_proxy": {
     request: ContainerIDRequest;
     result: MessageResponse;
   };
-  "docker.create_network": { request: NameRequest; result: void };
-  "docker.create_volume": { request: NameRequest; result: void };
+  "docker.create_container": {
+    request: ContainerCreateRequest;
+    result: ContainerConfigurationResult;
+  };
+  "docker.create_network": {
+    request: DockerNetworkCreateRequest;
+    result: void;
+  };
+  "docker.create_volume": { request: DockerVolumeCreateRequest; result: void };
   "docker.delete_image": { request: ImageIDRequest; result: void };
   "docker.delete_network": { request: IDRequest; result: void };
   "docker.delete_stack": {
@@ -3367,6 +3826,14 @@ export interface LinuxIOCallSchema {
   };
   "docker.delete_volume": { request: NameRequest; result: void };
   "docker.disable_caddy": { request: void; result: MessageResponse };
+  "docker.disconnect_network": {
+    request: DockerNetworkDisconnectRequest;
+    result: void;
+  };
+  "docker.edit_container": {
+    request: ContainerEditRequest;
+    result: ContainerConfigurationResult;
+  };
   "docker.enable_caddy": { request: void; result: MessageResponse };
   "docker.get_caddy_status": { request: void; result: CaddyStatusResponse };
   "docker.get_compose_file_path": {
@@ -3395,13 +3862,19 @@ export interface LinuxIOCallSchema {
     request: IdentifierRequest;
     result: DockerIconURIResponse;
   };
+  "docker.inspect_container": {
+    request: ContainerIDRequest;
+    result: ContainerInspectInfo;
+  };
+  "docker.kill_container": { request: ContainerIDRequest; result: void };
   "docker.list_compose_projects": { request: void; result: ComposeProject[] };
   "docker.list_containers": { request: void; result: ContainerInfo[] };
   "docker.list_images": { request: void; result: DockerImage[] };
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };
+  "docker.pause_container": { request: ContainerIDRequest; result: void };
   "docker.reload_caddy": { request: void; result: MessageResponse };
-  "docker.remove_container": { request: ContainerIDRequest; result: void };
+  "docker.remove_container": { request: ContainerRemoveRequest; result: void };
   "docker.restart_container": { request: ContainerIDRequest; result: void };
   "docker.set_container_auto_update": {
     request: DockerContainerAutoUpdateOptions;
@@ -3421,6 +3894,7 @@ export interface LinuxIOCallSchema {
     request: DockerSystemPruneRequest;
     result: DockerSystemPruneResponse;
   };
+  "docker.unpause_container": { request: ContainerIDRequest; result: void };
   "docker.validate_compose": {
     request: ValidateComposeRequest;
     result: ValidateComposeResponse;
@@ -3476,6 +3950,10 @@ export interface LinuxIOCallSchema {
     request: GeneralLogsPageRequest;
     result: GeneralLogsPageResponse;
   };
+  "monitoring.check_database": {
+    request: void;
+    result: MonitoringDatabaseResult;
+  };
   "monitoring.get_config": { request: void; result: MonitoringConfig };
   "monitoring.get_container_history": {
     request: MonitoringHistoryRequest;
@@ -3489,6 +3967,7 @@ export interface LinuxIOCallSchema {
     request: MonitoringHistoryRequest;
     result: MonitoringDiskIOHistoryPoint[];
   };
+  "monitoring.get_live": { request: void; result: MonitoringLive };
   "monitoring.get_memory_history": {
     request: MonitoringHistoryRequest;
     result: MonitoringMemoryHistoryPoint[];
@@ -3497,7 +3976,23 @@ export interface LinuxIOCallSchema {
     request: MonitoringHistoryRequest;
     result: MonitoringNetworkHistoryPoint[];
   };
+  "monitoring.get_processes": {
+    request: void;
+    result: MonitoringProcessesResponse;
+  };
+  "monitoring.get_programs": {
+    request: void;
+    result: MonitoringProgramsResponse;
+  };
   "monitoring.get_status": { request: void; result: MonitoringStatus };
+  "monitoring.maintain_database": {
+    request: void;
+    result: MonitoringDatabaseResult;
+  };
+  "monitoring.refresh_smart": {
+    request: void;
+    result: MonitoringSmartRefreshResult;
+  };
   "monitoring.restart": { request: void; result: void };
   "monitoring.set_config": {
     request: MonitoringConfigPatch;
@@ -3518,7 +4013,6 @@ export interface LinuxIOCallSchema {
     result: NetworkBridgeHandoffStatus;
   };
   "network.get_bridge_options": { request: void; result: NetworkBridgeOptions };
-  "network.get_interface_stats": { request: void; result: InterfaceStats[] };
   "network.get_network_info": { request: void; result: NetworkInterface[] };
   "network.revert_bridge_handoff": {
     request: NetworkBridgeHandoffOperationRequest;
@@ -3572,6 +4066,7 @@ export interface LinuxIOCallSchema {
     result: SuccessResponse;
   };
   "storage.get_drive_info": { request: void; result: ApiDisk[] };
+  "storage.get_topology": { request: void; result: StorageTopologyInventory };
   "storage.list_cifs_mounts": { request: void; result: CIFSMount[] };
   "storage.list_cifs_shares": { request: ServerRequest; result: string[] };
   "storage.list_lvs": { request: void; result: LogicalVolume[] };
@@ -3621,25 +4116,16 @@ export interface LinuxIOCallSchema {
   };
   "system.get_capabilities": { request: void; result: CapabilitiesResponse };
   "system.get_cpu_info": { request: void; result: CPUInfoResponse };
-  "system.get_disk_throughput": {
-    request: void;
-    result: DiskThroughputResponse;
-  };
-  "system.get_fs_info": { request: void; result: FilesystemInfo[] };
   "system.get_gpu_info": { request: void; result: GpuDevice[] };
   "system.get_health_summary": { request: void; result: SystemHealthSummary };
   "system.get_host_info": { request: void; result: HostInfo };
-  "system.get_memory_info": { request: void; result: MemoryInfoResponse };
   "system.get_memory_modules": { request: void; result: MemoryModule[] };
   "system.get_motherboard_info": { request: void; result: MotherboardInfo };
   "system.get_pci_devices": { request: void; result: PCIDevice[] };
-  "system.get_processes": { request: void; result: ProcessInfo[] };
-  "system.get_sensor_info": { request: void; result: SensorGroup[] };
   "system.get_server_time": { request: void; result: string };
   "system.get_system_info": { request: void; result: SystemInfo };
   "system.get_timezones": { request: void; result: string[] };
   "system.get_updates_fast": { request: void; result: UpdatesFastResponse };
-  "system.get_uptime": { request: void; result: number };
   "system.list_failed_login_events": {
     request: FailedLoginEventsRequest;
     result: AccountUserLogin[];

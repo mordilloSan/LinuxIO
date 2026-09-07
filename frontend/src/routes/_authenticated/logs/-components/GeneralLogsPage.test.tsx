@@ -133,14 +133,48 @@ describe("GeneralLogsPage cursor pagination", () => {
     mocks.closeStream.mockImplementation(() => {
       mocks.streamRef.current = null;
     });
+  });
 
-    let nextFrame = 0;
-    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      const id = ++nextFrame;
-      queueMicrotask(() => callback(0));
-      return id;
+  it("renders the first frame at once, then batches rows and drops duplicate cursors", () => {
+    vi.useFakeTimers();
+    render(<GeneralLogsPage />, { queryClient });
+
+    // The first frame also clears the loader, so it lands in the same commit
+    // instead of leaving an empty table up until the flush timer fires.
+    act(() => {
+      mocks.streamOptions?.onText(
+        `${journalEntry("a", 1_000_000)}\n${journalEntry("a", 1_000_000)}\n`,
+      );
     });
-    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const scrollElement = screen.getByTestId("logs-scroll");
+    expect(scrollElement).toHaveAttribute("data-row-ids", "a");
+
+    act(() => {
+      mocks.streamOptions?.onText(
+        `${journalEntry("a", 1_000_000)}\n${journalEntry("b", 2_000_000)}\n`,
+      );
+      vi.advanceTimersByTime(99);
+    });
+    expect(scrollElement).toHaveAttribute("data-row-ids", "a");
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(scrollElement).toHaveAttribute("data-row-ids", "b,a");
+
+    // backlog_complete clears the loader too, so it flushes what is pending.
+    act(() => {
+      mocks.streamOptions?.onText(`${journalEntry("c", 3_000_000)}\n`);
+      mocks.streamOptions?.onProgress({
+        type: "backlog_complete",
+        count: 3,
+        truncated: false,
+      });
+    });
+    expect(scrollElement).toHaveAttribute("data-row-ids", "c,b,a");
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(scrollElement).toHaveAttribute("data-row-ids", "c,b,a");
   });
 
   it("prefetches a strictly older page near the bottom and appends it", async () => {
@@ -158,7 +192,7 @@ describe("GeneralLogsPage cursor pagination", () => {
       );
       mocks.streamOptions?.onProgress({
         type: "backlog_complete",
-        count: 500,
+        count: 1500,
         truncated: false,
       });
     });
@@ -230,7 +264,7 @@ describe("GeneralLogsPage cursor pagination", () => {
         fieldFilters: [],
         follow: true,
         identifier: "",
-        lines: "500",
+        lines: "1500",
         priority: "",
         timePeriod: "24h",
       },
@@ -275,7 +309,7 @@ describe("GeneralLogsPage cursor pagination", () => {
     act(() => {
       mocks.streamOptions?.onProgress({
         type: "backlog_complete",
-        count: 500,
+        count: 1500,
         truncated: false,
       });
     });

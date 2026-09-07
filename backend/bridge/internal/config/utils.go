@@ -110,7 +110,7 @@ func (o fileOwnership) ensureFile(path string) error {
 
 func (o fileOwnership) writeAtomic(path string, data []byte, mode fs.FileMode) error {
 	if o.enforce {
-		return utils.WriteFileAtomicOwned(path, data, mode, o.uid, o.gid)
+		return utils.WriteFileAtomic(path, data, mode, o.uid, o.gid)
 	}
 	return utils.WriteFileAtomic(path, data, mode)
 }

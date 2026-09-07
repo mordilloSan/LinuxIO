@@ -1,0 +1,9 @@
+version: 1
+collector:
+  interval: 1m0s
+  smart_refresh_interval: 1h0m0s
+  disk_usage_cache: 0s
+history:
+  retention: 720h0m0s
+  plugins: [cpu, mem, swap, diskio, network, containers, container_telemetry]
+listeners: []

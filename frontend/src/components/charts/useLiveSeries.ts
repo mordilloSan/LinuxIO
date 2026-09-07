@@ -22,7 +22,7 @@ export interface LiveSeriesPoint {
 /**
  * The acquire → stale-check → backfill plumbing shared by the dashboard live
  * charts. Returns the persistent TimeSeries for `ids` (same order); buffers
- * with no usable data are seeded from go-monitoring history via fetchHistory,
+ * with no usable data are seeded from linuxio-monitoring history via fetchHistory,
  * which receives the ready-made request and resolves backfill points per
  * series id. One fetch seeds all of a chart's series.
  */

@@ -4,7 +4,7 @@ import { TimeSeries } from "smoothie";
  * Module-level registry of smoothie TimeSeries so the dashboard live charts
  * survive route changes: the buffers outlive the components that render them.
  * A hard refresh still starts empty — that gap is covered by backfilling from
- * go-monitoring history (see backfillLiveSeries).
+ * linuxio-monitoring history (see backfillLiveSeries).
  */
 
 interface LiveSeriesEntry {

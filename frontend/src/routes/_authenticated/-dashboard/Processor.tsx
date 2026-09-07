@@ -1,7 +1,7 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { type CPUInfoResponse, linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio, type MonitoringLive } from "@/api";
 import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
@@ -10,20 +10,10 @@ import DashboardStatRows from "./DashboardStatRows";
 import ProcessorGraph from "./ProcessorGraph";
 import { formatSensorLabel } from "./sensors";
 
-const formatLoadAverage = (loadAverage?: {
-  load1: number;
-  load5: number;
-  load15: number;
-}): string =>
-  loadAverage
-    ? `${loadAverage.load1.toFixed(2)} / ${loadAverage.load5.toFixed(2)} / ${loadAverage.load15.toFixed(2)}`
+const formatLoadAverage = (loadAverage?: readonly number[]): string =>
+  loadAverage && loadAverage.length >= 3
+    ? `${loadAverage[0].toFixed(2)} / ${loadAverage[1].toFixed(2)} / ${loadAverage[2].toFixed(2)}`
     : "N/A";
-
-const selectAverageUsage = (CPUInfo: CPUInfoResponse): number =>
-  CPUInfo?.perCoreUsage?.length
-    ? CPUInfo.perCoreUsage.reduce((sum, cpu) => sum + cpu, 0) /
-      CPUInfo.perCoreUsage.length
-    : 0;
 
 const CpuTempBadge = () => {
   const { isEnabled: lmSensorsAvailable } = useCapability("lmSensorsAvailable");
@@ -32,13 +22,13 @@ const CpuTempBadge = () => {
   );
 
   const selectBadge = useCallback(
-    (CPUInfo: CPUInfoResponse) => {
-      const temperatures = CPUInfo?.temperature ?? {};
-      const keys = Object.keys(temperatures);
+    (live: MonitoringLive) => {
+      const values = live.cpu.temperatures ?? {};
+      const keys = Object.keys(values);
       const defaultSensor =
-        temperatures["package"] !== undefined ? "package" : keys[0];
+        values["package"] !== undefined ? "package" : keys[0];
       const effectiveSensor =
-        selectedSensor && temperatures[selectedSensor] !== undefined
+        selectedSensor && values[selectedSensor] !== undefined
           ? selectedSensor
           : defaultSensor;
 
@@ -46,9 +36,8 @@ const CpuTempBadge = () => {
         sensorKeys: keys,
         selected: effectiveSensor,
         text:
-          effectiveSensor !== undefined &&
-          temperatures[effectiveSensor] !== undefined
-            ? `${temperatures[effectiveSensor].toFixed(1)}°C`
+          effectiveSensor !== undefined && values[effectiveSensor] !== undefined
+            ? `${values[effectiveSensor].toFixed(1)}°C`
             : "--°C",
       };
     },
@@ -56,7 +45,7 @@ const CpuTempBadge = () => {
   );
 
   const { data: badge } = useSuspenseQuery({
-    ...linuxio.system.get_cpu_info,
+    ...linuxio.monitoring.get_live,
     refetchInterval: DASHBOARD_REFETCH_FAST_MS,
     select: selectBadge,
   });
@@ -80,13 +69,19 @@ const CpuTempBadge = () => {
 };
 
 const CpuStats = () => {
-  const { data: CPUInfo } = useSuspenseQuery({
-    ...linuxio.system.get_cpu_info,
-    refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+  const [{ data: CPUInfo }, { data: live }] = useSuspenseQueries({
+    queries: [
+      { ...linuxio.system.get_cpu_info, staleTime: CACHE_TTL_MS.ONE_DAY },
+      {
+        ...linuxio.monitoring.get_live,
+        refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+      },
+    ],
   });
 
-  const averageCpuUsage = selectAverageUsage(CPUInfo);
-  const peakCpuUsage = Math.max(...(CPUInfo?.perCoreUsage || [0]));
+  const averageCpuUsage = live.cpu.percent;
+  const perCoreUsage = live.cpu.per_core_percent ?? [];
+  const peakCpuUsage = perCoreUsage.length ? Math.max(...perCoreUsage) : 0;
 
   return (
     <DashboardStatRows
@@ -98,7 +93,7 @@ const CpuStats = () => {
         },
         {
           label: "Load",
-          value: formatLoadAverage(CPUInfo?.loadAverage),
+          value: formatLoadAverage(live.cpu.load_average),
         },
         {
           label: "Cores",
@@ -111,9 +106,9 @@ const CpuStats = () => {
 
 const CpuUsageGraph = () => {
   const { data: usage } = useSuspenseQuery({
-    ...linuxio.system.get_cpu_info,
+    ...linuxio.monitoring.get_live,
     refetchInterval: DASHBOARD_REFETCH_FAST_MS,
-    select: selectAverageUsage,
+    select: (live) => live.cpu.percent,
   });
 
   return <ProcessorGraph usage={usage} />;

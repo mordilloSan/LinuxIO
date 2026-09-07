@@ -20,9 +20,6 @@ const getInterfaceIcon = (type?: string) => {
   return "mdi:network";
 };
 
-const formatBps = (bps?: number) =>
-  typeof bps === "number" ? `${(bps / 1024).toFixed(1)} kB/s` : "N/A";
-
 export interface NetworkInterfaceCardProps {
   name: string;
   onToggle: (name: string) => void;
@@ -72,6 +69,22 @@ const NetworkInterfaceTitle = memo(function NetworkInterfaceTitle({
     </AppTypography>
   );
 });
+
+const NetworkInterfaceRates = ({ name }: { name: string }) => {
+  const { data: rates } = useQuery({
+    ...linuxio.monitoring.get_live,
+    refetchOnMount: false,
+    select: (live) => live.interfaces?.[name],
+  });
+  return (
+    <AppTypography color="text.secondary" noWrap variant="body2">
+      RX/s:{" "}
+      {rates ? `${(rates.rx_bytes_per_sec / 1024).toFixed(1)} kB/s` : "N/A"} |
+      TX/s:{" "}
+      {rates ? `${(rates.tx_bytes_per_sec / 1024).toFixed(1)} kB/s` : "N/A"}
+    </AppTypography>
+  );
+};
 
 const NetworkInterfaceCardContent = ({
   name,
@@ -133,10 +146,7 @@ const NetworkInterfaceCardContent = ({
               ? "No Carrier"
               : `Link Speed: ${iface.speed}${iface.duplex !== "unknown" ? ` (${iface.duplex})` : ""}`}
           </AppTypography>
-          <AppTypography color="text.secondary" noWrap variant="body2">
-            RX/s: {formatBps(iface.rx_speed)} | TX/s:{" "}
-            {formatBps(iface.tx_speed)}
-          </AppTypography>
+          <NetworkInterfaceRates name={name} />
         </div>
       </AppButton>
     </>

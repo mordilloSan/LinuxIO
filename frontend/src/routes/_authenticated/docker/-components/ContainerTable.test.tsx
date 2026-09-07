@@ -189,13 +189,13 @@ describe("ContainerTable mutation feedback", () => {
   });
 
   it.each([
-    ["Start", "start_container", "exited"],
-    ["Stop", "stop_container", "running"],
-    ["Restart", "restart_container", "running"],
-    ["Remove", "remove_container", "exited"],
+    ["Start", "start_container", "exited", "Starting"],
+    ["Stop", "stop_container", "running", "Stopping"],
+    ["Restart", "restart_container", "running", "Restarting"],
+    ["Remove", "remove_container", "exited", "Removing"],
   ] as const)(
     "keeps %s pending on only the affected row",
-    async (label, command, state) => {
+    async (label, command, state, progress) => {
       media.compact = false;
       const deferred = createDeferred<void>();
       const request = vi
@@ -210,28 +210,43 @@ describe("ContainerTable mutation feedback", () => {
       const alpha = within(rowNamed("alpha"));
       const beta = within(rowNamed("beta"));
 
-      await user.click(alpha.getByRole("button", { name: label }));
+      if (label === "Start" || label === "Stop") {
+        await user.click(alpha.getByRole("button", { name: label }));
+      } else {
+        await user.click(
+          alpha.getByRole("button", { name: "Actions for alpha" }),
+        );
+        await user.click(screen.getByRole("menuitem", { name: label }));
+        if (label === "Remove") {
+          await user.click(
+            screen.getByRole("button", { name: "Remove container" }),
+          );
+        }
+      }
 
+      const pendingTrigger = screen.getByRole("button", {
+        name: `${progress} alpha`,
+      });
       await waitFor(() => {
-        expect(alpha.getByRole("button", { name: label })).toBeDisabled();
+        expect(pendingTrigger).toBeDisabled();
       });
       expect(
-        within(alpha.getByRole("button", { name: label })).getByRole(
-          "progressbar",
-        ),
+        within(pendingTrigger).getByRole("progressbar"),
       ).toBeInTheDocument();
-      expect(alpha.getByRole("button", { name: "Restart" })).toBeDisabled();
-      expect(alpha.getByRole("button", { name: "Remove" })).toBeDisabled();
-      expect(beta.getByRole("button", { name: label })).toBeEnabled();
       expect(
-        within(beta.getByRole("button", { name: label })).queryByRole(
-          "progressbar",
-        ),
+        beta.getByRole("button", { name: "Actions for beta" }),
+      ).toBeEnabled();
+      expect(
+        within(
+          beta.getByRole("button", { name: "Actions for beta" }),
+        ).queryByRole("progressbar"),
       ).not.toBeInTheDocument();
       expect(request).toHaveBeenCalledWith(
         "docker",
         command,
-        { containerId: "alpha-id" },
+        label === "Remove"
+          ? { containerId: "alpha-id", force: false }
+          : { containerId: "alpha-id" },
         { retryPolicy: "none" },
       );
 
@@ -240,7 +255,7 @@ describe("ContainerTable mutation feedback", () => {
         await deferred.promise;
       });
       await waitFor(() => {
-        expect(alpha.getByRole("button", { name: label })).toBeEnabled();
+        expect(pendingTrigger).toBeEnabled();
       });
     },
   );

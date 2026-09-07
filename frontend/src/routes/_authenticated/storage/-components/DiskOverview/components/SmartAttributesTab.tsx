@@ -1,18 +1,20 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import type {
+  NVMeSmartHealthInformationLog,
+  SmartAttribute,
+  SmartData,
+} from "@/api";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppTypography from "@/components/ui/AppTypography";
 
-import type { SmartAttribute, SmartData } from "../types";
-import { formatDataUnits, formatPowerOnTime, getSmartNumber } from "../utils";
+import { formatDataUnits, formatPowerOnTime } from "../utils";
 
 interface SmartAttributesTabProps {
-  ataAttrs?: SmartAttribute[];
   isNvme: boolean;
   smartData?: SmartData;
   smartError?: string;
-  nvmeHealthRaw?: Record<string, unknown>;
 }
 
 interface SmartSummaryRow {
@@ -23,10 +25,7 @@ interface SmartSummaryRow {
 }
 
 const smartSummaryColumns: AppVirtualTableColumnDef<SmartSummaryRow>[] = [
-  {
-    accessorKey: "attribute",
-    header: "Attribute",
-  },
+  { accessorKey: "attribute", header: "Attribute" },
   {
     accessorKey: "value",
     header: "Value",
@@ -37,30 +36,12 @@ const smartSummaryColumns: AppVirtualTableColumnDef<SmartSummaryRow>[] = [
   },
 ];
 
-const ataAttributeColumns: AppVirtualTableColumnDef<SmartAttribute>[] = [
-  {
-    accessorKey: "id",
-    header: "#",
-  },
-  {
-    accessorKey: "name",
-    header: "Attribute",
-  },
-  {
-    accessorKey: "value",
-    header: "Value",
-    meta: { align: "right" },
-  },
-  {
-    accessorKey: "worst",
-    header: "Worst",
-    meta: { align: "right" },
-  },
-  {
-    accessorKey: "thresh",
-    header: "Thresh",
-    meta: { align: "right" },
-  },
+const smartAttributeColumns: AppVirtualTableColumnDef<SmartAttribute>[] = [
+  { accessorKey: "id", header: "#" },
+  { accessorKey: "name", header: "Attribute" },
+  { accessorKey: "value", header: "Value", meta: { align: "right" } },
+  { accessorKey: "worst", header: "Worst", meta: { align: "right" } },
+  { accessorKey: "threshold", header: "Threshold", meta: { align: "right" } },
   {
     id: "raw",
     header: "Raw",
@@ -68,206 +49,230 @@ const ataAttributeColumns: AppVirtualTableColumnDef<SmartAttribute>[] = [
       <span
         style={{
           color:
-            [5, 196, 197, 198].includes(row.original.id) &&
-            (getSmartNumber(row.original.raw?.value) ?? 0) > 0
+            [5, 196, 197, 198].includes(row.original.id ?? 0) &&
+            row.original.raw_value > 0
               ? "var(--app-palette-warning-main)"
               : "inherit",
         }}
       >
-        {row.original.raw?.string ||
-          getSmartNumber(row.original.raw?.value)?.toLocaleString()}
+        {row.original.raw_string || row.original.raw_value.toLocaleString()}
       </span>
     ),
     meta: { align: "right" },
   },
 ];
 
+const healthValueStyle = (value: number, limit: number): CSSProperties => ({
+  color:
+    value > limit
+      ? "var(--app-palette-error-main)"
+      : value > limit - 20
+        ? "var(--app-palette-warning-main)"
+        : "inherit",
+});
+
+const addNumberRow = (
+  rows: SmartSummaryRow[],
+  id: string,
+  attribute: string,
+  value: number | undefined,
+  format: (value: number) => ReactNode = (number) => number.toLocaleString(),
+  valueStyle?: CSSProperties,
+) => {
+  if (value === undefined) return;
+  rows.push({ id, attribute, value: format(value), valueStyle });
+};
+
+const nvmeRows = (health: NVMeSmartHealthInformationLog): SmartSummaryRow[] => {
+  const rows: SmartSummaryRow[] = [];
+  const temperatureSensors = health.temperature_sensors ?? [];
+  addNumberRow(
+    rows,
+    "critical_warning",
+    "Critical Warning",
+    health.critical_warning,
+    (value) => `0x${value.toString(16).padStart(2, "0").toUpperCase()}`,
+  );
+  addNumberRow(
+    rows,
+    "temperature",
+    "Temperature",
+    health.temperature,
+    (value) => `${value} Celsius`,
+    healthValueStyle(health.temperature, 70),
+  );
+  addNumberRow(
+    rows,
+    "available_spare",
+    "Available Spare",
+    health.available_spare,
+    (value) => `${value}%`,
+  );
+  addNumberRow(
+    rows,
+    "available_spare_threshold",
+    "Available Spare Threshold",
+    health.available_spare_threshold,
+    (value) => `${value}%`,
+  );
+  addNumberRow(
+    rows,
+    "percentage_used",
+    "Percentage Used",
+    health.percentage_used,
+    (value) => `${value}%`,
+    healthValueStyle(health.percentage_used, 90),
+  );
+  addNumberRow(
+    rows,
+    "data_units_read",
+    "Data Units Read",
+    health.data_units_read,
+    formatDataUnits,
+  );
+  addNumberRow(
+    rows,
+    "data_units_written",
+    "Data Units Written",
+    health.data_units_written,
+    formatDataUnits,
+  );
+  addNumberRow(rows, "host_reads", "Host Read Commands", health.host_reads);
+  addNumberRow(rows, "host_writes", "Host Write Commands", health.host_writes);
+  addNumberRow(
+    rows,
+    "controller_busy_time",
+    "Controller Busy Time",
+    health.controller_busy_time,
+  );
+  addNumberRow(rows, "power_cycles", "Power Cycles", health.power_cycles);
+  addNumberRow(
+    rows,
+    "power_on_hours",
+    "Power On Hours",
+    health.power_on_hours,
+    formatPowerOnTime,
+  );
+  addNumberRow(
+    rows,
+    "unsafe_shutdowns",
+    "Unsafe Shutdowns",
+    health.unsafe_shutdowns,
+  );
+  addNumberRow(
+    rows,
+    "media_errors",
+    "Media and Data Integrity Errors",
+    health.media_errors,
+    undefined,
+    health.media_errors > 0
+      ? { color: "var(--app-palette-error-main)" }
+      : undefined,
+  );
+  addNumberRow(
+    rows,
+    "num_err_log_entries",
+    "Error Information Log Entries",
+    health.num_err_log_entries,
+  );
+  addNumberRow(
+    rows,
+    "warning_temp_time",
+    "Warning Temperature Time",
+    health.warning_temp_time,
+  );
+  addNumberRow(
+    rows,
+    "critical_comp_time",
+    "Critical Temperature Time",
+    health.critical_comp_time,
+  );
+  addNumberRow(
+    rows,
+    "temperature_sensors",
+    "Temperature Sensors",
+    temperatureSensors.length,
+    () => `${temperatureSensors.join(", ")} Celsius`,
+  );
+  return rows;
+};
+
 export const SmartAttributesTab = ({
   isNvme,
   smartData,
   smartError,
-  nvmeHealthRaw,
-  ataAttrs,
 }: SmartAttributesTabProps) => {
-  if (isNvme && (nvmeHealthRaw || smartData)) {
-    const rows: SmartSummaryRow[] = [];
-    const addNumberRow = (
-      id: string,
-      attribute: string,
-      input: unknown,
-      format: (value: number) => ReactNode,
-      valueStyle?: CSSProperties,
-    ) => {
-      if (rows.some((row) => row.id === id)) return;
-      const value = getSmartNumber(input);
-      if (value === null) return;
-      rows.push({
-        attribute,
-        id,
-        value: format(value),
-        valueStyle,
-      });
-    };
-
-    const temperature = getSmartNumber(
-      nvmeHealthRaw?.temperature ?? smartData?.temperature?.current,
+  if (!smartData) {
+    return (
+      <AppTypography color={smartError ? "error" : "text.secondary"}>
+        {smartError
+          ? `SMART data unavailable: ${smartError}`
+          : "No SMART attributes available for this drive."}
+      </AppTypography>
     );
-    const percentageUsed = getSmartNumber(nvmeHealthRaw?.percentage_used);
-    const mediaErrors = getSmartNumber(nvmeHealthRaw?.media_errors);
-
-    addNumberRow(
-      "critical_warning",
-      "Critical Warning",
-      nvmeHealthRaw?.critical_warning,
-      (value) => `0x${value.toString(16).padStart(2, "0").toUpperCase()}`,
-    );
-    addNumberRow(
-      "temperature",
-      "Temperature",
-      nvmeHealthRaw?.temperature ?? smartData?.temperature?.current,
-      (value) => `${value} Celsius`,
-      {
-        color:
-          (temperature ?? 0) > 70
-            ? "var(--app-palette-error-main)"
-            : (temperature ?? 0) > 50
-              ? "var(--app-palette-warning-main)"
-              : "inherit",
-      },
-    );
-    addNumberRow(
-      "available_spare",
-      "Available Spare",
-      nvmeHealthRaw?.available_spare,
-      (value) => `${value}%`,
-    );
-    addNumberRow(
-      "available_spare_threshold",
-      "Available Spare Threshold",
-      nvmeHealthRaw?.available_spare_threshold,
-      (value) => `${value}%`,
-    );
-    addNumberRow(
-      "percentage_used",
-      "Percentage Used",
-      nvmeHealthRaw?.percentage_used,
-      (value) => `${value}%`,
-      {
-        color:
-          (percentageUsed ?? 0) > 90
-            ? "var(--app-palette-error-main)"
-            : (percentageUsed ?? 0) > 70
-              ? "var(--app-palette-warning-main)"
-              : "inherit",
-      },
-    );
-    addNumberRow(
-      "data_units_read",
-      "Data Units Read",
-      nvmeHealthRaw?.data_units_read,
-      (value) => formatDataUnits(value),
-    );
-    addNumberRow(
-      "data_units_written",
-      "Data Units Written",
-      nvmeHealthRaw?.data_units_written,
-      (value) => formatDataUnits(value),
-    );
-    addNumberRow(
-      "host_reads",
-      "Host Read Commands",
-      nvmeHealthRaw?.host_reads,
-      (value) => value.toLocaleString(),
-    );
-    addNumberRow(
-      "host_writes",
-      "Host Write Commands",
-      nvmeHealthRaw?.host_writes,
-      (value) => value.toLocaleString(),
-    );
-    addNumberRow(
-      "controller_busy_time",
-      "Controller Busy Time",
-      nvmeHealthRaw?.controller_busy_time,
-      (value) => value.toLocaleString(),
-    );
-    addNumberRow(
-      "power_cycles",
-      "Power Cycles",
-      nvmeHealthRaw?.power_cycles ?? smartData?.power_cycle_count,
-      (value) => value.toLocaleString(),
-    );
-    addNumberRow(
-      "power_on_hours",
-      "Power On Hours",
-      nvmeHealthRaw?.power_on_hours ?? smartData?.power_on_time?.hours,
-      (value) => formatPowerOnTime(value),
-    );
-    addNumberRow(
-      "unsafe_shutdowns",
-      "Unsafe Shutdowns",
-      nvmeHealthRaw?.unsafe_shutdowns,
-      (value) => value.toLocaleString(),
-    );
-    addNumberRow(
-      "media_errors",
-      "Media and Data Integrity Errors",
-      nvmeHealthRaw?.media_errors,
-      (value) => value.toLocaleString(),
-      {
-        color:
-          (mediaErrors ?? 0) > 0 ? "var(--app-palette-error-main)" : "inherit",
-      },
-    );
-    addNumberRow(
-      "num_err_log_entries",
-      "Error Information Log Entries",
-      nvmeHealthRaw?.num_err_log_entries,
-      (value) => value.toLocaleString(),
-    );
-
-    if (rows.length > 0) {
-      return (
-        <AppVirtualTable
-          ariaLabel="NVMe SMART attributes"
-          columns={smartSummaryColumns}
-          data={rows}
-          density="compact"
-          emptyMessage="No SMART attributes available for this drive."
-          fillAvailable={false}
-          getRowId={(row) => row.id}
-          maxHeight={400}
-          variant="embedded"
-        />
-      );
-    }
   }
 
-  if (ataAttrs && ataAttrs.length > 0) {
+  const health = smartData.nvme_smart_health_information_log;
+  if (isNvme && health) {
     return (
       <AppVirtualTable
-        ariaLabel="ATA SMART attributes"
-        columns={ataAttributeColumns}
-        data={ataAttrs}
+        ariaLabel="NVMe SMART attributes"
+        columns={smartSummaryColumns}
+        data={nvmeRows(health)}
         density="compact"
         emptyMessage="No SMART attributes available for this drive."
         fillAvailable={false}
-        getRowId={(attr) => String(attr.id)}
+        getRowId={(row) => row.id}
         maxHeight={400}
         variant="embedded"
       />
     );
   }
 
-  if (smartError) {
+  if (smartData.attributes && smartData.attributes.length > 0) {
     return (
-      <AppTypography color="error">
-        SMART data unavailable: {smartError}
-      </AppTypography>
+      <AppVirtualTable
+        ariaLabel="ATA SMART attributes"
+        columns={smartAttributeColumns}
+        data={smartData.attributes}
+        density="compact"
+        emptyMessage="No SMART attributes available for this drive."
+        fillAvailable={false}
+        getRowId={(attribute) => String(attribute.id ?? attribute.name)}
+        maxHeight={400}
+        variant="embedded"
+      />
     );
   }
 
-  return (
+  const summary: SmartSummaryRow[] = [];
+  addNumberRow(
+    summary,
+    "temperature",
+    "Temperature",
+    smartData.temperature_celsius,
+    (value) => `${value} Celsius`,
+  );
+  if (smartData.smart_status) {
+    summary.push({
+      id: "health",
+      attribute: "SMART Health",
+      value: smartData.smart_status,
+    });
+  }
+  return summary.length > 0 ? (
+    <AppVirtualTable
+      ariaLabel="SMART summary"
+      columns={smartSummaryColumns}
+      data={summary}
+      density="compact"
+      emptyMessage="No SMART attributes available for this drive."
+      fillAvailable={false}
+      getRowId={(row) => row.id}
+      maxHeight={180}
+      variant="embedded"
+    />
+  ) : (
     <AppTypography color="text.secondary">
       No SMART attributes available for this drive.
     </AppTypography>

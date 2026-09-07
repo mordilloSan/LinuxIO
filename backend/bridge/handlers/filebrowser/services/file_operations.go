@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -82,7 +81,7 @@ func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrit
 }
 
 func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks) error {
-	if isOperationCancelled(opts) {
+	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
@@ -100,7 +99,7 @@ func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.Fi
 }
 
 func copyDirEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, entry os.DirEntry, opts *ipc.OperationCallbacks) error {
-	if isOperationCancelled(opts) {
+	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
@@ -158,7 +157,7 @@ func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) er
 
 // copySingleFileWithCallbacks handles copying a single file with progress callbacks.
 func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, mode os.FileMode, opts *ipc.OperationCallbacks) error {
-	if isOperationCancelled(opts) {
+	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
@@ -182,7 +181,7 @@ func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, mode 
 	}
 	defer dst.Close()
 
-	if err := copyFileDataWithCallbacks(src, dst, opts); err != nil {
+	if err := copyWithCallbacks(dst, src, opts); err != nil {
 		return err
 	}
 
@@ -193,34 +192,9 @@ func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, mode 
 	return nil
 }
 
-func copyFileDataWithCallbacks(src io.Reader, dst io.Writer, opts *ipc.OperationCallbacks) error {
-	buf := make([]byte, 32*1024)
-	for {
-		if isOperationCancelled(opts) {
-			return ipc.ErrAborted
-		}
-
-		n, readErr := src.Read(buf)
-		if n > 0 {
-			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
-				return writeErr
-			}
-			reportOperationProgress(opts, int64(n))
-		}
-
-		if readErr == io.EOF {
-			return nil
-		}
-		if readErr != nil {
-			return readErr
-		}
-	}
-}
-
 // copyDirectoryWithCallbacks handles copying directories recursively with progress callbacks.
 func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *ipc.OperationCallbacks) error {
-	// Check for cancellation
-	if opts != nil && opts.Cancel != nil && opts.Cancel() {
+	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
@@ -321,7 +295,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return validateErr
 	}
 
-	if isOperationCancelled(opts) {
+	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
@@ -343,7 +317,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return err
 	}
 
-	if isOperationCancelled(opts) {
+	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
@@ -371,18 +345,8 @@ func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCall
 		}
 	}
 
-	reportOperationProgress(opts, totalSize)
+	opts.ReportProgress(totalSize)
 	return true, nil
-}
-
-func isOperationCancelled(opts *ipc.OperationCallbacks) bool {
-	return opts != nil && opts.Cancel != nil && opts.Cancel()
-}
-
-func reportOperationProgress(opts *ipc.OperationCallbacks, bytes int64) {
-	if opts != nil && opts.Progress != nil {
-		opts.Progress(bytes)
-	}
 }
 
 type DeleteOptions struct {

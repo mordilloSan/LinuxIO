@@ -73,6 +73,14 @@ unstable column defs; see the note below.
 **Layout mode owns the press.** While `dnd.editing` is open, a click neither
 expands nor selects — the press belongs to the drag.
 
+Tables without `dnd` use the plain row renderer and mount no sortable hooks.
+Disabling a sortable hook still registers nodes and effects; keeping it out of
+plain rows reduces the work when fast scrolling mounts a new viewport.
+
+While scrolling, fallback stripes fill only the unrendered gaps above and below
+the mounted rows. Painting them beneath translucent rows would double their
+tint. The gap bounds follow virtualizer measurements, including detail resizing.
+
 **A click waits only when it has to.** When a table binds *both* a click action
 and `onRowDoubleClick`, the click is deferred by `ROW_DOUBLE_CLICK_MS` and
 cancelled if a double click follows; otherwise the first click of a double click
@@ -120,6 +128,18 @@ Keep the column array stable and pass volatile per-row state (selection, pending
 flags, expansion sets) through context, the way
 [`ContainerTable`](../frontend/src/routes/_authenticated/docker/-components/ContainerTable.tsx)
 does. `meta.getCellRenderKey` then narrows which cells re-render.
+
+`meta.deferTooltipWhileScrolling` defers automatic chip/text tooltips when a
+scroll event jumps at least one viewport. The normal cell renderer preserves
+badge colours, typography and truncation. Logs opts in for priority, timestamp
+and message; service links and disclosure buttons remain available. The
+virtualizer's normal idle reset restores tooltips and click-to-copy. Expanded
+rows and tables with focused controls keep their tooltips. Small wheel steps
+and nested scroll events do not activate this mode.
+
+Closed `AppTooltip` triggers keep only interaction state. Hover or Tab focus
+mounts the delayed positioning controller without replacing the trigger or its
+children; leaving, blurring or unmounting cancels its timer and listeners.
 
 ## Adding a table
 

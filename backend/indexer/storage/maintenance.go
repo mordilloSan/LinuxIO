@@ -123,7 +123,28 @@ func PruneOldIndexes(ctx context.Context, db *sql.DB, keepLatest int) (PruneStat
 	stats.DeletedEntries = entriesToDelete
 	stats.Duration = time.Since(start).Truncate(time.Millisecond)
 
+	if err := incrementalVacuum(ctx, db); err != nil {
+		slog.Warn("incremental vacuum failed after pruning", "err", err)
+	}
+
 	return stats, nil
+}
+
+// incrementalVacuum reclaims the whole freelist and truncates the file.
+// The pragma must be drained: Exec only steps once and frees one page.
+func incrementalVacuum(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `PRAGMA incremental_vacuum;`)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("incremental_vacuum rows close failed", "err", closeErr)
+		}
+	}()
+	for rows.Next() {
+	}
+	return rows.Err()
 }
 
 // deleteIndexesWithFTSRebuild runs a cascading index delete with the FTS sync

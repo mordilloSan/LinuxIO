@@ -36,24 +36,42 @@ export const DetailRow = ({
   label,
   children,
   noBorder,
+  split = false,
 }: {
   label: string;
   children: ReactNode;
   noBorder?: boolean;
+  split?: boolean;
 }) => (
   <div
     className="svc-detail-row"
     style={{
-      display: "flex",
+      display: split ? "grid" : "flex",
       padding: "3px 0",
       borderTop: noBorder ? undefined : "1px solid var(--app-palette-divider)",
       alignItems: "baseline",
+      columnGap: split ? "var(--app-space-4)" : undefined,
+      gridTemplateColumns: split ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined,
+      minWidth: 0,
     }}
   >
-    <AppTypography component="span" style={labelStyle} variant="caption">
+    <AppTypography
+      component="span"
+      style={{
+        ...labelStyle,
+        ...(split && { minWidth: 0, width: "auto" }),
+      }}
+      noWrap={split}
+      title={split ? label : undefined}
+      variant="caption"
+    >
       {label}
     </AppTypography>
-    <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+    <div
+      style={{ flex: 1, minWidth: 0, textAlign: split ? "right" : undefined }}
+    >
+      {children}
+    </div>
   </div>
 );
 
