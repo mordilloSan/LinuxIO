@@ -997,8 +997,8 @@ deadcode: ensure-deadcode
 	@$(MAKE) --no-print-directory deadcode-only
 
 # Scan with tests for wholly unreachable code, then without tests to surface
-# production APIs kept alive only by tests. testdbus is deliberately test-only
-# cross-package infrastructure and is the sole production-scan exclusion.
+# production APIs kept alive only by tests. Exclude intentional cross-package
+# test helpers from the production scan only; the test scan still checks them.
 deadcode-only:
 	@$(PRINTC) "$(COLOR_CYAN)🔎 Scanning backend for dead code (informational)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
@@ -1013,7 +1013,7 @@ deadcode-only:
 			cache_key="$$( \
 				{ \
 					printf '%s\n' 'linuxio-deadcode-cache-v1' '-test ./...' './...' \
-						'exclude bridge/internal/dbusclient/testdbus/'; \
+						'exclude cross-package test helpers'; \
 					$(sha256_cmd) < "$(repo_root)/Makefile"; \
 					$(sha256_cmd) < "$(deadcode)"; \
 					$(sha256_cmd) < "$(GO_BIN)"; \
@@ -1073,7 +1073,10 @@ deadcode-only:
 		production_out="$$(cat "$$scan_dir/production.out")"; \
 		production_status="$$(cat "$$scan_dir/production.status")"; \
 		if [ $$production_status -eq 0 ]; then \
-			production_out="$$(printf '%s\n' "$$production_out" | grep -v '^bridge/internal/dbusclient/testdbus/' || true)"; \
+			production_out="$$(printf '%s\n' "$$production_out" | grep -Ev \
+				-e '^bridge/internal/dbusclient/testdbus/' \
+				-e '^common/peercred/peercred\.go:[0-9]+:[0-9]+: unreachable func: WithCredForTest$$' \
+				-e '^monitoring/internal/store/storetest/sample\.go:[0-9]+:[0-9]+: unreachable func: SampleCombinedData$$' || true)"; \
 		fi; \
 		if [ $$test_status -ne 0 ] || [ $$production_status -ne 0 ]; then \
 			$(PRINTC) "$(COLOR_YELLOW)⚠️  deadcode scan could not complete (informational, not failing):$(COLOR_RESET)"; \
