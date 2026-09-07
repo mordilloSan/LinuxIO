@@ -40,6 +40,25 @@ const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;
 // the top, trimmed to the next newline so the buffer starts on a whole line.
 const MAX_LOG_BUFFER_CHARS = 512 * 1024;
 
+interface PendingLogs {
+  chunks: string[];
+  length: number;
+}
+
+export function appendPendingLogs(buffer: PendingLogs, text: string): void {
+  if (!text) return;
+  buffer.chunks.push(text);
+  buffer.length += text.length;
+  // Compact in batches so a suspended animation frame cannot grow the queue
+  // forever, without copying the retained tail on every incoming chunk.
+  if (buffer.length > 2 * MAX_LOG_BUFFER_CHARS) {
+    // Keep one extra raw character: appendLogs must still detect overflow and
+    // trim to a whole line at flush time, even when the displayed log is empty.
+    buffer.chunks = [buffer.chunks.join("").slice(-MAX_LOG_BUFFER_CHARS - 1)];
+    buffer.length = MAX_LOG_BUFFER_CHARS + 1;
+  }
+}
+
 function appendLogs(prev: string, text: string): string {
   const next = prev + text;
   if (next.length <= MAX_LOG_BUFFER_CHARS) {
@@ -67,7 +86,7 @@ export function useLogStream({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
-  const pendingLogsRef = useRef<string[]>([]);
+  const pendingLogsRef = useRef<PendingLogs>({ chunks: [], length: 0 });
   const logFlushFrameRef = useRef<number | null>(null);
   const hasReceivedData = useRef(false);
   const initialLoadTimeoutRef = useRef<number | null>(null);
@@ -97,9 +116,9 @@ export function useLogStream({
       logFlushFrameRef.current = null;
     }
     const pendingLogs = pendingLogsRef.current;
-    pendingLogsRef.current = [];
+    pendingLogsRef.current = { chunks: [], length: 0 };
     if (pendingLogs.length > 0) {
-      const nextLogs = pendingLogs.join("");
+      const nextLogs = pendingLogs.chunks.join("");
       setLogs((previous) => appendLogs(previous, nextLogs));
     }
   }, []);
@@ -109,7 +128,7 @@ export function useLogStream({
       window.cancelAnimationFrame(logFlushFrameRef.current);
       logFlushFrameRef.current = null;
     }
-    pendingLogsRef.current = [];
+    pendingLogsRef.current = { chunks: [], length: 0 };
   }, []);
 
   const handleStreamOpenError = useEffectEvent(() => {
@@ -126,7 +145,7 @@ export function useLogStream({
       clearInitialLoadTimeout();
       setIsLoading(false);
     }
-    pendingLogsRef.current.push(text);
+    appendPendingLogs(pendingLogsRef.current, text);
     if (logFlushFrameRef.current === null) {
       logFlushFrameRef.current = window.requestAnimationFrame(flushPendingLogs);
     }

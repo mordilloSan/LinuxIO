@@ -110,6 +110,8 @@ const NetworkGraph = ({ interfaceName, rx, tx }: NetworkGraphProps) => {
     return () => {
       clearInterval(intervalId);
       chart.stop();
+      chart.removeTimeSeries(rxSeries);
+      chart.removeTimeSeries(txSeries);
     };
   }, [chartNeutral, rxColor, txColor, rxSeries, txSeries]);
 

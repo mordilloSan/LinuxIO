@@ -97,6 +97,9 @@
 - [x] Implemented batch Tasks for copy, move, delete, and uploads.
 - [x] Implemented monitoring.
 - [x] Added virtualized rendering for logs and the file browser.
+- [x] Stopped live-chart series timers on cleanup while retaining history, and
+  bounded pending service and Docker log text without changing the retained
+  tail or frame-based flush timing.
 - [x] Fixed invalid PackageKit `InfoEnum` debug output.
 - [x] Closed the TanStack Router migration proposal as not worthwhile.
 - [x] Split the Iconify registry into shell and route-specific chunks.
