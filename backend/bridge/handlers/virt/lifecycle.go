@@ -2,7 +2,9 @@ package virt
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	libvirt "github.com/digitalocean/go-libvirt"
@@ -177,16 +179,24 @@ func deleteIfManagedDisk(conn libvirtConn, vmName string, disk apischema.VMDisk)
 		return false, nil
 	}
 	vol, err := conn.StorageVolLookupByPath(disk.Path)
-	if err != nil {
-		if !isStorageVolMissing(err) {
-			return false, fmt.Errorf("look up disk %s: %w", disk.Path, err)
+	switch {
+	case err == nil:
+	case !isStorageVolMissing(err):
+		return false, fmt.Errorf("look up disk %s: %w", disk.Path, err)
+	case disk.Path == filepath.Join(managedCloudPath, expectedName):
+		// Cloud disks and seeds can exist outside libvirt's volume inventory.
+		// Only unlink the exact LinuxIO-owned path, never a same-named volume elsewhere.
+		if removeErr := removeFile(disk.Path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return false, fmt.Errorf("delete disk %s: %w", disk.Path, removeErr)
 		}
+		return true, nil
+	default:
 		pool, poolErr := conn.StoragePoolLookupByName(defaultPoolName)
-		if poolErr != nil {
-			if !isStoragePoolMissing(poolErr) {
-				return false, fmt.Errorf("look up default storage pool: %w", poolErr)
-			}
+		if isStoragePoolMissing(poolErr) {
 			return false, nil
+		}
+		if poolErr != nil {
+			return false, fmt.Errorf("look up default storage pool: %w", poolErr)
 		}
 		vol, err = conn.StorageVolLookupByName(pool, expectedName)
 		if err != nil {

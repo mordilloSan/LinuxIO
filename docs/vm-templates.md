@@ -12,6 +12,9 @@ the create dialog can also select a specific saved version. A missing selected
 version fails instead of silently choosing or downloading a different one.
 Each VM receives an independent qcow2 disk under `linuxio/cloud-images`.
 Templates contain no VM login credentials or cloud-init seed data.
+Deleting a VM with **Delete LinuxIO-managed disks** selected removes its owned
+disk and cloud-init seed even when libvirt does not list them as storage volumes.
+Saved templates and external disks are preserved.
 
 **Download update** explicitly checks the publisher and saves a new version
 when needed. Home Assistant OS records the release tag and uses versioned
