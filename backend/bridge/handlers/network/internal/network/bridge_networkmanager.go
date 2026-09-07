@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 	"uuid"
 
@@ -249,10 +250,136 @@ func validateNetworkManagerHandoffSettings(settings map[string]map[string]godbus
 	if _, ok := settings["802-1x"]; ok {
 		return unsupportedf("802.1X NetworkManager profiles cannot be moved because their secrets are not available")
 	}
+	for setting := range settings {
+		switch setting {
+		case "connection", "802-3-ethernet", "ipv4", "ipv6":
+		default:
+			return unsupportedf("NetworkManager setting %q cannot be copied safely", setting)
+		}
+	}
+	for _, setting := range []string{"802-3-ethernet", "ipv4", "ipv6"} {
+		if _, ok := settings[setting]; !ok {
+			return unsupportedf("active NetworkManager profile is missing its %s settings", setting)
+		}
+	}
+	if err := validateNetworkManagerHandoffConnection(connection); err != nil {
+		return err
+	}
+	if err := validateNetworkManagerHandoffIPv6(settings); err != nil {
+		return err
+	}
+	if err := validateNetworkManagerHandoffIPv4(settings); err != nil {
+		return err
+	}
+	assignedMAC := strings.ToLower(strings.TrimSpace(variantString(settings["802-3-ethernet"]["assigned-mac-address"])))
+	clonedMAC := strings.ToLower(strings.TrimSpace(variantString(settings["802-3-ethernet"]["cloned-mac-address"])))
+	if assignedMAC == "stable" || assignedMAC == "random" || clonedMAC == "stable" || clonedMAC == "random" {
+		return unsupportedf("NetworkManager member profile uses a generated MAC address")
+	}
+	return nil
+}
+
+func validateNetworkManagerHandoffConnection(connection map[string]godbus.Variant) error {
+	for key, value := range connection {
+		switch key {
+		case "id", "uuid", "type", "interface-name", "autoconnect", "autoconnect-priority", "timestamp", "read-only", "autoconnect-slaves", "autoconnect-ports":
+		case "master", "controller", "slave-type", "port-type", "secondaries":
+		case "auth-retries", "autoconnect-retries", "dns-over-tls", "dnssec", "down-on-poweroff", "gateway-ping-timeout", "ip-ping-addresses", "ip-ping-addresses-require-all", "ip-ping-timeout", "lldp", "llmnr", "mdns", "metered", "mptcp-flags", "multi-connect", "mud-url", "permissions", "stable-id", "zone", "wait-activation-delay", "wait-device-timeout":
+		default:
+			return unsupportedf("NetworkManager connection setting %q cannot be copied safely", key)
+		}
+		if key == "zone" || key == "stable-id" {
+			if _, ok := value.Value().(string); !ok {
+				return unsupportedf("NetworkManager connection setting %q has an unsupported value", key)
+			}
+		}
+	}
 	if variantString(connection["master"]) != "" || variantString(connection["controller"]) != "" {
 		return unsupportedf("active NetworkManager profile is already a port")
 	}
+	if values, ok := connection["secondaries"]; ok {
+		secondaries, valid := values.Value().([]string)
+		if !valid {
+			return unsupportedf("NetworkManager secondary connection list has an unsupported value")
+		}
+		if len(secondaries) > 0 {
+			return unsupportedf("NetworkManager profiles with secondary connections cannot be moved")
+		}
+	}
 	return nil
+}
+
+func validateNetworkManagerHandoffIPv6(settings map[string]map[string]godbus.Variant) error {
+	ipv6 := settings["ipv6"]
+	method := strings.ToLower(strings.TrimSpace(variantString(ipv6["method"])))
+	if method != "auto" && method != "dhcp" {
+		return nil
+	}
+	addrGen, ok := ipv6["addr-gen-mode"].Value().(int32)
+	if !ok || addrGen != 0 {
+		return unsupportedf("NetworkManager dynamic IPv6 uses interface-dependent address generation; require explicit eui64")
+	}
+	privacy, ok := ipv6["ip6-privacy"].Value().(int32)
+	if !ok || privacy != 0 {
+		return unsupportedf("NetworkManager dynamic IPv6 privacy extensions cannot be preserved across the bridge rename")
+	}
+	duid, hasDUID := ipv6["dhcp-duid"]
+	if !hasDUID || strings.TrimSpace(variantString(duid)) == "" {
+		return unsupportedf("NetworkManager dynamic IPv6 has an implicit DHCPv6 lease identity that cannot be moved to the bridge")
+	}
+	iaid, hasIAID := ipv6["dhcp-iaid"]
+	if !hasIAID || strings.TrimSpace(variantString(iaid)) == "" {
+		return unsupportedf("NetworkManager dynamic IPv6 has an implicit interface-name DHCPv6 identity")
+	}
+	if networkManagerStableIDDependsOnRenamedContext(settings) {
+		return unsupportedf("NetworkManager dynamic IPv6 identity depends on the source interface or connection")
+	}
+	duidValue := strings.ToLower(strings.TrimSpace(variantString(duid)))
+	if duidValue == "lease" {
+		return unsupportedf("NetworkManager DHCPv6 lease identity cannot be moved to the bridge")
+	}
+	if strings.HasPrefix(duidValue, "stable-") && strings.TrimSpace(variantString(settings["connection"]["stable-id"])) == "" {
+		return unsupportedf("NetworkManager stable DHCPv6 identity requires an explicit connection.stable-id")
+	}
+	iaidValue := strings.ToLower(strings.TrimSpace(variantString(iaid)))
+	if iaidValue == "ifname" || iaidValue == "stable" || iaidValue == "perm-mac" {
+		return unsupportedf("NetworkManager DHCPv6 identity depends on the source interface")
+	}
+	return nil
+}
+
+func validateNetworkManagerHandoffIPv4(settings map[string]map[string]godbus.Variant) error {
+	ipv4 := settings["ipv4"]
+	method := strings.ToLower(strings.TrimSpace(variantString(ipv4["method"])))
+	if method != "auto" && method != "dhcp" {
+		return nil
+	}
+	clientID := strings.ToLower(strings.TrimSpace(variantString(ipv4["dhcp-client-id"])))
+	if clientID == "stable" {
+		if strings.TrimSpace(variantString(settings["connection"]["stable-id"])) == "" {
+			return unsupportedf("NetworkManager stable DHCP identity requires an explicit connection.stable-id")
+		}
+		if networkManagerStableIDDependsOnRenamedContext(settings) {
+			return unsupportedf("NetworkManager DHCP identity depends on the source interface or connection")
+		}
+	}
+	if clientID != "duid" && clientID != "ipv6-duid" {
+		return nil
+	}
+	iaid, hasIAID := ipv4["dhcp-iaid"]
+	if !hasIAID || strings.TrimSpace(variantString(iaid)) == "" {
+		return unsupportedf("NetworkManager DHCP identity has an implicit interface-name IAID")
+	}
+	iaidValue := strings.ToLower(strings.TrimSpace(variantString(iaid)))
+	if iaidValue == "ifname" || iaidValue == "stable" || iaidValue == "perm-mac" {
+		return unsupportedf("NetworkManager DHCP identity depends on the source interface")
+	}
+	return nil
+}
+
+func networkManagerStableIDDependsOnRenamedContext(settings map[string]map[string]godbus.Variant) bool {
+	stableID := variantString(settings["connection"]["stable-id"])
+	return strings.Contains(stableID, "${DEVICE}") || strings.Contains(stableID, "${MAC}") || strings.Contains(stableID, "${CONNECTION}") || strings.Contains(stableID, "${NETWORK_SSID}") || strings.Contains(stableID, "${RANDOM}")
 }
 
 func networkManagerHandoffSettings(plan BridgeHandoffPlan, memberMAC string, source map[string]map[string]godbus.Variant) (map[string]map[string]godbus.Variant, map[string]map[string]godbus.Variant) {
@@ -261,7 +388,16 @@ func networkManagerHandoffSettings(plan BridgeHandoffPlan, memberMAC string, sou
 	bridge["802-3-ethernet"] = map[string]godbus.Variant{"cloned-mac-address": godbus.MakeVariant(memberMAC)}
 	bridge["ipv4"] = maps.Clone(source["ipv4"])
 	bridge["ipv6"] = maps.Clone(source["ipv6"])
-
+	for _, key := range []string{
+		"auth-retries", "autoconnect-retries", "dns-over-tls", "dnssec", "down-on-poweroff", "gateway-ping-timeout",
+		"ip-ping-addresses", "ip-ping-addresses-require-all", "ip-ping-timeout",
+		"lldp", "llmnr", "mdns", "metered", "mptcp-flags", "multi-connect", "mud-url",
+		"permissions", "stable-id", "zone", "wait-activation-delay", "wait-device-timeout",
+	} {
+		if value, ok := source["connection"][key]; ok {
+			bridge["connection"][key] = value
+		}
+	}
 	port := networkManagerSlaveSettings(plan.Name, plan.Member, uuid.NewV4().String())
 	port["connection"]["autoconnect-priority"] = godbus.MakeVariant(networkManagerAutoconnectPriority)
 	port["802-3-ethernet"] = maps.Clone(source["802-3-ethernet"])
@@ -289,8 +425,14 @@ func (m networkManagerMutation) rollback(ctx context.Context) error {
 	}
 	return dbusclient.UseSystemBusWithOptions(ctx, dbusclient.SystemBusOptions{Subsystem: "network-manager", NoRetry: true}, func(ctx context.Context, conn *godbus.Conn) error {
 		manager := conn.Object(networkManagerBusName, godbus.ObjectPath(networkManagerPath))
-		if err := manager.CallWithContext(ctx, networkManagerIface+".CheckpointRollback", 0, m.checkpoint).Err; err != nil {
+		var results map[string]uint32
+		if err := manager.CallWithContext(ctx, networkManagerIface+".CheckpointRollback", 0, m.checkpoint).Store(&results); err != nil {
 			return fmt.Errorf("rollback NetworkManager checkpoint: %w", err)
+		}
+		for device, result := range results {
+			if result != 0 {
+				return fmt.Errorf("rollback NetworkManager checkpoint failed for %s (result %d)", device, result)
+			}
 		}
 		return nil
 	})

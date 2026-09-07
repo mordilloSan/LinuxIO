@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -67,27 +68,71 @@ type libvirtConn interface {
 var withLibvirtConn = withLibvirt
 var mkdirAll = os.MkdirAll
 
+func closeOnContextDone(ctx context.Context, conn net.Conn) func() {
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		_ = conn.Close()
+	})
+	return func() {
+		if stop() {
+			return
+		}
+		<-done
+	}
+}
+
+type interruptibleLibvirtConn struct {
+	libvirtConn
+	interrupt func()
+}
+
+func (c *interruptibleLibvirtConn) closeTransport() {
+	c.interrupt()
+}
+
 func withLibvirt(ctx context.Context, fn func(libvirtConn) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	var lastErr error
 	for _, socketPath := range []string{"/var/run/libvirt/libvirt-sock", "/var/run/libvirt/virtqemud-sock"} {
-		l := libvirt.NewWithDialer(dialers.NewLocal(
-			dialers.WithSocket(socketPath),
-			dialers.WithLocalTimeout(3*time.Second),
-		))
-		if err := l.Connect(); err != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		raw, err := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, "unix", socketPath)
+		if err != nil {
 			lastErr = err
 			continue
 		}
+		stopCancellation := closeOnContextDone(ctx, raw)
+		l := libvirt.NewWithDialer(dialers.NewAlreadyConnected(raw))
+		if err := l.Connect(); err != nil {
+			_ = raw.Close()
+			stopCancellation()
+			lastErr = err
+			continue
+		}
+		disconnected := l.Disconnected()
 		defer func() {
-			_ = l.Disconnect()
+			_ = raw.Close()
+			<-disconnected
+			stopCancellation()
 		}()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return fn(l)
+		callErr := fn(&interruptibleLibvirtConn{
+			libvirtConn: l,
+			interrupt:   func() { _ = raw.Close() },
+		})
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return callErr
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if lastErr == nil {
 		lastErr = errors.New("no libvirt socket paths attempted")

@@ -227,7 +227,9 @@ export default function CreateVMDialog({
     setCreateMode("image");
     setImagePresetId(preset.imagePresetId);
     setNetwork(
-      preset.bridgedPreferred && activeHostBridges.length === 1
+      preset.bridgedPreferred &&
+        activeHostBridges.length === 1 &&
+        activeHostBridges[0].hasPhysicalUplink
         ? activeHostBridges[0].name
         : "default",
     );

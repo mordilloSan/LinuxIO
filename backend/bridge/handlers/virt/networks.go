@@ -118,13 +118,41 @@ func listHostBridges(ctx context.Context, excluded map[string]struct{}) ([]apisc
 			continue
 		}
 		out = append(out, apischema.VMNetwork{
-			Name:   name,
-			Type:   bridgeNetworkType,
-			Active: hostBridgeActive(name),
+			Name:              name,
+			Type:              bridgeNetworkType,
+			Active:            hostBridgeActive(name),
+			HasPhysicalUplink: bridgeHasPhysicalUplink(name),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+func bridgeHasPhysicalUplink(name string) bool {
+	members, err := os.ReadDir(filepath.Join(networkSysfsRoot, name, "brif"))
+	if err != nil {
+		return false
+	}
+	for _, member := range members {
+		memberRoot := filepath.Join(networkSysfsRoot, member.Name())
+		_, err := os.Stat(filepath.Join(memberRoot, "wireless"))
+		if err == nil || !os.IsNotExist(err) {
+			continue
+		}
+		deviceInfo, err := os.Stat(filepath.Join(memberRoot, "device"))
+		if err != nil || !deviceInfo.IsDir() {
+			continue
+		}
+		linkType, err := os.ReadFile(filepath.Join(memberRoot, "type"))
+		if err != nil || strings.TrimSpace(string(linkType)) != "1" {
+			continue
+		}
+		carrier, err := os.ReadFile(filepath.Join(memberRoot, "carrier"))
+		if err == nil && strings.TrimSpace(string(carrier)) == "1" {
+			return true
+		}
+	}
+	return false
 }
 
 func hostBridgeActive(name string) bool {

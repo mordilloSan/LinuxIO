@@ -1574,7 +1574,7 @@ func TestRoutesArePrivileged(t *testing.T) {
 	}
 }
 
-func withFakeLibvirt(t *testing.T, fake *fakeConn) {
+func withFakeLibvirt(t *testing.T, fake libvirtConn) {
 	t.Helper()
 	old := withLibvirtConn
 	withLibvirtConn = func(ctx context.Context, fn func(libvirtConn) error) error {

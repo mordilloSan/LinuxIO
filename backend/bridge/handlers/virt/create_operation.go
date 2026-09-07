@@ -140,7 +140,9 @@ func createVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMCre
 	if vmErr != nil {
 		return apischema.VirtualMachine{}, vmErr
 	}
-	enrichDomainBridgeAddresses(ctx, conn, domain, &vm)
+	vms := []apischema.VirtualMachine{vm}
+	enrichBridgeAddresses(ctx, conn, []libvirt.Domain{domain}, vms)
+	vm = vms[0]
 	reportVMCreateProgress(report, "complete", "VM created", req.Name, progressPercent(100))
 	return vm, nil
 }

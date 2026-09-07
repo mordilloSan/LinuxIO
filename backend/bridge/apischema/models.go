@@ -1400,9 +1400,10 @@ type VMNIC struct {
 }
 
 type VMNetwork struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Active bool   `json:"active"`
+	Name              string `json:"name"`
+	Type              string `json:"type"`
+	Active            bool   `json:"active"`
+	HasPhysicalUplink bool   `json:"hasPhysicalUplink,omitempty"`
 }
 
 type VirtualMachine struct {

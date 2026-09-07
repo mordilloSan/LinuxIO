@@ -95,6 +95,9 @@ type Claim struct {
 	RequestFingerprint string
 	Target             string
 	ExclusiveRoute     bool
+	// ReconcileActive may terminalize stale records for this route while the
+	// exclusive claim lock is held. It must not perform store operations.
+	ReconcileActive func(*Record, time.Time) error
 }
 
 type ExecutorResult struct {
@@ -181,8 +184,9 @@ func (s *Store) Claim(ctx context.Context, claim Claim) (Record, bool, error) {
 		if !errors.Is(err, ErrNotFound) {
 			return err
 		}
+		now := s.now().UTC()
 		if claim.ExclusiveRoute {
-			active, activeErr := s.activeRouteExists(claim.Route)
+			active, activeErr := s.activeRouteExists(claim.Route, now, claim.ReconcileActive)
 			if activeErr != nil {
 				return activeErr
 			}
@@ -191,7 +195,6 @@ func (s *Store) Claim(ctx context.Context, claim Claim) (Record, bool, error) {
 			}
 		}
 
-		now := s.now().UTC()
 		record = Record{
 			ID:                 claim.ID,
 			Route:              claim.Route,
@@ -495,7 +498,7 @@ func (s *Store) terminalRecordsByUID() (map[uint32][]Record, error) {
 	return byUID, nil
 }
 
-func (s *Store) activeRouteExists(route string) (bool, error) {
+func (s *Store) activeRouteExists(route string, now time.Time, reconcile func(*Record, time.Time) error) (bool, error) {
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -512,8 +515,21 @@ func (s *Store) activeRouteExists(route string) (bool, error) {
 		if readErr != nil {
 			return false, readErr
 		}
-		if record.Route == route && !record.Terminal() {
+		if record.Route != route || record.Terminal() {
+			continue
+		}
+		if reconcile == nil {
 			return true, nil
+		}
+		if err := reconcile(&record, now); err != nil {
+			return false, err
+		}
+		if !record.Terminal() {
+			return true, nil
+		}
+		record.UpdatedAt = now
+		if err := s.writeRecord(record); err != nil {
+			return false, err
 		}
 	}
 	return false, nil

@@ -316,6 +316,13 @@ func netplanHandoffDeltas(env Environment, state *BridgeHandoffState) ([]byte, [
 	if err != nil {
 		return nil, nil, err
 	}
+	renderer, ok := netplanEffectiveRenderer(doc, netplan.kind, state.Plan.Member)
+	if !ok {
+		renderer = "networkd"
+	}
+	if validationErr := validateNetplanHandoffIPv6(memberMap, renderer); validationErr != nil {
+		return nil, nil, validationErr
+	}
 	bridgeMap := cloneAnyMap(memberMap)
 	for key := range bridgeMap {
 		if !netplanL3Key(key) && key != "mtu" {
@@ -334,6 +341,7 @@ func netplanHandoffDeltas(env Environment, state *BridgeHandoffState) ([]byte, [
 	memberMap["accept-ra"] = false
 	bridgeMap["interfaces"] = []string{state.Plan.Member}
 	bridgeMap["macaddress"] = state.MemberMAC
+	bridgeMap["renderer"] = renderer
 
 	memberDelta, err := json.Marshal(memberMap)
 	if err != nil {
@@ -344,6 +352,46 @@ func netplanHandoffDeltas(env Environment, state *BridgeHandoffState) ([]byte, [
 		return nil, nil, err
 	}
 	return memberDelta, bridgeDelta, nil
+}
+
+func validateNetplanHandoffIPv6(settings map[string]any, renderer string) error {
+	dhcp6, _ := settings["dhcp6"].(bool)
+	acceptRA := true
+	if value, ok := settings["accept-ra"]; ok {
+		var valid bool
+		acceptRA, valid = value.(bool)
+		if !valid {
+			return unsupportedf("Netplan accept-ra has an unsupported value")
+		}
+	}
+	if !dhcp6 && !acceptRA {
+		return nil
+	}
+	if strings.EqualFold(renderer, "NetworkManager") {
+		return unsupportedf("Netplan dynamic IPv6 rendered by NetworkManager cannot preserve generated addresses across the bridge rename")
+	}
+	if dhcp6 {
+		return unsupportedf("Netplan DHCPv6 lease identity cannot be proven portable across the bridge rename")
+	}
+	if generation, ok := settings["ipv6-address-generation"].(string); ok {
+		generation = strings.TrimSpace(generation)
+		if strings.EqualFold(generation, "stable-privacy") {
+			return unsupportedf("Netplan dynamic IPv6 uses stable-privacy and cannot preserve its address across the bridge rename")
+		}
+		if generation != "" && !strings.EqualFold(generation, "eui64") {
+			return unsupportedf("Netplan dynamic IPv6 uses unsupported address generation %q", generation)
+		}
+	}
+	if privacy, ok := settings["ipv6-privacy"]; ok {
+		switch strings.ToLower(strings.TrimSpace(fmt.Sprint(privacy))) {
+		case "true", "yes", "on", "1":
+			return unsupportedf("Netplan dynamic IPv6 privacy extensions cannot be preserved across the bridge rename")
+		case "false", "no", "off", "0":
+		default:
+			return unsupportedf("Netplan dynamic IPv6 privacy setting has an unsupported value")
+		}
+	}
+	return nil
 }
 
 func netplanL3Key(key string) bool {

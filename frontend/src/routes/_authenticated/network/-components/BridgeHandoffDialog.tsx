@@ -66,35 +66,44 @@ const statusLabel = (state: NetworkBridgeHandoffState | undefined): string => {
 };
 
 interface BridgeHandoffDialogProps {
+  operationId: string;
   onClose: () => void;
+  onOperationIdChange: (
+    operationId: string | undefined,
+  ) => void | Promise<void>;
   open: boolean;
 }
 
-const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
+const BridgeHandoffDialog = ({
+  operationId,
+  onClose,
+  onOperationIdChange,
+  open,
+}: BridgeHandoffDialogProps) => {
   const toast = useScopedToast(NETWORK_TOAST_META);
   const { isOpen: muxIsOpen } = useStreamMux();
   const [member, setMember] = useState("");
   const [bridgeName, setBridgeName] = useState("");
   const [consoleAcknowledged, setConsoleAcknowledged] = useState(false);
-  const [operationId, setOperationId] = useState("");
-  const [transportLost, setTransportLost] = useState(false);
+  const [startPending, setStartPending] = useState(false);
+
+  const setTrackedOperationId = (nextOperationId: string | undefined) => {
+    void onOperationIdChange(nextOperationId);
+  };
 
   const startMutation = useCallMutation(linuxio.network.start_bridge_handoff, {
-    success: (result) => {
-      setTransportLost(false);
-      setOperationId(result.operationId);
-    },
-    error: (error, request) => {
+    error: (error) => {
       // Once a request stream was opened, a timeout or transport loss cannot
       // prove whether the host mutation started. Keep the client UUID and
       // resolve that ambiguity through the retry-safe status route.
-      if (error.code === "outcome_unknown" || error.code === "timeout") {
-        setOperationId(request.operationId);
-        setTransportLost(true);
+      if (
+        error.code === "outcome_unknown" ||
+        error.code === "timeout" ||
+        Number(error.code) >= 500
+      ) {
         return;
       }
-      setOperationId("");
-      setTransportLost(false);
+      setTrackedOperationId(undefined);
       toast.error(error.message || "Unable to start the host bridge handoff");
     },
     toast: NETWORK_TOAST_META,
@@ -102,9 +111,7 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
   const confirmMutation = useCallMutation(
     linuxio.network.confirm_bridge_handoff,
     {
-      success: (result) => {
-        setTransportLost(false);
-        if (result.operationId) setOperationId(result.operationId);
+      success: () => {
         toast.success("Host bridge confirmed");
       },
       error: "Unable to confirm the host bridge",
@@ -114,9 +121,7 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
   const revertMutation = useCallMutation(
     linuxio.network.revert_bridge_handoff,
     {
-      success: (result) => {
-        setTransportLost(false);
-        if (result.operationId) setOperationId(result.operationId);
+      success: () => {
         toast.success("Host bridge handoff reverted");
       },
       error: "Unable to revert the host bridge handoff",
@@ -174,23 +179,27 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
     isTerminalHandoffState(state) &&
     (state !== "unknown" || serverOutcomeUnknown);
   const pending =
+    startPending ||
     startMutation.isPending ||
     confirmMutation.isPending ||
     revertMutation.isPending;
+  const decisionPending = confirmMutation.isPending || revertMutation.isPending;
   const statusTimedOut =
     statusQuery.error instanceof LinuxIOError &&
     statusQuery.error.code === "timeout";
   const statusNotFound =
     statusQuery.error instanceof LinuxIOError &&
     Number(statusQuery.error.code) === 404;
-  const missingOperation =
-    transportLost && statusNotFound && statusQuery.failureCount >= 2;
+  const missingOperation = statusNotFound && statusQuery.errorUpdateCount >= 2;
   const transientStatusError =
     Boolean(statusQuery.error) &&
     (isConnectionLossError(statusQuery.error) ||
       statusTimedOut ||
-      (transportLost && statusNotFound));
+      (statusNotFound && !missingOperation));
   const active = Boolean(operationId) && !terminal && !missingOperation;
+  const decisionWindowOpen =
+    !status?.deadline ||
+    Date.parse(status.deadline) > statusQuery.dataUpdatedAt;
   const nameError =
     effectiveBridgeName.length > 0 && !isBridgeNameValid(effectiveBridgeName);
   const canStart =
@@ -209,8 +218,7 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
     setMember("");
     setBridgeName("");
     setConsoleAcknowledged(false);
-    setOperationId("");
-    setTransportLost(false);
+    setTrackedOperationId(undefined);
   };
 
   const handleClose = () => {
@@ -224,16 +232,31 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
     setBridgeName(defaultBridgeName(nextMember));
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!canStart) return;
     const nextOperationId = crypto.randomUUID();
-    setTransportLost(false);
-    startMutation.mutate({
-      operationId: nextOperationId,
-      name: effectiveBridgeName,
-      member: selectedMember,
-      consoleAcknowledged,
-    });
+    setStartPending(true);
+    // Persist the UUID before opening the mutation so a refresh or lost
+    // response can recover the same operation from the route URL.
+    try {
+      const navigation = onOperationIdChange(nextOperationId);
+      if (navigation) await navigation;
+      startMutation.mutate({
+        operationId: nextOperationId,
+        name: effectiveBridgeName,
+        member: selectedMember,
+        consoleAcknowledged,
+      });
+    } catch (error) {
+      setTrackedOperationId(undefined);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to open the network handoff",
+      );
+    } finally {
+      setStartPending(false);
+    }
   };
 
   const handleConfirm = () => {
@@ -247,7 +270,7 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
   };
 
   const statusError =
-    statusQuery.error && !transientStatusError
+    statusQuery.error && !transientStatusError && !missingOperation
       ? statusQuery.error.message
       : null;
 
@@ -414,7 +437,11 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
         {active && (
           <AppButton
             color="error"
-            disabled={pending || !isRevertibleHandoffState(state)}
+            disabled={
+              decisionPending ||
+              !decisionWindowOpen ||
+              !isRevertibleHandoffState(state)
+            }
             onClick={handleRevert}
             variant="outlined"
           >
@@ -423,7 +450,7 @@ const BridgeHandoffDialog = ({ open, onClose }: BridgeHandoffDialogProps) => {
         )}
         {active && state === "awaiting_confirmation" && (
           <AppButton
-            disabled={pending}
+            disabled={decisionPending || !decisionWindowOpen}
             onClick={handleConfirm}
             variant="contained"
           >

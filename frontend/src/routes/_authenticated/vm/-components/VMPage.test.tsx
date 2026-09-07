@@ -71,11 +71,22 @@ const mocks = vi.hoisted(() => {
   const networks = [
     {
       active: true,
+      hasPhysicalUplink: false,
       name: "default",
       type: "libvirt",
     },
-    { active: true, name: "br0", type: "bridge" },
-    { active: false, name: "br-down", type: "bridge" },
+    {
+      active: true,
+      hasPhysicalUplink: true,
+      name: "br0",
+      type: "bridge",
+    },
+    {
+      active: false,
+      hasPhysicalUplink: false,
+      name: "br-down",
+      type: "bridge",
+    },
   ];
 
   return {
@@ -472,6 +483,26 @@ async function renderVMPage(
 
 beforeEach(() => {
   mocks.listVMs = [mocks.alpha];
+  mocks.networks = [
+    {
+      active: true,
+      hasPhysicalUplink: false,
+      name: "default",
+      type: "libvirt",
+    },
+    {
+      active: true,
+      hasPhysicalUplink: true,
+      name: "br0",
+      type: "bridge",
+    },
+    {
+      active: false,
+      hasPhysicalUplink: false,
+      name: "br-down",
+      type: "bridge",
+    },
+  ];
   mocks.openTaskWatchStream.mockReset();
   mocks.openTaskWatchStream.mockReturnValue(fakeTaskStream());
   mocks.openVMConsoleStream.mockReset();
@@ -1194,5 +1225,34 @@ describe("Virtual Machines page", () => {
       expect(screen.getByText(/has no VNC unix socket/i)).toBeVisible(),
     );
     expect(screen.getByText("Unavailable")).toBeVisible();
+  });
+
+  it("keeps Home Assistant OS on NAT for an unverified sole bridge", async () => {
+    mocks.networks = [
+      {
+        active: true,
+        hasPhysicalUplink: false,
+        name: "default",
+        type: "libvirt",
+      },
+      {
+        active: true,
+        hasPhysicalUplink: false,
+        name: "docker0",
+        type: "bridge",
+      },
+    ];
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: /ready image/i }));
+    await user.click(
+      within(dialog).getByRole("radio", { name: /home assistant os/i }),
+    );
+
+    expect(
+      within(dialog).getByRole("combobox", { name: "Network" }),
+    ).toHaveTextContent("NAT (default)");
   });
 });

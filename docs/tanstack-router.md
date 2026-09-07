@@ -22,9 +22,9 @@ This is the canonical guide for LinuxIO's **frontend routing** — how URLs map 
 - Page-level tabs are real child routes, so each one gets its own URL, loader,
   and code-split chunk.
 - A transient, connection-sensitive operation (for example a network handoff)
-  keeps its client operation ID in the owning dialog and polls its retry-safe
-  status call only while the request transport is open. It should not become a
-  route loader or a durable-task screen merely to survive a reconnect.
+  keeps its client operation ID in validated search so refresh can recover it.
+  The owning dialog polls its retry-safe status call only while the request
+  transport is open. Status polling does not belong in a route loader.
 
 ## Route File Conventions
 
@@ -602,7 +602,7 @@ inherits its ancestor's.
 | `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | — | — |
-| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `tab` | — |
+| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `tab`, `handoffOperationId` | — |
 | `/services` | `services/route.tsx` | — | — | — | — |
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |

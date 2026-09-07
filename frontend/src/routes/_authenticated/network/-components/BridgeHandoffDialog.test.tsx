@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LinuxIOError } from "@/api";
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   mutationConfigs: {} as Record<string, MutationConfig>,
   mutationRequests: [] as HandoffRequest[],
   onClose: vi.fn(),
+  onOperationIdChange: vi.fn(),
   options: {
     candidates: [
       {
@@ -70,6 +72,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       return {
         data: mocks.status,
         error: mocks.statusError,
+        errorUpdateCount: mocks.statusFailureCount,
         failureCount: mocks.statusFailureCount,
         isError: Boolean(mocks.statusError),
         isPending: false,
@@ -148,7 +151,27 @@ const makeEligibleOptions = () => ({
 });
 
 const openDialog = () =>
-  render(<BridgeHandoffDialog onClose={mocks.onClose} open />);
+  render(<StatefulBridgeHandoffDialog onClose={mocks.onClose} open />);
+
+const StatefulBridgeHandoffDialog = ({
+  initialOperationId = "",
+  onClose,
+  open,
+}: {
+  initialOperationId?: string;
+  onClose: () => void;
+  open: boolean;
+}) => {
+  const [operationId, setOperationId] = useState(initialOperationId);
+  return (
+    <BridgeHandoffDialog
+      onClose={onClose}
+      onOperationIdChange={(next) => setOperationId(next ?? "")}
+      open={open}
+      operationId={operationId}
+    />
+  );
+};
 
 const acknowledgeConsole = async () => {
   const { user } = openDialog();
@@ -171,6 +194,7 @@ describe("BridgeHandoffDialog", () => {
     ];
     mocks.mutationConfigs = {};
     mocks.mutationRequests = [];
+    mocks.onOperationIdChange = vi.fn();
     mocks.options = {
       candidates: [
         {
@@ -236,7 +260,7 @@ describe("BridgeHandoffDialog", () => {
     expect(mocks.mutationRequests).toHaveLength(2);
   });
 
-  it.each(["outcome_unknown", "timeout"])(
+  it.each(["outcome_unknown", "timeout", 500])(
     "keeps the client operation ID for status polling after %s",
     async (code) => {
       mocks.options = makeEligibleOptions();
@@ -281,7 +305,7 @@ describe("BridgeHandoffDialog", () => {
     },
   );
 
-  it("does not poll status before Start has settled", async () => {
+  it("keeps status recovery enabled while Start settles", async () => {
     mocks.options = makeEligibleOptions();
     const { rerender, user } = openDialog();
     await user.click(screen.getByRole("checkbox"));
@@ -299,15 +323,98 @@ describe("BridgeHandoffDialog", () => {
               | undefined
           )?.operationId === request.operationId,
       );
-    expect(statusForRequest()).toBeUndefined();
+    expect(statusForRequest()).toMatchObject({ enabled: true });
 
     const config = mocks.mutationConfigs["network.start_bridge_handoff"];
     await act(async () => {
       config.success?.({ operationId: request.operationId }, request);
     });
-    rerender(<BridgeHandoffDialog onClose={mocks.onClose} open />);
+    rerender(<StatefulBridgeHandoffDialog onClose={mocks.onClose} open />);
 
     expect(statusForRequest()).toMatchObject({ enabled: true });
+  });
+
+  it("recovers a URL operation ID and clears it only after terminal close", async () => {
+    mocks.options = makeEligibleOptions();
+    const operationId = "00000000-0000-4000-8000-0000000000a0";
+    const { rerender, user } = render(
+      <BridgeHandoffDialog
+        onOperationIdChange={mocks.onOperationIdChange}
+        onClose={mocks.onClose}
+        open
+        operationId={operationId}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Waiting for the host to reconnect…"),
+      ).toBeVisible(),
+    );
+    expect(mocks.queryOptions).toContainEqual(
+      expect.objectContaining({
+        enabled: true,
+        queryKey: ["linuxio", "network", "get_bridge_handoff", { operationId }],
+      }),
+    );
+    expect(mocks.onOperationIdChange).not.toHaveBeenCalled();
+
+    mocks.status = { operationId, state: "confirmed" };
+    rerender(
+      <BridgeHandoffDialog
+        onOperationIdChange={mocks.onOperationIdChange}
+        onClose={mocks.onClose}
+        open
+        operationId={operationId}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(mocks.onOperationIdChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("starts polling when a recovered operation ID arrives after mount", () => {
+    mocks.options = makeEligibleOptions();
+    const operationId = "00000000-0000-4000-8000-0000000000a1";
+    const { rerender } = render(
+      <BridgeHandoffDialog
+        onClose={mocks.onClose}
+        onOperationIdChange={mocks.onOperationIdChange}
+        open
+        operationId=""
+      />,
+    );
+    rerender(
+      <BridgeHandoffDialog
+        onClose={mocks.onClose}
+        onOperationIdChange={mocks.onOperationIdChange}
+        open
+        operationId={operationId}
+      />,
+    );
+
+    expect(mocks.queryOptions).toContainEqual(
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  it("offers reset for a recovered operation whose record is missing", async () => {
+    const operationId = "00000000-0000-4000-8000-0000000000a2";
+    mocks.statusError = new LinuxIOError("network handoff not found", 404);
+    mocks.statusFailureCount = 2;
+    const { user } = render(
+      <BridgeHandoffDialog
+        onClose={mocks.onClose}
+        onOperationIdChange={mocks.onOperationIdChange}
+        open
+        operationId={operationId}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/No handoff record was created/i)).toBeVisible(),
+    );
+    await user.click(screen.getByRole("button", { name: "Reset and retry" }));
+    expect(mocks.onOperationIdChange).toHaveBeenLastCalledWith(undefined);
   });
 
   it("offers a safe reset after repeated 404s resolve an ambiguous Start", async () => {
@@ -328,9 +435,11 @@ describe("BridgeHandoffDialog", () => {
     });
     mocks.statusError = new LinuxIOError("network handoff not found", 404);
     mocks.statusFailureCount = 2;
-    rerender(<BridgeHandoffDialog onClose={mocks.onClose} open />);
+    rerender(<StatefulBridgeHandoffDialog onClose={mocks.onClose} open />);
 
-    expect(screen.getByText(/No handoff record was created/i)).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText(/No handoff record was created/i)).toBeVisible(),
+    );
     expect(screen.queryByRole("button", { name: "Revert" })).toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
 
@@ -358,7 +467,7 @@ describe("BridgeHandoffDialog", () => {
     });
     mocks.statusError = new LinuxIOError("Request timeout", "timeout");
     mocks.statusFailureCount = 1;
-    rerender(<BridgeHandoffDialog onClose={mocks.onClose} open />);
+    rerender(<StatefulBridgeHandoffDialog onClose={mocks.onClose} open />);
 
     expect(
       screen.getByText(/Status is temporarily unavailable/i),
@@ -400,7 +509,7 @@ describe("BridgeHandoffDialog", () => {
       operationId: request.operationId,
       state: "unknown",
     };
-    rerender(<BridgeHandoffDialog onClose={mocks.onClose} open />);
+    rerender(<StatefulBridgeHandoffDialog onClose={mocks.onClose} open />);
 
     expect(screen.getByText("Inspect the host bridge state")).toBeVisible();
     expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();

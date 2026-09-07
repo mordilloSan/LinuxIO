@@ -2633,6 +2633,7 @@ export interface VMNetwork {
   name: string;
   type: string;
   active: boolean;
+  hasPhysicalUplink?: boolean;
 }
 
 export interface VMPreflight {

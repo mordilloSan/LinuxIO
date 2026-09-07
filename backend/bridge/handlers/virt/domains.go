@@ -47,7 +47,9 @@ func GetVM(ctx context.Context, name string) (apischema.VirtualMachine, error) {
 		}
 		vm, err = virtualMachineFromDomain(conn, domain)
 		if err == nil {
-			enrichDomainBridgeAddresses(ctx, conn, domain, &vm)
+			vms := []apischema.VirtualMachine{vm}
+			enrichBridgeAddresses(ctx, conn, []libvirt.Domain{domain}, vms)
+			vm = vms[0]
 		}
 		return err
 	})

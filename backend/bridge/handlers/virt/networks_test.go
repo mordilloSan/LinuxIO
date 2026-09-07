@@ -58,6 +58,50 @@ func TestListVMNetworksEnumeratesAndDeduplicatesBridges(t *testing.T) {
 	}
 }
 
+func TestListVMNetworksReportsPhysicalUplinkOnlyForEthernetCarrier(t *testing.T) {
+	root := t.TempDir()
+	makeBridgeFixture(t, root, "br-docker", "up")
+	makeBridgeFixture(t, root, "br-down", "up")
+	makeBridgeFixture(t, root, "br-lan", "up")
+	makeBridgeFixture(t, root, "br-wifi", "up")
+	makeBridgeMemberFixture(t, root, "br-docker", "veth123", false, true)
+	makeBridgeMemberFixture(t, root, "br-down", "eth1", true, false)
+	makeBridgeMemberFixture(t, root, "br-lan", "eth0", true, true)
+	makeWirelessBridgeMemberFixture(t, root, "br-wifi", "wlan0")
+	withNetworkSysfsRoot(t, root)
+
+	got, err := listHostBridges(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("listHostBridges: %v", err)
+	}
+	bridges := make(map[string]apischema.VMNetwork, len(got))
+	for _, bridge := range got {
+		bridges[bridge.Name] = bridge
+	}
+	for _, name := range []string{"br-docker", "br-down", "br-wifi"} {
+		if bridges[name].HasPhysicalUplink {
+			t.Fatalf("bridge %q = %#v, want no physical uplink", name, bridges[name])
+		}
+	}
+	if !bridges["br-lan"].HasPhysicalUplink {
+		t.Fatalf("physical bridge = %#v, want physical uplink", bridges["br-lan"])
+	}
+}
+
+func TestListVMNetworksMissingUplinkSysfsDefaultsFalse(t *testing.T) {
+	root := t.TempDir()
+	makeBridgeFixture(t, root, "br-lan", "up")
+	withNetworkSysfsRoot(t, root)
+
+	got, err := listHostBridges(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("listHostBridges: %v", err)
+	}
+	if len(got) != 1 || got[0].HasPhysicalUplink {
+		t.Fatalf("bridges = %#v, want one bridge without physical uplink", got)
+	}
+}
+
 func TestListVMNetworksReturnsLibvirtErrors(t *testing.T) {
 	fake := newFakeConn()
 	fake.networkListErr = errors.New("list failed")
@@ -345,5 +389,38 @@ func makeInterfaceFixture(t *testing.T, root, name string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
 		t.Fatalf("mkdir interface fixture: %v", err)
+	}
+}
+
+func makeBridgeMemberFixture(t *testing.T, root, bridge, member string, physical, carrier bool) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, bridge, "brif", member), 0o755); err != nil {
+		t.Fatalf("mkdir bridge member fixture: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, member), 0o755); err != nil {
+		t.Fatalf("mkdir member interface fixture: %v", err)
+	}
+	if physical {
+		if err := os.Mkdir(filepath.Join(root, member, "device"), 0o755); err != nil {
+			t.Fatalf("mkdir physical device fixture: %v", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, member, "type"), []byte("1\n"), 0o644); err != nil {
+		t.Fatalf("write member type fixture: %v", err)
+	}
+	value := "0\n"
+	if carrier {
+		value = "1\n"
+	}
+	if err := os.WriteFile(filepath.Join(root, member, "carrier"), []byte(value), 0o644); err != nil {
+		t.Fatalf("write member carrier fixture: %v", err)
+	}
+}
+
+func makeWirelessBridgeMemberFixture(t *testing.T, root, bridge, member string) {
+	t.Helper()
+	makeBridgeMemberFixture(t, root, bridge, member, true, true)
+	if err := os.Mkdir(filepath.Join(root, member, "wireless"), 0o755); err != nil {
+		t.Fatalf("mkdir wireless fixture: %v", err)
 	}
 }

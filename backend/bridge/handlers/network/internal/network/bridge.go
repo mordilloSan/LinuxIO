@@ -330,22 +330,25 @@ func netplanUsesNetworkd(backend *netplanBackend) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read Netplan configuration: %w", err)
 	}
-	network, ok := doc.root["network"].(map[string]any)
-	if !ok {
-		return true, nil
-	}
-	kindMap, ok := network[backend.kind].(map[string]any)
-	if ok {
-		if iface, ok := kindMap[backend.iface].(map[string]any); ok {
-			if renderer, ok := iface["renderer"].(string); ok && strings.TrimSpace(renderer) != "" {
-				return strings.EqualFold(strings.TrimSpace(renderer), "networkd"), nil
-			}
-		}
-	}
-	if renderer, ok := network["renderer"].(string); ok && strings.TrimSpace(renderer) != "" {
-		return strings.EqualFold(strings.TrimSpace(renderer), "networkd"), nil
+	if renderer, ok := netplanEffectiveRenderer(doc, backend.kind, backend.iface); ok {
+		return strings.EqualFold(renderer, "networkd"), nil
 	}
 	return true, nil
+}
+
+func netplanEffectiveRenderer(doc *netplanDoc, kind, iface string) (string, bool) {
+	network, ok := doc.root["network"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	kindMap, _ := network[kind].(map[string]any)
+	ifaceMap, _ := kindMap[iface].(map[string]any)
+	for _, values := range []map[string]any{ifaceMap, kindMap, network} {
+		if renderer, ok := values["renderer"].(string); ok && strings.TrimSpace(renderer) != "" {
+			return strings.TrimSpace(renderer), true
+		}
+	}
+	return "networkd", true
 }
 
 func managerForInterface(ctx context.Context, env Environment, iface string) (string, error) {
