@@ -152,3 +152,67 @@ test("can close a recovered URL whose operation does not exist", async ({
   await expect(dialog).toBeHidden();
   await expect(page).not.toHaveURL(new RegExp(operationId));
 });
+
+test("recovers a pending status request when reconnect overlaps the close handshake", async ({
+  page,
+}) => {
+  const operationId = "00000000-0000-4000-8000-000000000098";
+  let connections = 0;
+  let statusRequests = 0;
+  await page.routeWebSocket("**/ws", (socket) => {
+    const connection = ++connections;
+    socket.onMessage((message) => {
+      if (typeof message === "string" || message[4] !== 0x01) return;
+      const id = message.readUInt32BE(0);
+      const { route } = JSON.parse(message.subarray(14).toString());
+      if (route === "network.get_bridge_handoff") {
+        statusRequests++;
+        if (connection === 1) return; // The old transport loses this reply.
+        sendResult(socket, id, {
+          status: "ok",
+          data: {
+            operationId,
+            name: "br0",
+            member: "eth0",
+            backend: "nmconnection",
+            state: "confirmed",
+          },
+        });
+      } else {
+        sendResult(socket, id, {
+          status: "ok",
+          data: route === "monitoring.get_live" ? { interfaces: {} } : [],
+        });
+      }
+    });
+  });
+
+  // Install after routing, so this wraps Playwright's socket mock. Trigger
+  // close and online in one browser task, before the close event can run.
+  await page.addInitScript(() => {
+    const OriginalWebSocket = window.WebSocket;
+    let closeCurrent = () => {};
+    window.WebSocket = class extends OriginalWebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        closeCurrent = () => this.close();
+      }
+    };
+    window.addEventListener("linuxio-test-reconnect", () => {
+      closeCurrent();
+      window.dispatchEvent(new Event("online"));
+    });
+  });
+
+  await page.goto(`/network?handoffOperationId=${operationId}`);
+  await expect.poll(() => statusRequests).toBe(1);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("linuxio-test-reconnect"));
+  });
+  await expect.poll(() => connections).toBe(2);
+  await expect(
+    page.getByRole("dialog").getByText("Bridge confirmed", { exact: true }),
+  ).toBeVisible();
+  expect(connections).toBe(2);
+  expect(statusRequests).toBe(2);
+});

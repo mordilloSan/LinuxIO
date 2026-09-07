@@ -59,7 +59,9 @@ export default defineConfig(async ({ command }): Promise<UserConfig> => {
       proxy: {
         "/ws": {
           target: proxyTarget,
-          changeOrigin: true,
+          // Preserve Host and Origin so the backend's upgrade check also
+          // protects the dev proxy. Rewriting Origin would bypass that check.
+          changeOrigin: false,
           ws: true,
           secure: false,
         },
