@@ -325,6 +325,26 @@ vi.mock("@/api", async (importOriginal) => {
         resource_post: resourcePost,
       },
       virt: {
+        templates: callDescriptor(
+          "virt.templates",
+          ["linuxio", "virt", "templates"],
+          () =>
+            Promise.resolve({
+              path: "/templates",
+              templates: [
+                {
+                  id: "a".repeat(64),
+                  imagePresetId: "home-assistant-os",
+                  label: "Home Assistant OS",
+                  version: "16.0",
+                  sourceUrl: "https://example.com/haos.qcow2",
+                  downloadedAt: "2026-09-07T12:00:00Z",
+                  sizeBytes: 512,
+                  path: "/templates/haos.qcow2",
+                },
+              ],
+            }),
+        ),
         create: Object.assign(mocks.virtCreate, {
           useTaskStreamAction: (config?: TaskStreamActionConfig) =>
             useTaskStreamActionMock(mocks.virtCreate, config),
@@ -575,7 +595,7 @@ describe("Virtual Machines page", () => {
       screen.getByRole("tab", { name: /global dashboard/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /networks/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /images/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /templates/i })).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: /virtual machines/i }),
     ).toBeInTheDocument();
@@ -1038,6 +1058,35 @@ describe("Virtual Machines page", () => {
         vcpus: 2,
       });
     });
+  });
+
+  it("passes the chosen saved template version when creating a VM", async () => {
+    const { user } = await renderVMPage();
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: /ready image/i }));
+    await user.click(
+      within(dialog).getByRole("radio", { name: /home assistant os/i }),
+    );
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("combobox", { name: "Template version" }),
+      ).not.toBeDisabled(),
+    );
+    await user.click(
+      within(dialog).getByRole("combobox", { name: "Template version" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /16.0/ }));
+    await user.type(within(dialog).getByLabelText(/^name/i), "pinned-haos");
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(mocks.virtCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          imagePresetId: "home-assistant-os",
+          templateId: "a".repeat(64),
+        }),
+      ),
+    );
   });
 
   it("creates a Debian Server VM from a ready cloud image", async () => {

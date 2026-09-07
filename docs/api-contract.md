@@ -12,7 +12,7 @@ LinuxIO exposes three deliberately different operation shapes:
   recovery. Tasks may be session-bound or durable, with the lifetime selected
   explicitly by each route.
 
-The shipped Task catalog contains 17 session-bound routes and one durable route,
+The shipped Task catalog contains 18 session-bound routes and one durable route,
 `docker.update_container`. That route persists a UID-owned operation record and
 uses an external executor; all other Tasks, including `control.app_update`, are
 owned by the authenticated session. This browser-to-bridge API is an internal
@@ -423,7 +423,7 @@ through a single direct `useCallMutation` request/response.
 
 ### Task lifetime, ownership, and activity
 
-Seventeen Task routes, including `control.app_update`, declare `SessionTask()`.
+Eighteen Task routes, including `control.app_update`, declare `SessionTask()`.
 Their owner is the exact authenticated `SessionID`; logout, expiry, session
 deletion, bridge failure, or bridge shutdown cancels the in-memory Task. Only
 `docker.update_container` declares `DurableTask()` and is owned by the

@@ -49,7 +49,7 @@ func Preflight(ctx context.Context, req apischema.VMPreflightRequest) (apischema
 	if !out.Firmware.UEFIAvailable {
 		out.Warnings = append(out.Warnings, "OVMF firmware not found; VM creation will fall back to BIOS")
 	}
-	collectSourcePreflight(req, &out)
+	collectSourcePreflight(ctx, req, &out)
 	requestedNetwork := strings.TrimSpace(req.Network)
 	networkName := normalizeVMNetwork(requestedNetwork)
 	if requestedNetwork != "" {
@@ -93,20 +93,20 @@ func collectHostPreflight(out *apischema.VMPreflight) {
 	}
 }
 
-func collectSourcePreflight(req apischema.VMPreflightRequest, out *apischema.VMPreflight) {
+func collectSourcePreflight(ctx context.Context, req apischema.VMPreflightRequest, out *apischema.VMPreflight) {
 	sourceType := normalizedVMSourceType(req.SourceType)
 	if sourceErr := validateVMSourceType(req.SourceType); sourceErr != nil {
 		out.Errors = append(out.Errors, sourceErr.Error())
 		return
 	}
 	if sourceType == vmSourceTypeImagePreset {
-		collectImagePresetPreflight(req, out)
+		collectImagePresetPreflight(ctx, req, out)
 		return
 	}
 	collectISOPreflight(req, out)
 }
 
-func collectImagePresetPreflight(req apischema.VMPreflightRequest, out *apischema.VMPreflight) {
+func collectImagePresetPreflight(ctx context.Context, req apischema.VMPreflightRequest, out *apischema.VMPreflight) {
 	preset, presetErr := imagePreset(req.ImagePresetID)
 	if presetErr != nil {
 		out.Errors = append(out.Errors, presetErr.Error())
@@ -117,7 +117,12 @@ func collectImagePresetPreflight(req apischema.VMPreflightRequest, out *apischem
 	}
 	if preset.ImageCompression == "xz" {
 		if _, err := execLookPath("xz"); err != nil {
-			out.Errors = append(out.Errors, "xz is required to import compressed VM images")
+			saved, cacheErr := templateStore.records(ctx, preset.ID)
+			if cacheErr != nil {
+				out.Errors = append(out.Errors, "Unable to inspect saved templates: "+cacheErr.Error())
+			} else if len(saved) == 0 {
+				out.Errors = append(out.Errors, "xz is required to import compressed VM images")
+			}
 		}
 	}
 	if _, err := execLookPath("qemu-img"); err != nil {

@@ -56,6 +56,7 @@ const VMPage = ({ children }: VMPageProps) => {
     },
     invalidates: (vm) => [
       linuxio.virt.list.queryKey,
+      linuxio.virt.templates.queryKey,
       linuxio.virt.get({ name: vm.name }).queryKey,
     ],
     success: (vm) => {

@@ -280,7 +280,7 @@ demonstrates value.
 
 | Route group | Initial lifetime / recovery owner |
 |-------------|-----------------------------------|
-| File operations, `docker.compose`, `virt.create`, `filebrowser.index`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` (16 routes) | Session Task. Each is canceled with its owning bridge/session. |
+| File operations, `docker.compose`, `virt.create`, `virt.template_download`, `filebrowser.index`, `packages.update`, `system.install_capability`, and `storage.run_smart_test` (17 routes) | Session Task. Each is canceled with its owning bridge/session. |
 | `control.app_update` | Session Task. Installer output is piped to the initiating Task; restart occurs only after terminal status/result publication. |
 | `docker.update_container` | Durable Task owned by authenticated numeric UID, with a persistent record and deterministic systemd transient unit for recovery. |
 
@@ -297,10 +297,10 @@ session Tasks end with the session.
 
 ### Phase 3 exit criteria
 
-- [x] Every Task declaration has an explicit lifetime: 17 session routes and
+- [x] Every Task declaration has an explicit lifetime: 18 session routes and
   one durable route, `docker.update_container`.
 - [x] Owner plumbing distinguishes exact `SessionID` from durable numeric UID;
-  Docker update uses UID scope and the other 17 routes use session scope.
+  Docker update uses UID scope and the other 18 routes use session scope.
 - [x] Bridge shutdown calls `CancelTasksForSession` before closing its transport.
 - [x] Session IDs remain internal authorization values and are redacted from
   public Task snapshots and serialized owner models.
@@ -359,7 +359,7 @@ owner confirms it stopped.
 
 ### Phase 4 exit criteria
 
-- [x] `docker.update_container` is durable; the other 17 Tasks, including app
+- [x] `docker.update_container` is durable; the other 18 Tasks, including app
   update, are session-bound.
 - [x] Starts use a Web-Crypto UUID as the Task and operation identity, with
   idempotent same-fingerprint claims and conflict on reuse for other input.

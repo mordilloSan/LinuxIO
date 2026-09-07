@@ -205,6 +205,12 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 	if sourceType == vmSourceTypeISO && req.ISOPath == "" {
 		return badRequestf("isoPath is required")
 	}
+	if req.TemplateID != "" && (sourceType != vmSourceTypeImagePreset || !validTemplateID.MatchString(req.TemplateID)) {
+		return badRequestf("templateId must identify a saved image template")
+	}
+	if err := validateVMNetworkName(req.Network); err != nil {
+		return err
+	}
 	if sourceType == vmSourceTypeImagePreset {
 		preset, err := imagePreset(req.ImagePresetID)
 		if err != nil {
@@ -214,13 +220,8 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 			return badRequestf("%s requires diskGB to be at least %d", preset.Label, preset.MinDiskGB)
 		}
 		if preset.NeedsCloudInit {
-			if err := validateCloudInitRequest(req, preset); err != nil {
-				return err
-			}
+			return validateCloudInitRequest(req, preset)
 		}
-	}
-	if err := validateVMNetworkName(req.Network); err != nil {
-		return err
 	}
 	return nil
 }

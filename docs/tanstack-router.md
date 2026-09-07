@@ -422,11 +422,13 @@ re-renders only for the data it actually reads. Observer options still matter:
 when the parent owns polling, children set `refetchOnMount: false` so mounting a
 tab does not add a stale-query refetch outside that cadence.
 
-`/vm` is the worked example. Its loader warms `virt.list`, `virt.networks`, and
-`virt.preflight`; `VMPage` observes all three (it owns the poll cadence for the
+`/vm` is the worked example. Its loader warms `virt.list` and
+`virt.preflight`; `VMPage` observes both (it owns the poll cadence for the
 section, since it stays mounted throughout), and each child observes only what
-it needs — `VMImagesPage` takes preflight alone, so the 5-second list poll does
-not re-render it:
+it needs — `VMImagesPage` shares preflight and owns a separate `virt.templates`
+query that refreshes on mount and template mutations. The create dialog loads
+networks and saved templates only while needed. The 5-second VM list poll does
+not re-render the template manager:
 
 ```tsx
 const { data: preflight } = useSuspenseQuery({

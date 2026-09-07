@@ -6,15 +6,11 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
-import AppTypography from "@/components/ui/AppTypography";
 import { StatusMetric } from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 
 import PreflightSummary from "./PreflightSummary";
 import {
-  DEFAULT_MANAGED_CLOUD_PATH,
-  DEFAULT_MANAGED_ISO_PATH,
-  IMAGE_PRESETS,
   formatAttachmentType,
   formatMemory,
   normalizeState,
@@ -34,10 +30,6 @@ const cardGridStyle: CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
 };
 
-// Shared by the status-metric tiles and the image-path tiles — both are
-// "label + value" cards laid out identically. They lift like the dashboard's
-// tiles do: the tier is about being one thing in a grid, not about being
-// clickable, and none of the dashboard tiles are clickable either.
 const gridTileStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -61,10 +53,6 @@ const tableCardStyle: CSSProperties = {
 const messageListStyle: CSSProperties = {
   margin: 0,
   paddingLeft: 18,
-};
-
-const wrappingCodeStyle: CSSProperties = {
-  overflowWrap: "anywhere",
 };
 
 export function VMPreflightCard({ preflight }: { preflight?: VMPreflight }) {
@@ -249,69 +237,6 @@ export function VMNetworksTab({ vms }: { vms: VirtualMachine[] }) {
           variant="embedded"
         />
       </FrostedCard>
-    </div>
-  );
-}
-
-export function VMImagesTab({ preflight }: { preflight?: VMPreflight }) {
-  const isoPath = preflight?.managedPaths?.isos ?? DEFAULT_MANAGED_ISO_PATH;
-  const cloudPath =
-    preflight?.managedPaths?.cloudImages ?? DEFAULT_MANAGED_CLOUD_PATH;
-
-  return (
-    <div style={tabPanelStyle}>
-      <div style={cardGridStyle}>
-        <FrostedCard hoverLift style={gridTileStyle}>
-          <AppTypography component="div" fontWeight={700} variant="body2">
-            ISO folder
-          </AppTypography>
-          <code style={wrappingCodeStyle}>{isoPath}</code>
-        </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle}>
-          <AppTypography component="div" fontWeight={700} variant="body2">
-            Cloud image folder
-          </AppTypography>
-          <code style={wrappingCodeStyle}>{cloudPath}</code>
-        </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle}>
-          <AppTypography component="div" fontWeight={700} variant="body2">
-            Custom installers
-          </AppTypography>
-          <AppTypography
-            color="text.secondary"
-            component="span"
-            variant="caption"
-          >
-            ISO installer
-          </AppTypography>
-        </FrostedCard>
-        {IMAGE_PRESETS.map((preset) => (
-          <FrostedCard hoverLift key={preset.id} style={gridTileStyle}>
-            <div>
-              <AppTypography component="div" fontWeight={700} variant="body2">
-                {preset.label}
-              </AppTypography>
-              <AppTypography color="text.secondary" variant="caption">
-                Ready image
-              </AppTypography>
-            </div>
-            <AppTypography
-              color="text.secondary"
-              component="div"
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "var(--app-space-8)",
-              }}
-              variant="caption"
-            >
-              <span>{preset.vcpus} CPU</span>
-              <span>{Number.parseInt(preset.memoryMB, 10) / 1024} GB RAM</span>
-              <span>{preset.diskGB} GB disk</span>
-            </AppTypography>
-          </FrostedCard>
-        ))}
-      </div>
     </div>
   );
 }

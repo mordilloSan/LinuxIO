@@ -440,7 +440,7 @@ func TestCreateVMImportsImagePresetDisk(t *testing.T) {
 	withReadyPreflight(t)
 	var importedPath string
 	var importedDiskGB int
-	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, volumePath string, diskGB int, report vmCreateReporter) error {
+	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, templateID, volumePath string, diskGB int, report vmCreateReporter) error {
 		importedPath = volumePath
 		importedDiskGB = diskGB
 		return nil
@@ -482,7 +482,7 @@ func TestCreateVMImportsCloudImagePresetAndCreatesSeedISO(t *testing.T) {
 	withReadyPreflight(t)
 	var importedPath string
 	var seedPath string
-	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, volumePath string, diskGB int, report vmCreateReporter) error {
+	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, templateID, volumePath string, diskGB int, report vmCreateReporter) error {
 		importedPath = volumePath
 		return nil
 	})
@@ -532,7 +532,7 @@ func TestCreateVMReportsProgress(t *testing.T) {
 	fake := newFakeConn()
 	withFakeLibvirt(t, fake)
 	withReadyPreflight(t)
-	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, volumePath string, diskGB int, report vmCreateReporter) error {
+	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, templateID, volumePath string, diskGB int, report vmCreateReporter) error {
 		reportVMCreateProgress(report, "download", "Downloading Debian Server image", volumePath, progressPercent(42))
 		return nil
 	})
@@ -1640,7 +1640,7 @@ func withFakeManagedStoragePermissions(t *testing.T) {
 	})
 }
 
-func withFakeImageImporter(t *testing.T, fn func(context.Context, vmImagePreset, string, int, vmCreateReporter) error) {
+func withFakeImageImporter(t *testing.T, fn func(context.Context, vmImagePreset, string, string, int, vmCreateReporter) error) {
 	t.Helper()
 	old := importImagePresetDisk
 	importImagePresetDisk = fn

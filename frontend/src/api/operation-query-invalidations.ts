@@ -301,6 +301,9 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("wireguard.list_peers"),
   ],
 
+  "virt.create": [...VM_KEYS, endpointQueryPrefix("virt.templates")],
+  "virt.template_download": [endpointQueryPrefix("virt.templates")],
+  "virt.template_delete": [endpointQueryPrefix("virt.templates")],
   "virt.start": VM_KEYS,
   "virt.shutdown": VM_KEYS,
   "virt.reboot": VM_KEYS,

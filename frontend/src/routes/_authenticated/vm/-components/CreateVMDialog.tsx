@@ -1,11 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  useCallback,
-  useState,
-  type CSSProperties,
-  type SyntheticEvent,
-} from "react";
+import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
 import { call, linuxio, useCallMutation } from "@/api";
 import type { VMCreateProgress, VMCreateRequest } from "@/api";
@@ -171,6 +166,14 @@ export default function CreateVMDialog({
   const [imagePresetId, setImagePresetId] = useState<
     VMDialogImagePresetID | undefined
   >(undefined);
+  const [templateID, setTemplateID] = useState("");
+  const templatesQuery = useQuery({
+    ...linuxio.virt.templates,
+    enabled: open && sourceType === "imagePreset",
+  });
+  const savedTemplates = (templatesQuery.data?.templates ?? []).filter(
+    (template) => template.imagePresetId === imagePresetId,
+  );
   const [cloudInitUsername, setCloudInitUsername] = useState("linuxio");
   const [cloudInitPassword, setCloudInitPassword] = useState("");
   const [cloudInitSSHKey, setCloudInitSSHKey] = useState("");
@@ -218,6 +221,7 @@ export default function CreateVMDialog({
     preflight.data?.managedPaths?.cloudImages ?? DEFAULT_MANAGED_CLOUD_PATH;
 
   const applyPreset = (preset: ReadyImagePreset) => {
+    setTemplateID("");
     setSelectedPreset(preset.id);
     setVCPUs(preset.vcpus);
     setMemoryMB(preset.memoryMB);
@@ -240,6 +244,7 @@ export default function CreateVMDialog({
       applyPreset(IMAGE_PRESETS[0]);
       return;
     }
+    setTemplateID("");
     setCreateMode("iso");
     setSelectedPreset("custom");
     setVCPUs("2");
@@ -274,6 +279,8 @@ export default function CreateVMDialog({
     parsedVCPUs > 0 &&
     parsedMemoryMB >= 256 &&
     parsedDiskGB >= minimumDiskGB &&
+    (!templateID ||
+      savedTemplates.some((template) => template.id === templateID)) &&
     (!usesISO || (isoPathProvided && isoPathHasISOExtension)) &&
     (!usesCloudInit || (cloudInitUsernameValid && cloudInitAuthProvided));
   const selectedNetwork = networks.find(
@@ -306,7 +313,7 @@ export default function CreateVMDialog({
     !preflight.isLoadingError &&
     !hasBlockingPreflightErrors;
 
-  const ensureISOFolderExists = useCallback(async () => {
+  const ensureISOFolderExists = async () => {
     if (!usesISO) return;
     const folder = folderFromISOPathText(isoPath);
     if (!folder || folder === "/") return;
@@ -336,7 +343,7 @@ export default function CreateVMDialog({
         getMutationErrorMessage(error, "Failed to create ISO folder"),
       );
     }
-  }, [createISOFolderMutation, isoPath, refetchPreflight, toast, usesISO]);
+  };
 
   const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -355,6 +362,7 @@ export default function CreateVMDialog({
     }
     if (imagePresetId) {
       request.imagePresetId = imagePresetId;
+      if (templateID) request.templateId = templateID;
     }
     if (usesCloudInit) {
       request.cloudInitUsername = cloudInitUsername.trim();
@@ -458,6 +466,46 @@ export default function CreateVMDialog({
                   </AppTypography>
                 </AppButton>
               )}
+            </div>
+          ) : null}
+          {createMode === "image" ? (
+            <div
+              style={{
+                display: "grid",
+                gap: "var(--app-space-8)",
+                marginBottom: "var(--app-space-16)",
+              }}
+            >
+              <AppSelect
+                disabled={isBusy || templatesQuery.isPending}
+                fullWidth
+                label="Template version"
+                value={templateID}
+                onChange={(event) => setTemplateID(event.target.value)}
+              >
+                <option value="">
+                  {savedTemplates.length > 0
+                    ? "Newest saved version"
+                    : "Download and save on first use"}
+                </option>
+                {savedTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.version} ·{" "}
+                    {new Date(template.downloadedAt).toLocaleDateString()} ·{" "}
+                    {template.id.slice(0, 12)}
+                  </option>
+                ))}
+              </AppSelect>
+              <AppTypography color="text.secondary" variant="caption">
+                Templates are saved once and copied for each VM. Download
+                updates and manage saved versions in the Templates tab.
+              </AppTypography>
+              {templatesQuery.isError ? (
+                <AppAlert severity="warning">
+                  Saved versions could not be listed. Creation will still reuse
+                  the server’s saved template when available.
+                </AppAlert>
+              ) : null}
             </div>
           ) : null}
           <div style={formGridStyle(isMobile)}>
