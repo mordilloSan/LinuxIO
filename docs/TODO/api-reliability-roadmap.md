@@ -454,7 +454,8 @@ the mutation-feedback consistency gate.
 The domain is an alert lifecycle rather than a persisted toast list:
 
 - stable alert identity and source-defined deduplication key;
-- severity, category, title, message, first/last occurrence, and count;
+- severity, category, title, message, material occurrence count, and separate
+  observation time;
 - active/resolved state distinct from seen/unseen and dismissed/restored state;
 - authenticated Calls for list and lifecycle mutations;
 - one snapshot-first watch Channel feeding the TanStack Query cache; and
@@ -468,6 +469,11 @@ rewriting per-user JSON snapshots is no longer the simpler reliable solution.
 Run history is not in this database. Do not put raw logs, every toast, or
 progress frames in it.
 
+Prove this phase with Docker's existing timer-driven check-only source. Manual
+and scheduled discovery of the same condition update one alert, independent of
+login state. Trusted producers use the daemon's private socket API; generated
+bridge Calls and the watch Channel expose authorized alert state to the UI.
+
 ### Phase 6 exit criteria
 
 - [ ] Reconnect receives an authoritative bounded alert snapshot before live
@@ -475,6 +481,10 @@ progress frames in it.
 - [ ] Seen, dismissal, restoration, recurrence, and source resolution have
   explicit tested transitions.
 - [ ] Stable source keys make repeated creation idempotent.
+- [ ] Unchanged checks preserve seen/dismissed state and occurrence count;
+  failed or incomplete checks cannot resolve an availability condition.
+- [ ] The first source records and reconciles alerts with no session present;
+  login retrieves them with the source's visibility rules and per-UID seen state.
 - [ ] Alert persistence failure never changes the originating Task or systemd
   run outcome.
 - [ ] The server-backed navbar replaces local toast-history persistence.
@@ -496,6 +506,11 @@ database. The journal is opened by unit plus invocation identity; raw output
 is never copied into the run directory. Unit operations use the existing D-Bus
 boundary rather than shelling out to `systemctl`.
 
+A short-lived systemd reconciliation service shares the bridge's read-path
+logic, detects unknown outcomes, and retries alert submissions without a session.
+Writers coordinate updates to the same invocation file and preserve confirmed
+results; reconciliation never re-executes a job.
+
 ### Phase 7 exit criteria
 
 - [ ] Creating, editing, enabling, disabling, and deleting a schedule converges
@@ -505,15 +520,24 @@ boundary rather than shelling out to `systemctl`.
   invocation and its journal.
 - [ ] Restarting or disconnecting the bridge does not stop scheduling or lose
   the authoritative execution owner.
+- [ ] Unknown-run detection and alert retries work without a bridge; stale
+  reconciliation cannot overwrite a confirmed finish or reopen a recovered alert.
 - [ ] Overlap, timeout, cancellation, retention, privilege, and script-path
   policies are explicit and tested.
 
 ## Phase 8: Alert Sources, Routing, and Delivery
 
-Integrate meaningful sources only after the alert core and scheduled runs are
-stable. A failed run, SMART condition, update condition, or service failure may
-raise or update an alert; ordinary log lines do not. Source recovery resolves
-the same stable alert instead of creating an unrelated success notification.
+Extend the source catalogue in [Notifications](./notifications.md) after the
+alert core is proven. Package and LinuxIO release checks need unattended
+producers with explicit result and freshness semantics. Health events and
+selected operation outcomes can raise alerts during interactive sessions too.
+Source recovery resolves the same stable alert; routine successful operations
+remain UI feedback or run history.
+
+Scheduled-run alerts depend on Phase 7. Other sources and external delivery
+depend on Phase 6 and can proceed independently of generic scheduled execution.
+Each source must name its owner for retries and reconciliation without a live
+bridge. Routine update availability stays in-app unless users configure delivery.
 
 Delivery follows an event/matcher/target model:
 

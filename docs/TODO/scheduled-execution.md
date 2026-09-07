@@ -92,11 +92,13 @@ continues to state honestly that the run occurred.
 Run summaries are one bounded JSON file per invocation in a root-owned run
 directory, keyed by schedule ID and systemd invocation ID, the same shape as
 the durable-task file store in `backend/common/durabletask`. Concurrent
-schedules write different files, so there is no shared writer, no schema, no
-migration, and no database in the scheduler. Listing a schedule's recent runs is
-a directory read; nothing in the UI queries runs across schedules. The alert
-daemon's database is not used for runs. Retention deletes terminal files beyond
-a per-schedule bound and never an active or unreconciled run.
+schedules write different files, but finish, cancellation, and reconciliation
+can update the same invocation. Use the existing file-locking and atomic-write
+patterns and recheck state under the lock so a stale read cannot overwrite a
+confirmed finish. Listing a schedule's recent runs is a directory read; nothing
+in the UI queries runs across schedules. The scheduler has no database, and the
+alert daemon's database is not used for runs. Retention deletes terminal files
+beyond a per-schedule bound and never an active or unreconciled run.
 
 ## Capturing executions while the bridge is absent
 
@@ -121,10 +123,16 @@ ExecStopPost=+/usr/local/bin/<worker> finish --schedule <id>
 which systemd passes to `ExecStopPost=` even after a timeout kill, so the finish
 record does not depend on the script surviving. The `+` prefix runs both calls
 as root so they can write the root-owned directory while the script itself
-keeps the policy user and sandbox. No daemon observes units. If a run file has
-a `begin` and no `finish`, the bridge reconciles on read by asking systemd for
-the unit's invocation state and marks the run `unknown` when neither systemd
-nor the file proves an outcome. This design satisfies:
+keeps the policy user and sandbox.
+
+A short-lived reconciliation service runs at boot and on a systemd timer, with
+a bounded number of records per pass. It shares reconciliation logic with the
+bridge's read path; no resident scheduler daemon observes units. If a run file
+has a `begin` and no `finish`, reconciliation asks systemd for that exact
+invocation's state and marks the run `unknown` when neither systemd nor the file
+proves an outcome. This also supplies an execution owner for alert retries with
+no session present. Reconciliation does not activate the original job.
+This design satisfies:
 
 - one run ID per accepted activation;
 - no duplicate execution during reconciliation;
@@ -156,14 +164,25 @@ a link to invocation-filtered logs. Editing timing never edits a run record.
 
 ## Alerts
 
-Scheduled execution is an alert source. The worker's `finish` step posts
-transitions to the alert daemon's socket, and the bridge posts when it
-reconciles a run to `unknown`:
+Scheduled execution follows the [notification source policy](./notifications.md#sources).
+The worker's `finish` step saves the outcome before posting to the alert daemon's
+private socket API. The reconciliation service and bridge read path can report
+a confirmed transition to `unknown`:
 
 - failure or unknown outcome raises or updates a stable alert keyed by schedule;
 - a later successful run resolves that condition when policy says the schedule
   has recovered; and
 - successful routine runs do not create durable notifications by default.
+
+Manual and timer activations follow the same policy, independent of login state.
+Deliberate cancellation alone does not raise a failure alert. Use the invocation
+ID to deduplicate repeated reporting of an outcome.
+
+The reconciliation service retries failed submissions from saved run state,
+without changing the execution result or requiring a live bridge. Reconcile the
+current schedule condition: replaying an older failure must not reopen an alert
+after a later confirmed recovery. Preserve the records needed for reconciliation
+until that condition has reached the alert store.
 
 Delivery frequency and targets are configured by the notification router, not
 by the timer or runner.
@@ -175,6 +194,10 @@ by the timer or runner.
 - Overlap, missed-run, timeout, privilege, cancellation, and deletion semantics
   have focused tests.
 - Each activation has one bounded summary and one exact journald correlation.
+- Finish, cancellation, and reconciliation cannot overwrite a newer confirmed
+  outcome with a stale read.
+- Unknown-run detection and alert retries work without a session and never
+  repeat an execution or reopen an alert from an obsolete outcome.
 - No raw logs are stored in run files.
 - Host restart produces proven state or `unknown`, never an invented success or
   replacement execution.
