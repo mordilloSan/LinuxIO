@@ -131,6 +131,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...actual,
     getRouteApi: () => ({
       useNavigate: () => mocks.routeNavigate,
+      useSearch: () => ({}),
     }),
     useParams: () => mocks.routeParams,
   };

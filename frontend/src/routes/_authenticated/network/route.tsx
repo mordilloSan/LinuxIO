@@ -7,7 +7,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { NetworkIcon } from "@/icons/svg";
 import { loadRouteQueries } from "@/routes/-loader";
-import { optionalString } from "@/routes/-search";
+import { optionalHandoffOperationId, optionalString } from "@/routes/-search";
 
 import BridgeHandoffDialog from "./-components/BridgeHandoffDialog";
 import CreateBridgeDialog from "./-components/CreateBridgeDialog";
@@ -72,6 +72,10 @@ function NetworkLayout() {
       />
       <CreateBridgeDialog
         onClose={() => setCreateBridgeOpen(false)}
+        onHandoff={() => {
+          setCreateBridgeOpen(false);
+          setBridgeHandoffRequested(true);
+        }}
         open={createBridgeOpen}
       />
     </>
@@ -94,13 +98,3 @@ export const Route = createFileRoute("/_authenticated/network")({
     },
   },
 });
-
-const CANONICAL_OPERATION_ID =
-  /^(?!00000000-0000-0000-0000-000000000000$)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-function optionalHandoffOperationId(search: Record<string, unknown>) {
-  const value = search.handoffOperationId;
-  return typeof value === "string" && CANONICAL_OPERATION_ID.test(value)
-    ? { handoffOperationId: value }
-    : {};
-}

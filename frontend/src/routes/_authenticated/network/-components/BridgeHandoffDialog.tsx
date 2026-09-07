@@ -67,7 +67,7 @@ const statusLabel = (state: NetworkBridgeHandoffState | undefined): string => {
 
 interface BridgeHandoffDialogProps {
   operationId: string;
-  onClose: () => void;
+  onClose: (createdBridgeName?: string) => void;
   onOperationIdChange: (
     operationId: string | undefined,
   ) => void | Promise<void>;
@@ -224,7 +224,7 @@ const BridgeHandoffDialog = ({
   const handleClose = () => {
     if (pending || active) return;
     reset();
-    onClose();
+    onClose(status?.state === "confirmed" ? status.name : undefined);
   };
 
   const handleMemberChange = (nextMember: string) => {

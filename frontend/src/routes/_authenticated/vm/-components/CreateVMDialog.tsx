@@ -21,6 +21,8 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import BridgeHandoffDialog from "@/routes/_authenticated/network/-components/BridgeHandoffDialog";
+import CreateBridgeDialog from "@/routes/_authenticated/network/-components/CreateBridgeDialog";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -141,15 +143,21 @@ const wrappingCodeStyle: CSSProperties = {
 
 export default function CreateVMDialog({
   createProgress,
+  handoffOperationId,
   isCreating,
   onClose,
   onCreate,
+  onHandoffOperationIdChange,
   open,
 }: {
   createProgress: VMCreateProgress | null;
+  handoffOperationId: string;
   isCreating: boolean;
   onClose: () => void;
   onCreate: (request: VMCreateRequest) => void;
+  onHandoffOperationIdChange: (
+    operationId: string | undefined,
+  ) => void | Promise<void>;
   open: boolean;
 }) {
   const isMobile = useAppMediaQuery(down("sm"));
@@ -178,6 +186,9 @@ export default function CreateVMDialog({
   const [cloudInitPassword, setCloudInitPassword] = useState("");
   const [cloudInitSSHKey, setCloudInitSSHKey] = useState("");
   const [network, setNetwork] = useState("default");
+  const [bridgeSetup, setBridgeSetup] = useState<"spare" | "handoff" | null>(
+    null,
+  );
   const networksQuery = useQuery({
     ...linuxio.virt.networks,
     enabled: open,
@@ -376,6 +387,40 @@ export default function CreateVMDialog({
     onCreate(request);
   };
 
+  const handleBridgeClose = (createdBridgeName?: string) => {
+    setBridgeSetup(null);
+    if (createdBridgeName) {
+      setNetwork(createdBridgeName);
+      // A confirmed operation recovered from the URL may have completed in
+      // another session, without a local mutation to refresh this query.
+      void networksQuery.refetch();
+    }
+  };
+
+  if (handoffOperationId || bridgeSetup === "handoff") {
+    return (
+      <BridgeHandoffDialog
+        onClose={handleBridgeClose}
+        onOperationIdChange={(operationId) => {
+          setBridgeSetup("handoff");
+          return onHandoffOperationIdChange(operationId);
+        }}
+        open={open}
+        operationId={handoffOperationId}
+      />
+    );
+  }
+
+  if (bridgeSetup === "spare") {
+    return (
+      <CreateBridgeDialog
+        onClose={handleBridgeClose}
+        onHandoff={() => setBridgeSetup("handoff")}
+        open={open}
+      />
+    );
+  }
+
   return (
     <GeneralDialog
       fullWidth
@@ -560,27 +605,36 @@ export default function CreateVMDialog({
               type="number"
               value={diskGB}
             />
-            <AppSelect
-              disabled={
-                isBusy || networksQuery.isPending || networksQuery.isError
-              }
-              fullWidth
-              label="Network"
-              onChange={(event) => setNetwork(event.target.value)}
-              value={network}
-            >
-              <option value="default">NAT (default)</option>
-              {hostBridges.map((bridge) => (
-                <option
-                  disabled={!bridge.active}
-                  key={bridge.name}
-                  value={bridge.name}
-                >
-                  {bridge.name}
-                  {!bridge.active ? " (inactive)" : ""}
-                </option>
-              ))}
-            </AppSelect>
+            <div>
+              <AppSelect
+                disabled={
+                  isBusy || networksQuery.isPending || networksQuery.isError
+                }
+                fullWidth
+                label="Network"
+                onChange={(event) => setNetwork(event.target.value)}
+                value={network}
+              >
+                <option value="default">NAT (default)</option>
+                {hostBridges.map((bridge) => (
+                  <option
+                    disabled={!bridge.active}
+                    key={bridge.name}
+                    value={bridge.name}
+                  >
+                    {bridge.name}
+                    {!bridge.active ? " (inactive)" : ""}
+                  </option>
+                ))}
+              </AppSelect>
+              <AppButton
+                disabled={isBusy}
+                onClick={() => setBridgeSetup("spare")}
+                size="small"
+              >
+                Create LAN bridge
+              </AppButton>
+            </div>
             {networksQuery.isError ? (
               <AppAlert severity="error" style={wideGridItemStyle}>
                 Unable to load the available VM networks.

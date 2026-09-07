@@ -192,7 +192,7 @@ Everything a route file needs comes from these four `-` prefixed modules:
 |------|---------|-----|
 | `routes/-auth.ts` | `LinuxIORouterContext`, `requireAuthentication`, `requireGuest`, `requireAccess`, `sanitizeInternalRedirect` | `beforeLoad` guards and the router context type |
 | `routes/-loader.ts` | `LOADER_FRESHNESS`, `loadRouteQueries`, `loadRouteTransport`, `startRouteQueryPrefetches`, `LoaderQueryOptions` | Critical and deferred route work |
-| `routes/-search.ts` | `optionalString`, `optionalNumber`, `optionalBoolean` | `validateSearch` helpers |
+| `routes/-search.ts` | `optionalString`, `optionalNumber`, `optionalBoolean`, `optionalHandoffOperationId` | `validateSearch` helpers |
 | `routes/-components/` | `RouteError`, `ErrorPage`, `NotFoundPage` | Wired as router defaults; you rarely touch these |
 
 ## Anatomy Of A Route
@@ -621,7 +621,7 @@ inherits its ancestor's.
 | `/updates` | `updates/route.tsx` | — | — | — | — |
 | `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
 | `/updates/history` | `updates/history.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
-| `/vm` | `vm/route.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` libvirt, privileged |
+| `/vm` | `vm/route.tsx` | `loadRouteQueries` ×2 | — | `handoffOperationId` | `requireAccess` libvirt, privileged |
 | `/vm/` | `vm/index.tsx` | — | — | — | — |
 | `/vm/images` | `vm/images.tsx` | — | — | — | — |
 | `/vm/networks` | `vm/networks.tsx` | — | — | — | — |

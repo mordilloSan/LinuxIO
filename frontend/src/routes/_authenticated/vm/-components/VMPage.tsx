@@ -24,6 +24,7 @@ interface VMPageProps {
 
 const VMPage = ({ children }: VMPageProps) => {
   const navigate = vmRouteApi.useNavigate();
+  const search = vmRouteApi.useSearch();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
     useCapability("libvirtAvailable");
@@ -139,13 +140,24 @@ const VMPage = ({ children }: VMPageProps) => {
 
       <CreateVMDialog
         createProgress={createProgress}
+        handoffOperationId={search.handoffOperationId ?? ""}
         isCreating={createMutation.isPending}
         onClose={() => {
           setCreateOpen(false);
           setCreateProgress(null);
         }}
         onCreate={(request) => createMutation.mutate(request)}
-        open={createOpen}
+        onHandoffOperationIdChange={(operationId) => {
+          setCreateOpen(true);
+          return navigate({
+            search: (previous) => ({
+              ...previous,
+              handoffOperationId: operationId,
+            }),
+            replace: true,
+          });
+        }}
+        open={createOpen || Boolean(search.handoffOperationId)}
       />
     </>
   );

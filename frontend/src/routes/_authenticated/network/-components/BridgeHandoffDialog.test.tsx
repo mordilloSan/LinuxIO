@@ -47,7 +47,13 @@ const mocks = vi.hoisted(() => ({
   },
   queryOptions: [] as Array<Record<string, unknown>>,
   status: undefined as
-    | { error?: string; message?: string; operationId: string; state: string }
+    | {
+        error?: string;
+        message?: string;
+        name?: string;
+        operationId: string;
+        state: string;
+      }
     | undefined,
   statusError: null as LinuxIOError | null,
   statusFailureCount: 0,
@@ -359,7 +365,7 @@ describe("BridgeHandoffDialog", () => {
     );
     expect(mocks.onOperationIdChange).not.toHaveBeenCalled();
 
-    mocks.status = { operationId, state: "confirmed" };
+    mocks.status = { operationId, name: "br-enp3s0", state: "confirmed" };
     rerender(
       <BridgeHandoffDialog
         onOperationIdChange={mocks.onOperationIdChange}
@@ -370,7 +376,27 @@ describe("BridgeHandoffDialog", () => {
     );
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(mocks.onOperationIdChange).toHaveBeenLastCalledWith(undefined);
+    expect(mocks.onClose).toHaveBeenCalledWith("br-enp3s0");
   });
+
+  it.each(["reverted", "unknown"])(
+    "does not return a bridge after a %s outcome",
+    async (state) => {
+      const operationId = "00000000-0000-4000-8000-0000000000a3";
+      mocks.status = { operationId, name: "br-enp3s0", state };
+      const { user } = render(
+        <BridgeHandoffDialog
+          onClose={mocks.onClose}
+          onOperationIdChange={mocks.onOperationIdChange}
+          open
+          operationId={operationId}
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "Close" }));
+      expect(mocks.onClose).toHaveBeenCalledWith(undefined);
+    },
+  );
 
   it("starts polling when a recovered operation ID arrives after mount", () => {
     mocks.options = makeEligibleOptions();

@@ -28,6 +28,11 @@ Implemented behavior:
 3. The create dialog defaults to NAT. Home Assistant OS prefers the sole active
    host bridge only when it has a live physical Ethernet uplink. Other bridges
    remain available for explicit selection.
+   **Create LAN bridge** beside the network selector opens the existing bridge
+   setup. It can create a bridge on a spare wired NIC or guide the host-IP move
+   below. Successful setup selects the new bridge and retains the VM form;
+   canceling or reverting leaves its network selection unchanged. A page refresh
+   recovers a pending handoff, but does not retain the unsaved VM form.
 4. New domains include the QEMU guest-agent channel, and cloud images install
    `qemu-guest-agent`.
 5. Bridged guest addresses are discovered best-effort through libvirt ARP,
@@ -114,7 +119,7 @@ handoffs. Confirm/revert first claim the durable decision state and then call
 the stored native D-Bus object. The client never supplies an arbitrary object
 path.
 
-The network page stores the operation UUID in validated `handoffOperationId`
+The network and VM pages store the operation UUID in validated `handoffOperationId`
 URL search before starting the mutation. Refreshing that URL resumes status
 polling for the same UID-bound operation. A new start reconciles expired records
 under the store's exclusive lock, including records owned by another UID,
@@ -155,7 +160,9 @@ Automated coverage must include:
 - UID-bound durable status, confirmation, explicit revert, timeout, and
   exclusive claims after abandoned operations;
 - transport interruption during blocked address discovery; and
-- real browser navigation and refresh recovery without a second Start.
+- real browser navigation and refresh recovery without a second Start;
+- bridge setup from VM creation, preserving its form and selecting only a
+  successfully created or confirmed bridge.
 
 Runtime testing should use console access. WSL can validate bridge XML,
 attachment, spare-NIC creation, and link behavior, but its nested virtual

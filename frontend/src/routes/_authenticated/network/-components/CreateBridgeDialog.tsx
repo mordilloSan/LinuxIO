@@ -34,16 +34,23 @@ export const isBridgeNameValid = (name: string): boolean =>
   BRIDGE_NAME_PATTERN.test(name);
 
 interface CreateBridgeDialogProps {
-  onClose: () => void;
+  onClose: (createdBridgeName?: string) => void;
+  onHandoff?: () => void;
   open: boolean;
 }
 
 const candidateReason = (candidate: NetworkBridgeCandidate): string => {
   const reasons = candidate.reasons?.filter(Boolean) ?? [];
-  return reasons.length > 0 ? reasons.join("; ") : "Not eligible for Stage 2a";
+  return reasons.length > 0
+    ? reasons.join("; ")
+    : "Not an eligible spare interface";
 };
 
-const CreateBridgeDialog = ({ open, onClose }: CreateBridgeDialogProps) => {
+const CreateBridgeDialog = ({
+  open,
+  onClose,
+  onHandoff,
+}: CreateBridgeDialogProps) => {
   const toast = useScopedToast(NETWORK_TOAST_META);
   const [member, setMember] = useState("");
   const [bridgeName, setBridgeName] = useState("");
@@ -72,7 +79,7 @@ const CreateBridgeDialog = ({ open, onClose }: CreateBridgeDialogProps) => {
         toast.success(`Bridge "${result.name || request.name}" created`);
         setMember("");
         setBridgeName("");
-        onClose();
+        onClose(result.name || request.name);
       },
       error: "Failed to create bridge",
       toast: NETWORK_TOAST_META,
@@ -186,7 +193,7 @@ const CreateBridgeDialog = ({ open, onClose }: CreateBridgeDialogProps) => {
             <AppAlert severity="warning">
               <AppAlertTitle>No eligible spare NICs</AppAlertTitle>
               Guided creation only accepts a wired NIC with no host IP
-              configuration. Use NAT or an existing bridge for this host.
+              configuration.
             </AppAlert>
           )}
 
@@ -195,8 +202,8 @@ const CreateBridgeDialog = ({ open, onClose }: CreateBridgeDialogProps) => {
             candidates.length === 0 && (
               <AppAlert severity="warning">
                 <AppAlertTitle>No spare wired NICs found</AppAlertTitle>
-                Stage 2a leaves the management interface unchanged and needs a
-                second, unconfigured wired NIC.
+                Creating a bridge on a spare interface needs an unconfigured
+                wired NIC.
               </AppAlert>
             )}
 
@@ -214,6 +221,23 @@ const CreateBridgeDialog = ({ open, onClose }: CreateBridgeDialogProps) => {
               onChange={(event) => setBridgeName(event.target.value)}
               value={effectiveBridgeName}
             />
+          )}
+          {onHandoff && (
+            <div>
+              <AppTypography color="text.secondary" variant="body2">
+                To share the host’s wired connection with VMs, move that
+                connection to a bridge.
+              </AppTypography>
+              <AppButton
+                disabled={
+                  isCreating || optionsQuery.isPending || optionsQuery.isError
+                }
+                onClick={onHandoff}
+                variant="outlined"
+              >
+                Use host network interface
+              </AppButton>
+            </div>
           )}
         </div>
       </AppDialogContent>

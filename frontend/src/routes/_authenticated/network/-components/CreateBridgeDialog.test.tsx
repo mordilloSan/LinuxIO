@@ -149,5 +149,19 @@ describe("CreateBridgeDialog", () => {
       name: "br-enp123456789",
     });
     expect(mocks.onClose).toHaveBeenCalledTimes(1);
+    expect(mocks.onClose).toHaveBeenCalledWith("br-enp123456789");
+  });
+
+  it("offers the host connection workflow without creating a spare bridge", async () => {
+    const onHandoff = vi.fn();
+    const { user } = render(
+      <CreateBridgeDialog onClose={mocks.onClose} onHandoff={onHandoff} open />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Use host network interface" }),
+    );
+    expect(onHandoff).toHaveBeenCalledTimes(1);
+    expect(mocks.createBridge).not.toHaveBeenCalled();
   });
 });
