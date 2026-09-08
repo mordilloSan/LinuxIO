@@ -405,12 +405,14 @@ class StreamImpl implements Stream {
         break; // Incomplete frame
       }
 
-      // Extract payload (only allocation per frame — unavoidable for handoff)
+      // Binary handlers may retain bytes after recvBuf is reused. JSON is
+      // decoded synchronously before callbacks, so it can borrow a view.
       const payloadStart = this.recvStart + 9;
-      const payload = this.recvBuf.slice(
-        payloadStart,
-        payloadStart + payloadLength,
-      );
+      const payloadEnd = payloadStart + payloadLength;
+      const payload =
+        opcode === BridgeOpcode.StreamData
+          ? this.recvBuf.slice(payloadStart, payloadEnd)
+          : this.recvBuf.subarray(payloadStart, payloadEnd);
 
       // Advance read cursor past this frame
       this.recvStart += frameLength;

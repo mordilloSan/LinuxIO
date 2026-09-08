@@ -6,7 +6,17 @@ import {
   streamWriteChunks,
   waitForStreamResult,
 } from "@/api/stream-helpers";
-import type { Stream } from "@/api/StreamMultiplexer";
+import {
+  BridgeOpcode,
+  Flags,
+  StreamMultiplexer,
+  type Stream,
+} from "@/api/StreamMultiplexer";
+import {
+  FakeWebSocket,
+  readBridgeFrame,
+  readMuxFrame,
+} from "@/test/fakeWebSocket";
 
 function createStream(overrides: Partial<Stream> = {}): Stream {
   return {
@@ -116,19 +126,40 @@ describe("stream helpers", () => {
     );
   });
 
-  it("writes chunks and closes at the end", async () => {
+  it("writes a byte view in order without retaining already-sent source bytes", async () => {
     vi.useFakeTimers();
-    const stream = createStream();
-    const data = new Uint8Array([1, 2, 3, 4, 5]);
-    const promise = streamWriteChunks(stream, data, {
-      chunkSize: 2,
-      yieldMs: 5,
-    });
+    FakeWebSocket.install();
+    const mux = new StreamMultiplexer("ws://linuxio.test/ws");
+    const socket = FakeWebSocket.latest();
+    socket.open();
+    try {
+      const stream = mux.openStream("tasks.data")!;
+      const data = new Uint8Array([99, 1, 2, 3, 4, 5, 99]).subarray(1, -1);
+      const promise = streamWriteChunks(stream, data, {
+        chunkSize: 2,
+        yieldMs: 5,
+      });
+      expect(socket.sent).toHaveLength(2); // SYN and first chunk, before yielding.
+      data.fill(42, 0, 2);
+      await vi.runAllTimersAsync();
+      await promise;
 
-    await vi.runAllTimersAsync();
-    await promise;
-
-    expect(stream.write).toHaveBeenCalledTimes(3);
-    expect(stream.close).toHaveBeenCalledTimes(1);
+      const chunks = socket.sent.slice(1, -1).map((frame) => {
+        const outer = readMuxFrame(frame);
+        expect(outer.flags).toBe(Flags.DATA);
+        const inner = readBridgeFrame(outer.payload);
+        expect(inner.opcode).toBe(BridgeOpcode.StreamData);
+        return Array.from(inner.payload);
+      });
+      expect(chunks).toEqual([[1, 2], [3, 4], [5]]);
+      const close = readMuxFrame(socket.sent.at(-1)!);
+      expect(close.flags).toBe(Flags.FIN);
+      expect(readBridgeFrame(close.payload).opcode).toBe(
+        BridgeOpcode.StreamClose,
+      );
+    } finally {
+      mux.close();
+      vi.useRealTimers();
+    }
   });
 });

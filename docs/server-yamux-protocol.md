@@ -355,6 +355,12 @@ each upload payload once. Scrollback is allocated only when binary stream data
 arrives, saving the default 64 KiB allocation for JSON-only requests. Circular
 buffer operations use views when copying portions of an existing buffer.
 
+Incoming progress and result JSON is decoded directly from a view of the
+receive buffer before invoking callbacks. Binary DATA keeps its own copy so
+handlers and detached buffers can retain it safely. In-memory upload chunks
+also use views: the multiplexer copies each chunk into the final send frame
+synchronously. Chunk pacing, protocol bytes, and JSON encoding are unchanged.
+
 The 16 MiB yamux window is a flow-control setting, independent of WebSocket
 message size. Stream queues and write deadlines isolate stalled consumers;
 they do not eliminate flow-control waits within an individual stream.

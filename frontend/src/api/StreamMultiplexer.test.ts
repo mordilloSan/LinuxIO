@@ -188,6 +188,59 @@ describe("StreamMultiplexer", () => {
     expect(stream.status).toBe("closed");
   });
 
+  it("decodes fragmented Unicode JSON and retains results after receive buffer reuse", () => {
+    const { mux, socket } = openMux();
+    const stream = requireStream(mux.openStream("tasks.watch"));
+    const onProgress = vi.fn();
+    const onResult = vi.fn();
+    stream.onProgress = onProgress;
+    stream.onResult = onResult;
+
+    const progress = { pct: 50, bytes: 5, total: 10 };
+    const result = { status: "ok", data: "café 🐧 漢字".repeat(2048) };
+    const progressFrame = makeBridgeFrame(
+      BridgeOpcode.StreamProgress,
+      stream.id,
+      encodeString(JSON.stringify(progress)),
+    );
+    const resultFrame = makeBridgeFrame(
+      BridgeOpcode.StreamResult,
+      stream.id,
+      encodeString(JSON.stringify(result)),
+    );
+    const combined = new Uint8Array(progressFrame.length + resultFrame.length);
+    combined.set(progressFrame);
+    combined.set(resultFrame, progressFrame.length);
+    // Split inside the penguin's UTF-8 bytes; the second part grows recvBuf.
+    const split = combined.indexOf(0xf0) + 2;
+    socket.receive(
+      makeInboundMuxFrame(stream.id, Flags.DATA, combined.subarray(0, split)),
+    );
+    expect(onProgress).toHaveBeenCalledWith(progress);
+    expect(onResult).not.toHaveBeenCalled();
+    socket.receive(
+      makeInboundMuxFrame(stream.id, Flags.DATA, combined.subarray(split)),
+    );
+
+    socket.receive(
+      makeInboundMuxFrame(
+        stream.id,
+        Flags.DATA,
+        makeBridgeFrame(
+          BridgeOpcode.StreamResult,
+          stream.id,
+          encodeString(JSON.stringify({ status: "error", error: "later" })),
+        ),
+      ),
+    );
+    expect(onProgress).toHaveBeenCalledTimes(1);
+    expect(onResult.mock.calls).toEqual([
+      [result],
+      [{ status: "error", error: "later" }],
+    ]);
+    mux.close();
+  });
+
   it("buffers detached data and does not duplicate buffered bytes on reattach", () => {
     const { mux, socket } = openMux();
     const stream = requireStream(mux.openStream("terminal.open"));

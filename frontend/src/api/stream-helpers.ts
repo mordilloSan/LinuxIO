@@ -183,7 +183,8 @@ export async function streamWriteChunks(
       throw new LinuxIOError("Stream is not open", "connection_closed");
     }
 
-    const chunk = data.slice(offset, offset + chunkSize);
+    // Stream.write copies into the final send frame before returning.
+    const chunk = data.subarray(offset, offset + chunkSize);
     stream.write(chunk);
     offset += chunk.length;
 
