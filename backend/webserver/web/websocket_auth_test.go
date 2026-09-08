@@ -143,9 +143,58 @@ func TestCloseWebSocketForSessionSendsSessionExpiredPolicyViolation(t *testing.T
 	if closeErr.Text != "Session expired" {
 		t.Fatalf("close text = %q, want Session expired", closeErr.Text)
 	}
-	if _, ok := wsConnsBySession.Load("session-1"); ok {
+	wsConnsBySession.Lock()
+	_, registered := wsConnsBySession.conns["session-1"]
+	wsConnsBySession.Unlock()
+	if registered {
 		t.Fatal("session websocket registry entry should be removed")
 	}
+}
+
+func TestWebSocketOriginValidation(t *testing.T) {
+	for _, authenticated := range []bool{false, true} {
+		for _, origin := range []string{"", "same-origin", "http://untrusted.test", "http://127.0.0.1:1", "null"} {
+			t.Run(origin+map[bool]string{false: "/anonymous", true: "/authenticated"}[authenticated], func(t *testing.T) {
+				checkWebSocketOrigin(t, authenticated, origin)
+			})
+		}
+	}
+}
+
+func checkWebSocketOrigin(t *testing.T, authenticated bool, origin string) {
+	t.Helper()
+	sm := newTestSessionManager(session.DefaultConfig)
+	t.Cleanup(sm.Close)
+	server := httptest.NewServer(BuildRouter(Config{}, sm))
+	t.Cleanup(server.Close)
+	header := http.Header{}
+	if origin == "same-origin" {
+		header.Set("Origin", server.URL)
+	} else if origin != "" {
+		header.Set("Origin", origin)
+	}
+	if authenticated {
+		sess, err := sm.CreateSession("origin-test", session.User{Username: "review", UID: 1000, GID: 1000}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		header.Add("Cookie", (&http.Cookie{Name: sm.CookieName(), Value: sess.SessionID}).String())
+	}
+	conn, response, err := websocket.DefaultDialer.Dial(wsURL(server.URL, "/ws"), header)
+	if origin != "" && origin != "same-origin" {
+		if err == nil {
+			conn.Close()
+			t.Fatal("accepted an untrusted origin")
+		}
+		if response == nil || response.StatusCode != http.StatusForbidden {
+			t.Fatalf("expected HTTP 403, got response=%v error=%v", response, err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
 }
 
 func TestProtectedRouteReturnsUnauthorizedForExpiredSessionCookie(t *testing.T) {

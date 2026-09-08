@@ -3,6 +3,7 @@ package virt
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +31,7 @@ const (
 type vmImagePreset struct {
 	ID               apischema.VMImagePresetID
 	Label            string
+	Version          string
 	ImageURL         string
 	ImageName        string
 	ImageCompression string
@@ -43,8 +45,9 @@ type vmImagePreset struct {
 }
 
 type vmImageAsset struct {
-	Name string
-	URL  string
+	Name    string
+	URL     string
+	Version string
 }
 
 var (
@@ -62,6 +65,7 @@ var (
 		vmImagePresetDebian: {
 			ID:              vmImagePresetDebian,
 			Label:           "Debian Server",
+			Version:         "13",
 			ImageURL:        "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2",
 			ImageName:       "debian-13-genericcloud-amd64.qcow2",
 			DownloadPrefix:  "https://cloud.debian.org/images/cloud/",
@@ -72,6 +76,7 @@ var (
 		vmImagePresetUbuntu: {
 			ID:              vmImagePresetUbuntu,
 			Label:           "Ubuntu Server LTS",
+			Version:         "24.04 LTS",
 			ImageURL:        "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img",
 			ImageName:       "noble-server-cloudimg-amd64.img",
 			DownloadPrefix:  "https://cloud-images.ubuntu.com/",
@@ -82,6 +87,7 @@ var (
 		vmImagePresetFedoraCloud: {
 			ID:              vmImagePresetFedoraCloud,
 			Label:           "Fedora Cloud",
+			Version:         "44-1.7",
 			ImageURL:        "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2",
 			ImageName:       "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2",
 			DownloadPrefix:  "https://download.fedoraproject.org/pub/fedora/linux/releases/",
@@ -91,7 +97,7 @@ var (
 		},
 	}
 	vmImageHTTPClient     = &http.Client{}
-	importImagePresetDisk = importImagePresetDiskFromNetwork
+	importImagePresetDisk = importImagePresetDiskFromCache
 	createCloudInitSeed   = createCloudInitSeedISO
 	execLookPath          = exec.LookPath
 	execCommand           = exec.CommandContext
@@ -167,7 +173,7 @@ func createManagedImageVolume(ctx context.Context, conn libvirtConn, pool libvir
 	if _, statErr := os.Stat(volumePath); statErr == nil {
 		return libvirt.StorageVol{}, "", conflictf("managed volume path %q already exists", volumePath)
 	}
-	if importErr := importImagePresetDisk(ctx, preset, volumePath, req.DiskGB, report); importErr != nil {
+	if importErr := importImagePresetDisk(ctx, preset, req.TemplateID, volumePath, req.DiskGB, report); importErr != nil {
 		return libvirt.StorageVol{}, "", importErr
 	}
 	reportVMCreateProgress(report, "storage", "Refreshing default storage pool", volumePath, nil)
@@ -188,43 +194,35 @@ func createManagedImageVolume(ctx context.Context, conn libvirtConn, pool libvir
 	return libvirt.StorageVol{Pool: defaultPoolName, Name: volumeName, Key: volumePath}, volumePath, nil
 }
 
-func importImagePresetDiskFromNetwork(ctx context.Context, preset vmImagePreset, volumePath string, diskGB int, report vmCreateReporter) error {
-	reportVMCreateProgress(report, "resolve", "Resolving "+preset.Label+" image", "", nil)
-	asset, assetErr := resolveImagePresetAsset(ctx, preset)
-	if assetErr != nil {
-		return fmt.Errorf("resolve %s image: %w", preset.Label, assetErr)
+func importImagePresetDiskFromCache(ctx context.Context, preset vmImagePreset, templateID, volumePath string, diskGB int, report vmCreateReporter) error {
+	stage, err := os.MkdirTemp(filepath.Dir(volumePath), ".linuxio-create-")
+	if err != nil {
+		return fmt.Errorf("stage VM disk: %w", err)
 	}
-
-	tmpXZ := volumePath + ".download"
-	tmpDisk := volumePath + ".tmp"
-	_ = removeFile(tmpXZ)
-	_ = removeFile(tmpDisk)
-	defer func() {
-		_ = removeFile(tmpXZ)
-		_ = removeFile(tmpDisk)
-	}()
-
-	if downloadErr := downloadImageAsset(ctx, preset, asset, tmpXZ, report); downloadErr != nil {
-		return fmt.Errorf("download %s image: %w", preset.Label, downloadErr)
-	}
-	if assetCompressedWithXZ(preset, asset) {
-		reportVMCreateProgress(report, "decompress", "Decompressing "+preset.Label+" image", tmpDisk, nil)
-		if decompressErr := decompressXZFile(ctx, tmpXZ, tmpDisk); decompressErr != nil {
-			return fmt.Errorf("decompress %s image: %w", preset.Label, decompressErr)
+	defer os.RemoveAll(stage)
+	tmpDisk := filepath.Join(stage, "disk.qcow2")
+	err = templateStore.withPresetLock(ctx, preset.ID, func() error {
+		saved, cacheErr := templateStore.ensure(ctx, preset, templateID, false, report)
+		if cacheErr != nil {
+			return cacheErr
 		}
-	} else if renameErr := renameFile(tmpXZ, tmpDisk); renameErr != nil {
-		return fmt.Errorf("stage %s image: %w", preset.Label, renameErr)
+		reportVMCreateProgress(report, "copy", "Copying saved "+preset.Label+" template", saved.Path, nil)
+		return runTemplateQEMU(ctx, "convert", "-f", "qcow2", "-O", "qcow2", saved.Path, tmpDisk)
+	})
+	if err != nil {
+		return fmt.Errorf("prepare %s disk: %w", preset.Label, err)
 	}
 	reportVMCreateProgress(report, "resize", fmt.Sprintf("Resizing %s disk to %d GB", preset.Label, diskGB), tmpDisk, nil)
-	if resizeErr := resizeQCOW2Image(ctx, tmpDisk, diskGB); resizeErr != nil {
-		return fmt.Errorf("resize %s image: %w", preset.Label, resizeErr)
+	if err := resizeQCOW2Image(ctx, tmpDisk, diskGB); err != nil {
+		return fmt.Errorf("resize %s image: %w", preset.Label, err)
+	}
+	if err := makeManagedWritableDiskAccessible(tmpDisk); err != nil {
+		return fmt.Errorf("prepare %s disk permissions: %w", preset.Label, err)
 	}
 	reportVMCreateProgress(report, "finalize", "Finalizing "+preset.Label+" disk", volumePath, nil)
-	if renameErr := renameFile(tmpDisk, volumePath); renameErr != nil {
-		return fmt.Errorf("finalize %s image: %w", preset.Label, renameErr)
-	}
-	if accessErr := makeManagedWritableDiskAccessible(volumePath); accessErr != nil {
-		return fmt.Errorf("prepare %s disk permissions: %w", preset.Label, accessErr)
+	// Link publishes without replacing a disk created by another session.
+	if err := os.Link(tmpDisk, volumePath); err != nil {
+		return fmt.Errorf("finalize %s image: %w", preset.Label, err)
 	}
 	return nil
 }
@@ -238,7 +236,7 @@ func resolveImagePresetAsset(ctx context.Context, preset vmImagePreset) (vmImage
 		if name == "" {
 			name = filepath.Base(preset.ImageURL)
 		}
-		return vmImageAsset{Name: name, URL: preset.ImageURL}, nil
+		return vmImageAsset{Name: name, URL: preset.ImageURL, Version: preset.Version}, nil
 	}
 	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, preset.ReleaseAPIURL, nil)
 	if reqErr != nil {
@@ -255,7 +253,8 @@ func resolveImagePresetAsset(ctx context.Context, preset vmImagePreset) (vmImage
 		return vmImageAsset{}, fmt.Errorf("GitHub release API returned %s", resp.Status)
 	}
 	var release struct {
-		Assets []struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
 			Name               string `json:"name"`
 			BrowserDownloadURL string `json:"browser_download_url"`
 		} `json:"assets"`
@@ -270,7 +269,7 @@ func resolveImagePresetAsset(ctx context.Context, preset vmImagePreset) (vmImage
 		if !strings.HasPrefix(asset.BrowserDownloadURL, preset.DownloadPrefix) {
 			return vmImageAsset{}, fmt.Errorf("release asset %q has unexpected download host", asset.Name)
 		}
-		return vmImageAsset{Name: asset.Name, URL: asset.BrowserDownloadURL}, nil
+		return vmImageAsset{Name: asset.Name, URL: asset.BrowserDownloadURL, Version: release.TagName}, nil
 	}
 	return vmImageAsset{}, fmt.Errorf("no matching qcow2.xz release asset found")
 }
@@ -279,23 +278,34 @@ func assetCompressedWithXZ(preset vmImagePreset, asset vmImageAsset) bool {
 	return preset.ImageCompression == "xz" || strings.HasSuffix(asset.Name, ".xz")
 }
 
-func downloadImageAsset(ctx context.Context, preset vmImagePreset, asset vmImageAsset, destination string, report vmCreateReporter) error {
+func downloadImageAsset(ctx context.Context, preset vmImagePreset, asset vmImageAsset, destination string, previous *vmTemplateRecord, report vmCreateReporter) (vmTemplateRecord, error) {
 	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, asset.URL, nil)
 	if reqErr != nil {
-		return reqErr
+		return vmTemplateRecord{}, reqErr
 	}
 	req.Header.Set("User-Agent", "LinuxIO")
+	if previous != nil {
+		if previous.ETag != "" {
+			req.Header.Set("If-None-Match", previous.ETag)
+		}
+		if previous.LastModified != "" {
+			req.Header.Set("If-Modified-Since", previous.LastModified)
+		}
+	}
 	resp, getErr := vmImageHTTPClient.Do(req)
 	if getErr != nil {
-		return getErr
+		return vmTemplateRecord{}, getErr
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotModified && previous != nil {
+		return *previous, nil
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("download returned %s", resp.Status)
+		return vmTemplateRecord{}, fmt.Errorf("download returned %s", resp.Status)
 	}
 	file, fileErr := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if fileErr != nil {
-		return fileErr
+		return vmTemplateRecord{}, fileErr
 	}
 	defer file.Close()
 	reportVMCreateProgress(report, "download", "Downloading "+preset.Label+" image", destination, progressPercent(0))
@@ -311,10 +321,17 @@ func downloadImageAsset(ctx context.Context, preset vmImagePreset, asset vmImage
 			reportVMCreateProgress(report, "download", message, destination, progressPercent(percent))
 		})
 	}
-	if _, copyErr := io.Copy(file, reader); copyErr != nil {
-		return copyErr
+	digest := sha256.New()
+	if _, copyErr := io.Copy(io.MultiWriter(file, digest), reader); copyErr != nil {
+		return vmTemplateRecord{}, copyErr
 	}
-	return file.Close()
+	if err := file.Close(); err != nil {
+		return vmTemplateRecord{}, err
+	}
+	return vmTemplateRecord{
+		ID:   fmt.Sprintf("%x", digest.Sum(nil)),
+		ETag: resp.Header.Get("ETag"), LastModified: resp.Header.Get("Last-Modified"),
+	}, nil
 }
 
 type downloadProgressReader struct {

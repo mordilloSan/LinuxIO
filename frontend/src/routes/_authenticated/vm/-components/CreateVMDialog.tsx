@@ -1,11 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  useCallback,
-  useState,
-  type CSSProperties,
-  type SyntheticEvent,
-} from "react";
+import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
 import { call, linuxio, useCallMutation } from "@/api";
 import type { VMCreateProgress, VMCreateRequest } from "@/api";
@@ -26,6 +21,8 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import BridgeHandoffDialog from "@/routes/_authenticated/network/-components/BridgeHandoffDialog";
+import CreateBridgeDialog from "@/routes/_authenticated/network/-components/CreateBridgeDialog";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -146,15 +143,21 @@ const wrappingCodeStyle: CSSProperties = {
 
 export default function CreateVMDialog({
   createProgress,
+  handoffOperationId,
   isCreating,
   onClose,
   onCreate,
+  onHandoffOperationIdChange,
   open,
 }: {
   createProgress: VMCreateProgress | null;
+  handoffOperationId: string;
   isCreating: boolean;
   onClose: () => void;
   onCreate: (request: VMCreateRequest) => void;
+  onHandoffOperationIdChange: (
+    operationId: string | undefined,
+  ) => void | Promise<void>;
   open: boolean;
 }) {
   const isMobile = useAppMediaQuery(down("sm"));
@@ -171,10 +174,21 @@ export default function CreateVMDialog({
   const [imagePresetId, setImagePresetId] = useState<
     VMDialogImagePresetID | undefined
   >(undefined);
+  const [templateID, setTemplateID] = useState("");
+  const templatesQuery = useQuery({
+    ...linuxio.virt.templates,
+    enabled: open && sourceType === "imagePreset",
+  });
+  const savedTemplates = (templatesQuery.data?.templates ?? []).filter(
+    (template) => template.imagePresetId === imagePresetId,
+  );
   const [cloudInitUsername, setCloudInitUsername] = useState("linuxio");
   const [cloudInitPassword, setCloudInitPassword] = useState("");
   const [cloudInitSSHKey, setCloudInitSSHKey] = useState("");
   const [network, setNetwork] = useState("default");
+  const [bridgeSetup, setBridgeSetup] = useState<"spare" | "handoff" | null>(
+    null,
+  );
   const networksQuery = useQuery({
     ...linuxio.virt.networks,
     enabled: open,
@@ -218,6 +232,7 @@ export default function CreateVMDialog({
     preflight.data?.managedPaths?.cloudImages ?? DEFAULT_MANAGED_CLOUD_PATH;
 
   const applyPreset = (preset: ReadyImagePreset) => {
+    setTemplateID("");
     setSelectedPreset(preset.id);
     setVCPUs(preset.vcpus);
     setMemoryMB(preset.memoryMB);
@@ -227,7 +242,9 @@ export default function CreateVMDialog({
     setCreateMode("image");
     setImagePresetId(preset.imagePresetId);
     setNetwork(
-      preset.bridgedPreferred && activeHostBridges.length === 1
+      preset.bridgedPreferred &&
+        activeHostBridges.length === 1 &&
+        activeHostBridges[0].hasPhysicalUplink
         ? activeHostBridges[0].name
         : "default",
     );
@@ -238,6 +255,7 @@ export default function CreateVMDialog({
       applyPreset(IMAGE_PRESETS[0]);
       return;
     }
+    setTemplateID("");
     setCreateMode("iso");
     setSelectedPreset("custom");
     setVCPUs("2");
@@ -272,6 +290,8 @@ export default function CreateVMDialog({
     parsedVCPUs > 0 &&
     parsedMemoryMB >= 256 &&
     parsedDiskGB >= minimumDiskGB &&
+    (!templateID ||
+      savedTemplates.some((template) => template.id === templateID)) &&
     (!usesISO || (isoPathProvided && isoPathHasISOExtension)) &&
     (!usesCloudInit || (cloudInitUsernameValid && cloudInitAuthProvided));
   const selectedNetwork = networks.find(
@@ -304,7 +324,7 @@ export default function CreateVMDialog({
     !preflight.isLoadingError &&
     !hasBlockingPreflightErrors;
 
-  const ensureISOFolderExists = useCallback(async () => {
+  const ensureISOFolderExists = async () => {
     if (!usesISO) return;
     const folder = folderFromISOPathText(isoPath);
     if (!folder || folder === "/") return;
@@ -334,7 +354,7 @@ export default function CreateVMDialog({
         getMutationErrorMessage(error, "Failed to create ISO folder"),
       );
     }
-  }, [createISOFolderMutation, isoPath, refetchPreflight, toast, usesISO]);
+  };
 
   const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -353,6 +373,7 @@ export default function CreateVMDialog({
     }
     if (imagePresetId) {
       request.imagePresetId = imagePresetId;
+      if (templateID) request.templateId = templateID;
     }
     if (usesCloudInit) {
       request.cloudInitUsername = cloudInitUsername.trim();
@@ -365,6 +386,40 @@ export default function CreateVMDialog({
     }
     onCreate(request);
   };
+
+  const handleBridgeClose = (createdBridgeName?: string) => {
+    setBridgeSetup(null);
+    if (createdBridgeName) {
+      setNetwork(createdBridgeName);
+      // A confirmed operation recovered from the URL may have completed in
+      // another session, without a local mutation to refresh this query.
+      void networksQuery.refetch();
+    }
+  };
+
+  if (handoffOperationId || bridgeSetup === "handoff") {
+    return (
+      <BridgeHandoffDialog
+        onClose={handleBridgeClose}
+        onOperationIdChange={(operationId) => {
+          setBridgeSetup("handoff");
+          return onHandoffOperationIdChange(operationId);
+        }}
+        open={open}
+        operationId={handoffOperationId}
+      />
+    );
+  }
+
+  if (bridgeSetup === "spare") {
+    return (
+      <CreateBridgeDialog
+        onClose={handleBridgeClose}
+        onHandoff={() => setBridgeSetup("handoff")}
+        open={open}
+      />
+    );
+  }
 
   return (
     <GeneralDialog
@@ -458,6 +513,46 @@ export default function CreateVMDialog({
               )}
             </div>
           ) : null}
+          {createMode === "image" ? (
+            <div
+              style={{
+                display: "grid",
+                gap: "var(--app-space-8)",
+                marginBottom: "var(--app-space-16)",
+              }}
+            >
+              <AppSelect
+                disabled={isBusy || templatesQuery.isPending}
+                fullWidth
+                label="Template version"
+                value={templateID}
+                onChange={(event) => setTemplateID(event.target.value)}
+              >
+                <option value="">
+                  {savedTemplates.length > 0
+                    ? "Newest saved version"
+                    : "Download and save on first use"}
+                </option>
+                {savedTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.version} ·{" "}
+                    {new Date(template.downloadedAt).toLocaleDateString()} ·{" "}
+                    {template.id.slice(0, 12)}
+                  </option>
+                ))}
+              </AppSelect>
+              <AppTypography color="text.secondary" variant="caption">
+                Templates are saved once and copied for each VM. Download
+                updates and manage saved versions in the Templates tab.
+              </AppTypography>
+              {templatesQuery.isError ? (
+                <AppAlert severity="warning">
+                  Saved versions could not be listed. Creation will still reuse
+                  the server’s saved template when available.
+                </AppAlert>
+              ) : null}
+            </div>
+          ) : null}
           <div style={formGridStyle(isMobile)}>
             <AppTextField
               autoFocus
@@ -510,27 +605,36 @@ export default function CreateVMDialog({
               type="number"
               value={diskGB}
             />
-            <AppSelect
-              disabled={
-                isBusy || networksQuery.isPending || networksQuery.isError
-              }
-              fullWidth
-              label="Network"
-              onChange={(event) => setNetwork(event.target.value)}
-              value={network}
-            >
-              <option value="default">NAT (default)</option>
-              {hostBridges.map((bridge) => (
-                <option
-                  disabled={!bridge.active}
-                  key={bridge.name}
-                  value={bridge.name}
-                >
-                  {bridge.name}
-                  {!bridge.active ? " (inactive)" : ""}
-                </option>
-              ))}
-            </AppSelect>
+            <div>
+              <AppSelect
+                disabled={
+                  isBusy || networksQuery.isPending || networksQuery.isError
+                }
+                fullWidth
+                label="Network"
+                onChange={(event) => setNetwork(event.target.value)}
+                value={network}
+              >
+                <option value="default">NAT (default)</option>
+                {hostBridges.map((bridge) => (
+                  <option
+                    disabled={!bridge.active}
+                    key={bridge.name}
+                    value={bridge.name}
+                  >
+                    {bridge.name}
+                    {!bridge.active ? " (inactive)" : ""}
+                  </option>
+                ))}
+              </AppSelect>
+              <AppButton
+                disabled={isBusy}
+                onClick={() => setBridgeSetup("spare")}
+                size="small"
+              >
+                Create LAN bridge
+              </AppButton>
+            </div>
             {networksQuery.isError ? (
               <AppAlert severity="error" style={wideGridItemStyle}>
                 Unable to load the available VM networks.

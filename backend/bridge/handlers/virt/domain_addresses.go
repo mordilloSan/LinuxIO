@@ -17,6 +17,8 @@ func enrichBridgeAddresses(ctx context.Context, conn libvirtConn, domains []libv
 	}
 	discoveryCtx, cancel := context.WithTimeout(ctx, domainAddressDiscoveryTimeout)
 	defer cancel()
+	stopInterrupt := interruptOnContextDone(discoveryCtx, conn)
+	defer stopInterrupt()
 	for idx := range domains {
 		if idx >= len(vms) {
 			break
@@ -25,6 +27,24 @@ func enrichBridgeAddresses(ctx context.Context, conn libvirtConn, domains []libv
 			return
 		}
 		enrichDomainBridgeAddresses(discoveryCtx, conn, domains[idx], &vms[idx])
+	}
+}
+
+func interruptOnContextDone(ctx context.Context, conn libvirtConn) func() {
+	interruptible, ok := conn.(interface{ closeTransport() })
+	if !ok {
+		return func() {}
+	}
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		interruptible.closeTransport()
+	})
+	return func() {
+		if stop() {
+			return
+		}
+		<-done
 	}
 }
 

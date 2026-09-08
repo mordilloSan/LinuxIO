@@ -165,6 +165,20 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ).toEqual([["linuxio", "accounts", "list_groups"], ...expected]);
   });
 
+  it("refreshes saved VM templates after creation, download, or deletion", () => {
+    for (const route of [
+      "virt.create",
+      "virt.template_download",
+      "virt.template_delete",
+    ] as const) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toContainEqual([
+        "linuxio",
+        "virt",
+        "templates",
+      ]);
+    }
+  });
+
   it("maps only Call or Task routes", () => {
     for (const route of Object.keys(OPERATION_QUERY_INVALIDATIONS)) {
       expect(["call", "task"], `${route} is not an operation route`).toContain(

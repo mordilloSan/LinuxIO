@@ -22,9 +22,9 @@ This is the canonical guide for LinuxIO's **frontend routing** — how URLs map 
 - Page-level tabs are real child routes, so each one gets its own URL, loader,
   and code-split chunk.
 - A transient, connection-sensitive operation (for example a network handoff)
-  keeps its client operation ID in the owning dialog and polls its retry-safe
-  status call only while the request transport is open. It should not become a
-  route loader or a durable-task screen merely to survive a reconnect.
+  keeps its client operation ID in validated search so refresh can recover it.
+  The owning dialog polls its retry-safe status call only while the request
+  transport is open. Status polling does not belong in a route loader.
 
 ## Route File Conventions
 
@@ -192,7 +192,7 @@ Everything a route file needs comes from these four `-` prefixed modules:
 |------|---------|-----|
 | `routes/-auth.ts` | `LinuxIORouterContext`, `requireAuthentication`, `requireGuest`, `requireAccess`, `sanitizeInternalRedirect` | `beforeLoad` guards and the router context type |
 | `routes/-loader.ts` | `LOADER_FRESHNESS`, `loadRouteQueries`, `loadRouteTransport`, `startRouteQueryPrefetches`, `LoaderQueryOptions` | Critical and deferred route work |
-| `routes/-search.ts` | `optionalString`, `optionalNumber`, `optionalBoolean` | `validateSearch` helpers |
+| `routes/-search.ts` | `optionalString`, `optionalNumber`, `optionalBoolean`, `optionalHandoffOperationId` | `validateSearch` helpers |
 | `routes/-components/` | `RouteError`, `ErrorPage`, `NotFoundPage` | Wired as router defaults; you rarely touch these |
 
 ## Anatomy Of A Route
@@ -422,11 +422,13 @@ re-renders only for the data it actually reads. Observer options still matter:
 when the parent owns polling, children set `refetchOnMount: false` so mounting a
 tab does not add a stale-query refetch outside that cadence.
 
-`/vm` is the worked example. Its loader warms `virt.list`, `virt.networks`, and
-`virt.preflight`; `VMPage` observes all three (it owns the poll cadence for the
+`/vm` is the worked example. Its loader warms `virt.list` and
+`virt.preflight`; `VMPage` observes both (it owns the poll cadence for the
 section, since it stays mounted throughout), and each child observes only what
-it needs — `VMImagesPage` takes preflight alone, so the 5-second list poll does
-not re-render it:
+it needs — `VMImagesPage` shares preflight and owns a separate `virt.templates`
+query that refreshes on mount and template mutations. The create dialog loads
+networks and saved templates only while needed. The 5-second VM list poll does
+not re-render the template manager:
 
 ```tsx
 const { data: preflight } = useSuspenseQuery({
@@ -602,7 +604,7 @@ inherits its ancestor's.
 | `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | — | — |
-| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `tab` | — |
+| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `tab`, `handoffOperationId` | — |
 | `/services` | `services/route.tsx` | — | — | — | — |
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
@@ -619,7 +621,7 @@ inherits its ancestor's.
 | `/updates` | `updates/route.tsx` | — | — | — | — |
 | `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
 | `/updates/history` | `updates/history.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |
-| `/vm` | `vm/route.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` libvirt, privileged |
+| `/vm` | `vm/route.tsx` | `loadRouteQueries` ×2 | — | `handoffOperationId` | `requireAccess` libvirt, privileged |
 | `/vm/` | `vm/index.tsx` | — | — | — | — |
 | `/vm/images` | `vm/images.tsx` | — | — | — | — |
 | `/vm/networks` | `vm/networks.tsx` | — | — | — | — |

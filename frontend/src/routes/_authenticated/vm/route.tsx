@@ -5,6 +5,7 @@ import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { VirtualMachineIcon } from "@/icons/svg";
 import { requireAccess } from "@/routes/-auth";
 import { loadRouteQueries } from "@/routes/-loader";
+import { optionalHandoffOperationId } from "@/routes/-search";
 
 import VMPage from "./-components/VMPage";
 
@@ -14,6 +15,7 @@ const access = {
 } satisfies AccessPolicy;
 
 export const Route = createFileRoute("/_authenticated/vm")({
+  validateSearch: optionalHandoffOperationId,
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [

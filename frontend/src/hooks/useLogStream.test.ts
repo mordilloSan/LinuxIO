@@ -37,7 +37,8 @@ vi.mock("@/hooks/useLiveStream", () => ({
   }),
 }));
 
-const { useLogStream } = await import("@/hooks/useLogStream");
+const { appendPendingLogs, useLogStream } =
+  await import("@/hooks/useLogStream");
 const { act, renderHook } = await import("@/test/render");
 
 function createStream(overrides: Partial<Stream> = {}): Stream {
@@ -80,6 +81,30 @@ function flushAnimationFrames() {
   animationFrameMocks.callbacks.clear();
   callbacks.forEach((callback) => callback(performance.now()));
 }
+
+describe("pending log retention", () => {
+  it("bounds queued text across repeated overflows and ignores empty chunks", () => {
+    const cap = 512 * 1024;
+    const pending = { chunks: [] as string[], length: 0 };
+    for (let index = 0; index < 20; index += 1) {
+      appendPendingLogs(pending, "");
+    }
+    expect(pending.chunks).toEqual([]);
+
+    for (let index = 0; index < 20; index += 1) {
+      appendPendingLogs(pending, "x".repeat(cap / 4));
+      expect(pending.length).toBeLessThanOrEqual(2 * cap);
+    }
+
+    appendPendingLogs(pending, `${"y".repeat(3 * cap)}\nnewest\n`);
+    const retained = pending.chunks.join("");
+    expect(retained.length).toBe(pending.length);
+    expect(retained.length).toBeLessThanOrEqual(2 * cap);
+    expect(retained.endsWith("\nnewest\n")).toBe(true);
+    // Line trimming belongs to the flush; retain the unfinished line here.
+    expect(retained.startsWith("y")).toBe(true);
+  });
+});
 
 describe("useLogStream", () => {
   beforeEach(() => {
@@ -176,6 +201,49 @@ describe("useLogStream", () => {
     expect(result.current.logs.length).toBeLessThanOrEqual(cap);
     expect(result.current.logs.startsWith("older line\n")).toBe(true);
     expect(result.current.logs.endsWith("newest line\n")).toBe(true);
+  });
+
+  it.each(["", "previously displayed\n"])(
+    "preserves the exact log tail after suspended frames with prior text %j",
+    (previous) => {
+      const harness = setupOpenStream();
+      const { result } = renderHook(() =>
+        useLogStream({ createStream: () => createStream(), open: true }),
+      );
+      act(() => harness.handlers.onText?.(previous));
+      act(flushAnimationFrames);
+
+      act(() => {
+        harness.handlers.onText?.("x".repeat(3 * 512 * 1024));
+        harness.handlers.onText?.("\nfirst retained\nsecond ret");
+        harness.handlers.onText?.("ained\n");
+      });
+      expect(result.current.logs).toBe(previous);
+      expect(animationFrameMocks.callbacks.size).toBe(1);
+
+      act(flushAnimationFrames);
+      expect(result.current.logs).toBe("first retained\nsecond retained\n");
+
+      act(() => harness.handlers.onText?.("after flush\n"));
+      act(flushAnimationFrames);
+      expect(result.current.logs).toBe(
+        "first retained\nsecond retained\nafter flush\n",
+      );
+    },
+  );
+
+  it("retains the full character limit for a long line and flushes on close", () => {
+    const harness = setupOpenStream();
+    const { result } = renderHook(() =>
+      useLogStream({ createStream: () => createStream(), open: true }),
+    );
+    const cap = 512 * 1024;
+    act(() => {
+      harness.handlers.onText?.("x".repeat(3 * cap));
+      harness.handlers.onClose?.();
+    });
+    expect(result.current.logs).toBe("x".repeat(cap));
+    expect(animationFrameMocks.callbacks.size).toBe(0);
   });
 
   it("clears loading after initial stream silence", () => {

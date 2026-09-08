@@ -59,6 +59,10 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   "contexts/AuthContext.tsx",
   // Browser fixture bootstrap owns its local journal stream connection.
   "test/browser/fixture/routes/GeneralLogsPage.tsx",
+  // Handoff browser fixture owns transport bootstrap for refresh recovery.
+  "test/browser/fixture/routes/NetworkHandoffPage.tsx",
+  // VM bridge browser fixture owns transport bootstrap for dialog workflows.
+  "test/browser/fixture/routes/VMBridgePage.tsx",
   // Router loader transport readiness (the only routing-level mux primitive).
   "routes/-loader.ts",
   // App-update stream lifecycle (mux handle + frame decoding).

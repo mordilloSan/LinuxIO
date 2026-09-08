@@ -318,6 +318,12 @@ const linuxio = {
     shutdown: defineCallWithRequest("virt.shutdown"),
     start: defineCallWithRequest("virt.start"),
     suspend: defineCallWithRequest("virt.suspend"),
+    template_delete: defineCallWithRequest("virt.template_delete"),
+    template_download: createTaskEndpoint("virt", "template_download", {
+      kind: "field",
+      field: "imagePresetId",
+    }),
+    templates: defineCall("virt.templates"),
   },
   wireguard: {
     add_interface: defineCallWithRequest("wireguard.add_interface"),

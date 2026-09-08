@@ -11,6 +11,8 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
+import { Route as NetworkRoute } from "@/routes/_authenticated/network/route";
+import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import { installTabNavigationIntent } from "@/utils/tabNavigation";
 
@@ -48,6 +50,8 @@ const GeneralLogsPage = lazy(() => import("./routes/GeneralLogsPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
 const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
+const NetworkHandoffPage = lazy(() => import("./routes/NetworkHandoffPage"));
+const VMBridgePage = lazy(() => import("./routes/VMBridgePage"));
 
 const DARK_THEME = buildAppTheme("DARK");
 const LIGHT_THEME = buildAppTheme("LIGHT");
@@ -100,6 +104,22 @@ function NotFoundRoute() {
 }
 
 const rootRoute = createRootRoute({ component: RootLayout });
+const authenticatedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "_authenticated",
+});
+const networkHandoffRoute = createRoute({
+  component: NetworkHandoffPage,
+  getParentRoute: () => authenticatedRoute,
+  path: "network",
+  validateSearch: NetworkRoute.options.validateSearch,
+});
+const vmBridgeRoute = createRoute({
+  component: VMBridgePage,
+  getParentRoute: () => authenticatedRoute,
+  path: "vm",
+  validateSearch: VMRoute.options.validateSearch,
+});
 const accountsRoute = createRoute({
   component: AccountsLayout,
   getParentRoute: () => rootRoute,
@@ -254,6 +274,7 @@ const failedRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
+  authenticatedRoute.addChildren([networkHandoffRoute, vmBridgeRoute]),
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
   iconsRoute,

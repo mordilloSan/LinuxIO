@@ -99,6 +99,8 @@ const DriveGraph = ({ readBytesPerSec, writeBytesPerSec }: DriveGraphProps) => {
     return () => {
       clearInterval(intervalId);
       chart.stop();
+      chart.removeTimeSeries(readSeries);
+      chart.removeTimeSeries(writeSeries);
     };
   }, [neutral, readColor, writeColor, readSeries, writeSeries]);
 

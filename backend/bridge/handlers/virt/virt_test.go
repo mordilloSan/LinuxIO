@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/user"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -440,7 +441,7 @@ func TestCreateVMImportsImagePresetDisk(t *testing.T) {
 	withReadyPreflight(t)
 	var importedPath string
 	var importedDiskGB int
-	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, volumePath string, diskGB int, report vmCreateReporter) error {
+	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, templateID, volumePath string, diskGB int, report vmCreateReporter) error {
 		importedPath = volumePath
 		importedDiskGB = diskGB
 		return nil
@@ -482,7 +483,7 @@ func TestCreateVMImportsCloudImagePresetAndCreatesSeedISO(t *testing.T) {
 	withReadyPreflight(t)
 	var importedPath string
 	var seedPath string
-	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, volumePath string, diskGB int, report vmCreateReporter) error {
+	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, templateID, volumePath string, diskGB int, report vmCreateReporter) error {
 		importedPath = volumePath
 		return nil
 	})
@@ -532,7 +533,7 @@ func TestCreateVMReportsProgress(t *testing.T) {
 	fake := newFakeConn()
 	withFakeLibvirt(t, fake)
 	withReadyPreflight(t)
-	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, volumePath string, diskGB int, report vmCreateReporter) error {
+	withFakeImageImporter(t, func(ctx context.Context, preset vmImagePreset, templateID, volumePath string, diskGB int, report vmCreateReporter) error {
 		reportVMCreateProgress(report, "download", "Downloading Debian Server image", volumePath, progressPercent(42))
 		return nil
 	})
@@ -993,24 +994,118 @@ func TestDeleteVMRemovesOwnedCloudInitSeed(t *testing.T) {
 	}
 }
 
-func TestDeleteVMPreservesDisksWhenRequested(t *testing.T) {
+func TestDeleteVMUnregisteredCloudDisks(t *testing.T) {
 	fake := newFakeConn()
-	fake.domains["delete-me"] = testDomain("delete-me")
-	fake.domainXML["delete-me"] = deleteTestDomainXML()
+	fake.domains["cloud-seed"] = testDomain("cloud-seed")
+	fake.domainXML["cloud-seed"] = cloudSeedTestDomainXML()
 	withFakeLibvirt(t, fake)
+	dir := t.TempDir()
+	paths := []string{
+		managedCloudPath + "/linuxio-cloud-seed.qcow2",
+		managedCloudPath + "/linuxio-cloud-seed-seed.img",
+	}
+	for _, path := range paths {
+		name := filepath.Base(path)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("VM data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// A same-named volume elsewhere in the pool must survive.
+		fake.volumesByName[name] = libvirt.StorageVol{Pool: defaultPoolName, Name: name, Key: defaultPoolPath + "/" + name}
+	}
+	oldRemove := removeFile
+	removeFile = func(path string) error {
+		if !slices.Contains(paths, path) {
+			t.Fatalf("unexpected file removal: %s", path)
+		}
+		return os.Remove(filepath.Join(dir, filepath.Base(path)))
+	}
+	t.Cleanup(func() { removeFile = oldRemove })
 
-	result, err := DeleteVM(context.Background(), apischema.VMDeleteRequest{Name: "delete-me", DeleteDisks: false})
+	result, err := DeleteVM(context.Background(), apischema.VMDeleteRequest{Name: "cloud-seed", DeleteDisks: true})
 	if err != nil {
 		t.Fatalf("DeleteVM: %v", err)
 	}
-	if len(result.Removed) != 0 {
-		t.Fatalf("removed = %#v, want none", result.Removed)
-	}
-	if len(result.Preserved) != 2 {
-		t.Fatalf("preserved = %#v, want two disks", result.Preserved)
-	}
 	if len(fake.deletedVolumes) != 0 {
-		t.Fatalf("deletedVolumes = %#v, want none", fake.deletedVolumes)
+		t.Fatalf("deleted unrelated volumes: %v", fake.deletedVolumes)
+	}
+	for _, path := range paths {
+		_, statErr := os.Stat(filepath.Join(dir, filepath.Base(path)))
+		if !errors.Is(statErr, os.ErrNotExist) || !slices.Contains(result.Removed, path) {
+			t.Fatalf("disk %s remains: stat = %v, result = %+v", path, statErr, result)
+		}
+	}
+}
+
+func TestDeleteIfManagedDiskFileFallback(t *testing.T) {
+	name := managedVolumeName("cloud-seed")
+	path := managedCloudPath + "/" + name
+	for _, tt := range []struct {
+		name      string
+		disk      apischema.VMDisk
+		lookupErr error
+		removeErr error
+		wantCall  bool
+		wantErr   error
+	}{
+		{name: "missing file", disk: apischema.VMDisk{Owned: true, Path: path}, removeErr: os.ErrNotExist, wantCall: true},
+		{name: "remove failure", disk: apischema.VMDisk{Owned: true, Path: path}, removeErr: os.ErrPermission, wantCall: true, wantErr: os.ErrPermission},
+		{name: "lookup failure", disk: apischema.VMDisk{Owned: true, Path: path}, lookupErr: os.ErrPermission, wantErr: os.ErrPermission},
+		{name: "unowned", disk: apischema.VMDisk{Path: path}},
+		{name: "external path", disk: apischema.VMDisk{Owned: true, Path: "/srv/" + name}},
+		{name: "sibling directory", disk: apischema.VMDisk{Owned: true, Path: managedCloudPath + "-other/" + name}},
+		{name: "traversal", disk: apischema.VMDisk{Owned: true, Path: managedCloudPath + "/../" + name}},
+		{name: "other VM", disk: apischema.VMDisk{Owned: true, Path: managedCloudPath + "/linuxio-other.qcow2"}},
+		{name: "mismatched volume", disk: apischema.VMDisk{Owned: true, Path: path, VolumeName: managedSeedVolumeName("cloud-seed")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newFakeConn()
+			fake.storageVolPathLookupErr = tt.lookupErr
+			fake.poolLookupErr = libvirtErr(libvirt.ErrNoStoragePool, "pool missing")
+			called := false
+			oldRemove := removeFile
+			removeFile = func(got string) error {
+				called = true
+				if got != path {
+					t.Fatalf("removeFile(%q), want %q", got, path)
+				}
+				return tt.removeErr
+			}
+			t.Cleanup(func() { removeFile = oldRemove })
+
+			removed, err := deleteIfManagedDisk(fake, "cloud-seed", tt.disk)
+			if !errors.Is(err, tt.wantErr) || called != tt.wantCall || removed != (tt.wantCall && tt.wantErr == nil) {
+				t.Fatalf("removed = %t, err = %v, file removal called = %t", removed, err, called)
+			}
+		})
+	}
+}
+
+func TestDeleteVMPreservesDisksWhenRequested(t *testing.T) {
+	for _, xmlDoc := range []string{deleteTestDomainXML(), strings.ReplaceAll(cloudSeedTestDomainXML(), "cloud-seed", "delete-me")} {
+		fake := newFakeConn()
+		fake.domains["delete-me"] = testDomain("delete-me")
+		fake.domainXML["delete-me"] = xmlDoc
+		withFakeLibvirt(t, fake)
+		oldRemove := removeFile
+		removeFile = func(path string) error {
+			t.Fatalf("unexpected file removal: %s", path)
+			return nil
+		}
+		t.Cleanup(func() { removeFile = oldRemove })
+
+		result, err := DeleteVM(context.Background(), apischema.VMDeleteRequest{Name: "delete-me", DeleteDisks: false})
+		if err != nil {
+			t.Fatalf("DeleteVM: %v", err)
+		}
+		if len(result.Removed) != 0 {
+			t.Fatalf("removed = %#v", result.Removed)
+		}
+		if len(result.Preserved) != 2 {
+			t.Fatalf("preserved = %#v, want two disks", result.Preserved)
+		}
+		if len(fake.deletedVolumes) != 0 {
+			t.Fatalf("deletedVolumes = %#v, want none", fake.deletedVolumes)
+		}
 	}
 }
 
@@ -1574,7 +1669,7 @@ func TestRoutesArePrivileged(t *testing.T) {
 	}
 }
 
-func withFakeLibvirt(t *testing.T, fake *fakeConn) {
+func withFakeLibvirt(t *testing.T, fake libvirtConn) {
 	t.Helper()
 	old := withLibvirtConn
 	withLibvirtConn = func(ctx context.Context, fn func(libvirtConn) error) error {
@@ -1640,7 +1735,7 @@ func withFakeManagedStoragePermissions(t *testing.T) {
 	})
 }
 
-func withFakeImageImporter(t *testing.T, fn func(context.Context, vmImagePreset, string, int, vmCreateReporter) error) {
+func withFakeImageImporter(t *testing.T, fn func(context.Context, vmImagePreset, string, string, int, vmCreateReporter) error) {
 	t.Helper()
 	old := importImagePresetDisk
 	importImagePresetDisk = fn

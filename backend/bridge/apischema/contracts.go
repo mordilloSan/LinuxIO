@@ -211,6 +211,7 @@ type VMCreateRequest struct {
 	ISOPath           string          `json:"isoPath,omitempty"`
 	SourceType        VMSourceType    `json:"sourceType,omitempty"`
 	ImagePresetID     VMImagePresetID `json:"imagePresetId,omitempty"`
+	TemplateID        string          `json:"templateId,omitempty"`
 	CloudInitUsername string          `json:"cloudInitUsername,omitempty"`
 	CloudInitPassword string          `json:"cloudInitPassword,omitempty"`
 	CloudInitSSHKey   string          `json:"cloudInitSshKey,omitempty"`
@@ -222,6 +223,15 @@ type VMCreateRequest struct {
 type VMDeleteRequest struct {
 	Name        string `json:"name"`
 	DeleteDisks bool   `json:"deleteDisks"`
+}
+
+type VMTemplateDownloadRequest struct {
+	ImagePresetID VMImagePresetID `json:"imagePresetId"`
+}
+
+type VMTemplateRequest struct {
+	ImagePresetID VMImagePresetID `json:"imagePresetId"`
+	TemplateID    string          `json:"templateId"`
 }
 
 type VMPreflightRequest struct {

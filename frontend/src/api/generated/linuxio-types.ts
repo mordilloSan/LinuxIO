@@ -2582,6 +2582,7 @@ export interface VMCreateRequest {
   isoPath?: string;
   sourceType?: VMSourceType;
   imagePresetId?: VMImagePresetID;
+  templateId?: string;
   cloudInitUsername?: string;
   cloudInitPassword?: string;
   cloudInitSshKey?: string;
@@ -2633,6 +2634,7 @@ export interface VMNetwork {
   name: string;
   type: string;
   active: boolean;
+  hasPhysicalUplink?: boolean;
 }
 
 export interface VMPreflight {
@@ -2663,6 +2665,31 @@ export interface VMPreflightRequest {
 }
 
 export type VMSourceType = "iso" | "imagePreset";
+
+export interface VMTemplate {
+  id: string;
+  imagePresetId: VMImagePresetID;
+  label: string;
+  version: string;
+  sourceUrl: string;
+  downloadedAt: string;
+  sizeBytes: number;
+  path: string;
+}
+
+export interface VMTemplateDownloadRequest {
+  imagePresetId: VMImagePresetID;
+}
+
+export interface VMTemplateLibrary {
+  path: string;
+  templates: VMTemplate[];
+}
+
+export interface VMTemplateRequest {
+  imagePresetId: VMImagePresetID;
+  templateId: string;
+}
 
 export interface ValidateComposeError {
   line?: number;
@@ -3677,6 +3704,18 @@ export interface LinuxIOSchema {
     shutdown: { input: [name: string]; request: NameRequest; result: void };
     start: { input: [name: string]; request: NameRequest; result: void };
     suspend: { input: [name: string]; request: NameRequest; result: void };
+    template_delete: {
+      input: [request: VMTemplateRequest];
+      request: VMTemplateRequest;
+      result: void;
+    };
+    template_download: {
+      input: [imagePresetId: VMImagePresetID];
+      request: VMTemplateDownloadRequest;
+      result: VMTemplate;
+      progress: TaskProgress<VMCreateProgress>;
+    };
+    templates: { input: []; request: void; result: VMTemplateLibrary };
   };
 
   wireguard: {
@@ -4171,6 +4210,8 @@ export interface LinuxIOCallSchema {
   "virt.shutdown": { request: NameRequest; result: void };
   "virt.start": { request: NameRequest; result: void };
   "virt.suspend": { request: NameRequest; result: void };
+  "virt.template_delete": { request: VMTemplateRequest; result: void };
+  "virt.templates": { request: void; result: VMTemplateLibrary };
   "wireguard.add_interface": {
     request: WireGuardAddInterfaceRequest;
     result: void;

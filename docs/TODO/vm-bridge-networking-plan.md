@@ -26,11 +26,19 @@ Implemented behavior:
 2. VM creation validates the selected source before storage mutation and emits
    either `<interface type="network">` or `<interface type="bridge">`.
 3. The create dialog defaults to NAT. Home Assistant OS prefers the sole active
-   host bridge when exactly one is available.
+   host bridge only when it has a live physical Ethernet uplink. Other bridges
+   remain available for explicit selection.
+   **Create LAN bridge** beside the network selector opens the existing bridge
+   setup. It can create a bridge on a spare wired NIC or guide the host-IP move
+   below. Successful setup selects the new bridge and retains the VM form;
+   canceling or reverting leaves its network selection unchanged. A page refresh
+   recovers a pending handoff, but does not retain the unsaved VM form.
 4. New domains include the QEMU guest-agent channel, and cloud images install
    `qemu-guest-agent`.
 5. Bridged guest addresses are discovered best-effort through libvirt ARP,
-   followed by the guest agent for unresolved interfaces.
+   followed by the guest agent for unresolved interfaces. Discovery has a
+   three-second budget that interrupts blocked transport reads; missing address
+   data does not prevent VM list or detail results.
 
 No host network manager is involved. Hosts using an unsupported manager can
 still attach VMs to bridges created outside LinuxIO.
@@ -72,17 +80,19 @@ refused.
    secrets.
 2. Create a 90-second checkpoint with flags `0x02|0x04`.
 3. Add a persistent bridge profile containing copies of the active `ipv4` and
-   `ipv6` maps and the pinned MAC.
+   `ipv6` maps, connection policy including the firewall zone, and the pinned MAC.
 4. Add a persistent Ethernet port profile, retaining physical Ethernet
    settings, and activate both profiles.
 5. Confirmation calls `CheckpointDestroy`; explicit revert calls
    `CheckpointRollback`; no confirmation lets NetworkManager roll back by
-   itself.
+   itself. Explicit rollback checks every device result returned by
+   NetworkManager before reporting success.
 
 ### Netplan
 
 1. Create a Netplan D-Bus configuration object.
-2. `Set` deltas remove L3 keys from the member and place them on the bridge.
+2. `Set` deltas remove L3 keys from the member and place them on the bridge,
+   preserving the member's effective renderer.
 3. Call `Try(90)` and leave the transaction pending.
 4. Confirmation calls `Apply`; explicit revert calls `Cancel`; no confirmation
    lets Netplan reject the change automatically.
@@ -109,6 +119,13 @@ handoffs. Confirm/revert first claim the durable decision state and then call
 the stored native D-Bus object. The client never supplies an arbitrary object
 path.
 
+The network and VM pages store the operation UUID in validated `handoffOperationId`
+URL search before starting the mutation. Refreshing that URL resumes status
+polling for the same UID-bound operation. A new start reconciles expired records
+under the store's exclusive lock, including records owned by another UID,
+without exposing their contents. Recovery allows for bounded native start and
+decision calls before releasing exclusivity.
+
 There is no LinuxIO marker format, transient reverter service, startup recovery
 hook, or hidden `revert-network` CLI. The root network daemon remains alive
 outside the authenticated session and owns the timeout.
@@ -120,9 +137,17 @@ outside the authenticated session and owns the timeout.
 - A process failure exactly while committing a confirmation can leave the
   durable result unknown. LinuxIO reports that state and asks the operator to
   inspect the console instead of claiming either outcome.
+- A recorded apply or rollback failure also remains unknown after expiry;
+  elapsed time does not prove that native recovery succeeded.
 - A timeout is intentionally treated as a revert. Redoing a successful change
   is preferable to locking out the host.
 - Complex or secret-bearing layouts are refused rather than partially copied.
+- Dynamic IPv6 needs a portable address and DHCP identity. NetworkManager
+  handoff requires explicit EUI64 generation, disabled privacy, and portable
+  DHCPv6 identifiers. Netplan DHCPv6 and NetworkManager-rendered dynamic IPv6
+  are refused. Netplan with networkd supports static IPv6 and EUI64 SLAAC
+  without privacy extensions. LinuxIO never converts a dynamic address into
+  a static one to make verification pass.
 
 ## Verification
 
@@ -132,7 +157,12 @@ Automated coverage must include:
 - one-scan Phase 2a preflight and all three persistence backends;
 - NetworkManager setting copies, 802.1X refusal, checkpoint handle lifecycle;
 - Netplan `Set`/`Try` without early `Apply`, then confirm/revert calls; and
-- UID-bound durable status, confirmation, explicit revert, and timeout.
+- UID-bound durable status, confirmation, explicit revert, timeout, and
+  exclusive claims after abandoned operations;
+- transport interruption during blocked address discovery; and
+- real browser navigation and refresh recovery without a second Start;
+- bridge setup from VM creation, preserving its form and selecting only a
+  successfully created or confirmed bridge.
 
 Runtime testing should use console access. WSL can validate bridge XML,
 attachment, spare-NIC creation, and link behavior, but its nested virtual

@@ -2,13 +2,13 @@
 
 ## Core Principle
 
-**The server is a stateless byte relay.** It never parses JSON, never inspects payloads, never knows about "API calls" vs "terminals". It only knows about streams and bytes.
+**The WebSocket handler relays opaque payload bytes.** It tracks streams, session activity and connection lifetime, but leaves route parsing and authorization to the bridge. Native HTTP file downloads use a separate streaming handler.
 
 ```
 Server's job:
   1. Accept WebSocket connections
   2. Route frames between WebSocket ↔ Yamux based on streamID
-  3. Nothing else
+  3. Enforce origin/session checks and clean up transport resources
 ```
 
 ## Architecture
@@ -73,10 +73,13 @@ Activity is payload-blind metadata. The browser may send stream ID 0 with an emp
 ```
 [00 00 00 01][01][StreamFrame bytes]
 │            │   │
-│            │   └─ Payload: [0x80][streamID][len]["terminal\0120\032"]
+│            │   └─ Payload: [0x80][streamID][len][JSON open envelope]
 │            └─ SYN flag
 └─ Stream ID: 1
 ```
+
+The open envelope contains `route` and `request`, for example
+`{"route":"terminal.open","request":{"cols":120,"rows":32}}`.
 
 ### Layer 2: Yamux Protocol (WebSocket ↔ Bridge)
 
@@ -191,71 +194,41 @@ handleYamuxSession(..., clientConn, ..., startup.ready)
 
 ### WebSocket Upgrade
 
-```go
-// wsAuthMiddleware validates the session before upgrading
-sess := sm.ValidateFromRequest(r)
-if sess == nil {
-    // Upgrade first, then send close code 1008 ("no-session")
-    // so the frontend can distinguish auth failure from network error
-    conn.WriteControl(websocket.CloseMessage,
-        websocket.FormatCloseMessage(1008, "no-session"), ...)
-    return
-}
+`wsAuthMiddleware` validates the session before upgrading. Both authenticated
+and unauthenticated upgrades enforce the same origin policy. Invalid sessions
+receive close code 1008 (`no-session`) after upgrade, allowing the frontend to
+distinguish an authentication failure from a network error.
 
-// WebSocketRelayHandler — the actual handler
-sess := session.SessionFromContext(r.Context())
-conn, _ := upgrader.Upgrade(w, r, nil)
-yamuxSession, _ := bridge.GetYamuxSession(sess.SessionID)
-// start relay...
-```
+For valid sessions, `WebSocketRelayHandler` creates the relay, registers the tab,
+rechecks session validity, and starts its ping loop and reader.
 
-### Relay Loop (The Entire Server Logic)
+### Relay Loop
 
-```go
-// Parse frame header: [streamID:4][flags:1][payload:N]
-streamID := binary.BigEndian.Uint32(data[0:4])
-flags    := data[4]
-payload  := data[5:]
+The WebSocket reader parses only the five-byte outer header and consumes the
+Activity flag. SYN registers a stream immediately, then opens yamux in a worker
+with a ten-second timeout. DATA, FIN and RST enter that stream's FIFO queue, so
+opening a stream or waiting for yamux window credit cannot block other requests
+or WebSocket control frames.
 
-if flags&FlagSYN != 0 {
-    // Open new yamux stream, write payload, start relayFromBridge goroutine
-    stream, _ := yamuxSession.Open(ctx)
-    stream.Write(payload)
-    go relayFromBridge(stream, streamID, ws)
+Each stream has room for 16 queued messages. Queue overflow cancels only that
+stream; it does not impose a WebSocket message size limit. Each bridge write has
+a 20-second deadline, including time spent waiting for stream window credit.
+Cancellation closes the yamux stream to interrupt blocked reads and writes.
 
-} else if flags&FlagDATA != 0 {
-    // Forward data to existing yamux stream
-    streams[streamID].Write(payload)
+FIN forwards its payload and waits for the bridge's final response. RST closes
+the transport after earlier queued DATA, preserving an explicit `OpStreamAbort`
+sent immediately before RST. Ordinary transport closure does not itself mean
+that a bridge mutation was cancelled; see [API cancellation semantics](api-contract.md).
 
-} else if flags&FlagFIN != 0 {
-    // Forward payload to bridge (e.g., OpStreamClose frame), but do NOT
-    // close the stream yet — wait for bridge to respond and close its side
-    streams[streamID].Write(payload)
+Each bridge reader starts with a buffer for the five-byte outer header and
+4 KiB of payload, growing once to 32 KiB when a read fills it. It reads directly
+into that buffer and reuses it after the synchronous WebSocket write. Small
+reads are sent immediately. A mutex serializes
+WebSocket data writes, while Gorilla's concurrent-safe `WriteControl` handles
+pings. A failed data or ping write shuts down the connection and its streams.
 
-} else if flags&FlagRST != 0 {
-    // Abort stream immediately
-    streams[streamID].Close()
-}
-```
-
-```go
-func relayFromBridge(stream net.Conn, streamID uint32, ws *websocket.Conn) {
-    buf := make([]byte, 4096)
-    for {
-        n, err := stream.Read(buf)
-        if n > 0 {
-            sendFrame(ws, streamID, FlagDATA, buf[:n])
-        }
-        if err != nil {
-            sendFrame(ws, streamID, FlagFIN, nil)
-            closeStream(streamID)
-            return
-        }
-    }
-}
-```
-
-**That's the entire server logic.** No JSON, no routing, no business logic.
+The HTTP handler cancels and joins its workers when the connection ends. The
+shared yamux session remains available to other tabs.
 
 ## Stream Lifecycle
 
@@ -312,10 +285,10 @@ One yamux session per authenticated login (`SessionID`):
 ```go
 var yamuxSessions = struct {
     sync.RWMutex
-    sessions map[string]*ipc.YamuxSession // SessionID → session
+    sessions map[string]*relay.YamuxSession // SessionID → session
 }{}
 
-// Lookup at WebSocket open time
+// Lookup when a WebSocket stream opens
 yamuxSession, err := bridge.GetYamuxSession(sess.SessionID)
 ```
 
@@ -324,6 +297,8 @@ yamuxSession, err := bridge.GetYamuxSession(sess.SessionID)
 - Multiple WebSocket connections (tabs/windows) share the same session
 - Session is keyed by `SessionID`, not username — a user can have multiple concurrent sessions
 - Session survives WebSocket disconnects
+- Stream IDs belong to one WebSocket relay. Replacing a socket closes its frontend streams, even if the old close event is still pending; recovery opens new streams.
+- Tab registration, removal and expiry detachment share one mutex. Network closes happen outside that lock, and a post-registration session recheck covers expiry racing an upgrade.
 - When the bridge process dies, the yamux session closes → the HTTP session is terminated → all WebSocket connections for that session receive close code 1008
 
 ### Multiple Tabs Example
@@ -358,32 +333,62 @@ relay.closeAll()
 
 ### Yamux / Bridge Errors
 
-```go
-// Stream read error (bridge closed stream or died)
-n, err := stream.Read(buf)
-if err != nil {
-    sendFrame(ws, streamID, FlagFIN, nil)  // notify browser
-    closeStream(streamID)
-}
+EOF or a bridge read error closes that stream and notifies the browser with FIN.
+An open or write failure closes the stream with RST if another worker has not
+already closed it. Stream cleanup runs once, even when readers and writers fail
+together.
 
-// Yamux session dies (bridge process exited)
-// → yamuxSession.OnClose fires → session.Terminate() → CloseWebSocketForSession()
-// → all WebSocket connections for the session receive close code 1008
-```
+If the yamux session dies, its `OnClose` callback terminates the HTTP session.
+`CloseWebSocketForSession` closes all of that login's WebSocket connections with
+code 1008.
 
 ## Performance
 
-### Why This is Fast
+The relay avoids JSON decoding. Outgoing bridge data uses a reusable buffer
+per stream, avoiding a separate allocation and copy for each outer frame. Small
+responses keep a 4 KiB payload buffer; bulk output grows to 32 KiB.
+Larger available reads also reduce WebSocket framing and write calls for bulk
+output. Incoming messages still use `ReadMessage` and have no relay size limit.
 
-1. **Zero JSON parsing** — server never touches payloads
-2. **Zero allocation** — just copies bytes between connections
-3. **Multiplexed** — one connection handles everything
-4. **Stateless** — server tracks only `streamID → yamux stream` mappings
-5. **16 MB window** — large transfer chunks without stalls
+The frontend writes both protocol headers into the final send buffer, copying
+each upload payload once. Scrollback is allocated only when binary stream data
+arrives, saving the default 64 KiB allocation for JSON-only requests. Circular
+buffer operations use views when copying portions of an existing buffer.
+
+Incoming progress and result JSON is decoded directly from a view of the
+receive buffer before invoking callbacks. Binary DATA keeps its own copy so
+handlers and detached buffers can retain it safely. In-memory upload chunks
+also use views: the multiplexer copies each chunk into the final send frame
+synchronously. Chunk pacing, protocol bytes, and JSON encoding are unchanged.
+
+The 16 MiB yamux window is a flow-control setting, independent of WebSocket
+message size. Stream queues and write deadlines isolate stalled consumers;
+they do not eliminate flow-control waits within an individual stream.
+
+Reproduce the relay framing benchmark with:
+
+```sh
+make test-go-quiet GO_TEST_PKGS=./webserver/web GO_TEST_FLAGS='-run=NoTests -bench=BenchmarkRelayFromBridge -benchmem -count=5 -race=false'
+```
+
+On an Intel Core Ultra 7 265H with Go 1.27.1, five-run medians for a 1 MiB
+loopback transfer changed from 1.038 ms to 0.205 ms, 1,285,325 to 49,414 allocated
+bytes, and 1,292 to 142 allocations. This measures relay framing and loopback
+writes, including the receiving benchmark client; it does not measure file I/O
+or deployment network throughput.
 
 ## Security
 
 ### Authentication
+
+The upgrader uses [Gorilla's default origin policy](https://pkg.go.dev/github.com/gorilla/websocket#hdr-Origin_Considerations):
+when `Origin` is present, its host and port must match the request's `Host`.
+This also protects unauthenticated upgrades. Go's HTTP
+[`CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection)
+allows GET requests, so it does not replace the WebSocket origin check.
+The Vite `/ws` proxy preserves both browser Host and Origin (`changeOrigin:
+false`); it does not rewrite Origin to bypass validation. Clients without an
+Origin header still require session authentication.
 
 WebSocket upgrade requires valid session cookie, enforced by `wsAuthMiddleware`:
 
@@ -397,6 +402,7 @@ if err != nil {
 
 **After authentication:**
 - Server does not re-check permissions on each frame
+- Server does revalidate session lifetime on incoming messages and pongs; only explicit activity refreshes idle expiry
 - Bridge route dispatch enforces authorization from the session privilege state (`sess.Privileged`) for routes registered with bridge privilege metadata
 - Stream isolation: each session has a separate bridge process and yamux session
 

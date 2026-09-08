@@ -82,6 +82,7 @@ const CpuGraph = ({ usage }: CpuGraphProps) => {
     return () => {
       clearInterval(intervalId);
       chart.stop();
+      chart.removeTimeSeries(series);
     };
   }, [color, neutral, series]);
 

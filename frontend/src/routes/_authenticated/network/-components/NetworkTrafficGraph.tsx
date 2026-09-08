@@ -97,7 +97,10 @@ const NetworkTrafficGraph = ({ series }: NetworkTrafficGraphProps) => {
 
     chart.streamTo(canvas, STREAM_DELAY_MS);
 
-    return () => chart.stop();
+    return () => {
+      chart.stop();
+      for (const entry of series) chart.removeTimeSeries(entry.series);
+    };
   }, [chartColors, chartNeutral, series]);
 
   return (

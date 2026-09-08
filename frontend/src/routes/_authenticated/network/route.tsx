@@ -7,7 +7,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { NetworkIcon } from "@/icons/svg";
 import { loadRouteQueries } from "@/routes/-loader";
-import { optionalString } from "@/routes/-search";
+import { optionalHandoffOperationId, optionalString } from "@/routes/-search";
 
 import BridgeHandoffDialog from "./-components/BridgeHandoffDialog";
 import CreateBridgeDialog from "./-components/CreateBridgeDialog";
@@ -19,7 +19,21 @@ import { NETWORK_TABS } from "./-components/networkTabs";
 // docker and updates route between siblings.
 function NetworkLayout() {
   const [createBridgeOpen, setCreateBridgeOpen] = useState(false);
-  const [bridgeHandoffOpen, setBridgeHandoffOpen] = useState(false);
+  const [bridgeHandoffRequested, setBridgeHandoffRequested] = useState(false);
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const bridgeHandoffOpen =
+    bridgeHandoffRequested || Boolean(search.handoffOperationId);
+
+  const setHandoffOperationId = (operationId: string | undefined) => {
+    return navigate({
+      search: (previous) => ({
+        ...previous,
+        handoffOperationId: operationId,
+      }),
+      replace: true,
+    });
+  };
 
   const tabActions = (
     <HeaderActions
@@ -29,7 +43,7 @@ function NetworkLayout() {
           icon="mdi:lan"
           iconSize={20}
           label="Move host IP to bridge"
-          onClick={() => setBridgeHandoffOpen(true)}
+          onClick={() => setBridgeHandoffRequested(true)}
         />
       }
       create={
@@ -51,11 +65,17 @@ function NetworkLayout() {
         <NetworkInterfaceList />
       </RoutedTabLayout>
       <BridgeHandoffDialog
-        onClose={() => setBridgeHandoffOpen(false)}
+        onClose={() => setBridgeHandoffRequested(false)}
+        onOperationIdChange={setHandoffOperationId}
         open={bridgeHandoffOpen}
+        operationId={search.handoffOperationId ?? ""}
       />
       <CreateBridgeDialog
         onClose={() => setCreateBridgeOpen(false)}
+        onHandoff={() => {
+          setCreateBridgeOpen(false);
+          setBridgeHandoffRequested(true);
+        }}
         open={createBridgeOpen}
       />
     </>
@@ -63,7 +83,10 @@ function NetworkLayout() {
 }
 
 export const Route = createFileRoute("/_authenticated/network")({
-  validateSearch: (search) => optionalString(search, "iface"),
+  validateSearch: (search) => ({
+    ...optionalString(search, "iface"),
+    ...optionalHandoffOperationId(search),
+  }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [linuxio.network.get_network_info]),
   component: NetworkLayout,

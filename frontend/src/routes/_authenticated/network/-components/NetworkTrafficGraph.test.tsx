@@ -11,6 +11,7 @@ const chartColors = buildAppTheme("DARK").chart;
 
 const mocks = vi.hoisted(() => ({
   addTimeSeries: vi.fn(),
+  removeTimeSeries: vi.fn(),
   options: undefined as undefined | Record<string, unknown>,
   rowsAt: undefined as undefined | ((timestamp: number) => unknown[]),
   stop: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("smoothie", () => ({
   SmoothieChart: class {
     addTimeSeries = mocks.addTimeSeries;
+    removeTimeSeries = mocks.removeTimeSeries;
     stop = mocks.stop;
     streamTo = mocks.streamTo;
     constructor(options: Record<string, unknown>) {

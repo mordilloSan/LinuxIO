@@ -188,6 +188,59 @@ describe("StreamMultiplexer", () => {
     expect(stream.status).toBe("closed");
   });
 
+  it("decodes fragmented Unicode JSON and retains results after receive buffer reuse", () => {
+    const { mux, socket } = openMux();
+    const stream = requireStream(mux.openStream("tasks.watch"));
+    const onProgress = vi.fn();
+    const onResult = vi.fn();
+    stream.onProgress = onProgress;
+    stream.onResult = onResult;
+
+    const progress = { pct: 50, bytes: 5, total: 10 };
+    const result = { status: "ok", data: "café 🐧 漢字".repeat(2048) };
+    const progressFrame = makeBridgeFrame(
+      BridgeOpcode.StreamProgress,
+      stream.id,
+      encodeString(JSON.stringify(progress)),
+    );
+    const resultFrame = makeBridgeFrame(
+      BridgeOpcode.StreamResult,
+      stream.id,
+      encodeString(JSON.stringify(result)),
+    );
+    const combined = new Uint8Array(progressFrame.length + resultFrame.length);
+    combined.set(progressFrame);
+    combined.set(resultFrame, progressFrame.length);
+    // Split inside the penguin's UTF-8 bytes; the second part grows recvBuf.
+    const split = combined.indexOf(0xf0) + 2;
+    socket.receive(
+      makeInboundMuxFrame(stream.id, Flags.DATA, combined.subarray(0, split)),
+    );
+    expect(onProgress).toHaveBeenCalledWith(progress);
+    expect(onResult).not.toHaveBeenCalled();
+    socket.receive(
+      makeInboundMuxFrame(stream.id, Flags.DATA, combined.subarray(split)),
+    );
+
+    socket.receive(
+      makeInboundMuxFrame(
+        stream.id,
+        Flags.DATA,
+        makeBridgeFrame(
+          BridgeOpcode.StreamResult,
+          stream.id,
+          encodeString(JSON.stringify({ status: "error", error: "later" })),
+        ),
+      ),
+    );
+    expect(onProgress).toHaveBeenCalledTimes(1);
+    expect(onResult.mock.calls).toEqual([
+      [result],
+      [{ status: "error", error: "later" }],
+    ]);
+    mux.close();
+  });
+
   it("buffers detached data and does not duplicate buffered bytes on reattach", () => {
     const { mux, socket } = openMux();
     const stream = requireStream(mux.openStream("terminal.open"));
@@ -296,6 +349,8 @@ describe("StreamMultiplexer", () => {
   it("ignores events from a superseded socket after reconnecting", () => {
     const { mux, socket } = openMux();
     const stream = requireStream(mux.openStream("terminal.open"));
+    const onClose = vi.fn();
+    stream.onClose = onClose;
     const statusListener = vi.fn();
     mux.addStatusListener(statusListener);
 
@@ -305,8 +360,17 @@ describe("StreamMultiplexer", () => {
     mux.reconnect();
     const replacement = FakeWebSocket.latest();
     expect(replacement).not.toBe(socket);
+    expect(stream.status).toBe("closed");
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mux.getStream("terminal.open")).toBeNull();
     replacement.open();
     expect(mux.status).toBe("open");
+    const liveStream = requireStream(mux.openStream("terminal.open"));
+    expect(liveStream).not.toBe(stream);
+    expect(readMuxFrame(replacement.sent[0])).toMatchObject({
+      streamID: liveStream.id,
+      flags: Flags.SYN,
+    });
 
     // The stale socket's close event finally arrives: it must not kill
     // live streams, flip status, or schedule a ghost reconnect.
@@ -315,9 +379,33 @@ describe("StreamMultiplexer", () => {
 
     expect(mux.status).toBe("open");
     expect(statusListener).not.toHaveBeenCalled();
-    expect(stream.status).toBe("open");
+    expect(stream.status).toBe("closed");
+    expect(liveStream.status).toBe("open");
+    expect(onClose).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(2);
+    mux.close();
+  });
+
+  it("frames a large upload view without including bytes outside the view", () => {
+    const { mux, socket } = openMux();
+    const stream = requireStream(mux.openStream("tasks.data"));
+    const bytes = new Uint8Array(1024 * 1024 + 2).fill(42);
+    bytes[0] = 1;
+    bytes[bytes.length - 1] = 2;
+    const upload = bytes.subarray(1, -1);
+
+    stream.write(upload);
+    const frame = readMuxFrame(socket.sent[1]);
+    expect(frame.flags).toBe(Flags.DATA);
+    const bridgeFrame = readBridgeFrame(frame.payload);
+    expect(bridgeFrame).toMatchObject({
+      opcode: BridgeOpcode.StreamData,
+      streamID: stream.id,
+      payloadLength: upload.length,
+    });
+    expect(bridgeFrame.payload.every((value) => value === 42)).toBe(true);
+    mux.close();
   });
 
   it("reconnects after non-auth closes without duplicate timers", () => {

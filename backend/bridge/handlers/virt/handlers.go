@@ -12,6 +12,9 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 
 func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
+		apischema.Call[apischema.NoRequest, apischema.VMTemplateLibrary]("virt.templates", apischema.RetrySafe(), apischema.Privileged()).Handle(handleTemplates),
+		apischema.Call[apischema.VMTemplateRequest, apischema.NoResponse]("virt.template_delete", apischema.Privileged()).HandleVoid(handleTemplateDelete),
+		apischema.TaskRunner[apischema.VMTemplateDownloadRequest, apischema.VMTemplate]("virt.template_download", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleTemplateDownload, bridgeipc.TaskDefault),
 		apischema.Call[apischema.NoRequest, []apischema.VMNetwork]("virt.networks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleNetworks),
 		apischema.Call[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.RetrySafe(), apischema.Privileged()).Handle(handleList),
 		apischema.Call[apischema.NameRequest, apischema.VirtualMachine]("virt.get", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGet),
@@ -28,6 +31,31 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 			HandleConsoleSession,
 		),
 	)
+}
+
+func handleTemplates(ctx context.Context, _ apischema.NoRequest) (apischema.VMTemplateLibrary, error) {
+	return templateStore.list(ctx)
+}
+
+func handleTemplateDelete(ctx context.Context, req apischema.VMTemplateRequest) error {
+	return templateStore.delete(ctx, req)
+}
+
+func handleTemplateDownload(ctx context.Context, task *bridgeipc.Task, req apischema.VMTemplateDownloadRequest) (apischema.VMTemplate, error) {
+	preset, err := imagePreset(req.ImagePresetID)
+	if err != nil {
+		return apischema.VMTemplate{}, err
+	}
+	if dirErr := ensureManagedStorageDirectories(); dirErr != nil {
+		return apischema.VMTemplate{}, dirErr
+	}
+	var saved apischema.VMTemplate
+	err = templateStore.withPresetLock(ctx, preset.ID, func() error {
+		var cacheErr error
+		saved, cacheErr = templateStore.ensure(ctx, preset, "", true, func(progress apischema.VMCreateProgress) { task.ReportProgress(progress) })
+		return cacheErr
+	})
+	return saved, err
 }
 
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {

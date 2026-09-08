@@ -164,7 +164,7 @@ class CircularBuffer {
   append(chunk: Uint8Array): void {
     if (chunk.length >= this.capacity) {
       // Chunk larger than buffer - just keep the end
-      this.data.set(chunk.slice(chunk.length - this.capacity));
+      this.data.set(chunk.subarray(chunk.length - this.capacity));
       this.head = 0;
       this.len = this.capacity;
       return;
@@ -178,8 +178,8 @@ class CircularBuffer {
       this.data.set(chunk, writePos);
     } else {
       // Wrap around
-      this.data.set(chunk.slice(0, spaceAtEnd), writePos);
-      this.data.set(chunk.slice(spaceAtEnd), 0);
+      this.data.set(chunk.subarray(0, spaceAtEnd), writePos);
+      this.data.set(chunk.subarray(spaceAtEnd), 0);
     }
 
     const newLen = this.len + chunk.length;
@@ -200,31 +200,13 @@ class CircularBuffer {
     const result = new Uint8Array(this.len);
     const firstPart = Math.min(this.len, this.capacity - this.head);
 
-    result.set(this.data.slice(this.head, this.head + firstPart));
+    result.set(this.data.subarray(this.head, this.head + firstPart));
     if (firstPart < this.len) {
-      result.set(this.data.slice(0, this.len - firstPart), firstPart);
+      result.set(this.data.subarray(0, this.len - firstPart), firstPart);
     }
 
     return result;
   }
-}
-
-/**
- * Build a bridge StreamFrame: [opcode:1][streamID:4][length:4][payload:N].
- * Must match backend/common/ipc/relay/protocol.go framing (big endian).
- */
-function buildBridgeFrame(
-  opcode: number,
-  streamID: number,
-  payload: Uint8Array = new Uint8Array(0),
-): Uint8Array {
-  const frame = new Uint8Array(9 + payload.length);
-  const view = new DataView(frame.buffer);
-  frame[0] = opcode;
-  view.setUint32(1, streamID, false);
-  view.setUint32(5, payload.length, false);
-  frame.set(payload, 9);
-  return frame;
 }
 
 class StreamImpl implements Stream {
@@ -239,7 +221,8 @@ class StreamImpl implements Stream {
   private recvStart = 0; // Read offset into recvBuf
   private recvEnd = 0; // Write offset into recvBuf
   private readonly detachedBufferBytes: number;
-  private readonly scrollback: CircularBuffer;
+  private readonly scrollbackBytes: number;
+  private scrollback: CircularBuffer | null = null;
 
   readonly id: number;
   readonly type: StreamType;
@@ -250,9 +233,7 @@ class StreamImpl implements Stream {
     this.type = type;
     this.mux = mux;
     this.detachedBufferBytes = STREAM_MULTIPLEXER_CONFIG.detachedBufferBytes;
-    this.scrollback = new CircularBuffer(
-      STREAM_MULTIPLEXER_CONFIG.scrollbackBytes,
-    );
+    this.scrollbackBytes = STREAM_MULTIPLEXER_CONFIG.scrollbackBytes;
   }
 
   get status(): StreamStatus {
@@ -270,7 +251,7 @@ class StreamImpl implements Stream {
     if (handler) {
       // Replay scrollback, excluding tail bytes that will be delivered from buffer.
       // This avoids duplicate output after detach/reattach.
-      if (this.scrollback.length > 0) {
+      if (this.scrollback && this.scrollback.length > 0) {
         const scrollback = this.scrollback.read();
         const overlapBytes = Math.min(this.bufferedBytes, scrollback.length);
         const replayLength = scrollback.length - overlapBytes;
@@ -301,11 +282,7 @@ class StreamImpl implements Stream {
       );
       return;
     }
-    this.mux.sendStreamData(
-      this.id,
-      this.type,
-      buildBridgeFrame(BridgeOpcode.StreamData, this.id, data),
-    );
+    this.mux.sendStreamData(this.id, this.type, data);
   }
 
   resize(cols: number, rows: number): void {
@@ -318,11 +295,7 @@ class StreamImpl implements Stream {
     const payloadView = new DataView(payload.buffer);
     payloadView.setUint16(0, safeCols, false);
     payloadView.setUint16(2, safeRows, false);
-    this.mux.sendFrame(
-      this.id,
-      Flags.DATA,
-      buildBridgeFrame(BridgeOpcode.StreamResize, this.id, payload),
-    );
+    this.mux.sendFrame(this.id, Flags.DATA, payload, BridgeOpcode.StreamResize);
   }
 
   close(): void {
@@ -330,11 +303,7 @@ class StreamImpl implements Stream {
       return;
     }
     this._status = "closing";
-    this.mux.sendFrame(
-      this.id,
-      Flags.FIN,
-      buildBridgeFrame(BridgeOpcode.StreamClose, this.id),
-    );
+    this.mux.sendFrame(this.id, Flags.FIN, undefined, BridgeOpcode.StreamClose);
     // Don't remove stream or call onClose yet - wait for server's response.
     // The stream will be cleaned up when we receive the server's FIN (in handleMessage).
   }
@@ -356,7 +325,8 @@ class StreamImpl implements Stream {
     this.mux.sendFrame(
       this.id,
       Flags.DATA,
-      buildBridgeFrame(BridgeOpcode.StreamAbort, this.id),
+      undefined,
+      BridgeOpcode.StreamAbort,
     );
 
     // Then send RST to close the transport layer
@@ -365,6 +335,7 @@ class StreamImpl implements Stream {
 
   handleData(data: Uint8Array): void {
     // Always save to scrollback for replay on reconnect
+    this.scrollback ??= new CircularBuffer(this.scrollbackBytes);
     this.scrollback.append(data);
 
     if (this._onData) {
@@ -434,12 +405,14 @@ class StreamImpl implements Stream {
         break; // Incomplete frame
       }
 
-      // Extract payload (only allocation per frame — unavoidable for handoff)
+      // Binary handlers may retain bytes after recvBuf is reused. JSON is
+      // decoded synchronously before callbacks, so it can borrow a view.
       const payloadStart = this.recvStart + 9;
-      const payload = this.recvBuf.slice(
-        payloadStart,
-        payloadStart + payloadLength,
-      );
+      const payloadEnd = payloadStart + payloadLength;
+      const payload =
+        opcode === BridgeOpcode.StreamData
+          ? this.recvBuf.slice(payloadStart, payloadEnd)
+          : this.recvBuf.subarray(payloadStart, payloadEnd);
 
       // Advance read cursor past this frame
       this.recvStart += frameLength;
@@ -568,6 +541,20 @@ export class StreamMultiplexer {
     if (this._status !== "connecting") {
       this._status = "connecting";
       this.notifyStatusChange("connecting");
+    }
+
+    // Stream IDs belong to one server-side WebSocket relay. A replacement
+    // socket cannot resume them, even if the old close event is still pending.
+    if (this.ws) {
+      const oldSocket = this.ws;
+      this.ws = null;
+      if (this.stableConnectionTimer) {
+        clearTimeout(this.stableConnectionTimer);
+        this.stableConnectionTimer = null;
+      }
+      this.connectionOpenedAt = 0;
+      this.closeAllStreams();
+      oldSocket.close();
     }
 
     // Handlers close over the socket they were attached to: a reconnect
@@ -733,6 +720,7 @@ export class StreamMultiplexer {
       streamID,
       Flags.DATA | (activity ? Flags.Activity : 0),
       payload,
+      BridgeOpcode.StreamData,
     );
     if (!sent && activity) this.activityLastSentAt = Number.NEGATIVE_INFINITY;
     return sent;
@@ -824,7 +812,8 @@ export class StreamMultiplexer {
     const sent = this.sendFrame(
       id,
       Flags.SYN,
-      buildBridgeFrame(BridgeOpcode.StreamOpen, id, initialPayload),
+      initialPayload,
+      BridgeOpcode.StreamOpen,
     );
     if (!sent) {
       // No SYN reached the WebSocket send queue, so callers can distinguish an
@@ -847,17 +836,29 @@ export class StreamMultiplexer {
   /**
    * Send a frame to the WebSocket
    */
-  sendFrame(streamID: number, flags: number, payload: Uint8Array): boolean {
+  sendFrame(
+    streamID: number,
+    flags: number,
+    payload: Uint8Array = new Uint8Array(0),
+    opcode?: number,
+  ): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn("[StreamMux] Cannot send - WebSocket not open");
       return false;
     }
 
-    const frame = new Uint8Array(5 + payload.length);
+    // Encode both headers into the final buffer, copying upload bytes once.
+    const headerSize = opcode === undefined ? 5 : 14;
+    const frame = new Uint8Array(headerSize + payload.length);
     const view = new DataView(frame.buffer);
     view.setUint32(0, streamID, false); // Big endian
     frame[4] = flags;
-    frame.set(payload, 5);
+    if (opcode !== undefined) {
+      frame[5] = opcode;
+      view.setUint32(6, streamID, false);
+      view.setUint32(10, payload.length, false);
+    }
+    frame.set(payload, headerSize);
 
     try {
       this.ws.send(frame);

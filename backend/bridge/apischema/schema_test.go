@@ -92,10 +92,10 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 219; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 221; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeTask], 18; got != want {
+	if got, want := modes[bridgeipc.ModeTask], 19; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeDuplex], 10; got != want {
@@ -128,8 +128,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 17 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 17 and 1", sessionCount, durableCount)
+	if sessionCount != 18 || durableCount != 1 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 18 and 1", sessionCount, durableCount)
 	}
 }
 
@@ -203,10 +203,10 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
 	}
-	if count != 94 {
-		t.Fatalf("retry-safe Call count = %d, want 94", count)
+	if count != 95 {
+		t.Fatalf("retry-safe Call count = %d, want 95", count)
 	}
-	for _, route := range []string{"config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "storage.get_topology", "tasks.get", "virt.preflight", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
+	for _, route := range []string{"config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "storage.get_topology", "tasks.get", "virt.preflight", "virt.templates", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
 			t.Errorf("%s should be explicitly retry-safe", route)
 		}

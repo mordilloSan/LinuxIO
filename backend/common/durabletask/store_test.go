@@ -74,6 +74,37 @@ func TestStoreExclusiveRouteRejectsAnotherActiveOperation(t *testing.T) {
 	}
 }
 
+func TestStoreExclusiveClaimReconcilesActiveRecordsUnderLock(t *testing.T) {
+	store := newTestStore(t)
+	first := testClaim(12, 1000, "first")
+	first.ExclusiveRoute = true
+	if _, _, err := store.Claim(context.Background(), first); err != nil {
+		t.Fatalf("first Claim: %v", err)
+	}
+	second := testClaim(13, 1001, "second")
+	second.ExclusiveRoute = true
+	reconciled := false
+	second.ReconcileActive = func(record *Record, now time.Time) error {
+		reconciled = true
+		record.State = StateCanceled
+		record.FinishedAt = &now
+		return nil
+	}
+	if _, created, err := store.Claim(context.Background(), second); err != nil || !created {
+		t.Fatalf("Claim after reconciliation = created %t, error %v", created, err)
+	}
+	if !reconciled {
+		t.Fatal("exclusive Claim did not reconcile the active record")
+	}
+	record, err := store.Get(context.Background(), first.ID, first.UID)
+	if err != nil {
+		t.Fatalf("get reconciled record: %v", err)
+	}
+	if record.State != StateCanceled {
+		t.Fatalf("reconciled record state = %q, want canceled", record.State)
+	}
+}
+
 func TestStoreAppliesTypedExecutorResult(t *testing.T) {
 	store := newTestStore(t)
 	claim := testClaim(2, 1000, "v1.2.3")

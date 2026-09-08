@@ -1400,9 +1400,10 @@ type VMNIC struct {
 }
 
 type VMNetwork struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Active bool   `json:"active"`
+	Name              string `json:"name"`
+	Type              string `json:"type"`
+	Active            bool   `json:"active"`
+	HasPhysicalUplink bool   `json:"hasPhysicalUplink,omitempty"`
 }
 
 type VirtualMachine struct {
@@ -1450,6 +1451,22 @@ type VMCreateProgress struct {
 	Message string `json:"message"`
 	Path    string `json:"path,omitempty"`
 	Percent *int   `json:"percent,omitempty"`
+}
+
+type VMTemplate struct {
+	ID            string          `json:"id"`
+	ImagePresetID VMImagePresetID `json:"imagePresetId"`
+	Label         string          `json:"label"`
+	Version       string          `json:"version"`
+	SourceURL     string          `json:"sourceUrl"`
+	DownloadedAt  string          `json:"downloadedAt"`
+	SizeBytes     int64           `json:"sizeBytes"`
+	Path          string          `json:"path"`
+}
+
+type VMTemplateLibrary struct {
+	Path      string       `json:"path"`
+	Templates []VMTemplate `json:"templates"`
 }
 
 func (p VMCreateProgress) ProgressEnvelope() TaskProgress {
