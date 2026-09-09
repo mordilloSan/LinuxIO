@@ -59,6 +59,8 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   "contexts/AuthContext.tsx",
   // Browser fixture bootstrap owns its local journal stream connection.
   "test/browser/fixture/routes/GeneralLogsPage.tsx",
+  // Container fixture owns transport bootstrap for real terminal keyboard input.
+  "test/browser/fixture/routes/ContainerActionsPage.tsx",
   // Handoff browser fixture owns transport bootstrap for refresh recovery.
   "test/browser/fixture/routes/NetworkHandoffPage.tsx",
   // VM bridge browser fixture owns transport bootstrap for dialog workflows.
