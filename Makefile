@@ -519,7 +519,7 @@ update-deps: ensure-node
 	  echo ""; \
 	  echo "⬆️  Choose packages with Space; press Enter to apply."; \
 	  before="$$(sha256sum package.json)"; \
-	  npx --yes npm-check-updates --interactive --interactiveSelect none --install never; \
+	  npx --yes npm-check-updates --interactive --interactiveSelect none --install never --target greatest --pre 0; \
 	  if [ "$$before" = "$$(sha256sum package.json)" ]; then \
 	    echo "No dependency upgrades selected."; exit 0; \
 	  fi; \
