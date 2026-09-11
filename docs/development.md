@@ -194,6 +194,8 @@ credentials are stored in Make variables.
 Run `make update-deps` in a terminal to choose frontend upgrades. Nothing is
 preselected: use Space to select packages and Enter to apply. Select related
 packages such as `vitest` and `@vitest/coverage-v8` together.
+The picker only edits `package.json`; the target handles installation and
+auditing once, without a second install prompt.
 
 When the selection changes `package.json`, the target installs dependencies,
 runs an audit, applies `npm audit fix` only if the audit fails, and reports
