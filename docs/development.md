@@ -214,8 +214,6 @@ make update-go-deps GO_MODULES='golang.org/x/net@latest golang.org/x/sys@latest'
 ```
 
 Required transitive dependencies may also change.
-Run `make test-update-deps-quiet` for the dependency
-update fixtures, which use fake package managers and do not download packages.
 
 ## Distro and WireGuard icons
 

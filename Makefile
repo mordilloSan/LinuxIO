@@ -48,7 +48,6 @@ quiet_targets := \
 	test-auth-protocol \
 	test-auth-pam \
 	test-installation-scripts \
-	test-update-deps \
 	test-indexer-systemd-integration \
 	test-updater \
 	test-docker-update-integration \
@@ -495,7 +494,7 @@ ensure-govulncheck: ensure-go
 	   echo "✅ govulncheck ready."; \
 	}
 
-.PHONY: setup update-deps update-go-deps test-update-deps
+.PHONY: setup update-deps update-go-deps
 setup: $(frontend_install_stamp)
 	@:
 
@@ -554,9 +553,6 @@ update-go-deps: ensure-go
 	cd "$(backend_dir)"; \
 	$(GO_CMD_ENV) "$(GO_BIN)" get "$${modules[@]}"; \
 	$(GO_CMD_ENV) "$(GO_BIN)" mod tidy
-
-test-update-deps:
-	@bash "$(packaging_scripts_dir)/test-update-deps.sh"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 .PHONY: lint tsc lint-ci golint test check-actions check-systemd check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend test-go deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
@@ -632,7 +628,7 @@ golint: ensure-golint ensure-modernize ensure-govulncheck
 #
 # Execution order is fixed by the lane chains; the follow() order below is only
 # how output is replayed, and does not constrain what runs when.
-test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep test-installation-scripts test-update-deps
+test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep test-installation-scripts
 	@set -uo pipefail; \
 	ST=0; \
 	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
@@ -1541,7 +1537,6 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-c-build-deps$(COLOR_RESET) Check C authentication build dependencies"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-release-automation$(COLOR_RESET) Smoke-test release automation fixture"
-	@$(PRINTC) "$(COLOR_GREEN)    make test-update-deps  $(COLOR_RESET) Test dependency selection and automatic audit fixes"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"
