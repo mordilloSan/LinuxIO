@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent } from "react";
 
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 
 interface FocusedResourceParamOptions<T> {
   /** The id read from the route's search param; `undefined` when unset. */
@@ -34,22 +34,7 @@ export function useFocusedResourceParam<T>({
     if (focusedId && !hasFocus) clear();
   }, [focusedId, hasFocus]);
 
-  useEffect(() => {
-    if (!hasFocus) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.key !== "Escape" && event.key !== "Esc") ||
-        event.defaultPrevented ||
-        document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        return;
-      }
-      clear();
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasFocus]);
+  useClearSelectionOnEscape(hasFocus, onClear);
 
   return focused;
 }

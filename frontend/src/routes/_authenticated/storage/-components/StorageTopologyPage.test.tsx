@@ -276,12 +276,19 @@ describe("storage topology", () => {
   });
 
   it("recovers from empty inventory and a removed URL selection", async () => {
-    await setup({ node: "mount:/gone" }, false, { devices: [], mounts: [] });
+    const { user } = await setup({ node: "mount:/gone" }, false, {
+      devices: [],
+      mounts: [],
+    });
     expect(
       screen.getByRole("heading", { name: "No storage devices found" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Item no longer available" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(
+      screen.getByRole("heading", { name: "Your storage, connected" }),
     ).toBeInTheDocument();
   });
 
