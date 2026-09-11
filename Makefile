@@ -48,6 +48,7 @@ quiet_targets := \
 	test-auth-protocol \
 	test-auth-pam \
 	test-installation-scripts \
+	test-update-deps \
 	test-indexer-systemd-integration \
 	test-updater \
 	test-docker-update-integration \
@@ -494,7 +495,7 @@ ensure-govulncheck: ensure-go
 	   echo "✅ govulncheck ready."; \
 	}
 
-.PHONY: setup update-deps
+.PHONY: setup update-deps update-go-deps test-update-deps
 setup: $(frontend_install_stamp)
 	@:
 
@@ -505,42 +506,57 @@ $(frontend_install_stamp): $(frontend_dir)/package.json $(frontend_dir)/package-
 	@test -f "$@"
 	@echo "✅ Frontend dependencies installed!"
 
-update-deps: ensure-node ensure-go
+update-deps: ensure-node
 	@echo ""
-	@echo "📦 Frontend dependency update (npm → latest)"
+	@echo "📦 Select frontend dependency upgrades"
 	@bash -c '\
 	  set -euo pipefail; \
+	  test -t 0 && test -t 1 || { echo "Run make update-deps in an interactive terminal." >&2; exit 1; }; \
 	  cd "$(frontend_dir)"; \
 	  echo ""; \
 	  echo "🔎 Current outdated packages:"; \
 	  npm outdated || true; \
 	  echo ""; \
-	  echo "⬆️  Bumping package.json to latest with npm-check-updates..."; \
-	  npx --yes npm-check-updates -u; \
+	  echo "⬆️  Choose packages with Space; press Enter to apply."; \
+	  before="$$(sha256sum package.json)"; \
+	  npx --yes npm-check-updates --interactive --interactiveSelect none; \
+	  if [ "$$before" = "$$(sha256sum package.json)" ]; then \
+	    echo "No dependency upgrades selected."; exit 0; \
+	  fi; \
 	  echo ""; \
 	  echo "🔄 Refreshing lockfile + node_modules (npm install)..."; \
 	  npm install --no-audit --no-fund; \
 	  echo ""; \
-	  echo "🛡️  Applying available npm audit fixes..."; \
-	  if ! npm audit fix --no-fund; then \
-	    echo "⚠️  npm audit fix did not complete; checking for remaining vulnerabilities." >&2; \
-	  fi; \
-	  echo ""; \
-	  if ! npm audit --audit-level=low >/dev/null 2>&1; then \
-	    echo "⚠️  npm vulnerabilities remain after npm audit fix; review the audit report above." >&2; \
-	    npm audit || true; \
+	  echo "🛡️  Checking for npm vulnerabilities..."; \
+	  if ! npm audit --audit-level=low; then \
+	    echo "🛡️  Applying available npm audit fixes..."; \
+	    if ! npm audit fix --no-fund --audit-level=low; then \
+	      echo "⚠️  npm audit fix did not resolve all vulnerabilities or could not complete; review the report below." >&2; \
+	      npm audit || true; \
+	    fi; \
 	  fi; \
 	  echo ""; \
 	  echo "🔎 Remaining outdated after update:"; \
 	  npm outdated || true; \
 	  echo ""; \
-	  echo "✅ Frontend dependencies updated to latest!"; \
+	  echo "✅ Selected frontend dependencies updated!"; \
 	'
-	@echo ""
-	@echo "📦 Go dependency update (go get -u -t ./...)"
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" get -u -t ./...
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" mod tidy
-	@echo "✅ Go dependencies updated to latest!"
+
+# Export module arguments as data rather than interpolating them into shell code.
+update-go-deps: export GO_MODULES := $(GO_MODULES)
+update-go-deps: ensure-go
+	@set -euo pipefail; \
+	read -r -a modules <<< "$${GO_MODULES}"; \
+	for module in "$${modules[@]}"; do \
+	  case "$$module" in -*) echo "Expected a Go module, not an option: $$module" >&2; exit 1 ;; esac; \
+	done; \
+	if [ "$${#modules[@]}" -eq 0 ]; then modules=(-u -t ./...); fi; \
+	cd "$(backend_dir)"; \
+	$(GO_CMD_ENV) "$(GO_BIN)" get "$${modules[@]}"; \
+	$(GO_CMD_ENV) "$(GO_BIN)" mod tidy
+
+test-update-deps:
+	@bash "$(packaging_scripts_dir)/test-update-deps.sh"
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
 .PHONY: lint tsc lint-ci golint test check-actions check-systemd check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend test-go deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
@@ -616,7 +632,7 @@ golint: ensure-golint ensure-modernize ensure-govulncheck
 #
 # Execution order is fixed by the lane chains; the follow() order below is only
 # how output is replayed, and does not constrain what runs when.
-test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep test-installation-scripts
+test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep test-installation-scripts test-update-deps
 	@set -uo pipefail; \
 	ST=0; \
 	FRONTEND_LINT_WARNINGS_FILE="$$(mktemp)"; \
@@ -1485,7 +1501,8 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-modernize $(COLOR_RESET) Install modernize (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make ensure-govulncheck $(COLOR_RESET) Install govulncheck (built with local Go $(GO_VERSION))"
 	@$(PRINTC) "$(COLOR_GREEN)    make setup            $(COLOR_RESET) Install frontend dependencies (npm i)"
-	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Update frontend and Go dependencies"
+	@$(PRINTC) "$(COLOR_GREEN)    make update-deps      $(COLOR_RESET) Choose frontend upgrades, then install, audit and fix if needed"
+	@$(PRINTC) "$(COLOR_GREEN)    make update-go-deps   $(COLOR_RESET) Update all Go dependencies (optional GO_MODULES=...)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint + Oxfmt (frontend)"
@@ -1524,6 +1541,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make analyze-auth     $(COLOR_RESET) Run C static analysis on linuxio-auth"
 	@$(PRINTC) "$(COLOR_GREEN)    make check-c-build-deps$(COLOR_RESET) Check C authentication build dependencies"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-release-automation$(COLOR_RESET) Smoke-test release automation fixture"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-update-deps  $(COLOR_RESET) Test dependency selection and automatic audit fixes"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Development$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_YELLOW)    make dev-prep         $(COLOR_RESET) Create placeholder frontend assets for dev server"

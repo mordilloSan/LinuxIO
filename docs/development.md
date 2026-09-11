@@ -189,6 +189,30 @@ cleanup instead of failing.
 GitHub CLI authentication is provided by its normal credential mechanism; no
 credentials are stored in Make variables.
 
+## Dependency updates
+
+Run `make update-deps` in a terminal to choose frontend upgrades. Nothing is
+preselected: use Space to select packages and Enter to apply. Select related
+packages such as `vitest` and `@vitest/coverage-v8` together.
+
+When the selection changes `package.json`, the target installs dependencies,
+runs an audit, applies `npm audit fix` only if the audit fails, and reports
+any remaining vulnerabilities. A clean audit skips fixes. Audit fixes
+can also update dependencies outside the selection. Selecting nothing skips
+installation and audit fixes; Go dependencies are not updated by this target.
+
+Run `make update-go-deps` to update all Go dependencies, including test
+dependencies, with `go get -u -t ./...`, followed by `go mod tidy`.
+To update specific modules instead, pass explicit versions or `@latest`:
+
+```sh
+make update-go-deps GO_MODULES='golang.org/x/net@latest golang.org/x/sys@latest'
+```
+
+Required transitive dependencies may also change.
+Run `make test-update-deps-quiet` for the dependency
+update fixtures, which use fake package managers and do not download packages.
+
 ## Distro and WireGuard icons
 
 The existing icon generator bundles the literal IDs in
@@ -203,7 +227,7 @@ Keep distro IDs explicit so the scanner can discover them.
 follows:
 
 - setup: `ensure-node`, `ensure-go`, `ensure-golint`, `ensure-modernize`,
-  `ensure-deadcode`, `ensure-govulncheck`, `setup`, `update-deps`
+  `ensure-deadcode`, `ensure-govulncheck`, `setup`, `update-deps`, `update-go-deps`
 - frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
   `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,
