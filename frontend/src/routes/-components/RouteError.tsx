@@ -20,7 +20,10 @@ function RouteError({ error }: ErrorComponentProps) {
 
   return (
     <>
-      <ErrorPage error={error} onRetry={handleRetry} />
+      <ErrorPage
+        error={error instanceof Error ? error : undefined}
+        onRetry={handleRetry}
+      />
       <BootstrapLoaderReady />
     </>
   );
