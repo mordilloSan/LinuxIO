@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -90,80 +89,108 @@ const AppPopover = ({
   zIndex = 1400,
 }: AppPopoverProps) => {
   const internalPaperRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: -9999, left: -9999 });
+  const [position, setPosition] = useState({
+    top: -9999,
+    left: -9999,
+    width: 0,
+  });
+  const positionTop = anchorPosition?.top;
+  const positionLeft = anchorPosition?.left;
+  const closeDetachedAnchor = useEffectEvent(() => onClose?.());
 
   const setPaperRef = useMemo(
     () => mergeRefs(internalPaperRef, paperRef),
     [paperRef],
   );
 
-  const updatePosition = useCallback(() => {
-    if (!open) {
-      return;
-    }
-
+  useLayoutEffect(() => {
     const paper = internalPaperRef.current;
-
-    if (!paper) {
+    if (!open || !paper) {
       return;
     }
 
-    const anchorRect = anchorEl?.getBoundingClientRect();
-    const anchorBox = anchorRect
-      ? anchorRect
-      : anchorPosition
-        ? ({
-            top: anchorPosition.top,
-            left: anchorPosition.left,
-            right: anchorPosition.left,
-            bottom: anchorPosition.top,
-            width: 0,
-            height: 0,
-          } as DOMRect)
-        : null;
+    const updatePosition = () => {
+      if (anchorEl && !anchorEl.isConnected) {
+        closeDetachedAnchor();
+        return;
+      }
+      const anchorRect = anchorEl?.getBoundingClientRect();
+      const anchorBox = anchorRect
+        ? anchorRect
+        : positionTop !== undefined && positionLeft !== undefined
+          ? ({
+              top: positionTop,
+              left: positionLeft,
+              right: positionLeft,
+              bottom: positionTop,
+              width: 0,
+              height: 0,
+            } as DOMRect)
+          : null;
 
-    if (!anchorBox) {
-      return;
-    }
+      if (!anchorBox) {
+        return;
+      }
 
-    const paperRect = paper.getBoundingClientRect();
-    const anchorLeft =
-      anchorBox.left +
-      getHorizontalOffset(anchorOrigin.horizontal, anchorBox.width);
-    const anchorTop =
-      anchorBox.top +
-      getVerticalOffset(anchorOrigin.vertical, anchorBox.height);
+      const paperRect = paper.getBoundingClientRect();
+      const anchorLeft =
+        anchorBox.left +
+        getHorizontalOffset(anchorOrigin.horizontal, anchorBox.width);
+      const anchorTop =
+        anchorBox.top +
+        getVerticalOffset(anchorOrigin.vertical, anchorBox.height);
 
-    let nextLeft =
-      anchorLeft -
-      getHorizontalOffset(transformOrigin.horizontal, paperRect.width);
-    let nextTop =
-      anchorTop - getVerticalOffset(transformOrigin.vertical, paperRect.height);
+      let nextLeft =
+        anchorLeft -
+        getHorizontalOffset(transformOrigin.horizontal, paperRect.width);
+      let nextTop =
+        anchorTop -
+        getVerticalOffset(transformOrigin.vertical, paperRect.height);
 
-    nextLeft = Math.min(
-      Math.max(nextLeft, VIEWPORT_MARGIN),
-      window.innerWidth - paperRect.width - VIEWPORT_MARGIN,
-    );
-    nextTop = Math.min(
-      Math.max(nextTop, VIEWPORT_MARGIN),
-      window.innerHeight - paperRect.height - VIEWPORT_MARGIN,
-    );
+      nextLeft = Math.min(
+        Math.max(nextLeft, VIEWPORT_MARGIN),
+        window.innerWidth - paperRect.width - VIEWPORT_MARGIN,
+      );
+      nextTop = Math.min(
+        Math.max(nextTop, VIEWPORT_MARGIN),
+        window.innerHeight - paperRect.height - VIEWPORT_MARGIN,
+      );
 
-    setPosition({ top: nextTop, left: nextLeft });
-  }, [anchorEl, anchorOrigin, anchorPosition, open, transformOrigin]);
-
-  const handleReposition = useEffectEvent(() => {
-    // A detached anchor still answers getBoundingClientRect(), just with an
-    // all-zero box — which sails past updatePosition's `!anchorBox` guard and
-    // clamps the surface into the top-left corner, an orphan menu acting on a
-    // row that is no longer there. Close instead of repositioning.
-    if (anchorEl && !anchorEl.isConnected) {
-      onClose?.();
-      return;
-    }
+      const width = matchAnchorWidth ? anchorBox.width : 0;
+      setPosition((previous) =>
+        previous.top === nextTop &&
+        previous.left === nextLeft &&
+        previous.width === width
+          ? previous
+          : { top: nextTop, left: nextLeft, width },
+      );
+    };
 
     updatePosition();
-  });
+    const rafId = window.requestAnimationFrame(updatePosition);
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(paper);
+    if (anchorEl) observer.observe(anchorEl);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      observer.disconnect();
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [
+    anchorEl,
+    anchorOrigin.horizontal,
+    anchorOrigin.vertical,
+    matchAnchorWidth,
+    open,
+    positionLeft,
+    positionTop,
+    transformOrigin.horizontal,
+    transformOrigin.vertical,
+  ]);
 
   const handleDismissPointer = useEffectEvent(
     (event: MouseEvent | TouchEvent) => {
@@ -226,31 +253,8 @@ const AppPopover = ({
       return;
     }
     onClose?.();
+    event.preventDefault();
   });
-
-  useLayoutEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    handleReposition();
-    const rafId = window.requestAnimationFrame(handleReposition);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    window.addEventListener("resize", handleReposition);
-    window.addEventListener("scroll", handleReposition, true);
-
-    return () => {
-      window.removeEventListener("resize", handleReposition);
-      window.removeEventListener("scroll", handleReposition, true);
-    };
-  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -278,11 +282,6 @@ const AppPopover = ({
     return null;
   }
 
-  const anchorWidth =
-    matchAnchorWidth && anchorEl
-      ? anchorEl.getBoundingClientRect().width
-      : null;
-
   return createPortal(
     <div
       className={`app-popover-root ${className || ""}`.trim()}
@@ -298,7 +297,7 @@ const AppPopover = ({
         style={{
           top: position.top,
           left: position.left,
-          width: anchorWidth ? `${anchorWidth}px` : undefined,
+          width: position.width || undefined,
           ...paperStyle,
         }}
       >

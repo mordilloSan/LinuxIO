@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import type { AppTextFieldProps } from "@/components/ui/AppTextField";
-import { render } from "@/test/render";
+import { act, render } from "@/test/render";
 
 const appTextFieldRender = vi.hoisted(() => vi.fn());
 
@@ -53,14 +53,20 @@ describe("AppHeaderSearch escape handling", () => {
     expect(input).toHaveFocus();
   });
 
-  it("clears on a document Escape without taking focus when opted in", async () => {
-    const { user } = render(<Harness clearOnDocumentEscape />);
+  it("claims a document Escape without taking focus when opted in", () => {
+    render(<Harness clearOnDocumentEscape />);
     const input = screen.getByRole("textbox", { name: "Search" });
-
-    await user.keyboard("{Escape}");
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
+    act(() => {
+      document.dispatchEvent(event);
+    });
 
     expect(input).toHaveValue("");
     expect(input).not.toHaveFocus();
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("ignores a document Escape without the opt-in", async () => {

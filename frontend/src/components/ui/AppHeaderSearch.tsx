@@ -83,6 +83,7 @@ const AppHeaderSearch = ({
         return;
       }
       onChange("");
+      event.preventDefault();
     };
 
     document.addEventListener("keydown", handleDocumentKeyDown);

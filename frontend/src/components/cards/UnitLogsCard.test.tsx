@@ -31,10 +31,8 @@ vi.mock("@/hooks/useLogStream", async () => {
       return {
         error: null,
         isLoading: false,
-        liveMode: true,
         logs: logStore.logs,
         logsBoxRef: useRef<HTMLDivElement>(null),
-        setLiveMode: vi.fn(),
       };
     },
   };

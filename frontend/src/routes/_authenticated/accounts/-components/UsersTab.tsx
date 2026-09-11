@@ -15,6 +15,7 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
@@ -118,9 +119,16 @@ const UsersTab = ({
   const effectiveViewMode = selectedUsername ? "card" : viewMode;
 
   const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "Escape") {
-      setSelectedUsername(null);
+    if (
+      !selectedUsername ||
+      (event.key !== "Escape" && event.key !== "Esc") ||
+      event.defaultPrevented ||
+      document.querySelector(OVERLAY_ROOT_SELECTOR)
+    ) {
+      return;
     }
+    setSelectedUsername(null);
+    event.preventDefault();
   });
 
   useEffect(() => {

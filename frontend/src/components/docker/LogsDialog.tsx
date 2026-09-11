@@ -36,20 +36,14 @@ const LogsDialog = ({
 }: LogsDialogProps) => {
   const [search, setSearch] = useState("");
   const [tailLines, setTailLines] = useState("100");
+  const [liveMode, setLiveMode] = useState(true);
 
-  const {
-    logs,
-    isLoading,
-    error,
-    liveMode,
-    setLiveMode,
-    logsBoxRef,
-    resetState,
-  } = useLogStream({
+  const { logs, isLoading, error, logsBoxRef, resetState } = useLogStream({
     open,
     createStream: (tail) =>
       openChannel("docker.logs.follow", { containerId, tail }),
     initialTail: tailLines,
+    liveMode,
   });
 
   const filtered = useMemo(() => {
@@ -78,6 +72,7 @@ const LogsDialog = ({
   const handleTailLinesChange = (value: string) => {
     if (value === tailLines) return;
     resetState();
+    setLiveMode(true);
     setTailLines(value);
   };
 
@@ -107,6 +102,7 @@ const LogsDialog = ({
       onClose={onClose}
       onExited={() => {
         resetState();
+        setLiveMode(true);
         setSearch("");
         setTailLines("100");
         onExited?.();

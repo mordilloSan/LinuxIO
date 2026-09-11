@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { openChannel, type Stream } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -20,18 +20,22 @@ interface UnitLogsCardProps {
 
 interface UnitLogsLiveContentProps {
   createStream: (tail: string) => Stream | null;
+  liveMode: boolean;
+  onLiveModeChange: (liveMode: boolean) => void;
   titleContent: ReactNode;
 }
 
 const UnitLogsLiveContent = ({
   createStream,
+  liveMode,
+  onLiveModeChange,
   titleContent,
 }: UnitLogsLiveContentProps) => {
-  const { logs, isLoading, error, liveMode, setLiveMode, logsBoxRef } =
-    useLogStream({
-      open: true,
-      createStream,
-    });
+  const { logs, isLoading, error, logsBoxRef } = useLogStream({
+    open: true,
+    createStream,
+    liveMode,
+  });
 
   return (
     <>
@@ -51,7 +55,7 @@ const UnitLogsLiveContent = ({
             control={
               <AppSwitch
                 checked={liveMode}
-                onChange={(_, value) => setLiveMode(value)}
+                onChange={(_, value) => onLiveModeChange(value)}
                 size="small"
               />
             }
@@ -124,42 +128,48 @@ const UnitLogsLiveContent = ({
   );
 };
 
-const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => (
-  <FrostedCard
-    style={{
-      boxSizing: "border-box",
-      display: "flex",
-      flexDirection: "column",
-      // Stretches to a grid row that sizes the card; a no-op where the card is
-      // a full-width bottom panel with no height to inherit.
-      height: "100%",
-      padding: CARD_PADDING_LG,
-    }}
-  >
-    <UnitLogsLiveContent
-      createStream={
-        createStream ??
-        ((tail) =>
-          openChannel("logs.service.follow", {
-            serviceName: unitName ?? "",
-            lines: tail,
-          }))
-      }
-      titleContent={
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon
-            color="var(--app-palette-text-secondary)"
-            height={20}
-            icon="mdi:console"
-            width={20}
-          />
-          <AppTypography component="span" fontWeight={600} variant="body2">
-            {title}
-          </AppTypography>
-        </div>
-      }
-    />
-  </FrostedCard>
-);
+const UnitLogsCard = ({ unitName, title, createStream }: UnitLogsCardProps) => {
+  const [liveMode, setLiveMode] = useState(true);
+  return (
+    <FrostedCard
+      style={{
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        // Stretches to a grid row that sizes the card; a no-op where the card is
+        // a full-width bottom panel with no height to inherit.
+        height: "100%",
+        padding: CARD_PADDING_LG,
+      }}
+    >
+      <UnitLogsLiveContent
+        key={unitName}
+        liveMode={liveMode}
+        onLiveModeChange={setLiveMode}
+        createStream={
+          createStream ??
+          ((tail) =>
+            openChannel("logs.service.follow", {
+              serviceName: unitName ?? "",
+              lines: tail,
+            }))
+        }
+        titleContent={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Icon
+              color="var(--app-palette-text-secondary)"
+              height={20}
+              icon="mdi:console"
+              width={20}
+            />
+            <AppTypography component="span" fontWeight={600} variant="body2">
+              {title}
+            </AppTypography>
+          </div>
+        }
+      />
+    </FrostedCard>
+  );
+};
 
 export default UnitLogsCard;

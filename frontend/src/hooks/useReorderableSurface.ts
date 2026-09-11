@@ -21,6 +21,7 @@ import {
   useState,
 } from "react";
 
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import {
   REORDER_HOLD_MS,
   REORDER_HOLD_TOLERANCE_PX,
@@ -267,8 +268,14 @@ export function useReorderableSurface<TItem>({
       timeoutId = window.setTimeout(closeIfIdle, REORDER_IDLE_EXIT_MS);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" || event.key === "Esc") {
+        if (
+          event.defaultPrevented ||
+          document.querySelector(OVERLAY_ROOT_SELECTOR)
+        )
+          return;
         exitEditMode();
+        event.preventDefault();
         return;
       }
       restartIdleTimer();

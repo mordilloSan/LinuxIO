@@ -12,6 +12,7 @@ import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import type { WireguardInterfaceAction } from "@/components/cards/WireguardInterfaceCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -114,6 +115,11 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
 
   const handleClickOutside = useEffectEvent(
     (event: MouseEvent | KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      )
+        return;
       if (event.type === "mousedown") {
         const mouseEvent = event as MouseEvent;
         if (
@@ -128,6 +134,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
         const keyboardEvent = event as KeyboardEvent;
         if (keyboardEvent.key === "Escape" || keyboardEvent.key === "Esc") {
           setSelectedInterface(null);
+          event.preventDefault();
         }
       }
     },

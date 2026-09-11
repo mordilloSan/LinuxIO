@@ -28,6 +28,8 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
 
     let cancelled = false;
     let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+    let requestTimeout: ReturnType<typeof setTimeout> | null = null;
+    let requestController: AbortController | null = null;
     const pollInterval = 3000;
     let poll: () => Promise<void>;
 
@@ -36,10 +38,14 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
     };
 
     poll = async () => {
+      const controller = new AbortController();
+      requestController = controller;
+      requestTimeout = setTimeout(() => controller.abort(), 10_000);
       try {
         const response = await fetch("/api/version", {
           method: "GET",
           cache: "no-store",
+          signal: controller.signal,
         });
         if (response.ok && !cancelled) {
           redirectToSignIn();
@@ -51,6 +57,9 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
           schedulePoll();
         }
       }
+      clearTimeout(requestTimeout);
+      requestTimeout = null;
+      requestController = null;
     };
 
     const initialDelay = setTimeout(poll, 5000);
@@ -59,6 +68,8 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
       cancelled = true;
       clearTimeout(initialDelay);
       if (pollTimeout !== null) clearTimeout(pollTimeout);
+      if (requestTimeout !== null) clearTimeout(requestTimeout);
+      requestController?.abort();
     };
   }, [powerAction]);
 

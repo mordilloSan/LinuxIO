@@ -282,23 +282,26 @@ describe("useLogStream", () => {
   it("closes live streams when paused and reopens with the live tail", async () => {
     setupOpenStream();
     const createStreamFn = vi.fn(() => createStream());
-    const { result } = renderHook(() =>
-      useLogStream({
-        createStream: createStreamFn,
-        liveTail: "0",
-        open: true,
-      }),
+    const { rerender } = renderHook(
+      ({ liveMode }) =>
+        useLogStream({
+          createStream: createStreamFn,
+          liveMode,
+          liveTail: "0",
+          open: true,
+        }),
+      { initialProps: { liveMode: true } },
     );
 
     expect(liveStreamMocks.openStream).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      result.current.setLiveMode(false);
+      rerender({ liveMode: false });
     });
     expect(liveStreamMocks.closeStream).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      result.current.setLiveMode(true);
+      rerender({ liveMode: true });
     });
 
     expect(liveStreamMocks.openStream).toHaveBeenCalledTimes(2);
@@ -323,7 +326,6 @@ describe("useLogStream", () => {
     expect(liveStreamMocks.closeStream).toHaveBeenCalled();
     expect(result.current.logs).toBe("");
     expect(result.current.error).toBeNull();
-    expect(result.current.liveMode).toBe(true);
     expect(result.current.isLoading).toBe(true);
   });
 });
