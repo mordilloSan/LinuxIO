@@ -7,8 +7,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/client"
 	digest "github.com/opencontainers/go-digest"
@@ -300,6 +302,82 @@ func TestCheckContainerImageUpdatesHandlesImmutableAndFailedChecks(t *testing.T)
 	if len(client.distributionCalls) != 1 || client.distributionCalls[0] != remoteRef {
 		t.Fatalf("distribution calls = %v, want [%s]", client.distributionCalls, remoteRef)
 	}
+}
+
+func TestInspectImageUpdateRegistryRateLimit(t *testing.T) {
+	rateLimit := errors.New("Error response from daemon: toomanyrequests: retry-after: 787.973µs, allowed: 44000/minute")
+	denied := errors.New("unauthorized: authentication required")
+	tests := []struct {
+		name     string
+		errors   []error
+		wantErr  error
+		wantWait time.Duration
+	}{
+		{name: "registry rate limit recovers", errors: []error{rateLimit, nil}, wantWait: time.Second},
+		{name: "typed HTTP 429 recovers", errors: []error{fmt.Errorf("daemon: %w", errdefs.ErrResourceExhausted), nil}, wantWait: time.Second},
+		{name: "plain HTTP 429 recovers", errors: []error{errors.New("Error response from daemon: Too Many Requests"), nil}, wantWait: time.Second},
+		{name: "persistent rate limit", errors: []error{rateLimit, rateLimit, rateLimit}, wantErr: rateLimit, wantWait: 3 * time.Second},
+		{name: "authentication failure", errors: []error{denied}, wantErr: denied},
+		{name: "authentication failure after rate limit", errors: []error{rateLimit, denied}, wantErr: denied, wantWait: time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				localDigest := digest.FromString("local")
+				remoteDigest := digest.FromString("remote")
+				const imageRef = "lscr.io/linuxserver/speedtest-tracker:latest"
+				calls := 0
+				cli := &fakeImageUpdateCheckClient{
+					images: map[string]client.ImageInspectResult{
+						"image-id": {InspectResponse: image.InspectResponse{
+							RepoDigests: []string{"lscr.io/linuxserver/speedtest-tracker@" + localDigest.String()},
+						}},
+					},
+					distributionHook: func(context.Context, string, client.DistributionInspectOptions) (client.DistributionInspectResult, error) {
+						calls++
+						return distributionInspectResult(remoteDigest), tt.errors[calls-1]
+					},
+				}
+				started := time.Now()
+				observation, err := inspectImageUpdate(t.Context(), cli, "image-id", imageRef)
+				if err != nil || !errors.Is(observation.err, tt.wantErr) {
+					t.Fatalf("error = %v, observation error = %v, want %v", err, observation.err, tt.wantErr)
+				}
+				if tt.wantErr == nil && (!observation.updateAvailable || observation.remoteDigest != remoteDigest.String()) {
+					t.Fatalf("successful observation = %+v", observation)
+				}
+				if calls != len(tt.errors) || len(cli.imageCalls) != 1 || time.Since(started) != tt.wantWait {
+					t.Fatalf("registry attempts = %d, local inspections = %d, elapsed = %v; want %d, 1, %v",
+						calls, len(cli.imageCalls), time.Since(started), len(tt.errors), tt.wantWait)
+				}
+			})
+		})
+	}
+}
+
+func TestInspectImageUpdateRegistryBackoffPreservesDeadline(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		localDigest := digest.FromString("local")
+		const imageRef = "lscr.io/linuxserver/speedtest-tracker:latest"
+		cli := &fakeImageUpdateCheckClient{
+			images: map[string]client.ImageInspectResult{
+				"image-id": {InspectResponse: image.InspectResponse{
+					RepoDigests: []string{"lscr.io/linuxserver/speedtest-tracker@" + localDigest.String()},
+				}},
+			},
+			distributionErrors: map[string]error{imageRef: errdefs.ErrResourceExhausted},
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+		defer cancel()
+		started := time.Now()
+		observation, err := inspectImageUpdate(ctx, cli, "image-id", imageRef)
+		if !errors.Is(err, context.DeadlineExceeded) || observation.err != nil {
+			t.Fatalf("cancellation = %v, observation error = %v", err, observation.err)
+		}
+		if len(cli.distributionCalls) != 1 || time.Since(started) != 500*time.Millisecond {
+			t.Fatalf("registry attempts = %d, elapsed = %v; want 1, 500ms", len(cli.distributionCalls), time.Since(started))
+		}
+	})
 }
 
 func TestCheckContainerImageUpdatesPreservesCancellation(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/distribution/reference"
 	"github.com/moby/moby/client"
 	digest "github.com/opencontainers/go-digest"
@@ -194,6 +195,25 @@ func inspectImageUpdate(
 	observation.localDigest = localDigests[0].String()
 
 	remote, err := cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
+	for retry := 0; err != nil && retry < 2; retry++ {
+		// Docker can expose registry throttling as either HTTP 429 or a
+		// daemon error message. Retry only this read, with bounded backoff.
+		message := strings.ToLower(err.Error())
+		if !errdefs.IsResourceExhausted(err) && !strings.Contains(message, "toomanyrequests") && !strings.Contains(message, "too many requests") {
+			break
+		}
+		timer := time.NewTimer(time.Second << retry)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return observation, ctx.Err()
+		case <-timer.C:
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return observation, ctxErr
+		}
+		remote, err = cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
+	}
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return observation, ctxErr
