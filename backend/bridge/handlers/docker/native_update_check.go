@@ -2,7 +2,9 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"slices"
 	"strings"
 	"time"
@@ -195,14 +197,13 @@ func inspectImageUpdate(
 	observation.localDigest = localDigests[0].String()
 
 	remote, err := cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
-	for retry := 0; err != nil && retry < 2; retry++ {
-		// Docker can expose registry throttling as either HTTP 429 or a
-		// daemon error message. Retry only this read, with bounded backoff.
-		message := strings.ToLower(err.Error())
-		if !errdefs.IsResourceExhausted(err) && !strings.Contains(message, "toomanyrequests") && !strings.Contains(message, "too many requests") {
+	for retry := 0; err != nil && retry < 3; retry++ {
+		// Retry only the registry read. Give throttled or slow registries
+		// time to recover without retrying authentication or missing-image errors.
+		if !retryableRegistryInspectError(err) {
 			break
 		}
-		timer := time.NewTimer(time.Second << retry)
+		timer := time.NewTimer(5 * time.Second << retry)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -229,6 +230,20 @@ func inspectImageUpdate(
 	observation.remoteDigest = remote.Descriptor.Digest.String()
 	observation.updateAvailable = !slices.Contains(localDigests, remote.Descriptor.Digest)
 	return observation, nil
+}
+
+func retryableRegistryInspectError(err error) bool {
+	var networkError net.Error
+	if errdefs.IsResourceExhausted(err) || errdefs.IsDeadlineExceeded(err) ||
+		(errors.As(err, &networkError) && networkError.Timeout()) {
+		return true
+	}
+	// Errors from the daemon's registry client lose their type across HTTP.
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "toomanyrequests") ||
+		strings.Contains(message, "too many requests") ||
+		strings.Contains(message, "context deadline exceeded") ||
+		strings.Contains(message, "client.timeout exceeded while awaiting headers")
 }
 
 func normalizeUpdateReference(imageRef string) (normalized string, pinnedDigest string, immutable bool, err error) {
