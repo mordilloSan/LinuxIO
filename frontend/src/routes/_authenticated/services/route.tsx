@@ -1,11 +1,22 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 
-import { makeTabLayout } from "@/components/tabbar";
+import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
+import useAuth from "@/hooks/useAuth";
 import { ServerCogIcon } from "@/icons/svg";
 
 import { SERVICES_TABS } from "./-components/servicesTabs";
 
-const ServicesLayout = makeTabLayout(SERVICES_TABS);
+function ServicesLayout() {
+  const { privileged } = useAuth();
+  const tabs: readonly RoutedTab[] = privileged
+    ? SERVICES_TABS
+    : SERVICES_TABS.filter((tab) => tab.to !== "/services/schedules");
+  return (
+    <RoutedTabLayout tabs={tabs}>
+      <Outlet />
+    </RoutedTabLayout>
+  );
+}
 
 export const Route = createFileRoute("/_authenticated/services")({
   component: ServicesLayout,

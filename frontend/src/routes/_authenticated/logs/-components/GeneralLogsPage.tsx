@@ -476,7 +476,15 @@ const LogEntryDetails = ({
   );
 };
 
-const GeneralLogsPage = () => {
+type GeneralLogsPageProps = {
+  unit?: string;
+  invocationId?: string;
+};
+
+const GeneralLogsPage = ({
+  unit: scopedUnit,
+  invocationId: scopedInvocationID,
+}: GeneralLogsPageProps = {}) => {
   const navigate = useNavigate();
   const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -488,7 +496,7 @@ const GeneralLogsPage = () => {
     () => new Set(),
   );
   const [search, setSearch] = useState("");
-  const [timePeriod, setTimePeriod] = useState("24h");
+  const [timePeriod, setTimePeriod] = useState(scopedUnit ? "" : "24h");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [unitStatusFilter, setUnitStatusFilter] = useState<string>("all");
   const [identifierFilter, setIdentifierFilter] = useState("all");
@@ -738,6 +746,9 @@ const GeneralLogsPage = () => {
           timePeriod,
           priority: priorityFilter === "all" ? "" : priorityFilter,
           identifier: backendIdentifier,
+          ...(scopedUnit
+            ? { unit: scopedUnit, invocationId: scopedInvocationID }
+            : {}),
           fieldFilters,
           follow: liveMode,
           afterCursor,
@@ -789,6 +800,8 @@ const GeneralLogsPage = () => {
     identifierFilter,
     identifierIsExact,
     fieldFilters,
+    scopedUnit,
+    scopedInvocationID,
   ]);
   // oxlint-enable react/exhaustive-effect-dependencies
 
@@ -958,6 +971,9 @@ const GeneralLogsPage = () => {
               timePeriod,
               priority: priorityFilter === "all" ? "" : priorityFilter,
               identifier: backendIdentifier,
+              ...(scopedUnit
+                ? { unit: scopedUnit, invocationId: scopedInvocationID }
+                : {}),
               fieldFilters,
             }),
             // The parsed rows below are the source of truth. Do not retain a
@@ -1013,6 +1029,8 @@ const GeneralLogsPage = () => {
     identifierIsExact,
     logs,
     priorityFilter,
+    scopedInvocationID,
+    scopedUnit,
     timePeriod,
   ]);
 
@@ -1323,6 +1341,18 @@ const GeneralLogsPage = () => {
         minHeight: 0,
       }}
     >
+      {scopedUnit && (
+        <AppTypography
+          color="text.secondary"
+          style={{ marginBottom: "var(--app-space-8)" }}
+        >
+          {scopedUnit}
+          {scopedInvocationID
+            ? ` · invocation ${scopedInvocationID}`
+            : " · all runs"}
+          {" — logs are limited to the host’s journal retention."}
+        </AppTypography>
+      )}
       {/* Filters */}
       <div
         style={{
@@ -1340,6 +1370,7 @@ const GeneralLogsPage = () => {
           style={{ minWidth: 150 }}
           value={timePeriod}
         >
+          {scopedUnit ? <option value="">All retained entries</option> : null}
           <option value="1h">Last 1 hour</option>
           <option value="6h">Last 6 hours</option>
           <option value="24h">Last 24 hours</option>

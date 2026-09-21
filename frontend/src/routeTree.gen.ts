@@ -38,6 +38,7 @@ import { Route as AuthenticatedDockerVolumesRouteImport } from './routes/_authen
 import { Route as AuthenticatedFilebrowserSplatRouteImport } from './routes/_authenticated/filebrowser/$'
 import { Route as AuthenticatedProcessesIndexRouteImport } from './routes/_authenticated/processes/index'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
+import { Route as AuthenticatedServicesSchedulesRouteImport } from './routes/_authenticated/services/schedules'
 import { Route as AuthenticatedServicesSocketsRouteImport } from './routes/_authenticated/services/sockets'
 import { Route as AuthenticatedServicesTimersRouteImport } from './routes/_authenticated/services/timers'
 import { Route as AuthenticatedSharesIndexRouteImport } from './routes/_authenticated/shares/index'
@@ -222,6 +223,12 @@ const AuthenticatedServicesIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedServicesRouteRoute,
   } as any)
+const AuthenticatedServicesSchedulesRoute =
+  AuthenticatedServicesSchedulesRouteImport.update({
+    id: '/schedules',
+    path: '/schedules',
+    getParentRoute: () => AuthenticatedServicesRouteRoute,
+  } as any)
 const AuthenticatedServicesSocketsRoute =
   AuthenticatedServicesSocketsRouteImport.update({
     id: '/sockets',
@@ -335,6 +342,7 @@ export interface FileRoutesByFullPath {
   '/docker/topology': typeof AuthenticatedDockerTopologyRoute
   '/docker/volumes': typeof AuthenticatedDockerVolumesRoute
   '/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
+  '/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
   '/services/timers': typeof AuthenticatedServicesTimersRoute
   '/shares/mounts': typeof AuthenticatedSharesMountsRoute
@@ -371,6 +379,7 @@ export interface FileRoutesByTo {
   '/docker/topology': typeof AuthenticatedDockerTopologyRoute
   '/docker/volumes': typeof AuthenticatedDockerVolumesRoute
   '/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
+  '/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
   '/services/timers': typeof AuthenticatedServicesTimersRoute
   '/shares/mounts': typeof AuthenticatedSharesMountsRoute
@@ -418,6 +427,7 @@ export interface FileRoutesById {
   '/_authenticated/docker/topology': typeof AuthenticatedDockerTopologyRoute
   '/_authenticated/docker/volumes': typeof AuthenticatedDockerVolumesRoute
   '/_authenticated/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
+  '/_authenticated/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/_authenticated/services/sockets': typeof AuthenticatedServicesSocketsRoute
   '/_authenticated/services/timers': typeof AuthenticatedServicesTimersRoute
   '/_authenticated/shares/mounts': typeof AuthenticatedSharesMountsRoute
@@ -465,6 +475,7 @@ export interface FileRouteTypes {
     | '/docker/topology'
     | '/docker/volumes'
     | '/filebrowser/$'
+    | '/services/schedules'
     | '/services/sockets'
     | '/services/timers'
     | '/shares/mounts'
@@ -501,6 +512,7 @@ export interface FileRouteTypes {
     | '/docker/topology'
     | '/docker/volumes'
     | '/filebrowser/$'
+    | '/services/schedules'
     | '/services/sockets'
     | '/services/timers'
     | '/shares/mounts'
@@ -547,6 +559,7 @@ export interface FileRouteTypes {
     | '/_authenticated/docker/topology'
     | '/_authenticated/docker/volumes'
     | '/_authenticated/filebrowser/$'
+    | '/_authenticated/services/schedules'
     | '/_authenticated/services/sockets'
     | '/_authenticated/services/timers'
     | '/_authenticated/shares/mounts'
@@ -777,6 +790,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedServicesIndexRouteImport
       parentRoute: typeof AuthenticatedServicesRouteRoute
     }
+    '/_authenticated/services/schedules': {
+      id: '/_authenticated/services/schedules'
+      path: '/schedules'
+      fullPath: '/services/schedules'
+      preLoaderRoute: typeof AuthenticatedServicesSchedulesRouteImport
+      parentRoute: typeof AuthenticatedServicesRouteRoute
+    }
     '/_authenticated/services/sockets': {
       id: '/_authenticated/services/sockets'
       path: '/sockets'
@@ -942,6 +962,7 @@ const AuthenticatedProcessesRouteRouteWithChildren =
   )
 
 interface AuthenticatedServicesRouteRouteChildren {
+  AuthenticatedServicesSchedulesRoute: typeof AuthenticatedServicesSchedulesRoute
   AuthenticatedServicesSocketsRoute: typeof AuthenticatedServicesSocketsRoute
   AuthenticatedServicesTimersRoute: typeof AuthenticatedServicesTimersRoute
   AuthenticatedServicesIndexRoute: typeof AuthenticatedServicesIndexRoute
@@ -949,6 +970,7 @@ interface AuthenticatedServicesRouteRouteChildren {
 
 const AuthenticatedServicesRouteRouteChildren: AuthenticatedServicesRouteRouteChildren =
   {
+    AuthenticatedServicesSchedulesRoute: AuthenticatedServicesSchedulesRoute,
     AuthenticatedServicesSocketsRoute: AuthenticatedServicesSocketsRoute,
     AuthenticatedServicesTimersRoute: AuthenticatedServicesTimersRoute,
     AuthenticatedServicesIndexRoute: AuthenticatedServicesIndexRoute,

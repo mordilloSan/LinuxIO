@@ -18,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/schedules"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
@@ -56,6 +57,7 @@ var Families = []Family{
 	{Name: "virt", Routes: virt.Routes, Register: virt.RegisterHandlers},
 	{Name: "wireguard", Routes: wireguard.Routes, Register: wireguard.RegisterHandlers},
 	{Name: "storage", Routes: storage.Routes, Register: storage.RegisterHandlers},
+	{Name: "schedules", Routes: schedules.Routes, Register: schedules.RegisterHandlers},
 	{Name: "shares", Routes: shares.Routes, Register: shares.RegisterHandlers},
 	{Name: "logs", Routes: logs.Routes, Register: logs.RegisterHandlers},
 	{Name: "tasks", Routes: tasks.Routes, Register: tasks.RegisterHandlers},

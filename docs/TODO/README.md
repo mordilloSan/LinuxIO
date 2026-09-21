@@ -6,7 +6,6 @@ Each active plan has its own document:
 - [Frontend task state unification](./frontend-task-state-unification.md)
 - [Frontend test coverage](./e2e-testing.md)
 - [Notifications](./notifications.md)
-- [Scheduled execution](./scheduled-execution.md)
 - [VM bridged networking](./vm-bridge-networking-plan.md)
 
 ## Dependency maintenance

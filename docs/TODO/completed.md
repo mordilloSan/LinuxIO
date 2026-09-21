@@ -1,5 +1,13 @@
 # Completed or closed TODOs
 
+- [x] Implemented [scheduled scripts](../scheduled-execution.md) through native
+  systemd services/timers and retained journal logs. Administrators can create,
+  edit, enable, disable, run, stop, and delete tasks in Services. No scheduler
+  binary or run-history store was added. The editor includes daily/weekly time
+  controls and the shared directory picker. Selected-user execution and journal
+  output were confirmed on the development host. Reboot, timeout, catch-up,
+  and retention checks remain deployment validation.
+
 - [x] Completed the [first-party monitoring integration](./linuxio-monitoring.md):
   shipped `linuxio-monitoring`, its systemd unit, fixed read/control sockets
   and root peer gate, strict YAML configuration, SQLite history, initial live

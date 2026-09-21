@@ -32,6 +32,9 @@ body.dialog-open #root {
 /* ── dialog ────────────────────────────────── */
 
 .app-dialog {
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size-body);
+  line-height: 1.5;
   position: relative;
   margin: 32px;
   max-height: calc(100% - 64px);
@@ -79,10 +82,9 @@ body.dialog-open #root {
 
 .app-dialog-title {
   padding: 16px 24px;
-  font-size: 1.25rem;
+  font-size: var(--app-font-size-heading);
   font-weight: 500;
-  line-height: 1.6;
-  letter-spacing: 0.0075em;
+  line-height: 1.25;
   flex: 0 0 auto;
 }
 
@@ -103,7 +105,7 @@ body.dialog-open #root {
 .app-dialog-content-text {
   margin: 0 0 12px;
   color: var(--app-palette-text-secondary);
-  font-size: 1rem;
+  font-size: var(--app-font-size-body);
   line-height: 1.5;
 }
 

@@ -7,7 +7,7 @@ This plan defines LinuxIO's durable user-facing alert lifecycle. It deliberately
 separates alerts from live Tasks, native script execution state, journald logs,
 transient toasts, and external delivery. See the
 [API reliability roadmap](./api-reliability-roadmap.md) for dependency order and
-[Scheduled Execution](./scheduled-execution.md) for timer, run, and log
+[Scheduled Execution](../scheduled-execution.md) for timer, run, and log
 ownership.
 
 ## Domain boundaries

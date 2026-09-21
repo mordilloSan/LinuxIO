@@ -209,6 +209,17 @@ const linuxio = {
     set_profile: defineCallWithRequest("power.set_profile"),
     start: defineCall("power.start"),
   },
+  schedules: {
+    create: defineCallWithRequest("schedules.create"),
+    delete: defineCallWithRequest("schedules.delete"),
+    disable: defineCallWithRequest("schedules.disable"),
+    enable: defineCallWithRequest("schedules.enable"),
+    get: defineCallWithRequest("schedules.get"),
+    list: defineCall("schedules.list"),
+    run_now: defineCallWithRequest("schedules.run_now"),
+    stop: defineCallWithRequest("schedules.stop"),
+    update: defineCallWithRequest("schedules.update"),
+  },
   shares: {
     create_nfs_share: defineCallWithRequest("shares.create_nfs_share"),
     create_samba_share: defineCallWithRequest("shares.create_samba_share"),

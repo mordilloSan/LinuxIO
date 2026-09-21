@@ -694,6 +694,8 @@ type GeneralLogsFollowRequest struct {
 	TimePeriod   *string  `json:"timePeriod,omitempty"`
 	Priority     *string  `json:"priority,omitempty"`
 	Identifier   *string  `json:"identifier,omitempty"`
+	Unit         *string  `json:"unit,omitempty"`
+	InvocationID *string  `json:"invocationId,omitempty"`
 	FieldFilters []string `json:"fieldFilters,omitempty"`
 	// Follow controls whether the Task keeps streaming new entries after the
 	// backlog. nil defaults to true (live mode).
@@ -714,6 +716,8 @@ type GeneralLogsPageRequest struct {
 	TimePeriod   *string  `json:"timePeriod,omitempty"`
 	Priority     *string  `json:"priority,omitempty"`
 	Identifier   *string  `json:"identifier,omitempty"`
+	Unit         *string  `json:"unit,omitempty"`
+	InvocationID *string  `json:"invocationId,omitempty"`
 	FieldFilters []string `json:"fieldFilters,omitempty"`
 }
 

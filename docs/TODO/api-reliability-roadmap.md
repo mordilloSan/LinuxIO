@@ -17,7 +17,7 @@ Focused implementation and design details remain in their own documents:
   defines durable Task execution and recovery mechanics.
 - [Notifications](./notifications.md) defines the notification product and
   storage contract.
-- [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
+- [Scheduled Execution](../scheduled-execution.md) defines the systemd timer,
   service, and journald ownership boundaries.
 
 The [TODO index](./README.md) links here instead of duplicating these
@@ -491,7 +491,7 @@ bridge Calls and the watch Channel expose authorized alert state to the UI.
 
 ## Phase 7: Scheduled Scripts with Native Status and Logs
 
-Implement [Scheduled Execution](./scheduled-execution.md). LinuxIO manages
+Implemented [Scheduled Execution](../scheduled-execution.md). LinuxIO manages
 scripts and declarative definitions; native systemd `.timer` and `.service`
 units own calendar activation, execution identity, overlap, process lifetime,
 timeout, and exit state. Journald owns stdout and stderr. Use the existing
@@ -510,17 +510,21 @@ prerequisite for scheduling scripts.
 
 ### Phase 7 exit criteria
 
-- [ ] Creating, editing, enabling, disabling, and deleting a schedule converges
+- [x] Creating, editing, enabling, disabling, and deleting a schedule converges
   to deterministic systemd service/timer definitions.
-- [ ] The API reports next/last timer activation and current/latest service
+- [x] The API reports next/last timer activation and current/latest service
   state from systemd, distinguishing accepted starts from completed runs.
 - [ ] Scripts run as the approved account with tested privilege, script-path,
   argument, overlap, missed-run, timeout, cancellation, and deletion policies.
 - [ ] Restarting or disconnecting the bridge does not stop scheduling or logging.
-- [ ] The existing journal viewer opens the selected unit and, where supported,
+- [x] The existing journal viewer opens the selected unit and, where supported,
   invocation; unavailable historical evidence never becomes invented success.
-- [ ] Execution and log storage reuse native facilities without a new worker,
+- [x] Execution and log storage reuse native facilities without a new worker,
   per-run store, or scheduling reconciliation service.
+
+Configuration and policy checks are automated; the unchecked criteria above
+require deployment validation with a real systemd host. No custom execution
+process runs inside the bridge.
 
 ## Phase 8: Alert Sources, Routing, and Delivery
 
@@ -609,7 +613,7 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
   mechanics.
 - `notifications.md`: alert lifecycle, metadata storage, API, Channel, routing,
   and frontend behavior.
-- `scheduled-execution.md`: schedule, systemd unit, status, and journald
+- `../scheduled-execution.md`: schedule, systemd unit, status, and journald
   ownership.
 - this roadmap: phase ordering and cross-cutting decisions.
 - `TODO/README.md`: one short entry linking this roadmap.

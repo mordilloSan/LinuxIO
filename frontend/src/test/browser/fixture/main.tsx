@@ -12,6 +12,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
+import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
 import { Route as NetworkRoute } from "@/routes/_authenticated/network/route";
 import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
@@ -48,6 +49,7 @@ const VirtualExpansionTablePage = lazy(
   () => import("./routes/VirtualExpansionTablePage"),
 );
 const GeneralLogsPage = lazy(() => import("./routes/GeneralLogsPage"));
+const SchedulesPage = lazy(() => import("./routes/SchedulesPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
 const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
@@ -184,6 +186,12 @@ const generalLogsRoute = createRoute({
   component: GeneralLogsPage,
   getParentRoute: () => rootRoute,
   path: "logs",
+  validateSearch: LogsRoute.options.validateSearch,
+});
+const schedulesRoute = createRoute({
+  component: SchedulesPage,
+  getParentRoute: () => rootRoute,
+  path: "schedules",
 });
 const lightGeneralLogsRoute = createRoute({
   component: GeneralLogsPage,
@@ -292,6 +300,7 @@ const routeTree = rootRoute.addChildren([
   virtualExpansionRoute,
   lightVirtualExpansionRoute,
   generalLogsRoute,
+  schedulesRoute,
   lightGeneralLogsRoute,
   virtualFileBrowserRoute,
   virtualGridRoute,
