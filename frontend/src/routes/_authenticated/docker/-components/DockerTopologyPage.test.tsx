@@ -163,7 +163,7 @@ describe("Docker topology", () => {
   it("offers recovery for empty inventory and a deleted selection", async () => {
     containers = [];
     networks = [];
-    await setup({ container: "deleted" });
+    const { user } = await setup({ container: "deleted" });
     expect(screen.getByText(/No containers yet/)).toBeInTheDocument();
     expect(
       screen.getByText(/This resource is no longer listed/),
@@ -171,6 +171,10 @@ describe("Docker topology", () => {
     expect(
       screen.getByRole("button", { name: "Clear selection" }),
     ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(
+      screen.queryByText(/This resource is no longer listed/),
+    ).not.toBeInTheDocument();
   });
 
   it("expires repeated samples and recovers when a new sample arrives", async () => {

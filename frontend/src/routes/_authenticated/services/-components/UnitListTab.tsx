@@ -10,6 +10,7 @@ import {
 
 import type { TableCardViewMode } from "@/api";
 import { RoutedTabSearch } from "@/components/tabbar";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import {
   useReorderableSurface,
@@ -74,11 +75,17 @@ function UnitListTab<T extends UnitListItem>({
     [onSelectedChange],
   );
   const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key !== "Escape") {
+    if (
+      !expanded ||
+      (event.key !== "Escape" && event.key !== "Esc") ||
+      event.defaultPrevented ||
+      document.querySelector(OVERLAY_ROOT_SELECTOR)
+    ) {
       return;
     }
 
     setExpanded(null);
+    event.preventDefault();
   });
 
   useEffect(() => {

@@ -14,6 +14,32 @@ test.describe("accessibility fixture controls", () => {
     ).toBeVisible();
   });
 
+  test("repositions an open popover when its anchor or content size changes", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 600, height: 600 });
+    await page
+      .getByRole("button", { name: "Open positioning fixture" })
+      .click();
+    const paper = page.locator(".app-popover__paper");
+    await expect(paper).toHaveCSS("top", "100px");
+    await expect(paper).toHaveCSS("left", "100px");
+
+    await page.getByRole("button", { name: "Move popover" }).click();
+    await expect(paper).toHaveCSS("top", "200px");
+    await expect(paper).toHaveCSS("left", "200px");
+
+    await page.getByRole("button", { name: "Grow content" }).click();
+    await expect
+      .poll(() =>
+        paper.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return { right: rect.right, bottom: rect.bottom };
+        }),
+      )
+      .toEqual({ right: 592, bottom: 592 });
+  });
+
   test("reaches every control with Tab and shows a visible focus outline", async ({
     page,
   }) => {

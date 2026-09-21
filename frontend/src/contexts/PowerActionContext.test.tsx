@@ -70,6 +70,7 @@ describe("PowerActionProvider", () => {
     expect(fetch).toHaveBeenCalledWith("/api/version", {
       cache: "no-store",
       method: "GET",
+      signal: expect.any(AbortSignal),
     });
 
     await act(async () => {
@@ -91,6 +92,38 @@ describe("PowerActionProvider", () => {
       await vi.advanceTimersByTimeAsync(8000);
     });
 
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("times out stalled attempts and aborts the pending request on unmount", async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    vi.mocked(fetch).mockImplementation(
+      (_url, options) =>
+        new Promise((_resolve, reject) => {
+          const signal = options?.signal;
+          if (!signal) return;
+          signals.push(signal);
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+    const { unmount } = renderProvider();
+    await act(async () => {
+      screen.getByRole("button", { name: "reboot" }).click();
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(signals).toHaveLength(1);
+    expect(signals[0].aborted).toBe(false);
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(signals[0].aborted).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(signals).toHaveLength(2);
+    expect(signals[1].aborted).toBe(false);
+    unmount();
+    expect(signals[1].aborted).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

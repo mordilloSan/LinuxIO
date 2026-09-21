@@ -3,6 +3,7 @@ import { useState } from "react";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
+import AppPopover from "@/components/ui/AppPopover";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import DockTile from "@/routes/_authenticated/-components/dock/DockTile";
@@ -47,6 +48,12 @@ function DockFixture() {
 }
 
 export default function AccessibilityPage() {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [popoverPosition, setPopoverPosition] = useState({
+    top: 100,
+    left: 100,
+  });
+  const [largePopover, setLargePopover] = useState(false);
   const [activations, setActivations] = useState({
     button: 0,
     chip: 0,
@@ -113,6 +120,26 @@ export default function AccessibilityPage() {
           <AppButton>Long monitoring details</AppButton>
         </AppTooltip>
       </div>
+      <AppButton onClick={() => setPopoverOpen(true)}>
+        Open positioning fixture
+      </AppButton>
+      <AppPopover anchorPosition={popoverPosition} open={popoverOpen}>
+        <div
+          style={{
+            width: largePopover ? 400 : 180,
+            height: largePopover ? 500 : 120,
+          }}
+        >
+          <AppButton
+            onClick={() => setPopoverPosition({ top: 200, left: 200 })}
+          >
+            Move popover
+          </AppButton>
+          <AppButton onClick={() => setLargePopover(true)}>
+            Grow content
+          </AppButton>
+        </div>
+      </AppPopover>
       <div style={{ height: "1600px" }} />
     </main>
   );

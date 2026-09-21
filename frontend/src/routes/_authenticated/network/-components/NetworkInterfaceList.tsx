@@ -17,6 +17,7 @@ import {
 } from "@/components/charts/useLiveSeries";
 import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -267,8 +268,13 @@ const NetworkInterfaceList = () => {
   });
 
   useEffect(() => {
+    if (!expanded) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (
+        (e.key === "Escape" || e.key === "Esc") &&
+        !e.defaultPrevented &&
+        !document.querySelector(OVERLAY_ROOT_SELECTOR)
+      ) {
         void navigate({
           to: ".",
           search: (previous) => ({
@@ -276,11 +282,12 @@ const NetworkInterfaceList = () => {
             iface: undefined,
           }),
         });
+        e.preventDefault();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
+  }, [expanded, navigate]);
 
   const handleClose = useCallback(() => {
     void navigate({

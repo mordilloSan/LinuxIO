@@ -2,11 +2,14 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/distribution/reference"
 	"github.com/moby/moby/client"
 	digest "github.com/opencontainers/go-digest"
@@ -194,6 +197,24 @@ func inspectImageUpdate(
 	observation.localDigest = localDigests[0].String()
 
 	remote, err := cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
+	for retry := 0; err != nil && retry < 3; retry++ {
+		// Retry only the registry read. Give throttled or slow registries
+		// time to recover without retrying authentication or missing-image errors.
+		if !retryableRegistryInspectError(err) {
+			break
+		}
+		timer := time.NewTimer(5 * time.Second << retry)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return observation, ctx.Err()
+		case <-timer.C:
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return observation, ctxErr
+		}
+		remote, err = cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
+	}
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return observation, ctxErr
@@ -209,6 +230,20 @@ func inspectImageUpdate(
 	observation.remoteDigest = remote.Descriptor.Digest.String()
 	observation.updateAvailable = !slices.Contains(localDigests, remote.Descriptor.Digest)
 	return observation, nil
+}
+
+func retryableRegistryInspectError(err error) bool {
+	var networkError net.Error
+	if errdefs.IsResourceExhausted(err) || errdefs.IsDeadlineExceeded(err) ||
+		(errors.As(err, &networkError) && networkError.Timeout()) {
+		return true
+	}
+	// Errors from the daemon's registry client lose their type across HTTP.
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "toomanyrequests") ||
+		strings.Contains(message, "too many requests") ||
+		strings.Contains(message, "context deadline exceeded") ||
+		strings.Contains(message, "client.timeout exceeded while awaiting headers")
 }
 
 func normalizeUpdateReference(imageRef string) (normalized string, pinnedDigest string, immutable bool, err error) {

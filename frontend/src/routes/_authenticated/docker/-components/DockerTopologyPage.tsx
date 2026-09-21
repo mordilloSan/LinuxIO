@@ -12,6 +12,7 @@ import AppTopologyEdge from "@/components/ui/AppTopologyEdge";
 import AppTypography from "@/components/ui/AppTypography";
 import { getContainerStatusColor } from "@/constants/statusColors";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 import {
   getContainerDisplayState,
   getContainerName,
@@ -114,6 +115,11 @@ const DockerTopologyPage = ({
   const [paused, setPaused] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const detailHeading = useRef<HTMLElement>(null);
+
+  useClearSelectionOnEscape(
+    Boolean(selection.container || selection.network),
+    () => onSelectionChange({}),
+  );
 
   // Bring the inspector into view after selection, including when it sits
   // below the map on a narrow screen. Keyboard users can continue into it.

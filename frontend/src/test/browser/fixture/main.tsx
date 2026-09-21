@@ -6,6 +6,7 @@ import {
   Outlet,
   RouterProvider,
   useLocation,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
@@ -95,8 +96,12 @@ function PendingRoute() {
   return <div role="status">Loading child route…</div>;
 }
 
-function FailedRoute({ error }: { error: Error }) {
-  return <div role="alert">Route failed: {error.message}</div>;
+function FailedRoute({ error }: ErrorComponentProps) {
+  return (
+    <div role="alert">
+      Route failed: {error instanceof Error ? error.message : "Unknown error"}
+    </div>
+  );
 }
 
 function NotFoundRoute() {

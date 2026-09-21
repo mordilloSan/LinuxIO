@@ -53,7 +53,11 @@
   digest checks replaced Watchtower-based checks,
   Compose-managed containers update through their Compose project, opted-in
   standalone containers recreate transactionally with rollback, and scheduled
-  execution moved to a LinuxIO systemd runner.
+  execution moved to a LinuxIO systemd runner. Manual and scheduled registry
+  digest lookups retry rate limits and registry timeouts up to three times,
+  after five, ten, and twenty seconds, honoring cancellation and preserving
+  errors when retries are exhausted. Batch checks remain capped at six
+  concurrent image observations.
 - [x] Completed Phases 1–5.5 of the
   [API Reliability, Recovery, and Notifications Roadmap](./api-reliability-roadmap.md):
   strict standard-library request decoding with an explicit safe-retry policy

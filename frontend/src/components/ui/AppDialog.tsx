@@ -227,9 +227,12 @@ export const AppDialog = ({
           initial="hidden"
           key="dialog"
           // React synthetic events bubble through the React tree, so a dialog
-          // rendered inside e.g. a clickable card would still trigger that card's
-          // onClick / onMouseDown. Stop those at the portal root.
+          // rendered inside a card would still trigger its click/drag handlers.
+          // Keep Escape bubbling to the document's overlay stack handler.
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") event.stopPropagation();
+          }}
           onMouseDown={(event) => event.stopPropagation()}
           ref={rootRef}
           role="presentation"

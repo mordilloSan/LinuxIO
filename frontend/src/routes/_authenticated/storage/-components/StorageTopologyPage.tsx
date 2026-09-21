@@ -13,6 +13,7 @@ import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTopologyEdge from "@/components/ui/AppTopologyEdge";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapabilityState } from "@/hooks/useCapabilities";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 import { formatFileSize, formatThroughput } from "@/utils/formaters";
 
 import {
@@ -139,6 +140,9 @@ export default function StorageTopologyPage({
   const [expiredSample, setExpiredSample] = useState<number>();
   const [paused, setPaused] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  useClearSelectionOnEscape(Boolean(selection.node), () =>
+    onSelectionChange({}),
+  );
   useEffect(() => {
     if (selection.node) heading.current?.focus();
   }, [selection.node]);

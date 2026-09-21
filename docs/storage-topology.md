@@ -5,6 +5,9 @@ points, and applications. The validated `node` search parameter preserves
 selection through reloads, links, and browser navigation. Selecting an item
 highlights its upstream and downstream dependencies and focuses the inspector.
 Narrow layouts use selectable lists with the same details and actions.
+Escape clears the selection and its URL parameter in both Storage and Docker
+topologies. Open dialogs and keyboard handlers that already handled Escape
+take priority, preserving the selection underneath.
 
 ## Inventory and ownership
 

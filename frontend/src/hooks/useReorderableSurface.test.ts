@@ -231,11 +231,34 @@ describe("useReorderableSurface", () => {
     });
     expect(result.current.editMode).toBe(true);
 
+    const handled = new KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
+    handled.preventDefault();
+    act(() => {
+      window.dispatchEvent(handled);
+    });
+    expect(result.current.editMode).toBe(true);
+
+    const overlay = document.createElement("div");
+    overlay.className = "app-dialog-root";
+    document.body.append(overlay);
     act(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     });
+    overlay.remove();
+    expect(result.current.editMode).toBe(true);
 
+    const unhandled = new KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
+    act(() => {
+      window.dispatchEvent(unhandled);
+    });
     expect(result.current.editMode).toBe(false);
+    expect(unhandled.defaultPrevented).toBe(true);
   });
 
   it("leaves focus ownership untouched when Escape exits layout mode", () => {

@@ -5,9 +5,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type Dispatch,
   type RefObject,
-  type SetStateAction,
 } from "react";
 
 import { type Stream, useStreamMux } from "@/api";
@@ -18,6 +16,8 @@ export interface UseLogStreamOptions {
   createStream: (tail: string) => Stream | null;
   /** Number of tail lines to fetch on initial open. Default: "200". */
   initialTail?: string;
+  /** Live preference belongs to the UI, independently of the stream's lifetime. */
+  liveMode?: boolean;
   /** Number of tail lines when re-enabling live mode. Default: "0". */
   liveTail?: string;
   open: boolean;
@@ -26,11 +26,9 @@ export interface UseLogStreamOptions {
 export interface UseLogStreamResult {
   error: string | null;
   isLoading: boolean;
-  liveMode: boolean;
   logs: string;
   logsBoxRef: RefObject<HTMLDivElement | null>;
   resetState: () => void;
-  setLiveMode: Dispatch<SetStateAction<boolean>>;
 }
 
 const INITIAL_LOG_SILENCE_TIMEOUT_MS = 1500;
@@ -79,11 +77,11 @@ export function useLogStream({
   open,
   createStream,
   initialTail = "200",
+  liveMode = true,
   liveTail = "0",
 }: UseLogStreamOptions): UseLogStreamResult {
-  const [liveMode, setLiveMode] = useState(true);
   const [logs, setLogs] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(liveMode);
   const [error, setError] = useState<string | null>(null);
   const logsBoxRef = useRef<HTMLDivElement>(null);
   const pendingLogsRef = useRef<PendingLogs>({ chunks: [], length: 0 });
@@ -174,6 +172,7 @@ export function useLogStream({
   // callers pass as a fresh closure every render (see the hook doc comment) —
   // depending on it would close and reopen the stream on every caller render.
   const startStream = useEffectEvent((tail: string) => {
+    if (!liveMode) return;
     openStream({
       open: () => createStream(tail),
       onOpenError: handleStreamOpenError,
@@ -198,7 +197,6 @@ export function useLogStream({
     closeStream();
     setLogs("");
     setError(null);
-    setLiveMode(true);
     setIsLoading(true);
     hasReceivedData.current = false;
   }, [clearInitialLoadTimeout, closeStream, discardPendingLogs]);
@@ -251,8 +249,6 @@ export function useLogStream({
     logs,
     isLoading,
     error,
-    liveMode,
-    setLiveMode,
     logsBoxRef,
     resetState,
   };

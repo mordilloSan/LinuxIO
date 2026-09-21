@@ -48,14 +48,32 @@ describe("useFocusedResourceParam", () => {
 
     rerender({ focusedId: "a" });
 
-    const dialog = document.createElement("div");
-    dialog.className = "app-dialog-root";
-    document.body.append(dialog);
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(onClear).not.toHaveBeenCalled();
-    dialog.remove();
+    for (const className of ["app-dialog-root", "app-fullscreen-dialog-root"]) {
+      const dialog = document.createElement("div");
+      dialog.className = className;
+      document.body.append(dialog);
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(onClear).not.toHaveBeenCalled();
+      dialog.remove();
+    }
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    const handled = new KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
+    handled.preventDefault();
+    fireEvent(window, handled);
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onClear).not.toHaveBeenCalled();
+
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(false);
     expect(onClear).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: "Esc" });
+    expect(onClear).toHaveBeenCalledTimes(2);
+
+    rerender({ focusedId: undefined });
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(true);
+    expect(onClear).toHaveBeenCalledTimes(2);
   });
 });

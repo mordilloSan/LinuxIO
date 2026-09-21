@@ -307,9 +307,6 @@ function ThemeColorsSection() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "var(--app-space-6)",
-                ...(isOverridden && {
-                  border: `1px solid ${theme.palette.primary.main}`,
-                }),
               }}
             >
               <div>

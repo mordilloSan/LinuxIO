@@ -1,12 +1,23 @@
+import {
+  DndContext,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { SortableContext } from "@dnd-kit/sortable";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
+  closeStreamMux,
+  initStreamMux,
   linuxio,
   type ContainerInfo,
   type ContainerInspectInfo,
   type DockerNetwork,
 } from "@/api";
+import ContainerCard from "@/components/cards/ContainerCard";
+import SortableCard from "@/components/cards/SortableCard";
 import ContainerResourceDetails from "@/components/docker/ContainerResourceDetails";
 import AppButton from "@/components/ui/AppButton";
 
@@ -123,9 +134,20 @@ queryClient.setQueryData(
   linuxio.docker.inspect_container({ containerId: container.Id }).queryKey,
   inspect,
 );
+queryClient.setQueryData(
+  linuxio.terminal.list_shells({ containerId: container.Id }).queryKey,
+  ["sh"],
+);
 
 export default function ContainerActionsPage() {
   const [selected, setSelected] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const sensors = useSensors(useSensor(KeyboardSensor));
+
+  useEffect(() => {
+    initStreamMux();
+    return closeStreamMux;
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -137,9 +159,26 @@ export default function ContainerActionsPage() {
             onClose={() => setSelected(false)}
           />
         ) : (
-          <AppButton onClick={() => setSelected(true)} variant="contained">
-            Open container details
-          </AppButton>
+          <>
+            <AppButton onClick={() => setSelected(true)} variant="contained">
+              Open container details
+            </AppButton>
+            <DndContext
+              onDragCancel={() => setDragging(false)}
+              onDragEnd={() => setDragging(false)}
+              onDragStart={() => setDragging(true)}
+              sensors={sensors}
+            >
+              <SortableContext items={[container.Id]}>
+                <SortableCard editMode={dragging} id={container.Id}>
+                  <ContainerCard
+                    containerId={container.Id}
+                    onSelect={() => setSelected(true)}
+                  />
+                </SortableCard>
+              </SortableContext>
+            </DndContext>
+          </>
         )}
       </main>
     </QueryClientProvider>
