@@ -1,203 +1,146 @@
-# Scheduled execution and run history
+# Scheduled scripts with systemd
 
-> **Status: Planned.** LinuxIO does not yet expose general scheduled scripts or
-> a persistent scheduled-run history.
+> **Status: Planned.** LinuxIO does not yet expose general scheduled scripts.
+> The initial implementation uses systemd and journald directly; it does not
+> require a new worker binary, scheduler daemon, or LinuxIO run-history store.
 
-This is a future generic scheduling surface for user-defined scripts. It is
-distinct from the existing Docker auto-update timer, the durable manual
-`docker.update_container` operation, and the read-only systemd timer inventory.
-Those surfaces keep their existing owners and are not schedule definitions
-described here.
+LinuxIO supplies the script editor, validated configuration, and controls for
+native systemd services and timers. Reuse existing Linux functionality before
+adding execution, logging, or recovery code. The existing Docker auto-update
+worker and read-only systemd timer inventory retain their current owners.
 
-This plan defines future timed script execution without turning the bridge into
-a cron daemon, process supervisor, or log database. Native systemd services and
-timers own execution. LinuxIO owns declarative configuration, a bounded API
-projection, and the user-facing history that systemd and journald do not model.
-
-## Ownership model
+## Ownership
 
 | Concern | Owner |
 |---|---|
-| Calendar activation and missed-run policy | systemd `.timer` |
-| Process identity, environment, timeout, resource limits, overlap, and exit | systemd `.service` |
-| Standard output and error | journald |
-| Schedule definition and safe script reference | LinuxIO configuration |
-| Stable historical run summary | root-owned LinuxIO run directory |
-| User-facing failure condition | LinuxIO alert daemon |
-| Live manual invocation | Task only when interactive progress/cancellation is useful |
+| Calendar and missed-run policy | systemd `.timer` |
+| Execution user/group, process lifetime, timeout, and overlap | systemd `.service` |
+| Script stdout/stderr and retained execution logs | journald |
+| Script content, approved execution policy, and schedule configuration | LinuxIO configuration |
+| Configuration and controls | Existing privileged bridge and UI |
+| Future notifications | Separate notification integration; not a prerequisite for scheduling |
 
-The bridge renders unit files under `/etc/systemd/system` with the atomic write
-and D-Bus daemon-reload path the Docker auto-update timer already uses, and uses
-the existing systemd D-Bus boundary to enable, disable, start, stop, inspect,
-and remove them. Do not shell out to `systemctl` or build an in-process timing
-loop.
+Use the existing atomic unit-file writes and systemd D-Bus boundary, as the
+Docker auto-update timer does. Do not add a timing loop, process supervisor,
+custom privilege-dropping launcher, or another log database. Native execution
+and logging continue with no browser or bridge connected.
 
-## Schedule definition
+## Configuration and privilege boundary
 
-A definition contains only validated declarative data:
+A managed task contains its ID, display name, script, fixed argument list,
+execution account, calendar expression, timezone, missed-run policy, timeout,
+optional working directory, and enabled state. Save scripts in a protected
+LinuxIO-managed directory and keep script contents out of unit properties.
+Use deterministic unit names such as `linuxio-schedule-<id>.service` and
+`linuxio-schedule-<id>.timer`.
 
-```text
-id, owner uid, name, enabled
-script reference and fixed argument list
-OnCalendar expression, timezone, persistent missed-run policy
-timeout, overlap policy, execution policy
-created_at, updated_at
-```
+Initial task management is administrator-only: selecting another account,
+including root, is an explicit privileged operation. The existing privileged
+bridge validates settings and manages units. Systemd launches the script with
+`User=` and `Group=`; a LinuxIO process need not switch users or remain running.
+Preserve the webserver, auth, and bridge privilege boundaries.
 
-The script reference must resolve through a LinuxIO-owned allow-list or managed
-script directory. Do not accept an arbitrary shell command line. Arguments are
-kept separate, environment keys are allow-listed, secrets use a separate
-protected mechanism, and the execution user/group comes from policy rather than
-untrusted unit properties.
+Validate calendars through systemd, resolve execution accounts through the
+host, and escape unit syntax and argument boundaries correctly. Accept script
+content as the administrator's program, not as an interpolated unit command
+line. An unprivileged user must not be able to replace a script scheduled for
+root execution. Configuration changes must not replace a script during a run.
 
-Unit names are deterministic from the schedule ID, for example
-`linuxio-schedule-<id>.timer` and `.service`. Unit names locate native state;
-they are not authorization secrets or historical run IDs.
+## Native execution policy
 
-## Native unit policy
-
-The service should use the narrowest practical sandbox and resource policy for
-the selected script class. At minimum define:
-
-- `Type=oneshot`;
-- an explicit `User=` and `Group=`;
-- `WorkingDirectory=` only when required;
-- `TimeoutStartSec=`;
-- journald stdout/stderr;
-- deterministic overlap behavior; and
-- collection/retention behavior that does not erase the run summary.
-
-The timer reports next and last activation directly from systemd. Calendar
-syntax is validated through systemd rather than approximated in Go. Whether a
-missed timer fires after boot is an explicit `Persistent=` product choice.
-
-## Run identity and summary
-
-One activation creates one stable LinuxIO run ID correlated to the exact
-systemd unit invocation. A bounded summary contains:
-
-```text
-id, schedule_id, unit_name, invocation_id
-trigger (scheduled | manual), scheduled_at
-started_at, finished_at
-state (queued | running | succeeded | failed | canceled | unknown)
-exit_code/exit_status, concise result or structured error
-```
-
-The run summary is not the log. The log viewer opens journald using the unit and
-invocation identity, reusing the existing journal Channel and cursor behavior.
-Journal rotation may remove old diagnostic output while the bounded summary
-continues to state honestly that the run occurred.
-
-Run summaries are one bounded JSON file per invocation in a root-owned run
-directory, keyed by schedule ID and systemd invocation ID, the same shape as
-the durable-task file store in `backend/common/durabletask`. Concurrent
-schedules write different files, but finish, cancellation, and reconciliation
-can update the same invocation. Use the existing file-locking and atomic-write
-patterns and recheck state under the lock so a stale read cannot overwrite a
-confirmed finish. Listing a schedule's recent runs is a directory read; nothing
-in the UI queries runs across schedules. The scheduler has no database, and the
-alert daemon's database is not used for runs. Retention deletes terminal files
-beyond a per-schedule bound and never an active or unreconciled run.
-
-## Capturing executions while the bridge is absent
-
-Scheduling must continue with no logged-in user and no bridge process. A
-short-lived root worker binary, the `linuxio-docker-update` precedent, records
-each activation. The generated service runs the allow-listed script natively
-and brackets it with two worker calls:
+A generated service uses the following shape (placeholders are illustrative):
 
 ```ini
 [Service]
 Type=oneshot
-User=<policy user>
-Group=<policy group>
-TimeoutStartSec=<timeout>
-ExecStartPre=+/usr/local/bin/<worker> begin --schedule <id>
-ExecStart=<allow-listed script> <fixed arguments>
-ExecStopPost=+/usr/local/bin/<worker> finish --schedule <id>
+User=<approved account>
+Group=<approved group>
+TimeoutStartSec=<configured timeout>
+ExecStart=/usr/bin/bash <managed script path> <fixed arguments>
+StandardOutput=journal
+StandardError=journal
 ```
 
-`begin` writes the run file in the `running` state using `$INVOCATION_ID`.
-`finish` completes it from `$SERVICE_RESULT`, `$EXIT_CODE`, and `$EXIT_STATUS`,
-which systemd passes to `ExecStopPost=` even after a timeout kill, so the finish
-record does not depend on the script surviving. The `+` prefix runs both calls
-as root so they can write the root-owned directory while the script itself
-keeps the policy user and sandbox.
+No LinuxIO `begin` or `finish` hook is needed for this scope. Apply sandboxing
+compatible with the selected account's intended script operations.
 
-A short-lived reconciliation service runs at boot and on a systemd timer, with
-a bounded number of records per pass. It shares reconciliation logic with the
-bridge's read path; no resident scheduler daemon observes units. If a run file
-has a `begin` and no `finish`, reconciliation asks systemd for that exact
-invocation's state and marks the run `unknown` when neither systemd nor the file
-proves an outcome. This also supplies an execution owner for alert retries with
-no session present. Reconciliation does not activate the original job.
-This design satisfies:
+- A stable service unit prevents overlapping activations from starting another
+  instance; a timer firing while that service is active leaves it running.
+- `Persistent=` on the timer makes missed calendar activation catch-up explicit.
+- Systemd owns timeout and process termination, including child-process policy.
+- Disabling a timer prevents future timer activations; it does not cancel a
+  running script. Cancellation is a separate authorized action.
+- Editing or deleting a running task is rejected until it finishes or is stopped.
+- Native start acknowledgements mean a request was accepted, not that the
+  script completed successfully or that a distinct additional run was created.
 
-- one run ID per accepted activation;
-- no duplicate execution during reconciliation;
-- typed start/finish state independent of parsing human log text;
-- conservative `unknown` when neither systemd nor a typed result proves the
-  outcome; and
-- bounded behavior across host and bridge restart.
+## Status, logs, and retention
 
-Do not infer a successful result merely from the absence of an active unit.
+Read timer next/last activation and service state/result from systemd. Those
+properties are current or latest native state, not a permanent execution ledger.
+Use systemd invocation identity when available to distinguish executions.
+
+Reuse LinuxIO's existing journal viewer and bounded cursor-based log queries.
+Open the selected unit's logs, and scope to an invocation where supported.
+Script output and system-manager lifecycle messages may use different journal
+fields; validate both paths instead of assuming one filter captures everything.
+Only show historical outcomes backed by native structured evidence. Do not
+parse localized message prose into an authoritative run state or interpret a
+missing unit/log entry as success.
+
+History is limited to retained native evidence. Journal persistence across
+reboots depends on host configuration, and rotation or vacuuming can remove
+older entries. Show unavailable history honestly. Do not introduce a second
+store merely to make a complete-history promise that this feature does not need.
+
+A log download can export retained journal entries through the existing bridge.
+If ordinary files are required later, systemd supports `LogsDirectory=` and
+`StandardOutput=append:/path/to/output.log`, with `StandardError=inherit`.
+That writes successive executions to one file and replaces journal capture of
+that output. File rotation, duplication to both destinations, and one-file-per-run
+naming are separate requirements, not automatic features of this setting.
 
 ## API and UI
 
-Calls manage bounded state:
+Expose schedule list/get/create/update/delete, enable/disable, and run-now
+through existing Go-owned Call contracts. Reuse the native service controls for
+stopping a current run. If a request targets a specific invocation, ensure it
+cannot accidentally stop a subsequent invocation; reject it when native
+identity cannot be verified safely.
 
-- `schedules.list/get/create/update/delete`;
-- `schedules.enable/disable`;
-- `schedules.run_now` for an explicitly authorized manual activation;
-- `scheduled_runs.list/get`; and
-- `scheduled_runs.cancel` only while systemd confirms a cancellable active
-  invocation.
+Show the execution account, schedule, enabled state, next/last timer activation,
+current/latest service result when available, and a link to logs. Refresh native
+state through existing query and unit-change mechanisms. Do not add a separate
+`scheduled_runs` persistence API or an execution Task solely to duplicate
+systemd state.
 
-A live status Channel is optional. Querying definitions and recent summaries,
-plus D-Bus unit-change invalidation, may be sufficient. Add a Channel only when
-it removes polling or provides behavior that cannot be expressed as cache
-invalidation.
+## Notifications are a separate follow-up
 
-The UI shows schedule, next/last activation, active state, recent outcomes, and
-a link to invocation-filtered logs. Editing timing never edits a run record.
+Scheduling and logging work without an alert service. When scheduled-script
+notifications are implemented, start with native failure triggers such as
+`OnFailure=` and connect them to the chosen notification mechanism. Systemd
+provides the trigger; LinuxIO-specific alert policy or delivery may still need
+an adapter. Do not add a scheduler worker just to anticipate that integration.
 
-## Alerts
-
-Scheduled execution follows the [notification source policy](./notifications.md#sources).
-The worker's `finish` step saves the outcome before posting to the alert daemon's
-private socket API. The reconciliation service and bridge read path can report
-a confirmed transition to `unknown`:
-
-- failure or unknown outcome raises or updates a stable alert keyed by schedule;
-- a later successful run resolves that condition when policy says the schedule
-  has recovered; and
-- successful routine runs do not create durable notifications by default.
-
-Manual and timer activations follow the same policy, independent of login state.
-Deliberate cancellation alone does not raise a failure alert. Use the invocation
-ID to deduplicate repeated reporting of an outcome.
-
-The reconciliation service retries failed submissions from saved run state,
-without changing the execution result or requiring a live bridge. Reconcile the
-current schedule condition: replaying an older failure must not reopen an alert
-after a later confirmed recovery. Preserve the records needed for reconciliation
-until that condition has reached the alert store.
-
-Delivery frequency and targets are configured by the notification router, not
-by the timer or runner.
+Unattended retries, deduplication, recovery, and retention gaps must be resolved
+by that notification design. A missing historical log alone is not a failed
+script. Durable alert state, if required, is distinct from storing every run.
 
 ## Completion criteria
 
-- Scheduling and execution continue while the bridge and browser are absent.
-- Deterministic unit changes converge safely through D-Bus.
-- Overlap, missed-run, timeout, privilege, cancellation, and deletion semantics
-  have focused tests.
-- Each activation has one bounded summary and one exact journald correlation.
-- Finish, cancellation, and reconciliation cannot overwrite a newer confirmed
-  outcome with a stale read.
-- Unknown-run detection and alert retries work without a session and never
-  repeat an execution or reopen an alert from an obsolete outcome.
-- No raw logs are stored in run files.
-- Host restart produces proven state or `unknown`, never an invented success or
-  replacement execution.
+- Execution and journal capture continue without a browser or bridge.
+- Configuration converges safely to deterministic native units through D-Bus.
+- Selected-user execution, script-path protection, argument escaping, timeout,
+  overlap, missed-run, cancellation, edit, and delete policies have focused tests.
+- Status and logs use native state and invocation correlation where available.
+- Restart and journal-retention gaps show unavailable or unknown information;
+  they do not create invented outcomes or replacement executions.
+- No new execution binary, resident scheduler, run-summary store, or custom
+  run-reconciliation service is required for the initial feature.
+
+## Native references
+
+- [systemd.service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html)
+- [systemd.timer](https://www.freedesktop.org/software/systemd/man/latest/systemd.timer.html)
+- [systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)
+- [journald.conf](https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html)
