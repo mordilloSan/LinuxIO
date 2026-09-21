@@ -7,7 +7,10 @@ const state = {
 };
 
 vi.mock("@/hooks/backgroundTasks/useBackgroundTaskState", () => ({
-  useBackgroundTaskState: () => state,
+  useBackgroundTaskList: () => state.transfers,
+  useBackgroundTasks: () => state.transfers,
+  useBackgroundTask: (id: string) =>
+    state.transfers.find((item) => item.id === id),
 }));
 
 vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({

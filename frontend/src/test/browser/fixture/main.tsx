@@ -29,6 +29,7 @@ import ProcessesFixturePage from "./routes/ProcessesPage";
 
 installTabNavigationIntent();
 
+const BackgroundTasksPage = lazy(() => import("./routes/BackgroundTasksPage"));
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
@@ -286,7 +287,13 @@ const failedRoute = createRoute({
   path: "error",
 });
 
+const backgroundTasksRoute = createRoute({
+  component: BackgroundTasksPage,
+  getParentRoute: () => rootRoute,
+  path: "/background-tasks",
+});
 const routeTree = rootRoute.addChildren([
+  backgroundTasksRoute,
   authenticatedRoute.addChildren([networkHandoffRoute, vmBridgeRoute]),
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,

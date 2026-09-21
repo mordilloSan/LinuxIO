@@ -39,6 +39,7 @@ its plan lands.
 
 | Doc | Use |
 |-----|-----|
+| [Frontend Task State](./frontend-task-state-unification.md) | Task cache ownership, subscriptions, recovery, lifecycle cleanup, and validation. |
 | [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
 | [React Activity and Effects](./react-activity.md) | Retained UI, terminal and console ownership, Effect cleanup, and audit resolutions. |
 | [Table Row Gestures](./table-row-gestures.md) | The one row-interaction contract for every data table: click, long press, double click, Escape; which props opt a table in, and why column defs must be stable. |

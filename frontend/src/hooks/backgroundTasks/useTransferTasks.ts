@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import {
@@ -10,15 +10,10 @@ import {
   openTaskWatchStream,
 } from "@/api";
 import * as TaskTypes from "@/constants/backgroundTaskTypes";
-import { useLatestRef } from "@/hooks/useLatestRef";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import type {
-  Compression,
-  Copy,
   CopyMoveStartOptions,
-  Extraction,
   ExtractionStartOptions,
-  Move,
   TransferItem,
 } from "@/types/backgroundTasks";
 import {
@@ -216,19 +211,18 @@ function extractionLabelBase(archivePath: string): string {
  * between the two paths.
  */
 export function useTransferTasks(runtime: BackgroundTaskRuntime) {
-  const [transfers, setTransfers] = useState<TransferItem[]>([]);
-  const transfersRef = useLatestRef(transfers);
+  const { set: setTransfers, read: readTasks } = runtime.tasks.transfers;
   const activeTransferIdsRef = useRef<Set<string>>(new Set());
 
   // Progress frames arrive far faster than the UI needs to repaint (a fast
-  // transfer can push hundreds a second); coalesce them into one setState
+  // transfer can push hundreds a second); coalesce them into one cache update
   // per animation frame instead of one per frame received.
   const pendingProgressRef = useRef<Map<string, PendingTransferProgress>>(
     new Map(),
   );
   const progressFrameRef = useRef<number | null>(null);
 
-  const flushTransferProgress = useCallback(() => {
+  const flushTransferProgress = () => {
     if (progressFrameRef.current !== null) {
       window.cancelAnimationFrame(progressFrameRef.current);
       progressFrameRef.current = null;
@@ -252,7 +246,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
         };
       }),
     );
-  }, []);
+  };
 
   useEffect(() => {
     return () => {
@@ -273,354 +267,310 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     releaseDownloadLabelBase,
   } = runtime;
 
-  const removeTransfer = useCallback(
-    (id: string) => {
-      if (!activeTransferIdsRef.current.has(id)) {
-        return;
-      }
-      activeTransferIdsRef.current.delete(id);
-      setTransfers((prev) => prev.filter((item) => item.id !== id));
-      releaseDownloadLabelBase(id);
-      streamRefsRef.current.delete(id);
-    },
-    [releaseDownloadLabelBase, streamRefsRef],
-  );
+  const removeTransfer = (id: string) => {
+    if (!activeTransferIdsRef.current.has(id)) {
+      return;
+    }
+    activeTransferIdsRef.current.delete(id);
+    setTransfers((prev) => prev.filter((item) => item.id !== id));
+    releaseDownloadLabelBase(id);
+    streamRefsRef.current.delete(id);
+  };
 
   /**
    * Watch the task stream and drive the navbar item to completion. Shared
    * verbatim by fresh starts and recovery; resolves when the task finishes.
    */
-  const watchTransfer = useCallback(
-    (
-      descriptor: TransferDescriptor,
-      id: string,
-      labelBase: string,
-      abortController: AbortController,
-      onComplete?: () => void,
-    ) => {
-      const getSpeed = createProgressSpeedCalculator();
-      return runStreamResult<void, TaskProgress<FileProgress>>({
-        open: () => openTaskWatchStream(id),
-        signal: abortController.signal,
-        closeOnAbort: "none",
-        openErrorMessage: `Failed to open ${descriptor.noun} stream`,
-        closeMessage: `${capitalize(descriptor.noun)} stream closed unexpectedly`,
-        onOpen: (stream) => {
-          streamRefsRef.current.set(id, stream);
-          setTransfers((prev) =>
-            prev.map((item) => (item.id === id ? { ...item, stream } : item)),
+  const watchTransfer = (
+    descriptor: TransferDescriptor,
+    id: string,
+    labelBase: string,
+    abortController: AbortController,
+    onComplete?: () => void,
+  ) => {
+    const getSpeed = createProgressSpeedCalculator();
+    return runStreamResult<void, TaskProgress<FileProgress>>({
+      open: () => openTaskWatchStream(id),
+      signal: abortController.signal,
+      closeOnAbort: "none",
+      openErrorMessage: `Failed to open ${descriptor.noun} stream`,
+      closeMessage: `${capitalize(descriptor.noun)} stream closed unexpectedly`,
+      onOpen: (stream) => {
+        streamRefsRef.current.set(id, stream);
+        setTransfers((prev) =>
+          prev.map((item) => (item.id === id ? { ...item, stream } : item)),
+        );
+      },
+      onProgress: (progress) => {
+        const detail = progress.detail;
+        if (!detail) return;
+        const percent = Math.min(99, progress.percentage ?? detail.pct);
+        const speed = getSpeed(detail.bytes);
+        pendingProgressRef.current.set(id, {
+          descriptor,
+          labelBase,
+          percent,
+          bytes: detail.bytes,
+          total: detail.total,
+          speed,
+        });
+        if (progressFrameRef.current === null) {
+          progressFrameRef.current = window.requestAnimationFrame(
+            flushTransferProgress,
           );
-        },
-        onProgress: (progress) => {
-          const detail = progress.detail;
-          if (!detail) return;
-          const percent = Math.min(99, progress.percentage ?? detail.pct);
-          const speed = getSpeed(detail.bytes);
-          pendingProgressRef.current.set(id, {
-            descriptor,
-            labelBase,
-            percent,
-            bytes: detail.bytes,
-            total: detail.total,
-            speed,
-          });
-          if (progressFrameRef.current === null) {
-            progressFrameRef.current = window.requestAnimationFrame(
-              flushTransferProgress,
-            );
-          }
-        },
-        onSuccess: () => {
-          toast.success(`${descriptor.done} ${labelBase}`);
-          onComplete?.();
-        },
-        onError: (error: unknown) => {
-          if (abortController.signal.aborted) {
-            return;
-          }
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : `${capitalize(descriptor.noun)} failed`,
-          );
-        },
-        onFinally: () => {
-          // Flush any queued progress before the terminal update so a task
-          // never briefly shows stale progress (or none) after completion,
-          // and so a late rAF can't fire after removal and re-add it.
-          flushTransferProgress();
-          removeTransfer(id);
-        },
-      });
-    },
-    [flushTransferProgress, removeTransfer, runStreamResult, streamRefsRef],
-  );
+        }
+      },
+      onSuccess: () => {
+        toast.success(`${descriptor.done} ${labelBase}`);
+        onComplete?.();
+      },
+      onError: (error: unknown) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : `${capitalize(descriptor.noun)} failed`,
+        );
+      },
+      onFinally: () => {
+        // Flush any queued progress before the terminal update so a task
+        // never briefly shows stale progress (or none) after completion,
+        // and so a late rAF can't fire after removal and re-add it.
+        flushTransferProgress();
+        removeTransfer(id);
+      },
+    });
+  };
 
   /**
    * Start a transfer task and register it in the navbar. Resolves per the
    * descriptor's `awaitCompletion`: at task completion (copy/move) or once
    * the task is registered (compress/extract).
    */
-  const startTransfer = useCallback(
-    async (
-      kind: TransferKind,
-      identity: readonly string[],
-      startTask: () => Promise<TaskSnapshot>,
-      candidateLabelBase: string,
-      makeItem: (labelBase: string) => TransferSeed,
-      onComplete?: () => void,
-    ): Promise<void> => {
-      const descriptor = DESCRIPTORS[kind];
-      if (!isConnected()) {
-        toast.error("Stream connection not ready");
-        return;
-      }
+  const startTransfer = async (
+    kind: TransferKind,
+    identity: readonly string[],
+    startTask: () => Promise<TaskSnapshot>,
+    candidateLabelBase: string,
+    makeItem: (labelBase: string) => TransferSeed,
+    onComplete?: () => void,
+  ): Promise<void> => {
+    const descriptor = DESCRIPTORS[kind];
+    if (!isConnected()) {
+      toast.error("Stream connection not ready");
+      return;
+    }
 
-      // Bridges the gap between the start request and the snapshot arriving
-      // on the events stream, so recovery never adopts our own task.
-      const pendingKey = taskIdentityKey(descriptor.taskType, identity);
-      pendingLocalTaskKeysRef.current.add(pendingKey);
+    // Bridges the gap between the start request and the snapshot arriving
+    // on the events stream, so recovery never adopts our own task.
+    const pendingKey = taskIdentityKey(descriptor.taskType, identity);
+    pendingLocalTaskKeysRef.current.add(pendingKey);
 
-      let task: TaskSnapshot;
-      try {
-        task = await startTask();
-      } catch (error) {
-        pendingLocalTaskKeysRef.current.delete(pendingKey);
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : `Failed to start ${descriptor.noun}`,
-        );
-        return;
-      }
-
-      const id = task.id;
-      const abortController = new AbortController();
-      const labelBase = descriptor.usesLabelAllocator
-        ? allocateDownloadLabelBase(candidateLabelBase, id)
-        : candidateLabelBase;
-
-      activeTransferIdsRef.current.add(id);
+    let task: TaskSnapshot;
+    try {
+      task = await startTask();
+    } catch (error) {
       pendingLocalTaskKeysRef.current.delete(pendingKey);
-      const item = {
-        ...makeItem(labelBase),
-        id,
-        taskId: id,
-        abortController,
-        progress: 0,
-        label: progressLabel(descriptor, labelBase, 0),
-        speed: undefined,
-      } as TransferItem;
-      setTransfers((prev) =>
-        prev.some((existing) => existing.id === id) ? prev : [...prev, item],
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : `Failed to start ${descriptor.noun}`,
       );
+      return;
+    }
 
-      const completion = watchTransfer(
-        descriptor,
-        id,
-        labelBase,
-        abortController,
-        onComplete,
-      );
-      if (descriptor.awaitCompletion) {
-        return completion;
-      }
-      void completion;
-    },
-    [allocateDownloadLabelBase, pendingLocalTaskKeysRef, watchTransfer],
-  );
+    const id = task.id;
+    const abortController = new AbortController();
+    const labelBase = descriptor.usesLabelAllocator
+      ? allocateDownloadLabelBase(candidateLabelBase, id)
+      : candidateLabelBase;
+
+    activeTransferIdsRef.current.add(id);
+    pendingLocalTaskKeysRef.current.delete(pendingKey);
+    const item = {
+      ...makeItem(labelBase),
+      id,
+      taskId: id,
+      abortController,
+      progress: 0,
+      label: progressLabel(descriptor, labelBase, 0),
+      speed: undefined,
+    } as TransferItem;
+    setTransfers((prev) =>
+      prev.some((existing) => existing.id === id) ? prev : [...prev, item],
+    );
+
+    const completion = watchTransfer(
+      descriptor,
+      id,
+      labelBase,
+      abortController,
+      onComplete,
+    );
+    if (descriptor.awaitCompletion) {
+      return completion;
+    }
+    void completion;
+  };
 
   /**
    * Adopt an already-running transfer task (page reload, another session) into
    * the navbar. Returns false when the task type is not a transfer, so the
    * caller can fall through to its generic handling.
    */
-  const recoverTransfer = useCallback(
-    (task: TaskSnapshot): boolean => {
-      const descriptor = DESCRIPTOR_BY_TASK_TYPE.get(task.type);
-      if (!descriptor) {
-        return false;
-      }
-      if (activeTransferIdsRef.current.has(task.id)) {
-        return true;
-      }
-
-      const { candidate, build } = descriptor.fromTask(
-        taskMetadataObject(task.metadata),
-      );
-      const labelBase = descriptor.usesLabelAllocator
-        ? allocateDownloadLabelBase(candidate, task.id)
-        : candidate;
-      const progress = task.progress as TaskProgress<FileProgress> | undefined;
-      const detail = progress?.detail;
-      const initialPct = Math.min(99, progress?.percentage ?? detail?.pct ?? 0);
-      const abortController = new AbortController();
-
-      activeTransferIdsRef.current.add(task.id);
-      setTransfers((prev) => [
-        ...prev,
-        {
-          ...build(labelBase),
-          id: task.id,
-          taskId: task.id,
-          abortController,
-          progress: initialPct,
-          label: progressLabel(descriptor, labelBase, initialPct),
-          bytes: detail?.bytes,
-          total: detail?.total,
-        },
-      ]);
-      void watchTransfer(descriptor, task.id, labelBase, abortController);
+  const recoverTransfer = (task: TaskSnapshot): boolean => {
+    const descriptor = DESCRIPTOR_BY_TASK_TYPE.get(task.type);
+    if (!descriptor) {
+      return false;
+    }
+    if (activeTransferIdsRef.current.has(task.id)) {
       return true;
-    },
-    [allocateDownloadLabelBase, watchTransfer],
-  );
+    }
 
-  const cancelTransfer = useCallback(
-    (id: string) => {
-      const item = transfersRef.current.find((transfer) => transfer.id === id);
-      if (!item) {
-        return;
-      }
-      item.abortController.abort();
-      const stream = streamRefsRef.current.get(id) || item.stream;
-      if (stream) {
-        stream.abort();
-        streamRefsRef.current.delete(id);
-      }
-      cancelBridgeTask(id);
-      toast.info(`${capitalize(DESCRIPTORS[item.type].noun)} cancelled`);
-      removeTransfer(id);
-    },
-    [cancelBridgeTask, removeTransfer, streamRefsRef, transfersRef],
-  );
+    const { candidate, build } = descriptor.fromTask(
+      taskMetadataObject(task.metadata),
+    );
+    const labelBase = descriptor.usesLabelAllocator
+      ? allocateDownloadLabelBase(candidate, task.id)
+      : candidate;
+    const progress = task.progress as TaskProgress<FileProgress> | undefined;
+    const detail = progress?.detail;
+    const initialPct = Math.min(99, progress?.percentage ?? detail?.pct ?? 0);
+    const abortController = new AbortController();
 
-  const startCompression = useCallback(
-    async ({
+    activeTransferIdsRef.current.add(task.id);
+    setTransfers((prev) => [
+      ...prev,
+      {
+        ...build(labelBase),
+        id: task.id,
+        taskId: task.id,
+        abortController,
+        progress: initialPct,
+        label: progressLabel(descriptor, labelBase, initialPct),
+        bytes: detail?.bytes,
+        total: detail?.total,
+      },
+    ]);
+    void watchTransfer(descriptor, task.id, labelBase, abortController);
+    return true;
+  };
+
+  const cancelTransfer = (id: string) => {
+    const item = readTasks().find((transfer) => transfer.id === id);
+    if (!item) {
+      return;
+    }
+    item.abortController.abort();
+    const stream = streamRefsRef.current.get(id) || item.stream;
+    if (stream) {
+      stream.abort();
+      streamRefsRef.current.delete(id);
+    }
+    cancelBridgeTask(id);
+    toast.info(`${capitalize(DESCRIPTORS[item.type].noun)} cancelled`);
+    removeTransfer(id);
+  };
+
+  const startCompression = async ({
+    paths,
+    archiveName,
+    destination,
+    onComplete,
+  }: {
+    paths: string[];
+    archiveName: string;
+    destination: string;
+    onComplete?: () => void;
+  }) => {
+    if (!paths.length) return;
+    const format = archiveName.toLowerCase().endsWith(".tar.gz")
+      ? "tar.gz"
+      : "zip";
+    const request = {
+      format,
+      targetPath: joinPath(destination, archiveName),
       paths,
-      archiveName,
-      destination,
-      onComplete,
-    }: {
-      paths: string[];
-      archiveName: string;
-      destination: string;
-      onComplete?: () => void;
-    }) => {
-      if (!paths.length) return;
-      const format = archiveName.toLowerCase().endsWith(".tar.gz")
-        ? "tar.gz"
-        : "zip";
-      const request = {
-        format,
-        targetPath: joinPath(destination, archiveName),
+    };
+    return startTransfer(
+      "compression",
+      [request.targetPath],
+      () => linuxio.filebrowser.compress(request),
+      archiveName || "archive.zip",
+      (labelBase) => ({
+        type: "compression",
+        archiveName: labelBase,
+        destination,
         paths,
-      };
-      return startTransfer(
-        "compression",
-        [request.targetPath],
-        () => linuxio.filebrowser.compress(request),
-        archiveName || "archive.zip",
-        (labelBase) => ({
-          type: "compression",
-          archiveName: labelBase,
-          destination,
-          paths,
-        }),
-        onComplete,
-      );
-    },
-    [startTransfer],
-  );
-
-  const startExtraction = useCallback(
-    async ({
-      archivePath,
-      destination,
+      }),
       onComplete,
-    }: ExtractionStartOptions) => {
-      if (!archivePath) {
-        throw new Error("No archive specified for extraction");
-      }
-      const identity = destination ? [archivePath, destination] : [archivePath];
-      return startTransfer(
-        "extraction",
-        identity,
-        () => linuxio.filebrowser.extract({ archivePath, destination }),
-        extractionLabelBase(archivePath),
-        () => ({
-          type: "extraction",
-          archivePath,
-          destination: destination || "",
-        }),
-        onComplete,
-      );
-    },
-    [startTransfer],
-  );
+    );
+  };
 
-  const startCopy = useCallback(
-    async ({
-      sources,
-      destination,
-      overwrite,
+  const startExtraction = async ({
+    archivePath,
+    destination,
+    onComplete,
+  }: ExtractionStartOptions) => {
+    if (!archivePath) {
+      throw new Error("No archive specified for extraction");
+    }
+    const identity = destination ? [archivePath, destination] : [archivePath];
+    return startTransfer(
+      "extraction",
+      identity,
+      () => linuxio.filebrowser.extract({ archivePath, destination }),
+      extractionLabelBase(archivePath),
+      () => ({
+        type: "extraction",
+        archivePath,
+        destination: destination || "",
+      }),
       onComplete,
-    }: CopyMoveStartOptions) => {
-      if (!sources.length || !destination) {
-        throw new Error("Invalid copy parameters");
-      }
-      return startTransfer(
-        "copy",
-        [...sources, destination],
-        () =>
-          linuxio.filebrowser.copy_batch({ sources, destination, overwrite }),
-        batchLabelBase(sources),
-        () => ({ type: "copy", source: sources[0], destination }),
-        onComplete,
-      );
-    },
-    [startTransfer],
-  );
+    );
+  };
 
-  const startMove = useCallback(
-    async ({
-      sources,
-      destination,
-      overwrite,
+  const startCopy = async ({
+    sources,
+    destination,
+    overwrite,
+    onComplete,
+  }: CopyMoveStartOptions) => {
+    if (!sources.length || !destination) {
+      throw new Error("Invalid copy parameters");
+    }
+    return startTransfer(
+      "copy",
+      [...sources, destination],
+      () => linuxio.filebrowser.copy_batch({ sources, destination, overwrite }),
+      batchLabelBase(sources),
+      () => ({ type: "copy", source: sources[0], destination }),
       onComplete,
-    }: CopyMoveStartOptions) => {
-      if (!sources.length || !destination) {
-        throw new Error("Invalid move parameters");
-      }
-      return startTransfer(
-        "move",
-        [...sources, destination],
-        () =>
-          linuxio.filebrowser.move_batch({ sources, destination, overwrite }),
-        batchLabelBase(sources),
-        () => ({ type: "move", source: sources[0], destination }),
-        onComplete,
-      );
-    },
-    [startTransfer],
-  );
+    );
+  };
 
-  const byKind = useMemo(
-    () => ({
-      compressions: transfers.filter(
-        (item): item is Compression => item.type === "compression",
-      ),
-      extractions: transfers.filter(
-        (item): item is Extraction => item.type === "extraction",
-      ),
-      copies: transfers.filter((item): item is Copy => item.type === "copy"),
-      moves: transfers.filter((item): item is Move => item.type === "move"),
-    }),
-    [transfers],
-  );
+  const startMove = async ({
+    sources,
+    destination,
+    overwrite,
+    onComplete,
+  }: CopyMoveStartOptions) => {
+    if (!sources.length || !destination) {
+      throw new Error("Invalid move parameters");
+    }
+    return startTransfer(
+      "move",
+      [...sources, destination],
+      () => linuxio.filebrowser.move_batch({ sources, destination, overwrite }),
+      batchLabelBase(sources),
+      () => ({ type: "move", source: sources[0], destination }),
+      onComplete,
+    );
+  };
 
   return {
-    ...byKind,
     startCompression,
     startExtraction,
     startCopy,

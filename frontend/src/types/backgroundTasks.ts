@@ -114,7 +114,6 @@ export type BackgroundTaskItem =
   | BackgroundTask;
 
 export interface BackgroundTasksContextValue {
-  backgroundTasks: BackgroundTask[];
   cancelCompression: (id: string) => void;
   cancelCopy: (id: string) => void;
   cancelDownload: (id: string) => void;
@@ -123,16 +122,6 @@ export interface BackgroundTasksContextValue {
   cancelMove: (id: string) => void;
   cancelUpload: (id: string) => void;
   closeIndexerDialog: () => void;
-  compressions: Compression[];
-  copies: Copy[];
-  downloads: Download[];
-  extractions: Extraction[];
-  indexers: ActiveIndexer[];
-  isIndexerDialogOpen: boolean;
-  isIndexing: boolean;
-  lastIndexerError: string | null;
-  lastIndexerResult: Indexer | null;
-  moves: Move[];
   openIndexerDialog: () => void;
   startCompression: (options: {
     paths: string[];
@@ -156,6 +145,4 @@ export interface BackgroundTasksContextValue {
     uploaded: number;
     failures: { path: string; message: string }[];
   }>;
-  transfers: BackgroundTaskItem[];
-  uploads: Upload[];
 }

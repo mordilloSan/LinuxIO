@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "@/api";
+import { createBackgroundTaskCache } from "@/api/background-task-cache";
 import {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_FILE_INDEXER,
@@ -69,6 +70,7 @@ function createStream(): Stream {
 // here instead of drifting silently.
 function makeRuntime(): BackgroundTaskRuntime {
   return {
+    tasks: createBackgroundTaskCache(createTestQueryClient(), "anonymous"),
     activeBackgroundTaskIdsRef: { current: new Set<string>() },
     activeFileTransferTaskIdsRef: { current: new Set<string>() },
     activeIndexerIdsRef: { current: new Set<string>() },

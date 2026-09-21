@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import {
@@ -42,25 +42,22 @@ function foldIndexerFrame(
 }
 
 export function useIndexerTasks(runtime: BackgroundTaskRuntime) {
-  const [indexers, setIndexers] = useState<ActiveIndexer[]>([]);
-  const [isIndexerDialogOpen, setIsIndexerDialogOpen] = useState(false);
-  const [lastIndexerResult, setLastIndexerResult] = useState<Indexer | null>(
-    null,
-  );
-  const [lastIndexerError, setLastIndexerError] = useState<string | null>(null);
+  const { set: setIndexers } = runtime.tasks.indexers;
+  const { setIsIndexerDialogOpen, setLastIndexerResult, setLastIndexerError } =
+    runtime.tasks;
   const { run: runStreamResult } = useStreamResult();
   const { activeIndexerIdsRef, pendingLocalTaskKeysRef, streamRefsRef } =
     runtime;
 
   // Progress frames arrive far faster than the UI needs to repaint (a fast
-  // indexer can push hundreds a second); coalesce them into one setState per
+  // indexer can push hundreds a second); coalesce them into one cache update per
   // animation frame instead of one per frame received.
   const pendingProgressRef = useRef<Map<string, IndexerProgressFrame>>(
     new Map(),
   );
   const progressFrameRef = useRef<number | null>(null);
 
-  const flushIndexerProgress = useCallback(() => {
+  const flushIndexerProgress = () => {
     if (progressFrameRef.current !== null) {
       window.cancelAnimationFrame(progressFrameRef.current);
       progressFrameRef.current = null;
@@ -74,7 +71,7 @@ export function useIndexerTasks(runtime: BackgroundTaskRuntime) {
         return detail ? mergeIndexerProgress(item, detail) : item;
       }),
     );
-  }, []);
+  };
 
   useEffect(() => {
     return () => {
@@ -86,175 +83,155 @@ export function useIndexerTasks(runtime: BackgroundTaskRuntime) {
     };
   }, []);
 
-  const isIndexing = indexers.length > 0;
-
-  const openIndexerDialog = useCallback(() => {
+  const openIndexerDialog = () => {
     setIsIndexerDialogOpen(true);
-  }, []);
+  };
 
-  const closeIndexerDialog = useCallback(() => {
+  const closeIndexerDialog = () => {
     setIsIndexerDialogOpen(false);
-  }, []);
+  };
 
-  const removeIndexer = useCallback(
-    (id: string) => {
-      if (!activeIndexerIdsRef.current.has(id)) {
-        return;
-      }
-      activeIndexerIdsRef.current.delete(id);
-      setIndexers((prev) => prev.filter((r) => r.id !== id));
-      streamRefsRef.current.delete(id);
-    },
-    [activeIndexerIdsRef, streamRefsRef],
-  );
+  const removeIndexer = (id: string) => {
+    if (!activeIndexerIdsRef.current.has(id)) {
+      return;
+    }
+    activeIndexerIdsRef.current.delete(id);
+    setIndexers((prev) => prev.filter((r) => r.id !== id));
+    streamRefsRef.current.delete(id);
+  };
 
-  const startIndexer = useCallback(
-    async ({
-      path = "/",
-      onComplete,
-    }: {
-      path?: string;
-      onComplete?: (result: Indexer) => void;
-    }) => {
-      // Only allow one indexer task at a time
-      if (activeIndexerIdsRef.current.size > 0) {
-        setIsIndexerDialogOpen(true);
-        return;
-      }
-
+  const startIndexer = async ({
+    path = "/",
+    onComplete,
+  }: {
+    path?: string;
+    onComplete?: (result: Indexer) => void;
+  }) => {
+    // Only allow one indexer task at a time
+    if (activeIndexerIdsRef.current.size > 0) {
       setIsIndexerDialogOpen(true);
+      return;
+    }
 
-      if (!isConnected()) {
-        setLastIndexerError("Stream connection not ready");
-        toast.error("Stream connection not ready");
-        return;
-      }
+    setIsIndexerDialogOpen(true);
 
-      setLastIndexerResult(null);
-      setLastIndexerError(null);
+    if (!isConnected()) {
+      setLastIndexerError("Stream connection not ready");
+      toast.error("Stream connection not ready");
+      return;
+    }
 
-      const pendingKey = taskIdentityKey(TaskTypes.TASK_TYPE_FILE_INDEXER, [
-        path && path !== "/" ? path : "",
-      ]);
-      pendingLocalTaskKeysRef.current.add(pendingKey);
+    setLastIndexerResult(null);
+    setLastIndexerError(null);
 
-      let task: TaskSnapshot;
-      try {
-        task =
-          path && path !== "/"
-            ? await linuxio.filebrowser.index({ path })
-            : await linuxio.filebrowser.index({});
-      } catch (error) {
-        pendingLocalTaskKeysRef.current.delete(pendingKey);
-        const message =
-          error instanceof Error ? error.message : "Failed to start indexer";
-        setLastIndexerError(message);
-        toast.error(message);
-        return;
-      }
+    const pendingKey = taskIdentityKey(TaskTypes.TASK_TYPE_FILE_INDEXER, [
+      path && path !== "/" ? path : "",
+    ]);
+    pendingLocalTaskKeysRef.current.add(pendingKey);
 
-      const id = task.id;
-      const abortController = new AbortController();
-
-      const indexerTask: ActiveIndexer = {
-        id,
-        taskId: id,
-        type: "indexer",
-        path,
-        bytesIndexed: 0,
-        filesIndexed: 0,
-        dirsIndexed: 0,
-        totalSize: 0,
-        durationMs: 0,
-        currentPath: "",
-        operation: path && path !== "/" ? "reindex" : "index",
-        phase: "connecting",
-        progress: 0,
-        label: "Starting indexer...",
-        state: "connecting",
-        abortController,
-      };
-
-      setIndexers((prev) => [...prev, indexerTask]);
-      activeIndexerIdsRef.current.add(id);
+    let task: TaskSnapshot;
+    try {
+      task =
+        path && path !== "/"
+          ? await linuxio.filebrowser.index({ path })
+          : await linuxio.filebrowser.index({});
+    } catch (error) {
       pendingLocalTaskKeysRef.current.delete(pendingKey);
+      const message =
+        error instanceof Error ? error.message : "Failed to start indexer";
+      setLastIndexerError(message);
+      toast.error(message);
+      return;
+    }
 
-      void runStreamResult<
-        IndexerResultFrame | undefined,
-        TaskProgress<IndexerProgressFrame>
-      >({
-        open: () => openTaskWatchStream(id),
-        signal: abortController.signal,
-        closeOnAbort: "none",
-        openErrorMessage: "Failed to open indexer stream",
-        closeMessage: "Indexer stream closed unexpectedly",
-        onOpen: (stream) => {
-          streamRefsRef.current.set(id, stream);
-          setIndexers((prev) =>
-            prev.map((r) => (r.id === id ? { ...r, stream } : r)),
-          );
-        },
-        onProgress: (progress) => {
-          const detail = progress.detail;
-          if (!detail) return;
-          const pending = pendingProgressRef.current;
-          pending.set(id, foldIndexerFrame(pending.get(id), detail));
-          if (progressFrameRef.current === null) {
-            progressFrameRef.current =
-              window.requestAnimationFrame(flushIndexerProgress);
-          }
-        },
-        onSuccess: (result) => {
-          const summary = indexerResultFromFrame(path, result);
-          setLastIndexerResult(summary);
-          setLastIndexerError(null);
-          toast.success(
-            `Indexing complete: ${summary.filesIndexed} files, ${summary.dirsIndexed} dirs`,
-          );
-          onComplete?.(summary);
-        },
-        onError: (error: unknown) => {
-          if (abortController.signal.aborted) {
-            return;
-          }
-          const message =
-            error instanceof Error ? error.message : "Indexing failed";
-          setLastIndexerError(message);
-          setLastIndexerResult(null);
-          toast.error(message);
-        },
-        onFinally: () => {
-          // Flush any queued progress before the terminal update so a task
-          // never briefly shows stale progress (or none) after completion,
-          // and so a late rAF can't fire after removal and re-add it.
-          flushIndexerProgress();
-          streamRefsRef.current.delete(id);
-          setIndexers((prev) =>
-            prev.map((r) => (r.id === id ? { ...r, stream: null } : r)),
-          );
-          removeIndexer(id);
-        },
-      });
-    },
-    [
-      activeIndexerIdsRef,
-      flushIndexerProgress,
-      pendingLocalTaskKeysRef,
-      removeIndexer,
-      runStreamResult,
-      streamRefsRef,
-    ],
-  );
+    const id = task.id;
+    const abortController = new AbortController();
+
+    const indexerTask: ActiveIndexer = {
+      id,
+      taskId: id,
+      type: "indexer",
+      path,
+      bytesIndexed: 0,
+      filesIndexed: 0,
+      dirsIndexed: 0,
+      totalSize: 0,
+      durationMs: 0,
+      currentPath: "",
+      operation: path && path !== "/" ? "reindex" : "index",
+      phase: "connecting",
+      progress: 0,
+      label: "Starting indexer...",
+      state: "connecting",
+      abortController,
+    };
+
+    setIndexers((prev) => [...prev, indexerTask]);
+    activeIndexerIdsRef.current.add(id);
+    pendingLocalTaskKeysRef.current.delete(pendingKey);
+
+    void runStreamResult<
+      IndexerResultFrame | undefined,
+      TaskProgress<IndexerProgressFrame>
+    >({
+      open: () => openTaskWatchStream(id),
+      signal: abortController.signal,
+      closeOnAbort: "none",
+      openErrorMessage: "Failed to open indexer stream",
+      closeMessage: "Indexer stream closed unexpectedly",
+      onOpen: (stream) => {
+        streamRefsRef.current.set(id, stream);
+        setIndexers((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, stream } : r)),
+        );
+      },
+      onProgress: (progress) => {
+        const detail = progress.detail;
+        if (!detail) return;
+        const pending = pendingProgressRef.current;
+        pending.set(id, foldIndexerFrame(pending.get(id), detail));
+        if (progressFrameRef.current === null) {
+          progressFrameRef.current =
+            window.requestAnimationFrame(flushIndexerProgress);
+        }
+      },
+      onSuccess: (result) => {
+        const summary = indexerResultFromFrame(path, result);
+        setLastIndexerResult(summary);
+        setLastIndexerError(null);
+        toast.success(
+          `Indexing complete: ${summary.filesIndexed} files, ${summary.dirsIndexed} dirs`,
+        );
+        onComplete?.(summary);
+      },
+      onError: (error: unknown) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        const message =
+          error instanceof Error ? error.message : "Indexing failed";
+        setLastIndexerError(message);
+        setLastIndexerResult(null);
+        toast.error(message);
+      },
+      onFinally: () => {
+        // Flush any queued progress before the terminal update so a task
+        // never briefly shows stale progress (or none) after completion,
+        // and so a late rAF can't fire after removal and re-add it.
+        flushIndexerProgress();
+        streamRefsRef.current.delete(id);
+        setIndexers((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, stream: null } : r)),
+        );
+        removeIndexer(id);
+      },
+    });
+  };
 
   return {
-    indexers,
     startIndexer,
-    isIndexing,
-    isIndexerDialogOpen,
     openIndexerDialog,
     closeIndexerDialog,
-    lastIndexerResult,
-    lastIndexerError,
     recoveryControls: {
       setIndexers,
       setIsIndexerDialogOpen,

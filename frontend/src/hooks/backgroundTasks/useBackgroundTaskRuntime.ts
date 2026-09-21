@@ -1,6 +1,16 @@
-import { type RefObject, useCallback, useMemo, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { call, type Stream } from "@/api";
+import { createBackgroundTaskCache } from "@/api/background-task-cache";
+import { useConfigUserId } from "@/hooks/useConfig";
 import { type CountedSet, makeCountedSet } from "@/utils/backgroundTasks";
 
 const TRANSFER_RATE_SAMPLE_MS = 1000;
@@ -12,6 +22,7 @@ interface TransferRateSample {
 }
 
 export interface BackgroundTaskRuntime {
+  tasks: ReturnType<typeof createBackgroundTaskCache>;
   activeBackgroundTaskIdsRef: RefObject<Set<string>>;
   activeFileTransferTaskIdsRef: RefObject<Set<string>>;
   activeIndexerIdsRef: RefObject<Set<string>>;
@@ -30,6 +41,15 @@ export interface BackgroundTaskRuntime {
 }
 
 export function useBackgroundTaskRuntime(): BackgroundTaskRuntime {
+  const queryClient = useQueryClient();
+  const userId = useConfigUserId();
+  const [tasks] = useState(() =>
+    createBackgroundTaskCache(queryClient, userId),
+  );
+  useEffect(() => {
+    tasks.activate();
+    return () => tasks.dispose();
+  }, [tasks]);
   const activeIndexerIdsRef = useRef<Set<string>>(new Set());
   const activeBackgroundTaskIdsRef = useRef<Set<string>>(new Set());
   const activeFileTransferTaskIdsRef = useRef<Set<string>>(new Set());
@@ -132,6 +152,7 @@ export function useBackgroundTaskRuntime(): BackgroundTaskRuntime {
 
   return useMemo(
     () => ({
+      tasks,
       activeIndexerIdsRef,
       activeBackgroundTaskIdsRef,
       activeFileTransferTaskIdsRef,
@@ -146,6 +167,7 @@ export function useBackgroundTaskRuntime(): BackgroundTaskRuntime {
       releaseDownloadLabelBase,
     }),
     [
+      tasks,
       activeBackgroundTaskIdsRef,
       activeFileTransferTaskIdsRef,
       activeIndexerIdsRef,

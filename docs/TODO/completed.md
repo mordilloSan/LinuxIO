@@ -1,5 +1,10 @@
 # Completed or closed TODOs
 
+- [x] Completed [frontend task state unification](../frontend-task-state-unification.md)
+  (2026-09-21): per-user task cache entries, per-task subscriptions, shared live
+  and recovery writers, and one stable actions context. Frontend checks,
+  compiler coverage, and the controlled browser rendering fixture pass.
+
 - [x] Implemented [scheduled scripts](../scheduled-execution.md) through native
   systemd services/timers and retained journal logs. Administrators can create,
   edit, enable, disable, run, stop, and delete tasks in Services. No scheduler

@@ -2,6 +2,8 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileProgress, Stream, TaskProgress } from "@/api";
+import { createBackgroundTaskCache } from "@/api/background-task-cache";
+import { createTestQueryClient } from "@/test/render";
 import { makeCountedSet } from "@/utils/backgroundTasks";
 
 import type { BackgroundTaskRuntime } from "./useBackgroundTaskRuntime";
@@ -54,7 +56,7 @@ vi.mock("sonner", () => ({ toast: toastMocks }));
 
 const { useDownloadTasks } = await import("./useDownloadTasks");
 
-// Progress updates are coalesced into one setState per animation frame (see
+// Progress updates are coalesced into one cache update per animation frame (see
 // useDownloadTasks.ts), so tests that touch progress need a controllable
 // requestAnimationFrame instead of jsdom's (jsdom has none by default).
 const animationFrameMocks = {
@@ -88,6 +90,7 @@ function makeRuntime(): BackgroundTaskRuntime {
   const streamRefsRef = { current: new Map<string, Stream>() };
   const transferRatesRef = { current: new Map() };
   const runtime = {
+    tasks: createBackgroundTaskCache(createTestQueryClient(), "anonymous"),
     activeBackgroundTaskIdsRef: { current: new Set<string>() },
     activeFileTransferTaskIdsRef: { current: new Set<string>() },
     activeIndexerIdsRef: { current: new Set<string>() },
@@ -175,7 +178,7 @@ describe("useDownloadTasks native browser handoff", () => {
     expect(apiMocks.archive).not.toHaveBeenCalled();
     expect(apiMocks.isConnected).not.toHaveBeenCalled();
     expect(streamResultMocks.run).not.toHaveBeenCalled();
-    expect(hook.result.current.downloads).toHaveLength(0);
+    expect(runtime.tasks.downloads.read()).toHaveLength(0);
     expect(runtime.activeFileTransferTaskIdsRef.current.size).toBe(0);
   });
 
@@ -217,7 +220,7 @@ describe("useDownloadTasks native browser handoff", () => {
     expect(
       nativeDownloadMocks.triggerNativeArchiveDownload,
     ).toHaveBeenCalledWith("task-1");
-    expect(hook.result.current.downloads).toHaveLength(0);
+    expect(runtime.tasks.downloads.read()).toHaveLength(0);
     expect(runtime.activeFileTransferTaskIdsRef.current).toContain("task-1");
     expect(runtime.streamRefsRef.current.get("task-1")).toBe(stream);
     expect(stream.abort).not.toHaveBeenCalled();
@@ -234,7 +237,7 @@ describe("useDownloadTasks native browser handoff", () => {
   });
 
   it("hands off an archive already waiting in the creation snapshot", async () => {
-    const { hook } = setupDownload({
+    const { hook, runtime } = setupDownload({
       progress: { phase: "waiting_for_client" },
     });
 
@@ -248,7 +251,7 @@ describe("useDownloadTasks native browser handoff", () => {
     expect(
       nativeDownloadMocks.triggerNativeArchiveDownload,
     ).toHaveBeenCalledWith("task-1");
-    expect(hook.result.current.downloads).toHaveLength(0);
+    expect(runtime.tasks.downloads.read()).toHaveLength(0);
   });
 
   it("removes archive state and stream state on terminal success", async () => {
@@ -257,7 +260,7 @@ describe("useDownloadTasks native browser handoff", () => {
     await act(async () => {
       await hook.result.current.startDownload(["/tmp/photos/"]);
     });
-    expect(hook.result.current.downloads).toHaveLength(1);
+    expect(runtime.tasks.downloads.read()).toHaveLength(1);
     expect(runtime.activeFileTransferTaskIdsRef.current).toContain("task-1");
     expect(runtime.streamRefsRef.current.get("task-1")).toBe(stream);
 
@@ -265,7 +268,7 @@ describe("useDownloadTasks native browser handoff", () => {
       streamOptions[0]?.onSuccess?.();
     });
 
-    expect(hook.result.current.downloads).toHaveLength(0);
+    expect(runtime.tasks.downloads.read()).toHaveLength(0);
     expect(runtime.activeFileTransferTaskIdsRef.current.has("task-1")).toBe(
       false,
     );
@@ -285,11 +288,13 @@ describe("useDownloadTasks native browser handoff", () => {
 
     expect(stream.abort).toHaveBeenCalledOnce();
     expect(runtime.cancelBridgeTask).toHaveBeenCalledWith("task-1");
-    expect(hook.result.current.downloads).toHaveLength(0);
+    expect(runtime.tasks.downloads.read()).toHaveLength(0);
   });
 
   it("uses the task id for a directory archive handoff", async () => {
-    const { hook, streamOptions } = setupDownload({ taskId: "archive-1" });
+    const { hook, streamOptions } = setupDownload({
+      taskId: "archive-1",
+    });
 
     await act(async () => {
       await hook.result.current.startDownload(["/tmp/photos/"]);
@@ -307,8 +312,8 @@ describe("useDownloadTasks native browser handoff", () => {
     ).toHaveBeenCalledWith("archive-1");
   });
 
-  it("coalesces rapid progress frames into one render per animation frame", async () => {
-    const { hook, streamOptions } = setupDownload();
+  it("coalesces rapid progress frames into one cache write per animation frame", async () => {
+    const { hook, runtime, streamOptions } = setupDownload();
 
     await act(async () => {
       await hook.result.current.startDownload(["/tmp/photos/"]);
@@ -334,17 +339,17 @@ describe("useDownloadTasks native browser handoff", () => {
 
     // Nothing renders until the animation frame fires, and three frames
     // schedule only one flush.
-    expect(hook.result.current.downloads[0].progress).toBe(0);
+    expect(runtime.tasks.downloads.read()[0].progress).toBe(0);
     expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
 
     act(flushAnimationFrames);
 
-    expect(hook.result.current.downloads[0].progress).toBe(70);
-    expect(hook.result.current.downloads[0].bytes).toBe(70);
+    expect(runtime.tasks.downloads.read()[0].progress).toBe(70);
+    expect(runtime.tasks.downloads.read()[0].bytes).toBe(70);
   });
 
   it("flushes pending progress before a terminal event removes the item", async () => {
-    const { hook, streamOptions } = setupDownload();
+    const { hook, runtime, streamOptions } = setupDownload();
 
     await act(async () => {
       await hook.result.current.startDownload(["/tmp/photos/"]);
@@ -361,11 +366,11 @@ describe("useDownloadTasks native browser handoff", () => {
       streamOptions[0]?.onSuccess?.();
     });
 
-    expect(hook.result.current.downloads).toHaveLength(0);
+    expect(runtime.tasks.downloads.read()).toHaveLength(0);
 
     // The animation frame scheduled by the progress event above must not
     // resurrect the already-removed download when it eventually runs.
     act(flushAnimationFrames);
-    expect(hook.result.current.downloads).toHaveLength(0);
+    expect(runtime.tasks.downloads.read()).toHaveLength(0);
   });
 });
