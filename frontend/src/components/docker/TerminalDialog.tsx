@@ -182,13 +182,12 @@ const TerminalDialog = ({
         </div>
       </AppDialogTitle>
       <AppDialogContent
+        flush
         style={{
           minHeight: 350,
           maxHeight: 600,
           fontFamily: "Fira Mono, monospace",
-          padding: 0,
           background: "var(--app-palette-background-default)",
-          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         {loadingShells ? (

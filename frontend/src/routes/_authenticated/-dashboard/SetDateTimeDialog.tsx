@@ -252,9 +252,8 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
         <div
           style={{
             display: showSettingsLoader || settingsError ? "none" : "flex",
-            flexDirection: "column",
-            gap: "var(--app-space-16)",
           }}
+          className="app-dialog-fields"
         >
           <AppAutocomplete
             filterOptions={(opts, state) => {

@@ -1,5 +1,73 @@
 import { expect, test } from "@playwright/test";
 
+test("confirms schedule deletion and keeps failed requests retryable", async ({
+  page,
+}) => {
+  const requests: unknown[] = [];
+  let finishDelete: ((failed: boolean) => void) | undefined;
+  await page.routeWebSocket("**/ws", (socket) => {
+    socket.onMessage((message) => {
+      if (typeof message === "string" || message[4] !== 0x01) return;
+      const { route, request } = JSON.parse(message.subarray(14).toString());
+      const reply = (result: unknown) => {
+        const body = Buffer.from(JSON.stringify(result));
+        const frame = Buffer.alloc(14 + body.length);
+        const id = message.readUInt32BE(0);
+        frame.writeUInt32BE(id, 0);
+        frame[4] = 0x04;
+        frame[5] = 0x85;
+        frame.writeUInt32BE(id, 6);
+        frame.writeUInt32BE(body.length, 10);
+        body.copy(frame, 14);
+        socket.send(frame);
+      };
+      if (route === "schedules.delete") {
+        requests.push(request);
+        finishDelete = (failed) =>
+          reply(
+            failed
+              ? { status: "error", error: "Deletion failed", code: 500 }
+              : { status: "ok", data: null },
+          );
+      } else if (route === "schedules.list" && requests.length > 0) {
+        reply({
+          status: "ok",
+          data: { available: true, error: null, schedules: [] },
+        });
+      } else if (route === "schedules.get" && requests.length > 0) {
+        reply({ status: "error", error: "Schedule not found", code: 404 });
+      }
+    });
+  });
+  await page.goto("/schedules");
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete scheduled task" });
+  await expect(dialog).toContainText("Delete Nightly?");
+  expect(requests).toEqual([]);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  expect(requests).toEqual([]);
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toEqual({ id: "nightly" });
+  await expect(dialog).toHaveAttribute("aria-busy", "true");
+  await expect(
+    dialog.getByRole("button", { name: "Deleting…" }),
+  ).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  finishDelete!(true);
+  await expect(
+    dialog.getByRole("button", { name: "Delete", exact: true }),
+  ).toBeEnabled();
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  finishDelete!(false);
+  await expect(dialog).toBeHidden();
+});
+
 test("creates a script draft with multiline arguments and opens unit logs", async ({
   page,
 }) => {
@@ -82,9 +150,9 @@ test("chooses Saturday at 7am and a working directory with shared dialog typogra
   );
   await expect(dialog.getByLabel("Name", { exact: true })).toHaveCSS(
     "font-size",
-    "13px",
+    "14px",
   );
-  await expect(dialog.getByLabel("Repeat")).toHaveCSS("font-size", "13px");
+  await expect(dialog.getByLabel("Repeat")).toHaveCSS("font-size", "14px");
   await page.evaluate(() => document.fonts.ready);
   await testInfo.attach("schedule-dialog", {
     body: await dialog.screenshot({

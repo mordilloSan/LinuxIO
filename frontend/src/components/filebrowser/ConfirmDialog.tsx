@@ -3,7 +3,12 @@ import type { KeyboardEventHandler, SubmitEventHandler } from "react";
 import type { TaskProgress } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppTypography from "@/components/ui/AppTypography";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 
 import GeneralDialog from "../dialog/GeneralDialog";
 
@@ -14,6 +19,7 @@ interface ConfirmProgressDetail {
 interface ConfirmDialogProps {
   cancelText?: string;
   confirmText?: string;
+  destructive?: boolean;
   message: string;
   onClose: () => void;
   onConfirm: () => void;
@@ -29,6 +35,7 @@ const ConfirmDialog = ({
   message,
   confirmText = "Confirm",
   cancelText = "Cancel",
+  destructive = false,
   onClose,
   onConfirm,
   isPending = false,
@@ -70,61 +77,27 @@ const ConfirmDialog = ({
       open={open}
     >
       <form
+        className="app-dialog-form"
         onKeyDown={handleKeyDown}
         onSubmit={handleConfirm}
-        style={{
-          padding: "var(--app-space-16)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--app-space-12)",
-          alignItems: "center",
-          textAlign: "center",
-        }}
       >
-        <AppTypography fontWeight={600} variant="h5">
-          {title}
-        </AppTypography>
-
-        <AppTypography
-          color="text.secondary"
-          style={{ marginTop: "var(--app-space-8)" }}
-          variant="body1"
-        >
-          {message}
-        </AppTypography>
-        {isPending && (
-          <AppTypography
-            aria-live="polite"
-            color="text.secondary"
-            role="status"
-            variant="body2"
-          >
-            {progressText}
-            {progressSuffix}
-          </AppTypography>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            gap: "var(--app-space-8)",
-            justifyContent: "center",
-            width: "100%",
-            marginTop: "var(--app-space-8)",
-          }}
-        >
-          <AppButton
-            className="app-btn--dialog-action"
-            disabled={isPending}
-            onClick={onClose}
-            style={{ color: "var(--app-palette-text-secondary)" }}
-            type="button"
-          >
+        <AppDialogTitle>{title}</AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>{message}</AppDialogContentText>
+          {isPending && (
+            <div aria-live="polite" role="status">
+              {progressText}
+              {progressSuffix}
+            </div>
+          )}
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton disabled={isPending} onClick={onClose} type="button">
             {cancelText}
           </AppButton>
           <AppButton
             autoFocus
-            className="app-btn--dialog-action"
+            color={destructive ? "error" : "primary"}
             disabled={isPending}
             startIcon={
               isPending ? (
@@ -132,10 +105,11 @@ const ConfirmDialog = ({
               ) : null
             }
             type="submit"
+            variant="contained"
           >
             {isPending ? "Deleting…" : confirmText}
           </AppButton>
-        </div>
+        </AppDialogActions>
       </form>
     </GeneralDialog>
   );

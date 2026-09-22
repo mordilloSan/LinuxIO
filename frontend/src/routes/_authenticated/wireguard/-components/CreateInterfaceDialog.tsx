@@ -70,16 +70,7 @@ const CreateInterfaceDialog = ({
     <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>Create New Interface</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            ["--app-text-field-input-font-size" as string]: "0.875rem",
-            ["--app-select-input-font-size" as string]:
-              "var(--app-text-field-input-font-size)",
-            display: "grid",
-            gap: "var(--app-space-16)",
-            marginTop: "var(--app-space-8)",
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             disabled={loading}
             error={!!nameTaken}

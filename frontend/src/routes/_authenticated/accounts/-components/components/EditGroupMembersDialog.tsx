@@ -16,7 +16,6 @@ import {
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
 const ACCOUNTS_TOAST_META = {
@@ -87,20 +86,9 @@ const EditGroupMembersDialog = ({
       open={open}
       slotProps={{ transition: { onExited } }}
     >
-      <AppDialogTitle style={{ padding: "12px 20px" }}>
-        <AppTypography component="span" fontWeight={600} variant="h6">
-          Edit Group Members: {group.name}
-        </AppTypography>
-      </AppDialogTitle>
-      <AppDialogContent style={{ padding: "12px 20px" }}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+      <AppDialogTitle>Edit Group Members: {group.name}</AppDialogTitle>
+      <AppDialogContent>
+        <div className="app-dialog-fields">
           <AppAutocomplete
             fullWidth
             label="Members"

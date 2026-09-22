@@ -74,14 +74,7 @@ const ChangePasswordDialog = ({
     >
       <AppDialogTitle>Change Password: {username}</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             autoFocus
             fullWidth

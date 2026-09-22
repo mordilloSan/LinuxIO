@@ -80,7 +80,7 @@
 }
 
 .app-select--small .app-select__label {
-  font-size: 0.875rem;
+  font-size: var(--app-select-label-font-size, 0.875rem);
 }
 
 /* ── Arrow icon ─────────────────────────────────── */
@@ -181,11 +181,12 @@
   top: 0;
   left: 12px;
   transform-origin: left center;
-  transform: translateY(-50%) scale(0.7);
+  transform: translateY(-50%)
+    scale(var(--app-select-label-scale, 0.7));
   background: var(--app-palette-background-paper);
   padding: 0 4px;
   font-family: inherit;
-  font-size: 1rem;
+  font-size: var(--app-select-label-font-size, 1rem);
   font-weight: 400;
   color: var(--app-palette-text-secondary);
   line-height: 1;

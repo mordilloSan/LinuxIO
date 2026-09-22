@@ -16,6 +16,7 @@ import AppCheckbox from "@/components/ui/AppCheckbox";
 import {
   AppDialogActions,
   AppDialogContent,
+  AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
@@ -92,6 +93,7 @@ export default function SchedulesTab({
   const schedules = data.schedules;
   const unavailable = !data.available;
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ScheduleStatus | null>(null);
   const toast = useScopedToast(toastMeta);
   const { mutate: enable } = useCallMutation(linuxio.schedules.enable, {
     success: () => toast.success("Task enabled"),
@@ -113,14 +115,18 @@ export default function SchedulesTab({
     error: "Failed to stop task",
     toast: toastMeta,
   });
-  const { mutate: remove } = useCallMutation(linuxio.schedules.delete, {
-    success: () => {
-      toast.success("Task deleted");
-      onSelectedChange(null);
+  const { mutate: remove, isPending: deleting } = useCallMutation(
+    linuxio.schedules.delete,
+    {
+      success: () => {
+        toast.success("Task deleted");
+        setDeleteTarget(null);
+        onSelectedChange(null);
+      },
+      error: "Failed to delete task",
+      toast: toastMeta,
     },
-    error: "Failed to delete task",
-    toast: toastMeta,
-  });
+  );
   const { mutate: create, isPending: creating } = useCallMutation(
     linuxio.schedules.create,
     {
@@ -188,10 +194,7 @@ export default function SchedulesTab({
                 ? disable({ id: s.definition.id })
                 : enable({ id: s.definition.id }),
             onRun: (id) => runNow({ id }),
-            onDelete: (s) => {
-              if (window.confirm(`Delete ${s.definition.options.name}?`))
-                remove({ id: s.definition.id });
-            },
+            onDelete: setDeleteTarget,
           })}
           data={schedules}
           emptyMessage="No scheduled tasks."
@@ -250,6 +253,37 @@ export default function SchedulesTab({
           }
         />
       )}
+      <GeneralDialog
+        aria-busy={deleting}
+        fullWidth
+        disableEscapeKeyDown={deleting}
+        maxWidth="xs"
+        onClose={deleting ? undefined : () => setDeleteTarget(null)}
+        open={deleteTarget !== null}
+      >
+        <AppDialogTitle>Delete scheduled task</AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>
+            Delete {deleteTarget?.definition.options.name}? This action cannot
+            be undone.
+          </AppDialogContentText>
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton disabled={deleting} onClick={() => setDeleteTarget(null)}>
+            Cancel
+          </AppButton>
+          <AppButton
+            color="error"
+            disabled={deleting || !deleteTarget}
+            onClick={() => {
+              if (deleteTarget) remove({ id: deleteTarget.definition.id });
+            }}
+            variant="contained"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </AppButton>
+        </AppDialogActions>
+      </GeneralDialog>
     </div>
   );
 }
@@ -420,13 +454,7 @@ function ScheduleDialog({
         {value.id ? "Edit scheduled task" : "Create scheduled task"}
       </AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--app-space-16)",
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             size="small"
             label="Name"

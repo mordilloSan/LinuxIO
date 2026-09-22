@@ -73,19 +73,9 @@ const DeleteStackDialog = ({
     }
   };
   return (
-    <GeneralDialog
-      fullWidth
-      maxWidth="sm"
-      onClose={handleClose}
-      open={open}
-      paperStyle={{
-        backgroundColor: "var(--app-palette-background-default)",
-      }}
-    >
+    <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle
         style={{
-          backgroundColor: "var(--app-header-background)",
-          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           alignItems: "center",
           gap: 4,
@@ -97,14 +87,10 @@ const DeleteStackDialog = ({
           icon="mdi:delete"
           width={24}
         />
-        <AppTypography variant="h6">Delete Stack: {projectName}</AppTypography>
+        Delete Stack: {projectName}
       </AppDialogTitle>
 
-      <AppDialogContent
-        style={{
-          paddingTop: 12,
-        }}
-      >
+      <AppDialogContent>
         <AppTypography color="text.secondary" gutterBottom variant="body2">
           Choose what to delete:
         </AppTypography>
@@ -216,12 +202,7 @@ const DeleteStackDialog = ({
         )}
       </AppDialogContent>
 
-      <AppDialogActions
-        style={{
-          padding: 8,
-          borderTop: "1px solid var(--app-palette-divider)",
-        }}
-      >
+      <AppDialogActions>
         <AppButton color="inherit" disabled={isLoading} onClick={handleClose}>
           Cancel
         </AppButton>

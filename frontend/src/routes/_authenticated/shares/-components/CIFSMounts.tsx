@@ -144,14 +144,7 @@ const MountCIFSDialog = ({ open, onClose }: MountCIFSDialogProps) => {
     <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Mount SMB Share</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             fullWidth
             label="SMB Server"
@@ -360,14 +353,7 @@ const EditCIFSForm = ({
   return (
     <>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             disabled
             fullWidth

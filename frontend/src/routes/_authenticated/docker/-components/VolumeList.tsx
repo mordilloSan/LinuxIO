@@ -154,17 +154,10 @@ const CreateVolumeDialog = ({
       onClose={isPending ? undefined : closeDialog}
       open={open}
     >
-      <form onSubmit={handleSubmit}>
+      <form className="app-dialog-form" onSubmit={handleSubmit}>
         <AppDialogTitle>Create volume</AppDialogTitle>
         <AppDialogContent>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--app-space-12)",
-              marginTop: "var(--app-space-8)",
-            }}
-          >
+          <div className="app-dialog-fields">
             <AppTextField
               autoFocus
               disabled={isPending}
@@ -789,14 +782,7 @@ const VolumeList = ({
                 These running containers may be writing to the volume. The
                 archive can contain inconsistent data.
               </AppDialogContentText>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "var(--app-space-4)",
-                  marginTop: "var(--app-space-8)",
-                }}
-              >
+              <div className="app-dialog-fields">
                 {runningVolumeContainers.map((container) => (
                   <Chip
                     key={container.Id}

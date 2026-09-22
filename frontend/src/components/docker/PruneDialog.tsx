@@ -70,19 +70,13 @@ const PruneDialog = ({
           display: "flex",
           alignItems: "center",
           gap: 4,
-          borderBottom: "1px solid var(--app-palette-divider)",
         }}
       >
         <Icon height={24} icon="mdi:broom" width={24} />
-        <AppTypography variant="h6">Prune System</AppTypography>
+        Prune System
       </AppDialogTitle>
 
-      <AppDialogContent
-        style={{
-          paddingTop: 10,
-          paddingBottom: 4,
-        }}
-      >
+      <AppDialogContent>
         <AppTypography
           color="text.secondary"
           style={{
@@ -190,12 +184,7 @@ const PruneDialog = ({
         )}
       </AppDialogContent>
 
-      <AppDialogActions
-        style={{
-          padding: 8,
-          borderTop: "1px solid var(--app-palette-divider)",
-        }}
-      >
+      <AppDialogActions>
         <AppButton color="inherit" disabled={isLoading} onClick={handleClose}>
           Cancel
         </AppButton>

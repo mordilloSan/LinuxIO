@@ -74,27 +74,29 @@ const SetHostnameDialog = ({ open, current, onClose }: Props) => {
     >
       <AppDialogTitle>Set Hostname</AppDialogTitle>
       <AppDialogContent>
-        <AppTextField
-          autoFocus
-          error={hostname.length > 0 && !isValid}
-          fullWidth
-          helperText={
-            hostname.length > 0 && !isValid
-              ? "Only letters, numbers, and hyphens; cannot start or end with a hyphen"
-              : undefined
-          }
-          label="Hostname"
-          disabled={isPending}
-          onChange={(e) =>
-            setStoredSession({ open, source: current, value: e.target.value })
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && isValid && !isPending) handleSave();
-          }}
-          type="text"
-          value={hostname}
-          variant="outlined"
-        />
+        <div className="app-dialog-fields">
+          <AppTextField
+            autoFocus
+            error={hostname.length > 0 && !isValid}
+            fullWidth
+            helperText={
+              hostname.length > 0 && !isValid
+                ? "Only letters, numbers, and hyphens; cannot start or end with a hyphen"
+                : undefined
+            }
+            label="Hostname"
+            disabled={isPending}
+            onChange={(e) =>
+              setStoredSession({ open, source: current, value: e.target.value })
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && isValid && !isPending) handleSave();
+            }}
+            type="text"
+            value={hostname}
+            variant="outlined"
+          />
+        </div>
       </AppDialogContent>
       <AppDialogActions>
         <AppButton disabled={isPending} onClick={handleClose}>

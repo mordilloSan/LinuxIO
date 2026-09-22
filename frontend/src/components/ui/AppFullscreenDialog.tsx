@@ -2,6 +2,7 @@ import { AnimatePresence, motion, type Variants } from "motion/react";
 import {
   useEffect,
   useEffectEvent,
+  useId,
   useRef,
   type CSSProperties,
   type ReactNode,
@@ -14,7 +15,7 @@ import {
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
-import { OVERLAY_ROOT_SELECTOR } from "./AppDialog";
+import { AppDialogTitleContext, OVERLAY_ROOT_SELECTOR } from "./AppDialog";
 import { acquireBodyScrollLock } from "./bodyScrollLock";
 import { useDialogFocusRestore } from "./useDialogFocusRestore";
 
@@ -41,6 +42,9 @@ const fullscreenDialogVariants = {
 } satisfies Variants;
 
 export interface AppFullscreenDialogProps {
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-busy"?: boolean;
   children?: ReactNode;
   className?: string;
   contentClassName?: string;
@@ -55,6 +59,9 @@ export interface AppFullscreenDialogProps {
 }
 
 const AppFullscreenDialog = ({
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-busy": ariaBusy,
   open,
   onClose,
   disableEscapeKeyDown = false,
@@ -66,6 +73,9 @@ const AppFullscreenDialog = ({
   slotProps,
 }: AppFullscreenDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const resolvedAriaLabelledBy =
+    ariaLabelledBy ?? (!ariaLabel ? titleId : undefined);
 
   useDialogFocusRestore(open);
 
@@ -135,6 +145,9 @@ const AppFullscreenDialog = ({
       {open && (
         <motion.div
           animate="visible"
+          aria-label={ariaLabel}
+          aria-labelledby={resolvedAriaLabelledBy}
+          aria-busy={ariaBusy || undefined}
           aria-modal="true"
           className={`app-fullscreen-dialog-root ${className || ""}`.trim()}
           exit="exit"
@@ -155,7 +168,9 @@ const AppFullscreenDialog = ({
             className={`app-fullscreen-dialog__content ${contentClassName || ""}`.trim()}
             style={contentStyle}
           >
-            {children}
+            <AppDialogTitleContext.Provider value={titleId}>
+              {children}
+            </AppDialogTitleContext.Provider>
           </div>
         </motion.div>
       )}

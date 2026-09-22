@@ -285,13 +285,7 @@ const BridgeHandoffDialog = ({
     >
       <AppDialogTitle>Move host IP to bridge</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "grid",
-            gap: "var(--app-space-8)",
-            marginTop: "var(--app-space-4)",
-          }}
-        >
+        <div className="app-dialog-fields">
           {!operationId && (
             <>
               <AppAlert severity="warning">

@@ -53,6 +53,7 @@ const VirtualExpansionTablePage = lazy(
 const GeneralLogsPage = lazy(() => import("./routes/GeneralLogsPage"));
 const SchedulesPage = lazy(() => import("./routes/SchedulesPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
+const DialogGalleryPage = lazy(() => import("./routes/DialogGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
 const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
 const NetworkHandoffPage = lazy(() => import("./routes/NetworkHandoffPage"));
@@ -228,6 +229,13 @@ const stylingLightRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "styling/light",
 });
+const dialogGalleryRoutes = ["dark", "light"].map((scheme) =>
+  createRoute({
+    component: DialogGalleryPage,
+    getParentRoute: () => rootRoute,
+    path: `styling/${scheme}/dialogs`,
+  }),
+);
 const topologySearch = (search: Record<string, unknown>) => ({
   container:
     typeof search.container === "string" ? search.container : undefined,
@@ -326,6 +334,7 @@ const routeTree = rootRoute.addChildren([
   virtualGridRoute,
   stylingDarkRoute,
   stylingLightRoute,
+  ...dialogGalleryRoutes,
   dockerTopologyRoute,
   lightTopologyRoute,
   storageTopologyRoute,

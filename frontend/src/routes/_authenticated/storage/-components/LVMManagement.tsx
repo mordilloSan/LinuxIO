@@ -30,7 +30,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { getUsageColor } from "@/constants/statusColors";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { DASHBOARD_CARD_GAP, GAP_MD } from "@/theme/constants";
+import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 import { mixWithTransparency } from "@/theme/surfaces";
 import { formatFileSize } from "@/utils/formaters";
 
@@ -67,13 +67,6 @@ const PANEL_ACCENTS: Record<LVMSectionId, string> = {
   lvs: "var(--app-palette-primary-main)",
   vgs: "var(--app-palette-warning-main)",
   pvs: "var(--app-palette-success-main)",
-};
-
-const dialogStackStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: GAP_MD,
-  marginTop: 4,
 };
 
 const monospaceStyle: CSSProperties = {
@@ -123,7 +116,7 @@ const CreateLVDialog = ({
     <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Create Logical Volume</AppDialogTitle>
       <AppDialogContent>
-        <div style={dialogStackStyle}>
+        <div className="app-dialog-fields">
           <AppSelect
             disabled={volumeGroups.length === 0}
             fullWidth
@@ -246,7 +239,7 @@ const ResizeLVDialog = ({
     >
       <AppDialogTitle>Resize Logical Volume</AppDialogTitle>
       <AppDialogContent>
-        <div style={dialogStackStyle}>
+        <div className="app-dialog-fields">
           {lv && (
             <div
               style={{

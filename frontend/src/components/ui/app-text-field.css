@@ -167,11 +167,11 @@
 
 .app-text-field--small .app-text-field__input {
   padding: 8.5px 14px;
-  font-size: 0.8125rem;
+  font-size: var(--app-text-field-input-font-size, 0.8125rem);
 }
 
 .app-text-field--compact-copy .app-text-field__input {
-  font-size: 0.8125rem;
+  font-size: var(--app-text-field-input-font-size, 0.8125rem);
 }
 
 .app-text-field--standard .app-text-field__input {
@@ -206,7 +206,7 @@ textarea.app-text-field__input {
   transform-origin: top left;
   color: var(--app-palette-text-secondary);
   font-family: inherit;
-  font-size: 1rem;
+  font-size: var(--app-text-field-label-font-size, 1rem);
   line-height: 1.4375em;
   pointer-events: none;
   transition:
@@ -232,17 +232,19 @@ textarea.app-text-field__input {
 
 .app-text-field--outlined.app-text-field--small .app-text-field__label {
   transform: translate(14px, 9px) scale(1);
-  font-size: 0.875rem;
+  font-size: var(--app-text-field-label-font-size, 0.875rem);
 }
 
 .app-text-field--outlined .app-text-field__label--shrunk {
   user-select: none;
-  transform: translate(14px, -9px) scale(0.75);
-  max-width: calc(133% - 32px);
+  transform: translate(14px, -9px)
+    scale(var(--app-text-field-floating-label-scale, 0.75));
+  max-width: calc((100% - 24px) / var(--app-text-field-floating-label-scale, 0.75));
 }
 
 .app-text-field--outlined.app-text-field--small .app-text-field__label--shrunk {
-  transform: translate(14px, -9px) scale(0.75);
+  transform: translate(14px, -9px)
+    scale(var(--app-text-field-floating-label-scale, 0.75));
 }
 
 .app-text-field--focused .app-text-field__label {
@@ -264,7 +266,8 @@ textarea.app-text-field__input {
 }
 
 .app-text-field--standard .app-text-field__label--shrunk {
-  transform: translate(0, -1.5px) scale(0.75);
+  transform: translate(0, -1.5px)
+    scale(var(--app-text-field-floating-label-scale, 0.75));
 }
 
 /* ── adornments ────────────────────────────── */

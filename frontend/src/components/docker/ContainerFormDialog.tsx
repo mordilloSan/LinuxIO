@@ -399,10 +399,7 @@ const ContainerConfigurationForm = ({
       onClose={pending ? undefined : onClose}
       open
     >
-      <form
-        className="container-form-dialog__form"
-        onSubmit={submitConfiguration}
-      >
+      <form className="app-dialog-form" onSubmit={submitConfiguration}>
         <AppDialogTitle>
           {mode === "create" ? "Create container" : `Edit ${inspect?.name}`}
         </AppDialogTitle>

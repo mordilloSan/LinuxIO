@@ -139,15 +139,12 @@ function DockerUpdateOperationDialog({
       open={open}
       slotProps={{ transition: { onExited: () => setShowDetails(false) } }}
       paperStyle={{
-        backgroundColor: "var(--app-palette-background-default)",
         maxHeight: "80vh",
       }}
     >
       <AppDialogTitle
         style={{
           alignItems: "center",
-          backgroundColor: "var(--app-header-background)",
-          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           justifyContent: "space-between",
         }}
@@ -166,9 +163,7 @@ function DockerUpdateOperationDialog({
             width={24}
           />
           <div>
-            <AppTypography style={{ fontWeight: 600 }} variant="subtitle1">
-              Updating {title}
-            </AppTypography>
+            <div>Updating {title}</div>
             <AppTypography color="text.secondary" variant="caption">
               {running
                 ? "The update continues if this dialog is closed"
@@ -190,13 +185,13 @@ function DockerUpdateOperationDialog({
       </AppDialogTitle>
 
       <AppDialogContent
+        flush
         style={{
           display: "flex",
           flexDirection: "column",
           maxHeight: 450,
           minHeight: 380,
           overflow: "hidden",
-          padding: 0,
         }}
       >
         <div
@@ -369,12 +364,7 @@ function DockerUpdateOperationDialog({
         )}
       </AppDialogContent>
 
-      <AppDialogActions
-        style={{
-          backgroundColor: "var(--app-header-background)",
-          borderTop: "1px solid var(--app-palette-divider)",
-        }}
-      >
+      <AppDialogActions>
         <AppButton color="inherit" onClick={onClose}>
           {running ? "Run in background" : "Close"}
         </AppButton>

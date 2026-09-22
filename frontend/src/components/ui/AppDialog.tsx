@@ -1,7 +1,10 @@
 import { AnimatePresence, motion, type Variants } from "motion/react";
 import {
+  createContext,
+  useContext,
   useEffect,
   useEffectEvent,
+  useId,
   useRef,
   type CSSProperties,
   type HTMLAttributes,
@@ -69,6 +72,10 @@ const dialogVariants = {
 export const OVERLAY_ROOT_SELECTOR =
   ".app-dialog-root, .app-fullscreen-dialog-root";
 
+export const AppDialogTitleContext = createContext<string | undefined>(
+  undefined,
+);
+
 /* ── Dialog ─────────────────────────────────── */
 
 export type AppDialogCloseEvent =
@@ -78,6 +85,7 @@ export type AppDialogCloseEvent =
 
 export interface AppDialogProps {
   "aria-label"?: string;
+  "aria-labelledby"?: string;
   /** Reports an in-flight action owned by the mounted dialog. */
   "aria-busy"?: boolean;
   /** Styles applied to the backdrop overlay */
@@ -108,6 +116,7 @@ export interface AppDialogProps {
 
 export const AppDialog = ({
   "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
   "aria-busy": ariaBusy,
   open,
   onClose,
@@ -124,6 +133,7 @@ export const AppDialog = ({
 }: AppDialogProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useDialogFocusRestore(open);
 
@@ -199,6 +209,8 @@ export const AppDialog = ({
 
   const sizeClass = maxWidth ? `app-dialog--${maxWidth}` : "";
   const widthClass = fullWidth ? "app-dialog--fullwidth" : "";
+  const resolvedAriaLabelledBy =
+    ariaLabelledBy ?? (!ariaLabel ? titleId : undefined);
 
   const mergedPaperStyle = {
     ...paperStyle,
@@ -247,6 +259,7 @@ export const AppDialog = ({
           <motion.div
             aria-label={ariaLabel}
             aria-busy={ariaBusy || undefined}
+            aria-labelledby={resolvedAriaLabelledBy}
             aria-modal="true"
             className={`app-dialog ${sizeClass} ${widthClass} ${className || ""}`.trim()}
             onAnimationComplete={(definition) => {
@@ -260,9 +273,11 @@ export const AppDialog = ({
             tabIndex={-1}
             variants={dialogVariants}
           >
-            <div className={mergedPaperClass} style={mergedPaperStyle}>
-              {children}
-            </div>
+            <AppDialogTitleContext.Provider value={titleId}>
+              <div className={mergedPaperClass} style={mergedPaperStyle}>
+                {children}
+              </div>
+            </AppDialogTitleContext.Provider>
           </motion.div>
         </motion.div>
       )}
@@ -280,31 +295,46 @@ interface AppDialogTitleProps extends HTMLAttributes<HTMLDivElement> {
 
 export const AppDialogTitle = ({
   ref,
+  id,
   className,
   ...props
-}: AppDialogTitleProps) => (
-  <div
-    className={`app-dialog-title ${className || ""}`.trim()}
-    ref={ref}
-    {...props}
-  />
-);
+}: AppDialogTitleProps) => {
+  const titleId = useContext(AppDialogTitleContext);
+  return (
+    <div
+      aria-level={2}
+      className={`app-dialog-title ${className || ""}`.trim()}
+      id={id ?? titleId}
+      ref={ref}
+      role="heading"
+      {...props}
+    />
+  );
+};
 AppDialogTitle.displayName = "AppDialogTitle";
 
 /* ── DialogContent ──────────────────────────── */
 
 interface AppDialogContentProps extends HTMLAttributes<HTMLDivElement> {
   children?: ReactNode;
+  flush?: boolean;
   ref?: Ref<HTMLDivElement>;
 }
 
 export const AppDialogContent = ({
   ref,
+  flush = false,
   className,
   ...props
 }: AppDialogContentProps) => (
   <div
-    className={`app-dialog-content ${className || ""}`.trim()}
+    className={[
+      "app-dialog-content",
+      flush && "app-dialog-content--flush",
+      className,
+    ]
+      .filter(Boolean)
+      .join(" ")}
     ref={ref}
     {...props}
   />

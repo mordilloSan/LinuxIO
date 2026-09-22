@@ -256,9 +256,7 @@ const PermissionsDialog = ({
           gap: 4,
         }}
       >
-        <AppTypography component="span" variant="h6">
-          Change Permissions
-        </AppTypography>
+        Change Permissions
         <AppTypography
           color="text.secondary"
           component="span"
@@ -270,18 +268,14 @@ const PermissionsDialog = ({
           {pathLabel}
         </AppTypography>
       </AppDialogTitle>
-      <AppDialogContent
-        style={{
-          overflow: "visible",
-        }}
-      >
+      <AppDialogContent>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-            gap: "var(--app-space-8)",
-            marginBottom: "var(--app-space-12)",
-            marginTop: "var(--app-space-4)",
+            gap: "var(--app-dialog-field-gap)",
+            marginBottom: "var(--app-dialog-section-gap)",
+            marginTop: "var(--app-space-8)",
           }}
         >
           <AppAutocomplete

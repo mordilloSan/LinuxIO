@@ -26,15 +26,33 @@ body.dialog-open #root {
 .app-dialog__backdrop {
   position: fixed;
   inset: 0;
-  background-color: var(--app-backdrop-overlay);
+  background-color: color-mix(
+    in srgb,
+    var(--app-dialog-backdrop, var(--app-backdrop-overlay)),
+    transparent 30%
+  );
+}
+
+/* ── shared dialog tokens ──────────────────── */
+
+.app-dialog,
+.app-fullscreen-dialog-root {
+  --app-text-field-input-font-size: 0.875rem;
+  --app-select-input-font-size: 0.875rem;
+  --app-text-field-label-font-size: 0.875rem;
+  --app-text-field-floating-label-scale: 0.8571429;
+  --app-select-label-font-size: 0.875rem;
+  --app-select-label-scale: 0.8571429;
+  --app-dialog-field-gap: var(--app-space-16);
+  --app-dialog-section-gap: var(--app-space-24);
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size-body);
+  line-height: 1.5;
 }
 
 /* ── dialog ────────────────────────────────── */
 
 .app-dialog {
-  font-family: var(--app-font-family);
-  font-size: var(--app-font-size-body);
-  line-height: 1.5;
   position: relative;
   margin: 32px;
   max-height: calc(100% - 64px);
@@ -71,28 +89,42 @@ body.dialog-open #root {
   display: flex;
   flex-direction: column;
   max-height: inherit;
-  overflow-y: auto;
-  border-radius: 4px;
+  overflow: hidden;
+  border-radius: var(--app-radius-card);
+  border: 1px solid
+    var(--app-dialog-surface-border, var(--app-palette-divider));
   background-color: var(--app-palette-background-paper);
   color: var(--app-palette-text-primary);
-  box-shadow: var(--app-elevation-24);
+  box-shadow: var(--app-dialog-surface-shadow, var(--app-elevation-24));
 }
 
 /* ── title ─────────────────────────────────── */
 
 .app-dialog-title {
-  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  overflow-wrap: anywhere;
+  padding: var(--app-space-16) var(--app-space-24);
   font-size: var(--app-font-size-heading);
   font-weight: 500;
   line-height: 1.25;
   flex: 0 0 auto;
 }
 
+.app-dialog-title > :not(button) {
+  min-width: 0;
+}
+
+.app-dialog-title > div:only-child {
+  width: 100%;
+}
+
 /* ── content ───────────────────────────────── */
 
 .app-dialog-content {
   flex: 1 1 auto;
-  padding: 20px 24px;
+  padding: var(--app-space-20) var(--app-space-24);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -102,11 +134,30 @@ body.dialog-open #root {
   padding-top: 8px;
 }
 
+.app-dialog-content.app-dialog-content--flush {
+  padding: 0;
+}
+
 .app-dialog-content-text {
   margin: 0 0 12px;
   color: var(--app-palette-text-secondary);
   font-size: var(--app-font-size-body);
   line-height: 1.5;
+}
+
+.app-dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+}
+
+.app-dialog-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-dialog-field-gap);
+  margin-top: var(--app-space-8);
+  min-width: 0;
 }
 
 /* ── actions ───────────────────────────────── */
@@ -115,9 +166,23 @@ body.dialog-open #root {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 8px;
+  flex-wrap: wrap;
+  padding: var(--app-space-16) var(--app-space-24);
   flex: 0 0 auto;
   gap: 8px;
+}
+
+/* Confirmation labels stay visible even when they have an icon or spinner. */
+.app-dialog-actions .app-btn__label {
+  display: inline;
+}
+
+.app-dialog-actions .app-btn:has(.app-btn__label) {
+  min-width: 64px;
+}
+
+.app-dialog-actions .app-btn:has(.app-btn__label) .app-btn__icon {
+  margin-right: 8px;
 }
 
 /* ── responsive ────────────────────────────── */

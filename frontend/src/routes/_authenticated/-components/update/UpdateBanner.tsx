@@ -1,7 +1,15 @@
 import { Icon } from "@iconify/react";
+import { useState } from "react";
 
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinkButton from "@/components/ui/AppLinkButton";
 import { useLinuxIOUpdater } from "@/hooks/useLinuxIOUpdater";
@@ -18,6 +26,7 @@ interface UpdateBannerProps {
 
 const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
   const isSmallUp = useAppMediaQuery(up("sm"));
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const {
     startUpdate,
     resetUpdate,
@@ -33,15 +42,11 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
   } = useLinuxIOUpdater();
 
   const handleUpdate = () => {
-    if (
-      !confirm(
-        `Update LinuxIO from ${updateInfo.current_version} to ${updateInfo.latest_version}?\n\n` +
-          "The service will restart automatically.",
-      )
-    ) {
-      return;
-    }
+    setConfirmOpen(true);
+  };
 
+  const confirmUpdate = () => {
+    setConfirmOpen(false);
     startUpdate(updateInfo.latest_version);
   };
 
@@ -66,6 +71,29 @@ const UpdateBanner = ({ updateInfo, onDismiss }: UpdateBannerProps) => {
 
   return (
     <>
+      <GeneralDialog
+        fullWidth
+        maxWidth="xs"
+        onClose={() => setConfirmOpen(false)}
+        open={confirmOpen}
+      >
+        <AppDialogTitle>Update LinuxIO</AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>
+            Update LinuxIO from {updateInfo.current_version} to{" "}
+            {updateInfo.latest_version}?
+          </AppDialogContentText>
+          <AppDialogContentText>
+            The service will restart automatically.
+          </AppDialogContentText>
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton onClick={() => setConfirmOpen(false)}>Cancel</AppButton>
+          <AppButton onClick={confirmUpdate} variant="contained">
+            Update
+          </AppButton>
+        </AppDialogActions>
+      </GeneralDialog>
       <UpdateDialog
         canClose={!isUpdating && !updateSuccess}
         onClose={handleCloseDialog}

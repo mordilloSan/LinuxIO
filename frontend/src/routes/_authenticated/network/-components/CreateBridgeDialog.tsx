@@ -124,13 +124,7 @@ const CreateBridgeDialog = ({
     >
       <AppDialogTitle>Create host bridge</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "grid",
-            gap: "var(--app-space-8)",
-            marginTop: "var(--app-space-4)",
-          }}
-        >
+        <div className="app-dialog-fields">
           {optionsQuery.isPending && (
             <AppAlert severity="info">Checking spare wired NICs…</AppAlert>
           )}

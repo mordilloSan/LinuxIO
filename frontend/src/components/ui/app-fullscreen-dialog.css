@@ -3,6 +3,8 @@
   inset: 0;
   z-index: var(--app-z-dialog);
   display: flex;
+  background: var(--app-palette-background-default);
+  color: var(--app-palette-text-primary);
   outline: 0;
 }
 
