@@ -26,11 +26,38 @@ describe("VolumeCard", () => {
     expect(
       screen.getByRole("heading", { name: volume.Name }),
     ).toBeInTheDocument();
-    expect(screen.getByText("local · local")).toBeInTheDocument();
+    expect(
+      screen.getByText("Driver: local · Scope: local"),
+    ).toBeInTheDocument();
 
     await user.click(card);
     expect(onOpen).toHaveBeenCalledTimes(1);
     await user.keyboard("{Enter}");
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    { usage: undefined, size: "Unavailable", references: "Unavailable" },
+    {
+      usage: { Size: -1, RefCount: -1 },
+      size: "Unavailable",
+      references: "Unavailable",
+    },
+    { usage: { Size: 0, RefCount: 0 }, size: "0 Bytes", references: "0" },
+    { usage: { Size: 2048, RefCount: 2 }, size: "2 KB", references: "2" },
+  ])(
+    "keeps usage and the local path visible for $usage",
+    ({ usage, size, references }) => {
+      render(<VolumeCard volume={{ ...volume, UsageData: usage }} />);
+      expect(screen.getByText("Size").nextElementSibling).toHaveTextContent(
+        size,
+      );
+      expect(
+        screen.getByText("References").nextElementSibling,
+      ).toHaveTextContent(references);
+      expect(
+        screen.getByText("Local path").nextElementSibling,
+      ).toHaveTextContent(volume.Mountpoint);
+    },
+  );
 });

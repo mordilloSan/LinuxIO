@@ -35,7 +35,9 @@ const HEADING_PRESETS = {
     fontWeight: 600,
     subtitleNoWrap: false,
     titleNoWrap: false,
-    titleStyle: { lineHeight: 1.25 } as CSSProperties | undefined,
+    titleStyle: { lineHeight: 1.25, overflowWrap: "anywhere" } as
+      | CSSProperties
+      | undefined,
     variant: "body2" as const,
   },
 };

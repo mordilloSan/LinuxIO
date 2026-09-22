@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
@@ -29,23 +31,48 @@ func ListVolumes(ctx context.Context) ([]apischema.DockerVolume, error) {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
 	defer releaseClient(cli)
+	return listVolumes(ctx, cli)
+}
 
+func listVolumes(ctx context.Context, cli *client.Client) ([]apischema.DockerVolume, error) {
 	volumesResp, err := cli.VolumeList(ctx, client.VolumeListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list volumes: %w", err)
 	}
+	if len(volumesResp.Items) == 0 {
+		return []apischema.DockerVolume{}, nil
+	}
 	containersResp, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers using volumes: %w", err)
+	}
+	// VolumeList omits usage statistics. Limit the scan to volumes and bound
+	// optional enrichment so a slow or unsupported driver cannot hide the list.
+	usageCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	usage, usageErr := cli.DiskUsage(usageCtx, client.DiskUsageOptions{Volumes: true, Verbose: true})
+	cancel()
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("failed to collect volume usage: %w", ctx.Err())
+	}
+	if usageErr != nil {
+		slog.Debug("docker volume disk usage unavailable", "error", usageErr)
+	} else {
+		byName := make(map[string]*volume.UsageData, len(usage.Volumes.Items))
+		for _, item := range usage.Volumes.Items {
+			byName[item.Name] = item.UsageData
+		}
+		for index := range volumesResp.Items {
+			if data := byName[volumesResp.Items[index].Name]; data != nil {
+				volumesResp.Items[index].UsageData = data
+			}
+		}
 	}
 	volumes := dockerVolumesFromSDK(volumesResp.Items)
 	attachVolumeContainers(volumes, containersResp.Items)
 	return volumes, nil
 }
 
-// dockerVolumesFromSDK maps Docker's list response to our stable API model. It
-// deliberately uses VolumeList only; UsageData is shown when Docker includes
-// it, but we never make a separate, expensive disk-usage request for it.
+// dockerVolumesFromSDK maps Docker's volume metadata to our stable API model.
 func dockerVolumesFromSDK(volumes []volume.Volume) []apischema.DockerVolume {
 	if len(volumes) == 0 {
 		return []apischema.DockerVolume{}
@@ -121,6 +148,12 @@ func attachVolumeContainers(volumes []apischema.DockerVolume, containers []conta
 		}
 	}
 	for index := range volumes {
+		if volumes[index].UsageData == nil {
+			volumes[index].UsageData = &apischema.DockerVolumeUsageData{Size: -1, RefCount: -1}
+		}
+		if volumes[index].UsageData.RefCount < 0 {
+			volumes[index].UsageData.RefCount = int64(len(volumes[index].Containers))
+		}
 		sort.Slice(volumes[index].Containers, func(i, j int) bool {
 			return volumes[index].Containers[i].Name < volumes[index].Containers[j].Name
 		})

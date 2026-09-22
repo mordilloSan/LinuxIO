@@ -238,6 +238,12 @@ manual “roll back to an older version” interface remain deferred.
 - [x] Finish Create Volume with name, driver, and optional labels.
 - [x] Remove the current forced deletion and let Docker reject in-use volumes.
 - [x] Show the containers that use each volume and their running state.
+- [x] Show size, references, and the local path in volume cards and table rows,
+  including narrow layouts. The bridge enriches the volume list with Docker's
+  volume-only disk usage (bounded to five seconds), preserving metadata if
+  usage is unavailable. Missing reference counts come from distinct attached
+  containers, including stopped containers; unknown sizes remain unavailable,
+  rather than zero. The volume view refreshes every minute and after mutations.
 - [x] Add **Browse in Navigator** for an accessible volume mountpoint.
 - [x] Add **Download backup** through the existing `filebrowser.archive` task.
 

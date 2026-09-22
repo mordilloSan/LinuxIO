@@ -38,6 +38,7 @@ const CodeEditorPage = lazy(() => import("./routes/CodeEditorPage"));
 const ContainerActionsPage = lazy(
   () => import("./routes/ContainerActionsPage"),
 );
+const VolumesPage = lazy(() => import("./routes/VolumesPage"));
 const FileBrowserReadPathsPage = lazy(
   () => import("./routes/FileBrowserReadPathsPage"),
 );
@@ -121,6 +122,14 @@ const networkHandoffRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "network",
   validateSearch: NetworkRoute.options.validateSearch,
+});
+const volumesRoute = createRoute({
+  component: VolumesPage,
+  getParentRoute: () => authenticatedRoute,
+  path: "docker/volumes",
+  validateSearch: (search) => ({
+    volume: typeof search.volume === "string" ? search.volume : undefined,
+  }),
 });
 const vmBridgeRoute = createRoute({
   component: VMBridgePage,
@@ -294,7 +303,11 @@ const backgroundTasksRoute = createRoute({
 });
 const routeTree = rootRoute.addChildren([
   backgroundTasksRoute,
-  authenticatedRoute.addChildren([networkHandoffRoute, vmBridgeRoute]),
+  authenticatedRoute.addChildren([
+    networkHandoffRoute,
+    vmBridgeRoute,
+    volumesRoute,
+  ]),
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
   iconsRoute,

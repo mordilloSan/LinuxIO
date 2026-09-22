@@ -70,6 +70,10 @@ const SortableCard = ({
       style={style}
       {...attributes}
       {...listeners}
+      onKeyDown={(event) => {
+        // Nested controls own their keys; only the wrapper starts a keyboard drag.
+        if (event.target === event.currentTarget) listeners?.onKeyDown?.(event);
+      }}
     >
       {holding && <div className="reorder-hold-ring" />}
       {editMode && (
