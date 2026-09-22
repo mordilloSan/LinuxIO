@@ -156,7 +156,7 @@ const ContainerActions = ({
     ? {
         color: "error" as const,
         disabled: false,
-        icon: "mdi:stop-circle",
+        icon: "mdi:stop-circle-outline",
         label: "Stop",
         loading: actionPending || isStopPending,
         onClick: () => stopContainer({ containerId: container.Id }),
