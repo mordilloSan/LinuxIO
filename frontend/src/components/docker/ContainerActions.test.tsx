@@ -26,14 +26,11 @@ describe("ContainerActions", () => {
     );
 
     expect(screen.getByRole("button", { name: "Stop example" })).toBeEnabled();
-    await user.click(
-      screen.getByRole("button", { name: "Actions for example" }),
-    );
-    expect(screen.getByRole("menuitem", { name: "Pause" })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: "Restart" })).toBeEnabled();
-    expect(screen.queryByRole("menuitem", { name: "Unpause" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Restart" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Unpause" })).toBeNull();
 
-    await user.click(screen.getByRole("menuitem", { name: "Kill" }));
+    await user.click(screen.getByRole("button", { name: "Kill" }));
     expect(
       screen.getByRole("dialog", { name: "Kill example?" }),
     ).toBeInTheDocument();
@@ -58,10 +55,7 @@ describe("ContainerActions", () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole("button", { name: "Actions for example" }),
-    );
-    await user.click(screen.getByRole("menuitem", { name: "Remove" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
     const confirm = screen.getByRole("button", { name: "Remove container" });
     expect(confirm).toBeDisabled();
 
@@ -97,10 +91,7 @@ describe("ContainerActions", () => {
         />,
       );
 
-      await user.click(
-        screen.getByRole("button", { name: "Actions for example" }),
-      );
-      await user.click(screen.getByRole("menuitem", { name: label }));
+      await user.click(screen.getByRole("button", { name: label }));
 
       expect(request).toHaveBeenCalledWith(
         "docker",
@@ -123,13 +114,10 @@ describe("ContainerActions", () => {
     );
 
     expect(screen.getByRole("button", { name: "Start stopped" })).toBeEnabled();
-    await user.click(
-      screen.getByRole("button", { name: "Actions for stopped" }),
-    );
-    expect(screen.getByRole("menuitem", { name: "Restart" })).toBeDisabled();
-    expect(screen.queryByRole("menuitem", { name: "Pause" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Kill" })).toBeNull();
-    await user.click(screen.getByRole("menuitem", { name: "Remove" }));
+    expect(screen.getByRole("button", { name: "Restart" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Kill" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Remove" }));
     expect(
       screen.queryByRole("checkbox", {
         name: "Force removal of this active container",
@@ -145,8 +133,8 @@ describe("ContainerActions", () => {
     );
   });
 
-  it("directs Compose-managed containers to their stack editor", async () => {
-    const { user } = render(
+  it("directs Compose-managed containers to their stack editor", () => {
+    render(
       <ContainerActions
         container={{
           Id: "compose-id",
@@ -159,10 +147,34 @@ describe("ContainerActions", () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole("button", { name: "Actions for example" }),
+    expect(screen.getByRole("button", { name: "Edit stack" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("lays every action out as its own labelled icon button", () => {
+    render(
+      <ContainerActions
+        container={{ Id: "running-id", State: "running" }}
+        mode="icons-all"
+        name="example"
+        {...callbacks}
+      />,
     );
-    expect(screen.getByRole("menuitem", { name: "Edit stack" })).toBeEnabled();
-    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
+
+    for (const label of [
+      "Stop example",
+      "Edit example",
+      "Restart example",
+      "Pause example",
+      "Logs example",
+      "Terminal example",
+      "Kill example",
+      "Remove example",
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    expect(
+      screen.queryByRole("button", { name: "Actions for example" }),
+    ).toBeNull();
   });
 });

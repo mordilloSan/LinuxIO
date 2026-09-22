@@ -153,8 +153,7 @@ test("keeps destructive container actions keyboard-safe and explicit", async ({
     })
     .toBe(true);
 
-  await page.getByRole("button", { name: "Actions for example" }).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const editDialog = page.getByRole("dialog", { name: "Edit example" });
   await expect(editDialog).toBeVisible();
   await expect(
@@ -181,16 +180,14 @@ test("keeps destructive container actions keyboard-safe and explicit", async ({
     .getByRole("button", { name: "Cancel" })
     .click();
 
-  await page.getByRole("button", { name: "Actions for example" }).click();
-  await page.getByRole("menuitem", { name: "Kill" }).click();
+  await page.getByRole("button", { name: "Kill", exact: true }).click();
   const killDialog = page.getByRole("dialog", { name: "Kill example?" });
   await expect(killDialog).toBeVisible();
   await expect(killDialog).toContainText("SIGKILL");
   await page.keyboard.press("Escape");
   await expect(killDialog).toBeHidden();
 
-  await page.getByRole("button", { name: "Actions for example" }).click();
-  await page.getByRole("menuitem", { name: "Remove" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
   const removeDialog = page.getByRole("dialog", { name: "Remove example?" });
   const confirm = removeDialog.getByRole("button", {
     name: "Remove container",

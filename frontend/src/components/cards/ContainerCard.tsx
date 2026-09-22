@@ -387,6 +387,7 @@ const ContainerCardBody = ({
               <ContainerActions
                 actionPending={actionPending}
                 container={container}
+                mode="icons-all"
                 name={name}
                 onOpenLogs={handleLogsClick}
                 onOpenTerminal={handleTerminalClick}

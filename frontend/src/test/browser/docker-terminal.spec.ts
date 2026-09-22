@@ -25,9 +25,8 @@ test("types spaces in a container shell without dragging its card", async ({
 
   await page.goto("/docker/container-actions");
   await page
-    .getByRole("button", { name: "Actions for example", exact: true })
+    .getByRole("button", { name: "Terminal example", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: "Terminal", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.locator(".xterm-helper-textarea")).toBeFocused();
   await page.keyboard.type("echo hello  world ");
