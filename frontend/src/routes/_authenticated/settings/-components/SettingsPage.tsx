@@ -8,7 +8,7 @@ import TabSelector from "@/components/tabbar/TabSelector";
 import AppDivider from "@/components/ui/AppDivider";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
-import useAuth from "@/hooks/useAuth";
+import { useAccessContext } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
 import CapabilityManagerSection from "@/routes/_authenticated/-components/navbar/CapabilityManagerSection";
 import DockerSettingsSection from "@/routes/_authenticated/-components/navbar/DockerSettingsSection";
@@ -53,7 +53,7 @@ const NAVIGATION_MODE_OPTIONS: readonly {
 
 const SettingsPage = () => {
   const isDesktop = useAppMediaQuery(up("md"));
-  const { privileged } = useAuth();
+  const { privileged, dockerAvailable, tunedAvailable } = useAccessContext();
   const [themeMode, setThemeMode] = useConfigValue("theme");
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
@@ -71,23 +71,21 @@ const SettingsPage = () => {
   const navigate = settingsRouteApi.useNavigate();
   const { tab } = settingsRouteApi.useSearch();
   const activeTab = tab ?? DEFAULT_SETTINGS_TAB;
-  // A link into a privileged tab still opens for a session that cannot read it,
-  // so the fall back stays here rather than in the route's validator.
-  const effectiveTab =
-    !privileged && PRIVILEGED_SETTINGS_TABS.includes(activeTab)
-      ? DEFAULT_SETTINGS_TAB
-      : activeTab;
+  const tabs = SETTINGS_TABS.filter(
+    ({ value }) =>
+      (privileged || !PRIVILEGED_SETTINGS_TABS.includes(value)) &&
+      (value !== "docker" || dockerAvailable === true) &&
+      (value !== "power" || tunedAvailable === true),
+  );
+  // Direct links follow the same permissions and capabilities as the tab strip.
+  const effectiveTab = tabs.some(({ value }) => value === activeTab)
+    ? activeTab
+    : DEFAULT_SETTINGS_TAB;
   /* Polls list_timers every 5s while it is on, so it stays off until its own
      tab is the one being looked at. */
   const updateSettingsState = useUpdateSettingsState(
     effectiveTab === "updates",
   );
-  const tabs = privileged
-    ? SETTINGS_TABS
-    : SETTINGS_TABS.filter(
-        (option) => !PRIVILEGED_SETTINGS_TABS.includes(option.value),
-      );
-
   const sectionErrorFallback = (
     <div style={{ padding: "var(--app-space-4)" }}>
       <AppTypography color="error">

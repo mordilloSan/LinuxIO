@@ -174,13 +174,6 @@ const PowerSettingsSection = () => {
     <div aria-busy={busy} className="power-settings">
       {powerHeader}
 
-      {!status.tuned_available ? (
-        <AppAlert severity="warning">
-          <AppAlertTitle>TuneD unavailable</AppAlertTitle>
-          Install TuneD with <code>{status.install_command}</code>.
-        </AppAlert>
-      ) : null}
-
       {status.power_profiles_daemon_active ? (
         <AppAlert severity="warning">
           <AppAlertTitle>Conflicting daemon active</AppAlertTitle>
