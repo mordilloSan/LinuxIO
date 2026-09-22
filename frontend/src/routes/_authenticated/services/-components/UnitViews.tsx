@@ -18,9 +18,7 @@ import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
-import AppButton from "@/components/ui/AppButton";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppTooltip from "@/components/ui/AppTooltip";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { getServiceStatusColor } from "@/constants/statusColors";
 import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
@@ -221,13 +219,6 @@ export function UnitStatusRows({
   );
 }
 
-const buttonIcon = (pending: boolean, iconName: string) =>
-  pending ? (
-    <AppCircularProgress color="inherit" size={16} />
-  ) : (
-    <Icon height={16} icon={iconName} width={16} />
-  );
-
 export const UnitCardActions = ({
   unitName,
   activeState,
@@ -305,134 +296,108 @@ export const UnitCardActions = ({
       onClick={(e) => e.stopPropagation()}
       style={{
         display: "flex",
-        gap: 6,
-        flexWrap: "nowrap",
+        flexWrap: "wrap",
+        gap: 2,
         marginTop: 12,
         minWidth: 0,
       }}
     >
       {isActive ? (
-        <AppTooltip title="Stop">
-          <AppButton
-            color="error"
-            disabled={anyPending}
-            onClick={() => stopService({ serviceName: unitName })}
-            size="small"
-            startIcon={buttonIcon(isStopping, "mdi:stop-circle-outline")}
-            variant="outlined"
-          >
-            Stop
-          </AppButton>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Stop ${unitName}`}
+          color="var(--app-palette-error-main)"
+          disabled={anyPending}
+          icon="mdi:stop-circle-outline"
+          iconSize={16}
+          label="Stop"
+          loading={isStopping}
+          onClick={() => stopService({ serviceName: unitName })}
+        />
       ) : (
-        <AppTooltip title="Start">
-          <AppButton
-            color="success"
-            disabled={anyPending}
-            onClick={() => startService({ serviceName: unitName })}
-            size="small"
-            startIcon={buttonIcon(isStarting, "mdi:play")}
-            variant="outlined"
-          >
-            Start
-          </AppButton>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Start ${unitName}`}
+          color="var(--app-palette-success-main)"
+          disabled={anyPending}
+          icon="mdi:play"
+          iconSize={16}
+          label="Start"
+          loading={isStarting}
+          onClick={() => startService({ serviceName: unitName })}
+        />
       )}
-      <AppTooltip title="Restart (stop then start)">
-        <span>
-          <AppButton
-            disabled={!isActive || anyPending}
-            onClick={() => restartService({ serviceName: unitName })}
-            size="small"
-            startIcon={buttonIcon(isRestarting, "mdi:restart")}
-            variant="outlined"
-          >
-            Restart
-          </AppButton>
-        </span>
-      </AppTooltip>
-      <AppTooltip title="Reload configuration without restarting (if supported)">
-        <span>
-          <AppButton
-            disabled={!isActive || anyPending}
-            onClick={() => reloadService({ serviceName: unitName })}
-            size="small"
-            startIcon={buttonIcon(isReloading, "mdi:refresh")}
-            variant="outlined"
-          >
-            Reload
-          </AppButton>
-        </span>
-      </AppTooltip>
+      <AppActionIconButton
+        ariaLabel={`Restart ${unitName}`}
+        disabled={!isActive || anyPending}
+        icon="mdi:restart"
+        iconSize={16}
+        label="Restart (stop then start)"
+        loading={isRestarting}
+        onClick={() => restartService({ serviceName: unitName })}
+      />
+      <AppActionIconButton
+        ariaLabel={`Reload ${unitName}`}
+        disabled={!isActive || anyPending}
+        icon="mdi:refresh"
+        iconSize={16}
+        label="Reload configuration without restarting (if supported)"
+        loading={isReloading}
+        onClick={() => reloadService({ serviceName: unitName })}
+      />
       {isEnabled ? (
-        <AppTooltip title="Disable autostart at boot">
-          <span>
-            <AppButton
-              disabled={isMasked || anyPending}
-              onClick={() => disableService({ serviceName: unitName })}
-              size="small"
-              startIcon={buttonIcon(isDisabling, "mdi:block-helper")}
-              variant="outlined"
-            >
-              Disable
-            </AppButton>
-          </span>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Disable ${unitName}`}
+          disabled={isMasked || anyPending}
+          icon="mdi:block-helper"
+          iconSize={16}
+          label="Disable autostart at boot"
+          loading={isDisabling}
+          onClick={() => disableService({ serviceName: unitName })}
+        />
       ) : (
-        <AppTooltip title="Enable autostart at boot">
-          <span>
-            <AppButton
-              color="success"
-              disabled={isMasked || anyPending}
-              onClick={() => enableService({ serviceName: unitName })}
-              size="small"
-              startIcon={buttonIcon(isEnabling, "mdi:play")}
-              variant="outlined"
-            >
-              Enable
-            </AppButton>
-          </span>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Enable ${unitName}`}
+          color="var(--app-palette-success-main)"
+          disabled={isMasked || anyPending}
+          icon="mdi:play"
+          iconSize={16}
+          label="Enable autostart at boot"
+          loading={isEnabling}
+          onClick={() => enableService({ serviceName: unitName })}
+        />
       )}
       {isMasked ? (
-        <AppTooltip title="Unmask to allow the unit to be started">
-          <AppButton
-            color="warning"
-            disabled={anyPending}
-            onClick={() => unmaskService({ serviceName: unitName })}
-            size="small"
-            startIcon={buttonIcon(isUnmasking, "mdi:eye")}
-            variant="outlined"
-          >
-            Unmask
-          </AppButton>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Unmask ${unitName}`}
+          color="var(--app-palette-warning-main)"
+          disabled={anyPending}
+          icon="mdi:eye"
+          iconSize={16}
+          label="Unmask to allow the unit to be started"
+          loading={isUnmasking}
+          onClick={() => unmaskService({ serviceName: unitName })}
+        />
       ) : (
-        <AppTooltip title="Mask to completely prevent the unit from starting">
-          <AppButton
-            disabled={anyPending}
-            onClick={() => maskService({ serviceName: unitName })}
-            size="small"
-            startIcon={buttonIcon(isMasking, "mdi:eye-off")}
-            variant="outlined"
-          >
-            Mask
-          </AppButton>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Mask ${unitName}`}
+          disabled={anyPending}
+          icon="mdi:eye-off"
+          iconSize={16}
+          label="Mask to completely prevent the unit from starting"
+          loading={isMasking}
+          onClick={() => maskService({ serviceName: unitName })}
+        />
       )}
       {isFailed && (
-        <AppTooltip title="Clear the failed state so the unit can be started again">
-          <AppButton
-            color="warning"
-            disabled={anyPending}
-            onClick={() => resetFailedService({ serviceName: unitName })}
-            size="small"
-            startIcon={buttonIcon(isResettingFailed, "mdi:broom")}
-            variant="outlined"
-          >
-            Reset
-          </AppButton>
-        </AppTooltip>
+        <AppActionIconButton
+          ariaLabel={`Reset ${unitName}`}
+          color="var(--app-palette-warning-main)"
+          disabled={anyPending}
+          icon="mdi:broom"
+          iconSize={16}
+          label="Clear the failed state so the unit can be started again"
+          loading={isResettingFailed}
+          onClick={() => resetFailedService({ serviceName: unitName })}
+        />
       )}
     </div>
   );

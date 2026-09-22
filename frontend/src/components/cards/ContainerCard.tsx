@@ -150,14 +150,16 @@ const ContainerCardBody = ({
     getContainerDisplayState(container),
   );
   const selectedActions = (
-    <ContainerActions
-      actionPending={actionPending}
-      container={container}
-      mode="buttons"
-      name={name}
-      onOpenLogs={handleLogsClick}
-      onOpenTerminal={handleTerminalClick}
-    />
+    <div style={{ marginTop: 12 }}>
+      <ContainerActions
+        actionPending={actionPending}
+        container={container}
+        mode="icons-all"
+        name={name}
+        onOpenLogs={handleLogsClick}
+        onOpenTerminal={handleTerminalClick}
+      />
+    </div>
   );
 
   return (

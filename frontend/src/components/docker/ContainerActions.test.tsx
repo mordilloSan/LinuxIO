@@ -19,18 +19,22 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
-        mode="buttons"
+        mode="icons-all"
         name="example"
         {...callbacks}
       />,
     );
 
     expect(screen.getByRole("button", { name: "Stop example" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Pause" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Restart" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Unpause" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Pause example" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Restart example" }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: "Unpause example" }),
+    ).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Kill" }));
+    await user.click(screen.getByRole("button", { name: "Kill example" }));
     expect(
       screen.getByRole("dialog", { name: "Kill example?" }),
     ).toBeInTheDocument();
@@ -49,13 +53,13 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
-        mode="buttons"
+        mode="icons-all"
         name="example"
         {...callbacks}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await user.click(screen.getByRole("button", { name: "Remove example" }));
     const confirm = screen.getByRole("button", { name: "Remove container" });
     expect(confirm).toBeDisabled();
 
@@ -85,13 +89,15 @@ describe("ContainerActions", () => {
       const { user } = render(
         <ContainerActions
           container={{ Id: "container-id", State: state }}
-          mode="buttons"
+          mode="icons-all"
           name="example"
           {...callbacks}
         />,
       );
 
-      await user.click(screen.getByRole("button", { name: label }));
+      await user.click(
+        screen.getByRole("button", { name: `${label} example` }),
+      );
 
       expect(request).toHaveBeenCalledWith(
         "docker",
@@ -107,17 +113,19 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "stopped-id", State: "exited" }}
-        mode="buttons"
+        mode="icons-all"
         name="stopped"
         {...callbacks}
       />,
     );
 
     expect(screen.getByRole("button", { name: "Start stopped" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Restart" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Kill" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(
+      screen.getByRole("button", { name: "Restart stopped" }),
+    ).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Pause stopped" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Kill stopped" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Remove stopped" }));
     expect(
       screen.queryByRole("checkbox", {
         name: "Force removal of this active container",
@@ -141,14 +149,16 @@ describe("ContainerActions", () => {
           Labels: { "com.docker.compose.project": "example-stack" },
           State: "running",
         }}
-        mode="buttons"
+        mode="icons-all"
         name="example"
         {...callbacks}
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Edit stack" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Edit stack example" }),
+    ).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Edit example" })).toBeNull();
   });
 
   it("lays every action out as its own labelled icon button", () => {

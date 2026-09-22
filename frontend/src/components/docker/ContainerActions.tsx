@@ -7,7 +7,6 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -27,10 +26,10 @@ interface ContainerActionsProps {
     ContainerInfo,
     "Id" | "Labels" | "State" | "updateAvailable" | "url"
   >;
-  /** `buttons` and `icons-all` lay every action out inline; `icons` and
+  /** `icons-all` lays every action out as its own icon button; `icons` and
    * `menu` keep the secondary ones behind the overflow menu, for the tight
    * table/compose action columns. */
-  mode?: "buttons" | "icons" | "icons-all" | "menu";
+  mode?: "icons" | "icons-all" | "menu";
   name: string;
   onOpenLogs: () => void;
   onOpenTerminal: () => void;
@@ -275,9 +274,6 @@ const ContainerActions = ({
     }
   };
   const needsForce = canStop;
-  // Wide surfaces lay every action out; the tight table and compose columns
-  // keep the secondary ones in the overflow menu.
-  const inlineActions = mode === "buttons" || mode === "icons-all";
   const confirmationPending = isKillPending || isRemovePending;
 
   return (
@@ -286,82 +282,39 @@ const ContainerActions = ({
         style={{
           alignItems: "center",
           display: "flex",
-          flexWrap: inlineActions ? "wrap" : "nowrap",
-          gap: mode === "buttons" ? 6 : 2,
-          marginTop: mode === "buttons" ? 12 : undefined,
+          flexWrap: mode === "icons-all" ? "wrap" : "nowrap",
+          gap: 2,
         }}
       >
-        {mode !== "menu" &&
-          (mode === "buttons" ? (
-            <AppButton
-              aria-label={`${primary.label} ${name}`}
-              color={primary.color}
-              disabled={busy || primary.disabled}
-              onClick={primary.onClick}
-              size="small"
-              startIcon={
-                primary.loading ? (
-                  <AppCircularProgress color="inherit" size={14} />
-                ) : (
-                  <Icon height={16} icon={primary.icon} width={16} />
-                )
-              }
-              variant="outlined"
-            >
-              {primary.label}
-            </AppButton>
-          ) : (
+        {mode !== "menu" && (
+          <AppActionIconButton
+            ariaLabel={
+              mode === "icons-all" ? `${primary.label} ${name}` : undefined
+            }
+            disabled={busy || primary.disabled}
+            icon={primary.icon}
+            iconSize={16}
+            label={primary.label}
+            loading={primary.loading}
+            onClick={primary.onClick}
+          />
+        )}
+        {mode === "icons-all" ? (
+          secondaryActions.map((action) => (
             <AppActionIconButton
-              ariaLabel={
-                mode === "icons-all" ? `${primary.label} ${name}` : undefined
+              ariaLabel={`${action.label} ${name}`}
+              color={
+                action.danger ? "var(--app-palette-error-main)" : undefined
               }
-              disabled={busy || primary.disabled}
-              icon={primary.icon}
+              disabled={busy || action.disabled}
+              icon={action.icon}
               iconSize={16}
-              label={primary.label}
-              loading={primary.loading}
-              onClick={primary.onClick}
+              key={action.label}
+              label={action.label}
+              loading={action.loading}
+              onClick={action.onClick}
             />
-          ))}
-        {inlineActions ? (
-          secondaryActions.map((action) =>
-            mode === "buttons" ? (
-              <AppButton
-                // Below 770px the label span is hidden and the button reads as
-                // its icon alone, so the name has to live on the element.
-                aria-label={action.label}
-                color={action.danger ? "error" : "primary"}
-                disabled={busy || action.disabled}
-                key={action.label}
-                onClick={action.onClick}
-                size="small"
-                startIcon={
-                  action.loading ? (
-                    <AppCircularProgress color="inherit" size={14} />
-                  ) : (
-                    <Icon height={16} icon={action.icon} width={16} />
-                  )
-                }
-                variant="outlined"
-              >
-                {action.label}
-              </AppButton>
-            ) : (
-              <AppActionIconButton
-                ariaLabel={`${action.label} ${name}`}
-                color={
-                  action.danger ? "var(--app-palette-error-main)" : undefined
-                }
-                disabled={busy || action.disabled}
-                icon={action.icon}
-                iconSize={16}
-                key={action.label}
-                label={action.label}
-                loading={action.loading}
-                onClick={action.onClick}
-              />
-            ),
-          )
+          ))
         ) : (
           <AppActionIconButton
             ariaLabel={
