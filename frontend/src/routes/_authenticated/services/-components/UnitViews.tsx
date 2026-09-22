@@ -318,7 +318,7 @@ export const UnitCardActions = ({
             disabled={anyPending}
             onClick={() => stopService({ serviceName: unitName })}
             size="small"
-            startIcon={buttonIcon(isStopping, "mdi:stop-circle")}
+            startIcon={buttonIcon(isStopping, "mdi:stop-circle-outline")}
             variant="outlined"
           >
             Stop
