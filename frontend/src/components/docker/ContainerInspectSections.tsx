@@ -9,9 +9,12 @@ import AppTypography from "@/components/ui/AppTypography";
 import { getContainerStatusColor } from "@/constants/statusColors";
 
 const Section = ({
+  action,
   children,
   title,
 }: {
+  /** Sits on the title line, right-aligned, rather than above the rows. */
+  action?: ReactNode;
   children: ReactNode;
   title: string;
 }) => (
@@ -23,9 +26,20 @@ const Section = ({
       minWidth: 0,
     }}
   >
-    <AppTypography fontWeight={700} variant="subtitle2">
-      {title}
-    </AppTypography>
+    <div
+      style={{
+        alignItems: "center",
+        display: "flex",
+        gap: "var(--app-space-8)",
+        justifyContent: "space-between",
+        minWidth: 0,
+      }}
+    >
+      <AppTypography fontWeight={700} noWrap variant="subtitle2">
+        {title}
+      </AppTypography>
+      {action}
+    </div>
     {children}
   </section>
 );
@@ -199,8 +213,8 @@ const ContainerInspectSections = ({
 
       {renderSection(
         "environment",
-        <Section title="Environment variables">
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Section
+          action={
             <AppButton
               aria-pressed={showEnvironment}
               onClick={() => setShowEnvironment((visible) => !visible)}
@@ -209,7 +223,9 @@ const ContainerInspectSections = ({
             >
               {showEnvironment ? "Hide values" : "Show values"}
             </AppButton>
-          </div>
+          }
+          title="Environment variables"
+        >
           {inspect.environment && inspect.environment.length > 0 ? (
             <div>
               {inspect.environment.map((variable, index) => (

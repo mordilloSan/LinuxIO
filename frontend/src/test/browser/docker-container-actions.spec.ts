@@ -10,7 +10,7 @@ test("keeps inspect labels on one line and running state green", async ({
   await page.getByRole("button", { name: "Open container details" }).click();
   const overview = page
     .getByText("Overview and health", { exact: true })
-    .locator("..");
+    .locator("xpath=ancestor::section[1]");
   await expect(overview.getByText("healthy", { exact: true })).toBeVisible();
   await expect(
     overview.getByText("running", { exact: true }).locator(".."),
