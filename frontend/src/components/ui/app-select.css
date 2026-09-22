@@ -209,7 +209,6 @@
   z-index: var(--app-z-dialog);
   background-color: color-mix(in srgb, var(--app-palette-background-paper), transparent 22%);
   backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid color-mix(in srgb, currentColor, transparent 88%);
   border-radius: 8px;
   box-shadow: var(--app-elevation-8);
