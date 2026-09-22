@@ -7,7 +7,6 @@ import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -27,7 +26,10 @@ interface ContainerActionsProps {
     ContainerInfo,
     "Id" | "Labels" | "State" | "updateAvailable" | "url"
   >;
-  mode?: "buttons" | "icons" | "menu";
+  /** `icons-all` lays every action out as its own icon button; `icons` and
+   * `menu` keep the secondary ones behind the overflow menu, for the tight
+   * table/compose action columns. */
+  mode?: "icons" | "icons-all" | "menu";
   name: string;
   onOpenLogs: () => void;
   onOpenTerminal: () => void;
@@ -40,6 +42,7 @@ interface SecondaryAction {
   disabled?: boolean;
   icon: string;
   label: string;
+  loading?: boolean;
   onClick: () => void;
 }
 
@@ -152,7 +155,7 @@ const ContainerActions = ({
     ? {
         color: "error" as const,
         disabled: false,
-        icon: "mdi:stop-circle",
+        icon: "mdi:stop-circle-outline",
         label: "Stop",
         loading: actionPending || isStopPending,
         onClick: () => stopContainer({ containerId: container.Id }),
@@ -183,6 +186,7 @@ const ContainerActions = ({
       disabled: !canRestart,
       icon: "mdi:restart",
       label: "Restart",
+      loading: isRestartPending,
       onClick: () => restartContainer({ containerId: container.Id }),
     },
     ...(container.State === "running"
@@ -190,6 +194,7 @@ const ContainerActions = ({
           {
             icon: "mdi:pause",
             label: "Pause",
+            loading: isPausePending,
             onClick: () => pauseContainer({ containerId: container.Id }),
           },
         ]
@@ -199,6 +204,7 @@ const ContainerActions = ({
           {
             icon: "mdi:play-pause",
             label: "Unpause",
+            loading: isUnpausePending,
             onClick: () => unpauseContainer({ containerId: container.Id }),
           },
         ]
@@ -209,6 +215,7 @@ const ContainerActions = ({
             disabled: isUpdatePending,
             icon: "mdi:update",
             label: isUpdatePending ? "Updating" : "Update",
+            loading: isUpdatePending,
             onClick: () => startUpdate(container.Id, name),
           },
         ]
@@ -275,63 +282,39 @@ const ContainerActions = ({
         style={{
           alignItems: "center",
           display: "flex",
-          flexWrap: mode === "buttons" ? "wrap" : "nowrap",
-          gap: mode === "buttons" ? 6 : 2,
-          marginTop: mode === "buttons" ? 12 : undefined,
+          flexWrap: mode === "icons-all" ? "wrap" : "nowrap",
+          gap: 2,
         }}
       >
-        {mode !== "menu" &&
-          (mode === "buttons" ? (
-            <AppButton
-              aria-label={`${primary.label} ${name}`}
-              color={primary.color}
-              disabled={busy || primary.disabled}
-              onClick={primary.onClick}
-              size="small"
-              startIcon={
-                primary.loading ? (
-                  <AppCircularProgress color="inherit" size={14} />
-                ) : (
-                  <Icon height={16} icon={primary.icon} width={16} />
-                )
-              }
-              variant="outlined"
-            >
-              {primary.label}
-            </AppButton>
-          ) : (
+        {mode !== "menu" && (
+          <AppActionIconButton
+            ariaLabel={
+              mode === "icons-all" ? `${primary.label} ${name}` : undefined
+            }
+            disabled={busy || primary.disabled}
+            icon={primary.icon}
+            iconSize={16}
+            label={primary.label}
+            loading={primary.loading}
+            onClick={primary.onClick}
+          />
+        )}
+        {mode === "icons-all" ? (
+          secondaryActions.map((action) => (
             <AppActionIconButton
-              disabled={busy || primary.disabled}
-              icon={primary.icon}
+              ariaLabel={`${action.label} ${name}`}
+              color={
+                action.danger ? "var(--app-palette-error-main)" : undefined
+              }
+              disabled={busy || action.disabled}
+              icon={action.icon}
               iconSize={16}
-              label={primary.label}
-              loading={primary.loading}
-              onClick={primary.onClick}
+              key={action.label}
+              label={action.label}
+              loading={action.loading}
+              onClick={action.onClick}
             />
-          ))}
-        {mode === "buttons" ? (
-          <AppButton
-            aria-label={
-              pendingActionLabel
-                ? `${pendingActionLabel} ${name}`
-                : `Actions for ${name}`
-            }
-            aria-expanded={Boolean(menuAnchor)}
-            aria-haspopup="menu"
-            disabled={busy}
-            onClick={(event) => setMenuAnchor(event.currentTarget)}
-            size="small"
-            startIcon={
-              busy ? (
-                <AppCircularProgress color="inherit" size={14} />
-              ) : (
-                <Icon height={16} icon="mdi:dots-horizontal" width={16} />
-              )
-            }
-            variant="outlined"
-          >
-            Actions
-          </AppButton>
+          ))
         ) : (
           <AppActionIconButton
             ariaLabel={

@@ -18,6 +18,7 @@ import {
 } from "react";
 
 import type { AppConfig, UIConfig } from "@/api";
+import { createBackgroundTaskCache } from "@/api/background-task-cache";
 import {
   capabilitiesQueryKey,
   wireFromCapabilityState,
@@ -28,6 +29,7 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import type { AuthContextType } from "@/types/auth";
+import type { BackgroundTaskItem } from "@/types/backgroundTasks";
 import type { ConfigContextType, EffectiveAppSettings } from "@/types/config";
 
 const TEST_THEME = buildAppTheme("DARK");
@@ -156,6 +158,29 @@ export function seedConfigCache(
   const { bridge, ui } = buildTestConfigSnapshots(appSettings);
   queryClient.setQueryData(bridgeConfigQueryKey(userId), bridge);
   queryClient.setQueryData(uiConfigQueryKey(userId), ui);
+}
+
+/** Seed the same task entries used by live streams, without mounting a mux. */
+export function seedTaskCache(
+  queryClient: QueryClient,
+  items: BackgroundTaskItem[],
+  userId = "anonymous",
+) {
+  const tasks = createBackgroundTaskCache(queryClient, userId);
+  tasks.downloads.set(items.filter((item) => item.type === "download"));
+  tasks.uploads.set(items.filter((item) => item.type === "upload"));
+  tasks.transfers.set(
+    items.filter(
+      (item) =>
+        item.type === "compression" ||
+        item.type === "extraction" ||
+        item.type === "copy" ||
+        item.type === "move",
+    ),
+  );
+  tasks.indexers.set(items.filter((item) => item.type === "indexer"));
+  tasks.backgroundTasks.set(items.filter((item) => item.type === "task"));
+  return tasks;
 }
 
 interface AppRenderOptions extends Omit<RenderOptions, "wrapper"> {

@@ -733,23 +733,16 @@ export const UserActivityCard = ({ username }: { username: string }) => {
         onClose={cancelKill}
         open={pendingKillSession !== null}
       >
-        <AppDialogTitle
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            borderBottom: "1px solid var(--app-palette-divider)",
-          }}
-        >
+        <AppDialogTitle>
           <Icon
             color="var(--app-palette-error-main)"
             height={22}
             icon="mdi:close-octagon"
             width={22}
           />
-          <AppTypography variant="h6">Terminate session</AppTypography>
+          Terminate session
         </AppDialogTitle>
-        <AppDialogContent style={{ paddingTop: 12 }}>
+        <AppDialogContent>
           <AppTypography color="text.secondary" variant="body2">
             End the active session for{" "}
             <strong>{pendingKillSession?.terminal || "this session"}</strong>
@@ -783,12 +776,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
             </AppAlert>
           ) : null}
         </AppDialogContent>
-        <AppDialogActions
-          style={{
-            padding: 8,
-            borderTop: "1px solid var(--app-palette-divider)",
-          }}
-        >
+        <AppDialogActions>
           <AppButton
             color="inherit"
             disabled={terminateIsPending}

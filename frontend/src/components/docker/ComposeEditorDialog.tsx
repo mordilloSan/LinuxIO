@@ -203,16 +203,14 @@ const ComposeEditorDialog = ({
   return (
     <>
       <AppFullscreenDialog
-        contentStyle={{
-          backgroundColor: "var(--app-palette-background-default)",
-        }}
+        aria-label="Docker Compose editor"
         onClose={handleClose}
         open={open}
       >
         <AppDialogTitle
           style={{
-            backgroundColor: "var(--app-header-background)",
-            borderBottom: "1px solid var(--app-palette-divider)",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           <div
@@ -222,13 +220,11 @@ const ComposeEditorDialog = ({
               gap: 8,
             }}
           >
-            <AppTypography variant="h6">
-              {readOnly
-                ? "View Docker Compose Stack"
-                : mode === "create"
-                  ? "Create Docker Compose Stack"
-                  : "Edit Docker Compose Stack"}
-            </AppTypography>
+            {readOnly
+              ? "View Docker Compose Stack"
+              : mode === "create"
+                ? "Create Docker Compose Stack"
+                : "Edit Docker Compose Stack"}
 
             {mode === "create" ? (
               <AppTextField
@@ -255,11 +251,8 @@ const ComposeEditorDialog = ({
         </AppDialogTitle>
 
         <AppDialogContent
-          style={{
-            padding: 0,
-            display: "flex",
-            flexDirection: "column",
-          }}
+          flush
+          style={{ display: "flex", flexDirection: "column" }}
         >
           <ComposeValidationFeedback
             isValidating={isValidating}
@@ -370,13 +363,7 @@ const ComposeEditorDialog = ({
           </div>
         </AppDialogContent>
 
-        <AppDialogActions
-          style={{
-            backgroundColor: "var(--app-header-background)",
-            borderTop: "1px solid var(--app-palette-divider)",
-            padding: 8,
-          }}
-        >
+        <AppDialogActions>
           {readOnly ? (
             <AppButton onClick={handleClose} variant="contained">
               Close

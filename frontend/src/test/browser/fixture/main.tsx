@@ -12,6 +12,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
+import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
 import { Route as NetworkRoute } from "@/routes/_authenticated/network/route";
 import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
@@ -28,6 +29,7 @@ import ProcessesFixturePage from "./routes/ProcessesPage";
 
 installTabNavigationIntent();
 
+const BackgroundTasksPage = lazy(() => import("./routes/BackgroundTasksPage"));
 const UsersPage = lazy(() => import("./routes/UsersPage"));
 const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
@@ -36,6 +38,7 @@ const CodeEditorPage = lazy(() => import("./routes/CodeEditorPage"));
 const ContainerActionsPage = lazy(
   () => import("./routes/ContainerActionsPage"),
 );
+const VolumesPage = lazy(() => import("./routes/VolumesPage"));
 const FileBrowserReadPathsPage = lazy(
   () => import("./routes/FileBrowserReadPathsPage"),
 );
@@ -48,7 +51,9 @@ const VirtualExpansionTablePage = lazy(
   () => import("./routes/VirtualExpansionTablePage"),
 );
 const GeneralLogsPage = lazy(() => import("./routes/GeneralLogsPage"));
+const SchedulesPage = lazy(() => import("./routes/SchedulesPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
+const DialogGalleryPage = lazy(() => import("./routes/DialogGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
 const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
 const NetworkHandoffPage = lazy(() => import("./routes/NetworkHandoffPage"));
@@ -119,6 +124,14 @@ const networkHandoffRoute = createRoute({
   path: "network",
   validateSearch: NetworkRoute.options.validateSearch,
 });
+const volumesRoute = createRoute({
+  component: VolumesPage,
+  getParentRoute: () => authenticatedRoute,
+  path: "docker/volumes",
+  validateSearch: (search) => ({
+    volume: typeof search.volume === "string" ? search.volume : undefined,
+  }),
+});
 const vmBridgeRoute = createRoute({
   component: VMBridgePage,
   getParentRoute: () => authenticatedRoute,
@@ -184,6 +197,12 @@ const generalLogsRoute = createRoute({
   component: GeneralLogsPage,
   getParentRoute: () => rootRoute,
   path: "logs",
+  validateSearch: LogsRoute.options.validateSearch,
+});
+const schedulesRoute = createRoute({
+  component: SchedulesPage,
+  getParentRoute: () => rootRoute,
+  path: "schedules",
 });
 const lightGeneralLogsRoute = createRoute({
   component: GeneralLogsPage,
@@ -210,6 +229,13 @@ const stylingLightRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "styling/light",
 });
+const dialogGalleryRoutes = ["dark", "light"].map((scheme) =>
+  createRoute({
+    component: DialogGalleryPage,
+    getParentRoute: () => rootRoute,
+    path: `styling/${scheme}/dialogs`,
+  }),
+);
 const topologySearch = (search: Record<string, unknown>) => ({
   container:
     typeof search.container === "string" ? search.container : undefined,
@@ -278,8 +304,18 @@ const failedRoute = createRoute({
   path: "error",
 });
 
+const backgroundTasksRoute = createRoute({
+  component: BackgroundTasksPage,
+  getParentRoute: () => rootRoute,
+  path: "/background-tasks",
+});
 const routeTree = rootRoute.addChildren([
-  authenticatedRoute.addChildren([networkHandoffRoute, vmBridgeRoute]),
+  backgroundTasksRoute,
+  authenticatedRoute.addChildren([
+    networkHandoffRoute,
+    vmBridgeRoute,
+    volumesRoute,
+  ]),
   accountsRoute.addChildren([accountsIndexRoute, groupsRoute, failedRoute]),
   accessibilityRoute,
   iconsRoute,
@@ -292,11 +328,13 @@ const routeTree = rootRoute.addChildren([
   virtualExpansionRoute,
   lightVirtualExpansionRoute,
   generalLogsRoute,
+  schedulesRoute,
   lightGeneralLogsRoute,
   virtualFileBrowserRoute,
   virtualGridRoute,
   stylingDarkRoute,
   stylingLightRoute,
+  ...dialogGalleryRoutes,
   dockerTopologyRoute,
   lightTopologyRoute,
   storageTopologyRoute,

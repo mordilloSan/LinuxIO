@@ -4,10 +4,10 @@
 > delivery targets are not implemented yet.
 
 This plan defines LinuxIO's durable user-facing alert lifecycle. It deliberately
-separates alerts from live Tasks, scheduled-run records, journald logs, transient
-toasts, and external delivery. See the
+separates alerts from live Tasks, native script execution state, journald logs,
+transient toasts, and external delivery. See the
 [API reliability roadmap](./api-reliability-roadmap.md) for dependency order and
-[Scheduled Execution](./scheduled-execution.md) for timer, run, and log
+[Scheduled Execution](../scheduled-execution.md) for timer, run, and log
 ownership.
 
 ## Domain boundaries
@@ -17,7 +17,7 @@ These records answer different questions:
 | Record | Question it answers | Authority |
 |---|---|---|
 | Task | What is this live API operation doing? | `TaskService` or its explicit durable executor |
-| Scheduled run | When and how did this timer-triggered execution finish? | systemd plus a bounded LinuxIO run summary |
+| Scheduled run | When and how did this timer-triggered execution finish? | systemd state and retained journal evidence |
 | Log | What diagnostic output did the executor produce? | journald |
 | Alert | What condition currently needs a user's attention? | LinuxIO alert store |
 | Delivery attempt | Was an alert transition sent to an external target? | LinuxIO delivery state |
@@ -126,9 +126,10 @@ Phase 6 starts with:
 - `alert_seen` — per-UID seen timestamp.
 
 Phase 8 adds `delivery_attempts` for target, transition, attempt time, outcome,
-and bounded retry state, because delivery is alert state. Scheduled-run
-summaries do not live here; the scheduling plan owns them in its own store and
-reaches this daemon only as an alert source.
+and bounded retry state, because delivery is alert state. Scheduled-script
+status and logs remain in systemd and journald; scheduling has no separate
+run-summary store and reaches the alert layer only through a future source
+integration.
 
 Notification target secrets remain in a separately protected configuration
 surface; they do not belong in alert rows or delivery history.
@@ -268,15 +269,20 @@ are optional later behavior, with an explicit source and delivery policy.
 ### Submission and reconciliation
 
 Task or run completion remains authoritative if alert persistence fails. Source
-owners persist the authoritative outcome before submitting an idempotent alert
-update. Their reconciliation service retries from the existing outcome record
-or re-observes the condition; it must not execute the original action again.
+owners establish the outcome from their authoritative state before submitting
+an idempotent alert update. Retry from an existing outcome record or re-observe
+the native condition; never execute the original action again. This does not
+require scheduled scripts to maintain a duplicate execution-history store.
 Use a short-lived systemd service and timer where the domain has no existing
 reconciliation owner. Define the retry cadence and bounded work per pass in the
-integration. No live bridge is required for retries or unknown-run detection.
+integration. Retries must work without a live bridge.
 
-For scheduled runs, reconciliation belongs to the scheduling implementation;
-bridge-on-read reconciliation alone is insufficient for unattended alerts.
+For scheduled scripts, prefer native failure triggers such as `OnFailure=`.
+The notification integration must define unattended retry and recovery behavior
+against native evidence, including journal-retention gaps; it cannot rely on a
+future scheduler worker, a run-summary store, or a logged-in bridge. Missing
+historical evidence alone is not a script failure. Scheduling and journal
+logging can ship before this notification integration.
 Delivery retries after a committed alert belong to the alert delivery layer.
 Frontend Task recovery and toast history never manufacture alerts.
 

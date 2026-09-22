@@ -98,6 +98,7 @@ export function useRecoveredTasks(
     [refreshCapabilities],
   );
   const {
+    tasks,
     activeIndexerIdsRef,
     activeBackgroundTaskIdsRef,
     activeFileTransferTaskIdsRef,
@@ -271,23 +272,31 @@ export function useRecoveredTasks(
           setIsIndexerDialogOpen(true);
           setIndexers((prev) => [
             ...prev,
-            {
-              id: task.id,
-              taskId: task.id,
-              type: "indexer",
-              path: requestString(metadata, "path") ?? "/",
-              bytesIndexed: 0,
-              filesIndexed: 0,
-              dirsIndexed: 0,
-              totalSize: 0,
-              durationMs: 0,
-              currentPath: "",
-              phase: "connecting",
-              progress: 0,
-              label: "Connecting to indexer...",
-              state: "connecting",
-              abortController,
-            },
+            mergeIndexerProgress(
+              {
+                id: task.id,
+                taskId: task.id,
+                type: "indexer",
+                path: requestString(metadata, "path") ?? "/",
+                bytesIndexed: 0,
+                filesIndexed: 0,
+                dirsIndexed: 0,
+                totalSize: 0,
+                durationMs: 0,
+                currentPath: "",
+                phase: "connecting",
+                progress: 0,
+                label: "Connecting to indexer...",
+                state: "connecting",
+                operation:
+                  requestString(metadata, "path") &&
+                  requestString(metadata, "path") !== "/"
+                    ? "reindex"
+                    : "index",
+                abortController,
+              },
+              (task.progress?.detail as IndexerProgressFrame | undefined) ?? {},
+            ),
           ]);
           watch({
             onProgress: (nextProgress) => {
@@ -333,7 +342,10 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
         case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH:
         case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH: {
-          if (activeFileTransferTaskIdsRef.current.has(task.id)) {
+          if (
+            activeFileTransferTaskIdsRef.current.has(task.id) ||
+            tasks.get(task.id)
+          ) {
             return;
           }
           if (activeBackgroundTaskIdsRef.current.has(task.id)) return;
@@ -430,6 +442,7 @@ export function useRecoveredTasks(
       // Stable runtime refs and setters: they arrive as plain function
       // params, so neither the compiler nor the lint rule can prove them
       // stable without listing them.
+      tasks,
       activeBackgroundTaskIdsRef,
       activeFileTransferTaskIdsRef,
       activeIndexerIdsRef,

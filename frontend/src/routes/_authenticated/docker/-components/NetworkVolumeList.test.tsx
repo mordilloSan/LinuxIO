@@ -187,6 +187,42 @@ describe("Docker network and volume focused details", () => {
     });
   });
 
+  it("shows volume size, references and the local path in table rows", () => {
+    mocks.data = [
+      {
+        Name: "data",
+        Driver: "local",
+        Mountpoint: "/var/lib/docker/volumes/data/_data",
+        UsageData: { Size: 2048, RefCount: 2 },
+      },
+      {
+        Name: "empty",
+        Driver: "local",
+        Mountpoint: "/var/lib/docker/volumes/empty/_data",
+        UsageData: { Size: 0, RefCount: 0 },
+      },
+      {
+        Name: "unknown",
+        Driver: "plugin",
+        Mountpoint: "",
+        UsageData: { Size: -1, RefCount: -1 },
+      },
+    ];
+    render(<VolumeList viewMode="table" />);
+    const table = screen.getByRole("table", { name: "Docker volumes" });
+    expect(within(table).getByText("2 KB")).toBeInTheDocument();
+    expect(within(table).getByText("2", { exact: true })).toBeInTheDocument();
+    expect(
+      within(table).getByText("/var/lib/docker/volumes/data/_data"),
+    ).toBeInTheDocument();
+    expect(within(table).getByText("0 Bytes")).toBeInTheDocument();
+    expect(within(table).getByText("0", { exact: true })).toBeInTheDocument();
+    expect(within(table).getAllByText("Unavailable")).toHaveLength(2);
+    expect(
+      within(table).getByText("Local path unavailable"),
+    ).toBeInTheDocument();
+  });
+
   it("browses and backs up an accessible volume with running-writer warning", async () => {
     mocks.search = { volume: "data" };
     mocks.data = [

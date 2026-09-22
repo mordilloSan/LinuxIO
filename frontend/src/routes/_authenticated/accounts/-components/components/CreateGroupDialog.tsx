@@ -62,14 +62,7 @@ const CreateGroupDialog = ({ open, onClose }: CreateGroupDialogProps) => {
     <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Create Group</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             autoFocus
             fullWidth

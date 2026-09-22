@@ -81,7 +81,7 @@ const presetButtonStyle: CSSProperties = {
 
 const formGridStyle = (isMobile: boolean): CSSProperties => ({
   display: "grid",
-  gap: "var(--app-space-16)",
+  gap: "var(--app-dialog-field-gap)",
   gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
 });
 
@@ -432,7 +432,7 @@ export default function CreateVMDialog({
       }}
       open={open}
     >
-      <form onSubmit={handleSubmit}>
+      <form className="app-dialog-form" onSubmit={handleSubmit}>
         <AppDialogTitle>Create VM</AppDialogTitle>
         <AppDialogContent>
           <div

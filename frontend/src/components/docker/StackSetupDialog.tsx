@@ -126,38 +126,11 @@ const StackSetupDialog = ({
     validateWorkingDir({ dirPath: workingDir.trim() });
   };
   return (
-    <GeneralDialog
-      fullWidth
-      maxWidth="sm"
-      onClose={onClose}
-      open={open}
-      paperStyle={{
-        backgroundColor: "var(--app-palette-background-default)",
-      }}
-    >
-      <AppDialogTitle
-        style={{
-          backgroundColor: "var(--app-header-background)",
-          borderBottom: "1px solid var(--app-palette-divider)",
-        }}
-      >
-        <AppTypography variant="h6">
-          Create New Docker Compose Stack
-        </AppTypography>
-      </AppDialogTitle>
+    <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open={open}>
+      <AppDialogTitle>Create New Docker Compose Stack</AppDialogTitle>
 
-      <AppDialogContent
-        style={{
-          paddingTop: 12,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--app-space-12)",
-          }}
-        >
+      <AppDialogContent>
+        <div className="app-dialog-fields">
           <AppTextField
             autoFocus
             error={!!errors.stackName}
@@ -203,13 +176,7 @@ const StackSetupDialog = ({
         </div>
       </AppDialogContent>
 
-      <AppDialogActions
-        style={{
-          backgroundColor: "var(--app-header-background)",
-          borderTop: "1px solid var(--app-palette-divider)",
-          padding: 8,
-        }}
-      >
+      <AppDialogActions>
         <AppButton disabled={isValidating} onClick={onClose}>
           Cancel
         </AppButton>

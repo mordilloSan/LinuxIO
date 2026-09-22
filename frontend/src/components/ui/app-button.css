@@ -131,23 +131,6 @@
   border-color: var(--app-palette-action-disabled);
 }
 
-/* ── dialog action modifier ───────────────────── */
-.app-btn--dialog-action {
-  padding: 12px 24px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-.app-btn--dialog-action:hover {
-  background-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 87%);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--app-palette-primary-main), transparent 73%);
-}
-
-.app-btn--dialog-action:disabled {
-  opacity: 0.5;
-}
-
 /* ── mobile: hide text labels, keep icons only ─── */
 @media (max-width: 769.95px) {
   .app-btn__label {

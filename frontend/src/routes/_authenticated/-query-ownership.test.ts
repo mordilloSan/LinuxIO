@@ -52,6 +52,11 @@ describe("targeted route query ownership", () => {
         fields: ["listQueryOptions", "selectedQueryOptions"],
         route: "services/sockets.tsx",
       },
+      {
+        consumers: ["services/schedules.tsx"],
+        fields: ["listQueryOptions", "selectedQueryOptions"],
+        route: "services/schedules.tsx",
+      },
     ] as const;
 
     for (const entry of cases) {

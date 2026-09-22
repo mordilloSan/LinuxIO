@@ -115,14 +115,7 @@ const EditUserDialog = ({
     >
       <AppDialogTitle>Edit User: {user.username}</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             disabled
             fullWidth

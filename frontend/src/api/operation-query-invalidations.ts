@@ -55,6 +55,11 @@ const UNIT_KEYS = [
   endpointQueryPrefix("systemd.list_timers"),
   endpointQueryPrefix("systemd.get_unit_info"),
 ];
+const SCHEDULE_KEYS = [
+  ...UNIT_KEYS,
+  endpointQueryPrefix("schedules.list"),
+  endpointQueryPrefix("schedules.get"),
+];
 
 // The datetime handler prefix covers get_timezone/get_ntp_status/get_ntp_servers.
 const DATETIME_KEYS: QueryKey[] = [
@@ -170,6 +175,14 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "systemd.mask_service": UNIT_KEYS,
   "systemd.unmask_service": UNIT_KEYS,
   "systemd.reset_failed_service": UNIT_KEYS,
+
+  "schedules.create": SCHEDULE_KEYS,
+  "schedules.update": SCHEDULE_KEYS,
+  "schedules.delete": SCHEDULE_KEYS,
+  "schedules.enable": SCHEDULE_KEYS,
+  "schedules.disable": SCHEDULE_KEYS,
+  "schedules.run_now": SCHEDULE_KEYS,
+  "schedules.stop": SCHEDULE_KEYS,
 
   "network.set_ipv4": [
     endpointQueryPrefix("network.get_network_info"),

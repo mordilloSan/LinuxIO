@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 import {
   useCallback,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -102,12 +103,20 @@ const AppAutocomplete = (props: AppAutocompleteProps) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [optionFontSize, setOptionFontSize] = useState<string>();
   const [activeIndex, setActiveIndex] = useState(-1);
   const [singleInputDraft, setSingleInputDraft] = useState<string | null>(null);
   const [singleInputDraftBaseValue, setSingleInputDraftBaseValue] = useState(
     isMultiple ? "" : props.value,
   );
   const [multipleInputValue, setMultipleInputValue] = useState("");
+
+  // Portaled options must keep the field's inherited typography.
+  useLayoutEffect(() => {
+    if (open && inputRef.current) {
+      setOptionFontSize(getComputedStyle(inputRef.current).fontSize);
+    }
+  }, [open]);
 
   const setContainerNode = useCallback((node: HTMLDivElement | null) => {
     containerRef.current = node;
@@ -346,6 +355,7 @@ const AppAutocomplete = (props: AppAutocompleteProps) => {
         onClose={() => setOpen(false)}
         open={open && !disabled && (loading || filteredOptions.length > 0)}
         paperClassName="app-autocomplete__panel"
+        paperStyle={{ fontSize: optionFontSize }}
         transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
         <div

@@ -27,6 +27,8 @@ import (
 // letters, digits, and underscores. Anything else is rejected to keep
 // untrusted UI input from being passed straight to journalctl.
 var journaldFieldMatch = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=.*$`)
+var managedUnitMatch = regexp.MustCompile(`^[A-Za-z0-9:_.@%-]+\.service$`)
+var invocationIDMatch = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 // isValidJournalCursor bounds cursor lookups: journal cursors are printable
 // ASCII key=value pairs joined by semicolons. The value is passed as a single
@@ -90,6 +92,9 @@ type generalLogsRequest struct {
 	timePeriod   string
 	priority     string
 	identifier   string
+	unit         string
+	invocationID string
+	scopeError   error
 	fieldFilters []string
 	follow       bool
 	afterCursor  string
@@ -105,6 +110,9 @@ func streamGeneralLogsChannel(parent context.Context, stream net.Conn, _ runtime
 	ctx, cleanup := bridgeipc.ReceiveOnlyChannelContext(parent, stream)
 	defer cleanup()
 	req := parseGeneralLogsRequest(request)
+	if req.scopeError != nil {
+		return writeLogError(stream, req.scopeError)
+	}
 	slog.Debug("starting general log channel",
 		"component", "logs",
 		"route", streamTypeGeneralLogs,
@@ -192,6 +200,7 @@ func parseGeneralLogsRequest(request apischema.GeneralLogsFollowRequest) general
 	if request.Identifier != nil && strings.TrimSpace(*request.Identifier) != "" {
 		req.identifier = strings.TrimSpace(*request.Identifier)
 	}
+	req.unit, req.invocationID, req.scopeError = parseLogScope(request.Unit, request.InvocationID)
 	if request.Follow != nil {
 		req.follow = *request.Follow
 	}
@@ -208,6 +217,32 @@ func parseGeneralLogsRequest(request apischema.GeneralLogsFollowRequest) general
 	return req
 }
 
+func parseLogScope(unitValue, invocationValue *string) (string, string, error) {
+	unit, invocationID := "", ""
+	if unitValue != nil {
+		unit = strings.TrimSpace(*unitValue)
+		switch {
+		case unit == "":
+		case len(unit) <= 255 && managedUnitMatch.MatchString(unit):
+		default:
+			return "", "", errors.New("invalid scheduled log unit")
+		}
+	}
+	if invocationValue != nil {
+		invocationID = strings.TrimSpace(*invocationValue)
+		switch {
+		case invocationID == "":
+		case invocationIDMatch.MatchString(invocationID):
+		default:
+			return "", "", errors.New("invalid scheduled log invocation ID")
+		}
+	}
+	if invocationID != "" && unit == "" {
+		return "", "", errors.New("an invocation scope requires a unit")
+	}
+	return unit, invocationID, nil
+}
+
 func appendCommonFilters(args []string, req generalLogsRequest) []string {
 	if req.priority != "" {
 		args = append(args, "-p", req.priority)
@@ -215,7 +250,44 @@ func appendCommonFilters(args []string, req generalLogsRequest) []string {
 	if req.identifier != "" {
 		args = append(args, "-t", req.identifier)
 	}
-	return append(args, req.fieldFilters...)
+	if req.unit != "" && req.invocationID == "" {
+		return append(append(args, "--unit", req.unit), req.fieldFilters...)
+	}
+	branches := journalMatchBranches(req)
+	if len(branches) == 0 {
+		return append(args, req.fieldFilters...)
+	}
+	for index, branch := range branches {
+		if index > 0 {
+			args = append(args, "+")
+		}
+		args = append(args, branch...)
+	}
+	return args
+}
+
+// journalMatchBranches mirrors journalctl -u's unit and PID 1/object matches.
+// Unit output and manager lifecycle records use different fields. Invocation
+// correlation adds the corresponding field to each branch, preserving the OR
+// relationship while keeping custom filters conjunctive within every branch.
+func journalMatchBranches(req generalLogsRequest) [][]string {
+	if req.unit == "" {
+		return nil
+	}
+	unitBranches := [][]string{
+		{"_SYSTEMD_UNIT=" + req.unit},
+		{"UNIT=" + req.unit, "_PID=1"},
+		{"OBJECT_SYSTEMD_UNIT=" + req.unit, "_UID=0"},
+	}
+	if req.invocationID != "" {
+		unitBranches[0] = append(unitBranches[0], "_SYSTEMD_INVOCATION_ID="+req.invocationID)
+		unitBranches[1] = append(unitBranches[1], "INVOCATION_ID="+req.invocationID)
+		unitBranches[2] = append(unitBranches[2], "OBJECT_SYSTEMD_INVOCATION_ID="+req.invocationID)
+	}
+	for index, branch := range unitBranches {
+		unitBranches[index] = append(branch, req.fieldFilters...)
+	}
+	return unitBranches
 }
 
 func backlogArgs(req generalLogsRequest) []string {
@@ -702,8 +774,13 @@ func GetGeneralLogsPage(ctx context.Context, request apischema.GeneralLogsPageRe
 		TimePeriod:   request.TimePeriod,
 		Priority:     request.Priority,
 		Identifier:   request.Identifier,
+		Unit:         request.Unit,
+		InvocationID: request.InvocationID,
 		FieldFilters: request.FieldFilters,
 	})
+	if req.scopeError != nil {
+		return resp, req.scopeError
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, pageLookupTimeout)
 	defer cancel()

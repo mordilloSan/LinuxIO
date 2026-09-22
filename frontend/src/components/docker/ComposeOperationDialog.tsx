@@ -220,7 +220,6 @@ const ComposeOperationDialog = ({
       onClose={handleClose}
       open={open}
       paperStyle={{
-        backgroundColor: "var(--app-palette-background-default)",
         maxHeight: "80vh",
       }}
       slotProps={{
@@ -231,8 +230,6 @@ const ComposeOperationDialog = ({
     >
       <AppDialogTitle
         style={{
-          backgroundColor: "var(--app-header-background)",
-          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -245,9 +242,7 @@ const ComposeOperationDialog = ({
             gap: "var(--app-space-4)",
           }}
         >
-          <AppTypography variant="h6">
-            {getActionLabel()} Stack: {projectName}
-          </AppTypography>
+          {getActionLabel()} Stack: {projectName}
           {/* Outcome marker: spinner while the operation runs, then the state
               it settled in. */}
           {isRunning ? (
@@ -280,8 +275,8 @@ const ComposeOperationDialog = ({
       {/* Stable frame; what changes with the content is how the two sections
           divide it. */}
       <AppDialogContent
+        flush
         style={{
-          padding: 0,
           display: "flex",
           flexDirection: "column",
           minHeight: "380px",

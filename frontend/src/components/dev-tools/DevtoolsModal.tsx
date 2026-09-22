@@ -72,7 +72,6 @@ export function DevtoolsModal({
       onClose={onClose}
       open={open}
       paperStyle={{
-        borderRadius: "var(--app-radius-lg)",
         height: "100%",
         overflow: "hidden",
         width: "100%",

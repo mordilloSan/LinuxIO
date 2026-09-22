@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { linuxio } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { createConfigContextValue, render, screen } from "@/test/render";
+import {
+  act,
+  createConfigContextValue,
+  createTestQueryClient,
+  render,
+  screen,
+  seedCapabilityCache,
+  waitFor,
+} from "@/test/render";
 import type { EffectiveAppSettings } from "@/types/config";
 
 import SettingsPage from "./SettingsPage";
@@ -150,7 +159,7 @@ describe("SettingsPage tab param", () => {
   it("falls back to General for a privileged tab an unprivileged session opens", () => {
     mocks.search = { tab: "power" };
 
-    render(<SettingsPage />);
+    render(<SettingsPage />, { capabilities: { tunedAvailable: true } });
 
     expect(
       screen.queryByRole("tab", { name: "Power" }),
@@ -177,5 +186,81 @@ describe("SettingsPage tab param", () => {
       search: (previous: { tab?: SettingsTab }) => { tab?: SettingsTab };
     };
     expect(toGeneral.search({ tab: "theme" })).toEqual({ tab: undefined });
+  });
+});
+
+describe("SettingsPage optional capabilities", () => {
+  it.each([
+    { dockerAvailable: true, tunedAvailable: true },
+    { dockerAvailable: true, tunedAvailable: false },
+    { dockerAvailable: false, tunedAvailable: true },
+    { dockerAvailable: false, tunedAvailable: false },
+    { dockerAvailable: null, tunedAvailable: null },
+  ])("shows only available tabs for %j", (capabilities) => {
+    render(<SettingsPage />, { auth: { privileged: true }, capabilities });
+
+    for (const [name, available] of [
+      ["Docker", capabilities.dockerAvailable],
+      ["Power", capabilities.tunedAvailable],
+    ] as const) {
+      expect(screen.queryAllByRole("tab", { name })).toHaveLength(
+        available === true ? 1 : 0,
+      );
+    }
+    expect(screen.getByRole("tab", { name: "Capabilities" })).toBeVisible();
+  });
+
+  it.each(["docker", "power"])(
+    "falls back to General without fetching an unavailable %s section",
+    (tab) => {
+      mocks.search = { tab };
+      const queryClient = createTestQueryClient();
+      render(<SettingsPage />, {
+        auth: { privileged: true },
+        capabilities: { dockerAvailable: false, tunedAvailable: false },
+        queryClient,
+      });
+
+      expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(
+        queryClient.getQueryState(linuxio.power.get_status.queryKey),
+      ).toBeUndefined();
+      expect(
+        queryClient.getQueryState(
+          linuxio.docker.get_container_auto_update.queryKey,
+        ),
+      ).toBeUndefined();
+    },
+  );
+
+  it("updates the tabs when the capability scan changes", async () => {
+    const queryClient = createTestQueryClient();
+    render(<SettingsPage />, { auth: { privileged: true }, queryClient });
+
+    expect(screen.queryByRole("tab", { name: "Docker" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Power" })).toBeNull();
+
+    await act(async () => {
+      seedCapabilityCache(queryClient, {
+        dockerAvailable: true,
+        tunedAvailable: true,
+      });
+    });
+    expect(await screen.findByRole("tab", { name: "Docker" })).toBeVisible();
+    expect(await screen.findByRole("tab", { name: "Power" })).toBeVisible();
+
+    await act(async () => {
+      seedCapabilityCache(queryClient, {
+        dockerAvailable: false,
+        tunedAvailable: false,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("tab", { name: "Docker" })).toBeNull();
+      expect(screen.queryByRole("tab", { name: "Power" })).toBeNull();
+    });
   });
 });

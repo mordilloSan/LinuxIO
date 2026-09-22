@@ -1,5 +1,18 @@
 # Completed or closed TODOs
 
+- [x] Completed [frontend task state unification](../frontend-task-state-unification.md)
+  (2026-09-21): per-user task cache entries, per-task subscriptions, shared live
+  and recovery writers, and one stable actions context. Frontend checks,
+  compiler coverage, and the controlled browser rendering fixture pass.
+
+- [x] Implemented [scheduled scripts](../scheduled-execution.md) through native
+  systemd services/timers and retained journal logs. Administrators can create,
+  edit, enable, disable, run, stop, and delete tasks in Services. No scheduler
+  binary or run-history store was added. The editor includes daily/weekly time
+  controls and the shared directory picker. Selected-user execution and journal
+  output were confirmed on the development host. Reboot, timeout, catch-up,
+  and retention checks remain deployment validation.
+
 - [x] Completed the [first-party monitoring integration](./linuxio-monitoring.md):
   shipped `linuxio-monitoring`, its systemd unit, fixed read/control sockets
   and root peer gate, strict YAML configuration, SQLite history, initial live
@@ -178,6 +191,10 @@ current resource-details layout:
 - ports and labels; and
 - mounts and networks.
 
+Overview and configuration use single-line detail rows, with full values
+available in tooltips when truncated. State colors accept both Docker's raw
+lowercase states and display labels, so `running` consistently uses green.
+
 Start or Stop remains the primary action. Restart, Pause, Unpause, Kill, Edit,
 and Remove use the action menu. State guards prevent invalid actions. Kill and
 Remove require clear confirmation when they can interrupt work or destroy data.
@@ -225,6 +242,12 @@ manual “roll back to an older version” interface remain deferred.
 - [x] Finish Create Volume with name, driver, and optional labels.
 - [x] Remove the current forced deletion and let Docker reject in-use volumes.
 - [x] Show the containers that use each volume and their running state.
+- [x] Show size, references, and the local path in volume cards and table rows,
+  including narrow layouts. The bridge enriches the volume list with Docker's
+  volume-only disk usage (bounded to five seconds), preserving metadata if
+  usage is unavailable. Missing reference counts come from distinct attached
+  containers, including stopped containers; unknown sizes remain unavailable,
+  rather than zero. The volume view refreshes every minute and after mutations.
 - [x] Add **Browse in Navigator** for an accessible volume mountpoint.
 - [x] Add **Download backup** through the existing `filebrowser.archive` task.
 

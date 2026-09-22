@@ -1,4 +1,8 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+
+import { createTestQueryClient } from "@/test/render";
 
 const apiMocks = vi.hoisted(() => ({
   cancelTask: vi.fn(),
@@ -24,11 +28,19 @@ vi.mock("@/api", async () => {
 
 const { useBackgroundTaskRuntime } =
   await import("@/hooks/backgroundTasks/useBackgroundTaskRuntime");
-const { act, renderHook } = await import("@/test/render");
+const { act, renderHook: rtlRenderHook } = await import("@/test/render");
+
+function renderHook() {
+  const queryClient = createTestQueryClient();
+  return rtlRenderHook(() => useBackgroundTaskRuntime(), {
+    wrapper: ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children),
+  });
+}
 
 describe("useBackgroundTaskRuntime", () => {
   it("keeps stable refs and pending local task counters", () => {
-    const { result, rerender } = renderHook(() => useBackgroundTaskRuntime());
+    const { result, rerender } = renderHook();
     const first = result.current;
 
     act(() => {
@@ -56,7 +68,7 @@ describe("useBackgroundTaskRuntime", () => {
   it("records transfer rates from byte deltas and throttles after the first emission", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
-    const { result } = renderHook(() => useBackgroundTaskRuntime());
+    const { result } = renderHook();
 
     expect(result.current.recordTransferRate("upload-1", 100)).toBeUndefined();
 
@@ -73,7 +85,7 @@ describe("useBackgroundTaskRuntime", () => {
   it("clears transfer samples for invalid ids or regressing byte counters", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
-    const { result } = renderHook(() => useBackgroundTaskRuntime());
+    const { result } = renderHook();
 
     result.current.primeTransferRate("download-1", 500);
     vi.setSystemTime(2_000);
@@ -92,7 +104,7 @@ describe("useBackgroundTaskRuntime", () => {
   });
 
   it("allocates duplicate download labels and releases counters", () => {
-    const { result } = renderHook(() => useBackgroundTaskRuntime());
+    const { result } = renderHook();
 
     expect(result.current.allocateDownloadLabelBase("archive.zip", "a")).toBe(
       "archive.zip",
@@ -110,7 +122,7 @@ describe("useBackgroundTaskRuntime", () => {
 
   it("cancels bridge tasks and swallows backend cancellation errors", async () => {
     apiMocks.cancelTask.mockRejectedValue(new Error("already gone"));
-    const { result } = renderHook(() => useBackgroundTaskRuntime());
+    const { result } = renderHook();
 
     expect(() => result.current.cancelBridgeTask("task-1")).not.toThrow();
 

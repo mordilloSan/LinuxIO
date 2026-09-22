@@ -1,20 +1,13 @@
-.container-form-dialog__form {
-  display: flex;
-  flex-direction: column;
-  max-height: inherit;
-  min-height: 0;
-}
-
 .container-form-dialog__content {
   display: flex;
   flex-direction: column;
-  gap: var(--app-space-20);
+  gap: var(--app-dialog-section-gap);
 }
 
 .container-form-dialog__grid,
 .container-form-dialog__runtime-grid {
   display: grid;
-  gap: var(--app-space-16);
+  gap: var(--app-dialog-field-gap);
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: var(--app-space-8);
 }
@@ -28,7 +21,7 @@
 .container-form-dialog__rows {
   display: flex;
   flex-direction: column;
-  gap: var(--app-space-12);
+  gap: var(--app-dialog-field-gap);
 }
 
 .container-form-dialog__section-content {

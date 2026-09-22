@@ -44,6 +44,23 @@ describe("generated application router", () => {
     }
   });
 
+  it("rejects malformed log scopes instead of opening unfiltered history", () => {
+    const validate =
+      router.routesById["/_authenticated/logs"].options.validateSearch;
+    if (typeof validate !== "function")
+      throw new Error("Missing log search validation");
+    for (const search of [
+      { unit: 123 },
+      { unit: "../bad.service" },
+      { invocationId: "0123456789abcdef0123456789abcdef" },
+    ]) {
+      expect(() => validate(search)).toThrow("Invalid scheduled log scope");
+    }
+    expect(validate({ unit: "backup.service" })).toEqual({
+      unit: "backup.service",
+    });
+  });
+
   it("contains the complete generated route topology", () => {
     expect(
       applicationRoutes
@@ -71,6 +88,7 @@ describe("generated application router", () => {
         "/processes/",
         "/services",
         "/services/",
+        "/services/schedules",
         "/services/sockets",
         "/services/timers",
         "/settings",

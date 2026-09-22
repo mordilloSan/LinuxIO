@@ -17,8 +17,8 @@ Focused implementation and design details remain in their own documents:
   defines durable Task execution and recovery mechanics.
 - [Notifications](./notifications.md) defines the notification product and
   storage contract.
-- [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
-  run-summary, and journald ownership boundaries.
+- [Scheduled Execution](../scheduled-execution.md) defines the systemd timer,
+  service, and journald ownership boundaries.
 
 The [TODO index](./README.md) links here instead of duplicating these
 plans.
@@ -103,7 +103,7 @@ Bridge
 │   ├── session Task          in memory, exact-session owner
 │   └── durable Task          persistent record + external execution owner
 ├── alert client              Calls + watch Channel over the alert daemon socket
-└── scheduled-run projection  definitions + bounded run summaries
+└── scheduled-script controls definitions + native service/timer state
 
 Alert daemon (root, standalone, socket-activated)
 ├── alert lifecycle           dedup, resolution, per-user seen state
@@ -115,7 +115,7 @@ Native Linux owners
 
 Server-side persistent state
 ├── alert daemon SQLite       alerts, seen state, delivery attempts
-└── scheduled-run directory   one bounded summary file per systemd invocation
+└── schedule configuration    managed scripts and native unit definitions
 ~~~
 
 | Primitive | Execution owner | Loss behavior |
@@ -125,7 +125,7 @@ Server-side persistent state
 | Session Task | Bridge process | A watcher may detach; ending the owning session or bridge cancels the Task. |
 | Durable Task | External executor plus persistent operation record | A later bridge discovers the same operation by stable ID. |
 | Schedule | Native systemd timer and service | systemd owns activation and process state even when no bridge is connected. |
-| Run summary | One bounded file per systemd invocation in a root-owned run directory | A reconnecting client can query bounded execution history and then open the corresponding journal. |
+| Script status and logs | Native systemd state and retained journal entries | Reconnect reads native state; reboot or journal retention may leave historical outcomes unavailable. |
 | Alert | Standalone root alert daemon owning its own SQLite store | A reconnecting client receives authoritative lifecycle and per-user seen state before live changes. |
 | Delivery | Alert router plus configured target | Matchers select targets; retry and outcome state do not alter the source alert or run. |
 
@@ -489,41 +489,42 @@ bridge Calls and the watch Channel expose authorized alert state to the UI.
   run outcome.
 - [ ] The server-backed navbar replaces local toast-history persistence.
 
-## Phase 7: Scheduled Execution and Run History
+## Phase 7: Scheduled Scripts with Native Status and Logs
 
-Implement [Scheduled Execution](./scheduled-execution.md). LinuxIO manages
-declarative definitions; native systemd `.timer` and `.service` units own
-calendar activation, overlap, process lifetime, timeout, and exit state.
-journald owns stdout and stderr.
+Implemented [Scheduled Execution](../scheduled-execution.md). LinuxIO manages
+scripts and declarative definitions; native systemd `.timer` and `.service`
+units own calendar activation, execution identity, overlap, process lifetime,
+timeout, and exit state. Journald owns stdout and stderr. Use the existing
+privileged bridge, D-Bus controls, and journal viewer.
 
-LinuxIO persists only a bounded run summary: stable run and definition IDs,
-the exact unit and invocation identity, scheduled/started/finished timestamps,
-terminal state, exit status, and a concise result or error. Summaries are one
-file per invocation in a root-owned run directory, written by a short-lived
-worker binary from the generated unit's `ExecStartPre=` and `ExecStopPost=`,
-the `linuxio-docker-update` precedent; there is no scheduler daemon and no
-database. The journal is opened by unit plus invocation identity; raw output
-is never copied into the run directory. Unit operations use the existing D-Bus
-boundary rather than shelling out to `systemctl`.
+The initial feature needs no new worker binary, scheduler daemon, per-run
+summary store, or custom run-reconciliation service. Query current/latest
+native state and retained journal evidence. Correlate by invocation where
+available and display unknown or unavailable history when native evidence is
+missing. Journal persistence and retention determine historical coverage;
+LinuxIO does not promise a permanent ledger of every execution.
 
-A short-lived systemd reconciliation service shares the bridge's read-path
-logic, detects unknown outcomes, and retries alert submissions without a session.
-Writers coordinate updates to the same invocation file and preserve confirmed
-results; reconciliation never re-executes a job.
+Notifications are a separate integration. Native failure triggers can feed
+that design without making notification delivery or a history database a
+prerequisite for scheduling scripts.
 
 ### Phase 7 exit criteria
 
-- [ ] Creating, editing, enabling, disabling, and deleting a schedule converges
+- [x] Creating, editing, enabling, disabling, and deleting a schedule converges
   to deterministic systemd service/timer definitions.
-- [ ] The API reports next/last activation and current unit state from systemd.
-- [ ] Each execution has a stable bounded summary correlated to one systemd
-  invocation and its journal.
-- [ ] Restarting or disconnecting the bridge does not stop scheduling or lose
-  the authoritative execution owner.
-- [ ] Unknown-run detection and alert retries work without a bridge; stale
-  reconciliation cannot overwrite a confirmed finish or reopen a recovered alert.
-- [ ] Overlap, timeout, cancellation, retention, privilege, and script-path
-  policies are explicit and tested.
+- [x] The API reports next/last timer activation and current/latest service
+  state from systemd, distinguishing accepted starts from completed runs.
+- [ ] Scripts run as the approved account with tested privilege, script-path,
+  argument, overlap, missed-run, timeout, cancellation, and deletion policies.
+- [ ] Restarting or disconnecting the bridge does not stop scheduling or logging.
+- [x] The existing journal viewer opens the selected unit and, where supported,
+  invocation; unavailable historical evidence never becomes invented success.
+- [x] Execution and log storage reuse native facilities without a new worker,
+  per-run store, or scheduling reconciliation service.
+
+Configuration and policy checks are automated; the unchecked criteria above
+require deployment validation with a real systemd host. No custom execution
+process runs inside the bridge.
 
 ## Phase 8: Alert Sources, Routing, and Delivery
 
@@ -537,7 +538,9 @@ remain UI feedback or run history.
 Scheduled-run alerts depend on Phase 7. Other sources and external delivery
 depend on Phase 6 and can proceed independently of generic scheduled execution.
 Each source must name its owner for retries and reconciliation without a live
-bridge. Routine update availability stays in-app unless users configure delivery.
+bridge. Scheduled scripts use native evidence and triggers; any durable alert
+retry state belongs to this integration, not a new schedule run-history store.
+Routine update availability stays in-app unless users configure delivery.
 
 Delivery follows an event/matcher/target model:
 
@@ -577,7 +580,7 @@ Capture a baseline and compare:
 - Task start acknowledgement latency;
 - progress replay and Channel memory under a slow consumer;
 - alert insert/list latency, database size, and delivery retry depth;
-- scheduled-run reconciliation and journal-open latency;
+- native schedule status and journal-open latency;
 - reconnect and convergence duration.
 
 Safety tests cover invalid envelopes, privilege checks, exact owner scope,
@@ -610,7 +613,7 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
   mechanics.
 - `notifications.md`: alert lifecycle, metadata storage, API, Channel, routing,
   and frontend behavior.
-- `scheduled-execution.md`: schedule, systemd unit, run-summary, and journald
+- `../scheduled-execution.md`: schedule, systemd unit, status, and journald
   ownership.
 - this roadmap: phase ordering and cross-cutting decisions.
 - `TODO/README.md`: one short entry linking this roadmap.
@@ -630,8 +633,8 @@ This roadmap is complete when:
 - the durable route survives every event it claims to survive;
 - all Tasks expose uniform generic progress while route UIs retain typed detail;
 - alerts have one persistent server owner and one frontend cache owner;
-- scheduled scripts remain systemd-owned and their bounded run summaries link
-  to, rather than duplicate, journald logs;
+- scheduled scripts use systemd execution/state and journald logs, with explicit
+  native retention limits and no duplicate run-history store;
 - no feature relies on a live event stream as its only recovery source;
 - measurements and fault tests meet the agreed gates;
 - the focused documents and TODO index match the implemented state.

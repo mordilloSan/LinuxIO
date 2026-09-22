@@ -1,5 +1,52 @@
 import { expect, test } from "@playwright/test";
 
+import { SEMANTIC_STATUS_COLORS } from "../../theme/colors";
+
+test("keeps inspect labels on one line and running state green", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto("/docker/container-actions");
+  await page.getByRole("button", { name: "Open container details" }).click();
+  const overview = page
+    .getByText("Overview and health", { exact: true })
+    .locator("xpath=ancestor::section[1]");
+  await expect(overview.getByText("healthy", { exact: true })).toBeVisible();
+  await expect(
+    overview.getByText("running", { exact: true }).locator(".."),
+  ).toHaveCSS("--app-chip-color", SEMANTIC_STATUS_COLORS.success);
+
+  for (const width of [1600, 640, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const label of [
+      "Failing streak",
+      "Restart policy",
+      "Working directory",
+      "Restart count",
+    ]) {
+      const text = page.getByText(label, { exact: true });
+      await expect(text).toHaveCSS("white-space", "nowrap");
+      expect(
+        await text.evaluate(
+          (element) =>
+            element.getBoundingClientRect().height <=
+            parseFloat(getComputedStyle(element).lineHeight) + 1,
+        ),
+      ).toBe(true);
+      if (width > 320) {
+        expect(
+          await text.evaluate(
+            (element) => element.scrollWidth <= element.clientWidth,
+          ),
+        ).toBe(true);
+      }
+    }
+  }
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await overview.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("container-details.png") });
+});
+
 test("keeps destructive container actions keyboard-safe and explicit", async ({
   page,
 }) => {
@@ -106,8 +153,7 @@ test("keeps destructive container actions keyboard-safe and explicit", async ({
     })
     .toBe(true);
 
-  await page.getByRole("button", { name: "Actions for example" }).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "Edit example", exact: true }).click();
   const editDialog = page.getByRole("dialog", { name: "Edit example" });
   await expect(editDialog).toBeVisible();
   await expect(
@@ -134,16 +180,16 @@ test("keeps destructive container actions keyboard-safe and explicit", async ({
     .getByRole("button", { name: "Cancel" })
     .click();
 
-  await page.getByRole("button", { name: "Actions for example" }).click();
-  await page.getByRole("menuitem", { name: "Kill" }).click();
+  await page.getByRole("button", { name: "Kill example", exact: true }).click();
   const killDialog = page.getByRole("dialog", { name: "Kill example?" });
   await expect(killDialog).toBeVisible();
   await expect(killDialog).toContainText("SIGKILL");
   await page.keyboard.press("Escape");
   await expect(killDialog).toBeHidden();
 
-  await page.getByRole("button", { name: "Actions for example" }).click();
-  await page.getByRole("menuitem", { name: "Remove" }).click();
+  await page
+    .getByRole("button", { name: "Remove example", exact: true })
+    .click();
   const removeDialog = page.getByRole("dialog", { name: "Remove example?" });
   const confirm = removeDialog.getByRole("button", {
     name: "Remove container",

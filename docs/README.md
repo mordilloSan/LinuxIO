@@ -32,12 +32,15 @@ its plan lands.
 | Doc | Use |
 |-----|-----|
 | [Automatic Updates](./automatic-updates.md) | Per-distribution automatic-update providers, the systemd timers LinuxIO manages, and how the backend selects a provider from `/etc/os-release`. |
+| [Scheduled Scripts](./scheduled-execution.md) | Script scheduling through systemd, execution accounts, task controls, and retained journal logs. |
 | [Storage Topology](./storage-topology.md) | Block-device and mount inventory, application path relationships, live activity, and interpretation limits. |
 
 ## Frontend
 
 | Doc | Use |
 |-----|-----|
+| [Frontend Task State](./frontend-task-state-unification.md) | Task cache ownership, subscriptions, recovery, lifecycle cleanup, and validation. |
+| [Dialog Styling](./dialog-styling.md) | Shared dialog typography, surfaces, form spacing, actions and visual checks. |
 | [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
 | [React Activity and Effects](./react-activity.md) | Retained UI, terminal and console ownership, Effect cleanup, and audit resolutions. |
 | [Table Row Gestures](./table-row-gestures.md) | The one row-interaction contract for every data table: click, long press, double click, Escape; which props opt a table in, and why column defs must be stable. |

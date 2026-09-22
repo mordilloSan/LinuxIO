@@ -1,6 +1,11 @@
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
-import AppTypography from "@/components/ui/AppTypography";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 
 interface ComposePostSaveDialogProps {
   isExecuting?: boolean;
@@ -44,87 +49,26 @@ const ComposePostSaveDialog = ({
   };
 
   return (
-    <GeneralDialog
-      fullWidth
-      maxWidth="xs"
-      onClose={onDoNothing}
-      open={open}
-      paperStyle={{
-        backgroundColor: "var(--app-header-background)",
-      }}
-    >
-      <div
-        style={{
-          padding: "var(--app-space-16)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--app-space-12)",
-          alignItems: "center",
-          textAlign: "center",
-        }}
-      >
-        {/* Title */}
-        <AppTypography
-          fontWeight={600}
-          style={{
-            color: "var(--app-palette-text-primary)",
-          }}
-          variant="h5"
-        >
-          Stack Saved Successfully
-        </AppTypography>
-
-        {/* Message */}
-        <AppTypography
-          style={{
-            marginTop: "var(--app-space-8)",
-            color: "var(--app-palette-text-secondary)",
-            whiteSpace: "pre-line",
-          }}
-          variant="body1"
-        >
+    <GeneralDialog fullWidth maxWidth="xs" onClose={onDoNothing} open={open}>
+      <AppDialogTitle>Stack Saved Successfully</AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText style={{ whiteSpace: "pre-line" }}>
           {getActionMessage()}
-        </AppTypography>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton color="inherit" disabled={isExecuting} onClick={onDoNothing}>
+          Do Nothing
+        </AppButton>
 
-        {/* Buttons */}
-        <div
-          style={{
-            display: "flex",
-            gap: "var(--app-space-8)",
-            justifyContent: "center",
-            width: "100%",
-            marginTop: "var(--app-space-8)",
-          }}
+        <AppButton
+          disabled={isExecuting}
+          onClick={handleAction}
+          variant="contained"
         >
-          <AppButton
-            color="inherit"
-            disabled={isExecuting}
-            onClick={onDoNothing}
-            style={{
-              paddingInline: 12,
-              paddingBlock: 6,
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-              color: "var(--app-palette-text-secondary)",
-            }}
-          >
-            Do Nothing
-          </AppButton>
-
-          <AppButton
-            disabled={isExecuting}
-            onClick={handleAction}
-            style={{
-              paddingInline: 12,
-              paddingBlock: 6,
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-            }}
-          >
-            {getActionLabel()}
-          </AppButton>
-        </div>
-      </div>
+          {getActionLabel()}
+        </AppButton>
+      </AppDialogActions>
     </GeneralDialog>
   );
 };

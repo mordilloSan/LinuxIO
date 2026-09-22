@@ -36,7 +36,6 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import {
   longTextStyles,
-  responsiveTextStyles,
   wrappableChipStyle,
   wrappableChipLabelStyle,
 } from "@/theme/tableStyles";
@@ -155,17 +154,10 @@ const CreateVolumeDialog = ({
       onClose={isPending ? undefined : closeDialog}
       open={open}
     >
-      <form onSubmit={handleSubmit}>
+      <form className="app-dialog-form" onSubmit={handleSubmit}>
         <AppDialogTitle>Create volume</AppDialogTitle>
         <AppDialogContent>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--app-space-12)",
-              marginTop: "var(--app-space-8)",
-            }}
-          >
+          <div className="app-dialog-fields">
             <AppTextField
               autoFocus
               disabled={isPending}
@@ -435,7 +427,7 @@ const VolumeList = ({
   const { data: rawVolumes } = useSuspenseQuery({
     ...linuxio.docker.list_volumes,
     ...{
-      refetchInterval: 10000,
+      refetchInterval: 60000,
     },
   });
   const [search, setSearch] = useState("");
@@ -521,15 +513,20 @@ const VolumeList = ({
     () => [
       {
         accessorKey: "Name",
-        header: "Volume Name",
+        header: "Volume / local path",
         cell: ({ row }) => (
-          <AppTypography
-            fontWeight={500}
-            style={responsiveTextStyles}
-            variant="body2"
-          >
-            {row.original.Name}
-          </AppTypography>
+          <div style={{ minWidth: 0 }}>
+            <AppTypography fontWeight={500} noWrap variant="body2">
+              {row.original.Name}
+            </AppTypography>
+            <AppTypography
+              color="text.secondary"
+              style={{ overflowWrap: "anywhere" }}
+              variant="body2"
+            >
+              {row.original.Mountpoint || "Local path unavailable"}
+            </AppTypography>
+          </div>
         ),
         meta: { align: "left" },
       },
@@ -537,44 +534,27 @@ const VolumeList = ({
         accessorKey: "Driver",
         header: "Driver",
         cell: ({ row }) => (
-          <Chip label={row.original.Driver} size="xsmall" variant="soft" />
-        ),
-        meta: {
-          align: "left",
-          hideBelow: "sm",
-          width: "120px",
-        },
-      },
-      {
-        accessorKey: "Mountpoint",
-        header: "Mountpoint",
-        cell: ({ row }) => (
-          <AppTypography
-            style={{
-              fontFamily: "var(--app-font-mono)",
-              ...longTextStyles,
-            }}
-            variant="body2"
-          >
-            {row.original.Mountpoint || "-"}
+          <AppTypography color="text.secondary" variant="body2">
+            {row.original.Driver}
           </AppTypography>
         ),
         meta: {
           align: "left",
           hideBelow: "md",
+          width: "100px",
         },
       },
       {
         accessorKey: "Scope",
         header: "Scope",
         cell: ({ row }) => (
-          <AppTypography style={responsiveTextStyles} variant="body2">
+          <AppTypography color="text.secondary" variant="body2">
             {row.original.Scope || "local"}
           </AppTypography>
         ),
         meta: {
           align: "left",
-          hideBelow: "sm",
+          hideBelow: "md",
           width: "100px",
         },
       },
@@ -582,28 +562,32 @@ const VolumeList = ({
         id: "size",
         header: "Size",
         cell: ({ row }) => (
-          <AppTypography style={responsiveTextStyles} variant="body2">
+          <AppTypography
+            style={{ fontVariantNumeric: "tabular-nums" }}
+            variant="body2"
+          >
             {formatVolumeSize(row.original.UsageData?.Size)}
           </AppTypography>
         ),
         meta: {
           align: "right",
-          hideBelow: "lg",
-          width: "120px",
+          width: "100px",
         },
       },
       {
         id: "references",
         header: "References",
         cell: ({ row }) => (
-          <AppTypography style={responsiveTextStyles} variant="body2">
+          <AppTypography
+            style={{ fontVariantNumeric: "tabular-nums" }}
+            variant="body2"
+          >
             {formatReferenceCount(row.original.UsageData?.RefCount)}
           </AppTypography>
         ),
         meta: {
           align: "right",
-          hideBelow: "lg",
-          width: "120px",
+          width: "100px",
         },
       },
     ],
@@ -798,14 +782,7 @@ const VolumeList = ({
                 These running containers may be writing to the volume. The
                 archive can contain inconsistent data.
               </AppDialogContentText>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "var(--app-space-4)",
-                  marginTop: "var(--app-space-8)",
-                }}
-              >
+              <div className="app-dialog-fields">
                 {runningVolumeContainers.map((container) => (
                   <Chip
                     key={container.Id}

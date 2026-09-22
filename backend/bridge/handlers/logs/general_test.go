@@ -68,6 +68,58 @@ func TestParseGeneralLogsRequestRejectsInvalidFieldFilters(t *testing.T) {
 	}
 }
 
+func TestJournalMatchBranchesIncludeUnitAndInvocationProducers(t *testing.T) {
+	req := parseGeneralLogsRequest(apischema.GeneralLogsFollowRequest{
+		Unit:         new("linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service"),
+		InvocationID: new("0123456789abcdef0123456789abcdef"),
+		FieldFilters: []string{"PRIORITY=3"},
+	})
+	branches := journalMatchBranches(req)
+	if len(branches) != 3 {
+		t.Fatalf("branches = %d, want 3", len(branches))
+	}
+	joined := strings.Join([]string{
+		strings.Join(branches[0], " "),
+		strings.Join(branches[1], " "),
+		strings.Join(branches[2], " "),
+	}, " + ")
+	for _, want := range []string{
+		"_SYSTEMD_UNIT=linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service _SYSTEMD_INVOCATION_ID=0123456789abcdef0123456789abcdef PRIORITY=3",
+		"UNIT=linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service _PID=1 INVOCATION_ID=0123456789abcdef0123456789abcdef PRIORITY=3",
+		"OBJECT_SYSTEMD_UNIT=linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service _UID=0 OBJECT_SYSTEMD_INVOCATION_ID=0123456789abcdef0123456789abcdef PRIORITY=3",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("branches missing %q: %s", want, joined)
+		}
+	}
+}
+
+func TestParseGeneralLogsRequestRejectsUnsafeScheduleScope(t *testing.T) {
+	req := parseGeneralLogsRequest(apischema.GeneralLogsFollowRequest{
+		Unit:         new("bad unit.service"),
+		InvocationID: new("not-an-invocation"),
+	})
+	if req.unit != "" || req.invocationID != "" {
+		t.Fatalf("unsafe scope accepted: unit=%q invocation=%q", req.unit, req.invocationID)
+	}
+	if req.scopeError == nil {
+		t.Fatal("unsafe scope did not produce a validation error")
+	}
+}
+
+func TestUnitScopeUsesJournalctlNativeMatcher(t *testing.T) {
+	req := parseGeneralLogsRequest(apischema.GeneralLogsFollowRequest{
+		Unit: new("linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service"),
+	})
+	args := strings.Join(backlogArgs(req), " ")
+	if !strings.Contains(args, "--unit linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service") {
+		t.Fatalf("unit scope did not use native matcher: %s", args)
+	}
+	if strings.Contains(args, "_SYSTEMD_UNIT=") {
+		t.Fatalf("unit scope rebuilt native matcher: %s", args)
+	}
+}
+
 func TestBacklogArgs(t *testing.T) {
 	req := parseGeneralLogsRequest(apischema.GeneralLogsFollowRequest{
 		Lines:      new("200"),

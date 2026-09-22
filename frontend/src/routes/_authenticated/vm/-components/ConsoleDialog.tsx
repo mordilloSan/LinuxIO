@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import type { ResultFrame } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
+import { AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useStreamMessageChannel } from "@/hooks/useStreamMessageChannel";
@@ -19,15 +20,6 @@ const consolePaperStyle = (isMobile: boolean): CSSProperties => ({
   maxWidth: isMobile ? "calc(100vw - 16px)" : "min(1200px, calc(100vw - 32px))",
   width: isMobile ? "calc(100vw - 16px)" : "min(1200px, calc(100vw - 32px))",
 });
-
-const consoleHeaderStyle: CSSProperties = {
-  alignItems: "center",
-  borderBottom: "1px solid var(--app-palette-divider)",
-  display: "flex",
-  gap: "var(--app-space-16)",
-  justifyContent: "space-between",
-  padding: "var(--app-space-16) var(--app-space-16)",
-};
 
 const consoleErrorStyle: CSSProperties = {
   margin: "var(--app-space-12) var(--app-space-16) 0",
@@ -128,11 +120,9 @@ export default function ConsoleDialog({
       paperStyle={consolePaperStyle(isMobile)}
       slotProps={{ transition: { onExited } }}
     >
-      <div style={consoleHeaderStyle}>
+      <AppDialogTitle style={{ justifyContent: "space-between" }}>
         <div>
-          <AppTypography component="h2" variant="h6">
-            {vm.name}
-          </AppTypography>
+          {vm.name}
           <AppTypography color="text.secondary" variant="caption">
             {status}
           </AppTypography>
@@ -140,7 +130,7 @@ export default function ConsoleDialog({
         <AppIconButton aria-label="Close console" onClick={onClose}>
           <Icon height={22} icon="mdi:close" width={22} />
         </AppIconButton>
-      </div>
+      </AppDialogTitle>
       {error && (
         <AppAlert severity="error" style={consoleErrorStyle}>
           {error}

@@ -76,8 +76,6 @@ const IndexerStatusDialog = ({
     >
       <AppDialogTitle
         style={{
-          backgroundColor: "var(--app-header-background)",
-          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -113,7 +111,7 @@ const IndexerStatusDialog = ({
               width={24}
             />
           )}
-          <AppTypography variant="h6">{title}</AppTypography>
+          {title}
         </div>
         <AppIconButton
           aria-label="Close indexer status dialog"
@@ -124,11 +122,7 @@ const IndexerStatusDialog = ({
         </AppIconButton>
       </AppDialogTitle>
 
-      <AppDialogContent
-        style={{
-          padding: 12,
-        }}
-      >
+      <AppDialogContent>
         <div
           style={{
             display: "flex",

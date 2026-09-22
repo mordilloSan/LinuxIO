@@ -1206,6 +1206,8 @@ export interface GeneralLogsFollowRequest {
   timePeriod?: string;
   priority?: string;
   identifier?: string;
+  unit?: string;
+  invocationId?: string;
   fieldFilters?: string[];
   follow?: boolean;
   afterCursor?: string;
@@ -1217,6 +1219,8 @@ export interface GeneralLogsPageRequest {
   timePeriod?: string;
   priority?: string;
   identifier?: string;
+  unit?: string;
+  invocationId?: string;
   fieldFilters?: string[];
 }
 
@@ -2070,6 +2074,62 @@ export interface ResourceStatData {
 export interface SambaShare {
   name: string;
   properties: Record<string, string>;
+}
+
+export interface ScheduleCreateRequest {
+  options: ScheduleOptions;
+}
+
+export interface ScheduleDefinition {
+  id: string;
+  options: ScheduleOptions;
+  enabled: boolean;
+}
+
+export interface ScheduleIDRequest {
+  id: string;
+}
+
+export interface ScheduleOptions {
+  name: string;
+  script: string;
+  user: string;
+  arguments: string[];
+  on_calendar: string;
+  timezone: string;
+  persistent: boolean;
+  timeout_seconds: number;
+  working_directory: string;
+}
+
+export interface ScheduleStatus {
+  definition: ScheduleDefinition;
+  unit_name: string;
+  active_state: string;
+  result: string;
+  invocation_id: string;
+  exit_code?: number;
+  exit_status?: number;
+  next_run_at?: string;
+  last_run_at?: string;
+  can_stop: boolean;
+  error?: string;
+}
+
+export interface ScheduleStopRequest {
+  id: string;
+  invocation_id: string;
+}
+
+export interface ScheduleUpdateRequest {
+  id: string;
+  options: ScheduleOptions;
+}
+
+export interface SchedulesListResult {
+  available: boolean;
+  error?: string;
+  schedules: ScheduleStatus[];
 }
 
 export interface SearchResponse {
@@ -3402,6 +3462,34 @@ export interface LinuxIOSchema {
     start: { input: []; request: void; result: PowerStatus };
   };
 
+  schedules: {
+    create: {
+      input: [options: ScheduleOptions];
+      request: ScheduleCreateRequest;
+      result: ScheduleStatus;
+    };
+    delete: { input: [id: string]; request: ScheduleIDRequest; result: void };
+    disable: { input: [id: string]; request: ScheduleIDRequest; result: void };
+    enable: { input: [id: string]; request: ScheduleIDRequest; result: void };
+    get: {
+      input: [id: string];
+      request: ScheduleIDRequest;
+      result: ScheduleStatus;
+    };
+    list: { input: []; request: void; result: SchedulesListResult };
+    run_now: { input: [id: string]; request: ScheduleIDRequest; result: void };
+    stop: {
+      input: [request: ScheduleStopRequest];
+      request: ScheduleStopRequest;
+      result: void;
+    };
+    update: {
+      input: [request: ScheduleUpdateRequest];
+      request: ScheduleUpdateRequest;
+      result: ScheduleStatus;
+    };
+  };
+
   shares: {
     create_nfs_share: {
       input: [request: ShareNFSRequest];
@@ -4069,6 +4157,21 @@ export interface LinuxIOCallSchema {
   "power.get_status": { request: void; result: PowerStatus };
   "power.set_profile": { request: ProfileRequest; result: PowerStatus };
   "power.start": { request: void; result: PowerStatus };
+  "schedules.create": {
+    request: ScheduleCreateRequest;
+    result: ScheduleStatus;
+  };
+  "schedules.delete": { request: ScheduleIDRequest; result: void };
+  "schedules.disable": { request: ScheduleIDRequest; result: void };
+  "schedules.enable": { request: ScheduleIDRequest; result: void };
+  "schedules.get": { request: ScheduleIDRequest; result: ScheduleStatus };
+  "schedules.list": { request: void; result: SchedulesListResult };
+  "schedules.run_now": { request: ScheduleIDRequest; result: void };
+  "schedules.stop": { request: ScheduleStopRequest; result: void };
+  "schedules.update": {
+    request: ScheduleUpdateRequest;
+    result: ScheduleStatus;
+  };
   "shares.create_nfs_share": {
     request: ShareNFSRequest;
     result: SuccessPathResponse;

@@ -72,7 +72,7 @@ const LogDialog = ({
             alignItems: "center",
           }}
         >
-          {titleContent ?? <AppTypography variant="h6">{title}</AppTypography>}
+          {titleContent ?? title}
         </div>
         {extraActions}
         <AppTooltip
@@ -99,12 +99,7 @@ const LogDialog = ({
         </AppIconButton>
       </AppDialogTitle>
 
-      <AppDialogContent
-        style={{
-          padding: 0,
-          borderTop: "1px solid var(--app-palette-divider)",
-        }}
-      >
+      <AppDialogContent flush>
         {error ? (
           <AppAlert
             severity="error"

@@ -221,6 +221,14 @@ export const Route = createFileRoute("/_authenticated/wireguard")({
 Users discover and install the missing tool from the Capability Manager in the
 navbar.
 
+Settings also hides the Docker and Power tabs until `dockerAvailable` and
+`tunedAvailable`, respectively, are true. Power still requires a privileged
+session. Direct links to unavailable tabs display General without mounting or
+fetching the hidden section; a refreshed capability scan updates the tabs.
+TuneD detection includes an installed, stopped systemd unit, so Power remains
+available to start it. Installation guidance stays in Capabilities instead of
+an unavailable-service banner inside Power.
+
 ### 2. In-page gating (NFS within Storage)
 
 Keep the page visible, but warn and disable the dependent actions. Use

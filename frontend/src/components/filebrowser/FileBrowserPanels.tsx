@@ -117,9 +117,7 @@ export const FileBrowserEditorDialog = ({
 
   return (
     <AppFullscreenDialog
-      contentStyle={{
-        backgroundColor: "var(--app-palette-background-default)",
-      }}
+      aria-label="File editor"
       onClose={onCloseEditor}
       open={Boolean(editingPath)}
     >
@@ -227,9 +225,7 @@ export const FileBrowserSaveConflictDialog = ({
     open={Boolean(conflict)}
   >
     <AppDialogTitle>File changed on disk</AppDialogTitle>
-    <AppDialogContent
-      style={{ borderTop: "1px solid var(--app-palette-divider)" }}
-    >
+    <AppDialogContent>
       <AppTypography variant="body1">
         This file changed after you opened it. Reload to discard your edits, or
         overwrite the current file with your edits.
@@ -307,7 +303,6 @@ export const FileBrowserDetailsDialog = ({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingRight: 8,
         }}
       >
         {detailTarget && detailTarget.length > 1
@@ -320,7 +315,6 @@ export const FileBrowserDetailsDialog = ({
       <AppDialogContent
         style={{
           minHeight: 200,
-          borderTop: "1px solid var(--app-palette-divider)",
         }}
       >
         {shouldShowDetailLoader && <ComponentLoader />}
@@ -395,9 +389,7 @@ export const FileBrowserUploadDialog = ({
       open={open}
     >
       <AppDialogTitle>Upload files or folders</AppDialogTitle>
-      <AppDialogContent
-        style={{ borderTop: "1px solid var(--app-palette-divider)" }}
-      >
+      <AppDialogContent>
         <AppTypography color="text.secondary" variant="body2">
           Items will be uploaded to {normalizedPath}
         </AppTypography>
@@ -549,9 +541,7 @@ export const FileBrowserConflictDialog = ({
         {conflicts.length} item{conflicts.length === 1 ? "" : "s"} already exist
         {conflicts.length === 1 ? "s" : ""}
       </AppDialogTitle>
-      <AppDialogContent
-        style={{ borderTop: "1px solid var(--app-palette-divider)" }}
-      >
+      <AppDialogContent>
         <AppTypography style={{ marginBottom: 8 }} variant="body2">
           Choose what to do with each item in {prompt?.destination}. Skipped
           items are left untouched.

@@ -35,7 +35,11 @@ import {
   SettingsSectionShell,
   useSettingsDraft,
 } from "./SettingsSectionForm";
-import { SectionCard, StatusMetric } from "./SettingsSectionPrimitives";
+import {
+  SectionCard,
+  SettingsNote,
+  StatusMetric,
+} from "./SettingsSectionPrimitives";
 
 /**
  * The daemon's plugin registry, in registry order. A listener with an empty
@@ -709,10 +713,10 @@ const MonitoringSettingsSection = () => {
         subtitle="Read-only metrics API bind addresses"
         title="Listeners"
       >
-        <AppAlert severity="info">
+        <SettingsNote title="About listener access">
           Listeners are unauthenticated. Anyone who can reach the address can
           read the selected metrics.
-        </AppAlert>
+        </SettingsNote>
         {draft.listeners.length === 0 ? (
           <AppTypography
             color="text.secondary"

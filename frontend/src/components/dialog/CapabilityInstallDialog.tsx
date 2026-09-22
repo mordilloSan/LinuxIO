@@ -83,7 +83,6 @@ const CapabilityInstallDialog = ({
       onClose={onClose}
       open={open}
       paperStyle={{
-        backgroundColor: "var(--app-palette-background-default)",
         maxHeight: "80vh",
       }}
       slotProps={{
@@ -100,8 +99,6 @@ const CapabilityInstallDialog = ({
       <AppDialogTitle
         style={{
           alignItems: "center",
-          backgroundColor: "var(--app-header-background)",
-          borderBottom: "1px solid var(--app-palette-divider)",
           display: "flex",
           justifyContent: "space-between",
         }}
@@ -120,9 +117,7 @@ const CapabilityInstallDialog = ({
             width={24}
           />
           <div>
-            <AppTypography style={{ fontWeight: 600 }} variant="subtitle1">
-              Installing {capabilityLabel}
-            </AppTypography>
+            <div>Installing {capabilityLabel}</div>
             <AppTypography color="text.secondary" variant="caption">
               {running
                 ? "Installation continues if this dialog is closed"
@@ -143,7 +138,7 @@ const CapabilityInstallDialog = ({
         </AppIconButton>
       </AppDialogTitle>
 
-      <AppDialogContent className="capability-install-dialog__content">
+      <AppDialogContent className="capability-install-dialog__content" flush>
         <div
           aria-live="polite"
           className={`capability-install-dialog__progress ${
@@ -263,12 +258,7 @@ const CapabilityInstallDialog = ({
         </div>
       </AppDialogContent>
 
-      <AppDialogActions
-        style={{
-          backgroundColor: "var(--app-header-background)",
-          borderTop: "1px solid var(--app-palette-divider)",
-        }}
-      >
+      <AppDialogActions>
         <AppButton color="inherit" onClick={onClose}>
           {running ? "Run in background" : "Close"}
         </AppButton>

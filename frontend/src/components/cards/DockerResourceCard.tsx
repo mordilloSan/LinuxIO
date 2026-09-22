@@ -1,7 +1,9 @@
 import { Icon } from "@iconify/react";
 import type { ReactNode } from "react";
 
-import CardIconHeader from "@/components/cards/CardIconHeader";
+import CardIconHeader, {
+  type CardIconHeaderProps,
+} from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import SelectableCard from "@/components/cards/SelectableCard";
 import { CARD_PADDING_SM, GAP_MD, GAP_SM } from "@/theme/constants";
@@ -11,6 +13,7 @@ export interface DockerResourceCardProps {
   actions?: ReactNode;
   children: ReactNode;
   headerRight?: ReactNode;
+  headingVariant?: CardIconHeaderProps["headingVariant"];
   icon: string;
   label: string;
   onOpen?: () => void;
@@ -23,6 +26,7 @@ const DockerResourceCard = ({
   children,
   actions,
   headerRight,
+  headingVariant,
   icon,
   label,
   onOpen,
@@ -51,6 +55,7 @@ const DockerResourceCard = ({
         }}
       >
         <CardIconHeader
+          headingVariant={headingVariant}
           icon={
             <Icon
               color="var(--app-palette-primary-main)"

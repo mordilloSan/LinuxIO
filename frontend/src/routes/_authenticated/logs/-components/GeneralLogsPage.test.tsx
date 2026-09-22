@@ -135,6 +135,28 @@ describe("GeneralLogsPage cursor pagination", () => {
     });
   });
 
+  it("uses scoped unit and invocation requests with an unbounded retained window", async () => {
+    render(
+      <GeneralLogsPage
+        invocationId="0123456789abcdef0123456789abcdef"
+        unit="linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service"
+      />,
+      { queryClient },
+    );
+    await waitFor(() => expect(mocks.openChannel).toHaveBeenCalled());
+    expect(mocks.openChannel).toHaveBeenLastCalledWith("logs.general.follow", {
+      afterCursor: "",
+      fieldFilters: [],
+      follow: true,
+      identifier: "",
+      invocationId: "0123456789abcdef0123456789abcdef",
+      lines: "1500",
+      priority: "",
+      timePeriod: "",
+      unit: "linuxio-schedule-123e4567-e89b-12d3-a456-426614174000.service",
+    });
+  });
+
   it("renders the first frame at once, then batches rows and drops duplicate cursors", () => {
     vi.useFakeTimers();
     render(<GeneralLogsPage />, { queryClient });

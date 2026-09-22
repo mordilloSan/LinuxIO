@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
 
-import { UnitTableView } from "./UnitViews";
+import { UnitCardActions, UnitTableView } from "./UnitViews";
 
 const mocks = vi.hoisted(() => ({
   isMobile: false,
@@ -15,6 +15,11 @@ vi.mock("@/theme", async (importOriginal) => {
     useAppMediaQuery: () => mocks.isMobile,
   };
 });
+
+vi.mock("@/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api")>()),
+  useCallMutation: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
@@ -107,5 +112,49 @@ describe("UnitTableView", () => {
     await user.click(screen.getByText("Alpha"));
 
     expect(onSelect).toHaveBeenCalledWith("one");
+  });
+});
+
+describe("UnitCardActions", () => {
+  it("offers every lifecycle action as its own named icon button", () => {
+    render(
+      <UnitCardActions
+        activeState="active"
+        info={undefined}
+        unitFileState="enabled"
+        unitName="nginx.service"
+      />,
+    );
+
+    for (const label of [
+      "Stop nginx.service",
+      "Restart nginx.service",
+      "Reload nginx.service",
+      "Disable nginx.service",
+      "Mask nginx.service",
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toBeEnabled();
+    }
+  });
+
+  it("guards the running-only actions on an inactive unit", () => {
+    render(
+      <UnitCardActions
+        activeState="inactive"
+        info={undefined}
+        unitFileState="disabled"
+        unitName="nginx.service"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Start nginx.service" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Restart nginx.service" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Enable nginx.service" }),
+    ).toBeEnabled();
   });
 });

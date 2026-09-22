@@ -169,7 +169,11 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
         />
       )}
 
-      <GeneralDialog onClose={() => setQrPeer(null)} open={qrPeer !== null}>
+      <GeneralDialog
+        aria-label="WireGuard peer QR code"
+        onClose={() => setQrPeer(null)}
+        open={qrPeer !== null}
+      >
         <AppDialogContent>
           {qrQuery.isLoading ? (
             <AppTypography>Loading QR code...</AppTypography>

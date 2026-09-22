@@ -532,23 +532,16 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
 
   return (
     <GeneralDialog fullWidth maxWidth="md" onClose={onClose} open={open}>
-      <AppDialogTitle
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          borderBottom: "1px solid var(--app-palette-divider)",
-        }}
-      >
+      <AppDialogTitle>
         <Icon
           color="var(--app-palette-warning-main)"
           height={22}
           icon="mdi:account-alert-outline"
           width={22}
         />
-        <AppTypography variant="h6">Failed logins</AppTypography>
+        Failed logins
       </AppDialogTitle>
-      <AppDialogContent style={{ paddingTop: 12 }}>
+      <AppDialogContent>
         {failedLoginEventsLoading ? (
           <div style={{ display: "grid", gap: 8 }}>
             {skeletonRow("failed-login-1", "28ch")}
@@ -618,12 +611,7 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
           </div>
         )}
       </AppDialogContent>
-      <AppDialogActions
-        style={{
-          padding: 8,
-          borderTop: "1px solid var(--app-palette-divider)",
-        }}
-      >
+      <AppDialogActions>
         <AppButton color="inherit" onClick={onClose}>
           Close
         </AppButton>

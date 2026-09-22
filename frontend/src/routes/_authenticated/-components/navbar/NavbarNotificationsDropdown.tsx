@@ -1,7 +1,5 @@
 import { Icon } from "@iconify/react";
 import {
-  memo,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -17,7 +15,11 @@ import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
-import { useBackgroundTaskState } from "@/hooks/backgroundTasks/useBackgroundTaskState";
+import {
+  useBackgroundTask,
+  useBackgroundTaskList,
+  useBackgroundTasks,
+} from "@/hooks/backgroundTasks/useBackgroundTaskState";
 import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 import { iconSize as iconSizes } from "@/theme/constants";
 
@@ -140,15 +142,17 @@ interface TransferItemProps {
   getTransferIcon: (type: string) => { icon: ReactNode; color: string };
   onCancel: (transfer: TransferLike) => void;
   onIndexerClick: () => void;
-  transfer: TransferLike;
+  id: string;
 }
 
-const TransferItem = memo(function TransferItem({
-  transfer,
+function TransferItem({
+  id,
   getTransferIcon,
   onCancel,
   onIndexerClick,
 }: TransferItemProps) {
+  const transfer: TransferLike | null | undefined = useBackgroundTask(id);
+  if (!transfer) return null;
   const isIndexer = transfer.type === "indexer";
   const visuals = getTransferIcon(transfer.type);
   const label = transfer.label
@@ -236,7 +240,83 @@ const TransferItem = memo(function TransferItem({
       ) : null}
     </li>
   );
-});
+}
+
+function TransferPeek({
+  peekOpen,
+  isFullOpen,
+  onClick,
+}: {
+  peekOpen: boolean;
+  isFullOpen: boolean;
+  onClick: () => void;
+}) {
+  const transfers = useBackgroundTasks();
+  // Pick the transfer with least progress for the peek
+  const peekTransfer =
+    transfers.length > 0
+      ? transfers.reduce(
+          (lowest, t) => (t.progress < lowest.progress ? t : lowest),
+          transfers[0],
+        )
+      : null;
+
+  const peekVisible = peekOpen && peekTransfer && !isFullOpen;
+
+  return (
+    <AppButton
+      aria-label={
+        peekTransfer
+          ? `Open notifications: ${
+              peekTransfer.label
+                ? removePercentage(peekTransfer.label)
+                : getTransferTitle(peekTransfer.type)
+            } ${
+              peekTransfer.indeterminate === true
+                ? "in progress"
+                : `${Math.round(peekTransfer.progress)}% complete`
+            }`
+          : "Open notifications"
+      }
+      className="app-navbar-notifications__peek"
+      disabled={!peekVisible}
+      onClick={onClick}
+      style={{
+        cursor: peekVisible ? "pointer" : undefined,
+        overflow: "hidden",
+        maxWidth: peekVisible ? 200 : 0,
+        opacity: peekVisible ? 1 : 0,
+        minWidth: 0,
+        padding: 0,
+        border: 0,
+        background: "transparent",
+      }}
+      tabIndex={peekVisible ? 0 : -1}
+    >
+      {peekTransfer && (
+        <>
+          <AppLinearProgress
+            style={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
+            value={peekTransfer.progress}
+            variant={
+              peekTransfer.indeterminate === true
+                ? "indeterminate"
+                : "determinate"
+            }
+          />
+          <span className="app-navbar-notifications__peek-copy">
+            {peekTransfer.label
+              ? removePercentage(peekTransfer.label)
+              : getTransferTitle(peekTransfer.type)}{" "}
+            {peekTransfer.indeterminate === true
+              ? ""
+              : `${Math.round(peekTransfer.progress)}%`}
+          </span>
+        </>
+      )}
+    </AppButton>
+  );
+}
 
 // --- Main component ---
 
@@ -257,7 +337,7 @@ export function NavbarNotificationsDropdown() {
   const clearToastHistory = useClearToastHistory();
 
   // File transfers
-  const { transfers } = useBackgroundTaskState();
+  const transfers = useBackgroundTaskList();
   const {
     cancelDownload,
     cancelUpload,
@@ -352,27 +432,16 @@ export function NavbarNotificationsDropdown() {
     setAnchorEl(ref.current);
   };
 
-  const handleCancel = useCallback(
-    (transfer: TransferLike) => {
-      if (transfer.type === "indexer") return;
-      if (transfer.type === "download") cancelDownload(transfer.id);
-      else if (transfer.type === "upload") cancelUpload(transfer.id);
-      else if (transfer.type === "compression") cancelCompression(transfer.id);
-      else if (transfer.type === "extraction") cancelExtraction(transfer.id);
-      else if (transfer.type === "copy") cancelCopy(transfer.id);
-      else if (transfer.type === "move") cancelMove(transfer.id);
-      else if (transfer.type === "task") cancelTask(transfer.id);
-    },
-    [
-      cancelDownload,
-      cancelUpload,
-      cancelCompression,
-      cancelExtraction,
-      cancelCopy,
-      cancelMove,
-      cancelTask,
-    ],
-  );
+  const handleCancel = (transfer: TransferLike) => {
+    if (transfer.type === "indexer") return;
+    if (transfer.type === "download") cancelDownload(transfer.id);
+    else if (transfer.type === "upload") cancelUpload(transfer.id);
+    else if (transfer.type === "compression") cancelCompression(transfer.id);
+    else if (transfer.type === "extraction") cancelExtraction(transfer.id);
+    else if (transfer.type === "copy") cancelCopy(transfer.id);
+    else if (transfer.type === "move") cancelMove(transfer.id);
+    else if (transfer.type === "task") cancelTask(transfer.id);
+  };
 
   const clearCompletedTransfers = () => setCompletedTransfers([]);
 
@@ -447,113 +516,48 @@ export function NavbarNotificationsDropdown() {
     }
   };
 
-  const getTransferIcon = useCallback(
-    (type: string) => {
-      switch (type) {
-        case "download":
-        case "compression":
-          return {
-            icon: (
-              <Icon height={iconSize} icon="mdi:download" width={iconSize} />
-            ),
-            color: "var(--app-palette-info-main)",
-          };
-        case "upload":
-        case "extraction":
-          return {
-            icon: <Icon height={iconSize} icon="mdi:upload" width={iconSize} />,
-            color: "var(--app-palette-info-main)",
-          };
-        case "indexer":
-        case "copy":
-        case "move":
-        case "task":
-          return {
-            icon: (
-              <Icon height={iconSize} icon="mdi:folder-sync" width={iconSize} />
-            ),
-            color: "var(--app-palette-info-main)",
-          };
-        default:
-          return {
-            icon: (
-              <Icon height={iconSize} icon="mdi:loading" width={iconSize} />
-            ),
-            color: "var(--app-palette-text-secondary)",
-          };
-      }
-    },
-    [iconSize],
-  );
+  const getTransferIcon = (type: string) => {
+    switch (type) {
+      case "download":
+      case "compression":
+        return {
+          icon: <Icon height={iconSize} icon="mdi:download" width={iconSize} />,
+          color: "var(--app-palette-info-main)",
+        };
+      case "upload":
+      case "extraction":
+        return {
+          icon: <Icon height={iconSize} icon="mdi:upload" width={iconSize} />,
+          color: "var(--app-palette-info-main)",
+        };
+      case "indexer":
+      case "copy":
+      case "move":
+      case "task":
+        return {
+          icon: (
+            <Icon height={iconSize} icon="mdi:folder-sync" width={iconSize} />
+          ),
+          color: "var(--app-palette-info-main)",
+        };
+      default:
+        return {
+          icon: <Icon height={iconSize} icon="mdi:loading" width={iconSize} />,
+          color: "var(--app-palette-text-secondary)",
+        };
+    }
+  };
 
   const totalItems =
     transfers.length + completedTransfers.length + recentToastCount;
 
-  // Pick the transfer with least progress for the peek
-  const peekTransfer =
-    transfers.length > 0
-      ? transfers.reduce(
-          (lowest, t) => (t.progress < lowest.progress ? t : lowest),
-          transfers[0],
-        )
-      : null;
-
-  const peekVisible = peekOpen && peekTransfer && !isFullOpen;
-
   return (
     <>
-      {/* Inline peek — compact progress in the navbar */}
-      <AppButton
-        aria-label={
-          peekTransfer
-            ? `Open notifications: ${
-                peekTransfer.label
-                  ? removePercentage(peekTransfer.label)
-                  : getTransferTitle(peekTransfer.type)
-              } ${
-                peekTransfer.indeterminate === true
-                  ? "in progress"
-                  : `${Math.round(peekTransfer.progress)}% complete`
-              }`
-            : "Open notifications"
-        }
-        className="app-navbar-notifications__peek"
-        disabled={!peekVisible}
+      <TransferPeek
+        peekOpen={peekOpen}
+        isFullOpen={isFullOpen}
         onClick={handlePeekClick}
-        style={{
-          cursor: peekVisible ? "pointer" : undefined,
-          overflow: "hidden",
-          maxWidth: peekVisible ? 200 : 0,
-          opacity: peekVisible ? 1 : 0,
-          minWidth: 0,
-          padding: 0,
-          border: 0,
-          background: "transparent",
-        }}
-        tabIndex={peekVisible ? 0 : -1}
-      >
-        {peekTransfer && (
-          <>
-            <AppLinearProgress
-              style={{ width: 60, height: 5, borderRadius: 1, flexShrink: 0 }}
-              value={peekTransfer.progress}
-              variant={
-                peekTransfer.indeterminate === true
-                  ? "indeterminate"
-                  : "determinate"
-              }
-            />
-            <span className="app-navbar-notifications__peek-copy">
-              {peekTransfer.label
-                ? removePercentage(peekTransfer.label)
-                : getTransferTitle(peekTransfer.type)}{" "}
-              {peekTransfer.indeterminate === true
-                ? ""
-                : `${Math.round(peekTransfer.progress)}%`}
-            </span>
-          </>
-        )}
-      </AppButton>
+      />
 
       <div className="app-navbar-dropdown">
         <AppTooltip placement="top" title="Notifications">
@@ -631,7 +635,7 @@ export function NavbarNotificationsDropdown() {
                     key={`transfer-${transfer.id}`}
                     onCancel={handleCancel}
                     onIndexerClick={openIndexerDialog}
-                    transfer={transfer}
+                    id={transfer.id}
                   />
                 ))}
 
@@ -749,4 +753,4 @@ export function NavbarNotificationsDropdown() {
   );
 }
 
-export default memo(NavbarNotificationsDropdown);
+export default NavbarNotificationsDropdown;

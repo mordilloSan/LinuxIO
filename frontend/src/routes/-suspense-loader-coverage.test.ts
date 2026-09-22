@@ -61,6 +61,9 @@ const ROUTE_CONTEXT_OBSERVER_ENDPOINTS: Record<
   "/_authenticated/services/timers": {
     listQueryOptions: "systemd.list_timers",
   },
+  "/_authenticated/services/schedules": {
+    listQueryOptions: "schedules.list",
+  },
   "/_authenticated/shares/mounts": {
     listQueryOptions: ["storage.list_nfs_mounts", "storage.list_cifs_mounts"],
   },

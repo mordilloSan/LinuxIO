@@ -237,6 +237,26 @@ const ALLOWED_INVALIDATE_FILES = new Set([
   "hooks/filebrowser/useListingInvalidation.ts",
 ]);
 
+describe("schedule invalidations", () => {
+  it("refreshes definitions after every schedule mutation", () => {
+    const expected = [
+      ...OPERATION_QUERY_INVALIDATIONS["systemd.start_service"],
+      ["linuxio", "schedules", "list"],
+      ["linuxio", "schedules", "get"],
+    ];
+    for (const route of [
+      "schedules.create",
+      "schedules.update",
+      "schedules.delete",
+      "schedules.enable",
+      "schedules.disable",
+      "schedules.run_now",
+      "schedules.stop",
+    ])
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(expected);
+  });
+});
+
 describe("invalidation guard", () => {
   it("keeps queryClient.invalidateQueries out of feature code", () => {
     const violations = sourceFiles()

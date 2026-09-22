@@ -1,5 +1,10 @@
 import AppButton from "@/components/ui/AppButton";
-import AppTypography from "@/components/ui/AppTypography";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 
 import FileBrowserDialog from "../dialog/GeneralDialog";
 
@@ -25,66 +30,34 @@ const UnsavedChangesDialog = ({
       onClose={onKeepEditing}
       open={open}
     >
-      <div
-        style={{
-          padding: "var(--app-space-16)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--app-space-12)",
-          alignItems: "center",
-          textAlign: "center",
-        }}
-      >
-        {/* Title */}
-        <AppTypography color="text.primary" fontWeight={600} variant="h5">
-          Unsaved Changes
-        </AppTypography>
-
-        {/* Message */}
-        <AppTypography
-          color="text.secondary"
-          style={{ marginTop: 8 }}
-          variant="body1"
-        >
+      <AppDialogTitle>Unsaved Changes</AppDialogTitle>
+      <AppDialogContent>
+        <AppDialogContentText>
           You have unsaved changes in the editor. What would you like to do?
-        </AppTypography>
+        </AppDialogContentText>
+      </AppDialogContent>
+      <AppDialogActions>
+        <AppButton disabled={isSaving} onClick={onKeepEditing}>
+          Keep Editing
+        </AppButton>
 
-        {/* Buttons */}
-        <div
-          style={{
-            display: "flex",
-            gap: "var(--app-space-8)",
-            justifyContent: "center",
-            width: "100%",
-            marginTop: "var(--app-space-8)",
-          }}
+        <AppButton
+          color="error"
+          disabled={isSaving}
+          onClick={onDiscardAndExit}
+          variant="outlined"
         >
-          <AppButton
-            className="app-btn--dialog-action"
-            disabled={isSaving}
-            onClick={onKeepEditing}
-            style={{ color: "var(--app-palette-text-secondary)" }}
-          >
-            Keep Editing
-          </AppButton>
+          Discard and Exit
+        </AppButton>
 
-          <AppButton
-            className="app-btn--dialog-action"
-            disabled={isSaving}
-            onClick={onDiscardAndExit}
-          >
-            Discard and Exit
-          </AppButton>
-
-          <AppButton
-            className="app-btn--dialog-action"
-            disabled={isSaving}
-            onClick={onSaveAndExit}
-          >
-            {isSaving ? "Saving..." : "Save and Exit"}
-          </AppButton>
-        </div>
-      </div>
+        <AppButton
+          disabled={isSaving}
+          onClick={onSaveAndExit}
+          variant="contained"
+        >
+          {isSaving ? "Saving..." : "Save and Exit"}
+        </AppButton>
+      </AppDialogActions>
     </FileBrowserDialog>
   );
 };

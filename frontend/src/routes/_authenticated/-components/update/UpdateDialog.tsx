@@ -70,12 +70,7 @@ const UpdateDialog = ({
           : "Updating LinuxIO"}
       </AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "grid",
-            gap: "var(--app-space-8)",
-          }}
-        >
+        <div className="app-dialog-fields">
           {/* Success/Fail banner when complete */}
           {updateComplete && (
             <div

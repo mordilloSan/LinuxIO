@@ -1,13 +1,6 @@
-import { useContext } from "react";
+import { useBackgroundTaskList } from "./useBackgroundTaskState";
 
-import { BackgroundTasksIsIndexingContext } from "@/contexts/IndexerContext";
-
-export const useIsIndexing = () => {
-  const isIndexing = useContext(BackgroundTasksIsIndexingContext);
-  if (isIndexing === null) {
-    throw new Error(
-      "useIsIndexing must be used within BackgroundTasksProvider",
-    );
-  }
-  return isIndexing;
-};
+export const useIsIndexing = () =>
+  useBackgroundTaskList((items) =>
+    items.some((item) => item.type === "indexer"),
+  );

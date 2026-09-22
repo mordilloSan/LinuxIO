@@ -249,17 +249,10 @@ const CreateNetworkDialog = ({
       onClose={isCreating ? undefined : handleClose}
       open={open}
     >
-      <form onSubmit={handleCreate}>
+      <form className="app-dialog-form" onSubmit={handleCreate}>
         <AppDialogTitle>Create Network</AppDialogTitle>
         <AppDialogContent>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--app-space-12)",
-              marginTop: "var(--app-space-8)",
-            }}
-          >
+          <div className="app-dialog-fields">
             <AppTextField
               autoFocus
               disabled={isCreating}
@@ -1104,19 +1097,12 @@ const NetworkList = ({
         }
         open={connectDialogOpen && Boolean(focusedNetwork)}
       >
-        <form onSubmit={handleConnect}>
+        <form className="app-dialog-form" onSubmit={handleConnect}>
           <AppDialogTitle>
             Connect Container to {focusedNetwork?.Name}
           </AppDialogTitle>
           <AppDialogContent>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--app-space-12)",
-                marginTop: "var(--app-space-8)",
-              }}
-            >
+            <div className="app-dialog-fields">
               <AppSelect
                 disabled={isConnecting}
                 fullWidth

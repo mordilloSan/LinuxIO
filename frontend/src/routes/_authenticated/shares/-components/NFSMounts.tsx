@@ -321,14 +321,7 @@ const MountNFSDialog = ({ open, onClose }: MountNFSDialogProps) => {
     <GeneralDialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
       <AppDialogTitle>Mount NFS Share</AppDialogTitle>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             fullWidth
             label="NFS Server"
@@ -589,14 +582,7 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
   return (
     <>
       <AppDialogContent>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
+        <div className="app-dialog-fields">
           <AppTextField
             disabled
             fullWidth

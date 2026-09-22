@@ -298,6 +298,7 @@ const FileBrowserDialogs = ({
         onConfirm={deleteDialog.onConfirm}
         open={deleteDialog.open}
         title="Delete Items"
+        destructive
         isPending={deleteDialog.isPending}
         progress={deleteDialog.progress}
       />

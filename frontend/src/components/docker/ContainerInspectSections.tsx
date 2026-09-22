@@ -9,9 +9,12 @@ import AppTypography from "@/components/ui/AppTypography";
 import { getContainerStatusColor } from "@/constants/statusColors";
 
 const Section = ({
+  action,
   children,
   title,
 }: {
+  /** Sits on the title line, right-aligned, rather than above the rows. */
+  action?: ReactNode;
   children: ReactNode;
   title: string;
 }) => (
@@ -23,15 +26,26 @@ const Section = ({
       minWidth: 0,
     }}
   >
-    <AppTypography fontWeight={700} variant="subtitle2">
-      {title}
-    </AppTypography>
+    <div
+      style={{
+        alignItems: "center",
+        display: "flex",
+        gap: "var(--app-space-8)",
+        justifyContent: "space-between",
+        minWidth: 0,
+      }}
+    >
+      <AppTypography fontWeight={700} noWrap variant="subtitle2">
+        {title}
+      </AppTypography>
+      {action}
+    </div>
     {children}
   </section>
 );
 
 const TextValue = ({ children }: { children: ReactNode }) => (
-  <AppTypography component="span" fontWeight={500} variant="caption">
+  <AppTypography component="div" fontWeight={500} noWrap variant="caption">
     {children === "" || children === null || children === undefined
       ? "—"
       : children}
@@ -42,7 +56,7 @@ const CommandValue = ({ value }: { value?: string[] }) => {
   const text = value?.length ? value.join(" ") : "Image default";
   return (
     <AppTypography
-      component="span"
+      component="div"
       copyText={text}
       noWrap
       style={{ fontFamily: "var(--app-font-mono)" }}
@@ -133,7 +147,7 @@ const ContainerInspectSections = ({
         "overview",
         <Section title="Overview and health">
           <div>
-            <DetailRow label="State" noBorder>
+            <DetailRow label="State" noBorder split>
               <Chip
                 color={getContainerStatusColor(inspect.state.status)}
                 label={inspect.state.status || "unknown"}
@@ -141,27 +155,27 @@ const ContainerInspectSections = ({
                 variant="soft"
               />
             </DetailRow>
-            <DetailRow label="Health">
+            <DetailRow label="Health" split>
               <TextValue>
                 {inspect.health?.status || "Not configured"}
               </TextValue>
             </DetailRow>
             {inspect.health && (
-              <DetailRow label="Failing streak">
+              <DetailRow label="Failing streak" split>
                 <TextValue>{inspect.health.failingStreak}</TextValue>
               </DetailRow>
             )}
-            <DetailRow label="Created">
+            <DetailRow label="Created" split>
               <TextValue>{inspect.created}</TextValue>
             </DetailRow>
-            <DetailRow label="Restart count">
+            <DetailRow label="Restart count" split>
               <TextValue>{inspect.restartCount}</TextValue>
             </DetailRow>
-            <DetailRow label="Exit code">
+            <DetailRow label="Exit code" split>
               <TextValue>{inspect.state.exitCode}</TextValue>
             </DetailRow>
             {inspect.state.error && (
-              <DetailRow label="Last error">
+              <DetailRow label="Last error" split>
                 <TextValue>{inspect.state.error}</TextValue>
               </DetailRow>
             )}
@@ -173,22 +187,22 @@ const ContainerInspectSections = ({
         "configuration",
         <Section title="Configuration">
           <div>
-            <DetailRow label="Image" noBorder>
+            <DetailRow label="Image" noBorder split>
               <TextValue>{inspect.image}</TextValue>
             </DetailRow>
-            <DetailRow label="Command">
+            <DetailRow label="Command" split>
               <CommandValue value={inspect.command} />
             </DetailRow>
-            <DetailRow label="Entrypoint">
+            <DetailRow label="Entrypoint" split>
               <CommandValue value={inspect.entrypoint} />
             </DetailRow>
-            <DetailRow label="Restart policy">
+            <DetailRow label="Restart policy" split>
               <TextValue>{restartPolicy}</TextValue>
             </DetailRow>
-            <DetailRow label="User">
+            <DetailRow label="User" split>
               <TextValue>{inspect.user || "Image default"}</TextValue>
             </DetailRow>
-            <DetailRow label="Working directory">
+            <DetailRow label="Working directory" split>
               <TextValue>
                 {inspect.workingDirectory || "Image default"}
               </TextValue>
@@ -199,8 +213,8 @@ const ContainerInspectSections = ({
 
       {renderSection(
         "environment",
-        <Section title="Environment variables">
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Section
+          action={
             <AppButton
               aria-pressed={showEnvironment}
               onClick={() => setShowEnvironment((visible) => !visible)}
@@ -209,7 +223,9 @@ const ContainerInspectSections = ({
             >
               {showEnvironment ? "Hide values" : "Show values"}
             </AppButton>
-          </div>
+          }
+          title="Environment variables"
+        >
           {inspect.environment && inspect.environment.length > 0 ? (
             <div>
               {inspect.environment.map((variable, index) => (
