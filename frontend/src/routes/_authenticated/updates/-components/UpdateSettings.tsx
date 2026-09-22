@@ -23,7 +23,10 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { StatusMetric } from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
+import {
+  SettingsNote,
+  StatusMetric,
+} from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
 
 const UPDATES_TOAST_META = {
   label: "Open updates",
@@ -239,34 +242,6 @@ interface AutoUpdateRuntimeProps {
   timers: Timer[];
 }
 
-const AptServiceNote = () => {
-  return (
-    <div
-      aria-label="About unattended-upgrades.service"
-      style={{
-        background: "var(--app-palette-action-hover)",
-        borderLeft: "3px solid var(--app-palette-primary-main)",
-        borderRadius: 6,
-        marginTop: "var(--app-space-8)",
-        padding: "var(--app-space-4) var(--app-space-4)",
-      }}
-    >
-      <AppTypography fontWeight={600} variant="caption">
-        About unattended-upgrades.service
-      </AppTypography>
-      <AppTypography
-        color="text.secondary"
-        style={{ display: "block", marginTop: 2 }}
-        variant="caption"
-      >
-        This service coordinates shutdown; the timers above schedule updates.
-        Its PyGIDeprecationWarning is an upstream package warning, not an update
-        failure.
-      </AppTypography>
-    </div>
-  );
-};
-
 const AutoUpdateRuntime = ({
   runtimeError,
   runtimeLoading,
@@ -384,7 +359,13 @@ const AutoUpdateRuntime = ({
           This backend does not expose a managed systemd timer.
         </AppTypography>
       )}
-      {serverState.backend === "apt-unattended" ? <AptServiceNote /> : null}
+      {serverState.backend === "apt-unattended" ? (
+        <SettingsNote title="About unattended-upgrades.service">
+          This service coordinates shutdown; the timers above schedule updates.
+          Its PyGIDeprecationWarning is an upstream package warning, not an
+          update failure.
+        </SettingsNote>
+      ) : null}
     </FrostedCard>
   );
 };

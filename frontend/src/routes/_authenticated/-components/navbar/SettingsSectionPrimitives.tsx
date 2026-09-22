@@ -10,6 +10,36 @@ import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 
+export const SettingsNote = ({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) => (
+  <div
+    aria-label={title}
+    style={{
+      background: "var(--app-palette-action-hover)",
+      borderLeft: "3px solid var(--app-palette-primary-main)",
+      borderRadius: 6,
+      marginTop: "var(--app-space-8)",
+      padding: "var(--app-space-4) var(--app-space-4)",
+    }}
+  >
+    <AppTypography fontWeight={600} variant="caption">
+      {title}
+    </AppTypography>
+    <AppTypography
+      color="text.secondary"
+      style={{ display: "block", marginTop: 2 }}
+      variant="caption"
+    >
+      {children}
+    </AppTypography>
+  </div>
+);
+
 /**
  * "default" is the original settings-panel stack (body2 label, single-line
  * value/detail). "compact" trims the label to caption size for dense grids
