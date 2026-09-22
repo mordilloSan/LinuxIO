@@ -191,6 +191,10 @@ current resource-details layout:
 - ports and labels; and
 - mounts and networks.
 
+Overview and configuration use single-line detail rows, with full values
+available in tooltips when truncated. State colors accept both Docker's raw
+lowercase states and display labels, so `running` consistently uses green.
+
 Start or Stop remains the primary action. Restart, Pause, Unpause, Kill, Edit,
 and Remove use the action menu. State guards prevent invalid actions. Kill and
 Remove require clear confirmation when they can interrupt work or destroy data.

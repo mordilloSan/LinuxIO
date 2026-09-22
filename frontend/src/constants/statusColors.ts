@@ -11,16 +11,17 @@ export const getUsageColor = (
 };
 
 export const getContainerStatusColor = (state: string): string => {
-  if (state === "Healthy" || state === "Running") {
-    return SEMANTIC_STATUS_COLORS.success;
+  switch (state.toLowerCase()) {
+    case "healthy":
+    case "running":
+      return SEMANTIC_STATUS_COLORS.success;
+    case "stopped":
+    case "exited":
+    case "dead":
+      return SEMANTIC_STATUS_COLORS.error;
+    default:
+      return SEMANTIC_STATUS_COLORS.warning;
   }
-  if (state === "Unhealthy") {
-    return SEMANTIC_STATUS_COLORS.warning;
-  }
-  if (state === "Stopped" || state === "Dead") {
-    return SEMANTIC_STATUS_COLORS.error;
-  }
-  return SEMANTIC_STATUS_COLORS.warning;
 };
 
 export const getComposeStatusColor = (status: string): string => {
