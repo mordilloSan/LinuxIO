@@ -70,7 +70,13 @@ const CreateInterfaceDialog = ({
     <GeneralDialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
       <AppDialogTitle>Create New Interface</AppDialogTitle>
       <AppDialogContent>
-        <div style={{ marginTop: "var(--app-space-8)" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: "var(--app-space-16)",
+            marginTop: "var(--app-space-8)",
+          }}
+        >
           <AppTextField
             disabled={loading}
             error={!!nameTaken}
@@ -102,7 +108,8 @@ const CreateInterfaceDialog = ({
           <AppTextField
             disabled={loading}
             fullWidth
-            label="DNS (optional, comma-separated)"
+            helperText="Separate multiple addresses with commas."
+            label="DNS (optional)"
             onChange={(e) => setDns(e.target.value)}
             placeholder="e.g. 192.168.1.1, 1.1.1.1"
             value={dns}
@@ -120,7 +127,6 @@ const CreateInterfaceDialog = ({
             fullWidth
             label="NIC"
             onChange={(e) => setNic(e.target.value)}
-            style={{ marginBlock: 8 }}
             value={nic}
           >
             {optionsLoading ? (
@@ -139,19 +145,14 @@ const CreateInterfaceDialog = ({
               ))
             )}
           </AppSelect>
-          {error && (
-            <AppAlert severity="error" style={{ marginTop: 8 }}>
-              {error}
-            </AppAlert>
-          )}
+          {error && <AppAlert severity="error">{error}</AppAlert>}
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton color="secondary" disabled={loading} onClick={onClose}>
+        <AppButton disabled={loading} onClick={onClose}>
           Cancel
         </AppButton>
         <AppButton
-          color="primary"
           disabled={
             !serverName ||
             Number(port) === 0 ||
@@ -164,6 +165,7 @@ const CreateInterfaceDialog = ({
             optionsLoading
           }
           onClick={onCreate}
+          variant="contained"
         >
           {loading ? "Creating..." : "Create Interface"}
         </AppButton>
