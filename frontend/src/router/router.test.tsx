@@ -95,6 +95,7 @@ describe("generated application router", () => {
         "/shares",
         "/shares/",
         "/shares/mounts",
+        "/shares/rsync",
         "/sign-in",
         "/storage",
         "/storage/",

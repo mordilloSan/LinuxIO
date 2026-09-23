@@ -89,6 +89,7 @@ type CapabilitiesAvailable struct {
 	NFSServerAvailable       bool `json:"nfs_server_available"`
 	SambaServerAvailable     bool `json:"samba_server_available"`
 	SambaClientAvailable     bool `json:"samba_client_available"`
+	RsyncAvailable           bool `json:"rsync_available"`
 	TunedAvailable           bool `json:"tuned_available"`
 	AvahiAvailable           bool `json:"avahi_available"`
 	WireGuardAvailable       bool `json:"wireguard_available"`
@@ -107,6 +108,7 @@ type CapabilitiesError struct {
 	NFSServerError       *string `json:"nfs_server_error,omitempty"`
 	SambaServerError     *string `json:"samba_server_error,omitempty"`
 	SambaClientError     *string `json:"samba_client_error,omitempty"`
+	RsyncError           *string `json:"rsync_error,omitempty"`
 	TunedError           *string `json:"tuned_error,omitempty"`
 	AvahiError           *string `json:"avahi_error,omitempty"`
 	WireGuardError       *string `json:"wireguard_error,omitempty"`

@@ -65,6 +65,8 @@ const STREAM_PRIMITIVE_IMPORT_ALLOWED_FILES = new Set([
   "test/browser/fixture/routes/NetworkHandoffPage.tsx",
   // VM bridge browser fixture owns transport bootstrap for dialog workflows.
   "test/browser/fixture/routes/VMBridgePage.tsx",
+  // Rsync fixture owns transport bootstrap for daemon setup and service controls.
+  "test/browser/fixture/routes/RsyncPage.tsx",
   // Schedule fixture owns transport bootstrap for directory selection and saving.
   "test/browser/fixture/routes/SchedulesPage.tsx",
   // Router loader transport readiness (the only routing-level mux primitive).

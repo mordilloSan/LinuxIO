@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -332,6 +334,7 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 		wantWarning      string
 	}{
 		{name: "lm_sensors", wantDebian: "lm-sensors", wantRHEL: "lm_sensors"},
+		{name: "rsync", wantDebian: "rsync", wantRHEL: "rsync"},
 		{
 			name:             "avahi",
 			wantDebian:       "avahi-daemon libnss-mdns",
@@ -359,6 +362,24 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 				t.Errorf("optional rhel package warning = %q, want %q", got, test.wantWarning)
 			}
 		})
+	}
+}
+
+func TestRsyncCapabilityDetection(t *testing.T) {
+	spec, ok := CapabilitySpecByName("rsync")
+	if !ok {
+		t.Fatal("rsync capability is not registered")
+	}
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir)
+	if available, message := spec.Detect(context.Background()); available || !strings.Contains(message, "rsync not found") {
+		t.Fatalf("missing rsync: available=%v, message=%q", available, message)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "rsync"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if available, message := spec.Detect(context.Background()); !available || message != "" {
+		t.Fatalf("installed rsync: available=%v, message=%q", available, message)
 	}
 }
 

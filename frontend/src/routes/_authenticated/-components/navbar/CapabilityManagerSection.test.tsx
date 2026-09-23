@@ -195,6 +195,7 @@ const renderSection = (options: { strictMode?: boolean } = {}) =>
       dockerAvailable: false,
       lmSensorsAvailable: false,
       packageKitAvailable: mocks.packageKitAvailable,
+      rsyncAvailable: false,
     },
     queryClient: mocks.queryClient ?? undefined,
     // React only replays mount effects when StrictMode wraps the whole newly
@@ -215,6 +216,7 @@ describe("CapabilityManagerSection", () => {
         docker_available: false,
         lm_sensors_available: false,
         packagekit_available: mocks.packageKitAvailable,
+        rsync_available: false,
       }),
     );
     mocks.taskConfig = null;
@@ -225,6 +227,26 @@ describe("CapabilityManagerSection", () => {
     renderSection();
 
     expect(screen.queryByText("Indexer")).not.toBeInTheDocument();
+  });
+
+  it("offers rsync installation and updates its availability on success", async () => {
+    renderSection();
+    fireEvent.click(screen.getByRole("button", { name: "Install rsync" }));
+
+    const rsyncRequest = { capability: "rsync" };
+    await waitFor(() =>
+      expect(mocks.mutate).toHaveBeenCalledWith(rsyncRequest),
+    );
+    act(() => mocks.taskConfig?.success?.({ available: true }, rsyncRequest));
+
+    expect(
+      screen.getByText(
+        "rsync command is available. Remote backups require connection setup.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Install rsync" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps async refresh updates alive after StrictMode effect replay", async () => {

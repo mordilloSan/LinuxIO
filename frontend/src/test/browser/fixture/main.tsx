@@ -58,6 +58,7 @@ const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
 const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
 const NetworkHandoffPage = lazy(() => import("./routes/NetworkHandoffPage"));
 const VMBridgePage = lazy(() => import("./routes/VMBridgePage"));
+const RsyncPage = lazy(() => import("./routes/RsyncPage"));
 
 const DARK_THEME = buildAppTheme("DARK");
 const LIGHT_THEME = buildAppTheme("LIGHT");
@@ -309,7 +310,13 @@ const backgroundTasksRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/background-tasks",
 });
+const rsyncRoute = createRoute({
+  component: RsyncPage,
+  getParentRoute: () => rootRoute,
+  path: "/shares/rsync",
+});
 const routeTree = rootRoute.addChildren([
+  rsyncRoute,
   backgroundTasksRoute,
   authenticatedRoute.addChildren([
     networkHandoffRoute,

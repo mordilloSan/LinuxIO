@@ -7,7 +7,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/digitalocean/go-libvirt v0.0.0-20260814190004-1a83157e1858
 	github.com/distribution/reference v0.6.0
-	github.com/ebitengine/purego v0.11.0
+	github.com/ebitengine/purego v0.11.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674

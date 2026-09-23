@@ -1,7 +1,7 @@
 # Capabilities
 
 This is the canonical guide for LinuxIO's **capability system** — how the app
-detects optional host tooling (Docker, NFS, WireGuard, lm-sensors, …), gates
+detects optional host tooling (Docker, NFS, rsync, WireGuard, lm-sensors, …), gates
 features on it, and installs it from the UI.
 
 ## Summary
@@ -183,6 +183,15 @@ Adding the entry automatically: derives the wire/state types, adds the
 `<state>` field to auth state, and registers the row (with an Install button if
 `installable`) in the Capability Manager.
 
+## rsync backups
+
+The `rsync` capability checks for the `rsync` executable after sign-in and
+installs the distro's `rsync` package through the existing privileged
+PackageKit workflow. Installation does not expose a folder. Use **Shares →
+rsync** to configure the read-only module on port 873 and start its daemon,
+or use the existing SSH listener on port 9222 with Linux account credentials. See
+[TerraMaster backups](rsync-backups.md) for the UI workflow and service details.
+
 ## Consuming A Capability
 
 There are two established patterns. Pick based on whether the *whole feature* or
@@ -268,7 +277,7 @@ Worked example: the `wireguard` capability.
 
 ```bash
 make generate                              # regenerates the TS contract
-cd backend && go test ./bridge/handlers/system/   # anti-drift + round-trip tests
+make test-go-quiet GO_TEST_PKGS=./bridge/handlers/system # registry + detection tests
 make tsc-only                              # derived capability types compile
 ```
 
