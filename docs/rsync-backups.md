@@ -43,9 +43,12 @@ port (default **22**; valid ports range from 1 to 65535). The check verifies an
 SSH 2 identification on localhost; it does not authenticate an account or
 establish connectivity from the TNAS.
 
-1. Create a dedicated Linux account in **Accounts** and give it read access to
-   the folder to back up. Do not use root: rsync ignores the home configuration
-   when the SSH login is the super-user.
+1. Pick a regular Linux account with read access to the folder to back up. Any
+   existing account works, including your own; the field defaults to the
+   signed-in user. TOS stores that account's SSH password, so a dedicated
+   account created in **Accounts** limits what a compromised NAS could reach.
+   Root is refused: rsync ignores the home configuration when the SSH login is
+   the super-user.
 2. Enter that account and the source folder, then select **Save SSH module**.
    LinuxIO writes `rsyncd.conf` in the account's home, owned by the account,
    with a `backup` module: `read only = yes`, `use chroot = no` (a non-root

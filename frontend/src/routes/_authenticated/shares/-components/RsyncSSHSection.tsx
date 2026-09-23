@@ -55,7 +55,7 @@ function RsyncSSHForm({
           value={username}
           disabled={pending}
           onChange={(event) => setUsername(event.target.value)}
-          helperText="A dedicated account with read access to the source folder. TOS logs in with its SSH password."
+          helperText="Any regular account with read access to the source folder. TOS stores its SSH password, so a dedicated account limits what a compromised NAS could read."
         />
       </SettingsGrid>
       <PathPickerField
