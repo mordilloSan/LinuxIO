@@ -315,8 +315,14 @@ const rsyncRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/shares/rsync",
 });
+const rsyncLightRoute = createRoute({
+  component: RsyncPage,
+  getParentRoute: () => rootRoute,
+  path: "/styling/light/rsync",
+});
 const routeTree = rootRoute.addChildren([
   rsyncRoute,
+  rsyncLightRoute,
   backgroundTasksRoute,
   authenticatedRoute.addChildren([
     networkHandoffRoute,

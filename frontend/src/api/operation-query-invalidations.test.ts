@@ -18,6 +18,13 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       ]);
     }
   });
+  it("refreshes the SSH module status after saving or removing it", () => {
+    for (const route of ["shares.save_rsync_ssh", "shares.remove_rsync_ssh"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual([
+        ["linuxio", "shares", "get_rsync_ssh"],
+      ]);
+    }
+  });
   it("refreshes storage topology after volume and mount changes", () => {
     for (const action of [
       "create_lv",

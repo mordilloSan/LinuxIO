@@ -1,124 +1,242 @@
+import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type SubmitEvent } from "react";
 
-import { linuxio } from "@/api";
+import { linuxio, type RsyncSSHConfig, useCallMutation } from "@/api";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppChip from "@/components/ui/AppChip";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
 import PathPickerField from "@/components/ui/PathPickerField";
 import useAuth from "@/hooks/useAuth";
+import { SettingsGrid } from "@/routes/_authenticated/-components/navbar/SettingsSectionForm";
+import {
+  SectionCard,
+  StatusGroupLabel,
+} from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
+
+function RsyncSSHForm({
+  config,
+  modulePath,
+  onError,
+}: {
+  config?: RsyncSSHConfig;
+  modulePath?: string;
+  onError: (message: string) => void;
+}) {
+  const { user } = useAuth();
+  const [username, setUsername] = useState(config?.username ?? user?.id ?? "");
+  const [path, setPath] = useState(config?.path ?? modulePath ?? "");
+  const failed = (failure: Error) => onError(failure.message);
+  const save = useCallMutation(linuxio.shares.save_rsync_ssh, {
+    error: failed,
+  });
+  const remove = useCallMutation(linuxio.shares.remove_rsync_ssh, {
+    error: failed,
+  });
+  const pending = save.isPending || remove.isPending;
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onError("");
+    save.mutate({ username, path });
+  };
+  return (
+    <form className="rsync-page__form" onSubmit={submit}>
+      <SettingsGrid>
+        <AppTextField
+          label="Linux account for SSH"
+          size="small"
+          fullWidth
+          required
+          autoComplete="off"
+          value={username}
+          disabled={pending}
+          onChange={(event) => setUsername(event.target.value)}
+          helperText="Any regular account with read access to the source folder. TOS stores its SSH password, so a dedicated account limits what a compromised NAS could read."
+        />
+      </SettingsGrid>
+      <PathPickerField
+        editable
+        required
+        label="SSH source folder"
+        value={path}
+        disabled={pending}
+        onChange={setPath}
+      />
+      <div className="rsync-page__actions">
+        <AppButton
+          type="submit"
+          variant="contained"
+          disabled={pending}
+          keepTextOnMobile
+          startIcon={<Icon icon="mdi:content-save-outline" width={18} />}
+        >
+          {save.isPending ? "Saving…" : "Save SSH module"}
+        </AppButton>
+        <AppButton
+          variant="outlined"
+          color="inherit"
+          keepTextOnMobile
+          startIcon={<Icon icon="mdi:delete-outline" width={18} />}
+          disabled={pending || !config}
+          onClick={() => {
+            onError("");
+            remove.mutate();
+          }}
+        >
+          Remove
+        </AppButton>
+      </div>
+    </form>
+  );
+}
 
 export default function RsyncSSHSection({
   modulePath,
 }: {
   modulePath?: string;
 }) {
-  const { user } = useAuth();
-  const [username, setUsername] = useState(user?.id ?? "");
-  const [path, setPath] = useState<string | null>(null);
+  const [error, setError] = useState("");
   const [portInput, setPortInput] = useState("22");
   const [checkedPort, setCheckedPort] = useState(22);
   const port = Number(portInput);
   const validPort = Number.isInteger(port) && port >= 1 && port <= 65535;
   const {
     data: ssh,
-    error,
+    error: checkError,
     isFetching,
     refetch,
   } = useQuery(linuxio.shares.get_rsync_ssh({ port: checkedPort }));
-  const source = path ?? modulePath ?? "";
+  const checked = port === checkedPort && Boolean(ssh || checkError);
+  const available = checked && ssh?.available && !checkError;
+  const config = ssh?.config;
   return (
-    <section
-      className="rsync-page__connection"
-      aria-label="SSH backup connection"
-    >
-      <AppTypography component="h2" variant="h6">
-        SSH
-      </AppTypography>
-      <AppTypography variant="body2">
-        Use the existing SSH service for encrypted backups. In TOS, select rsync
-        over SSH, enter this server’s LAN IP and the Linux account’s SSH
-        credentials, then choose the source folder below.
-      </AppTypography>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!validPort) return;
-          if (port === checkedPort) void refetch();
-          else setCheckedPort(port);
-        }}
+    <section aria-label="SSH backup connection">
+      <SectionCard
+        headingComponent="h2"
+        icon="mdi:shield-lock-outline"
+        title="SSH"
+        subtitle="Encrypted transfers through a Linux account"
+        titleAdornment={
+          <AppChip
+            size="small"
+            variant="soft"
+            color={checked ? (available ? "success" : "warning") : "default"}
+            label={
+              isFetching
+                ? "Checking…"
+                : checked
+                  ? available
+                    ? "Available"
+                    : "Unavailable"
+                  : "Not checked"
+            }
+          />
+        }
       >
-        <AppTextField
-          label="SSH port"
-          type="number"
-          required
-          value={portInput}
-          error={!validPort}
-          onChange={(event) => setPortInput(event.target.value)}
-          helperText={
-            validPort
-              ? "Default: 22. Enter the port used by your existing SSH service. This does not change sshd."
-              : "Enter a port between 1 and 65535."
-          }
-        />
-        <AppButton
-          type="submit"
-          disabled={isFetching || !validPort}
-          variant="outlined"
-        >
-          {isFetching ? "Checking SSH…" : `Check SSH port ${portInput}`}
-        </AppButton>
-      </form>
-      {port === checkedPort && (ssh || error) ? (
-        <AppAlert severity={error || !ssh?.available ? "warning" : "success"}>
-          {error?.message ??
-            ssh?.error ??
-            "The local SSH listener responds. Verify the account and folder access from TOS."}
-        </AppAlert>
-      ) : (
-        <AppAlert severity="info">
-          Check the selected SSH port to verify the local listener.
-        </AppAlert>
-      )}
-      <AppTextField
-        label="Linux username for SSH"
-        autoComplete="off"
-        value={username}
-        onChange={(event) => setUsername(event.target.value)}
-        helperText="Use a Linux account with read access to the source folder."
-      />
-      <PathPickerField
-        editable
-        label="SSH source folder"
-        value={source}
-        onChange={setPath}
-      />
-      <dl>
-        <dt>Mode</dt>
-        <dd>rsync over SSH</dd>
-        <dt>Port</dt>
-        <dd>{validPort ? port : "Choose a valid port"}</dd>
-        <dt>Username</dt>
-        <dd>{username || "Choose a Linux account"}</dd>
-        <dt>Source path</dt>
-        <dd>{source || "Choose a source folder"}</dd>
-        <dt>Authentication</dt>
-        <dd>The Linux account’s SSH credentials</dd>
-      </dl>
-      <AppTypography color="text.secondary" variant="body2">
-        SSH uses Linux file permissions. The module’s password, read-only
-        protection and NAS IP restriction apply only to module mode. The rsync
-        module can remain stopped when using SSH.
-      </AppTypography>
-      <AppTypography color="text.secondary" variant="body2">
-        Allow the TNAS to reach TCP port{" "}
-        {validPort ? port : "Choose a valid port"}. Manage Linux users in{" "}
-        <Link to="/accounts">Accounts</Link> and the existing SSH service in{" "}
-        <Link to="/services">Services</Link>. The local check does not verify
-        the firewall or credentials from the NAS.
-      </AppTypography>
+        <div className="rsync-page__stack">
+          <AppTypography color="text.secondary" variant="caption">
+            TOS logs in over SSH and starts rsync as the chosen account, which
+            serves the read-only module saved here from its home folder. The
+            module daemon on port 873 can stay stopped.
+          </AppTypography>
+          <form
+            className="rsync-page__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!validPort) return;
+              if (port === checkedPort) void refetch();
+              else setCheckedPort(port);
+            }}
+          >
+            <SettingsGrid>
+              <AppTextField
+                label="SSH port"
+                size="small"
+                fullWidth
+                type="number"
+                required
+                value={portInput}
+                error={!validPort}
+                onChange={(event) => setPortInput(event.target.value)}
+                helperText={
+                  validPort
+                    ? "Default: 22. Use your server’s SSH port."
+                    : "Enter a port between 1 and 65535."
+                }
+              />
+            </SettingsGrid>
+            <div className="rsync-page__actions">
+              <AppButton
+                type="submit"
+                disabled={isFetching || !validPort}
+                variant="outlined"
+                keepTextOnMobile
+                startIcon={<Icon icon="mdi:connection" width={18} />}
+              >
+                {isFetching ? "Checking SSH…" : `Check SSH port ${portInput}`}
+              </AppButton>
+            </div>
+          </form>
+          <div role="status">
+            {checked && (checkError || !ssh?.available) ? (
+              <AppAlert severity="warning">
+                {checkError?.message ?? ssh?.error}
+              </AppAlert>
+            ) : (
+              <AppTypography color="text.secondary" variant="caption">
+                {checked
+                  ? "The local SSH listener responds. Verify access from TOS."
+                  : "Check the selected SSH port to verify the local listener."}
+              </AppTypography>
+            )}
+          </div>
+          {error && <AppAlert severity="error">{error}</AppAlert>}
+          <RsyncSSHForm
+            key={JSON.stringify(config ?? null)}
+            config={config}
+            modulePath={modulePath}
+            onError={setError}
+          />
+          {config && (
+            <>
+              <StatusGroupLabel>Connect from TOS</StatusGroupLabel>
+              <div>
+                <InfoRow label="Mode" wrap>
+                  rsync over SSH
+                </InfoRow>
+                <InfoRow label="Port" wrap>
+                  {validPort ? port : "Choose a valid port"}
+                </InfoRow>
+                <InfoRow label="Username" wrap>
+                  {config.username}
+                </InfoRow>
+                <InfoRow label="Module" wrap>
+                  {config.module}
+                </InfoRow>
+                <InfoRow label="Source path" wrap>
+                  {config.path}
+                </InfoRow>
+              </div>
+              <AppTypography color="text.secondary" variant="caption">
+                In TOS, add this server’s LAN IP with the SSH port and the
+                account’s SSH password, then pick the module from the backup
+                source list. Access follows the account’s Linux permissions; the
+                module’s NAS IP restriction does not apply.
+              </AppTypography>
+            </>
+          )}
+          <AppTypography color="text.secondary" variant="caption">
+            Allow the selected TCP port from the TNAS. Manage users in{" "}
+            <Link to="/accounts">Accounts</Link> and SSH in{" "}
+            <Link to="/services">Services</Link>. The port check does not change
+            SSH settings or test the NAS firewall and credentials.
+          </AppTypography>
+        </div>
+      </SectionCard>
     </section>
   );
 }

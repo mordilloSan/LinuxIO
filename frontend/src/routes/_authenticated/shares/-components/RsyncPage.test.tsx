@@ -31,9 +31,22 @@ function renderPage(available = true) {
       port: 22,
     },
   );
+  let sshConfig: Record<string, unknown> | undefined;
   mocks.call.mockImplementation(async (route: string, request: unknown) => {
     if (route === "shares.get_rsync_ssh")
-      return { available: true, ...(request as { port: number }) };
+      return {
+        available: true,
+        ...(request as { port: number }),
+        config: sshConfig,
+      };
+    if (route === "shares.save_rsync_ssh") {
+      sshConfig = { ...(request as Record<string, unknown>), module: "backup" };
+      return sshConfig;
+    }
+    if (route === "shares.remove_rsync_ssh") {
+      sshConfig = undefined;
+      return { success: true };
+    }
     if (route === "shares.save_rsync") {
       const { password: _password, ...config } = request as Record<
         string,
@@ -154,6 +167,38 @@ describe("rsync backup setup", () => {
     expect(
       mocks.call.mock.calls.some(([route]) => route === "shares.save_rsync"),
     ).toBe(false);
+  });
+  it("saves the SSH module for a Linux account, shows the TOS details and removes it", async () => {
+    renderPage();
+    const ssh = await screen.findByRole("region", {
+      name: "SSH backup connection",
+    });
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Linux account for SSH/), {
+      target: { value: "tnas-ssh" },
+    });
+    fireEvent.change(screen.getByLabelText(/SSH source folder/), {
+      target: { value: "/srv/data" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save SSH module" }));
+    await waitFor(() =>
+      expect(mocks.call).toHaveBeenCalledWith("shares.save_rsync_ssh", {
+        username: "tnas-ssh",
+        path: "/srv/data",
+      }),
+    );
+    await waitFor(() => expect(ssh).toHaveTextContent("Connect from TOS"));
+    expect(ssh).toHaveTextContent("tnas-ssh");
+    expect(ssh).toHaveTextContent("backup");
+    expect(ssh).toHaveTextContent("/srv/data");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(mocks.call).toHaveBeenCalledWith(
+        "shares.remove_rsync_ssh",
+        undefined,
+      ),
+    );
+    await waitFor(() => expect(ssh).not.toHaveTextContent("Connect from TOS"));
   });
   it("refreshes daemon status after a partial failure and retains the error", async () => {
     renderPage();

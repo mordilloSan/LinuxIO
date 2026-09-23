@@ -616,6 +616,8 @@ describe("Virtual Machines page", () => {
     expect(mocks.mutations.shutdown).toHaveBeenCalledWith({ name: "alpha" });
   });
 
+  // Two pending mutations and four waitFor passes take up to 1.4 s locally and
+  // exceeded vitest's 5 s default on a loaded CI runner.
   it("keeps lifecycle feedback scoped to each VM until its action settles", async () => {
     let resolveShutdown!: () => void;
     let resolveStart!: () => void;
@@ -686,7 +688,7 @@ describe("Virtual Machines page", () => {
         within(getVMRow("beta")).queryByRole("progressbar"),
       ).not.toBeInTheDocument();
     });
-  });
+  }, 15_000);
 
   it("does not crash when delete success has no disk arrays", async () => {
     const { user } = await renderVMPage();

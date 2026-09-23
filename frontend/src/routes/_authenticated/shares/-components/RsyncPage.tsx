@@ -1,3 +1,4 @@
+import { Icon } from "@iconify/react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type SubmitEvent } from "react";
@@ -14,8 +15,14 @@ import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
 import PathPickerField from "@/components/ui/PathPickerField";
 import { useCapability } from "@/hooks/useCapabilities";
+import { SettingsGrid } from "@/routes/_authenticated/-components/navbar/SettingsSectionForm";
+import {
+  SectionCard,
+  StatusGroupLabel,
+} from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
 
 import RsyncSSHSection from "./RsyncSSHSection";
 
@@ -70,12 +77,9 @@ function RsyncForm({
   };
   return (
     <form className="rsync-page__form" onSubmit={submit}>
-      <AppTypography component="h2" variant="h6">
-        rsync module — port {config.port}
-      </AppTypography>
-      <AppTypography color="text.secondary" variant="body2">
-        The NAS can read this folder, including files owned by root and
-        containers. It cannot upload, change or delete files on this server.
+      <AppTypography color="text.secondary" variant="caption">
+        Export a folder for the TNAS to read, including root and container
+        files. The NAS cannot change or delete files on this server.
       </AppTypography>
       <PathPickerField
         editable
@@ -85,17 +89,37 @@ function RsyncForm({
         value={config.path}
         disabled={pending}
       />
+      <SettingsGrid>
+        <AppTextField
+          size="small"
+          fullWidth
+          label="Module name"
+          value={config.module}
+          required
+          disabled={pending}
+          helperText="Use this name in TOS. It appears in the backup source list."
+          onChange={(event) =>
+            setConfig({ ...config, module: event.target.value })
+          }
+        />
+        <AppTextField
+          size="small"
+          fullWidth
+          label="Module port"
+          helperText="Default: 873. Choose a free port."
+          type="number"
+          value={config.port}
+          required
+          disabled={pending}
+          onChange={(event) =>
+            setConfig({ ...config, port: Number(event.target.value) })
+          }
+        />
+      </SettingsGrid>
+      <StatusGroupLabel>NAS access</StatusGroupLabel>
       <AppTextField
-        label="Module name"
-        value={config.module}
-        required
-        disabled={pending}
-        helperText="Use this module name in TOS. The module is hidden from public listings."
-        onChange={(event) =>
-          setConfig({ ...config, module: event.target.value })
-        }
-      />
-      <AppTextField
+        size="small"
+        fullWidth
         label="TNAS IP address"
         value={config.nas_address}
         required
@@ -106,47 +130,54 @@ function RsyncForm({
           setConfig({ ...config, nas_address: event.target.value })
         }
       />
-      <AppTextField
-        label="Module port"
-        helperText="873 is the default rsync module port. Choose a free port, separate from SSH."
-        type="number"
-        value={config.port}
-        required
-        disabled={pending}
-        onChange={(event) =>
-          setConfig({ ...config, port: Number(event.target.value) })
-        }
-      />
-      <AppTextField
-        label="Backup username"
-        value={config.username}
-        required
-        disabled={pending}
-        autoComplete="off"
-        helperText="This belongs to the rsync module, independently of Linux accounts."
-        onChange={(event) =>
-          setConfig({ ...config, username: event.target.value })
-        }
-      />
-      <AppTextField
-        label="Backup password"
-        type="password"
-        value={password}
-        disabled={pending}
-        required={!status.config || status.config.username !== config.username}
-        autoComplete="new-password"
-        helperText={
-          status.config
-            ? "Leave blank to keep the password. A new password needs at least 12 characters without spaces."
-            : "At least 12 characters without spaces. Use the same password in TOS."
-        }
-        onChange={(event) => setPassword(event.target.value)}
-      />
+      <SettingsGrid>
+        <AppTextField
+          size="small"
+          fullWidth
+          label="Backup username"
+          value={config.username}
+          required
+          disabled={pending}
+          autoComplete="off"
+          helperText="Module credentials, separate from Linux accounts."
+          onChange={(event) =>
+            setConfig({ ...config, username: event.target.value })
+          }
+        />
+        <AppTextField
+          size="small"
+          fullWidth
+          label="Backup password"
+          type="password"
+          value={password}
+          disabled={pending}
+          required={
+            !status.config || status.config.username !== config.username
+          }
+          autoComplete="new-password"
+          helperText={
+            status.config
+              ? "Leave blank to keep it. New password: 12+ characters, no spaces."
+              : "At least 12 characters, no spaces."
+          }
+          onChange={(event) => setPassword(event.target.value)}
+        />
+      </SettingsGrid>
       <div className="rsync-page__actions">
-        <AppButton type="submit" variant="contained" disabled={pending}>
+        <AppButton
+          type="submit"
+          variant="contained"
+          disabled={pending}
+          keepTextOnMobile
+          startIcon={<Icon icon="mdi:play" width={18} />}
+        >
           {save.isPending ? "Starting…" : "Save and start"}
         </AppButton>
         <AppButton
+          variant="outlined"
+          color="inherit"
+          keepTextOnMobile
+          startIcon={<Icon icon="mdi:stop" width={18} />}
           disabled={pending || (!status.active && !status.enabled)}
           onClick={() => {
             onError("");
@@ -157,8 +188,8 @@ function RsyncForm({
         </AppButton>
       </div>
       <AppTypography color="text.secondary" variant="caption">
-        Saving restarts the daemon and interrupts any running backup. It also
-        enables startup after reboot.
+        Saving restarts the module and interrupts running backups. The module
+        starts automatically after reboot.
       </AppTypography>
     </form>
   );
@@ -173,66 +204,81 @@ export default function RsyncPage() {
   const { isEnabled, reason } = useCapability("rsyncAvailable");
   return (
     <div className="rsync-page">
-      <div className="rsync-page__heading">
-        <AppTypography component="h1" variant="h5">
+      <header>
+        <AppTypography component="h1" variant="subtitle1" fontWeight={600}>
           rsync backups
         </AppTypography>
-        <AppChip
-          label={status.active ? "Running" : "Stopped"}
-          color={status.active ? "success" : "default"}
-        />
-      </div>
-      <AppTypography color="text.secondary" variant="body2">
-        Let TerraMaster TOS pull backups using a read-only rsync module on port
-        873 or the existing SSH service.
-      </AppTypography>
-      {error && <AppAlert severity="error">{error}</AppAlert>}
-      {!isEnabled ? (
-        <AppAlert severity="info">
-          {reason}{" "}
-          <Link to="/settings" search={{ tab: "capabilities" }}>
-            Open Capabilities to install rsync
-          </Link>
-        </AppAlert>
-      ) : (
-        <RsyncForm
-          key={JSON.stringify(status.config)}
-          status={status}
-          onError={setError}
-        />
-      )}
-      {status.config && (
-        <section
-          className="rsync-page__connection"
-          aria-label="TOS connection details"
-        >
-          <AppTypography component="h2" variant="h6">
-            Connect from TOS
-          </AppTypography>
-          <AppTypography variant="body2">
-            In Centralized Backup, add an rsync file server using this Linux
-            server’s LAN IP and the settings below.
-          </AppTypography>
-          <dl>
-            <dt>Mode</dt>
-            <dd>rsync module</dd>
-            <dt>Port</dt>
-            <dd>{status.config.port}</dd>
-            <dt>Module</dt>
-            <dd>{status.config.module}</dd>
-            <dt>Username</dt>
-            <dd>{status.config.username}</dd>
-            <dt>Password</dt>
-            <dd>The backup password you saved above</dd>
-          </dl>
-          <AppTypography color="text.secondary" variant="body2">
-            Allow TCP port {status.config.port} from {status.config.nas_address}{" "}
-            in your server firewall. Module traffic is unencrypted; use a
-            trusted LAN or VPN. Set the schedule and retention in TOS.
-          </AppTypography>
+        <AppTypography color="text.secondary" variant="caption">
+          Let TerraMaster TOS pull files through a read-only module or SSH.
+          Manage schedules and retention in TOS.
+        </AppTypography>
+      </header>
+      <div className="rsync-page__modes">
+        <section aria-label="Rsync module">
+          <SectionCard
+            headingComponent="h2"
+            icon="mdi:folder-network-outline"
+            title="Rsync module"
+            subtitle="Read-only access restricted to your TNAS"
+            titleAdornment={
+              <AppChip
+                label={status.active ? "Running" : "Stopped"}
+                color={status.active ? "success" : "default"}
+                size="small"
+                variant="soft"
+              />
+            }
+          >
+            <div className="rsync-page__stack">
+              {error && <AppAlert severity="error">{error}</AppAlert>}
+              {!isEnabled ? (
+                <AppAlert severity="info">
+                  {reason}{" "}
+                  <Link to="/settings" search={{ tab: "capabilities" }}>
+                    Open Capabilities to install rsync
+                  </Link>
+                </AppAlert>
+              ) : (
+                <RsyncForm
+                  key={JSON.stringify(status.config)}
+                  status={status}
+                  onError={setError}
+                />
+              )}
+              {status.config && (
+                <section
+                  className="rsync-page__stack"
+                  aria-label="TOS connection details"
+                >
+                  <StatusGroupLabel>Connect from TOS</StatusGroupLabel>
+                  <div>
+                    <InfoRow label="Mode" wrap>
+                      rsync module
+                    </InfoRow>
+                    <InfoRow label="Port">{status.config.port}</InfoRow>
+                    <InfoRow label="Module" wrap>
+                      {status.config.module}
+                    </InfoRow>
+                    <InfoRow label="Username" wrap>
+                      {status.config.username}
+                    </InfoRow>
+                  </div>
+                  <AppTypography color="text.secondary" variant="caption">
+                    In TOS Centralized Backup, add this server’s LAN IP and
+                    these settings. Use the backup password saved above.
+                  </AppTypography>
+                  <AppTypography color="text.secondary" variant="caption">
+                    Allow TCP port {status.config.port} from{" "}
+                    {status.config.nas_address}. Module traffic is unencrypted;
+                    use a trusted LAN or VPN.
+                  </AppTypography>
+                </section>
+              )}
+            </div>
+          </SectionCard>
         </section>
-      )}
-      <RsyncSSHSection modulePath={status.config?.path} />
+        <RsyncSSHSection modulePath={status.config?.path} />
+      </div>
     </div>
   );
 }

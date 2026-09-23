@@ -92,7 +92,7 @@ func assertRsyncProtection(t *testing.T, status apischema.RsyncStatus, password 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, setting := range []string{"use chroot = yes", "read only = yes", "list = no", "uid = root", "gid = root", "hosts allow = 192.168.1.249 127.0.0.1 ::1", "hosts deny = *", "auth users = tnas", "strict modes = yes", "port = 873"} {
+	for _, setting := range []string{"use chroot = yes", "read only = yes", "list = yes", "uid = root", "gid = root", "hosts allow = 192.168.1.249 127.0.0.1 ::1", "hosts deny = *", "auth users = tnas", "strict modes = yes", "port = 873"} {
 		if !strings.Contains(string(data), setting+"\n") {
 			t.Errorf("missing protection %q", setting)
 		}
