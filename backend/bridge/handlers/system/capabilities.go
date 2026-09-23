@@ -172,6 +172,14 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 	},
 	{
+		Name:    "rsync",
+		LogName: "rsync",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkDependencyCommand("rsync", "rsync"))
+		},
+		Install: &InstallSpec{PackageDebian: "rsync", PackageRHEL: "rsync"},
+	},
+	{
 		Name:    "tuned",
 		LogName: "TuneD",
 		Detect: func(ctx context.Context) (bool, string) {
@@ -330,6 +338,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.SambaServerAvailable, out.SambaServerError = ok, errPtr
 	case "samba_client":
 		out.SambaClientAvailable, out.SambaClientError = ok, errPtr
+	case "rsync":
+		out.RsyncAvailable, out.RsyncError = ok, errPtr
 	case "tuned":
 		out.TunedAvailable, out.TunedError = ok, errPtr
 	case "avahi":

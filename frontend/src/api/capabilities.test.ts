@@ -14,10 +14,12 @@ describe("capabilities helpers", () => {
     const state = capabilityStateFromWire({
       docker_available: true,
       packagekit_available: false,
+      rsync_available: true,
     });
 
     expect(state.dockerAvailable).toBe(true);
     expect(state.packageKitAvailable).toBe(false);
+    expect(state.rsyncAvailable).toBe(true);
     expect(state.libvirtAvailable).toBeNull();
     expect(state.wireguardAvailable).toBeNull();
   });

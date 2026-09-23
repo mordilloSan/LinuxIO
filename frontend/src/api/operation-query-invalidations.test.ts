@@ -10,6 +10,14 @@ import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
 const MODES = ROUTE_MODES as Record<string, string>;
 
 describe("OPERATION_QUERY_INVALIDATIONS", () => {
+  it("refreshes rsync status and service views after daemon changes", () => {
+    for (const route of ["shares.save_rsync", "shares.stop_rsync"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual([
+        ["linuxio", "shares", "get_rsync"],
+        ...OPERATION_QUERY_INVALIDATIONS["systemd.restart_service"],
+      ]);
+    }
+  });
   it("refreshes storage topology after volume and mount changes", () => {
     for (const action of [
       "create_lv",

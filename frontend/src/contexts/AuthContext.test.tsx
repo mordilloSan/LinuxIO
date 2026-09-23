@@ -154,7 +154,10 @@ describe("AuthContext", () => {
       json: async () => ({ privileged: true, success: true }),
       ok: true,
     } as Response);
-    apiMocks.getCapabilities.mockResolvedValue({ docker_available: true });
+    apiMocks.getCapabilities.mockResolvedValue({
+      docker_available: true,
+      rsync_available: true,
+    });
 
     const { user } = renderAuthProvider();
     await user.click(screen.getByRole("button", { name: "sign in" }));
@@ -164,7 +167,7 @@ describe("AuthContext", () => {
     expect(apiMocks.getCapabilities).toHaveBeenCalledTimes(1);
     expect(
       JSON.parse(localStorage.getItem("auth_capabilities")!),
-    ).toMatchObject({ dockerAvailable: true });
+    ).toMatchObject({ dockerAvailable: true, rsyncAvailable: true });
   });
 
   it("deduplicates repeated open notifications while a scan is in flight", async () => {

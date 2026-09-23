@@ -266,6 +266,7 @@ export interface CapabilitiesResponse {
   nfs_server_available: boolean;
   samba_server_available: boolean;
   samba_client_available: boolean;
+  rsync_available: boolean;
   tuned_available: boolean;
   avahi_available: boolean;
   wireguard_available: boolean;
@@ -281,6 +282,7 @@ export interface CapabilitiesResponse {
   nfs_server_error?: string;
   samba_server_error?: string;
   samba_client_error?: string;
+  rsync_error?: string;
   tuned_error?: string;
   avahi_error?: string;
   wireguard_error?: string;
@@ -2071,6 +2073,39 @@ export interface ResourceStatData {
   permissions: string;
 }
 
+export interface RsyncConfig {
+  module: string;
+  path: string;
+  username: string;
+  nas_address: string;
+  port: number;
+}
+
+export interface RsyncSSHRequest {
+  port: number;
+}
+
+export interface RsyncSSHStatus {
+  available: boolean;
+  port: number;
+  error?: string;
+}
+
+export interface RsyncSaveRequest {
+  module: string;
+  path: string;
+  username: string;
+  nas_address: string;
+  port: number;
+  password: string;
+}
+
+export interface RsyncStatus {
+  config?: RsyncConfig;
+  active: boolean;
+  enabled: boolean;
+}
+
 export interface SambaShare {
   name: string;
   properties: Record<string, string>;
@@ -3511,8 +3546,20 @@ export interface LinuxIOSchema {
       request: NameRequest;
       result: SuccessResponse;
     };
+    get_rsync: { input: []; request: void; result: RsyncStatus };
+    get_rsync_ssh: {
+      input: [port: number];
+      request: RsyncSSHRequest;
+      result: RsyncSSHStatus;
+    };
     list_nfs_shares: { input: []; request: void; result: NFSExport[] };
     list_samba_shares: { input: []; request: void; result: SambaShare[] };
+    save_rsync: {
+      input: [request: RsyncSaveRequest];
+      request: RsyncSaveRequest;
+      result: RsyncStatus;
+    };
+    stop_rsync: { input: []; request: void; result: RsyncStatus };
     update_nfs_share: {
       input: [request: ShareNFSRequest];
       request: ShareNFSRequest;
@@ -4185,8 +4232,12 @@ export interface LinuxIOCallSchema {
     request: NameRequest;
     result: SuccessResponse;
   };
+  "shares.get_rsync": { request: void; result: RsyncStatus };
+  "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };
+  "shares.save_rsync": { request: RsyncSaveRequest; result: RsyncStatus };
+  "shares.stop_rsync": { request: void; result: RsyncStatus };
   "shares.update_nfs_share": {
     request: ShareNFSRequest;
     result: SuccessPathResponse;

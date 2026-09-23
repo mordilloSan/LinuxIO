@@ -205,6 +205,20 @@ export const CAPABILITIES = [
     route: { label: "Open shares", to: "/shares" },
   },
   {
+    wire: "rsync",
+    state: "rsyncAvailable",
+    label: "rsync",
+    description: "File synchronization and backups to or from another server",
+    readyText:
+      "rsync command is available. Remote backups require connection setup.",
+    dependency: "rsync",
+    icon: "mdi:backup-restore",
+    reasonUnknown: "rsync availability is still being checked.",
+    reasonUnavailable: "rsync is not installed.",
+    installable: { requiresPackageKit: true },
+    route: { label: "Set up rsync", to: "/shares/rsync" },
+  },
+  {
     wire: "tuned",
     state: "tunedAvailable",
     label: "TuneD",

@@ -218,6 +218,8 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "datetime.set_ntp_servers": DATETIME_KEYS,
   "datetime.set_server_time": DATETIME_KEYS,
 
+  "shares.save_rsync": [endpointQueryPrefix("shares.get_rsync"), ...UNIT_KEYS],
+  "shares.stop_rsync": [endpointQueryPrefix("shares.get_rsync"), ...UNIT_KEYS],
   "shares.create_nfs_share": [endpointQueryPrefix("shares.list_nfs_shares")],
   "shares.update_nfs_share": [endpointQueryPrefix("shares.list_nfs_shares")],
   "shares.delete_nfs_share": [endpointQueryPrefix("shares.list_nfs_shares")],
