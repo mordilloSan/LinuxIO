@@ -92,7 +92,7 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 234; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 236; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeTask], 19; got != want {

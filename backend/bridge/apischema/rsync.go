@@ -25,10 +25,25 @@ type RsyncSSHRequest struct {
 	Port int `json:"port"`
 }
 
-// RsyncSSHStatus only verifies the existing local SSH listener. SSH account
-// authentication and file access are checked by the NAS's SSH connection.
+// RsyncSSHConfig is the read-only module that `rsync --daemon` serves when
+// TOS logs in over SSH as Username. It lives in that account's home directory.
+type RsyncSSHConfig struct {
+	Username string `json:"username"`
+	Path     string `json:"path"`
+	Module   string `json:"module"`
+}
+
+type RsyncSSHSaveRequest struct {
+	Username string `json:"username"`
+	Path     string `json:"path"`
+}
+
+// RsyncSSHStatus verifies the existing local SSH listener and reports the saved
+// SSH module. SSH account authentication and file access are checked by the
+// NAS's SSH connection.
 type RsyncSSHStatus struct {
-	Available bool    `json:"available"`
-	Port      int     `json:"port"`
-	Error     *string `json:"error,omitempty"`
+	Available bool            `json:"available"`
+	Port      int             `json:"port"`
+	Error     *string         `json:"error,omitempty"`
+	Config    *RsyncSSHConfig `json:"config,omitempty"`
 }

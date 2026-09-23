@@ -119,25 +119,34 @@ func validateRsyncConfig(config *apischema.RsyncConfig) error {
 	if config.Port < 1 || config.Port > 65535 {
 		return errors.New("rsync port must be between 1 and 65535")
 	}
-	if !filepath.IsAbs(config.Path) || strings.TrimSpace(config.Path) != config.Path || strings.ContainsAny(config.Path, "%\\") || strings.ContainsFunc(config.Path, unicode.IsControl) {
-		return errors.New("backup folder must be an absolute path without control characters, percent signs or backslashes")
-	}
-	path, err := filepath.EvalSymlinks(config.Path)
+	path, err := validateRsyncPath(config.Path)
 	if err != nil {
-		return fmt.Errorf("resolve backup folder: %w", err)
-	}
-	if strings.ContainsAny(path, "%\\") || strings.ContainsFunc(path, unicode.IsControl) || strings.TrimSpace(path) != path {
-		return errors.New("resolved backup folder contains unsupported characters")
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("read backup folder: %w", err)
-	}
-	if !info.IsDir() {
-		return errors.New("backup path must be an existing folder")
+		return err
 	}
 	config.Path = path
 	return nil
+}
+
+// validateRsyncPath resolves a backup folder to a form rsyncd.conf accepts.
+func validateRsyncPath(requested string) (string, error) {
+	if !filepath.IsAbs(requested) || strings.TrimSpace(requested) != requested || strings.ContainsAny(requested, "%\\") || strings.ContainsFunc(requested, unicode.IsControl) {
+		return "", errors.New("backup folder must be an absolute path without control characters, percent signs or backslashes")
+	}
+	path, err := filepath.EvalSymlinks(requested)
+	if err != nil {
+		return "", fmt.Errorf("resolve backup folder: %w", err)
+	}
+	if strings.ContainsAny(path, "%\\") || strings.ContainsFunc(path, unicode.IsControl) || strings.TrimSpace(path) != path {
+		return "", errors.New("resolved backup folder contains unsupported characters")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("read backup folder: %w", err)
+	}
+	if !info.IsDir() {
+		return "", errors.New("backup path must be an existing folder")
+	}
+	return path, nil
 }
 
 func rsyncConfigText(config apischema.RsyncConfig) string {

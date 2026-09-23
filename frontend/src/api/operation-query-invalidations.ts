@@ -220,6 +220,8 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "shares.save_rsync": [endpointQueryPrefix("shares.get_rsync"), ...UNIT_KEYS],
   "shares.stop_rsync": [endpointQueryPrefix("shares.get_rsync"), ...UNIT_KEYS],
+  "shares.save_rsync_ssh": [endpointQueryPrefix("shares.get_rsync_ssh")],
+  "shares.remove_rsync_ssh": [endpointQueryPrefix("shares.get_rsync_ssh")],
   "shares.create_nfs_share": [endpointQueryPrefix("shares.list_nfs_shares")],
   "shares.update_nfs_share": [endpointQueryPrefix("shares.list_nfs_shares")],
   "shares.delete_nfs_share": [endpointQueryPrefix("shares.list_nfs_shares")],
