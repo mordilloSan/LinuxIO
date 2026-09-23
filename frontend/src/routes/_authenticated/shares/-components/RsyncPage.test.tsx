@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { linuxio } from "@/api";
+import { linuxio, type RsyncStatus } from "@/api";
 import {
   createTestQueryClient,
   fireEvent,
@@ -17,13 +17,16 @@ vi.mock("@/api/calls", async (importOriginal) => ({
   call: mocks.call,
 }));
 
-function renderPage(available = true) {
+const stoppedStatus: RsyncStatus = {
+  config: undefined,
+  active: false,
+  enabled: false,
+  ssh_ready: false,
+};
+
+function renderPage(available = true, status: RsyncStatus = stoppedStatus) {
   const queryClient = createTestQueryClient();
-  queryClient.setQueryData(linuxio.shares.get_rsync.queryKey, {
-    config: null,
-    active: false,
-    enabled: false,
-  });
+  queryClient.setQueryData(linuxio.shares.get_rsync.queryKey, status);
   queryClient.setQueryData(
     linuxio.shares.get_rsync_ssh({ port: 22 }).queryKey,
     {
@@ -31,30 +34,17 @@ function renderPage(available = true) {
       port: 22,
     },
   );
-  let sshConfig: Record<string, unknown> | undefined;
   mocks.call.mockImplementation(async (route: string, request: unknown) => {
     if (route === "shares.get_rsync_ssh")
-      return {
-        available: true,
-        ...(request as { port: number }),
-        config: sshConfig,
-      };
-    if (route === "shares.save_rsync_ssh") {
-      sshConfig = { ...(request as Record<string, unknown>), module: "backup" };
-      return sshConfig;
-    }
-    if (route === "shares.remove_rsync_ssh") {
-      sshConfig = undefined;
-      return { success: true };
-    }
+      return { available: true, ...(request as { port: number }) };
     if (route === "shares.save_rsync") {
       const { password: _password, ...config } = request as Record<
         string,
         unknown
       >;
-      return { config, active: true, enabled: true };
+      return { config, active: true, enabled: true, ssh_ready: true };
     }
-    return { config: null, active: false, enabled: false };
+    return stoppedStatus;
   });
   return {
     ...renderWithTanStackRouter(<RsyncPage />, {
@@ -168,37 +158,45 @@ describe("rsync backup setup", () => {
       mocks.call.mock.calls.some(([route]) => route === "shares.save_rsync"),
     ).toBe(false);
   });
-  it("saves the SSH module for a Linux account, shows the TOS details and removes it", async () => {
-    renderPage();
+  it("describes TOS's encryption mode from the running module", async () => {
+    renderPage(true, {
+      config: {
+        module: "backup",
+        path: "/srv/data",
+        username: "tnas",
+        nas_address: "192.168.1.249",
+        port: 873,
+      },
+      active: true,
+      enabled: true,
+      ssh_ready: true,
+    });
     const ssh = await screen.findByRole("region", {
       name: "SSH backup connection",
     });
-    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/Linux account for SSH/), {
-      target: { value: "tnas-ssh" },
-    });
-    fireEvent.change(screen.getByLabelText(/SSH source folder/), {
-      target: { value: "/srv/data" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save SSH module" }));
-    await waitFor(() =>
-      expect(mocks.call).toHaveBeenCalledWith("shares.save_rsync_ssh", {
-        username: "tnas-ssh",
-        path: "/srv/data",
-      }),
-    );
     await waitFor(() => expect(ssh).toHaveTextContent("Connect from TOS"));
-    expect(ssh).toHaveTextContent("tnas-ssh");
-    expect(ssh).toHaveTextContent("backup");
-    expect(ssh).toHaveTextContent("/srv/data");
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    await waitFor(() =>
-      expect(mocks.call).toHaveBeenCalledWith(
-        "shares.remove_rsync_ssh",
-        undefined,
-      ),
-    );
-    await waitFor(() => expect(ssh).not.toHaveTextContent("Connect from TOS"));
+    expect(ssh).toHaveTextContent("A Linux account that can read /srv/data");
+    expect(ssh).toHaveTextContent("rsync module encryption mode");
+    expect(
+      screen.queryByText(/is not managed by LinuxIO/),
+    ).not.toBeInTheDocument();
+  });
+  it("warns when /etc/rsyncd.conf belongs to something else", async () => {
+    renderPage(true, {
+      config: {
+        module: "backup",
+        path: "/srv/data",
+        username: "tnas",
+        nas_address: "192.168.1.249",
+        port: 873,
+      },
+      active: true,
+      enabled: true,
+      ssh_ready: false,
+      ssh_error:
+        "/etc/rsyncd.conf is not managed by LinuxIO, so TOS's encryption mode reads that file instead of this module",
+    });
+    expect(await screen.findByText(/is not managed by LinuxIO/)).toBeVisible();
   });
   it("refreshes daemon status after a partial failure and retains the error", async () => {
     renderPage();
@@ -208,7 +206,7 @@ describe("rsync backup setup", () => {
         throw new Error("Configuration saved, but service failed");
       if (route === "shares.get_rsync_ssh")
         return { available: true, port: 22 };
-      return { active: false, enabled: false };
+      return stoppedStatus;
     });
     fireEvent.change(screen.getByLabelText(/Backup folder/), {
       target: { value: "/srv/backups" },

@@ -277,7 +277,7 @@ export default function RsyncPage() {
             </div>
           </SectionCard>
         </section>
-        <RsyncSSHSection modulePath={status.config?.path} />
+        <RsyncSSHSection status={status} />
       </div>
     </div>
   );

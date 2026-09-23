@@ -16,6 +16,7 @@ import (
 func setupRsyncTest(t *testing.T) {
 	t.Helper()
 	oldConfig, oldSecrets, oldUnit, oldLock := rsyncConfigFile, rsyncSecretsFile, rsyncUnitFile, rsyncLockFile
+	oldSystemConfig := rsyncSystemConfigFile
 	oldLookup, oldStop, oldStart := rsyncLookPath, rsyncStopUnit, rsyncStartUnit
 	oldEnable, oldDisable := rsyncEnableUnit, rsyncDisableUnit
 	oldCheckPort := rsyncCheckPort
@@ -23,6 +24,7 @@ func setupRsyncTest(t *testing.T) {
 	t.Cleanup(func() {
 		rsyncCheckPort = oldCheckPort
 		rsyncConfigFile, rsyncSecretsFile, rsyncUnitFile, rsyncLockFile = oldConfig, oldSecrets, oldUnit, oldLock
+		rsyncSystemConfigFile = oldSystemConfig
 		rsyncLookPath, rsyncStopUnit, rsyncStartUnit = oldLookup, oldStop, oldStart
 		rsyncEnableUnit, rsyncDisableUnit = oldEnable, oldDisable
 		rsyncActiveState, rsyncUnitFileState, rsyncWaitReady = oldActive, oldState, oldReady
@@ -30,6 +32,7 @@ func setupRsyncTest(t *testing.T) {
 	dir := t.TempDir()
 	rsyncConfigFile, rsyncSecretsFile = filepath.Join(dir, "rsyncd.conf"), filepath.Join(dir, "rsyncd.secrets")
 	rsyncUnitFile, rsyncLockFile = filepath.Join(dir, rsyncUnit), filepath.Join(dir, "lock")
+	rsyncSystemConfigFile = filepath.Join(dir, "etc-rsyncd.conf")
 	rsyncCheckPort = func(context.Context, int) error { return nil }
 	rsyncLookPath = func(string) (string, error) { return "/usr/bin/rsync", nil }
 	active, enabled := "inactive", "disabled"
@@ -84,6 +87,26 @@ func TestRsyncSaveReadAndStop(t *testing.T) {
 	if status.Active || status.Enabled || status.Config == nil {
 		t.Fatalf("stopped status = %+v", status)
 	}
+	if status.SSHReady || status.SSHError != nil {
+		t.Fatalf("a stopped daemon fails TOS's ps check without a further error: %+v", status)
+	}
+}
+
+func TestRsyncLeavesForeignSystemConfigAlone(t *testing.T) {
+	setupRsyncTest(t)
+	if err := os.WriteFile(rsyncSystemConfigFile, []byte("[distro]\npath = /srv\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, err := handleSaveRsync(context.Background(), testRsyncRequest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, readErr := os.ReadFile(rsyncSystemConfigFile); readErr != nil || string(data) != "[distro]\npath = /srv\n" {
+		t.Fatalf("foreign /etc/rsyncd.conf was altered: %q, %v", data, readErr)
+	}
+	if status.SSHReady || status.SSHError == nil || !strings.Contains(*status.SSHError, "not managed by LinuxIO") {
+		t.Fatalf("status must explain why TOS's encryption mode sees another file: %+v", status)
+	}
 }
 
 func assertRsyncProtection(t *testing.T, status apischema.RsyncStatus, password string) {
@@ -97,14 +120,21 @@ func assertRsyncProtection(t *testing.T, status apischema.RsyncStatus, password 
 			t.Errorf("missing protection %q", setting)
 		}
 	}
-	for _, file := range []string{rsyncConfigFile, rsyncSecretsFile} {
+	// TOS's SSH account reads the configuration; only the secrets stay private.
+	for file, perm := range map[string]os.FileMode{rsyncConfigFile: 0o644, rsyncSecretsFile: 0o600} {
 		info, statErr := os.Stat(file)
 		if statErr != nil {
 			t.Fatal(statErr)
 		}
-		if info.Mode().Perm() != 0o600 {
-			t.Errorf("%s permissions = %o", file, info.Mode().Perm())
+		if info.Mode().Perm() != perm {
+			t.Errorf("%s permissions = %o, want %o", file, info.Mode().Perm(), perm)
 		}
+	}
+	if link, linkErr := os.Readlink(rsyncSystemConfigFile); linkErr != nil || link != rsyncConfigFile {
+		t.Errorf("%s -> %q, %v; want link to %s", rsyncSystemConfigFile, link, linkErr, rsyncConfigFile)
+	}
+	if !status.SSHReady || status.SSHError != nil {
+		t.Errorf("running module must be ready for TOS's encryption mode: %+v", status)
 	}
 	wire, err := json.Marshal(status)
 	if err != nil {

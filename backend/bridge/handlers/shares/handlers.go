@@ -11,8 +11,6 @@ import (
 
 var api = apischema.Bindings(
 	apischema.Call[apischema.RsyncSSHRequest, apischema.RsyncSSHStatus]("shares.get_rsync_ssh", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetRsyncSSH),
-	apischema.Call[apischema.RsyncSSHSaveRequest, apischema.RsyncSSHConfig]("shares.save_rsync_ssh", apischema.Privileged()).Handle(handleSaveRsyncSSH),
-	apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("shares.remove_rsync_ssh", apischema.Privileged()).Handle(handleRemoveRsyncSSH),
 	apischema.Call[apischema.NoRequest, apischema.RsyncStatus]("shares.get_rsync", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetRsync),
 	apischema.Call[apischema.RsyncSaveRequest, apischema.RsyncStatus]("shares.save_rsync", apischema.Privileged()).Handle(handleSaveRsync),
 	apischema.Call[apischema.NoRequest, apischema.RsyncStatus]("shares.stop_rsync", apischema.Privileged()).Handle(handleStopRsync),

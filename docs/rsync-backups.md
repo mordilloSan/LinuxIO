@@ -1,8 +1,8 @@
 # Back up LinuxIO to TerraMaster TOS
 
 LinuxIO supports two ways for **TerraMaster TOS** to pull files: a read-only
-rsync module on **873**, or rsync over the existing **SSH service**. The SSH
-port is configurable and defaults to **22**.
+rsync module on **873**, or the same module in TOS's encryption mode through
+the existing **SSH service**. The SSH port is configurable and defaults to **22**.
 Scheduling, backup versions and retention belong to TOS. This is a file
 backup, not a bootable disk image.
 
@@ -31,44 +31,41 @@ saving keeps it; changing the backup username requires a new password.
 **Stop and disable** terminates transfers and disables startup while retaining
 the configuration. Saving also interrupts current transfers.
 
-## SSH — configurable port (default 22)
+## Encryption mode — SSH, configurable port (default 22)
 
-TOS's encrypted mode is the rsync daemon over SSH: TOS logs in with a Linux
-account's SSH password, runs `rsync --daemon` as that account, and lists the
-modules from `rsyncd.conf` in the account's home directory. A plain account
-with no such file makes TOS report a connection failure.
+TOS's **rsync module encryption mode** reuses the module above through SSH.
+Observed against TOS 7 on 2026-09-23, TOS logs in over SSH with a Linux
+account, runs `ps -ef | grep rsync` to confirm an rsync daemon is running,
+runs `cat /etc/rsyncd.conf` to learn the module names and folders, then copies
+the module folder with `rsync --server --sender` inside that SSH session, as
+the logged-in account. It never connects to the daemon's port in this mode.
 
-**Shares → rsync → SSH** checks the existing local SSH listener on the chosen
-port (default **22**; valid ports range from 1 to 65535). The check verifies an
-SSH 2 identification on localhost; it does not authenticate an account or
-establish connectivity from the TNAS.
+LinuxIO therefore keeps the module configuration free of secrets, writes it
+with mode `0644`, and links `/etc/rsyncd.conf` to it when that path is unused.
+The SSH card shows whether encryption mode is ready: the module must be
+running, and `/etc/rsyncd.conf` must be LinuxIO's link. An existing foreign
+`/etc/rsyncd.conf` is left untouched and reported instead.
 
-1. Pick a regular Linux account with read access to the folder to back up. Any
-   existing account works, including your own; the field defaults to the
-   signed-in user. TOS stores that account's SSH password, so a dedicated
-   account created in **Accounts** limits what a compromised NAS could reach.
-   Root is refused: rsync ignores the home configuration when the SSH login is
-   the super-user.
-2. Enter that account and the source folder, then select **Save SSH module**.
-   LinuxIO writes `rsyncd.conf` in the account's home, owned by the account,
-   with a `backup` module: `read only = yes`, `use chroot = no` (a non-root
-   daemon cannot chroot), `munge symlinks = no` so backups keep symlink targets,
-   and `list = yes` so TOS can pick it. It keeps a symlink at
-   `/etc/linuxio/rsyncd-ssh.conf` to find the saved module again. An existing
-   hand-written `rsyncd.conf` in that home is never overwritten or deleted.
-3. In TOS **Centralized Backup → File Server**, add the Linux server with its
-   LAN IP, the SSH port, the account name and its SSH password, then pick the
-   `backup` module from the backup source list.
+**Shares → rsync → SSH** also checks the existing local SSH listener on the
+chosen port (default **22**; valid ports range from 1 to 65535). The check
+verifies an SSH 2 identification on localhost; it does not authenticate an
+account or establish connectivity from the TNAS.
 
-**Remove** deletes the module file and the symlink. Saving with a different
-account moves the module and removes the previous account's file.
+1. Save and start the module. Keep it running; TOS's `ps` check fails otherwise.
+2. In TOS **Centralized Backup → File Server**, add the Linux server in
+   encryption mode with its LAN IP, the SSH port, and the username and SSH
+   password of a Linux account that can read the module folder. Any regular
+   account works, including your own. TOS stores that password, so a dedicated
+   read-only account created in **Accounts** limits what a compromised NAS
+   could reach. Root logins are governed by the server's SSH policy.
+3. Pick the module from the backup source list and create the task.
 
-The account's Linux permissions govern access; the module password and NAS IP
-restriction of the port 873 module do not apply. An ordinary account cannot
-read root-only container data. Choose module mode for the root-readable export
-described above. This feature uses the server's existing SSH configuration; it
-does not change its port or authentication policy, and the module daemon can
-remain stopped.
+The module password, NAS IP restriction and `read only` setting apply only to
+the daemon port. In encryption mode the account's Linux permissions govern
+access, and a TOS restore writes with those permissions. An ordinary account
+cannot read root-only container data; use the unencrypted module for that.
+This feature uses the server's existing SSH configuration; it does not change
+its port or authentication policy.
 
 ## Access and service ownership
 
@@ -80,11 +77,12 @@ remain stopped.
   Listing reveals no contents, and other addresses are still denied access.
 - `read only = yes`, `use chroot = yes`, `hosts deny = *`, and
   `strict modes = yes` are fixed protections, not editable advanced options.
-- LinuxIO owns `/etc/linuxio/rsyncd.conf`, `/etc/linuxio/rsyncd.secrets`
-  (both mode `0600`), `linuxio-rsync.service`, the `/etc/linuxio/rsyncd-ssh.conf`
-  symlink and the `rsyncd.conf` it points to in the SSH account's home (mode
-  `0644`, owned by that account, no secrets). It leaves an existing
-  `/etc/rsyncd.conf` and distro rsync service untouched. Two daemons cannot
+- LinuxIO owns `/etc/linuxio/rsyncd.conf` (mode `0644`, no secrets),
+  `/etc/linuxio/rsyncd.secrets` (mode `0600`), `linuxio-rsync.service`, and
+  the `/etc/rsyncd.conf` symlink when it created it. It leaves an existing
+  `/etc/rsyncd.conf` and the distro rsync service untouched; a distro service
+  enabled later would read the linked configuration and conflict on the port.
+  Two daemons cannot
   listen on the same address and port; stop a conflicting service from
   LinuxIO's **Services** page or choose a free port.
 - Configuration and service controls run in the privileged bridge. Each
@@ -106,8 +104,8 @@ virtual filesystems such as `/proc`, `/sys`, `/dev` or `/run`.
 The automated checks cover absent/present detection, login persistence,
 installation UI, module setup, credentials, service controls, rejected input,
 cancellation, configurable SSH ports, SSH identification (including rejecting a plain rsync listener),
-the SSH module file (save, read back, account switch, removal, refusing root,
-unknown accounts and hand-written files), and API authorization metadata. Mocked service tests do not establish interoperability with a real TNAS or verify host firewall rules.
+the `/etc/rsyncd.conf` link (created when absent, left alone when foreign) with
+the encryption-mode readiness flag, and API authorization metadata. Mocked service tests do not establish interoperability with a real TNAS or verify host firewall rules.
 
 References: [TerraMaster Centralized Backup](https://help.terra-master.com/docs/TOS7/backup/centralized-backup/),
 the [rsync daemon manual](https://download.samba.org/pub/rsync/rsyncd.conf.5),
