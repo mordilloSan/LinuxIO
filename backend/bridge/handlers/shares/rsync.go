@@ -145,7 +145,7 @@ func rsyncConfigText(config apischema.RsyncConfig) string {
 port = %d
 use chroot = yes
 read only = yes
-list = no
+list = yes
 timeout = 600
 max connections = 4
 

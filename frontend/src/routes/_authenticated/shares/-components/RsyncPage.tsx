@@ -97,7 +97,7 @@ function RsyncForm({
           value={config.module}
           required
           disabled={pending}
-          helperText="Use this name in TOS. Hidden from public listings."
+          helperText="Use this name in TOS. It appears in the backup source list."
           onChange={(event) =>
             setConfig({ ...config, module: event.target.value })
           }

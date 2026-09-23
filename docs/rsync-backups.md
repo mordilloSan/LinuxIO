@@ -20,8 +20,9 @@ backup, not a bootable disk image.
    starts the daemon, verifies its local rsync greeting, and enables startup
    after reboot. The UI shows the service state and the TOS connection fields.
 5. In TOS **Centralized Backup → File Server**, add the Linux server in **rsync
-   module mode**, using its LAN IP, the configured port, module, and backup
-   credentials. These credentials are independent of Linux user accounts.
+   module mode**, using its LAN IP, the configured port, and the backup
+   credentials, then pick the module from the backup source list. These
+   credentials are independent of Linux user accounts.
 6. Create the backup task, destination, schedule and retention policy in TOS.
    Verify the first backup and restore a sample file before relying on it.
 
@@ -57,8 +58,10 @@ read-only export described above.
 
 - The daemon reads as root so the selected folder can include files owned by
   root and containers. Access is restricted to the exact NAS address and
-  localhost (`127.0.0.1` and `::1`). The module requires authentication and is
-  hidden from public listings.
+  localhost (`127.0.0.1` and `::1`). The module requires authentication.
+  `list = yes` shows the module name to any client that reaches the port, so
+  the TOS backup-source picker can select it; without it the picker is empty.
+  Listing reveals no contents, and other addresses are still denied access.
 - `read only = yes`, `use chroot = yes`, `hosts deny = *`, and
   `strict modes = yes` are fixed protections, not editable advanced options.
 - LinuxIO owns `/etc/linuxio/rsyncd.conf`, `/etc/linuxio/rsyncd.secrets`
