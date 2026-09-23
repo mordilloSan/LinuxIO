@@ -27,20 +27,22 @@ import (
 const rsyncUnit = "linuxio-rsync.service"
 
 var (
-	rsyncConfigFile    = "/etc/linuxio/rsyncd.conf"
-	rsyncSecretsFile   = "/etc/linuxio/rsyncd.secrets"
-	rsyncUnitFile      = "/etc/systemd/system/" + rsyncUnit
-	rsyncLockFile      = "/run/lock/linuxio-rsync.lock"
-	rsyncLookPath      = exec.LookPath
-	rsyncStopUnit      = systemd.StopUnit
-	rsyncStartUnit     = systemd.StartUnit
-	rsyncEnableUnit    = systemd.EnableUnit
-	rsyncDisableUnit   = systemd.DisableUnit
-	rsyncActiveState   = systemd.GetActiveState
-	rsyncUnitFileState = systemd.GetUnitFileState
-	rsyncWaitReady     = waitRsyncReady
-	rsyncCheckPort     = checkRsyncPort
-	rsyncName          = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
+	rsyncConfigFile = "/etc/linuxio/rsyncd.conf"
+	// TOS's encryption mode reads this path over SSH to find the module folder.
+	rsyncSystemConfigFile = "/etc/rsyncd.conf"
+	rsyncSecretsFile      = "/etc/linuxio/rsyncd.secrets"
+	rsyncUnitFile         = "/etc/systemd/system/" + rsyncUnit
+	rsyncLockFile         = "/run/lock/linuxio-rsync.lock"
+	rsyncLookPath         = exec.LookPath
+	rsyncStopUnit         = systemd.StopUnit
+	rsyncStartUnit        = systemd.StartUnit
+	rsyncEnableUnit       = systemd.EnableUnit
+	rsyncDisableUnit      = systemd.DisableUnit
+	rsyncActiveState      = systemd.GetActiveState
+	rsyncUnitFileState    = systemd.GetUnitFileState
+	rsyncWaitReady        = waitRsyncReady
+	rsyncCheckPort        = checkRsyncPort
+	rsyncName             = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 )
 
 func handleGetRsync(ctx context.Context, _ apischema.NoRequest) (apischema.RsyncStatus, error) {
@@ -101,7 +103,24 @@ func getRsyncStatus(ctx context.Context) (apischema.RsyncStatus, error) {
 	}
 	status.Active = active == "active"
 	status.Enabled = state == "enabled"
+	status.SSHReady, status.SSHError = rsyncSSHState(status.Active)
 	return status, nil
+}
+
+// rsyncSSHState reports whether TOS's encryption mode would find this module.
+// TOS logs in over SSH, requires a running rsync daemon, and reads
+// /etc/rsyncd.conf for the module folder before copying it with rsync over SSH.
+func rsyncSSHState(active bool) (bool, *string) {
+	target, err := os.Readlink(rsyncSystemConfigFile)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return false, utils.OptionalString(rsyncSystemConfigFile + " is missing; save the module again to create it")
+	case err != nil || target != rsyncConfigFile:
+		return false, utils.OptionalString(rsyncSystemConfigFile + " is not managed by LinuxIO, so TOS's encryption mode reads that file instead of this module")
+	case !active:
+		return false, nil
+	}
+	return true, nil
 }
 
 func validateRsyncConfig(config *apischema.RsyncConfig) error {
@@ -261,8 +280,12 @@ func writeRsyncFiles(config apischema.RsyncConfig, secret, binary string) error 
 	if err := utils.WriteFileAtomic(rsyncSecretsFile, []byte(config.Username+":"+secret+"\n"), 0o600); err != nil {
 		return fmt.Errorf("save rsync credentials: %w", err)
 	}
-	if err := utils.WriteFileAtomic(rsyncConfigFile, []byte(rsyncConfigText(config)), 0o600); err != nil {
+	// The configuration holds no secrets; the SSH account TOS logs in with must read it.
+	if err := utils.WriteFileAtomic(rsyncConfigFile, []byte(rsyncConfigText(config)), 0o644); err != nil {
 		return fmt.Errorf("save rsync configuration: %w", err)
+	}
+	if err := linkRsyncSystemConfig(); err != nil {
+		return err
 	}
 	unit := fmt.Sprintf(`[Unit]
 Description=LinuxIO read-only rsync backups
@@ -279,6 +302,29 @@ WantedBy=multi-user.target
 `, binary, rsyncConfigFile)
 	if err := utils.WriteFileAtomic(rsyncUnitFile, []byte(unit), 0o644); err != nil {
 		return fmt.Errorf("save rsync service: %w", err)
+	}
+	return nil
+}
+
+// linkRsyncSystemConfig points /etc/rsyncd.conf at the LinuxIO configuration
+// when nothing else owns that path. A foreign file or link is left alone and
+// reported through rsyncSSHState.
+func linkRsyncSystemConfig() error {
+	target, err := os.Readlink(rsyncSystemConfigFile)
+	if err == nil && target == rsyncConfigFile {
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	tmp := rsyncSystemConfigFile + ".linuxio-tmp"
+	_ = os.Remove(tmp)
+	if err := os.Symlink(rsyncConfigFile, tmp); err != nil {
+		return fmt.Errorf("link %s: %w", rsyncSystemConfigFile, err)
+	}
+	if err := os.Rename(tmp, rsyncSystemConfigFile); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("link %s: %w", rsyncSystemConfigFile, err)
 	}
 	return nil
 }

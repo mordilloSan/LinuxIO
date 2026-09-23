@@ -2081,26 +2081,14 @@ export interface RsyncConfig {
   port: number;
 }
 
-export interface RsyncSSHConfig {
-  username: string;
-  path: string;
-  module: string;
-}
-
 export interface RsyncSSHRequest {
   port: number;
-}
-
-export interface RsyncSSHSaveRequest {
-  username: string;
-  path: string;
 }
 
 export interface RsyncSSHStatus {
   available: boolean;
   port: number;
   error?: string;
-  config?: RsyncSSHConfig;
 }
 
 export interface RsyncSaveRequest {
@@ -2116,6 +2104,8 @@ export interface RsyncStatus {
   config?: RsyncConfig;
   active: boolean;
   enabled: boolean;
+  ssh_ready: boolean;
+  ssh_error?: string;
 }
 
 export interface SambaShare {
@@ -3566,16 +3556,10 @@ export interface LinuxIOSchema {
     };
     list_nfs_shares: { input: []; request: void; result: NFSExport[] };
     list_samba_shares: { input: []; request: void; result: SambaShare[] };
-    remove_rsync_ssh: { input: []; request: void; result: SuccessResponse };
     save_rsync: {
       input: [request: RsyncSaveRequest];
       request: RsyncSaveRequest;
       result: RsyncStatus;
-    };
-    save_rsync_ssh: {
-      input: [request: RsyncSSHSaveRequest];
-      request: RsyncSSHSaveRequest;
-      result: RsyncSSHConfig;
     };
     stop_rsync: { input: []; request: void; result: RsyncStatus };
     update_nfs_share: {
@@ -4254,12 +4238,7 @@ export interface LinuxIOCallSchema {
   "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };
-  "shares.remove_rsync_ssh": { request: void; result: SuccessResponse };
   "shares.save_rsync": { request: RsyncSaveRequest; result: RsyncStatus };
-  "shares.save_rsync_ssh": {
-    request: RsyncSSHSaveRequest;
-    result: RsyncSSHConfig;
-  };
   "shares.stop_rsync": { request: void; result: RsyncStatus };
   "shares.update_nfs_share": {
     request: ShareNFSRequest;

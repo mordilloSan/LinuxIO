@@ -1,21 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import type {
-  RsyncSSHConfig,
-  RsyncSSHSaveRequest,
-  RsyncSaveRequest,
-  RsyncStatus,
-} from "@/api";
+import type { RsyncSaveRequest, RsyncStatus } from "@/api";
 
 async function mockRsyncServer(
   page: Page,
-  initialStatus: RsyncStatus = { active: false, enabled: false },
+  initialStatus: RsyncStatus = {
+    active: false,
+    enabled: false,
+    ssh_ready: false,
+  },
 ) {
   let status = initialStatus;
   const saves: RsyncSaveRequest[] = [];
-  const sshSaves: RsyncSSHSaveRequest[] = [];
   const sshPorts: number[] = [];
-  let sshConfig: RsyncSSHConfig | undefined;
   await page.routeWebSocket("**/ws", (socket) => {
     socket.onMessage((message) => {
       if (typeof message === "string" || message[4] !== 0x01) return;
@@ -24,25 +21,15 @@ async function mockRsyncServer(
       if (route === "shares.save_rsync") {
         saves.push(request);
         const { password: _password, ...config } = request;
-        status = { config, active: true, enabled: true };
+        status = { config, active: true, enabled: true, ssh_ready: true };
       } else if (route === "shares.stop_rsync") {
-        status = { ...status, active: false, enabled: false };
+        status = { ...status, active: false, enabled: false, ssh_ready: false };
       }
       if (route === "shares.get_rsync_ssh") sshPorts.push(request.port);
-      if (route === "shares.save_rsync_ssh") {
-        sshSaves.push(request);
-        sshConfig = { ...request, module: "backup" };
-      } else if (route === "shares.remove_rsync_ssh") {
-        sshConfig = undefined;
-      }
       const data =
         route === "shares.get_rsync_ssh"
-          ? { available: true, port: request.port, config: sshConfig }
-          : route === "shares.save_rsync_ssh"
-            ? sshConfig
-            : route === "shares.remove_rsync_ssh"
-              ? { success: true }
-              : status;
+          ? { available: true, port: request.port }
+          : status;
       const body = Buffer.from(JSON.stringify({ data, status: "ok" }));
       const frame = Buffer.alloc(14 + body.length);
       frame.writeUInt32BE(id, 0);
@@ -54,36 +41,23 @@ async function mockRsyncServer(
       socket.send(frame);
     });
   });
-  return { saves, sshSaves, sshPorts };
+  return { saves, sshPorts };
 }
 
 test("configures a read-only backup module without a terminal", async ({
   page,
 }) => {
-  const { saves, sshSaves, sshPorts } = await mockRsyncServer(page);
+  const { saves, sshPorts } = await mockRsyncServer(page);
   await page.goto("/shares/rsync");
   const ssh = page.getByRole("region", { name: "SSH backup connection" });
   await expect(ssh.getByLabel("SSH port", { exact: false })).toHaveValue("22");
   await expect.poll(() => sshPorts).toContain(22);
+  await expect(ssh).toContainText("Save and start the module first");
 
   await ssh.getByLabel("SSH port", { exact: false }).fill("9222");
   await ssh.getByRole("button", { name: "Check SSH port 9222" }).click();
   await expect.poll(() => sshPorts).toContain(9222);
-  await expect(ssh.getByRole("button", { name: "Remove" })).toBeDisabled();
-  await ssh
-    .getByLabel("Linux account for SSH", { exact: false })
-    .fill("backup-user");
-  await ssh
-    .getByLabel("SSH source folder", { exact: false })
-    .fill("/home/backup-user/data");
-  await ssh.getByRole("button", { name: "Save SSH module" }).click();
-  await expect
-    .poll(() => sshSaves)
-    .toEqual([{ username: "backup-user", path: "/home/backup-user/data" }]);
-  await expect(ssh).toContainText("Connect from TOS");
   await expect(ssh).toContainText("9222");
-  await expect(ssh).toContainText("backup-user");
-  await expect(ssh).toContainText("/home/backup-user/data");
   await ssh.getByLabel("SSH port", { exact: false }).fill("65536");
   await expect(
     ssh.getByRole("button", { name: "Check SSH port 65536" }),
@@ -99,6 +73,8 @@ test("configures a read-only backup module without a terminal", async ({
     .fill("test-backup-password");
   await page.getByRole("button", { name: "Save and start" }).click();
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
+  await expect(ssh).toContainText("Connect from TOS");
+  await expect(ssh).toContainText("A Linux account that can read /srv/data");
   expect(saves[0]).toMatchObject({
     module: "backup",
     path: "/srv/data",
@@ -113,10 +89,7 @@ test("configures a read-only backup module without a terminal", async ({
   await expect(
     page.getByRole("region", { name: "TOS connection details" }),
   ).toContainText("873");
-  await expect(ssh).toContainText("backup-user");
-  await ssh.getByRole("button", { name: "Remove" }).click();
-  await expect(ssh).not.toContainText("Connect from TOS");
-  await expect(ssh.getByRole("button", { name: "Remove" })).toBeDisabled();
+  await expect(ssh).toContainText("A Linux account that can read /srv/data");
   await page.getByLabel("Module port", { exact: false }).fill("8873");
   await page.getByRole("button", { name: "Save and start" }).click();
   await expect.poll(() => saves.length).toBe(2);
@@ -126,6 +99,7 @@ test("configures a read-only backup module without a terminal", async ({
   ).toContainText("8873");
   await page.getByRole("button", { name: "Stop and disable" }).click();
   await expect(page.getByText("Stopped", { exact: true })).toBeVisible();
+  await expect(ssh).toContainText("The module is stopped");
 });
 
 for (const scheme of ["dark", "light"] as const) {
@@ -136,6 +110,7 @@ for (const scheme of ["dark", "light"] as const) {
       await mockRsyncServer(page, {
         active: true,
         enabled: true,
+        ssh_ready: true,
         config: {
           module: "backup",
           path: "/srv/containers/a-very-long-directory-name-without-spaces/application-data/backups",
@@ -176,15 +151,16 @@ for (const scheme of ["dark", "light"] as const) {
         path: test.info().outputPath(`rsync-${scheme}-${width}.png`),
         fullPage: true,
       });
-      const save = ssh.getByRole("button", { name: "Save SSH module" });
-      await ssh.getByLabel("SSH source folder", { exact: false }).focus();
+      const check = ssh.getByRole("button", { name: "Check SSH port 22" });
+      await ssh.getByLabel("SSH port", { exact: false }).focus();
       await page.keyboard.press("Tab");
-      await page.keyboard.press("Tab");
-      await expect(save).toBeFocused();
-      await expect(save).toBeInViewport();
-      await expect(save).toHaveCSS("outline-style", "solid");
+      await expect(check).toBeFocused();
+      await expect(check).toBeInViewport();
+      await expect(check).toHaveCSS("outline-style", "solid");
       await page.keyboard.press("Enter");
-      await expect(ssh).toContainText("rsync-fixture");
+      await expect(
+        ssh.getByText(/The local SSH listener responds/),
+      ).toBeVisible();
       if (width === 320) {
         await page.screenshot({
           path: test.info().outputPath(`rsync-${scheme}-320-ssh.png`),
