@@ -477,6 +477,8 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               display: "flex",
               flexDirection: "column",
               gap: GAP_MD,
+              // Card gap + this = GAP_MD, clearing the floating label like the field gaps.
+              marginTop: GAP_MD - GAP_SM,
             }}
           >
             <AppTextField
