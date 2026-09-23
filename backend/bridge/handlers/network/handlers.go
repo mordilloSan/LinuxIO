@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -74,7 +75,10 @@ func (h networkHandlers) handleOwnerUID() uint32 {
 }
 
 func (h networkHandlers) handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest) error {
-	return SetIPv4Manual(ctx, req.Iface, req.Address, req.Gateway, []string{req.DNS})
+	dnsServers := strings.FieldsFunc(req.DNS, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+	return SetIPv4Manual(ctx, req.Iface, req.Address, req.Gateway, dnsServers)
 }
 
 func (h networkHandlers) handleSetIPv4(ctx context.Context, req apischema.InterfaceMethodRequest) error {

@@ -3,9 +3,14 @@ package network
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	stdnet "net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
@@ -266,5 +271,72 @@ func TestLiveInterfaceInfoAlwaysSerialisesArrays(t *testing.T) {
 		if !strings.Contains(string(encoded), field) {
 			t.Fatalf("expected %s in %s", field, encoded)
 		}
+	}
+}
+
+type networkConfigRunner struct {
+	calls []string
+}
+
+func (r *networkConfigRunner) LookPath(name string) (string, error) {
+	return name, nil
+}
+
+func (r *networkConfigRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	r.calls = append(r.calls, strings.Join(append([]string{name}, args...), " "))
+	return nil, nil
+}
+
+func TestHandleSetIPv4ManualDNS(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		dns     string
+		want    []string
+		wantErr string
+	}{
+		{name: "single", dns: "192.168.1.66", want: []string{"192.168.1.66"}},
+		{name: "comma separated", dns: "192.168.1.66,192.168.1.249", want: []string{"192.168.1.66", "192.168.1.249"}},
+		{name: "comma and spaces", dns: " 192.168.1.66, 192.168.1.249 ", want: []string{"192.168.1.66", "192.168.1.249"}},
+		{name: "whitespace separated", dns: "192.168.1.66\t192.168.1.249\n", want: []string{"192.168.1.66", "192.168.1.249"}},
+		{name: "IPv6 DNS", dns: "2001:4860:4860::8888", want: []string{"2001:4860:4860::8888"}},
+		{name: "empty", wantErr: "at least one DNS server is required"},
+		{name: "only separators", dns: " ,\t,\n", wantErr: "at least one DNS server is required"},
+		{name: "invalid address", dns: "192.168.1.256", wantErr: `invalid DNS server "192.168.1.256"`},
+		{name: "invalid second address", dns: "192.168.1.66,not-an-ip", wantErr: `invalid DNS server "not-an-ip"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "01-eth0.yaml")
+			const original = "network:\n  version: 2\n  ethernets:\n    eth0:\n      dhcp4: true\n"
+			require.NoError(t, os.WriteFile(path, []byte(original), 0o600))
+			runner := &networkConfigRunner{}
+			previous := networkEnv
+			networkEnv = networkbackend.Environment{
+				NetplanDir: dir,
+				Runner:     runner,
+				WriteFile: func(path string, data []byte, mode fs.FileMode, _ ...int) error {
+					return os.WriteFile(path, data, mode)
+				},
+			}
+			t.Cleanup(func() { networkEnv = previous })
+
+			err := (networkHandlers{}).handleSetIPv4Manual(t.Context(), apischema.IPv4ManualRequest{
+				Iface: "eth0", Address: "192.168.1.50/24", Gateway: "192.168.1.1", DNS: tt.dns,
+			})
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				contents, readErr := os.ReadFile(path)
+				require.NoError(t, readErr)
+				require.Equal(t, original, string(contents), "invalid DNS changed configuration")
+				require.Empty(t, runner.calls, "invalid DNS ran commands")
+				return
+			}
+			require.NoError(t, err)
+			cfg, ok, err := networkbackend.ReadConfigBestEffort(networkEnv, "eth0")
+			require.NoError(t, err)
+			require.True(t, ok, "updated configuration is missing")
+			require.Equal(t, tt.want, cfg.DNS)
+			require.Equal(t, []string{"netplan generate", "netplan apply"}, runner.calls)
+		})
 	}
 }

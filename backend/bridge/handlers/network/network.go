@@ -119,6 +119,11 @@ func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsS
 	if len(dnsServers) == 0 {
 		return fmt.Errorf("at least one DNS server is required")
 	}
+	for _, dns := range dnsServers {
+		if stdnet.ParseIP(dns) == nil {
+			return fmt.Errorf("invalid DNS server %q", dns)
+		}
+	}
 	unlock, err := beginNetworkMutation(ctx)
 	if err != nil {
 		return err
