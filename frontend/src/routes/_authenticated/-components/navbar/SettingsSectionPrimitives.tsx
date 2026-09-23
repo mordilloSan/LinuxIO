@@ -161,6 +161,7 @@ export const StatusGroupLabel = ({ children }: { children: ReactNode }) => (
 );
 
 export const SectionCard = ({
+  headingComponent = "h3",
   icon,
   title,
   subtitle,
@@ -170,6 +171,7 @@ export const SectionCard = ({
   defaultCollapsed = false,
   children,
 }: {
+  headingComponent?: "h2" | "h3";
   icon: string;
   title: string;
   subtitle?: ReactNode;
@@ -224,7 +226,11 @@ export const SectionCard = ({
               gap: "var(--app-space-4)",
             }}
           >
-            <AppTypography component="h3" fontWeight={600} variant="body2">
+            <AppTypography
+              component={headingComponent}
+              fontWeight={600}
+              variant="body2"
+            >
               {title}
             </AppTypography>
             {titleAdornment}

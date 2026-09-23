@@ -1,15 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import type { RsyncSaveRequest, RsyncStatus } from "@/api";
 
-test("configures a read-only backup module without a terminal", async ({
-  page,
-}) => {
-  let status: RsyncStatus = {
-    config: undefined,
-    active: false,
-    enabled: false,
-  };
+async function mockRsyncServer(
+  page: Page,
+  initialStatus: RsyncStatus = { active: false, enabled: false },
+) {
+  let status = initialStatus;
   const saves: RsyncSaveRequest[] = [];
   const sshPorts: number[] = [];
   await page.routeWebSocket("**/ws", (socket) => {
@@ -40,10 +37,18 @@ test("configures a read-only backup module without a terminal", async ({
       socket.send(frame);
     });
   });
+  return { saves, sshPorts };
+}
+
+test("configures a read-only backup module without a terminal", async ({
+  page,
+}) => {
+  const { saves, sshPorts } = await mockRsyncServer(page);
   await page.goto("/shares/rsync");
   const ssh = page.getByRole("region", { name: "SSH backup connection" });
   await expect(ssh.getByLabel("SSH port", { exact: false })).toHaveValue("22");
   await expect.poll(() => sshPorts).toContain(22);
+
   await ssh.getByLabel("SSH port", { exact: false }).fill("9222");
   await ssh.getByLabel("Linux username for SSH").fill("backup-user");
   await ssh.getByLabel("SSH source folder").fill("/home/backup-user/data");
@@ -90,3 +95,72 @@ test("configures a read-only backup module without a terminal", async ({
   await page.getByRole("button", { name: "Stop and disable" }).click();
   await expect(page.getByText("Stopped", { exact: true })).toBeVisible();
 });
+
+for (const scheme of ["dark", "light"] as const) {
+  for (const width of [320, 1280]) {
+    test(`rsync shared cards in ${scheme} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await mockRsyncServer(page, {
+        active: true,
+        enabled: true,
+        config: {
+          module: "backup",
+          path: "/srv/containers/a-very-long-directory-name-without-spaces/application-data/backups",
+          username: "tnas",
+          nas_address: "192.168.1.249",
+          port: 873,
+        },
+      });
+      await page.goto(
+        scheme === "light" ? "/styling/light/rsync" : "/shares/rsync",
+      );
+      await expect(page.getByText("Running", { exact: true })).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      const module = page.getByRole("region", {
+        name: "Rsync module",
+        exact: true,
+      });
+      const ssh = page.getByRole("region", { name: "SSH backup connection" });
+      await expect(module.locator(".frosted-card")).toBeVisible();
+      await expect(ssh.locator(".frosted-card")).toBeVisible();
+      const moduleBox = await module.boundingBox();
+      const sshBox = await ssh.boundingBox();
+      if (!moduleBox || !sshBox) throw new Error("Missing backup mode layout");
+      if (width === 1280) {
+        expect(Math.abs(moduleBox.y - sshBox.y)).toBeLessThan(1);
+        expect(sshBox.x).toBeGreaterThan(moduleBox.x + moduleBox.width);
+      } else {
+        expect(sshBox.y).toBeGreaterThan(moduleBox.y + moduleBox.height);
+      }
+      const overflow = await page
+        .locator(".rsync-page")
+        .evaluate((element) => ({
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+        }));
+      expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+      await page.screenshot({
+        path: test.info().outputPath(`rsync-${scheme}-${width}.png`),
+        fullPage: true,
+      });
+      const check = ssh.getByRole("button", { name: "Check SSH port 22" });
+      await ssh.getByLabel("SSH source folder").focus();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Tab");
+      await expect(check).toBeFocused();
+      await expect(check).toBeInViewport();
+      await expect(check).toHaveCSS("outline-style", "solid");
+      await page.keyboard.press("Enter");
+      await expect(
+        ssh.getByText(/The local SSH listener responds/),
+      ).toBeVisible();
+      if (width === 320) {
+        await page.screenshot({
+          path: test.info().outputPath(`rsync-${scheme}-320-ssh.png`),
+          fullPage: true,
+        });
+      }
+    });
+  }
+}

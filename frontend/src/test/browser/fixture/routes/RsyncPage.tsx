@@ -3,8 +3,10 @@ import { Suspense, useEffect } from "react";
 
 import { closeStreamMux, initStreamMux, useStreamMux } from "@/api";
 import { capabilitiesQueryKey } from "@/api/capabilities";
+import { RoutedTabLayout } from "@/components/tabbar";
 import { AuthContext } from "@/contexts/AuthContext";
 import RsyncPage from "@/routes/_authenticated/shares/-components/RsyncPage";
+import { SHARES_TABS } from "@/routes/_authenticated/shares/-components/sharesTabs";
 import type { AuthContextType } from "@/types/auth";
 
 const queryClient = new QueryClient({
@@ -37,7 +39,17 @@ export default function RsyncFixture() {
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider value={auth}>
         <Suspense fallback={<div role="status">Loading rsync…</div>}>
-          {isOpen ? <RsyncPage /> : <div role="status">Connecting…</div>}
+          <main
+            style={{
+              height: "100dvh",
+              padding: "var(--app-space-16)",
+              boxSizing: "border-box",
+            }}
+          >
+            <RoutedTabLayout tabs={SHARES_TABS}>
+              {isOpen ? <RsyncPage /> : <div role="status">Connecting…</div>}
+            </RoutedTabLayout>
+          </main>
         </Suspense>
       </AuthContext.Provider>
     </QueryClientProvider>

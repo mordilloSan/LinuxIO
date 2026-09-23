@@ -1,38 +1,35 @@
 .rsync-page {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--app-space-12);
   height: 100%;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
-  padding: 1.25rem;
 }
 
-.rsync-page__heading,
+.rsync-page__modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+  align-items: start;
+  gap: var(--app-space-16);
+}
+
+.rsync-page__modes > section {
+  min-width: 0;
+}
+
+.rsync-page__form,
+.rsync-page__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+  min-width: 0;
+}
+
 .rsync-page__actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.rsync-page__form,
-.rsync-page__connection {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 42rem;
-  width: 100%;
-}
-
-.rsync-page__connection dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.5rem 1rem;
-  margin: 0;
-}
-
-.rsync-page__connection dd {
-  margin: 0;
-  overflow-wrap: anywhere;
+  gap: var(--app-space-8);
 }
