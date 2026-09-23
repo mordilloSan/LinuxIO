@@ -6,6 +6,7 @@ import { render, screen } from "@/test/render";
 import ContainerActions from "./ContainerActions";
 
 const callbacks = { onOpenLogs: vi.fn(), onOpenTerminal: vi.fn() };
+const menuAt = { left: 0, top: 0 };
 
 describe("ContainerActions", () => {
   beforeEach(() => {
@@ -19,22 +20,21 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
-        mode="icons-all"
+        contextMenu={menuAt}
+        mode="card"
         name="example"
         {...callbacks}
       />,
     );
 
     expect(screen.getByRole("button", { name: "Stop example" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Pause example" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Pause" })).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "Restart example" }),
     ).toBeEnabled();
-    expect(
-      screen.queryByRole("button", { name: "Unpause example" }),
-    ).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Unpause" })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Kill example" }));
+    await user.click(screen.getByRole("menuitem", { name: "Kill" }));
     expect(
       screen.getByRole("dialog", { name: "Kill example?" }),
     ).toBeInTheDocument();
@@ -53,7 +53,8 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
-        mode="icons-all"
+        contextMenu={menuAt}
+        mode="card"
         name="example"
         {...callbacks}
       />,
@@ -89,15 +90,14 @@ describe("ContainerActions", () => {
       const { user } = render(
         <ContainerActions
           container={{ Id: "container-id", State: state }}
-          mode="icons-all"
+          contextMenu={menuAt}
+          mode="card"
           name="example"
           {...callbacks}
         />,
       );
 
-      await user.click(
-        screen.getByRole("button", { name: `${label} example` }),
-      );
+      await user.click(screen.getByRole("menuitem", { name: label }));
 
       expect(request).toHaveBeenCalledWith(
         "docker",
@@ -113,7 +113,8 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "stopped-id", State: "exited" }}
-        mode="icons-all"
+        contextMenu={menuAt}
+        mode="card"
         name="stopped"
         {...callbacks}
       />,
@@ -123,8 +124,8 @@ describe("ContainerActions", () => {
     expect(
       screen.getByRole("button", { name: "Restart stopped" }),
     ).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Pause stopped" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Kill stopped" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Kill" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Remove stopped" }));
     expect(
       screen.queryByRole("checkbox", {
@@ -149,42 +150,34 @@ describe("ContainerActions", () => {
           Labels: { "com.docker.compose.project": "example-stack" },
           State: "running",
         }}
-        mode="icons-all"
+        contextMenu={menuAt}
+        mode="card"
         name="example"
         {...callbacks}
       />,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Edit stack example" }),
-    ).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Edit example" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Edit stack" })).toBeEnabled();
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
   });
 
-  it("lays every action out as its own labelled icon button", () => {
+  it("keeps only lifecycle and removal icons, the rest in the menu", () => {
     render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
-        mode="icons-all"
+        contextMenu={menuAt}
+        mode="card"
         name="example"
         {...callbacks}
       />,
     );
 
-    for (const label of [
-      "Stop example",
-      "Edit example",
-      "Restart example",
-      "Pause example",
-      "Logs example",
-      "Terminal example",
-      "Kill example",
-      "Remove example",
-    ]) {
+    for (const label of ["Stop example", "Restart example", "Remove example"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
+    expect(screen.getAllByRole("button")).toHaveLength(3);
     expect(
-      screen.queryByRole("button", { name: "Actions for example" }),
-    ).toBeNull();
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Edit", "Pause", "Logs", "Terminal", "Kill"]);
   });
 });
