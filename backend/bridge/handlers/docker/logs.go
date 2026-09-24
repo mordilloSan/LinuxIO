@@ -44,6 +44,14 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 	}
 	defer releaseClient(cli)
 
+	// TTY containers return raw bytes instead of the stdout/stderr multiplexed stream.
+	inspect, err := cli.ContainerInspect(ctx, req.ContainerID, client.ContainerInspectOptions{})
+	if err != nil {
+		slog.Error("failed to inspect container for logs", "component", "docker", "route", routeDockerLogsFollow, "container", req.ContainerID, "error", err)
+		return writeDockerLogErrorUnlessCanceled(ctx, stream, err)
+	}
+	tty := inspect.Container.Config != nil && inspect.Container.Config.Tty
+
 	options := client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
@@ -63,20 +71,25 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 	}
 	defer reader.Close()
 
-	if err := streamDockerLogs(ctx, stream, reader); err != nil {
+	if err := streamDockerLogs(ctx, stream, reader, tty); err != nil {
 		return writeDockerLogErrorUnlessCanceled(ctx, stream, err)
 	}
 	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
 }
 
-func streamDockerLogs(ctx context.Context, stream net.Conn, reader io.Reader) error {
-	header := make([]byte, 8)
+func streamDockerLogs(ctx context.Context, stream net.Conn, reader io.Reader, tty bool) error {
+	readFrame := readDockerLogFrame
+	buf := make([]byte, 8)
+	if tty {
+		readFrame = readDockerRawLogChunk
+		buf = make([]byte, 32*1024)
+	}
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		payload, done, err := readDockerLogFrame(reader, header)
+		payload, done, err := readFrame(reader, buf)
 		if err != nil {
 			slog.Debug("docker log follow ended with read error", "component", "docker", "route", routeDockerLogsFollow, "error", err)
 			return err
@@ -133,4 +146,20 @@ func readDockerLogFrame(reader io.Reader, header []byte) ([]byte, bool, error) {
 	}
 
 	return dockerLogANSIRegex.ReplaceAll(data, nil), false, nil
+}
+
+// readDockerRawLogChunk reads the unframed log stream Docker returns for TTY containers.
+// ponytail: an ANSI sequence split across two chunks is not stripped; buffer the tail if that shows up.
+func readDockerRawLogChunk(reader io.Reader, buf []byte) ([]byte, bool, error) {
+	n, err := reader.Read(buf)
+	if n > 0 {
+		return dockerLogANSIRegex.ReplaceAll(buf[:n], nil), false, nil
+	}
+	if err == nil {
+		return nil, false, nil
+	}
+	if err == io.EOF || errors.Is(err, context.Canceled) {
+		return nil, true, nil
+	}
+	return nil, false, fmt.Errorf("read data: %w", err)
 }
