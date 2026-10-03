@@ -55,9 +55,9 @@ const mocks = vi.hoisted(() => ({
   editor: {
     actions: {
       close: vi.fn(),
+      confirmClose: vi.fn(),
       dismissClosePrompt: vi.fn(),
       openFile: vi.fn(),
-      promptClose: vi.fn(),
       setDirty: vi.fn(),
       setSaving: vi.fn(),
     },

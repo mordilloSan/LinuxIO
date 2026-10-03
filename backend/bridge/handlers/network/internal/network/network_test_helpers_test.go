@@ -56,6 +56,10 @@ func testEnv(t *testing.T) (Environment, *fakeRunner, string) {
 		IfupdownDir:     filepath.Join(root, "etc", "network", "interfaces.d"),
 		IfcfgDir:        filepath.Join(root, "etc", "sysconfig", "network-scripts"),
 		Runner:          runner,
+		NetplanCall: func(ctx context.Context, method string) error {
+			_, err := runner.Run(ctx, "netplan-dbus", method)
+			return err
+		},
 		WriteFile: func(path string, data []byte, mode fs.FileMode, _ ...int) error {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return err

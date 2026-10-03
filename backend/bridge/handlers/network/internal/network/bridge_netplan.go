@@ -117,13 +117,24 @@ func cancelNetplanConfig(ctx context.Context, path godbus.ObjectPath) error {
 }
 
 func callNetplanConfigBool(ctx context.Context, path godbus.ObjectPath, method string) error {
+	return callNetplanBool(ctx, path, netplanConfigIface, method)
+}
+
+// callNetplan runs Generate or Apply through netplan-dbus rather than
+// executing netplan from the bridge: a child would inherit the bridge's 077
+// umask and write /run/systemd/network files systemd-networkd cannot read.
+func callNetplan(ctx context.Context, method string) error {
+	return callNetplanBool(ctx, netplanRootPath, netplanIface, method)
+}
+
+func callNetplanBool(ctx context.Context, path godbus.ObjectPath, iface, method string) error {
 	var accepted bool
 	err := dbusclient.UseSystemBusWithOptions(ctx, dbusclient.SystemBusOptions{
 		Subsystem: "netplan",
 		NoRetry:   true,
 	}, func(ctx context.Context, conn *godbus.Conn) error {
-		config := conn.Object(netplanBusName, path)
-		if callErr := config.CallWithContext(ctx, netplanConfigIface+"."+method, 0).Store(&accepted); callErr != nil {
+		object := conn.Object(netplanBusName, path)
+		if callErr := object.CallWithContext(ctx, iface+"."+method, 0).Store(&accepted); callErr != nil {
 			return callErr
 		}
 		if !accepted {

@@ -46,7 +46,7 @@ network:
 			t.Fatalf("expected %q in netplan file:\n%s", want, body)
 		}
 	}
-	requireCalls(t, runner, "netplan generate", "netplan apply")
+	requireCalls(t, runner, "netplan-dbus Generate", "netplan-dbus Apply")
 }
 
 func TestNetworkdSetIPv4ManualUsesReloadAndReconfigure(t *testing.T) {

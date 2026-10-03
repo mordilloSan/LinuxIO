@@ -47,6 +47,7 @@ type Environment struct {
 	IfupdownDir         string
 	IfcfgDir            string
 	Runner              CommandRunner
+	NetplanCall         func(ctx context.Context, method string) error
 	WriteFile           func(path string, data []byte, mode fs.FileMode, ownership ...int) error
 	RemoveFile          func(path string) error
 	ReadFile            func(path string) ([]byte, error)
@@ -104,6 +105,7 @@ func DefaultEnvironment() Environment {
 		IfupdownDir:     "/etc/network/interfaces.d",
 		IfcfgDir:        "/etc/sysconfig/network-scripts",
 		Runner:          ExecRunner{},
+		NetplanCall:     callNetplan,
 		WriteFile:       utils.WriteFileAtomic,
 		RemoveFile:      os.Remove,
 	}

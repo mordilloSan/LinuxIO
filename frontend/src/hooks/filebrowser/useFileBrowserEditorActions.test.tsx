@@ -49,9 +49,9 @@ function editorSlice(overrides: Partial<EditorSlice> = {}): EditorSlice {
   return {
     actions: {
       close: vi.fn(),
+      confirmClose: vi.fn(),
       dismissClosePrompt: vi.fn(),
       openFile: vi.fn(),
-      promptClose: vi.fn(),
       setDirty: vi.fn(),
       setSaving: vi.fn(),
     },
@@ -93,22 +93,13 @@ describe("useFileBrowserEditorActions", () => {
   });
 
   describe("close flow", () => {
-    it("prompts for confirmation when there are unsaved changes", () => {
+    it("requests the close and leaves unsaved changes to the route blocker", () => {
       const { result, editor } = setup({ isEditorDirty: true });
 
       act(() => result.current.handleCloseEditor());
 
-      expect(editor.actions.promptClose).toHaveBeenCalledTimes(1);
-      expect(editor.actions.close).not.toHaveBeenCalled();
-    });
-
-    it("closes immediately when the editor is clean", () => {
-      const { result, editor } = setup({ isEditorDirty: false });
-
-      act(() => result.current.handleCloseEditor());
-
       expect(editor.actions.close).toHaveBeenCalledTimes(1);
-      expect(editor.actions.promptClose).not.toHaveBeenCalled();
+      expect(editor.actions.confirmClose).not.toHaveBeenCalled();
     });
 
     it("keeps editing by dismissing the confirm dialog", () => {
@@ -124,7 +115,7 @@ describe("useFileBrowserEditorActions", () => {
 
       act(() => result.current.handleDiscardAndExit());
 
-      expect(editor.actions.close).toHaveBeenCalledTimes(1);
+      expect(editor.actions.confirmClose).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -330,7 +321,8 @@ describe("useFileBrowserEditorActions", () => {
         await result.current.handleSaveAndExit();
       });
 
-      expect(editor.actions.close).toHaveBeenCalledTimes(1);
+      expect(editor.actions.confirmClose).toHaveBeenCalledTimes(1);
+      expect(editor.actions.dismissClosePrompt).not.toHaveBeenCalled();
     });
 
     it("stays open when the save fails", async () => {
@@ -342,7 +334,7 @@ describe("useFileBrowserEditorActions", () => {
         await result.current.handleSaveAndExit();
       });
 
-      expect(editor.actions.close).not.toHaveBeenCalled();
+      expect(editor.actions.confirmClose).not.toHaveBeenCalled();
       expect(editor.actions.dismissClosePrompt).toHaveBeenCalledTimes(1);
     });
   });

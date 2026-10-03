@@ -177,10 +177,8 @@ const ContainerCardBody = ({
       <ContainerActions
         actionPending={actionPending}
         container={container}
-        contextMenu={contextMenu}
-        mode="card"
+        mode="full"
         name={name}
-        onContextMenuClose={() => setContextMenu(null)}
         onOpenLogs={handleLogsClick}
         onOpenTerminal={handleTerminalClick}
       />
@@ -218,7 +216,6 @@ const ContainerCardBody = ({
             color="inherit"
             fullWidth
             onClick={onSelect}
-            onContextMenu={openContextMenu}
             style={{
               alignItems: "stretch",
               contain: "inline-size",

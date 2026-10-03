@@ -13,6 +13,7 @@ import FileBrowserPage from "./-components/FileBrowserPage";
 
 export const Route = createFileRoute("/_authenticated/filebrowser/$")({
   validateSearch: (search) => ({
+    ...optionalString(search, "edit"),
     ...optionalBoolean(search, "enabled"),
     ...optionalString(search, "redirect"),
     ...optionalNumber(search, "tail"),

@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type netplanBackend struct {
@@ -191,13 +189,17 @@ func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[
 }
 
 func (b *netplanBackend) generate(ctx context.Context) error {
-	output, err := b.env.Runner.Run(ctx, "netplan", "generate")
-	return utils.CommandOutputError("netplan", []string{"generate"}, output, err)
+	if err := b.env.NetplanCall(ctx, "Generate"); err != nil {
+		return fmt.Errorf("netplan generate: %w", err)
+	}
+	return nil
 }
 
 func (b *netplanBackend) apply(ctx context.Context) error {
-	output, err := b.env.Runner.Run(ctx, "netplan", "apply")
-	return utils.CommandOutputError("netplan", []string{"apply"}, output, err)
+	if err := b.env.NetplanCall(ctx, "Apply"); err != nil {
+		return fmt.Errorf("netplan apply: %w", err)
+	}
+	return nil
 }
 
 type netplanDoc struct {

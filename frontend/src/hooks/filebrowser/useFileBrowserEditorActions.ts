@@ -22,7 +22,7 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 export const useFileBrowserEditorActions = ({
   editor,
 }: UseFileBrowserEditorActionsParams) => {
-  const { actions, editingPath, editorRef, isEditorDirty } = editor;
+  const { actions, editingPath, editorRef } = editor;
   const [saveConflict, setSaveConflict] = useState<EditorSaveConflict | null>(
     null,
   );
@@ -118,26 +118,24 @@ export const useFileBrowserEditorActions = ({
   }, [editorRef]);
 
   const handleCloseEditor = useCallback(() => {
-    if (isEditorDirty) {
-      actions.promptClose();
-    } else {
-      actions.close();
-    }
-  }, [actions, isEditorDirty]);
+    actions.close();
+  }, [actions]);
 
   const handleKeepEditing = useCallback(() => {
     actions.dismissClosePrompt();
   }, [actions]);
 
   const handleDiscardAndExit = useCallback(() => {
-    actions.close();
+    actions.confirmClose();
   }, [actions]);
 
   const handleSaveAndExit = useCallback(async () => {
     const saved = await editorRef.current?.save();
-    actions.dismissClosePrompt();
-    if (!saved) return;
-    actions.close();
+    if (saved) {
+      actions.confirmClose();
+    } else {
+      actions.dismissClosePrompt();
+    }
   }, [actions, editorRef]);
 
   const handleReloadConflict = useCallback(async () => {
