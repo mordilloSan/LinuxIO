@@ -153,9 +153,7 @@ test("keeps destructive container actions keyboard-safe and explicit", async ({
     })
     .toBe(true);
 
-  const collapse = page.getByRole("button", { name: "Collapse example" });
-  await collapse.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+  await page.getByRole("button", { name: "Edit example", exact: true }).click();
   const editDialog = page.getByRole("dialog", { name: "Edit example" });
   await expect(editDialog).toBeVisible();
   await expect(
@@ -182,8 +180,7 @@ test("keeps destructive container actions keyboard-safe and explicit", async ({
     .getByRole("button", { name: "Cancel" })
     .click();
 
-  await collapse.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Kill", exact: true }).click();
+  await page.getByRole("button", { name: "Kill example", exact: true }).click();
   const killDialog = page.getByRole("dialog", { name: "Kill example?" });
   await expect(killDialog).toBeVisible();
   await expect(killDialog).toContainText("SIGKILL");

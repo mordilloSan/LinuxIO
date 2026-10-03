@@ -42,6 +42,9 @@ const VolumesPage = lazy(() => import("./routes/VolumesPage"));
 const FileBrowserReadPathsPage = lazy(
   () => import("./routes/FileBrowserReadPathsPage"),
 );
+const FileEditorHistoryPage = lazy(
+  () => import("./routes/FileEditorHistoryPage"),
+);
 const ScrollingTabsPage = lazy(() => import("./routes/ScrollingTabsPage"));
 const VirtualFileBrowserPage = lazy(
   () => import("./routes/VirtualFileBrowserPage"),
@@ -168,6 +171,11 @@ const fileBrowserReadPathsRoute = createRoute({
   component: FileBrowserReadPathsPage,
   getParentRoute: () => rootRoute,
   path: "filebrowser/read-paths",
+});
+const fileEditorHistoryRoute = createRoute({
+  component: FileEditorHistoryPage,
+  getParentRoute: () => rootRoute,
+  path: "filebrowser/editor-history",
 });
 const growingTabsRoute = createRoute({
   component: () => <ScrollingTabsPage panel="grow" />,
@@ -335,6 +343,7 @@ const routeTree = rootRoute.addChildren([
   codeEditorRoute,
   containerActionsRoute,
   fileBrowserReadPathsRoute,
+  fileEditorHistoryRoute,
   growingTabsRoute,
   fillingTabsRoute,
   cardTabsRoute,

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { useFileDialogs } from "@/hooks/filebrowser/useFileDialogs";
-import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
 import { useFileUpload } from "@/hooks/filebrowser/useFileUpload";
 import { act, renderHook } from "@/test/render";
 import type { FileItem } from "@/types/filebrowser";
@@ -85,74 +84,6 @@ describe("filebrowser state hooks", () => {
 
     expect(result.current.deleteDialog).toBe(true);
     expect(result.current.pendingDeletePaths).toEqual([]);
-  });
-
-  it("tracks editor dirty/save/close state and quick-save visibility", () => {
-    const { result } = renderHook(() => useFileEditor());
-    const initialActions = result.current.actions;
-
-    expect(result.current.showQuickSave).toBe(false);
-    expect(result.current.editorRef.current).toBeNull();
-
-    act(() => {
-      result.current.actions.openFile("/tmp/note.md");
-      result.current.actions.setDirty(true);
-      result.current.actions.setSaving(true);
-      result.current.actions.promptClose();
-    });
-
-    expect(result.current.editingPath).toBe("/tmp/note.md");
-    expect(result.current.isEditorDirty).toBe(true);
-    expect(result.current.isSavingFile).toBe(true);
-    expect(result.current.closeEditorDialog).toBe(true);
-    expect(result.current.showQuickSave).toBe(true);
-    expect(result.current.actions).toBe(initialActions);
-  });
-
-  it("closes the editor in one transition, clearing path, dirt, and prompt", () => {
-    const { result } = renderHook(() => useFileEditor());
-
-    act(() => {
-      result.current.actions.openFile("/tmp/note.md");
-      result.current.actions.setDirty(true);
-      result.current.actions.promptClose();
-    });
-    act(() => result.current.actions.close());
-
-    expect(result.current.editingPath).toBeNull();
-    expect(result.current.isEditorDirty).toBe(false);
-    expect(result.current.closeEditorDialog).toBe(false);
-    expect(result.current.showQuickSave).toBe(false);
-  });
-
-  it("dismisses the close prompt without touching the open file", () => {
-    const { result } = renderHook(() => useFileEditor());
-
-    act(() => {
-      result.current.actions.openFile("/tmp/note.md");
-      result.current.actions.setDirty(true);
-      result.current.actions.promptClose();
-    });
-    act(() => result.current.actions.dismissClosePrompt());
-
-    expect(result.current.closeEditorDialog).toBe(false);
-    expect(result.current.editingPath).toBe("/tmp/note.md");
-    expect(result.current.isEditorDirty).toBe(true);
-  });
-
-  it("starts a newly opened file with clean editor state", () => {
-    const { result } = renderHook(() => useFileEditor());
-
-    act(() => {
-      result.current.actions.openFile("/tmp/first.md");
-      result.current.actions.setDirty(true);
-      result.current.actions.promptClose();
-    });
-    act(() => result.current.actions.openFile("/tmp/second.md"));
-
-    expect(result.current.editingPath).toBe("/tmp/second.md");
-    expect(result.current.isEditorDirty).toBe(false);
-    expect(result.current.closeEditorDialog).toBe(false);
   });
 
   it("tracks upload state and summarizes file/folder entries", () => {
