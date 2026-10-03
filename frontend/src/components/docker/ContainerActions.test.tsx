@@ -180,4 +180,31 @@ describe("ContainerActions", () => {
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual(["Edit", "Pause", "Logs", "Terminal", "Kill"]);
   });
+
+  it("shows every action as an icon in full mode", () => {
+    render(
+      <ContainerActions
+        container={{ Id: "running-id", State: "running" }}
+        mode="full"
+        name="example"
+        {...callbacks}
+      />,
+    );
+
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Stop example",
+      "Edit example",
+      "Restart example",
+      "Pause example",
+      "Logs example",
+      "Terminal example",
+      "Kill example",
+      "Remove example",
+    ]);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
 });

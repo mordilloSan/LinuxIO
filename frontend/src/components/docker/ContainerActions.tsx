@@ -30,9 +30,10 @@ interface ContainerActionsProps {
    * container icon), so it holds this position. */
   contextMenu?: { left: number; top: number } | null;
   /** `card` shows start/stop, restart and remove as icons and leaves the rest
-   * to the `contextMenu`; `icons` and `menu` keep the secondary ones behind
-   * the overflow menu, for the tight table/compose action columns. */
-  mode?: "card" | "icons" | "menu";
+   * to the `contextMenu`; `full` shows every action as an icon, for the
+   * selected card on the details page; `icons` and `menu` keep the secondary
+   * ones behind the overflow menu, for the tight table/compose action columns. */
+  mode?: "card" | "full" | "icons" | "menu";
   name: string;
   onContextMenuClose?: () => void;
   onOpenLogs: () => void;
@@ -271,11 +272,17 @@ const ContainerActions = ({
       strip: true,
     },
   ];
-  const stripActions = secondaryActions.filter((action) => action.strip);
+  const iconStrip = mode === "card" || mode === "full";
+  const stripActions =
+    mode === "full"
+      ? secondaryActions
+      : secondaryActions.filter((action) => action.strip);
   const menuActions =
-    mode === "card"
-      ? secondaryActions.filter((action) => !action.strip)
-      : secondaryActions;
+    mode === "full"
+      ? []
+      : mode === "card"
+        ? secondaryActions.filter((action) => !action.strip)
+        : secondaryActions;
 
   const closeMenu = () => {
     setMenuAnchor(null);
@@ -301,13 +308,13 @@ const ContainerActions = ({
         style={{
           alignItems: "center",
           display: "flex",
-          flexWrap: mode === "card" ? "wrap" : "nowrap",
+          flexWrap: iconStrip ? "wrap" : "nowrap",
           gap: 2,
         }}
       >
         {mode !== "menu" && (
           <AppActionIconButton
-            ariaLabel={mode === "card" ? `${primary.label} ${name}` : undefined}
+            ariaLabel={iconStrip ? `${primary.label} ${name}` : undefined}
             disabled={busy || primary.disabled}
             icon={primary.icon}
             iconSize={16}
@@ -316,7 +323,7 @@ const ContainerActions = ({
             onClick={primary.onClick}
           />
         )}
-        {mode === "card" ? (
+        {iconStrip ? (
           stripActions.map((action) => (
             <AppActionIconButton
               ariaLabel={`${action.label} ${name}`}
