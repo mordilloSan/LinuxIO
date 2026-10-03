@@ -314,6 +314,10 @@ func TestHandleSetIPv4ManualDNS(t *testing.T) {
 			networkEnv = networkbackend.Environment{
 				NetplanDir: dir,
 				Runner:     runner,
+				NetplanCall: func(ctx context.Context, method string) error {
+					_, err := runner.Run(ctx, "netplan-dbus", method)
+					return err
+				},
 				WriteFile: func(path string, data []byte, mode fs.FileMode, _ ...int) error {
 					return os.WriteFile(path, data, mode)
 				},
@@ -336,7 +340,7 @@ func TestHandleSetIPv4ManualDNS(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, ok, "updated configuration is missing")
 			require.Equal(t, tt.want, cfg.DNS)
-			require.Equal(t, []string{"netplan generate", "netplan apply"}, runner.calls)
+			require.Equal(t, []string{"netplan-dbus Generate", "netplan-dbus Apply"}, runner.calls)
 		})
 	}
 }
