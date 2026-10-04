@@ -1295,11 +1295,19 @@ export interface IOCounters {
   disk_write_bytes_per_second?: number;
 }
 
+export interface IPv4DHCPRequest {
+  iface: string;
+  method: string;
+  dns?: string;
+  search?: string;
+}
+
 export interface IPv4ManualRequest {
   iface: string;
   address: string;
   gateway: string;
   dns: string;
+  search?: string;
 }
 
 export interface ISOTimeRequest {
@@ -1408,6 +1416,11 @@ export interface InterfaceNamePeerNameRequest {
 
 export interface InterfaceNameRequest {
   interfaceName: string;
+}
+
+export interface InterfaceOptionalRequest {
+  iface: string;
+  optional: boolean;
 }
 
 export interface InterfaceRequest {
@@ -1912,10 +1925,16 @@ export interface NetworkBridgeOptions {
   warnings?: string[];
 }
 
+export interface NetworkDNSOptions {
+  search: string[];
+  ignore_dhcp: boolean;
+}
+
 export interface NetworkInterface {
   carrier?: boolean;
   config_backend?: string;
   dns: string[];
+  dns_options?: NetworkDNSOptions;
   driver?: string;
   duplex: string;
   gateway: string;
@@ -1926,6 +1945,7 @@ export interface NetworkInterface {
   mtu: number;
   name: string;
   operstate: string;
+  optional?: boolean;
   speed: string;
   state: number;
   type: string;
@@ -3453,8 +3473,8 @@ export interface LinuxIOSchema {
       result: NetworkBridgeHandoffStatus;
     };
     set_ipv4: {
-      input: [request: InterfaceMethodRequest];
-      request: InterfaceMethodRequest;
+      input: [request: IPv4DHCPRequest];
+      request: IPv4DHCPRequest;
       result: void;
     };
     set_ipv4_manual: {
@@ -3470,6 +3490,11 @@ export interface LinuxIOSchema {
     set_mtu: {
       input: [request: InterfaceMTURequest];
       request: InterfaceMTURequest;
+      result: void;
+    };
+    set_optional: {
+      input: [request: InterfaceOptionalRequest];
+      request: InterfaceOptionalRequest;
       result: void;
     };
     start_bridge_handoff: {
@@ -4194,10 +4219,11 @@ export interface LinuxIOCallSchema {
     request: NetworkBridgeHandoffOperationRequest;
     result: NetworkBridgeHandoffStatus;
   };
-  "network.set_ipv4": { request: InterfaceMethodRequest; result: void };
+  "network.set_ipv4": { request: IPv4DHCPRequest; result: void };
   "network.set_ipv4_manual": { request: IPv4ManualRequest; result: void };
   "network.set_ipv6": { request: InterfaceMethodRequest; result: void };
   "network.set_mtu": { request: InterfaceMTURequest; result: void };
+  "network.set_optional": { request: InterfaceOptionalRequest; result: void };
   "network.start_bridge_handoff": {
     request: NetworkBridgeHandoffRequest;
     result: NetworkBridgeHandoffStatus;

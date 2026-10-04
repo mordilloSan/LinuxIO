@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   enableConnection: vi.fn(),
   setIPv4: vi.fn(),
   setIPv4Manual: vi.fn(),
+  setMTU: vi.fn(),
+  setOptional: vi.fn(),
   useCallMutation: vi.fn(),
 }));
 
@@ -35,7 +37,11 @@ mocks.useCallMutation.mockImplementation((endpoint: { route: string }) => {
       ? mocks.enableConnection
       : endpoint.route.endsWith("set_ipv4_manual")
         ? mocks.setIPv4Manual
-        : mocks.setIPv4;
+        : endpoint.route.endsWith("set_optional")
+          ? mocks.setOptional
+          : endpoint.route.endsWith("set_mtu")
+            ? mocks.setMTU
+            : mocks.setIPv4;
   return { isPending: false, mutate };
 });
 
@@ -194,6 +200,101 @@ describe("NetworkInterfaceEditor", () => {
       dns: "9.9.9.9,1.1.1.1",
       gateway: "10.0.0.1",
       iface: "eth0",
+    });
+    expect(mocks.setMTU).not.toHaveBeenCalled();
+  });
+
+  it("sends custom DNS and search domains with DHCP when the backend supports them", async () => {
+    const { user } = render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({
+          dns_options: { ignore_dhcp: false, search: ["lan"] },
+          ipv4_method: "auto",
+        })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const customDns = screen.getByPlaceholderText("Leave empty to use DHCP");
+    expect(customDns).toHaveValue("");
+    await user.type(customDns, "192.168.1.66");
+    await user.type(
+      screen.getByPlaceholderText("lan, home.arpa"),
+      " home.arpa",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Apply Configuration" }),
+    );
+
+    expect(mocks.setIPv4).toHaveBeenCalledWith({
+      dns: "192.168.1.66",
+      iface: "eth0",
+      method: "dhcp",
+      search: "lan,home.arpa",
+    });
+  });
+
+  it("hides DNS extras when the backend cannot express them", () => {
+    render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({ ipv4_method: "auto" })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByPlaceholderText("Leave empty to use DHCP")).toBeNull();
+    expect(screen.queryByPlaceholderText("lan, home.arpa")).toBeNull();
+    expect(screen.getByPlaceholderText("1500")).toHaveValue(1500);
+  });
+
+  it("sets the MTU only when it changed and is in range", async () => {
+    const { user } = render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface()}
+        onClose={vi.fn()}
+      />,
+    );
+    const mtu = screen.getByPlaceholderText("1500");
+    const apply = screen.getByRole("button", { name: "Apply Configuration" });
+
+    await user.clear(mtu);
+    await user.type(mtu, "40");
+    await user.click(apply);
+    expect(mocks.setIPv4Manual).not.toHaveBeenCalled();
+    expect(mocks.setMTU).not.toHaveBeenCalled();
+
+    await user.clear(mtu);
+    await user.type(mtu, "9000");
+    await user.click(apply);
+    expect(mocks.setMTU).toHaveBeenCalledWith({ iface: "eth0", mtu: "9000" });
+    expect(mocks.setIPv4Manual).toHaveBeenCalled();
+  });
+
+  it("offers the boot-wait switch only when the backend reports it", async () => {
+    const { rerender, user } = render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("Optional at boot")).toBeNull();
+
+    rerender(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({ optional: false })}
+        onClose={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByLabelText("Optional at boot"));
+
+    expect(mocks.setOptional).toHaveBeenCalledWith({
+      iface: "eth0",
+      optional: true,
     });
   });
 

@@ -49,6 +49,185 @@ network:
 	requireCalls(t, runner, "netplan-dbus Generate", "netplan-dbus Apply")
 }
 
+func TestNetplanSetOptionalRegeneratesWithoutApply(t *testing.T) {
+	env, runner, _ := testEnv(t)
+	path := filepath.Join(env.NetplanDir, "01-eth0.yaml")
+	mustWriteFile(t, path, `
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+`)
+	backend, err := detectNetplanBackend(env, "eth0")
+	if err != nil {
+		t.Fatalf("detectNetplanBackend: %v", err)
+	}
+	setter, ok := backend.(OptionalSetter)
+	if !ok {
+		t.Fatalf("%T does not implement OptionalSetter", backend)
+	}
+	for _, optional := range []bool{true, false} {
+		runner.calls = nil
+		if setErr := setter.SetOptional(context.Background(), optional); setErr != nil {
+			t.Fatalf("SetOptional(%v): %v", optional, setErr)
+		}
+		requireCalls(t, runner, "netplan-dbus Generate")
+		cfg, readErr := backend.Read()
+		if readErr != nil {
+			t.Fatalf("Read: %v", readErr)
+		}
+		if cfg.Optional == nil || *cfg.Optional != optional {
+			t.Fatalf("Optional = %v, want %v", cfg.Optional, optional)
+		}
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read updated netplan: %v", err)
+	}
+	if strings.Contains(string(updated), "optional") {
+		t.Fatalf("clearing optional should drop the key:\n%s", updated)
+	}
+}
+
+func TestNetplanDHCPWithStaticDNSIgnoresDHCPServers(t *testing.T) {
+	env, _, _ := testEnv(t)
+	path := filepath.Join(env.NetplanDir, "01-eth0.yaml")
+	mustWriteFile(t, path, `
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
+      addresses: [192.168.1.20/24]
+      routes:
+        - to: default
+          via: 192.168.1.1
+      nameservers:
+        addresses: [8.8.8.8, 2001:4860:4860::8888]
+`)
+	backend, err := detectNetplanBackend(env, "eth0")
+	if err != nil {
+		t.Fatalf("detectNetplanBackend: %v", err)
+	}
+	setter, ok := backend.(DNSOptionsSetter)
+	if !ok {
+		t.Fatalf("%T does not implement DNSOptionsSetter", backend)
+	}
+	if setErr := setter.SetIPv4DHCPWithDNS(context.Background(), []string{"192.168.1.66"}, []string{"lan", "home.arpa"}); setErr != nil {
+		t.Fatalf("SetIPv4DHCPWithDNS: %v", setErr)
+	}
+	cfg, err := backend.Read()
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if cfg.IPv4Method != "auto" || cfg.Gateway != "" || len(cfg.IPv4Addresses) != 0 {
+		t.Fatalf("expected plain DHCP, got %+v", cfg)
+	}
+	if strings.Join(cfg.DNS, ",") != "2001:4860:4860::8888,192.168.1.66" {
+		t.Fatalf("DNS = %v", cfg.DNS)
+	}
+	if cfg.DNSOptions == nil || !cfg.DNSOptions.IgnoreDHCP || strings.Join(cfg.DNSOptions.Search, ",") != "lan,home.arpa" {
+		t.Fatalf("DNSOptions = %+v", cfg.DNSOptions)
+	}
+
+	if setErr := setter.SetIPv4DHCPWithDNS(context.Background(), nil, nil); setErr != nil {
+		t.Fatalf("SetIPv4DHCPWithDNS(nil): %v", setErr)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read updated netplan: %v", err)
+	}
+	for _, gone := range []string{"dhcp4-overrides", "search", "192.168.1.66"} {
+		if strings.Contains(string(updated), gone) {
+			t.Fatalf("expected %q removed:\n%s", gone, updated)
+		}
+	}
+}
+
+func TestNetplanManualWithSearchClearsDHCPDNSOverride(t *testing.T) {
+	env, _, _ := testEnv(t)
+	path := filepath.Join(env.NetplanDir, "01-eth0.yaml")
+	mustWriteFile(t, path, `
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      dhcp4-overrides:
+        use-dns: false
+        route-metric: 50
+`)
+	backend, err := detectNetplanBackend(env, "eth0")
+	if err != nil {
+		t.Fatalf("detectNetplanBackend: %v", err)
+	}
+	setter, ok := backend.(DNSOptionsSetter)
+	if !ok {
+		t.Fatalf("%T does not implement DNSOptionsSetter", backend)
+	}
+	setErr := setter.SetIPv4ManualWithSearch(context.Background(), "10.0.0.5/24", "10.0.0.1", []string{"10.0.0.1"}, []string{"corp.example"})
+	if setErr != nil {
+		t.Fatalf("SetIPv4ManualWithSearch: %v", setErr)
+	}
+	cfg, err := backend.Read()
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if cfg.DNSOptions.IgnoreDHCP || strings.Join(cfg.DNSOptions.Search, ",") != "corp.example" {
+		t.Fatalf("DNSOptions = %+v", cfg.DNSOptions)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read updated netplan: %v", err)
+	}
+	if !strings.Contains(string(updated), "route-metric: 50") {
+		t.Fatalf("unrelated DHCP override dropped:\n%s", updated)
+	}
+}
+
+func TestNetplanDisablePersistsAndEnableClears(t *testing.T) {
+	env, runner, _ := testEnv(t)
+	// No such link exists, so only the persisted half of each call succeeds.
+	const iface = "lio-missing0"
+	path := filepath.Join(env.NetplanDir, "01-test.yaml")
+	mustWriteFile(t, path, `
+network:
+  version: 2
+  ethernets:
+    lio-missing0:
+      dhcp4: true
+`)
+	backend, err := detectNetplanBackend(env, iface)
+	if err != nil {
+		t.Fatalf("detectNetplanBackend: %v", err)
+	}
+	if disableErr := backend.Disable(context.Background()); disableErr == nil {
+		t.Fatal("Disable of a missing link should fail at link down")
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read netplan: %v", err)
+	}
+	if !strings.Contains(string(updated), "activation-mode: \"off\"") && !strings.Contains(string(updated), "activation-mode: off") {
+		t.Fatalf("expected activation-mode off:\n%s", updated)
+	}
+	requireCalls(t, runner, "netplan-dbus Generate")
+
+	runner.calls = nil
+	if enableErr := backend.Enable(context.Background()); enableErr == nil {
+		t.Fatal("Enable of a missing link should fail at link up")
+	}
+	updated, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read netplan: %v", err)
+	}
+	if strings.Contains(string(updated), "activation-mode") {
+		t.Fatalf("expected activation-mode removed:\n%s", updated)
+	}
+	requireCalls(t, runner, "netplan-dbus Generate", "netplan-dbus Apply")
+}
+
 func TestNetworkdSetIPv4ManualUsesReloadAndReconfigure(t *testing.T) {
 	env, runner, _ := testEnv(t)
 	path := filepath.Join(env.NetworkdDir, "10-eth0.network")

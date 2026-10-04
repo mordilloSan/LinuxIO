@@ -26,16 +26,11 @@ interface ContainerActionsProps {
     ContainerInfo,
     "Id" | "Labels" | "State" | "updateAvailable" | "url"
   >;
-  /** Where the `card` mode's menu opens; the card owns the trigger (its
-   * container icon), so it holds this position. */
-  contextMenu?: { left: number; top: number } | null;
-  /** `card` shows start/stop, restart and remove as icons and leaves the rest
-   * to the `contextMenu`; `full` shows every action as an icon, for the
-   * selected card on the details page; `icons` and `menu` keep the secondary
-   * ones behind the overflow menu, for the tight table/compose action columns. */
+  /** `card` and `full` show every action as an icon (`card` packs them
+   * tighter and leaves Edit to the details card, for the grid cards); `icons` and `menu` keep the secondary ones
+   * behind the overflow menu, for the tight table/compose action columns. */
   mode?: "card" | "full" | "icons" | "menu";
   name: string;
-  onContextMenuClose?: () => void;
   onOpenLogs: () => void;
   onOpenTerminal: () => void;
 }
@@ -44,22 +39,20 @@ const ContainerFormDialog = lazy(() => import("./ContainerFormDialog"));
 
 interface SecondaryAction {
   danger?: boolean;
+  /** Omitted from the `card` mode's icon strip. */
+  detailsOnly?: boolean;
   disabled?: boolean;
   icon: string;
   label: string;
   loading?: boolean;
   onClick: () => void;
-  /** Stays in the `card` mode's icon strip instead of its context menu. */
-  strip?: boolean;
 }
 
 const ContainerActions = ({
   actionPending = false,
   container,
-  contextMenu = null,
   mode = "icons",
   name,
-  onContextMenuClose,
   onOpenLogs,
   onOpenTerminal,
 }: ContainerActionsProps) => {
@@ -164,7 +157,7 @@ const ContainerActions = ({
     ? {
         color: "error" as const,
         disabled: false,
-        icon: "mdi:stop-circle-outline",
+        icon: "mdi:stop",
         label: "Stop",
         loading: actionPending || isStopPending,
         onClick: () => stopContainer({ containerId: container.Id }),
@@ -180,6 +173,7 @@ const ContainerActions = ({
 
   const secondaryActions: SecondaryAction[] = [
     {
+      detailsOnly: true,
       icon: "mdi:pencil",
       label: composeProject ? "Edit stack" : "Edit",
       onClick: composeProject
@@ -197,7 +191,6 @@ const ContainerActions = ({
       label: "Restart",
       loading: isRestartPending,
       onClick: () => restartContainer({ containerId: container.Id }),
-      strip: true,
     },
     ...(container.State === "running"
       ? [
@@ -222,6 +215,8 @@ const ContainerActions = ({
     ...(container.updateAvailable && container.State === "running"
       ? [
           {
+            // The card offers it from its update-available badge instead.
+            detailsOnly: true,
             disabled: isUpdatePending,
             icon: "mdi:update",
             label: isUpdatePending ? "Updating" : "Update",
@@ -269,25 +264,16 @@ const ContainerActions = ({
         setForceRemove(false);
         setConfirmation("remove");
       },
-      strip: true,
     },
   ];
   const iconStrip = mode === "card" || mode === "full";
-  const stripActions =
-    mode === "full"
-      ? secondaryActions
-      : secondaryActions.filter((action) => action.strip);
-  const menuActions =
-    mode === "full"
-      ? []
-      : mode === "card"
-        ? secondaryActions.filter((action) => !action.strip)
-        : secondaryActions;
+  const buttonSize = mode === "card" ? 24 : undefined;
+  const visibleActions =
+    mode === "card"
+      ? secondaryActions.filter((action) => !action.detailsOnly)
+      : secondaryActions;
 
-  const closeMenu = () => {
-    setMenuAnchor(null);
-    onContextMenuClose?.();
-  };
+  const closeMenu = () => setMenuAnchor(null);
   const chooseAction = (action: SecondaryAction) => {
     closeMenu();
     action.onClick();
@@ -309,12 +295,17 @@ const ContainerActions = ({
           alignItems: "center",
           display: "flex",
           flexWrap: iconStrip ? "wrap" : "nowrap",
-          gap: 2,
+          gap: mode === "card" ? 0 : 2,
+          // The card's 12px padding is wider than the buttons' own inset, so
+          // the strip may spill into it before wrapping.
+          marginRight: mode === "card" ? -8 : undefined,
         }}
       >
         {mode !== "menu" && (
           <AppActionIconButton
             ariaLabel={iconStrip ? `${primary.label} ${name}` : undefined}
+            buttonHeight={buttonSize}
+            buttonWidth={buttonSize}
             disabled={busy || primary.disabled}
             icon={primary.icon}
             iconSize={16}
@@ -324,9 +315,11 @@ const ContainerActions = ({
           />
         )}
         {iconStrip ? (
-          stripActions.map((action) => (
+          visibleActions.map((action) => (
             <AppActionIconButton
               ariaLabel={`${action.label} ${name}`}
+              buttonHeight={buttonSize}
+              buttonWidth={buttonSize}
               color={
                 action.danger ? "var(--app-palette-error-main)" : undefined
               }
@@ -358,11 +351,10 @@ const ContainerActions = ({
 
       <AppMenu
         anchorEl={menuAnchor}
-        anchorPosition={contextMenu}
         ariaLabel={`Actions for ${name}`}
         minWidth={176}
         onClose={closeMenu}
-        open={Boolean(menuAnchor) || contextMenu !== null}
+        open={Boolean(menuAnchor)}
       >
         {mode === "menu" && (
           <AppMenuItem
@@ -373,7 +365,7 @@ const ContainerActions = ({
             {primary.label}
           </AppMenuItem>
         )}
-        {menuActions.map((action) => (
+        {secondaryActions.map((action) => (
           <AppMenuItem
             danger={action.danger}
             disabled={busy || action.disabled}

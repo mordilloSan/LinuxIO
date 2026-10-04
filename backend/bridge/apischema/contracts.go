@@ -343,11 +343,27 @@ type IPv4ManualRequest struct {
 	Address string `json:"address"`
 	Gateway string `json:"gateway"`
 	DNS     string `json:"dns"`
+	// Search lists DNS search domains, comma or space separated.
+	Search string `json:"search,omitempty"`
+}
+
+// IPv4DHCPRequest switches an interface to DHCP. A non-empty DNS replaces the
+// IPv4 servers DHCP offers.
+type IPv4DHCPRequest struct {
+	Iface  string `json:"iface"`
+	Method string `json:"method"`
+	DNS    string `json:"dns,omitempty"`
+	Search string `json:"search,omitempty"`
 }
 
 type InterfaceMTURequest struct {
 	Iface string `json:"iface"`
 	MTU   string `json:"mtu"`
+}
+
+type InterfaceOptionalRequest struct {
+	Iface    string `json:"iface"`
+	Optional bool   `json:"optional"`
 }
 
 // NetworkBridgeCreateRequest describes a Stage 2a bridge over a spare NIC.

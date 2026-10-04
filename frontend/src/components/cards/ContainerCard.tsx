@@ -1,21 +1,17 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-  type MouseEvent,
-} from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
 import { linuxio, type ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ContainerActions from "@/components/docker/ContainerActions";
 import ContainerInfoSections from "@/components/docker/ContainerInfoSections";
 import DockerIcon from "@/components/docker/DockerIcon";
+import { useDockerUpdateOperation } from "@/components/docker/DockerUpdateOperationProvider";
 import MetricBar from "@/components/gauge/MetricBar";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -84,10 +80,10 @@ const ContainerCardBody = ({
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
   const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
+  const [updateMenuAnchor, setUpdateMenuAnchor] = useState<HTMLElement | null>(
+    null,
+  );
+  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
 
   // derived
   const name = useMemo(
@@ -103,18 +99,6 @@ const ContainerCardBody = ({
   const handleTerminalClick = () => {
     setHasLoadedTerminalDialog(true);
     setTerminalOpen(true);
-  };
-
-  // Right-click opens the menu at the pointer; a click, or the keyboard's
-  // context-menu key (reported at 0,0), opens it under the target.
-  const openContextMenu = (event: MouseEvent<HTMLElement>) => {
-    event.preventDefault();
-    if (event.clientX || event.clientY) {
-      setContextMenu({ left: event.clientX, top: event.clientY });
-    } else {
-      const rect = event.currentTarget.getBoundingClientRect();
-      setContextMenu({ left: rect.left, top: rect.bottom });
-    }
   };
 
   // ---- metrics ----
@@ -160,7 +144,7 @@ const ContainerCardBody = ({
               metricsStatus === "stale"
                 ? "mdi:clock-alert-outline"
                 : metricsStatus === "not_running"
-                  ? "mdi:pause-circle-outline"
+                  ? "mdi:pause"
                   : "mdi:chart-timeline-variant-shimmer"
             }
             width={16}
@@ -325,38 +309,6 @@ const ContainerCardBody = ({
         </>
       ) : (
         <>
-          <div
-            style={{
-              alignItems: "center",
-              display: "flex",
-              gap: 4,
-              position: "absolute",
-              right: 8,
-              top: 14,
-            }}
-          >
-            {container.updateAvailable && (
-              <AppTooltip arrow title="Update available">
-                <span
-                  aria-label="Update available"
-                  role="img"
-                  style={{
-                    alignItems: "center",
-                    color: "var(--app-palette-warning-main)",
-                    display: "flex",
-                  }}
-                >
-                  <Icon aria-hidden icon="mdi:alert" width={16} />
-                </span>
-              </AppTooltip>
-            )}
-            {metricsStatusAffordance}
-            <StatusDot
-              color={statusColor}
-              tooltip={getContainerDisplayState(container)}
-            />
-          </div>
-
           {/* Top row: Icon + Name + action icons */}
           <div
             style={{
@@ -366,62 +318,119 @@ const ContainerCardBody = ({
               width: "100%",
             }}
           >
-            <AppButton
-              aria-haspopup="menu"
-              aria-label={`More actions for ${name}`}
-              color="inherit"
-              onClick={openContextMenu}
-              onContextMenu={openContextMenu}
+            <div
               style={{
                 width: 48,
                 height: 48,
-                minWidth: 48,
-                minHeight: 48,
                 flexShrink: 0,
                 marginRight: 6,
                 alignSelf: "flex-start",
-                padding: 0,
               }}
             >
               <DockerIcon alt={name} identifier={container.icon} size={48} />
-            </AppButton>
-            <div style={{ flex: 0.95, minWidth: 0 }}>
-              <AppButton
-                aria-label={`Select ${name}`}
-                color="inherit"
-                fullWidth
-                onClick={onSelect}
-                style={{
-                  alignItems: "flex-start",
-                  color: "inherit",
-                  justifyContent: "flex-start",
-                  minWidth: 0,
-                  padding: 0,
-                  textAlign: "left",
-                }}
-              >
-                <AppTypography
-                  fontWeight={600}
-                  noWrap
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Name and status badges share a row, so a long name ellipsizes
+                  before the badges instead of running under them. */}
+              <div style={{ alignItems: "center", display: "flex", gap: 4 }}>
+                <AppButton
+                  aria-label={`Select ${name}`}
+                  color="inherit"
+                  fullWidth
+                  onClick={onSelect}
                   style={{
-                    marginLeft: 4,
-                    marginRight: 0.4,
-                    marginBottom: 2,
+                    alignItems: "flex-start",
+                    color: "inherit",
+                    justifyContent: "flex-start",
+                    minWidth: 0,
+                    padding: 0,
+                    textAlign: "left",
                   }}
-                  title={name}
-                  toastMeta={DOCKER_TOAST_META}
-                  variant="h5"
                 >
-                  {name}
-                </AppTypography>
-              </AppButton>
+                  <AppTypography
+                    fontWeight={600}
+                    noWrap
+                    style={{
+                      marginLeft: 4,
+                      marginRight: 0.4,
+                      marginBottom: 2,
+                    }}
+                    title={name}
+                    toastMeta={DOCKER_TOAST_META}
+                    variant="h5"
+                  >
+                    {name}
+                  </AppTypography>
+                </AppButton>
+                <div
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    gap: 4,
+                    flexShrink: 0,
+                    marginRight: -4,
+                  }}
+                >
+                  {container.updateAvailable &&
+                    (container.State === "running" ? (
+                      <>
+                        <AppActionIconButton
+                          ariaLabel={`Update available for ${name}`}
+                          color="var(--app-palette-warning-main)"
+                          icon="mdi:alert"
+                          iconSize={16}
+                          label="Update available"
+                          onClick={(event) =>
+                            setUpdateMenuAnchor(event.currentTarget)
+                          }
+                        />
+                        <AppMenu
+                          anchorEl={updateMenuAnchor}
+                          ariaLabel={`Update ${name}`}
+                          onClose={() => setUpdateMenuAnchor(null)}
+                          open={Boolean(updateMenuAnchor)}
+                        >
+                          <AppMenuItem
+                            disabled={updating || isUpdating(container.Id)}
+                            onClick={() => {
+                              setUpdateMenuAnchor(null);
+                              startUpdate(container.Id, name);
+                            }}
+                            startAdornment={
+                              <Icon icon="mdi:update" width={18} />
+                            }
+                          >
+                            Update
+                          </AppMenuItem>
+                        </AppMenu>
+                      </>
+                    ) : (
+                      <AppTooltip arrow title="Update available">
+                        <span
+                          aria-label="Update available"
+                          role="img"
+                          style={{
+                            alignItems: "center",
+                            color: "var(--app-palette-warning-main)",
+                            display: "flex",
+                          }}
+                        >
+                          <Icon aria-hidden icon="mdi:alert" width={16} />
+                        </span>
+                      </AppTooltip>
+                    ))}
+                  {metricsStatusAffordance}
+                  <StatusDot
+                    color={statusColor}
+                    tooltip={getContainerDisplayState(container)}
+                  />
+                </div>
+              </div>
               <ContainerActions
                 actionPending={actionPending}
                 container={container}
-                contextMenu={contextMenu}
                 mode="card"
                 name={name}
-                onContextMenuClose={() => setContextMenu(null)}
                 onOpenLogs={handleLogsClick}
                 onOpenTerminal={handleTerminalClick}
               />

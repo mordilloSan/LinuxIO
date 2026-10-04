@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,20 +76,40 @@ func (b *netplanBackend) Read() (InterfaceConfig, error) {
 	if mtu, ok := netplanUint(ifaceMap["mtu"]); ok {
 		cfg.MTU = &mtu
 	}
+	optional, _ := ifaceMap["optional"].(bool)
+	cfg.Optional = &optional
+	overrides, _ := ifaceMap["dhcp4-overrides"].(map[string]any)
+	useDNS, set := overrides["use-dns"].(bool)
+	cfg.DNSOptions = &DNSOptions{
+		Search:     netplanSearch(ifaceMap),
+		IgnoreDHCP: set && !useDNS,
+	}
 	return cfg, nil
 }
 
 func (b *netplanBackend) SetIPv4DHCP(ctx context.Context) error {
+	return b.SetIPv4DHCPWithDNS(ctx, nil, nil)
+}
+
+// SetIPv4DHCPWithDNS keeps DHCP for the address and gateway; non-empty dns
+// replaces the DHCP-provided IPv4 servers instead of adding to them.
+func (b *netplanBackend) SetIPv4DHCPWithDNS(ctx context.Context, dns, search []string) error {
 	return b.update(ctx, func(ifaceMap map[string]any) error {
 		ifaceMap["dhcp4"] = true
 		ifaceMap["addresses"] = replaceNetplanAddresses(ifaceMap["addresses"], 4, nil)
 		setNetplanGateway(ifaceMap, "")
-		setNetplanDNS(ifaceMap, mergeDNSPreservingOtherFamily(netplanDNS(ifaceMap), nil, 4))
+		setNetplanDNS(ifaceMap, mergeDNSPreservingOtherFamily(netplanDNS(ifaceMap), dns, 4))
+		setNetplanSearch(ifaceMap, search)
+		setNetplanIgnoreDHCPDNS(ifaceMap, len(dns) > 0)
 		return nil
 	})
 }
 
 func (b *netplanBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway string, dns []string) error {
+	return b.SetIPv4ManualWithSearch(ctx, addressCIDR, gateway, dns, nil)
+}
+
+func (b *netplanBackend) SetIPv4ManualWithSearch(ctx context.Context, addressCIDR, gateway string, dns, search []string) error {
 	if _, _, err := parseIPv4CIDR(addressCIDR); err != nil {
 		return err
 	}
@@ -100,6 +121,8 @@ func (b *netplanBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gateway
 		ifaceMap["addresses"] = replaceNetplanAddresses(ifaceMap["addresses"], 4, []string{strings.TrimSpace(addressCIDR)})
 		setNetplanGateway(ifaceMap, gateway)
 		setNetplanDNS(ifaceMap, mergeDNSPreservingOtherFamily(netplanDNS(ifaceMap), dns, 4))
+		setNetplanSearch(ifaceMap, search)
+		setNetplanIgnoreDHCPDNS(ifaceMap, false)
 		return nil
 	})
 }
@@ -130,14 +153,54 @@ func (b *netplanBackend) SetMTU(ctx context.Context, mtu uint32) error {
 	})
 }
 
+// SetOptional only affects whether boot waits for the link, so it regenerates
+// the renderer config without an Apply that would bounce a working interface.
+func (b *netplanBackend) SetOptional(ctx context.Context, optional bool) error {
+	return b.write(ctx, func(ifaceMap map[string]any) error {
+		if optional {
+			ifaceMap["optional"] = true
+		} else {
+			delete(ifaceMap, "optional")
+		}
+		return nil
+	})
+}
+
 func (b *netplanBackend) Enable(ctx context.Context) error {
+	doc, err := b.load()
+	if err != nil {
+		return err
+	}
+	ifaceMap, err := doc.interfaceMap(b.kind, b.iface)
+	if err != nil {
+		return err
+	}
+	// Only touch the file when Disable left it off, so enabling a link does
+	// not rewrite a hand-written config.
+	if mode, _ := ifaceMap["activation-mode"].(string); mode == "off" {
+		if err := b.write(ctx, func(ifaceMap map[string]any) error {
+			delete(ifaceMap, "activation-mode")
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
 	if err := b.apply(ctx); err != nil {
 		return err
 	}
 	return setLinkUp(ctx, b.iface)
 }
 
+// Disable persists activation-mode: off so the link stays down after a
+// reboot. Netplan older than 0.103 rejects the key; the link then still goes
+// down, as before, until the next boot.
 func (b *netplanBackend) Disable(ctx context.Context) error {
+	if err := b.write(ctx, func(ifaceMap map[string]any) error {
+		ifaceMap["activation-mode"] = "off"
+		return nil
+	}); err != nil {
+		slog.Warn("netplan could not persist disabled link", "component", "dbus", "subsystem", "network", "interface", b.iface, "error", err)
+	}
 	return setLinkDown(ctx, b.iface)
 }
 
@@ -157,6 +220,15 @@ func (b *netplanBackend) load() (*netplanDoc, error) {
 }
 
 func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[string]any) error) error {
+	if err := b.write(ctx, updateFn); err != nil {
+		return err
+	}
+	return b.apply(ctx)
+}
+
+// write persists updateFn's change and regenerates, restoring the original
+// file when netplan rejects it.
+func (b *netplanBackend) write(ctx context.Context, updateFn func(ifaceMap map[string]any) error) error {
 	original, err := os.ReadFile(b.path)
 	if err != nil {
 		return err
@@ -185,7 +257,7 @@ func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[
 		_ = b.env.WriteFile(b.path, original, mode)
 		return err
 	}
-	return b.apply(ctx)
+	return nil
 }
 
 func (b *netplanBackend) generate(ctx context.Context) error {
@@ -334,6 +406,60 @@ func setNetplanDNS(ifaceMap map[string]any, dns []string) {
 	}
 	nameservers["addresses"] = values
 	ifaceMap["nameservers"] = nameservers
+}
+
+func netplanSearch(ifaceMap map[string]any) []string {
+	nameservers, _ := ifaceMap["nameservers"].(map[string]any)
+	values, _ := nameservers["search"].([]any)
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if entry, ok := value.(string); ok && strings.TrimSpace(entry) != "" {
+			out = append(out, strings.TrimSpace(entry))
+		}
+	}
+	return out
+}
+
+func setNetplanSearch(ifaceMap map[string]any, search []string) {
+	nameservers, _ := ifaceMap["nameservers"].(map[string]any)
+	if len(search) == 0 {
+		if nameservers == nil {
+			return
+		}
+		delete(nameservers, "search")
+		if len(nameservers) == 0 {
+			delete(ifaceMap, "nameservers")
+		}
+		return
+	}
+	if nameservers == nil {
+		nameservers = map[string]any{}
+		ifaceMap["nameservers"] = nameservers
+	}
+	values := make([]any, 0, len(search))
+	for _, entry := range search {
+		values = append(values, entry)
+	}
+	nameservers["search"] = values
+}
+
+func setNetplanIgnoreDHCPDNS(ifaceMap map[string]any, ignore bool) {
+	overrides, _ := ifaceMap["dhcp4-overrides"].(map[string]any)
+	if ignore {
+		if overrides == nil {
+			overrides = map[string]any{}
+			ifaceMap["dhcp4-overrides"] = overrides
+		}
+		overrides["use-dns"] = false
+		return
+	}
+	if overrides == nil {
+		return
+	}
+	delete(overrides, "use-dns")
+	if len(overrides) == 0 {
+		delete(ifaceMap, "dhcp4-overrides")
+	}
 }
 
 func netplanGateway(ifaceMap map[string]any) string {

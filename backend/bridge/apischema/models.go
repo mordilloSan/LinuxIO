@@ -267,11 +267,14 @@ type NetworkInterface struct {
 	// ifcfg). Empty when no backend claims it.
 	ConfigBackend string   `json:"config_backend,omitempty"`
 	DNS           []string `json:"dns"`
-	Driver        string   `json:"driver,omitempty"`
-	Duplex        string   `json:"duplex"`
-	Gateway       string   `json:"gateway"`
-	IPv4          []string `json:"ipv4"`
-	IPv4Method    *string  `json:"ipv4_method,omitempty"`
+	// DNSOptions is nil when the config backend cannot set search domains or
+	// keep static DNS servers alongside DHCP.
+	DNSOptions *NetworkDNSOptions `json:"dns_options,omitempty"`
+	Driver     string             `json:"driver,omitempty"`
+	Duplex     string             `json:"duplex"`
+	Gateway    string             `json:"gateway"`
+	IPv4       []string           `json:"ipv4"`
+	IPv4Method *string            `json:"ipv4_method,omitempty"`
 	// LogUnit is the installed systemd unit whose journal covers this
 	// interface's stack, resolved from ConfigBackend. Empty when none of the
 	// candidate units exist, which is the signal to offer no log view.
@@ -280,9 +283,19 @@ type NetworkInterface struct {
 	MTU       int    `json:"mtu"`
 	Name      string `json:"name"`
 	OperState string `json:"operstate"`
-	Speed     string `json:"speed"`
-	State     int    `json:"state"`
-	Type      string `json:"type"`
+	// Optional reports whether boot skips waiting for this link to come
+	// online. Nil when the config backend cannot express it.
+	Optional *bool  `json:"optional,omitempty"`
+	Speed    string `json:"speed"`
+	State    int    `json:"state"`
+	Type     string `json:"type"`
+}
+
+type NetworkDNSOptions struct {
+	Search []string `json:"search"`
+	// IgnoreDHCP is true when static IPv4 DNS servers replace the ones DHCP
+	// offers.
+	IgnoreDHCP bool `json:"ignore_dhcp"`
 }
 
 // NetworkBridgeCandidate is one wired interface that can, or cannot, be used

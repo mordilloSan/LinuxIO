@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import {
   linuxio,
@@ -81,6 +81,15 @@ function getDNSv4List(i: any): string[] {
     .map((s: string) => s.trim())
     .filter((s: string) => isIPv4(s));
 }
+const splitList = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  );
 
 /* ============================================ */
 
@@ -92,14 +101,16 @@ interface Props {
 
 type IPv4Mode = "auto" | "manual";
 
-interface ManualIPv4Form {
+interface EditorForm {
   dns: string;
   gateway: string;
   ipv4: string;
+  mtu: string;
+  search: string;
 }
 
 interface EditorSession {
-  draft: ManualIPv4Form | null;
+  draft: EditorForm | null;
   expanded: boolean;
   ifaceName: string;
   mode: IPv4Mode;
@@ -132,19 +143,11 @@ const isCurrentSession = (
 const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   const toast = useScopedToast(NETWORK_TOAST_META);
 
-  // Compute sane defaults from iface — stabilised on the actual values,
-  // NOT the iface object reference (which changes every refetch).
-  const defaultIpv4 = getIPv4FromIface(iface);
   const defaultGateway = getGatewayV4(iface);
   const defaultDns = getDNSv4List(iface).join(", ");
-  const defaults = useMemo<ManualIPv4Form>(
-    () => ({
-      ipv4: defaultIpv4,
-      gateway: defaultGateway,
-      dns: defaultDns,
-    }),
-    [defaultIpv4, defaultGateway, defaultDns],
-  );
+  // Null when the config backend cannot set search domains or keep static DNS
+  // servers alongside DHCP.
+  const dnsOptions = iface.dns_options;
 
   const [storedSession, setStoredSession] = useState<EditorSession>(() =>
     createEditorSession(iface, expanded),
@@ -162,6 +165,15 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   }
 
   const { mode } = session;
+  // Under DHCP the DNS field holds only servers that override DHCP's, so it
+  // starts empty unless such an override is already configured.
+  const defaults: EditorForm = {
+    ipv4: getIPv4FromIface(iface),
+    gateway: defaultGateway,
+    dns: mode === "manual" || dnsOptions?.ignore_dhcp ? defaultDns : "",
+    mtu: String(iface.mtu),
+    search: dnsOptions?.search.join(", ") ?? "",
+  };
   const editForm = session.draft ?? defaults;
 
   const updateSession = (update: (current: EditorSession) => EditorSession) => {
@@ -211,7 +223,23 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       toast: NETWORK_TOAST_META,
     },
   );
-  const saving = isSettingIPv4 || isSettingIPv4Manual;
+  const { mutate: setOptional, isPending: isSettingOptional } = useCallMutation(
+    linuxio.network.set_optional,
+    {
+      success: "Boot wait setting saved",
+      error: "Failed to save boot wait setting",
+      toast: NETWORK_TOAST_META,
+    },
+  );
+  const { mutate: setMTU, isPending: isSettingMTU } = useCallMutation(
+    linuxio.network.set_mtu,
+    {
+      success: "MTU saved",
+      error: "Failed to set MTU",
+      toast: NETWORK_TOAST_META,
+    },
+  );
+  const saving = isSettingIPv4 || isSettingIPv4Manual || isSettingMTU;
   const toggling = isEnabling || isDisabling;
   const isConnected = iface.state === 100;
   const isConnecting = iface.state >= 40 && iface.state <= 90;
@@ -231,7 +259,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       mode: newMode,
     }));
   };
-  const handleChange = (field: keyof ManualIPv4Form, value: string) => {
+  const handleChange = (field: keyof EditorForm, value: string) => {
     updateSession((current) => ({
       ...current,
       draft: {
@@ -239,9 +267,6 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
         [field]: value,
       },
     }));
-  };
-  const handleDNSChange = (value: string) => {
-    handleChange("dns", value);
   };
   const validateIPv4CIDR = (cidr: string): boolean => {
     if (!cidr.includes("/")) return false;
@@ -265,13 +290,32 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
     });
   };
   const handleSave = () => {
+    const mtu = editForm.mtu.trim();
+    const mtuChanged = mtu !== String(iface.mtu);
+    if (mtuChanged) {
+      const value = Number(mtu);
+      if (!Number.isInteger(value) || value < 68 || value > 65535) {
+        toast.error("MTU must be a whole number between 68 and 65535");
+        return;
+      }
+    }
+    const dnsServers = splitList(editForm.dns);
+    const invalidDns = dnsServers.find((dns) => !validateIPv4(dns));
+    if (invalidDns) {
+      toast.error(`Invalid DNS server: ${invalidDns}`);
+      return;
+    }
+    const search = splitList(editForm.search).join(",");
+
     if (mode === "auto") {
-      // SetIPv4 with method "dhcp"
-      setIPv4({ iface: iface.name, method: "dhcp" });
+      setIPv4({
+        iface: iface.name,
+        method: "dhcp",
+        ...(dnsOptions ? { dns: dnsServers.join(","), search } : {}),
+      });
     } else {
       const ipv4 = editForm.ipv4.trim();
       const gateway = editForm.gateway.trim();
-      const dnsInput = editForm.dns.trim();
       if (!ipv4) {
         toast.error("IP address is required");
         return;
@@ -290,27 +334,9 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
         toast.error("Invalid gateway address");
         return;
       }
-      if (!dnsInput) {
-        toast.error("At least one DNS server is required");
-        return;
-      }
-      const dnsServers: string[] = Array.from(
-        new Set(
-          dnsInput
-            .split(/[,\s]+/)
-            .map((s: string) => s.trim())
-            .filter(Boolean),
-        ),
-      );
       if (dnsServers.length === 0) {
         toast.error("At least one DNS server is required");
         return;
-      }
-      for (const dns of dnsServers) {
-        if (!validateIPv4(dns)) {
-          toast.error(`Invalid DNS server: ${dns}`);
-          return;
-        }
       }
 
       setIPv4Manual({
@@ -318,7 +344,11 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
         address: ipv4,
         gateway,
         dns: dnsServers.join(","),
+        ...(dnsOptions ? { search } : {}),
       });
+    }
+    if (mtuChanged) {
+      setMTU({ iface: iface.name, mtu });
     }
   };
   if (!expanded) return null;
@@ -451,7 +481,9 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
             }}
           >
             <AppTypography color="text.secondary" variant="body2">
-              The interface obtains its address, gateway, and DNS from DHCP.
+              {dnsOptions?.ignore_dhcp
+                ? "The interface obtains its address and gateway from DHCP."
+                : "The interface obtains its address, gateway, and DNS from DHCP."}
             </AppTypography>
             {interfaceDetails.map(([label, value]) => (
               <div
@@ -471,42 +503,99 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               </div>
             ))}
           </div>
-        ) : (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: GAP_MD,
-              // Card gap + this = GAP_MD, clearing the floating label like the field gaps.
-              marginTop: GAP_MD - GAP_SM,
-            }}
-          >
+        ) : null}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: GAP_MD,
+            // Card gap + this = GAP_MD, clearing the floating label like the field gaps.
+            marginTop: GAP_MD - GAP_SM,
+          }}
+        >
+          {mode === "manual" ? (
+            <>
+              <AppTextField
+                fullWidth
+                label="IPv4 Address (CIDR)"
+                onChange={(e) => handleChange("ipv4", e.target.value)}
+                placeholder="192.168.1.10/24"
+                required
+                size="small"
+                value={editForm.ipv4 ?? ""}
+              />
+              <AppTextField
+                fullWidth
+                label="Gateway"
+                onChange={(e) => handleChange("gateway", e.target.value)}
+                placeholder="192.168.1.1"
+                required
+                size="small"
+                value={editForm.gateway ?? ""}
+              />
+            </>
+          ) : null}
+          {mode === "manual" || dnsOptions ? (
             <AppTextField
               fullWidth
-              label="IPv4 Address (CIDR)"
-              onChange={(e) => handleChange("ipv4", e.target.value)}
-              placeholder="192.168.1.10/24"
-              required
-              size="small"
-              value={editForm.ipv4 ?? ""}
-            />
-            <AppTextField
-              fullWidth
-              label="Gateway"
-              onChange={(e) => handleChange("gateway", e.target.value)}
-              placeholder="192.168.1.1"
-              required
-              size="small"
-              value={editForm.gateway ?? ""}
-            />
-            <AppTextField
-              fullWidth
-              label="DNS Servers"
-              onChange={(e) => handleDNSChange(e.target.value)}
-              placeholder="8.8.8.8, 8.8.4.4"
-              required
+              label={mode === "manual" ? "DNS Servers" : "Custom DNS Servers"}
+              onChange={(e) => handleChange("dns", e.target.value)}
+              placeholder={
+                mode === "manual"
+                  ? "8.8.8.8, 8.8.4.4"
+                  : "Leave empty to use DHCP"
+              }
+              required={mode === "manual"}
               size="small"
               value={editForm.dns ?? ""}
+            />
+          ) : null}
+          <div style={{ display: "flex", gap: GAP_MD }}>
+            {dnsOptions ? (
+              <AppTextField
+                label="Search Domains"
+                onChange={(e) => handleChange("search", e.target.value)}
+                placeholder="lan, home.arpa"
+                size="small"
+                style={{ flex: 1 }}
+                value={editForm.search}
+              />
+            ) : null}
+            <AppTextField
+              label="MTU"
+              onChange={(e) => handleChange("mtu", e.target.value)}
+              placeholder="1500"
+              size="small"
+              style={{ flex: dnsOptions ? "0 0 96px" : 1 }}
+              type="number"
+              value={editForm.mtu}
+            />
+          </div>
+        </div>
+
+        {iface.optional === undefined ? null : (
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: GAP_SM,
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <AppTypography variant="body2">Optional at boot</AppTypography>
+              <AppTypography color="text.secondary" variant="caption">
+                Boot continues without waiting for this interface
+              </AppTypography>
+            </div>
+            <AppSwitch
+              aria-label="Optional at boot"
+              checked={iface.optional}
+              disabled={isSettingOptional}
+              onChange={(_, optional) =>
+                setOptional({ iface: iface.name, optional })
+              }
+              size="small"
             />
           </div>
         )}

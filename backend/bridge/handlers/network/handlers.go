@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
@@ -25,9 +24,10 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		// sever this bridge, so transport loss is an expected ambiguous outcome and
 		// callers must not retry the mutation automatically.
 		apischema.Call[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(h.handleSetIPv4Manual),
-		apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(h.handleSetIPv4),
+		apischema.Call[apischema.IPv4DHCPRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(h.handleSetIPv4),
 		apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(h.handleSetIPv6),
 		apischema.Call[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(h.handleSetMTU),
+		apischema.Call[apischema.InterfaceOptionalRequest, apischema.NoResponse]("network.set_optional").HandleVoid(h.handleSetOptional),
 		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(h.handleEnableConnection),
 		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(h.handleDisableConnection),
 	)
@@ -75,18 +75,15 @@ func (h networkHandlers) handleOwnerUID() uint32 {
 }
 
 func (h networkHandlers) handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest) error {
-	dnsServers := strings.FieldsFunc(req.DNS, func(r rune) bool {
-		return r == ',' || unicode.IsSpace(r)
-	})
-	return SetIPv4Manual(ctx, req.Iface, req.Address, req.Gateway, dnsServers)
+	return SetIPv4Manual(ctx, req.Iface, req.Address, req.Gateway, splitList(req.DNS), splitList(req.Search))
 }
 
-func (h networkHandlers) handleSetIPv4(ctx context.Context, req apischema.InterfaceMethodRequest) error {
+func (h networkHandlers) handleSetIPv4(ctx context.Context, req apischema.IPv4DHCPRequest) error {
 	method := strings.ToLower(req.Method)
 	if method != "dhcp" && method != "auto" {
 		return fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
 	}
-	return SetIPv4DHCP(ctx, req.Iface)
+	return SetIPv4DHCP(ctx, req.Iface, splitList(req.DNS), splitList(req.Search))
 }
 
 func (h networkHandlers) handleSetIPv6(ctx context.Context, req apischema.InterfaceMethodRequest) error {
@@ -101,6 +98,10 @@ func (h networkHandlers) handleSetIPv6(ctx context.Context, req apischema.Interf
 
 func (h networkHandlers) handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest) error {
 	return SetMTU(ctx, req.Iface, req.MTU)
+}
+
+func (h networkHandlers) handleSetOptional(ctx context.Context, req apischema.InterfaceOptionalRequest) error {
+	return SetOptional(ctx, req.Iface, req.Optional)
 }
 
 func (h networkHandlers) handleEnableConnection(ctx context.Context, req apischema.InterfaceRequest) error {

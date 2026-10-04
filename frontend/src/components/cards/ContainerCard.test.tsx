@@ -85,7 +85,9 @@ describe("ContainerCard", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Update available")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Update available for example" }),
+    ).toBeInTheDocument();
 
     container.updateAvailable = false;
     rerender(
@@ -96,7 +98,22 @@ describe("ContainerCard", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("Update available")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/^Update available/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the update from the update-available badge", async () => {
+    const { user } = render(
+      <ContainerCard containerId={container.Id} selected={false} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Update example" })).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Update available for example" }),
+    );
+
+    expect(screen.getByRole("menuitem", { name: "Update" })).toBeEnabled();
   });
 
   it.each([
