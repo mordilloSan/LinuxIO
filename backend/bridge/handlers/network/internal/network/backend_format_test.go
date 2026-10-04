@@ -49,6 +49,47 @@ network:
 	requireCalls(t, runner, "netplan-dbus Generate", "netplan-dbus Apply")
 }
 
+func TestNetplanSetOptionalRegeneratesWithoutApply(t *testing.T) {
+	env, runner, _ := testEnv(t)
+	path := filepath.Join(env.NetplanDir, "01-eth0.yaml")
+	mustWriteFile(t, path, `
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+`)
+	backend, err := detectNetplanBackend(env, "eth0")
+	if err != nil {
+		t.Fatalf("detectNetplanBackend: %v", err)
+	}
+	setter, ok := backend.(OptionalSetter)
+	if !ok {
+		t.Fatalf("%T does not implement OptionalSetter", backend)
+	}
+	for _, optional := range []bool{true, false} {
+		runner.calls = nil
+		if setErr := setter.SetOptional(context.Background(), optional); setErr != nil {
+			t.Fatalf("SetOptional(%v): %v", optional, setErr)
+		}
+		requireCalls(t, runner, "netplan-dbus Generate")
+		cfg, readErr := backend.Read()
+		if readErr != nil {
+			t.Fatalf("Read: %v", readErr)
+		}
+		if cfg.Optional == nil || *cfg.Optional != optional {
+			t.Fatalf("Optional = %v, want %v", cfg.Optional, optional)
+		}
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read updated netplan: %v", err)
+	}
+	if strings.Contains(string(updated), "optional") {
+		t.Fatalf("clearing optional should drop the key:\n%s", updated)
+	}
+}
+
 func TestNetworkdSetIPv4ManualUsesReloadAndReconfigure(t *testing.T) {
 	env, runner, _ := testEnv(t)
 	path := filepath.Join(env.NetworkdDir, "10-eth0.network")

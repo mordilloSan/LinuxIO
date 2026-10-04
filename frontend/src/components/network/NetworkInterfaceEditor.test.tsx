@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   enableConnection: vi.fn(),
   setIPv4: vi.fn(),
   setIPv4Manual: vi.fn(),
+  setOptional: vi.fn(),
   useCallMutation: vi.fn(),
 }));
 
@@ -35,7 +36,9 @@ mocks.useCallMutation.mockImplementation((endpoint: { route: string }) => {
       ? mocks.enableConnection
       : endpoint.route.endsWith("set_ipv4_manual")
         ? mocks.setIPv4Manual
-        : mocks.setIPv4;
+        : endpoint.route.endsWith("set_optional")
+          ? mocks.setOptional
+          : mocks.setIPv4;
   return { isPending: false, mutate };
 });
 
@@ -194,6 +197,31 @@ describe("NetworkInterfaceEditor", () => {
       dns: "9.9.9.9,1.1.1.1",
       gateway: "10.0.0.1",
       iface: "eth0",
+    });
+  });
+
+  it("offers the boot-wait switch only when the backend reports it", async () => {
+    const { rerender, user } = render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("Optional at boot")).toBeNull();
+
+    rerender(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({ optional: false })}
+        onClose={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByLabelText("Optional at boot"));
+
+    expect(mocks.setOptional).toHaveBeenCalledWith({
+      iface: "eth0",
+      optional: true,
     });
   });
 

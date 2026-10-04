@@ -146,6 +146,7 @@ export const ROUTE_MODES = {
   "network.set_ipv4_manual": "call",
   "network.set_ipv6": "call",
   "network.set_mtu": "call",
+  "network.set_optional": "call",
   "network.start_bridge_handoff": "call",
   "packages.update": "task",
   "power.disable": "call",

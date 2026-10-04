@@ -195,6 +195,7 @@ const linuxio = {
     set_ipv4_manual: defineCallWithRequest("network.set_ipv4_manual"),
     set_ipv6: defineCallWithRequest("network.set_ipv6"),
     set_mtu: defineCallWithRequest("network.set_mtu"),
+    set_optional: defineCallWithRequest("network.set_optional"),
     start_bridge_handoff: defineCallWithRequest("network.start_bridge_handoff"),
   },
   packages: {

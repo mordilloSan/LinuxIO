@@ -28,6 +28,7 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(h.handleSetIPv4),
 		apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(h.handleSetIPv6),
 		apischema.Call[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(h.handleSetMTU),
+		apischema.Call[apischema.InterfaceOptionalRequest, apischema.NoResponse]("network.set_optional").HandleVoid(h.handleSetOptional),
 		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(h.handleEnableConnection),
 		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(h.handleDisableConnection),
 	)
@@ -101,6 +102,10 @@ func (h networkHandlers) handleSetIPv6(ctx context.Context, req apischema.Interf
 
 func (h networkHandlers) handleSetMTU(ctx context.Context, req apischema.InterfaceMTURequest) error {
 	return SetMTU(ctx, req.Iface, req.MTU)
+}
+
+func (h networkHandlers) handleSetOptional(ctx context.Context, req apischema.InterfaceOptionalRequest) error {
+	return SetOptional(ctx, req.Iface, req.Optional)
 }
 
 func (h networkHandlers) handleEnableConnection(ctx context.Context, req apischema.InterfaceRequest) error {

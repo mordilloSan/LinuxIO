@@ -20,6 +20,9 @@ type InterfaceConfig struct {
 	DNS           []string
 	Gateway       string
 	MTU           *uint32
+	// Optional is nil when the backend cannot express "boot does not wait
+	// for this link".
+	Optional *bool
 }
 
 type ConfigBackend interface {
@@ -32,6 +35,12 @@ type ConfigBackend interface {
 	SetMTU(ctx context.Context, mtu uint32) error
 	Enable(ctx context.Context) error
 	Disable(ctx context.Context) error
+}
+
+// OptionalSetter is implemented by backends that can mark a link as not
+// required for the host to be considered online at boot.
+type OptionalSetter interface {
+	SetOptional(ctx context.Context, optional bool) error
 }
 
 type CommandRunner interface {

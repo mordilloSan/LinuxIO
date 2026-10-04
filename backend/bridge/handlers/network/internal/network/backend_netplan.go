@@ -75,6 +75,8 @@ func (b *netplanBackend) Read() (InterfaceConfig, error) {
 	if mtu, ok := netplanUint(ifaceMap["mtu"]); ok {
 		cfg.MTU = &mtu
 	}
+	optional, _ := ifaceMap["optional"].(bool)
+	cfg.Optional = &optional
 	return cfg, nil
 }
 
@@ -130,6 +132,19 @@ func (b *netplanBackend) SetMTU(ctx context.Context, mtu uint32) error {
 	})
 }
 
+// SetOptional only affects whether boot waits for the link, so it regenerates
+// the renderer config without an Apply that would bounce a working interface.
+func (b *netplanBackend) SetOptional(ctx context.Context, optional bool) error {
+	return b.write(ctx, func(ifaceMap map[string]any) error {
+		if optional {
+			ifaceMap["optional"] = true
+		} else {
+			delete(ifaceMap, "optional")
+		}
+		return nil
+	})
+}
+
 func (b *netplanBackend) Enable(ctx context.Context) error {
 	if err := b.apply(ctx); err != nil {
 		return err
@@ -157,6 +172,15 @@ func (b *netplanBackend) load() (*netplanDoc, error) {
 }
 
 func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[string]any) error) error {
+	if err := b.write(ctx, updateFn); err != nil {
+		return err
+	}
+	return b.apply(ctx)
+}
+
+// write persists updateFn's change and regenerates, restoring the original
+// file when netplan rejects it.
+func (b *netplanBackend) write(ctx context.Context, updateFn func(ifaceMap map[string]any) error) error {
 	original, err := os.ReadFile(b.path)
 	if err != nil {
 		return err
@@ -185,7 +209,7 @@ func (b *netplanBackend) update(ctx context.Context, updateFn func(ifaceMap map[
 		_ = b.env.WriteFile(b.path, original, mode)
 		return err
 	}
-	return b.apply(ctx)
+	return nil
 }
 
 func (b *netplanBackend) generate(ctx context.Context) error {

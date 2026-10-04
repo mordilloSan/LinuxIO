@@ -229,6 +229,27 @@ func SetMTU(ctx context.Context, iface, mtu string) error {
 	return backend.SetMTU(ctx, uint32(value))
 }
 
+func SetOptional(ctx context.Context, iface string, optional bool) error {
+	if strings.TrimSpace(iface) == "" {
+		return fmt.Errorf("interface name is required")
+	}
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	if err != nil {
+		return err
+	}
+	setter, ok := backend.(networkbackend.OptionalSetter)
+	if !ok {
+		return fmt.Errorf("%w: %s cannot mark %s optional", networkbackend.ErrUnsupportedBackend, backend.Name(), iface)
+	}
+	return setter.SetOptional(ctx, optional)
+}
+
 func beginNetworkMutation(ctx context.Context) (func(), error) {
 	networkMutationMu.Lock()
 	if err := ctx.Err(); err != nil {
@@ -425,6 +446,7 @@ func networkInterfaceCarrier(name string) *bool {
 
 func mergeConfiguredState(info *apischema.NetworkInterface, cfg networkbackend.InterfaceConfig) {
 	info.ConfigBackend = cfg.Backend
+	info.Optional = cfg.Optional
 	if strings.TrimSpace(cfg.IPv4Method) != "" {
 		ipv4Method := cfg.IPv4Method
 		info.IPv4Method = &ipv4Method

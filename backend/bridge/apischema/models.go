@@ -280,9 +280,12 @@ type NetworkInterface struct {
 	MTU       int    `json:"mtu"`
 	Name      string `json:"name"`
 	OperState string `json:"operstate"`
-	Speed     string `json:"speed"`
-	State     int    `json:"state"`
-	Type      string `json:"type"`
+	// Optional reports whether boot skips waiting for this link to come
+	// online. Nil when the config backend cannot express it.
+	Optional *bool  `json:"optional,omitempty"`
+	Speed    string `json:"speed"`
+	State    int    `json:"state"`
+	Type     string `json:"type"`
 }
 
 // NetworkBridgeCandidate is one wired interface that can, or cannot, be used

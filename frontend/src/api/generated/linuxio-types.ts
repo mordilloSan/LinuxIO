@@ -1410,6 +1410,11 @@ export interface InterfaceNameRequest {
   interfaceName: string;
 }
 
+export interface InterfaceOptionalRequest {
+  iface: string;
+  optional: boolean;
+}
+
 export interface InterfaceRequest {
   iface: string;
 }
@@ -1926,6 +1931,7 @@ export interface NetworkInterface {
   mtu: number;
   name: string;
   operstate: string;
+  optional?: boolean;
   speed: string;
   state: number;
   type: string;
@@ -3472,6 +3478,11 @@ export interface LinuxIOSchema {
       request: InterfaceMTURequest;
       result: void;
     };
+    set_optional: {
+      input: [request: InterfaceOptionalRequest];
+      request: InterfaceOptionalRequest;
+      result: void;
+    };
     start_bridge_handoff: {
       input: [request: NetworkBridgeHandoffRequest];
       request: NetworkBridgeHandoffRequest;
@@ -4198,6 +4209,7 @@ export interface LinuxIOCallSchema {
   "network.set_ipv4_manual": { request: IPv4ManualRequest; result: void };
   "network.set_ipv6": { request: InterfaceMethodRequest; result: void };
   "network.set_mtu": { request: InterfaceMTURequest; result: void };
+  "network.set_optional": { request: InterfaceOptionalRequest; result: void };
   "network.start_bridge_handoff": {
     request: NetworkBridgeHandoffRequest;
     result: NetworkBridgeHandoffStatus;

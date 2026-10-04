@@ -211,6 +211,14 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       toast: NETWORK_TOAST_META,
     },
   );
+  const { mutate: setOptional, isPending: isSettingOptional } = useCallMutation(
+    linuxio.network.set_optional,
+    {
+      success: "Boot wait setting saved",
+      error: "Failed to save boot wait setting",
+      toast: NETWORK_TOAST_META,
+    },
+  );
   const saving = isSettingIPv4 || isSettingIPv4Manual;
   const toggling = isEnabling || isDisabling;
   const isConnected = iface.state === 100;
@@ -507,6 +515,33 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               required
               size="small"
               value={editForm.dns ?? ""}
+            />
+          </div>
+        )}
+
+        {iface.optional === undefined ? null : (
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: GAP_SM,
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <AppTypography variant="body2">Optional at boot</AppTypography>
+              <AppTypography color="text.secondary" variant="caption">
+                Boot continues without waiting for this interface
+              </AppTypography>
+            </div>
+            <AppSwitch
+              aria-label="Optional at boot"
+              checked={iface.optional}
+              disabled={isSettingOptional}
+              onChange={(_, optional) =>
+                setOptional({ iface: iface.name, optional })
+              }
+              size="small"
             />
           </div>
         )}
