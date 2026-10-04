@@ -6,7 +6,6 @@ import { render, screen } from "@/test/render";
 import ContainerActions from "./ContainerActions";
 
 const callbacks = { onOpenLogs: vi.fn(), onOpenTerminal: vi.fn() };
-const menuAt = { left: 0, top: 0 };
 
 describe("ContainerActions", () => {
   beforeEach(() => {
@@ -20,7 +19,6 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
-        contextMenu={menuAt}
         mode="card"
         name="example"
         {...callbacks}
@@ -28,13 +26,15 @@ describe("ContainerActions", () => {
     );
 
     expect(screen.getByRole("button", { name: "Stop example" })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: "Pause" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Pause example" })).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "Restart example" }),
     ).toBeEnabled();
-    expect(screen.queryByRole("menuitem", { name: "Unpause" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Unpause example" }),
+    ).toBeNull();
 
-    await user.click(screen.getByRole("menuitem", { name: "Kill" }));
+    await user.click(screen.getByRole("button", { name: "Kill example" }));
     expect(
       screen.getByRole("dialog", { name: "Kill example?" }),
     ).toBeInTheDocument();
@@ -53,7 +53,6 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
-        contextMenu={menuAt}
         mode="card"
         name="example"
         {...callbacks}
@@ -90,14 +89,15 @@ describe("ContainerActions", () => {
       const { user } = render(
         <ContainerActions
           container={{ Id: "container-id", State: state }}
-          contextMenu={menuAt}
           mode="card"
           name="example"
           {...callbacks}
         />,
       );
 
-      await user.click(screen.getByRole("menuitem", { name: label }));
+      await user.click(
+        screen.getByRole("button", { name: `${label} example` }),
+      );
 
       expect(request).toHaveBeenCalledWith(
         "docker",
@@ -113,7 +113,6 @@ describe("ContainerActions", () => {
     const { user } = render(
       <ContainerActions
         container={{ Id: "stopped-id", State: "exited" }}
-        contextMenu={menuAt}
         mode="card"
         name="stopped"
         {...callbacks}
@@ -124,8 +123,8 @@ describe("ContainerActions", () => {
     expect(
       screen.getByRole("button", { name: "Restart stopped" }),
     ).toBeDisabled();
-    expect(screen.queryByRole("menuitem", { name: "Pause" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Kill" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pause stopped" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Kill stopped" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Remove stopped" }));
     expect(
       screen.queryByRole("checkbox", {
@@ -150,35 +149,16 @@ describe("ContainerActions", () => {
           Labels: { "com.docker.compose.project": "example-stack" },
           State: "running",
         }}
-        contextMenu={menuAt}
         mode="card"
         name="example"
         {...callbacks}
       />,
     );
 
-    expect(screen.getByRole("menuitem", { name: "Edit stack" })).toBeEnabled();
-    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
-  });
-
-  it("keeps only lifecycle and removal icons, the rest in the menu", () => {
-    render(
-      <ContainerActions
-        container={{ Id: "running-id", State: "running" }}
-        contextMenu={menuAt}
-        mode="card"
-        name="example"
-        {...callbacks}
-      />,
-    );
-
-    for (const label of ["Stop example", "Restart example", "Remove example"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
-    }
-    expect(screen.getAllByRole("button")).toHaveLength(3);
     expect(
-      screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["Edit", "Pause", "Logs", "Terminal", "Kill"]);
+      screen.getByRole("button", { name: "Edit stack example" }),
+    ).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Edit example" })).toBeNull();
   });
 
   it("shows every action as an icon in full mode", () => {

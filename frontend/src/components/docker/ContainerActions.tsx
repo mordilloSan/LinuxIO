@@ -26,16 +26,11 @@ interface ContainerActionsProps {
     ContainerInfo,
     "Id" | "Labels" | "State" | "updateAvailable" | "url"
   >;
-  /** Where the `card` mode's menu opens; the card owns the trigger (its
-   * container icon), so it holds this position. */
-  contextMenu?: { left: number; top: number } | null;
-  /** `card` shows start/stop, restart and remove as icons and leaves the rest
-   * to the `contextMenu`; `full` shows every action as an icon, for the
-   * selected card on the details page; `icons` and `menu` keep the secondary
-   * ones behind the overflow menu, for the tight table/compose action columns. */
+  /** `card` and `full` show every action as an icon (`card` packs them
+   * tighter, for the grid cards); `icons` and `menu` keep the secondary ones
+   * behind the overflow menu, for the tight table/compose action columns. */
   mode?: "card" | "full" | "icons" | "menu";
   name: string;
-  onContextMenuClose?: () => void;
   onOpenLogs: () => void;
   onOpenTerminal: () => void;
 }
@@ -49,17 +44,13 @@ interface SecondaryAction {
   label: string;
   loading?: boolean;
   onClick: () => void;
-  /** Stays in the `card` mode's icon strip instead of its context menu. */
-  strip?: boolean;
 }
 
 const ContainerActions = ({
   actionPending = false,
   container,
-  contextMenu = null,
   mode = "icons",
   name,
-  onContextMenuClose,
   onOpenLogs,
   onOpenTerminal,
 }: ContainerActionsProps) => {
@@ -197,7 +188,6 @@ const ContainerActions = ({
       label: "Restart",
       loading: isRestartPending,
       onClick: () => restartContainer({ containerId: container.Id }),
-      strip: true,
     },
     ...(container.State === "running"
       ? [
@@ -269,25 +259,11 @@ const ContainerActions = ({
         setForceRemove(false);
         setConfirmation("remove");
       },
-      strip: true,
     },
   ];
   const iconStrip = mode === "card" || mode === "full";
-  const stripActions =
-    mode === "full"
-      ? secondaryActions
-      : secondaryActions.filter((action) => action.strip);
-  const menuActions =
-    mode === "full"
-      ? []
-      : mode === "card"
-        ? secondaryActions.filter((action) => !action.strip)
-        : secondaryActions;
 
-  const closeMenu = () => {
-    setMenuAnchor(null);
-    onContextMenuClose?.();
-  };
+  const closeMenu = () => setMenuAnchor(null);
   const chooseAction = (action: SecondaryAction) => {
     closeMenu();
     action.onClick();
@@ -309,7 +285,7 @@ const ContainerActions = ({
           alignItems: "center",
           display: "flex",
           flexWrap: iconStrip ? "wrap" : "nowrap",
-          gap: 2,
+          gap: mode === "card" ? 0 : 2,
         }}
       >
         {mode !== "menu" && (
@@ -324,7 +300,7 @@ const ContainerActions = ({
           />
         )}
         {iconStrip ? (
-          stripActions.map((action) => (
+          secondaryActions.map((action) => (
             <AppActionIconButton
               ariaLabel={`${action.label} ${name}`}
               color={
@@ -358,11 +334,10 @@ const ContainerActions = ({
 
       <AppMenu
         anchorEl={menuAnchor}
-        anchorPosition={contextMenu}
         ariaLabel={`Actions for ${name}`}
         minWidth={176}
         onClose={closeMenu}
-        open={Boolean(menuAnchor) || contextMenu !== null}
+        open={Boolean(menuAnchor)}
       >
         {mode === "menu" && (
           <AppMenuItem
@@ -373,7 +348,7 @@ const ContainerActions = ({
             {primary.label}
           </AppMenuItem>
         )}
-        {menuActions.map((action) => (
+        {secondaryActions.map((action) => (
           <AppMenuItem
             danger={action.danger}
             disabled={busy || action.disabled}

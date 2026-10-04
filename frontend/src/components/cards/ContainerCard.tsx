@@ -1,13 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-  type MouseEvent,
-} from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 
 import { linuxio, type ContainerInfo } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -84,10 +77,6 @@ const ContainerCardBody = ({
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [hasLoadedLogsDialog, setHasLoadedLogsDialog] = useState(false);
   const [hasLoadedTerminalDialog, setHasLoadedTerminalDialog] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
 
   // derived
   const name = useMemo(
@@ -103,18 +92,6 @@ const ContainerCardBody = ({
   const handleTerminalClick = () => {
     setHasLoadedTerminalDialog(true);
     setTerminalOpen(true);
-  };
-
-  // Right-click opens the menu at the pointer; a click, or the keyboard's
-  // context-menu key (reported at 0,0), opens it under the target.
-  const openContextMenu = (event: MouseEvent<HTMLElement>) => {
-    event.preventDefault();
-    if (event.clientX || event.clientY) {
-      setContextMenu({ left: event.clientX, top: event.clientY });
-    } else {
-      const rect = event.currentTarget.getBoundingClientRect();
-      setContextMenu({ left: rect.left, top: rect.bottom });
-    }
   };
 
   // ---- metrics ----
@@ -366,25 +343,17 @@ const ContainerCardBody = ({
               width: "100%",
             }}
           >
-            <AppButton
-              aria-haspopup="menu"
-              aria-label={`More actions for ${name}`}
-              color="inherit"
-              onClick={openContextMenu}
-              onContextMenu={openContextMenu}
+            <div
               style={{
                 width: 48,
                 height: 48,
-                minWidth: 48,
-                minHeight: 48,
                 flexShrink: 0,
                 marginRight: 6,
                 alignSelf: "flex-start",
-                padding: 0,
               }}
             >
               <DockerIcon alt={name} identifier={container.icon} size={48} />
-            </AppButton>
+            </div>
             <div style={{ flex: 0.95, minWidth: 0 }}>
               <AppButton
                 aria-label={`Select ${name}`}
@@ -418,10 +387,8 @@ const ContainerCardBody = ({
               <ContainerActions
                 actionPending={actionPending}
                 container={container}
-                contextMenu={contextMenu}
                 mode="card"
                 name={name}
-                onContextMenuClose={() => setContextMenu(null)}
                 onOpenLogs={handleLogsClick}
                 onOpenTerminal={handleTerminalClick}
               />
