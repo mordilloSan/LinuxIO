@@ -149,7 +149,7 @@ describe("ContainerActions", () => {
           Labels: { "com.docker.compose.project": "example-stack" },
           State: "running",
         }}
-        mode="card"
+        mode="full"
         name="example"
         {...callbacks}
       />,
@@ -159,6 +159,23 @@ describe("ContainerActions", () => {
       screen.getByRole("button", { name: "Edit stack example" }),
     ).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Edit example" })).toBeNull();
+  });
+
+  it("leaves Edit and Update to the details card in card mode", () => {
+    render(
+      <ContainerActions
+        container={{ Id: "running-id", State: "running" }}
+        mode="card"
+        name="example"
+        {...callbacks}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Remove example" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Update/ })).toBeNull();
   });
 
   it("shows every action as an icon in full mode", () => {
