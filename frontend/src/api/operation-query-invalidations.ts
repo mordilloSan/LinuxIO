@@ -193,6 +193,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "network.set_optional": [endpointQueryPrefix("network.get_network_info")],
+  "network.set_mtu": [
+    endpointQueryPrefix("network.get_network_info"),
+    endpointQueryPrefix("monitoring.get_live"),
+  ],
   "network.enable_connection": [
     endpointQueryPrefix("network.get_network_info"),
     endpointQueryPrefix("monitoring.get_live"),

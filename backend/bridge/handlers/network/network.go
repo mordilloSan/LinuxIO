@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/vishvananda/netlink"
 
@@ -106,7 +107,7 @@ func mapBridgeOptions(options networkbackend.BridgeOptions) apischema.NetworkBri
 	return result
 }
 
-func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsServers []string) error {
+func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsServers, search []string) error {
 	if strings.TrimSpace(iface) == "" {
 		return fmt.Errorf("interface is required")
 	}
@@ -119,39 +120,92 @@ func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsS
 	if len(dnsServers) == 0 {
 		return fmt.Errorf("at least one DNS server is required")
 	}
+	if err := validateDNS(dnsServers, search); err != nil {
+		return err
+	}
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	if err != nil {
+		return err
+	}
+	if setter, ok := backend.(networkbackend.DNSOptionsSetter); ok {
+		return setter.SetIPv4ManualWithSearch(ctx, addressCIDR, gateway, dnsServers, search)
+	}
+	if len(search) > 0 {
+		return fmt.Errorf("%w: %s cannot set DNS search domains", networkbackend.ErrUnsupportedBackend, backend.Name())
+	}
+	return backend.SetIPv4Manual(ctx, addressCIDR, gateway, dnsServers)
+}
+
+// SetIPv4DHCP switches iface to DHCP. Non-empty dnsServers replace the IPv4
+// servers DHCP offers.
+func SetIPv4DHCP(ctx context.Context, iface string, dnsServers, search []string) error {
+	if strings.TrimSpace(iface) == "" {
+		return fmt.Errorf("interface name is required")
+	}
+	if err := validateDNS(dnsServers, search); err != nil {
+		return err
+	}
+	unlock, err := beginNetworkMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	if err != nil {
+		return err
+	}
+	if setter, ok := backend.(networkbackend.DNSOptionsSetter); ok {
+		return setter.SetIPv4DHCPWithDNS(ctx, dnsServers, search)
+	}
+	if len(dnsServers) > 0 || len(search) > 0 {
+		return fmt.Errorf("%w: %s cannot set DNS alongside DHCP", networkbackend.ErrUnsupportedBackend, backend.Name())
+	}
+	return backend.SetIPv4DHCP(ctx)
+}
+
+// splitList splits a comma- or whitespace-separated form value.
+func splitList(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+}
+
+func validateDNS(dnsServers, search []string) error {
 	for _, dns := range dnsServers {
 		if stdnet.ParseIP(dns) == nil {
 			return fmt.Errorf("invalid DNS server %q", dns)
 		}
 	}
-	unlock, err := beginNetworkMutation(ctx)
-	if err != nil {
-		return err
+	for _, domain := range search {
+		if !isDomainName(domain) {
+			return fmt.Errorf("invalid search domain %q", domain)
+		}
 	}
-	defer unlock()
-
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
-	if err != nil {
-		return err
-	}
-	return backend.SetIPv4Manual(ctx, addressCIDR, gateway, dnsServers)
+	return nil
 }
 
-func SetIPv4DHCP(ctx context.Context, iface string) error {
-	if strings.TrimSpace(iface) == "" {
-		return fmt.Errorf("interface name is required")
+func isDomainName(name string) bool {
+	if len(name) == 0 || len(name) > 253 {
+		return false
 	}
-	unlock, err := beginNetworkMutation(ctx)
-	if err != nil {
-		return err
+	for label := range strings.SplitSeq(name, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
+		}
 	}
-	defer unlock()
-
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
-	if err != nil {
-		return err
-	}
-	return backend.SetIPv4DHCP(ctx)
+	return true
 }
 
 func SetIPv6DHCP(ctx context.Context, iface string) error {
@@ -447,6 +501,14 @@ func networkInterfaceCarrier(name string) *bool {
 func mergeConfiguredState(info *apischema.NetworkInterface, cfg networkbackend.InterfaceConfig) {
 	info.ConfigBackend = cfg.Backend
 	info.Optional = cfg.Optional
+	ignoreDHCPDNS := false
+	if cfg.DNSOptions != nil {
+		ignoreDHCPDNS = cfg.DNSOptions.IgnoreDHCP
+		info.DNSOptions = &apischema.NetworkDNSOptions{
+			Search:     append([]string{}, cfg.DNSOptions.Search...),
+			IgnoreDHCP: cfg.DNSOptions.IgnoreDHCP,
+		}
+	}
 	if strings.TrimSpace(cfg.IPv4Method) != "" {
 		ipv4Method := cfg.IPv4Method
 		info.IPv4Method = &ipv4Method
@@ -457,7 +519,7 @@ func mergeConfiguredState(info *apischema.NetworkInterface, cfg networkbackend.I
 	if len(info.IPv4) == 0 && len(cfg.IPv4Addresses) > 0 {
 		info.IPv4 = append([]string(nil), cfg.IPv4Addresses...)
 	}
-	if cfg.IPv4Method == "manual" && len(cfg.DNS) > 0 {
+	if (cfg.IPv4Method == "manual" || ignoreDHCPDNS) && len(cfg.DNS) > 0 {
 		info.DNS = append([]string(nil), cfg.DNS...)
 	} else if len(info.DNS) == 0 && len(cfg.DNS) > 0 {
 		info.DNS = append([]string(nil), cfg.DNS...)

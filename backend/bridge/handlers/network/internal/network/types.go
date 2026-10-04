@@ -23,6 +23,16 @@ type InterfaceConfig struct {
 	// Optional is nil when the backend cannot express "boot does not wait
 	// for this link".
 	Optional *bool
+	// DNSOptions is nil when the backend cannot express search domains or
+	// static DNS servers alongside DHCP.
+	DNSOptions *DNSOptions
+}
+
+type DNSOptions struct {
+	Search []string
+	// IgnoreDHCP is true when static IPv4 DNS servers replace the ones DHCP
+	// offers.
+	IgnoreDHCP bool
 }
 
 type ConfigBackend interface {
@@ -41,6 +51,12 @@ type ConfigBackend interface {
 // required for the host to be considered online at boot.
 type OptionalSetter interface {
 	SetOptional(ctx context.Context, optional bool) error
+}
+
+// DNSOptionsSetter is implemented by backends that report DNSOptions.
+type DNSOptionsSetter interface {
+	SetIPv4DHCPWithDNS(ctx context.Context, dns, search []string) error
+	SetIPv4ManualWithSearch(ctx context.Context, addressCIDR, gateway string, dns, search []string) error
 }
 
 type CommandRunner interface {

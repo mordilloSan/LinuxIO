@@ -344,3 +344,10 @@ func TestHandleSetIPv4ManualDNS(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDNSRejectsMalformedSearchDomains(t *testing.T) {
+	require.NoError(t, validateDNS([]string{"1.1.1.1"}, []string{"lan", "home.arpa", "corp-1.example.com"}))
+	for _, domain := range []string{"", "-lan", "lan-", "a..b", "bad_domain", "spaced domain", strings.Repeat("a", 64)} {
+		require.Error(t, validateDNS(nil, []string{domain}), domain)
+	}
+}
