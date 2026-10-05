@@ -103,6 +103,11 @@ export function useUploadTasks(
       files: files.map(({ file, relativePath }) => ({
         path: relativePath,
         size: String(file.size),
+        // Browsers expose the file's own modification time; the bridge stamps
+        // the written file with it instead of the upload time.
+        ...(file.lastModified > 0
+          ? { modified: new Date(file.lastModified).toISOString() }
+          : {}),
       })),
       // Falsy fields omitted so the identity key matches the Go-marshaled
       // request (`directories` and `overwrite` are omitempty on the wire).

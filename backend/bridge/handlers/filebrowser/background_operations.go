@@ -202,7 +202,7 @@ const (
 	routeUploadBatch = "filebrowser.upload_batch"
 )
 
-var fileTaskRoutes = fileTaskBindings(nil).Routes()
+var fileTaskRoutes = fileTaskBindings(nil, uploadOwner{}).Routes()
 
 func transferResult[T any](value any, err error) (T, error) {
 	if err != nil {
@@ -217,7 +217,7 @@ func transferResult[T any](value any, err error) (T, error) {
 	return result, nil
 }
 
-func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
+func fileTaskBindings(store *config.UserStore, owner uploadOwner) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.TaskRunner[apischema.FileCompressRequest, FileCompressResult]("filebrowser.compress", apischema.SessionTask(), apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileCompressRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: []string{req.TargetPath}, Label: req.TargetPath, Path: req.TargetPath}
@@ -273,7 +273,7 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 		apischema.TaskRunner[apischema.FileUploadRequest, FileUploadResult](routeUpload, apischema.SessionTask(), apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileUploadRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: []string{req.TargetPath}, Path: req.TargetPath, Label: req.TargetPath}
 		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadRequest) (FileUploadResult, error) {
-			return transferResult[FileUploadResult](runUploadTask(ctx, task, req))
+			return transferResult[FileUploadResult](runUploadTask(ctx, task, req, owner))
 		}, bridgetasks.TaskStreamDefault),
 		apischema.TaskRunner[apischema.FileUploadBatchRequest, FileUploadBatchResult](routeUploadBatch, apischema.SessionTask(), apischema.WithTaskProgress[BatchUploadProgress](), apischema.WithTaskMetadata(func(req apischema.FileUploadBatchRequest) bridgetasks.TaskMetadata {
 			identity := []string{req.Destination}
@@ -290,7 +290,7 @@ func fileTaskBindings(store *config.UserStore) apischema.BindingSet {
 			}
 			return bridgetasks.TaskMetadata{Identity: identity, Path: req.Destination, Label: req.Destination}
 		})).Run(func(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest) (FileUploadBatchResult, error) {
-			return transferResult[FileUploadBatchResult](runUploadBatchTask(ctx, task, req))
+			return transferResult[FileUploadBatchResult](runUploadBatchTask(ctx, task, req, owner))
 		}, bridgetasks.TaskStreamDefault),
 		apischema.TaskRunner[apischema.FileArchiveRequest, FileArchiveResult](routeArchive, apischema.SessionTask(), apischema.WithTaskProgress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileArchiveRequest) bridgetasks.TaskMetadata {
 			return bridgetasks.TaskMetadata{Identity: append([]string{req.Format}, req.Paths...), Label: batchTaskLabel(req.Paths)}
@@ -322,8 +322,8 @@ func batchTaskLabel(paths []string) string {
 	return fmt.Sprintf("%d items", len(paths))
 }
 
-func RegisterTaskRoutes(router *bridgetasks.Router, store *config.UserStore) {
-	fileTaskBindings(store).Register(router)
+func RegisterTaskRoutes(router *bridgetasks.Router, store *config.UserStore, owner uploadOwner) {
+	fileTaskBindings(store, owner).Register(router)
 	router.TaskService().RegisterTaskDataAttacher(routeUpload, attachFileTransferData)
 	router.TaskService().RegisterTaskDataAttacher(routeUploadBatch, attachFileTransferData)
 	router.TaskService().RegisterTaskDataAttacher(routeArchive, attachFileTransferData)

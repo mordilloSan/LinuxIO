@@ -1155,6 +1155,7 @@ export interface FileSearchRequest {
 export interface FileUploadBatchEntry {
   path: string;
   size: string;
+  modified?: string;
 }
 
 export interface FileUploadBatchRequest {

@@ -33,6 +33,17 @@ type uploadAttributes struct {
 	uid         int
 	gid         int
 	hasExisting bool
+	owner       uploadOwner // applied to new files when the bridge runs as root
+	modTime     time.Time   // zero keeps the write time
+}
+
+// uploadOwner is the session user new uploads belong to. A root bridge would
+// otherwise leave root-owned files the user cannot touch from an unprivileged
+// session; an unprivileged bridge already writes as that user.
+type uploadOwner struct {
+	uid uint32
+	gid uint32
+	set bool
 }
 
 type uploadTransferTask struct {
@@ -41,6 +52,7 @@ type uploadTransferTask struct {
 	path            string
 	expectedSize    int64
 	expectedVersion string
+	owner           uploadOwner
 	done            chan transferOutcome
 	activity        chan struct{}
 	finishOnce      sync.Once
@@ -173,18 +185,31 @@ func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes
 	return attrs, nil
 }
 
+// restoreUploadedFile settles ownership, mode and time on the renamed upload.
+// Ownership goes first because a chown clears setuid and setgid bits.
 func restoreUploadedFile(root *fsroot.FSRoot, realRel string, attrs uploadAttributes) {
-	if attrs.hasExisting {
-		if err := root.Root.Chmod(realRel, attrs.mode); err != nil {
-			slog.Debug("failed to restore uploaded file permissions", "path", realRel, "error", err)
-		}
+	switch {
+	case attrs.hasExisting:
 		if err := root.Root.Chown(realRel, attrs.uid, attrs.gid); err != nil {
 			slog.Debug("failed to restore uploaded file ownership", "path", realRel, "error", err)
 		}
-		return
+		if err := root.Root.Chmod(realRel, attrs.mode); err != nil {
+			slog.Debug("failed to restore uploaded file permissions", "path", realRel, "error", err)
+		}
+	default:
+		if attrs.owner.set && os.Geteuid() == 0 {
+			if err := root.Root.Chown(realRel, int(attrs.owner.uid), int(attrs.owner.gid)); err != nil {
+				slog.Debug("failed to hand uploaded file to session user", "path", realRel, "error", err)
+			}
+		}
+		if err := root.Root.Chmod(realRel, services.PermFile); err != nil {
+			slog.Debug("failed to set uploaded file permissions", "path", realRel, "error", err)
+		}
 	}
-	if err := root.Root.Chmod(realRel, services.PermFile); err != nil {
-		slog.Debug("failed to set uploaded file permissions", "path", realRel, "error", err)
+	if !attrs.modTime.IsZero() {
+		if err := root.Root.Chtimes(realRel, attrs.modTime, attrs.modTime); err != nil {
+			slog.Debug("failed to apply uploaded file modified time", "path", realRel, "error", err)
+		}
 	}
 }
 
@@ -194,7 +219,7 @@ func notifyUploadedFile(path string) {
 	})
 }
 
-func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadRequest) (any, error) {
+func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadRequest, owner uploadOwner) (any, error) {
 	path, expectedSize, overwrite, expectedVersion, err := parseUploadRequest(req)
 	if err != nil {
 		return nil, bridgetasks.NewError(err.Error(), 400)
@@ -225,6 +250,7 @@ func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.Fi
 		path:            filepath.Clean(path),
 		expectedSize:    expectedSize,
 		expectedVersion: expectedVersion,
+		owner:           owner,
 		done:            make(chan transferOutcome, 1),
 		activity:        make(chan struct{}, 1),
 	}
@@ -549,6 +575,7 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	if err != nil {
 		return err
 	}
+	attrs.owner = t.owner
 	versionErr := t.verifyExpectedVersion(root, realPath)
 	if versionErr != nil {
 		return versionErr

@@ -817,6 +817,10 @@ type FileUploadRequest struct {
 type FileUploadBatchEntry struct {
 	Path string `json:"path"`
 	Size string `json:"size"`
+	// Modified is the file's RFC 3339 modification time as the client knew it
+	// (the browser's File.lastModified); it is applied to the written file so
+	// uploads keep their dates instead of all being stamped with upload time.
+	Modified *string `json:"modified,omitempty"`
 }
 
 // FileUploadBatchRequest uploads many files into one destination directory as

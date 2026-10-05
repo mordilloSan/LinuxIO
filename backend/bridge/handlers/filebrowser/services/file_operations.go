@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -9,8 +10,12 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -24,20 +29,6 @@ var (
 
 func relPath(p string) string {
 	return fsroot.ToRel(utils.CleanAbsPath(p))
-}
-
-func readDir(root *fsroot.FSRoot, dirPath string) ([]os.DirEntry, error) {
-	dir, err := root.Root.Open(relPath(dirPath))
-	if err != nil {
-		return nil, err
-	}
-	defer dir.Close()
-
-	entries, err := dir.ReadDir(-1)
-	if err != nil {
-		return nil, err
-	}
-	return entries, nil
 }
 
 // CopyFileWithCallbacks copies a file or directory with progress callbacks.
@@ -77,10 +68,29 @@ func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrit
 		return err
 	}
 
-	return copyEntryWithCallbacks(root, source, dest, info, opts)
+	return copyEntryWithCallbacks(root, source, dest, info, opts, &copyState{links: map[linkKey]string{}})
 }
 
-func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks) error {
+// copyState carries per-operation bookkeeping through a recursive copy.
+type copyState struct {
+	// links maps a source inode to the first destination written for it, so
+	// further hardlinks to that inode become links instead of second copies.
+	links map[linkKey]string
+}
+
+type linkKey struct {
+	dev uint64
+	ino uint64
+}
+
+// preservedModeBits are the mode bits a copy carries over from its source.
+const preservedModeBits = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky
+
+// specialFileTypes are entry types a copy cannot recreate; they are skipped
+// inside directories, as rsync does, instead of failing the whole transfer.
+const specialFileTypes = os.ModeNamedPipe | os.ModeSocket | os.ModeDevice | os.ModeCharDevice
+
+func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
@@ -88,35 +98,17 @@ func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.Fi
 	mode := info.Mode()
 	switch {
 	case mode&os.ModeSymlink != 0:
-		return copySymlink(root, source, dest)
+		return copySymlink(root, source, dest, info)
 	case info.IsDir():
-		return copyDirectoryWithCallbacks(root, source, dest, opts)
+		return copyDirectoryWithCallbacks(root, source, dest, info, opts, state)
 	case mode.IsRegular():
-		return copySingleFileWithCallbacks(root, source, dest, mode, opts)
+		return copySingleFileWithCallbacks(root, source, dest, info, opts, state)
 	default:
 		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, mode.Type())
 	}
 }
 
-func copyDirEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, entry os.DirEntry, opts *ipc.OperationCallbacks) error {
-	if opts.IsCancelled() {
-		return ipc.ErrAborted
-	}
-
-	mode := entry.Type()
-	switch {
-	case mode&os.ModeSymlink != 0:
-		return copySymlink(root, source, dest)
-	case entry.IsDir():
-		return copyDirectoryWithCallbacks(root, source, dest, opts)
-	case mode == 0:
-		return copySingleFileWithCallbacks(root, source, dest, mode, opts)
-	default:
-		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, mode.Type())
-	}
-}
-
-func copySymlink(root *fsroot.FSRoot, source, dest string) error {
+func copySymlink(root *fsroot.FSRoot, source, dest string, info os.FileInfo) error {
 	target, err := root.Root.Readlink(relPath(source))
 	if err != nil {
 		return err
@@ -135,7 +127,10 @@ func copySymlink(root *fsroot.FSRoot, source, dest string) error {
 		return err
 	}
 
-	return root.Root.Symlink(target, destRel)
+	if err := root.Root.Symlink(target, destRel); err != nil {
+		return err
+	}
+	return chownLike(info, func(uid, gid int) error { return root.Root.Lchown(destRel, uid, gid) })
 }
 
 func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) error {
@@ -156,13 +151,28 @@ func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) er
 }
 
 // copySingleFileWithCallbacks handles copying a single file with progress callbacks.
-func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, mode os.FileMode, opts *ipc.OperationCallbacks) error {
+func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
-	if !mode.IsRegular() {
-		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, mode.Type())
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("cannot copy non-regular file %q with mode %s", source, info.Mode().Type())
+	}
+
+	if mkdirErr := root.Root.MkdirAll(relPath(filepath.Dir(dest)), PermDir); mkdirErr != nil {
+		return mkdirErr
+	}
+
+	destRel := relPath(dest)
+	key, linked := hardlinkKey(info)
+	if existing, ok := state.links[key]; linked && ok {
+		if err := root.Root.Link(relPath(existing), destRel); err == nil {
+			opts.ReportProgress(info.Size())
+			return nil
+		}
+		// Linking can fail when the destination tree spans filesystems; a
+		// plain copy is still a correct, if larger, result.
 	}
 
 	src, err := root.Root.Open(relPath(source))
@@ -171,11 +181,7 @@ func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, mode 
 	}
 	defer src.Close()
 
-	if mkdirErr := root.Root.MkdirAll(relPath(filepath.Dir(dest)), PermDir); mkdirErr != nil {
-		return mkdirErr
-	}
-
-	dst, err := root.Root.OpenFile(relPath(dest), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
+	dst, err := root.Root.OpenFile(destRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
 	if err != nil {
 		return err
 	}
@@ -185,42 +191,152 @@ func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, mode 
 		return err
 	}
 
-	if err := root.Root.Chmod(relPath(dest), PermFile); err != nil {
+	if err := applyAttributes(root, src, dst, destRel, info); err != nil {
 		return err
 	}
-
+	if linked {
+		state.links[key] = dest
+	}
 	return nil
 }
 
 // copyDirectoryWithCallbacks handles copying directories recursively with progress callbacks.
-func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, opts *ipc.OperationCallbacks) error {
+func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ipc.ErrAborted
 	}
 
-	// Create the destination directory.
-	err := root.Root.MkdirAll(relPath(dest), PermDir)
+	srcDir, err := root.Root.Open(relPath(source))
+	if err != nil {
+		return err
+	}
+	defer srcDir.Close()
+
+	entries, err := srcDir.ReadDir(-1)
 	if err != nil {
 		return err
 	}
 
-	// Read the contents of the source directory.
-	entries, err := readDir(root, source)
-	if err != nil {
+	// Created writable so the children can be written; the source mode is
+	// applied once they are in place, which also handles read-only sources.
+	if err = root.Root.MkdirAll(relPath(dest), PermDir); err != nil {
 		return err
 	}
 
-	// Iterate over each entry in the directory.
 	for _, entry := range entries {
 		srcPath := filepath.Join(source, entry.Name())
 		destPath := filepath.Join(dest, entry.Name())
 
-		if err := copyDirEntryWithCallbacks(root, srcPath, destPath, entry, opts); err != nil {
-			return err
+		entryInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if entryType := entryInfo.Mode().Type(); entryType&specialFileTypes != 0 {
+			slog.Warn("skipping special file during copy", "component", "filebrowser", "subsystem", "file_operations", "path", srcPath, "type", entryType.String())
+			continue
+		}
+		if copyErr := copyEntryWithCallbacks(root, srcPath, destPath, entryInfo, opts, state); copyErr != nil {
+			return copyErr
 		}
 	}
 
-	return nil
+	dstDir, err := root.Root.Open(relPath(dest))
+	if err != nil {
+		return err
+	}
+	defer dstDir.Close()
+	return applyAttributes(root, srcDir, dstDir, relPath(dest), info)
+}
+
+// applyAttributes makes dst match info: xattrs and ownership through the open
+// descriptors, then mode, since a chown clears setuid and setgid, then times.
+func applyAttributes(root *fsroot.FSRoot, src, dst *os.File, destRel string, info os.FileInfo) error {
+	copyXattrs(src, dst, destRel)
+	if err := chownLike(info, dst.Chown); err != nil {
+		return err
+	}
+	if err := dst.Chmod(info.Mode() & preservedModeBits); err != nil {
+		return err
+	}
+	atime, mtime := fileTimes(info)
+	return root.Root.Chtimes(destRel, atime, mtime)
+}
+
+// chownLike applies the source ownership. Only root may hand files to other
+// users, so a permission error in an unprivileged session is expected and
+// ignored, as cp -p does.
+func chownLike(info os.FileInfo, chown func(uid, gid int) error) error {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil
+	}
+	err := chown(int(st.Uid), int(st.Gid))
+	if errors.Is(err, os.ErrPermission) {
+		return nil
+	}
+	return err
+}
+
+func hardlinkKey(info os.FileInfo) (linkKey, bool) {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || st.Nlink < 2 {
+		return linkKey{}, false
+	}
+	return linkKey{dev: st.Dev, ino: st.Ino}, true
+}
+
+func fileTimes(info os.FileInfo) (atime, mtime time.Time) {
+	mtime = info.ModTime()
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		return time.Unix(st.Atim.Sec, st.Atim.Nsec), mtime
+	}
+	return mtime, mtime
+}
+
+// copyXattrs is best effort: filesystems without xattr support and attributes
+// the caller may not set (security.*, trusted.*) are not errors for a copy.
+func copyXattrs(src, dst *os.File, destRel string) {
+	names, err := listXattrs(src)
+	if err != nil {
+		return
+	}
+	for _, name := range names {
+		value, err := getXattr(src, name)
+		if err != nil {
+			continue
+		}
+		if err := unix.Fsetxattr(int(dst.Fd()), name, value, 0); err != nil {
+			slog.Debug("could not copy xattr", "component", "filebrowser", "subsystem", "file_operations", "path", destRel, "name", name, "error", err)
+		}
+	}
+}
+
+func listXattrs(f *os.File) ([]string, error) {
+	fd := int(f.Fd())
+	size, err := unix.Flistxattr(fd, nil)
+	if err != nil || size == 0 {
+		return nil, err
+	}
+	buf := make([]byte, size)
+	n, err := unix.Flistxattr(fd, buf)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(strings.TrimRight(string(buf[:n]), "\x00"), "\x00"), nil
+}
+
+func getXattr(f *os.File, name string) ([]byte, error) {
+	fd := int(f.Fd())
+	size, err := unix.Fgetxattr(fd, name, nil)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, size)
+	n, err := unix.Fgetxattr(fd, name, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf[:n], nil
 }
 
 // ComputeCopySize calculates the total size of files to be copied.
