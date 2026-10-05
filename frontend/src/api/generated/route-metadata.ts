@@ -74,6 +74,7 @@ export const ROUTE_MODES = {
   "docker.list_networks": "call",
   "docker.list_volumes": "call",
   "docker.logs.follow": "duplex",
+  "docker.logs.follow_all": "duplex",
   "docker.pause_container": "call",
   "docker.reload_caddy": "call",
   "docker.remove_container": "call",

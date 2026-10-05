@@ -98,7 +98,7 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 	if got, want := modes[bridgeipc.ModeTask], 19; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeDuplex], 10; got != want {
+	if got, want := modes[bridgeipc.ModeDuplex], 11; got != want {
 		t.Errorf("duplex route count = %d, want %d", got, want)
 	}
 }
@@ -403,7 +403,7 @@ func TestEndpointExcludesChannels(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"docker.logs.follow", "logs.general.follow", "logs.service.follow"} {
+	for _, route := range []string{"docker.logs.follow", "docker.logs.follow_all", "logs.general.follow", "logs.service.follow"} {
 		spec := mustRoute(t, route)
 		if spec.Mode != bridgeipc.ModeDuplex || spec.Kind != apischema.KindDuplex {
 			t.Fatalf("%s should be a direct channel, got mode=%q kind=%q", route, spec.Mode, spec.Kind)

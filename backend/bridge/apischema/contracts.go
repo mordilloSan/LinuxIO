@@ -533,6 +533,10 @@ type DockerLogsFollowRequest struct {
 	Tail        *string `json:"tail,omitempty"`
 }
 
+type DockerLogsFollowAllRequest struct {
+	Tail *string `json:"tail,omitempty"`
+}
+
 type DockerStartedFailedResponse struct {
 	Started int `json:"started"`
 	Failed  int `json:"failed"`

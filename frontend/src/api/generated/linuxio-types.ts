@@ -879,6 +879,10 @@ export interface DockerImage {
   updateCheckState?: DockerUpdateCheckState;
 }
 
+export interface DockerLogsFollowAllRequest {
+  tail?: string;
+}
+
 export interface DockerLogsFollowRequest {
   containerId: string;
   tail?: string;
@@ -4477,6 +4481,7 @@ export interface LinuxIOStreamSchema {
   "control.app_update": AppUpdateRequest;
   "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
+  "docker.logs.follow_all": DockerLogsFollowAllRequest;
   "filebrowser.download_stream": PathRequest;
   "logs.general.follow": GeneralLogsFollowRequest;
   "logs.service.follow": ServiceLogsFollowRequest;

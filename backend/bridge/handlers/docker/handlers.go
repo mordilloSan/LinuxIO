@@ -68,6 +68,11 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 				return streamDockerLogsChannel(ctx, stream, rt, req)
 			},
 		),
+		apischema.DuplexRoute[apischema.DockerLogsFollowAllRequest, apischema.NoResponse](routeDockerLogsFollowAll, apischema.NoEndpoint()).Duplex(
+			func(ctx context.Context, stream net.Conn, req apischema.DockerLogsFollowAllRequest) error {
+				return streamDockerLogsFollowAllChannel(ctx, stream, rt, req)
+			},
+		),
 	)
 }
 

@@ -150,6 +150,10 @@ describe("API layering guard", () => {
     const directConsumers = [
       ["components/docker/LogsDialog.tsx", "docker.logs.follow"],
       [
+        "routes/_authenticated/docker/-components/DockerLogsPage.tsx",
+        "docker.logs.follow_all",
+      ],
+      [
         "routes/_authenticated/logs/-components/GeneralLogsPage.tsx",
         "logs.general.follow",
       ],
