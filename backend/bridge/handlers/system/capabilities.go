@@ -50,7 +50,7 @@ type InstallSpec struct {
 	PostInstall                       *InstallCommand
 
 	// OptionalComponent names a LinuxIO-managed install that is not provided by
-	// the distro package manager.
+	// the distro package manager ("docker" runs Docker's convenience script).
 	OptionalComponent string
 	RequiresDocker    bool
 }
@@ -72,6 +72,12 @@ var capabilityRegistry = []CapabilitySpec{
 		LogName: "Docker service",
 		Detect: func(ctx context.Context) (bool, string) {
 			return checkedCapability(docker.CheckDockerAvailability(ctx))
+		},
+		Install: &InstallSpec{
+			OptionalComponent: "docker",
+			ServiceDebian:     "docker.service",
+			ServiceRHEL:       "docker.service",
+			EnableService:     true,
 		},
 	},
 	{

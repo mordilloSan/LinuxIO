@@ -144,10 +144,10 @@ resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_ser
 | `OptionalPackageRHELFailureWarning` | Concise capability-specific consequence returned to the UI; raw package-manager errors remain in task output. |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
-| `OptionalComponent` | Names a LinuxIO-managed non-package installer. No capability sets it today, so `handlers/packages` rejects any value it is given. |
+| `OptionalComponent` | Names a LinuxIO-managed non-package installer, run before any package step. `"docker"` downloads Docker's convenience script from `https://get.docker.com`, reports its sha256, and streams its output (skipped when a `docker` binary is already on `PATH`); `handlers/packages` rejects any other value. |
 | `RequiresDocker` | Optional-component prerequisite checked before install. |
 
-Omit `Install` entirely for capabilities with no UI install path (Docker, the
+Omit `Install` entirely for capabilities with no UI install path (the
 PackageKit capability itself).
 
 ## Frontend Pieces

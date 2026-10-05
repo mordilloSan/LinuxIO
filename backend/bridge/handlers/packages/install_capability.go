@@ -148,8 +148,8 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 		return apischema.InstallCapabilityResult{}, err
 	}
 
-	if spec.Install.OptionalComponent != "" {
-		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown optional component %q for capability %q", spec.Install.OptionalComponent, spec.Name)
+	if err := installCapabilityComponent(ctx, task, spec.Install.OptionalComponent); err != nil {
+		return apischema.InstallCapabilityResult{}, fmt.Errorf("install %s: %w", spec.LogName, err)
 	}
 
 	optionalPackageWarning, err := installCapabilityDependencies(ctx, task, family, name, spec.LogName, pkg, spec.Install)
