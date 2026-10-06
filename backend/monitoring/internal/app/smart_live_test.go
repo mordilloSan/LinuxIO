@@ -16,7 +16,7 @@ import (
 
 func TestCurrentLiveSmartDataCachesPowerForFifteenSeconds(t *testing.T) {
 	manager := &SmartManager{SmartDataMap: map[string]*smart.SmartData{
-		"serial": {DiskName: "/dev/nvme0n1", SerialNumber: "serial"},
+		"serial": {DiskName: "/dev/nvme0", SerialNumber: "serial"},
 	}}
 	var calls int
 	original := nvmePowerCommand
