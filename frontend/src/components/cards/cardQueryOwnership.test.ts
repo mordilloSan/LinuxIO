@@ -318,6 +318,10 @@ const hookContracts: HookContract[] = [
   },
   {
     file: "components/cards/WireguardPeerCard.tsx",
+    name: "WireguardPeerToggle",
+  },
+  {
+    file: "components/cards/WireguardPeerCard.tsx",
     name: "usePeer",
     hooks: { useQuery: 1 },
   },
@@ -623,7 +627,12 @@ const edgeContracts: EdgeContract[] = [
   {
     file: "components/cards/WireguardPeerCard.tsx",
     name: "WireguardPeerCard",
-    renders: ["FrostedCard", "WireguardPeerStatus", "WireguardPeerStats"],
+    renders: [
+      "FrostedCard",
+      "WireguardPeerStatus",
+      "WireguardPeerStats",
+      "WireguardPeerToggle",
+    ],
   },
   {
     file: "routes/_authenticated/hardware/-components/HardwarePage.tsx",
@@ -736,7 +745,11 @@ describe("card query ownership", () => {
       `${file}:WireguardPeerCard`,
     ).toHaveLength(0);
 
-    for (const name of ["WireguardPeerStatus", "WireguardPeerStats"]) {
+    for (const name of [
+      "WireguardPeerStatus",
+      "WireguardPeerStats",
+      "WireguardPeerToggle",
+    ]) {
       const component = findNamedFunction({ file, name });
       expect(
         directCalls(component, new Set(["usePeer"])),

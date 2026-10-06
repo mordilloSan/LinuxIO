@@ -22,8 +22,9 @@ export type WireguardInterfaceAction =
   | "up";
 
 interface InterfaceCardProps {
-  handleAddPeer: (name: string, peerData: any) => void;
+  handleAddPeer: (name: string) => void;
   handleDelete: (name: string) => void;
+  handleEdit: (name: string) => void;
   handleSelectInterface: (iface: WireGuardInterface) => void;
   handleToggleBootPersistence: (name: string, isEnabled: boolean) => void;
   handleToggleInterface: (name: string, status: "up" | "down") => void;
@@ -49,6 +50,7 @@ const InterfaceCard = ({
   handleToggleInterface,
   handleToggleBootPersistence,
   handleDelete,
+  handleEdit,
   handleAddPeer,
   pendingAction,
 }: InterfaceCardProps) => {
@@ -215,6 +217,16 @@ const InterfaceCard = ({
             }}
           />
           <AppActionIconButton
+            ariaLabel="Edit interface"
+            disabled={actionBusy}
+            icon="mdi:pencil"
+            iconSize={20}
+            label="Edit Interface"
+            onClick={() => {
+              handleEdit(iface.name);
+            }}
+          />
+          <AppActionIconButton
             ariaLabel={
               pendingAction === "add-peer"
                 ? `Adding peer to ${iface.name}`
@@ -226,7 +238,7 @@ const InterfaceCard = ({
             label="Add Peer"
             loading={pendingAction === "add-peer"}
             onClick={() => {
-              handleAddPeer(iface.name, {});
+              handleAddPeer(iface.name);
             }}
           />
           <AppActionIconButton

@@ -299,6 +299,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "updates.set_auto_updates": [endpointQueryPrefix("updates.get_auto_updates")],
 
   "wireguard.add_interface": [endpointQueryPrefix("wireguard.list_interfaces")],
+  "wireguard.update_interface": [
+    endpointQueryPrefix("wireguard.list_interfaces"),
+    endpointQueryPrefix("wireguard.list_peers"),
+  ],
   "wireguard.remove_interface": [
     endpointQueryPrefix("wireguard.list_interfaces"),
   ],
@@ -313,6 +317,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("wireguard.list_interfaces"),
   ],
   "wireguard.add_peer": [
+    endpointQueryPrefix("wireguard.list_interfaces"),
+    endpointQueryPrefix("wireguard.list_peers"),
+  ],
+  "wireguard.update_peer": [
     endpointQueryPrefix("wireguard.list_interfaces"),
     endpointQueryPrefix("wireguard.list_peers"),
   ],

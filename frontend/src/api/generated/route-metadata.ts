@@ -268,6 +268,8 @@ export const ROUTE_MODES = {
   "wireguard.remove_interface": "call",
   "wireguard.remove_peer": "call",
   "wireguard.up_interface": "call",
+  "wireguard.update_interface": "call",
+  "wireguard.update_peer": "call",
 } as const satisfies Record<string, RouteMode>;
 
 export type RouteName = keyof typeof ROUTE_MODES;

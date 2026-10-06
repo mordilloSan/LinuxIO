@@ -39,6 +39,49 @@ func validateInterfaceName(name string) error {
 	return nil
 }
 
+const maxPeerNameLength = 64
+
+// validatePeerName checks a display name: it is written as a comment line, so
+// line breaks are the one thing it must not contain.
+func validatePeerName(name string) error {
+	if strings.ContainsAny(name, "\r\n") {
+		return fmt.Errorf("peer name cannot contain line breaks")
+	}
+	if len(strings.TrimSpace(name)) > maxPeerNameLength {
+		return fmt.Errorf("peer name too long (max %d characters)", maxPeerNameLength)
+	}
+	return nil
+}
+
+const maxHostLength = 253
+
+// validateHost accepts a hostname or IP literal for client endpoints. An
+// empty host is valid and means "detect the public IP".
+func validateHost(host string) error {
+	if host == "" {
+		return nil
+	}
+	if len(host) > maxHostLength || strings.ContainsAny(host, " \t\r\n/") {
+		return fmt.Errorf("invalid endpoint host %q", host)
+	}
+	if strings.Contains(host, ":") && net.ParseIP(host) == nil {
+		return fmt.Errorf("invalid endpoint host %q: a value with ':' must be an IP address", host)
+	}
+	return nil
+}
+
+var unsafeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9._ -]`)
+
+// peerExportFilename names a downloaded client config after the peer's
+// display name, falling back to its id.
+func peerExportFilename(name, id string) string {
+	base := strings.TrimSpace(unsafeFilenameChars.ReplaceAllString(strings.TrimSpace(name), "_"))
+	if base == "" {
+		base = id
+	}
+	return base + configExt
+}
+
 // --- Path Helpers ---
 func configPath(name string) string {
 	return filepath.Join(wgConfigDir, name+configExt)
@@ -375,9 +418,15 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 			return nil, fmt.Errorf("generate key for peer %d: %w", i, err)
 		}
 
+		psk, err := wgtypes.GenerateKey()
+		if err != nil {
+			return nil, fmt.Errorf("generate preshared key for peer %d: %w", i, err)
+		}
+
 		peers = append(peers, PeerConfig{
 			PublicKey:           privKey.PublicKey().String(),
 			PrivateKey:          privKey.String(),
+			PresharedKey:        psk.String(),
 			AllowedIPs:          []string{peerIP},
 			PersistentKeepalive: defaultKeepalive,
 			Name:                fmt.Sprintf("Peer%d", hostOffset),

@@ -5,7 +5,17 @@ import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 func peersToAPI(values []PeerInfo) []apischema.Peer {
 	result := make([]apischema.Peer, len(values))
 	for i, value := range values {
-		result[i] = apischema.Peer{Name: value.Name, PublicKey: value.PublicKey, AllowedIPs: value.AllowedIPs}
+		result[i] = apischema.Peer{
+			ID:               value.ID,
+			Name:             value.Name,
+			Enabled:          value.Enabled,
+			Address:          value.Address,
+			ClientAllowedIPs: nonNil(value.ClientAllowedIPs),
+			ServerAllowedIPs: nonNil(value.ServerAllowedIPs),
+			DNS:              nonNil(value.DNS),
+			MTU:              value.MTU,
+			PublicKey:        value.PublicKey,
+		}
 		if value.Endpoint != "" {
 			result[i].Endpoint = &value.Endpoint
 		}
@@ -27,4 +37,12 @@ func peersToAPI(values []PeerInfo) []apischema.Peer {
 		}
 	}
 	return result
+}
+
+// nonNil keeps list fields serialising as [] rather than null.
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }

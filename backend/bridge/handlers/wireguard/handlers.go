@@ -18,12 +18,14 @@ import (
 var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe()).Handle(handleListInterfaces),
 	apischema.Call[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
+	apischema.Call[apischema.WireGuardUpdateInterfaceRequest, apischema.NoResponse]("wireguard.update_interface").HandleVoid(UpdateInterface),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
 	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers", apischema.RetrySafe()).Handle(handleListPeers),
-	apischema.Call[apischema.InterfaceNameRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
-	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(handleRemovePeer),
-	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe()).Handle(handlePeerQRCode),
-	apischema.Call[apischema.InterfaceNamePeerNameRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe()).Handle(handlePeerConfigDownload),
+	apischema.Call[apischema.WireGuardAddPeerRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
+	apischema.Call[apischema.WireGuardUpdatePeerRequest, apischema.NoResponse]("wireguard.update_peer").HandleVoid(UpdatePeer),
+	apischema.Call[apischema.WireGuardPeerRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(RemovePeer),
+	apischema.Call[apischema.WireGuardPeerRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe()).Handle(PeerQRCode),
+	apischema.Call[apischema.WireGuardPeerRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe()).Handle(PeerConfigDownload),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
 	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
@@ -58,22 +60,9 @@ func handleListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([
 	return peersToAPI(result), err
 }
 
-func handleAddPeer(ctx context.Context, req apischema.InterfaceNameRequest) error {
+func handleAddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) error {
 	_, err := AddPeer(ctx, req)
 	return err
-}
-
-func handleRemovePeer(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) error {
-	_, err := RemovePeerByName(ctx, req)
-	return err
-}
-
-func handlePeerQRCode(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (apischema.QRCodeResponse, error) {
-	return PeerQRCode(ctx, req)
-}
-
-func handlePeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (apischema.PeerConfigDownload, error) {
-	return PeerConfigDownload(ctx, req)
 }
 
 func handleUpInterface(ctx context.Context, req apischema.NameRequest) error {

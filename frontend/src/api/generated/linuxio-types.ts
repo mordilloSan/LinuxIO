@@ -1414,11 +1414,6 @@ export interface InterfaceMethodRequest {
   method: string;
 }
 
-export interface InterfaceNamePeerNameRequest {
-  interfaceName: string;
-  peerName: string;
-}
-
 export interface InterfaceNameRequest {
   interfaceName: string;
 }
@@ -1989,16 +1984,22 @@ export interface PathRequest {
 }
 
 export interface Peer {
-  allowed_ips?: string[];
+  address: string;
+  client_allowed_ips: string[];
+  dns: string[];
+  enabled: boolean;
   endpoint?: string;
+  id: string;
   last_handshake?: string;
   last_handshake_unix?: number;
+  mtu: number;
   name: string;
   persistent_keepalive?: number;
   preshared_key?: string;
   public_key: string;
   rx_bps?: number;
   rx_bytes?: number;
+  server_allowed_ips: string[];
   tx_bps?: number;
   tx_bytes?: number;
 }
@@ -2877,19 +2878,63 @@ export interface WireGuardAddInterfaceRequest {
   addresses: string;
   listenPort: string;
   egressNic: string;
+  host?: string;
   dns?: string;
   mtu?: string;
   peersJson?: string;
   numPeers?: string;
 }
 
+export interface WireGuardAddPeerRequest {
+  interfaceName: string;
+  name?: string;
+}
+
 export interface WireGuardInterface {
   address: string;
+  dns: string[];
+  host: string;
   isConnected: string;
   isEnabled: boolean;
+  mtu: number;
   name: string;
   peerCount: number;
   port: number;
+  postDown: string[];
+  postUp: string[];
+  preDown: string[];
+  preUp: string[];
+}
+
+export interface WireGuardPeerRequest {
+  interfaceName: string;
+  peerId: string;
+}
+
+export interface WireGuardUpdateInterfaceRequest {
+  name: string;
+  host?: string;
+  dns?: string[];
+  mtu?: number;
+  listenPort?: number;
+  preUp?: string[];
+  postUp?: string[];
+  preDown?: string[];
+  postDown?: string[];
+}
+
+export interface WireGuardUpdatePeerRequest {
+  interfaceName: string;
+  peerId: string;
+  name?: string;
+  enabled?: boolean;
+  clientAllowedIPs?: string[];
+  serverAllowedIPs?: string[];
+  dns?: string[];
+  mtu?: number;
+  persistentKeepalive?: number;
+  presharedKey?: string;
+  regenerateKeys?: boolean;
 }
 
 export interface LinuxIOSchema {
@@ -3892,8 +3937,8 @@ export interface LinuxIOSchema {
       result: void;
     };
     add_peer: {
-      input: [interfaceName: string];
-      request: InterfaceNameRequest;
+      input: [request: WireGuardAddPeerRequest];
+      request: WireGuardAddPeerRequest;
       result: void;
     };
     disable_interface: {
@@ -3918,13 +3963,13 @@ export interface LinuxIOSchema {
       result: Peer[];
     };
     peer_config_download: {
-      input: [request: InterfaceNamePeerNameRequest];
-      request: InterfaceNamePeerNameRequest;
+      input: [request: WireGuardPeerRequest];
+      request: WireGuardPeerRequest;
       result: PeerConfigDownload;
     };
     peer_qrcode: {
-      input: [request: InterfaceNamePeerNameRequest];
-      request: InterfaceNamePeerNameRequest;
+      input: [request: WireGuardPeerRequest];
+      request: WireGuardPeerRequest;
       result: QRCodeResponse;
     };
     remove_interface: {
@@ -3933,11 +3978,21 @@ export interface LinuxIOSchema {
       result: void;
     };
     remove_peer: {
-      input: [request: InterfaceNamePeerNameRequest];
-      request: InterfaceNamePeerNameRequest;
+      input: [request: WireGuardPeerRequest];
+      request: WireGuardPeerRequest;
       result: void;
     };
     up_interface: { input: [name: string]; request: NameRequest; result: void };
+    update_interface: {
+      input: [request: WireGuardUpdateInterfaceRequest];
+      request: WireGuardUpdateInterfaceRequest;
+      result: void;
+    };
+    update_peer: {
+      input: [request: WireGuardUpdatePeerRequest];
+      request: WireGuardUpdatePeerRequest;
+      result: void;
+    };
   };
 }
 
@@ -4403,26 +4458,31 @@ export interface LinuxIOCallSchema {
     request: WireGuardAddInterfaceRequest;
     result: void;
   };
-  "wireguard.add_peer": { request: InterfaceNameRequest; result: void };
+  "wireguard.add_peer": { request: WireGuardAddPeerRequest; result: void };
   "wireguard.disable_interface": { request: NameRequest; result: void };
   "wireguard.down_interface": { request: NameRequest; result: void };
   "wireguard.enable_interface": { request: NameRequest; result: void };
   "wireguard.list_interfaces": { request: void; result: WireGuardInterface[] };
   "wireguard.list_peers": { request: InterfaceNameRequest; result: Peer[] };
   "wireguard.peer_config_download": {
-    request: InterfaceNamePeerNameRequest;
+    request: WireGuardPeerRequest;
     result: PeerConfigDownload;
   };
   "wireguard.peer_qrcode": {
-    request: InterfaceNamePeerNameRequest;
+    request: WireGuardPeerRequest;
     result: QRCodeResponse;
   };
   "wireguard.remove_interface": { request: NameRequest; result: void };
-  "wireguard.remove_peer": {
-    request: InterfaceNamePeerNameRequest;
+  "wireguard.remove_peer": { request: WireGuardPeerRequest; result: void };
+  "wireguard.up_interface": { request: NameRequest; result: void };
+  "wireguard.update_interface": {
+    request: WireGuardUpdateInterfaceRequest;
     result: void;
   };
-  "wireguard.up_interface": { request: NameRequest; result: void };
+  "wireguard.update_peer": {
+    request: WireGuardUpdatePeerRequest;
+    result: void;
+  };
 }
 
 export type CallRoute = keyof LinuxIOCallSchema;

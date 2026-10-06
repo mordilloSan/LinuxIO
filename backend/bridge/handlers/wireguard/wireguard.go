@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,7 +18,6 @@ import (
 	"github.com/skip2/go-qrcode"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
@@ -61,6 +60,13 @@ func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error)
 			Port:        cfg.ListenPort,
 			PeerCount:   len(cfg.Peers),
 			IsEnabled:   isInterfaceEnabled(ctx, name),
+			Host:        cfg.Host,
+			DNS:         nonNil(cfg.DNS),
+			MTU:         cfg.MTU,
+			PreUp:       nonNil(cfg.PreUp),
+			PostUp:      nonNil(cfg.PostUp),
+			PreDown:     nonNil(cfg.PreDown),
+			PostDown:    nonNil(cfg.PostDown),
 		})
 	}
 	slog.Info("listed WireGuard interfaces", "count", len(interfaces))
@@ -72,6 +78,7 @@ type addInterfaceRequest struct {
 	addresses  []string
 	listenPort int
 	egressNic  string
+	host       string
 	dns        []string
 	mtu        int
 	peers      []PeerConfig
@@ -121,12 +128,25 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 		return addInterfaceRequest{}, fmt.Errorf("invalid peers JSON: %w", err)
 	}
 
+	host := ""
+	if req.Host != nil {
+		host = strings.TrimSpace(*req.Host)
+		if err = validateHost(host); err != nil {
+			return addInterfaceRequest{}, err
+		}
+	}
+	dns, err := validateDNS(parseOptionalCSVValue(req.DNS))
+	if err != nil {
+		return addInterfaceRequest{}, err
+	}
+
 	return addInterfaceRequest{
 		name:       name,
 		addresses:  addresses,
 		listenPort: listenPort,
 		egressNic:  req.EgressNic,
-		dns:        parseOptionalCSVValue(req.DNS),
+		host:       host,
+		dns:        dns,
 		mtu:        parseOptionalIntValue(req.MTU, 0),
 		peers:      peers,
 		numPeers:   parseOptionalIntValue(req.NumPeers, 0),
@@ -145,6 +165,7 @@ func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []Pe
 		PrivateKey: privateKey,
 		Address:    req.addresses,
 		ListenPort: req.listenPort,
+		Host:       req.host,
 		DNS:        req.dns,
 		MTU:        req.mtu,
 		Peers:      peers,
@@ -153,17 +174,25 @@ func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []Pe
 	return cfg
 }
 
-func readInterfaceEndpointInfo(logPrefix, egressNic string) (string, string) {
+// resolveEndpointHost is what exported clients dial: the configured host
+// override, else the detected public IP, else "" (the endpoint is omitted).
+func resolveEndpointHost(cfg WireGuardConfig, logPrefix string) string {
+	if cfg.Host != "" {
+		return cfg.Host
+	}
 	publicIP, _ := getPublicIPFunc()
 	if publicIP == "" {
 		slog.Warn("public IP lookup returned empty string", "operation", logPrefix)
 	}
+	return publicIP
+}
 
+func readInterfaceEndpointInfo(cfg WireGuardConfig, logPrefix, egressNic string) (string, string) {
 	gatewayDNS, _ := getGatewayForInterfaceIPv4Func(egressNic)
 	if gatewayDNS == "" {
 		slog.Debug("no gateway DNS found for interface", "operation", logPrefix, "interface", egressNic)
 	}
-	return publicIP, gatewayDNS
+	return resolveEndpointHost(cfg, logPrefix), gatewayDNS
 }
 
 func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardConfig, serverAddr, publicIP, gatewayDNS string) error {
@@ -190,7 +219,12 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardCo
 			continue
 		}
 
-		if _, err := ExportPeerConfig(name, peer, cfg, publicIP, peerOffset, gatewayDNS); err != nil {
+		id := fmt.Sprintf("Peer%d", peerOffset)
+		file, err := buildPeerFile(id, peer.Name, peer, cfg, publicIP, gatewayDNS)
+		if err == nil {
+			err = exportPeerFile(name, file)
+		}
+		if err != nil {
 			slog.Warn("failed to export peer config", "interface", name, "peer", peer.PublicKey, "error", err)
 		}
 	}
@@ -297,80 +331,19 @@ func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
 	if err != nil {
 		return PeerConfig{}, "", fmt.Errorf("generate private key: %w", err)
 	}
+	psk, err := wgtypes.GenerateKey()
+	if err != nil {
+		return PeerConfig{}, "", fmt.Errorf("generate preshared key: %w", err)
+	}
 
 	return PeerConfig{
 		PublicKey:           priv.PublicKey().String(),
 		PrivateKey:          priv.String(),
+		PresharedKey:        psk.String(),
 		AllowedIPs:          []string{nextIP},
 		PersistentKeepalive: defaultKeepalive,
 		Name:                fmt.Sprintf("Peer%d", peerNumber),
 	}, nextIP, nil
-}
-
-func exportAddedPeer(interfaceName string, peer PeerConfig, cfg WireGuardConfig) error {
-	publicIP, _ := getPublicIPFunc()
-	if publicIP == "" {
-		slog.Warn("AddPeer: public IP lookup returned empty string")
-	}
-
-	gatewayDNS, _ := getDefaultGatewayIPv4Func()
-	if gatewayDNS == "" {
-		slog.Debug("AddPeer: no default gateway DNS found (optional - will use interface DNS if configured)")
-	}
-
-	cfgWithPeer := cfg
-	cfgWithPeer.Peers = append(cfgWithPeer.Peers, peer)
-	peerNumber := parseOptionalIntString(strings.TrimPrefix(peer.Name, "Peer"), 0)
-	_, err := ExportPeerConfig(interfaceName, peer, cfgWithPeer, publicIP, peerNumber, gatewayDNS)
-	if err != nil {
-		return fmt.Errorf("export peer config: %w", err)
-	}
-	return nil
-}
-
-func writePeerConfig(interfaceName string, cfg WireGuardConfig, peer PeerConfig) error {
-	cfg.Peers = append(cfg.Peers, peer)
-	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
-		if rmErr := os.Remove(peerConfigPath(interfaceName, peer.Name)); rmErr != nil {
-			slog.Warn("rollback failed while removing peer config",
-				"interface", interfaceName,
-				"peer", peer.Name,
-				"error", rmErr)
-		}
-		return fmt.Errorf("write config: %w", err)
-	}
-	return nil
-}
-
-func readPeerAllowedIP(interfaceName, peerName string) (string, string, error) {
-	peerPath := peerConfigPath(interfaceName, peerName)
-	iniFile, err := ini.Load(peerPath)
-	if err != nil {
-		return "", "", fmt.Errorf("parse peer config: %w", err)
-	}
-
-	allowedIP := iniFile.Section("Interface").Key("Address").String()
-	if allowedIP == "" {
-		return "", "", fmt.Errorf("peer config missing Address")
-	}
-
-	return peerPath, allowedIP, nil
-}
-
-func removePeerFromConfig(cfg WireGuardConfig, allowedIP string) (WireGuardConfig, bool) {
-	newPeers := make([]PeerConfig, 0, len(cfg.Peers))
-	found := false
-
-	for _, peer := range cfg.Peers {
-		if slices.Contains(peer.AllowedIPs, allowedIP) {
-			found = true
-			continue
-		}
-		newPeers = append(newPeers, peer)
-	}
-
-	cfg.Peers = newPeers
-	return cfg, found
 }
 
 func loadExportedPeers(ctx context.Context, interfaceName string) ([]PeerInfo, error) {
@@ -385,72 +358,19 @@ func loadExportedPeers(ctx context.Context, interfaceName string) ([]PeerInfo, e
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		peer, err := loadExportedPeer(file)
-		if err != nil {
-			slog.Warn("failed to parse exported peer config", "path", file, "error", err)
-			continue
+		peer, err := readPeerFile(file)
+		if err == nil {
+			var pub string
+			pub, err = peer.publicKey()
+			if err == nil {
+				peers = append(peers, PeerInfo{peerFile: peer, PublicKey: pub, LastHandshake: "never"})
+				continue
+			}
 		}
-		peers = append(peers, peer)
+		slog.Warn("failed to parse exported peer config", "path", file, "error", err)
 	}
 
 	return peers, nil
-}
-
-func loadExportedPeer(file string) (PeerInfo, error) {
-	iniFile, err := ini.Load(file)
-	if err != nil {
-		return PeerInfo{}, err
-	}
-
-	ifSec := iniFile.Section("Interface")
-	peerSec := iniFile.Section("Peer")
-	pc := PeerConfig{
-		PrivateKey:          ifSec.Key("PrivateKey").String(),
-		AllowedIPs:          parseCSV(ifSec.Key("Address").String()),
-		PublicKey:           peerSec.Key("PublicKey").String(),
-		PresharedKey:        peerSec.Key("PresharedKey").String(),
-		Endpoint:            peerSec.Key("Endpoint").String(),
-		Name:                ifSec.Key("Name").String(),
-		PersistentKeepalive: peerSec.Key("PersistentKeepalive").MustInt(0),
-	}
-
-	if pc.Name == "" {
-		pc.Name = strings.TrimSuffix(filepath.Base(file), configExt)
-	}
-
-	return PeerInfo{
-		PeerConfig:        pc,
-		LastHandshake:     "never",
-		LastHandshakeUnix: 0,
-		RxBytes:           0,
-		TxBytes:           0,
-		RxBps:             0,
-		TxBps:             0,
-	}, nil
-}
-
-func mergeConfiguredPeerPublicKeys(interfaceName string, peers []PeerInfo) {
-	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
-	if err != nil {
-		slog.Warn("could not parse main interface config to map peer keys", "interface", interfaceName, "error", err)
-		return
-	}
-
-	ipToPub := make(map[string]string, len(cfg.Peers))
-	for _, peer := range cfg.Peers {
-		for _, ip := range peer.AllowedIPs {
-			ipToPub[ip] = peer.PublicKey
-		}
-	}
-
-	for i := range peers {
-		if len(peers[i].AllowedIPs) == 0 {
-			continue
-		}
-		if pub, ok := ipToPub[peers[i].AllowedIPs[0]]; ok && pub != "" {
-			peers[i].PublicKey = pub
-		}
-	}
 }
 
 func loadPeerRuntimeStats(interfaceName string) (map[string]peerRuntimeStats, error) {
@@ -531,7 +451,7 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 	}
 
 	cfg := buildInterfaceConfig(req, privKey.String(), peers)
-	publicIP, gatewayDNS := readInterfaceEndpointInfo("AddInterface", req.egressNic)
+	publicIP, gatewayDNS := readInterfaceEndpointInfo(cfg, "AddInterface", req.egressNic)
 	if err := exportInterfacePeerConfigs(req.name, peers, cfg, req.addresses[0], publicIP, gatewayDNS); err != nil {
 		slog.Error("failed to export interface peer configs", "interface", req.name, "error", err)
 		return nil, err
@@ -541,10 +461,6 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 	if err := WriteWireGuardConfig(configPath(req.name), cfg); err != nil {
 		slog.Error("failed to write WireGuard interface config", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("write config: %w", err)
-	}
-	if err := SaveInterfaceDNS(req.name, req.dns); err != nil {
-		slog.Error("failed to save WireGuard interface DNS", "interface", req.name, "error", err)
-		return nil, fmt.Errorf("save interface DNS: %w", err)
 	}
 
 	if err := bringUpInterface(ctx, req.name); err != nil {
@@ -580,9 +496,6 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	} else {
 		slog.Info("interface brought down before removal", "interface", name)
 	}
-	if err := RemoveInterfaceDNS(name); err != nil {
-		slog.Warn("failed to remove interface DNS metadata", "interface", name, "error", err)
-	}
 
 	// Remove config file
 	cfgPath := configPath(name)
@@ -608,121 +521,129 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	return "removed", nil
 }
 
-func AddPeer(ctx context.Context, req apischema.InterfaceNameRequest) (any, error) {
+func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string, error) {
 	if req.InterfaceName == "" {
 		slog.Error("invalid add peer request")
-		return nil, fmt.Errorf("usage: add_peer <interface>")
+		return "", fmt.Errorf("usage: add_peer <interface> [name]")
 	}
 
 	interfaceName := req.InterfaceName
 	if err := validateInterfaceName(interfaceName); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
-		return nil, fmt.Errorf("invalid interface name: %w", err)
+		return "", fmt.Errorf("invalid interface name: %w", err)
+	}
+	if err := validatePeerName(req.Name); err != nil {
+		return "", err
 	}
 	slog.Info("adding WireGuard peer", "interface", interfaceName)
 
-	// Read current config
 	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
 	if err != nil {
 		slog.Error("failed to read interface config", "interface", interfaceName, "error", err)
-		return nil, fmt.Errorf("read config: %w", err)
+		return "", fmt.Errorf("read config: %w", err)
 	}
-	if dns, dnsErr := LoadInterfaceDNS(interfaceName); dnsErr != nil {
-		slog.Warn("failed to load interface DNS metadata", "interface", interfaceName, "error", dnsErr)
-	} else if len(dns) > 0 {
-		cfg.DNS = dns
-	}
-
 	peer, nextIP, err := createNextPeer(cfg)
 	if err != nil {
 		slog.Error("failed to create WireGuard peer", "interface", interfaceName, "error", err)
-		return nil, err
+		return "", err
 	}
 
-	if err := exportAddedPeer(interfaceName, peer, cfg); err != nil {
-		slog.Error("failed to export added peer config", "interface", interfaceName, "peer", peer.Name, "error", err)
-		return nil, err
+	publicIP, gatewayDNS := readPeerEndpointInfo(cfg, "AddPeer")
+	file, err := buildPeerFile(peer.Name, req.Name, peer, cfg, publicIP, gatewayDNS)
+	if err != nil {
+		slog.Error("failed to build peer config", "interface", interfaceName, "peer", peer.Name, "error", err)
+		return "", err
+	}
+	if err = exportPeerFile(interfaceName, file); err != nil {
+		return "", fmt.Errorf("export peer config: %w", err)
 	}
 
-	if err := writePeerConfig(interfaceName, cfg, peer); err != nil {
+	section, err := file.serverSection()
+	if err != nil {
+		return "", err
+	}
+	replacePeerSection(&cfg, section.PublicKey, &section)
+	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
+		if rmErr := os.Remove(peerConfigPath(interfaceName, file.ID)); rmErr != nil {
+			slog.Warn("rollback failed while removing peer config", "interface", interfaceName, "peer", file.ID, "error", rmErr)
+		}
 		slog.Error("failed to write updated interface config", "interface", interfaceName, "error", err)
-		return nil, err
+		return "", fmt.Errorf("write config: %w", err)
 	}
 
 	if err := syncRunningInterface(ctx, interfaceName); err != nil {
-		slog.Error("failed to sync running interface after adding peer", "interface", interfaceName, "peer", peer.Name, "error", err)
-		return nil, err
+		slog.Error("failed to sync running interface after adding peer", "interface", interfaceName, "peer", file.ID, "error", err)
+		return "", err
 	}
 
-	if isInterfaceUpFunc(interfaceName) {
-		slog.Info("peer added and synced to running interface", "interface", interfaceName, "peer", peer.Name, "path", nextIP)
-	} else {
-		slog.Info("peer added to interface config", "interface", interfaceName, "peer", peer.Name, "path", nextIP)
-	}
-	return map[string]any{
-		"peer_name":  peer.Name,
-		"public_key": peer.PublicKey,
-		"allowed_ip": nextIP,
-	}, nil
+	slog.Info("peer added to interface", "interface", interfaceName, "peer", file.ID, "path", nextIP, "running", isInterfaceUpFunc(interfaceName))
+	return file.ID, nil
 }
 
-func RemovePeerByName(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (any, error) {
-	if req.InterfaceName == "" || req.PeerName == "" {
+// readPeerEndpointInfo resolves what a freshly exported peer needs to reach
+// the server: the public IP and, as DNS fallback, the default gateway.
+func readPeerEndpointInfo(cfg WireGuardConfig, logPrefix string) (string, string) {
+	publicIP := resolveEndpointHost(cfg, logPrefix)
+	gatewayDNS, _ := getDefaultGatewayIPv4Func()
+	if gatewayDNS == "" {
+		slog.Debug("no default gateway DNS found", "operation", logPrefix)
+	}
+	return publicIP, gatewayDNS
+}
+
+func RemovePeer(ctx context.Context, req apischema.WireGuardPeerRequest) error {
+	if req.InterfaceName == "" || req.PeerID == "" {
 		slog.Error("invalid remove peer request")
-		return nil, fmt.Errorf("usage: remove_peer <interface> <peer>")
+		return fmt.Errorf("usage: remove_peer <interface> <peerId>")
 	}
+	if err := validateInterfaceName(req.InterfaceName); err != nil {
+		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
+		return fmt.Errorf("invalid interface name: %w", err)
+	}
+	if err := validateInterfaceName(req.PeerID); err != nil {
+		slog.Error("invalid WireGuard peer id", "peer", req.PeerID, "error", err)
+		return fmt.Errorf("invalid peer id: %w", err)
+	}
+	slog.Info("removing WireGuard peer", "interface", req.InterfaceName, "peer", req.PeerID)
 
-	interfaceName := req.InterfaceName
-	peerName := req.PeerName
-	if err := validateInterfaceName(interfaceName); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
-		return nil, fmt.Errorf("invalid interface name: %w", err)
-	}
-	if err := validateInterfaceName(peerName); err != nil {
-		slog.Error("invalid WireGuard peer name", "peer", peerName, "error", err)
-		return nil, fmt.Errorf("invalid peer name: %w", err)
-	}
-	slog.Info("removing WireGuard peer", "interface", interfaceName, "peer", peerName)
-
-	peerPath, allowedIP, err := readPeerAllowedIP(interfaceName, peerName)
+	peerPath := peerConfigPath(req.InterfaceName, req.PeerID)
+	file, err := readPeerFile(peerPath)
 	if err != nil {
-		slog.Error("failed to read peer config", "interface", interfaceName, "peer", peerName, "path", peerPath, "error", err)
-		return nil, err
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("peer %s not found on %s", req.PeerID, req.InterfaceName)
+		}
+		return err
 	}
-
-	// Read main config
-	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
+	publicKey, err := file.publicKey()
 	if err != nil {
-		slog.Error("failed to read main interface config", "interface", interfaceName, "error", err)
-		return nil, fmt.Errorf("read main config: %w", err)
+		return err
 	}
 
-	cfg, found := removePeerFromConfig(cfg, allowedIP)
-	if !found {
-		slog.Error("peer allowed IP not found in interface config", "interface", interfaceName, "path", allowedIP)
-		return nil, fmt.Errorf("peer not found with IP %s", allowedIP)
+	cfg, err := ParseWireGuardConfig(configPath(req.InterfaceName))
+	if err != nil {
+		slog.Error("failed to read main interface config", "interface", req.InterfaceName, "error", err)
+		return fmt.Errorf("read main config: %w", err)
 	}
-
-	// Write updated config
-	if err := WriteWireGuardConfig(configPath(interfaceName), cfg); err != nil {
-		slog.Error("failed to write updated interface config", "interface", interfaceName, "error", err)
-		return nil, fmt.Errorf("write config: %w", err)
-	}
-
-	// Remove peer config file
-	if err := os.Remove(peerPath); err != nil && !os.IsNotExist(err) {
-		slog.Warn("failed to remove peer config file", "interface", interfaceName, "peer", peerName, "path", peerPath, "error", err)
+	if replacePeerSection(&cfg, publicKey, nil) {
+		if err := WriteWireGuardConfig(configPath(req.InterfaceName), cfg); err != nil {
+			slog.Error("failed to write updated interface config", "interface", req.InterfaceName, "error", err)
+			return fmt.Errorf("write config: %w", err)
+		}
 	} else {
-		slog.Info("removed peer config file", "interface", interfaceName, "peer", peerName, "path", peerPath)
+		slog.Debug("peer was not present in the interface config", "interface", req.InterfaceName, "peer", req.PeerID)
 	}
 
-	if err := syncRunningInterface(ctx, interfaceName); err != nil {
-		slog.Error("failed to sync running interface after removing peer", "interface", interfaceName, "peer", peerName, "error", err)
-		return nil, err
+	if err := os.Remove(peerPath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("failed to remove peer config file", "interface", req.InterfaceName, "peer", req.PeerID, "path", peerPath, "error", err)
 	}
 
-	slog.Info("WireGuard peer removed", "interface", interfaceName, "peer", peerName)
-	return "removed", nil
+	if err := syncRunningInterface(ctx, req.InterfaceName); err != nil {
+		slog.Error("failed to sync running interface after removing peer", "interface", req.InterfaceName, "peer", req.PeerID, "error", err)
+		return err
+	}
+
+	slog.Info("WireGuard peer removed", "interface", req.InterfaceName, "peer", req.PeerID)
+	return nil
 }
 
 func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([]PeerInfo, error) {
@@ -743,8 +664,6 @@ func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([]PeerI
 		slog.Error("failed to read exported peers", "interface", interfaceName, "error", err)
 		return nil, err
 	}
-
-	mergeConfiguredPeerPublicKeys(interfaceName, peers)
 
 	statsByPub, err := loadPeerRuntimeStats(interfaceName)
 	if err != nil {
@@ -803,71 +722,63 @@ func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) 
 	}, nil
 }
 
-func PeerQRCode(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (apischema.QRCodeResponse, error) {
-	if req.InterfaceName == "" || req.PeerName == "" {
-		slog.Error("invalid peer QR code request")
-		return apischema.QRCodeResponse{}, fmt.Errorf("usage: peer_qrcode <interface> <peername>")
+// readPeerExport returns the peer file and the client-facing config text:
+// the file with LinuxIO metadata lines removed.
+func readPeerExport(ctx context.Context, req apischema.WireGuardPeerRequest) (peerFile, string, error) {
+	if req.InterfaceName == "" || req.PeerID == "" {
+		return peerFile{}, "", fmt.Errorf("usage: <interface> <peerId>")
 	}
-
 	if err := validateInterfaceName(req.InterfaceName); err != nil {
 		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
-		return apischema.QRCodeResponse{}, fmt.Errorf("invalid interface name: %w", err)
+		return peerFile{}, "", fmt.Errorf("invalid interface name: %w", err)
 	}
-	if err := validateInterfaceName(req.PeerName); err != nil {
-		slog.Error("invalid WireGuard peer name", "peer", req.PeerName, "error", err)
-		return apischema.QRCodeResponse{}, fmt.Errorf("invalid peer name: %w", err)
+	if err := validateInterfaceName(req.PeerID); err != nil {
+		slog.Error("invalid WireGuard peer id", "peer", req.PeerID, "error", err)
+		return peerFile{}, "", fmt.Errorf("invalid peer id: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return peerFile{}, "", err
 	}
 
-	peerPath := peerConfigPath(req.InterfaceName, req.PeerName)
-	if err := ctx.Err(); err != nil {
+	peerPath := peerConfigPath(req.InterfaceName, req.PeerID)
+	raw, err := os.ReadFile(peerPath)
+	if err != nil {
+		slog.Error("failed to read peer config", "path", peerPath, "error", err)
+		return peerFile{}, "", fmt.Errorf("read peer config: %w", err)
+	}
+	file, err := readPeerFile(peerPath)
+	if err != nil {
+		return peerFile{}, "", err
+	}
+	return file, stripPeerMetadata(string(raw)), nil
+}
+
+func PeerQRCode(ctx context.Context, req apischema.WireGuardPeerRequest) (apischema.QRCodeResponse, error) {
+	_, content, err := readPeerExport(ctx, req)
+	if err != nil {
 		return apischema.QRCodeResponse{}, err
 	}
-	rawConfig, err := os.ReadFile(peerPath)
-	if err != nil {
-		slog.Error("failed to read peer config for QR code", "path", peerPath, "error", err)
-		return apischema.QRCodeResponse{}, fmt.Errorf("read peer config: %w", err)
-	}
 
-	// Generate QR code
-	png, err := qrcode.Encode(string(rawConfig), qrcode.Medium, 256)
+	png, err := qrcode.Encode(content, qrcode.Medium, 256)
 	if err != nil {
-		slog.Error("failed to generate peer QR code", "path", peerPath, "error", err)
+		slog.Error("failed to generate peer QR code", "interface", req.InterfaceName, "peer", req.PeerID, "error", err)
 		return apischema.QRCodeResponse{}, fmt.Errorf("generate QR code: %w", err)
 	}
 
 	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
-	slog.Info("generated peer QR code", "path", peerPath)
+	slog.Info("generated peer QR code", "interface", req.InterfaceName, "peer", req.PeerID)
 	return apischema.QRCodeResponse{QRCode: dataURI}, nil
 }
 
-func PeerConfigDownload(ctx context.Context, req apischema.InterfaceNamePeerNameRequest) (apischema.PeerConfigDownload, error) {
-	if req.InterfaceName == "" || req.PeerName == "" {
-		slog.Error("invalid peer config download request")
-		return apischema.PeerConfigDownload{}, fmt.Errorf("usage: peer_config_download <interface> <peername>")
-	}
-
-	if err := validateInterfaceName(req.InterfaceName); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
-		return apischema.PeerConfigDownload{}, fmt.Errorf("invalid interface name: %w", err)
-	}
-	if err := validateInterfaceName(req.PeerName); err != nil {
-		slog.Error("invalid WireGuard peer name", "peer", req.PeerName, "error", err)
-		return apischema.PeerConfigDownload{}, fmt.Errorf("invalid peer name: %w", err)
-	}
-
-	peerPath := peerConfigPath(req.InterfaceName, req.PeerName)
-	if err := ctx.Err(); err != nil {
+func PeerConfigDownload(ctx context.Context, req apischema.WireGuardPeerRequest) (apischema.PeerConfigDownload, error) {
+	file, content, err := readPeerExport(ctx, req)
+	if err != nil {
 		return apischema.PeerConfigDownload{}, err
 	}
-	data, err := os.ReadFile(peerPath)
-	if err != nil {
-		slog.Error("failed to read peer config for download", "path", peerPath, "error", err)
-		return apischema.PeerConfigDownload{}, fmt.Errorf("read peer config: %w", err)
-	}
-	slog.Info("served peer config download", "path", peerPath, "size", len(data))
+	slog.Info("served peer config download", "interface", req.InterfaceName, "peer", req.PeerID, "size", len(content))
 	return apischema.PeerConfigDownload{
-		Content:  string(data),
-		Filename: req.PeerName + configExt,
+		Content:  content,
+		Filename: peerExportFilename(file.Name, file.ID),
 	}, nil
 }
 

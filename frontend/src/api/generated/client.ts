@@ -356,6 +356,8 @@ const linuxio = {
     remove_interface: defineCallWithRequest("wireguard.remove_interface"),
     remove_peer: defineCallWithRequest("wireguard.remove_peer"),
     up_interface: defineCallWithRequest("wireguard.up_interface"),
+    update_interface: defineCallWithRequest("wireguard.update_interface"),
+    update_peer: defineCallWithRequest("wireguard.update_peer"),
   },
 } as TypedAPI;
 

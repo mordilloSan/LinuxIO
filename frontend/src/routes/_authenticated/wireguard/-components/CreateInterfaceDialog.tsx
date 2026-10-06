@@ -17,7 +17,9 @@ interface CreateInterfaceDialogProps {
   existingCIDRs: string[];
   existingNames: string[];
   existingPorts: number[];
+  host: string;
   loading: boolean;
+  mtu: string;
   nic: string;
   onClose: () => void;
   onCreate: () => void;
@@ -28,11 +30,21 @@ interface CreateInterfaceDialogProps {
   serverName: string;
   setCIDR: (cidr: string) => void;
   setDns: (dns: string) => void;
+  setHost: (host: string) => void;
+  setMtu: (mtu: string) => void;
   setNic: (nic: string) => void;
   setPeers: (peers: number) => void;
   setPort: (port: number) => void;
   setServerName: (name: string) => void;
 }
+
+export const isMtuValid = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (trimmed === "") return true;
+  if (!/^\d+$/.test(trimmed)) return false;
+  const mtu = Number(trimmed);
+  return mtu === 0 || (mtu >= 1280 && mtu <= 65535);
+};
 
 const CreateInterfaceDialog = ({
   open,
@@ -57,8 +69,13 @@ const CreateInterfaceDialog = ({
   existingCIDRs,
   dns,
   setDns,
+  host,
+  setHost,
+  mtu,
+  setMtu,
 }: CreateInterfaceDialogProps) => {
   const nameTaken = serverName && existingNames.some((n) => n === serverName);
+  const mtuInvalid = !isMtuValid(mtu);
   const portTaken = port && existingPorts.some((p) => Number(port) === p);
   const cidrTaken =
     CIDR &&
@@ -111,6 +128,26 @@ const CreateInterfaceDialog = ({
           <AppTextField
             disabled={loading}
             fullWidth
+            helperText="Leave empty to use the detected public IP."
+            label="Endpoint host (optional)"
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="e.g. vpn.example.org"
+            value={host}
+          />
+          <AppTextField
+            disabled={loading}
+            error={mtuInvalid}
+            fullWidth
+            helperText={
+              mtuInvalid ? "Use 0 or 1280 to 65535" : "Server-side MTU."
+            }
+            label="MTU (optional)"
+            onChange={(e) => setMtu(e.target.value)}
+            value={mtu}
+          />
+          <AppTextField
+            disabled={loading}
+            fullWidth
             label="Peers"
             onChange={(e) => setPeers(Number(e.target.value))}
             type="number"
@@ -156,6 +193,7 @@ const CreateInterfaceDialog = ({
             !!nameTaken ||
             !!portTaken ||
             !!cidrTaken ||
+            mtuInvalid ||
             optionsLoading
           }
           onClick={onCreate}
