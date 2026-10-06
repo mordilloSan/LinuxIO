@@ -110,7 +110,7 @@ describe("DockerLogsPage", () => {
     });
   });
 
-  it("opens the merged stream and renders records in timestamp order", async () => {
+  it("opens the merged stream and renders records newest first", async () => {
     render(<DockerLogsPage onContainerChange={vi.fn()} />);
 
     await waitFor(() => expect(mocks.openStream).toHaveBeenCalledTimes(1));
@@ -126,7 +126,7 @@ describe("DockerLogsPage", () => {
       ),
     );
 
-    expect(rows()).toEqual(["db:db one", "db:db two", "web:web three"]);
+    expect(rows()).toEqual(["web:web three", "db:db two", "db:db one"]);
     expect(screen.getAllByTestId("docker-log-row")[1].dataset.stderr).toBe(
       "true",
     );
@@ -145,7 +145,7 @@ describe("DockerLogsPage", () => {
     );
 
     rerender(<DockerLogsPage container="web" onContainerChange={vi.fn()} />);
-    expect(rows()).toEqual(["web:GET /index", "web:GET /about"]);
+    expect(rows()).toEqual(["web:GET /about", "web:GET /index"]);
 
     fireEvent.change(screen.getByPlaceholderText("Search logs…"), {
       target: { value: "about" },

@@ -40,7 +40,7 @@ import "./docker-logs.css";
 
 const TAIL_OPTIONS = ["100", "500", "1000", "5000"];
 const INITIAL_SILENCE_TIMEOUT_MS = 1500;
-const BOTTOM_THRESHOLD_PX = 24;
+const TOP_THRESHOLD_PX = 24;
 
 interface DockerLogsPageProps {
   /** Container name filter, owned by the route search params. */
@@ -49,10 +49,6 @@ interface DockerLogsPageProps {
 }
 
 const getRowId = (entry: DockerLogEntry) => String(entry.seq);
-
-const renderExpanded = (row: { original: DockerLogEntry }) => (
-  <pre className="docker-logs__expanded">{row.original.line}</pre>
-);
 
 const DockerLogsPage = ({
   container,
@@ -71,7 +67,7 @@ const DockerLogsPage = ({
   const flushFrameRef = useRef<number | null>(null);
   const silenceTimerRef = useRef<number | null>(null);
   const hasReceivedDataRef = useRef(false);
-  const pinnedToBottomRef = useRef(true);
+  const pinnedToTopRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { streamRef, openStream, closeStream } = useLiveStream();
@@ -182,11 +178,11 @@ const DockerLogsPage = ({
     [],
   );
 
-  // Keep the newest line in view while the user is at the bottom.
+  // Keep the newest line in view while the user is at the top.
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && pinnedToBottomRef.current) {
-      el.scrollTop = el.scrollHeight;
+    if (el && pinnedToTopRef.current) {
+      el.scrollTop = 0;
     }
     // `entries` retriggers the pin after streamed rows render.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
@@ -194,8 +190,7 @@ const DockerLogsPage = ({
 
   const handleScroll = (event: UIEvent<HTMLDivElement>) => {
     const el = event.currentTarget;
-    pinnedToBottomRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD_PX;
+    pinnedToTopRef.current = el.scrollTop <= TOP_THRESHOLD_PX;
   };
 
   const handleLiveModeChange = (checked: boolean) => {
@@ -215,7 +210,7 @@ const DockerLogsPage = ({
     pendingRef.current = [];
     seqRef.current = 0;
     hasReceivedDataRef.current = false;
-    pinnedToBottomRef.current = true;
+    pinnedToTopRef.current = true;
     setEntries([]);
     setError(null);
     setIsLoading(true);
@@ -294,7 +289,6 @@ const DockerLogsPage = ({
                 ? "docker-logs__line docker-logs__line--stderr"
                 : "docker-logs__line"
             }
-            noWrap
             variant="body2"
           >
             {row.original.line}
@@ -411,12 +405,14 @@ const DockerLogsPage = ({
           <AppVirtualTable
             ariaLabel="Docker logs"
             columns={columns}
-            data={visible}
+            // Newest first, like General logs; the buffer and exports stay
+            // chronological.
+            data={visible.toReversed()}
+            density="dense"
             emptyMessage={emptyMessage}
             fillAvailable
             getRowId={getRowId}
             onScroll={handleScroll}
-            renderExpandedContent={renderExpanded}
             scrollElementRef={scrollRef}
           />
         )}

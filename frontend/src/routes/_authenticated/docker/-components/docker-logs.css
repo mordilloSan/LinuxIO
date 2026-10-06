@@ -26,17 +26,10 @@
 
 .docker-logs__line {
   font-family: var(--app-font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .docker-logs__line--stderr {
   color: var(--app-palette-error-main);
-}
-
-.docker-logs__expanded {
-  margin: 0;
-  padding: var(--app-space-8) var(--app-space-12);
-  font-family: var(--app-font-mono);
-  font-size: 0.8125rem; /* body2 */
-  white-space: pre-wrap;
-  word-break: break-all;
 }

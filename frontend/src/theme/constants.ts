@@ -83,6 +83,9 @@ export const DETAIL_PANEL_GAP = 10;
 // table surface keeps this floor so virtual estimates and real geometry share
 // one baseline.
 export const TABLE_ROW_MIN_HEIGHT = 48;
+// The floor for `density="dense"` tables: one line of body2 text per row,
+// for log-style views.
+export const TABLE_DENSE_ROW_MIN_HEIGHT = 24;
 
 // Icon sizes
 export const iconSize = {

@@ -55,6 +55,7 @@ import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import {
   EASING_STANDARD_CSS,
+  TABLE_DENSE_ROW_MIN_HEIGHT,
   TABLE_ROW_MIN_HEIGHT,
   TRANSITION_DURATION_STANDARD_MS,
   shadowSm,
@@ -311,11 +312,16 @@ export function TableEmptyState({ message }: { message: string }) {
   );
 }
 
+export type AppTableDensity = "comfortable" | "compact" | "dense";
+
+export const getTableRowMinHeight = (density: AppTableDensity) =>
+  density === "dense" ? TABLE_DENSE_ROW_MIN_HEIGHT : TABLE_ROW_MIN_HEIGHT;
+
 export interface AppTableShellProps {
   ariaLabel: string;
   children: ReactNode;
   className?: string;
-  density: "comfortable" | "compact";
+  density: AppTableDensity;
   fillAvailable: boolean;
   gridTemplate: string;
   height?: CSSProperties["height"];
@@ -348,7 +354,7 @@ export function AppTableShell({
         "app-dt",
         fillAvailable && "app-dt--fill",
         isEmbedded && "app-dt--embedded",
-        density === "compact" && "app-dt--compact",
+        density !== "comfortable" && `app-dt--${density}`,
         className,
       ]
         .filter(Boolean)
@@ -358,7 +364,7 @@ export function AppTableShell({
         {
           "--app-dt-grid": gridTemplate,
           "--app-dt-head-bg": headRowBg,
-          "--app-dt-row-min-height": `${TABLE_ROW_MIN_HEIGHT}px`,
+          "--app-dt-row-min-height": `${getTableRowMinHeight(density)}px`,
           "--reorder-hold-color": "var(--app-palette-primary-main)",
           "--reorder-hold-ms": `${REORDER_HOLD_MS}ms`,
           boxShadow: isEmbedded ? "none" : shadowSm,

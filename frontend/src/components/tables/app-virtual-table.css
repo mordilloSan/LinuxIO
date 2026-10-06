@@ -130,6 +130,10 @@
   padding: 4px 16px;
 }
 
+.app-dt--dense .app-dt__cell {
+  padding: 2px 12px;
+}
+
 .app-dt__cell.app-dt__cell--select {
   overflow: visible;
   padding-inline: 3px;
@@ -244,7 +248,8 @@
   text-align: center;
 }
 
-.app-dt--compact .app-dt__empty {
+.app-dt--compact .app-dt__empty,
+.app-dt--dense .app-dt__empty {
   padding-block: 16px;
 }
 
@@ -256,6 +261,10 @@
 
   .app-dt--compact .app-dt__cell {
     padding: 6px 4px;
+  }
+
+  .app-dt--dense .app-dt__cell {
+    padding: 2px 4px;
   }
 
   .app-dt__cell--expand {

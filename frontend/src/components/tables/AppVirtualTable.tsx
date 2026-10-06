@@ -42,17 +42,16 @@ import {
   TableDndBoundary,
   TableEmptyState,
   TableExpandCell,
+  type AppTableDensity,
   columnTrack,
+  getTableRowMinHeight,
   useAppTableInstance,
   useRowClickGestures,
   useTableGestureKeys,
 } from "@/components/tables/tableShared";
 import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
 import { useAppMediaQuery } from "@/theme";
-import {
-  TABLE_ROW_MIN_HEIGHT,
-  TRANSITION_DURATION_STANDARD_MS,
-} from "@/theme/constants";
+import { TRANSITION_DURATION_STANDARD_MS } from "@/theme/constants";
 
 // The app-dt__* chrome; see the note at the top of the stylesheet.
 import "./app-virtual-table.css";
@@ -103,7 +102,7 @@ export interface AppVirtualTableProps<TData extends RowData> {
   columns: AppVirtualTableColumnDef<TData>[];
   /** Nullish renders `emptyMessage`; see EMPTY_TABLE_ROWS in tableShared. */
   data: TData[] | null | undefined;
-  density?: "comfortable" | "compact";
+  density?: AppTableDensity;
   /**
    * Hold-to-reorder wiring from `useReorderableTableDnd`. Rows drag from the
    * row body, and layout mode adds the visible handle column.
@@ -705,7 +704,7 @@ function AppVirtualTable<TData extends RowData>({
   emptyMessage = "No data available.",
   estimateExpandedRowHeight = 0,
   enableSorting = false,
-  estimateRowHeight = TABLE_ROW_MIN_HEIGHT,
+  estimateRowHeight = getTableRowMinHeight(density),
   fillAvailable = true,
   getRowCanExpand,
   getRowAttributes,
@@ -792,7 +791,7 @@ function AppVirtualTable<TData extends RowData>({
 
   const hasExpandedContent = Boolean(renderExpandedContent);
   const resolvedEstimateRowHeight = Math.max(
-    TABLE_ROW_MIN_HEIGHT,
+    getTableRowMinHeight(density),
     estimateRowHeight,
   );
 
