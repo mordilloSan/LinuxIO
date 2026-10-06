@@ -48,9 +48,13 @@ describe("UpdateBanner", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent(
       "Update LinuxIO from 1.0.0 to 1.1.0?",
     );
-    expect(
-      screen.getByText("The service will restart automatically."),
-    ).toBeVisible();
+    // The dialog fades in from opacity 0; wait for the first animation
+    // frame instead of racing it.
+    await waitFor(() =>
+      expect(
+        screen.getByText("The service will restart automatically."),
+      ).toBeVisible(),
+    );
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(mocks.startUpdate).not.toHaveBeenCalled();

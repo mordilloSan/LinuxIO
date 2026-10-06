@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen } from "@/test/render";
+import { render, screen, waitFor } from "@/test/render";
 
 import DockerImagesPage from "./DockerImagesPage";
 
@@ -36,7 +36,13 @@ describe("DockerImagesPage", () => {
     const { user } = render(<DockerImagesPage />);
 
     await user.click(screen.getByRole("button", { name: "Prune All" }));
-    expect(screen.getByRole("heading", { name: "Prune System" })).toBeVisible();
+    // The dialog fades in from opacity 0; wait for the first animation
+    // frame instead of racing it.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Prune System" }),
+      ).toBeVisible(),
+    );
 
     await user.click(
       screen.getByRole("button", { name: "Prune Selected (1)" }),
