@@ -695,7 +695,7 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 		mobyclient.WithHost(dockerHost),
 		mobyclient.WithTimeout(timeout),
 		mobyclient.WithUserAgent("Docker-Client/"),
-		mobyclient.WithResponseHook(func(resp *http.Response) {
+		mobyclient.WithHTTPResponseHook(func(resp *http.Response) {
 			if resp != nil && detectPodmanFromHeader(resp.Header.Get("Server")) {
 				manager.libpodDetected.Store(true)
 			}

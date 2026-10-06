@@ -31,7 +31,7 @@ func testManager(t *testing.T, server *httptest.Server, negotiate bool) *Manager
 		networkRecvTrackers: make(map[uint16]*deltatracker.DeltaTracker[string, uint64]),
 		lastNetworkReadTime: make(map[uint16]map[string]time.Time),
 	}
-	opts := []mobyclient.Opt{mobyclient.WithHTTPClient(server.Client()), mobyclient.WithHost(server.URL), mobyclient.WithResponseHook(func(resp *http.Response) {
+	opts := []mobyclient.Opt{mobyclient.WithHTTPClient(server.Client()), mobyclient.WithHost(server.URL), mobyclient.WithHTTPResponseHook(func(resp *http.Response) {
 		if resp != nil && detectPodmanFromHeader(resp.Header.Get("Server")) {
 			dm.libpodDetected.Store(true)
 		}
