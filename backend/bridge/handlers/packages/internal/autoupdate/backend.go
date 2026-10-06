@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 
@@ -18,6 +19,7 @@ type (
 	AutoUpdateFrequency     = apischema.AutoUpdateFrequency
 	AutoUpdateOptions       = apischema.AutoUpdateOptions
 	AutoUpdateOptionSupport = apischema.AutoUpdateOptionSupport
+	AutoUpdateOrigin        = apischema.AutoUpdateOrigin
 	AutoUpdateRebootPolicy  = apischema.AutoUpdateRebootPolicy
 	AutoUpdateScope         = apischema.AutoUpdateScope
 	AutoUpdateState         = apischema.AutoUpdateState
@@ -39,6 +41,7 @@ type UpdateBackend interface {
 
 type backendHost struct {
 	readFile         func(string) ([]byte, error)
+	glob             func(string) ([]string, error)
 	writeFileAtomic  func(string, []byte, fs.FileMode, ...int) error
 	removeFile       func(string) error
 	fileExists       func(string) bool
@@ -54,6 +57,7 @@ type backendHost struct {
 func systemHost() backendHost {
 	return backendHost{
 		readFile:         os.ReadFile,
+		glob:             filepath.Glob,
 		writeFileAtomic:  utils.WriteFileAtomic,
 		removeFile:       os.Remove,
 		fileExists:       utils.FileExists,
@@ -138,8 +142,21 @@ func validateOptions(options AutoUpdateOptions, support AutoUpdateOptionSupport)
 	if len(options.ExcludePackages) > 0 && !support.ExcludePackages {
 		return fmt.Errorf("package exclusions are not supported by this update backend")
 	}
+	if len(options.ExtraOrigins) > 0 && !support.ExtraOrigins {
+		return fmt.Errorf("additional repositories are not supported by this update backend")
+	}
+	for _, origin := range options.ExtraOrigins {
+		if !originPattern.MatchString(origin) {
+			return fmt.Errorf("invalid repository origin %q", origin)
+		}
+	}
 	return validatePackagePatterns(options.ExcludePackages)
 }
+
+// originPattern accepts unattended-upgrades Origins-Pattern entries such as
+// "origin=Docker,label=Docker CE". Values may contain escaped commas but never
+// characters that would break out of the quoted apt.conf string.
+var originPattern = regexp.MustCompile(`^[a-z]+=(?:[^",;{}\\\n]|\\,)+(?:,[a-z]+=(?:[^",;{}\\\n]|\\,)+)*$`)
 
 var packagePattern = regexp.MustCompile(`^[[:alnum:]][[:alnum:]+._:*?\[\]-]*$`)
 

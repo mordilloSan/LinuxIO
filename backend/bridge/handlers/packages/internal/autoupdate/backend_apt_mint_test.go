@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -24,6 +25,16 @@ func newFakeAutoUpdateHost() (*fakeAutoUpdateHost, backendHost) {
 				return nil, fs.ErrNotExist
 			}
 			return append([]byte(nil), data...), nil
+		},
+		glob: func(pattern string) ([]string, error) {
+			var matches []string
+			for path := range fake.files {
+				if ok, _ := filepath.Match(pattern, path); ok {
+					matches = append(matches, path)
+				}
+			}
+			slices.Sort(matches)
+			return matches, nil
 		},
 		writeFileAtomic: func(path string, data []byte, _ fs.FileMode, _ ...int) error {
 			fake.calls = append(fake.calls, "write:"+path)
@@ -249,6 +260,63 @@ func TestAptReadReportsUnavailablePackageAndSupport(t *testing.T) {
 	}
 	if len(state.Notes) == 0 {
 		t.Fatal("missing unattended-upgrades note was not reported")
+	}
+}
+
+func TestAptExtraOriginsRoundTrip(t *testing.T) {
+	for flavor, distro := range map[aptFlavor]string{aptUbuntu: "Ubuntu", aptDebian: "Debian"} {
+		fake, host := newFakeAutoUpdateHost()
+		fake.files["/usr/bin/unattended-upgrades"] = []byte{}
+		fake.files["/var/lib/apt/lists/distro_InRelease"] = []byte("-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\nOrigin: " + distro + "\nLabel: " + distro + "\n")
+		fake.files["/var/lib/apt/lists/distro-security_InRelease"] = []byte("Origin: " + distro + "\nLabel: " + distro + "-Security\n")
+		fake.files["/var/lib/apt/lists/download.docker.com_linux_ubuntu_dists_noble_InRelease"] = []byte("Architectures: amd64\nComponents: stable\nLabel: Docker CE\nOrigin: Docker\nSuite: noble\n")
+		fake.files["/var/lib/apt/lists/example.com_dists_stable_Release"] = []byte("Origin: Acme, Inc\n")
+		fake.units["apt-daily.timer"] = "enabled"
+		fake.units["apt-daily-upgrade.timer"] = "enabled"
+		backend := &aptBackend{host: host, flavor: flavor}
+
+		state, err := backend.Read(context.Background())
+		if err != nil {
+			t.Fatalf("Read: %v", err)
+		}
+		want := []AutoUpdateOrigin{
+			{Label: "Acme, Inc", Pattern: `origin=Acme\, Inc`},
+			{Label: "Docker CE", Pattern: "origin=Docker,label=Docker CE"},
+		}
+		if !slices.Equal(state.AvailableOrigins, want) {
+			t.Fatalf("flavor %d: available origins = %+v, want %+v", flavor, state.AvailableOrigins, want)
+		}
+
+		selected := []string{"origin=Docker,label=Docker CE", `origin=Acme\, Inc`}
+		err = backend.Apply(context.Background(), AutoUpdateOptions{
+			Enabled: true, ExtraOrigins: selected, Frequency: "daily", RebootPolicy: "never", Scope: "all",
+		})
+		if err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		state, err = backend.Read(context.Background())
+		if err != nil {
+			t.Fatalf("Read: %v", err)
+		}
+		if !slices.Equal(state.Options.ExtraOrigins, selected) || state.Options.Scope != "all" {
+			t.Fatalf("flavor %d: read back %+v, want extra origins %v and scope all", flavor, state.Options, selected)
+		}
+	}
+}
+
+func TestAptRejectsUnsafeExtraOrigins(t *testing.T) {
+	fake, host := newFakeAutoUpdateHost()
+	fake.files["/usr/bin/unattended-upgrades"] = []byte{}
+	for _, origin := range []string{`origin=x";Dir "/tmp`, "origin=x\nfoo", "origin=a,b", "Docker"} {
+		err := (&aptBackend{host: host, flavor: aptUbuntu}).Apply(context.Background(), AutoUpdateOptions{
+			ExtraOrigins: []string{origin}, Frequency: "daily", RebootPolicy: "never", Scope: "security",
+		})
+		if err == nil {
+			t.Errorf("Apply accepted origin %q", origin)
+		}
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("invalid origins caused mutations: %v", fake.calls)
 	}
 }
 

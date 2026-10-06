@@ -23,6 +23,7 @@ const timer = (name: string, active: boolean, next_elapse_usec = 0): Timer => ({
 const fullSupport: AutoUpdateState["support"] = {
   download_only: true,
   exclude_packages: true,
+  extra_origins: true,
   frequencies: ["hourly", "daily", "weekly"],
   reboot_policies: ["never", "if_needed"],
   scopes: ["security", "updates", "all"],
@@ -39,6 +40,7 @@ const autoUpdateState = (
     download_only: false,
     enabled: true,
     exclude_packages: [],
+    extra_origins: [],
     frequency: "daily",
     reboot_policy: "if_needed",
     scope: "all",
@@ -94,7 +96,7 @@ describe("UpdateSettings", () => {
     expect(
       within(
         screen.getByLabelText("Saved automatic update configuration"),
-      ).getByText("All enabled repositories"),
+      ).getByText("Security + updates + backports"),
     ).toBeInTheDocument();
     expect(screen.getByText("Download and install")).toBeInTheDocument();
     expect(within(runtime).getByText("Next scheduled run")).toBeInTheDocument();
@@ -193,6 +195,7 @@ describe("UpdateSettings", () => {
               support: {
                 download_only: false,
                 exclude_packages: true,
+                extra_origins: false,
                 frequencies: ["hourly", "daily", "weekly"],
                 reboot_policies: ["never"],
                 scopes: ["security", "all"],
@@ -282,6 +285,63 @@ describe("UpdateSettings", () => {
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
     expect(
       screen.getByText("Install dnf-automatic to configure automatic updates."),
+    ).toBeInTheDocument();
+  });
+
+  it("lets apt opt third-party repositories into automatic updates", async () => {
+    const state = settingsState(
+      autoUpdateState(
+        "apt-unattended",
+        { extra_origins: ["origin=Gone"] },
+        {
+          available_origins: [
+            { label: "Docker CE", pattern: "origin=Docker,label=Docker CE" },
+          ],
+        },
+      ),
+      [],
+    );
+    const { user } = render(<UpdateSettings state={state} />);
+
+    expect(
+      within(
+        screen.getByLabelText("Saved automatic update configuration"),
+      ).getByText("origin=Gone"),
+    ).toBeInTheDocument();
+    const docker = screen.getByRole("checkbox", { name: /Docker CE/ });
+    expect(docker).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /origin=Gone/ })).toBeChecked();
+
+    await user.click(docker);
+    const update = vi.mocked(state.setDraftOverrides).mock.calls[0][0] as (
+      previous: null,
+    ) => object;
+    expect(update(null)).toEqual({
+      extra_origins: ["origin=Docker,label=Docker CE", "origin=Gone"],
+    });
+  });
+
+  it("hides the repository picker when the provider covers all repositories", () => {
+    render(
+      <UpdateSettings
+        state={settingsState(
+          autoUpdateState(
+            "dnf5-automatic",
+            {},
+            { support: { ...fullSupport, extra_origins: false } },
+          ),
+          [],
+        )}
+      />,
+    );
+
+    expect(
+      screen.queryByText("Additional repositories"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(
+        screen.getByLabelText("Saved automatic update configuration"),
+      ).getByText("All enabled repositories"),
     ).toBeInTheDocument();
   });
 

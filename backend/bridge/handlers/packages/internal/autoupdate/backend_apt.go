@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -11,6 +12,7 @@ const (
 	aptPeriodicPath   = "/etc/apt/apt.conf.d/52linuxio-periodic"
 	aptUnattendedPath = "/etc/apt/apt.conf.d/52linuxio-unattended-upgrades"
 	aptVendorConfig   = "/etc/apt/apt.conf.d/50unattended-upgrades"
+	aptListsGlob      = "/var/lib/apt/lists/*Release"
 )
 
 type aptFlavor uint8
@@ -35,6 +37,7 @@ func aptSupport() AutoUpdateOptionSupport {
 	return AutoUpdateOptionSupport{
 		DownloadOnly:    true,
 		ExcludePackages: true,
+		ExtraOrigins:    true,
 		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
 		RebootPolicies:  []AutoUpdateRebootPolicy{"never", "if_needed"},
 		Scopes:          []AutoUpdateScope{"security", "updates", "all"},
@@ -57,8 +60,10 @@ func (b *aptBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 			Scope:           "security",
 			RebootPolicy:    "never",
 			ExcludePackages: []string{},
+			ExtraOrigins:    []string{},
 		},
-		Support: aptSupport(),
+		Support:          aptSupport(),
+		AvailableOrigins: b.availableOrigins(),
 	}
 	if !state.CanConfigure {
 		state.Notes = []string{"Install unattended-upgrades to configure automatic updates"}
@@ -75,6 +80,7 @@ func (b *aptBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 		state.Options.Scope = readAptScope(unattended)
 		state.Options.RebootPolicy = readAptRebootPolicy(unattended)
 		state.Options.ExcludePackages = readAptExclusions(unattended)
+		state.Options.ExtraOrigins = b.readExtraOrigins(unattended)
 	}
 
 	dailyEnabled, err := timerEnabled(ctx, b.host, "apt-daily.timer")
@@ -209,6 +215,10 @@ func (b *aptBackend) renderUnattended(options AutoUpdateOptions) []byte {
 		content.WriteString("Unattended-Upgrade::Origins-Pattern {\n")
 	}
 	content.WriteString(formatAptList(b.origins(options.Scope)))
+	if b.flavor == aptUbuntu {
+		content.WriteString("};\nUnattended-Upgrade::Origins-Pattern {\n")
+	}
+	content.WriteString(formatAptList(options.ExtraOrigins))
 	content.WriteString("};\nUnattended-Upgrade::Package-Blacklist {\n")
 	content.WriteString(formatAptList(options.ExcludePackages))
 	content.WriteString("};\nUnattended-Upgrade::Automatic-Reboot \"")
@@ -326,16 +336,89 @@ func readAptRebootPolicy(data []byte) AutoUpdateRebootPolicy {
 }
 
 func readAptExclusions(data []byte) []string {
-	block := regexp.MustCompile(`(?s)Unattended-Upgrade::Package-Blacklist\s*\{(.*?)\};`).FindStringSubmatch(activeAptConfiguration(data))
+	return readAptList(data, "Package-Blacklist")
+}
+
+func readAptList(data []byte, key string) []string {
+	block := regexp.MustCompile(`(?s)Unattended-Upgrade::` + key + `\s*\{(.*?)\};`).FindStringSubmatch(activeAptConfiguration(data))
 	if len(block) < 2 {
 		return []string{}
 	}
 	matches := regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(block[1], -1)
-	exclusions := make([]string, 0, len(matches))
+	values := make([]string, 0, len(matches))
 	for _, match := range matches {
-		exclusions = append(exclusions, match[1])
+		values = append(values, match[1])
 	}
-	return exclusions
+	return values
+}
+
+// readExtraOrigins returns the Origins-Pattern entries that are not part of
+// the distribution scope LinuxIO writes itself.
+func (b *aptBackend) readExtraOrigins(data []byte) []string {
+	distro := b.origins("all")
+	extra := []string{}
+	for _, origin := range readAptList(data, "Origins-Pattern") {
+		if !slices.Contains(distro, origin) {
+			extra = append(extra, origin)
+		}
+	}
+	return extra
+}
+
+// availableOrigins lists the third-party repositories APT has fetched
+// metadata for, as Origins-Pattern entries. Distribution origins are left
+// out because the update scope already covers them.
+func (b *aptBackend) availableOrigins() []AutoUpdateOrigin {
+	distroPrefix := "Ubuntu"
+	if b.flavor == aptDebian {
+		distroPrefix = "Debian"
+	}
+	paths, err := b.host.glob(aptListsGlob)
+	if err != nil {
+		return nil
+	}
+	var origins []AutoUpdateOrigin
+	for _, path := range paths {
+		data, err := b.host.readFile(path)
+		if err != nil {
+			continue
+		}
+		origin, label := readReleaseOrigin(data)
+		if origin == "" || strings.HasPrefix(origin, distroPrefix) {
+			continue
+		}
+		pattern := "origin=" + escapeOriginValue(origin)
+		if label != "" {
+			pattern += ",label=" + escapeOriginValue(label)
+		} else {
+			label = origin
+		}
+		if !originPattern.MatchString(pattern) || slices.ContainsFunc(origins, func(o AutoUpdateOrigin) bool { return o.Pattern == pattern }) {
+			continue
+		}
+		origins = append(origins, AutoUpdateOrigin{Label: label, Pattern: pattern})
+	}
+	slices.SortFunc(origins, func(a, b AutoUpdateOrigin) int { return strings.Compare(a.Label, b.Label) })
+	return origins
+}
+
+// readReleaseOrigin reads the Origin and Label fields from an APT Release or
+// clearsigned InRelease file.
+func readReleaseOrigin(data []byte) (origin, label string) {
+	for line := range strings.SplitSeq(string(data), "\n") {
+		key, value, _ := strings.Cut(line, ":")
+		switch key {
+		case "Origin":
+			origin = strings.TrimSpace(value)
+		case "Label":
+			label = strings.TrimSpace(value)
+		}
+	}
+	return origin, label
+}
+
+func escapeOriginValue(value string) string {
+	return strings.ReplaceAll(value, ",", `\,`)
 }
 
 func activeAptConfiguration(data []byte) string {
