@@ -7,6 +7,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppDivider from "@/components/ui/AppDivider";
+import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
@@ -104,14 +105,14 @@ const usePeerClock = () =>
 
 // ── Peer cache observer ──────────────────────────────────────────────────────
 
-export const selectPeer = (peerName: string) => (peers: Peer[]) =>
-  peers.find((peer) => peer.name === peerName);
+export const selectPeer = (peerId: string) => (peers: Peer[]) =>
+  peers.find((peer) => peer.id === peerId);
 
-const usePeer = (interfaceName: string, peerName: string) =>
+export const usePeer = (interfaceName: string, peerId: string) =>
   useQuery({
     ...linuxio.wireguard.list_peers({ interfaceName }),
     refetchOnMount: false,
-    select: selectPeer(peerName),
+    select: selectPeer(peerId),
   });
 
 const isPeerOnline = (peer: Peer, now: number) => {
@@ -123,17 +124,31 @@ const isPeerOnline = (peer: Peer, now: number) => {
 
 interface WireguardPeerLiveProps {
   interfaceName: string;
-  peerName: string;
+  peerId: string;
 }
 
 const WireguardPeerStatus = ({
   interfaceName,
-  peerName,
+  peerId,
 }: WireguardPeerLiveProps) => {
-  const { data: peer } = usePeer(interfaceName, peerName);
+  const { data: peer } = usePeer(interfaceName, peerId);
   const now = usePeerClock();
 
   if (!peer) return null;
+
+  if (!peer.enabled) {
+    return (
+      <AppTooltip title="Removed from the interface until enabled">
+        <Chip
+          color={getWireguardStatusColor("Inactive")}
+          label="Disabled"
+          labelStyle={{ paddingInline: 6 }}
+          size="xsmall"
+          variant="soft"
+        />
+      </AppTooltip>
+    );
+  }
 
   const isOnline = isPeerOnline(peer, now);
   return (
@@ -153,18 +168,17 @@ const WireguardPeerStatus = ({
 
 const WireguardPeerStats = ({
   interfaceName,
-  peerName,
+  peerId,
 }: WireguardPeerLiveProps) => {
-  const { data: peer } = usePeer(interfaceName, peerName);
+  const { data: peer } = usePeer(interfaceName, peerId);
   const now = usePeerClock();
 
   if (!peer) return null;
 
-  const allowedIps = peer.allowed_ips?.join(", ") || "-";
+  const networks = peer.server_allowed_ips.join(", ");
 
   return (
     <>
-      {/* Allowed IPs read as the peer's address, mirroring the interface card */}
       <AppTypography
         color="text.secondary"
         noWrap
@@ -173,13 +187,18 @@ const WireguardPeerStats = ({
           fontFamily: "var(--app-font-mono)",
           marginTop: 2,
         }}
-        title={allowedIps}
+        title={peer.address}
         variant="body2"
       >
-        {allowedIps}
+        {peer.address || "-"}
       </AppTypography>
 
       <div style={{ marginTop: GAP_SM }}>
+        {networks && (
+          <InfoRow label="Networks" wrap>
+            {networks}
+          </InfoRow>
+        )}
         <InfoRow label="Handshake">
           {formatAgo(peer.last_handshake_unix, now)}
         </InfoRow>
@@ -203,95 +222,154 @@ const WireguardPeerStats = ({
   );
 };
 
-export interface WireguardPeerCardProps {
-  interfaceName: string;
-  onDelete: (peerName: string) => void;
-  onDownloadConfig: (peerName: string) => void;
-  onViewQrCode: (peerName: string) => void;
-  pendingAction?: WireguardPeerAction;
+interface WireguardPeerToggleProps extends WireguardPeerLiveProps {
+  disabled: boolean;
+  onToggleEnabled: (peerId: string, enabled: boolean) => void;
   peerName: string;
 }
 
-export type WireguardPeerAction = "delete" | "download";
+// The switch reads the enabled flag from the peer cache so the card shell
+// stays off the polling cadence.
+const WireguardPeerToggle = ({
+  interfaceName,
+  peerId,
+  peerName,
+  disabled,
+  onToggleEnabled,
+}: WireguardPeerToggleProps) => {
+  const { data: peer } = usePeer(interfaceName, peerId);
+  const enabled = peer?.enabled ?? true;
+
+  return (
+    <AppSwitch
+      aria-label={
+        enabled ? `Disable peer ${peerName}` : `Enable peer ${peerName}`
+      }
+      checked={enabled}
+      disabled={disabled || !peer}
+      onChange={(_, checked) => onToggleEnabled(peerId, checked)}
+      role="switch"
+      size="small"
+    />
+  );
+};
+
+export interface WireguardPeerCardProps {
+  interfaceName: string;
+  onDelete: (peerId: string) => void;
+  onDownloadConfig: (peerId: string) => void;
+  onEdit: (peerId: string) => void;
+  onToggleEnabled: (peerId: string, enabled: boolean) => void;
+  onViewQrCode: (peerId: string) => void;
+  pendingAction?: WireguardPeerAction;
+  peerId: string;
+  peerName: string;
+}
+
+export type WireguardPeerAction = "delete" | "download" | "toggle";
 
 const WireguardPeerCard = ({
   interfaceName,
+  peerId,
   peerName,
   onDelete,
   onDownloadConfig,
+  onEdit,
+  onToggleEnabled,
   onViewQrCode,
   pendingAction,
-}: WireguardPeerCardProps) => (
-  <FrostedCard accent hoverLift style={CARD_STYLE}>
-    {/* Header: icon + name + live status chip */}
-    <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
-      <Icon
-        color="var(--app-palette-primary-main)"
-        height={32}
-        icon="mdi:account-network-outline"
-        width={32}
-      />
-      <AppTypography
-        fontWeight={600}
-        noWrap
-        title={peerName}
-        variant="subtitle1"
+}: WireguardPeerCardProps) => {
+  const busy = Boolean(pendingAction);
+
+  return (
+    <FrostedCard accent hoverLift style={CARD_STYLE}>
+      {/* Header: icon + name + live status chip */}
+      <div style={{ display: "flex", alignItems: "center", gap: GAP_SM }}>
+        <Icon
+          color="var(--app-palette-primary-main)"
+          height={32}
+          icon="mdi:account-network-outline"
+          width={32}
+        />
+        <AppTypography
+          fontWeight={600}
+          noWrap
+          title={peerName}
+          variant="subtitle1"
+        >
+          {peerName}
+        </AppTypography>
+        <div style={{ marginLeft: "auto" }}>
+          <WireguardPeerStatus interfaceName={interfaceName} peerId={peerId} />
+        </div>
+      </div>
+
+      <WireguardPeerStats interfaceName={interfaceName} peerId={peerId} />
+
+      <AppDivider style={{ marginBlock: 12 }} />
+
+      {/* Actions */}
+      <div
+        aria-busy={busy}
+        aria-label={`Actions for ${peerName}`}
+        role="group"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          marginTop: "auto",
+        }}
       >
-        {peerName || "Peer"}
-      </AppTypography>
-      <div style={{ marginLeft: "auto" }}>
-        <WireguardPeerStatus
+        <WireguardPeerToggle
+          disabled={busy}
           interfaceName={interfaceName}
+          onToggleEnabled={onToggleEnabled}
+          peerId={peerId}
           peerName={peerName}
         />
+        <AppActionIconButton
+          ariaLabel="Edit peer"
+          disabled={busy}
+          icon="mdi:pencil"
+          iconSize={20}
+          label="Edit Peer"
+          onClick={() => onEdit(peerId)}
+        />
+        <AppActionIconButton
+          ariaLabel={
+            pendingAction === "download"
+              ? `Downloading config for ${peerName}`
+              : "Download Config"
+          }
+          disabled={busy}
+          icon="mdi:download"
+          iconSize={20}
+          label="Download Config"
+          loading={pendingAction === "download"}
+          onClick={() => onDownloadConfig(peerId)}
+        />
+        <AppActionIconButton
+          ariaLabel="View QR Code"
+          icon="mdi:qrcode"
+          iconSize={20}
+          label="View QR Code"
+          onClick={() => onViewQrCode(peerId)}
+        />
+        <AppActionIconButton
+          ariaLabel={
+            pendingAction === "delete" ? `Deleting peer ${peerName}` : "Delete"
+          }
+          color="var(--app-palette-error-main)"
+          disabled={busy}
+          icon="mdi:delete"
+          iconSize={20}
+          label="Delete Peer"
+          loading={pendingAction === "delete"}
+          onClick={() => onDelete(peerId)}
+        />
       </div>
-    </div>
-
-    <WireguardPeerStats interfaceName={interfaceName} peerName={peerName} />
-
-    <AppDivider style={{ marginBlock: 12 }} />
-
-    {/* Actions */}
-    <div
-      aria-busy={Boolean(pendingAction)}
-      aria-label={`Actions for ${peerName}`}
-      role="group"
-      style={{ display: "flex", gap: 2, marginTop: "auto" }}
-    >
-      <AppActionIconButton
-        ariaLabel={
-          pendingAction === "download"
-            ? `Downloading config for ${peerName}`
-            : "Download Config"
-        }
-        disabled={Boolean(pendingAction)}
-        icon="mdi:download"
-        iconSize={20}
-        label="Download Config"
-        loading={pendingAction === "download"}
-        onClick={() => onDownloadConfig(peerName)}
-      />
-      <AppActionIconButton
-        ariaLabel="View QR Code"
-        icon="mdi:qrcode"
-        iconSize={20}
-        label="View QR Code"
-        onClick={() => onViewQrCode(peerName)}
-      />
-      <AppActionIconButton
-        ariaLabel={
-          pendingAction === "delete" ? `Deleting peer ${peerName}` : "Delete"
-        }
-        color="var(--app-palette-error-main)"
-        disabled={Boolean(pendingAction)}
-        icon="mdi:delete"
-        iconSize={20}
-        label="Delete Peer"
-        loading={pendingAction === "delete"}
-        onClick={() => onDelete(peerName)}
-      />
-    </div>
-  </FrostedCard>
-);
+    </FrostedCard>
+  );
+};
 
 export default WireguardPeerCard;

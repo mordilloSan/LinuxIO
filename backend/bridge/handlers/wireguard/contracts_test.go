@@ -1,11 +1,14 @@
 package wireguard
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestPeersToAPIKeepsKnownZeroRuntimeStats(t *testing.T) {
 	peers := peersToAPI([]PeerInfo{{
-		PublicKey: "public", PersistentKeepalive: 0,
-		LastHandshake: "never", runtimeStatsKnown: true,
+		PersistentKeepalive: 0,
+		PublicKey:           "public", LastHandshake: "never", runtimeStatsKnown: true,
 	}})
 	peer := peers[0]
 	if peer.PersistentKeepalive == nil || *peer.PersistentKeepalive != 0 {
@@ -24,8 +27,8 @@ func TestPeersToAPIKeepsKnownZeroRuntimeStats(t *testing.T) {
 
 func TestPeersToAPIOmitsUnavailableRuntimeStats(t *testing.T) {
 	peers := peersToAPI([]PeerInfo{{
-		PublicKey: "public", PersistentKeepalive: 0,
-		LastHandshake: "never",
+		PersistentKeepalive: 0,
+		PublicKey:           "public", LastHandshake: "never",
 	}})
 	peer := peers[0]
 	if peer.PersistentKeepalive == nil || *peer.PersistentKeepalive != 0 {
@@ -36,5 +39,33 @@ func TestPeersToAPIOmitsUnavailableRuntimeStats(t *testing.T) {
 	}
 	if peer.LastHandshake == nil || *peer.LastHandshake != "never" {
 		t.Fatalf("legacy handshake string must remain visible: %v", peer.LastHandshake)
+	}
+}
+
+func TestPeersToAPIMapsMetadataAndClientSettings(t *testing.T) {
+	peers := peersToAPI([]PeerInfo{{
+		ID: "Peer2", Name: "Alice", Enabled: false,
+		Address:          "10.0.0.2/32",
+		ClientAllowedIPs: []string{"0.0.0.0/0"},
+		ServerAllowedIPs: []string{"172.16.0.0/24"},
+		DNS:              []string{"1.1.1.1"},
+		MTU:              1400,
+		PresharedKey:     "psk",
+		Endpoint:         "host:51820",
+		PublicKey:        "public",
+	}})
+	peer := peers[0]
+	if peer.ID != "Peer2" || peer.Name != "Alice" || peer.Enabled || peer.Address != "10.0.0.2/32" || peer.MTU != 1400 {
+		t.Fatalf("peer = %+v", peer)
+	}
+	if !slices.Equal(peer.ClientAllowedIPs, []string{"0.0.0.0/0"}) || !slices.Equal(peer.ServerAllowedIPs, []string{"172.16.0.0/24"}) || !slices.Equal(peer.DNS, []string{"1.1.1.1"}) {
+		t.Fatalf("lists = %+v", peer)
+	}
+	if peer.PresharedKey == nil || *peer.PresharedKey != "psk" || peer.Endpoint == nil || *peer.Endpoint != "host:51820" {
+		t.Fatalf("optional strings = %+v", peer)
+	}
+	empty := peersToAPI([]PeerInfo{{ID: "Peer3"}})[0]
+	if empty.ServerAllowedIPs == nil || empty.DNS == nil || empty.ClientAllowedIPs == nil {
+		t.Fatalf("lists must serialise as [] not null: %+v", empty)
 	}
 }

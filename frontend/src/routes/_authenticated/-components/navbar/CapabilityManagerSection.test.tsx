@@ -477,4 +477,15 @@ describe("CapabilityManagerSection", () => {
     ).toBeDisabled();
     expect(mocks.mutate).not.toHaveBeenCalled();
   });
+
+  it("offers the Docker install script without PackageKit", async () => {
+    mocks.packageKitAvailable = false;
+    renderSection();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install Docker" }));
+
+    await waitFor(() =>
+      expect(mocks.mutate).toHaveBeenCalledWith({ capability: "docker" }),
+    );
+  });
 });

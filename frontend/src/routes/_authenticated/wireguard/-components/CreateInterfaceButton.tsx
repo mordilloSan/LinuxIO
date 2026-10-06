@@ -30,6 +30,8 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [dns, setDns] = useState("");
+  const [host, setHost] = useState("");
+  const [mtu, setMtu] = useState("");
 
   // Network data is only needed by the create workflow. Keeping this observer
   // disabled until the dialog opens avoids a page-level speculative request.
@@ -138,8 +140,9 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         addresses: CIDR,
         listenPort: String(port),
         egressNic: selectedNIC,
+        host: host.trim() || undefined,
         dns: dnsStr,
-        mtu: "0",
+        mtu: mtu.trim() || "0",
         peersJson: "[]",
         numPeers: String(peers),
       },
@@ -148,6 +151,8 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
           toast.success(`WireGuard interface '${serverName}' created`);
           setShowDialog(false);
           setDns("");
+          setHost("");
+          setMtu("");
         },
       },
     );
@@ -175,7 +180,9 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         existingCIDRs={existingCIDRs}
         existingNames={existingNames}
         existingPorts={existingPorts}
+        host={host}
         loading={isAddingInterface}
+        mtu={mtu}
         nic={selectedNIC}
         onClose={() => setShowDialog(false)}
         onCreate={handleCreateInterface}
@@ -186,6 +193,8 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         serverName={serverName}
         setCIDR={setCIDR}
         setDns={setDns}
+        setHost={setHost}
+        setMtu={setMtu}
         setNic={setNic}
         setPeers={setPeers}
         setPort={setPort}

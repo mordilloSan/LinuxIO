@@ -77,6 +77,7 @@ describe("generated application router", () => {
         "/docker/compose",
         "/docker/containers",
         "/docker/images",
+        "/docker/logs",
         "/docker/networks",
         "/docker/topology",
         "/docker/volumes",

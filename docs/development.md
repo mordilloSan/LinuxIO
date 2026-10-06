@@ -51,9 +51,9 @@ libraries are needed by `test-auth-pam`; that target skips when they are not
 installed.
 
 The runtime bootstrap script installs only PAM, PolicyKit, and PackageKit.
-Install Docker separately through its supported convenience installer when it
-is needed. Other optional host capabilities are installed after sign-in from
-LinuxIO Capability Manager, not from the bootstrap script.
+Docker and the other optional host capabilities are installed after sign-in
+from LinuxIO Capability Manager, not from the bootstrap script; Docker's entry
+runs Docker's convenience script and streams its output.
 
 Release installation deliberately combines immutable release binaries with
 current-`main` packaging assets (systemd units, PAM and application

@@ -25,20 +25,28 @@ type PeerConfig struct {
 	Name                string   `json:"name,omitempty"`
 }
 
+// WireGuardConfig is one server config. Host and DNS are LinuxIO metadata
+// kept as "# linuxio-host:" and "# linuxio-dns:" comment lines above
+// [Interface]: they describe what exported client configs get and are never
+// wg-quick keys, since a DNS key there would change the server's resolver.
 type WireGuardConfig struct {
 	PrivateKey string       `json:"private_key"`
 	Address    []string     `json:"address"`
 	ListenPort int          `json:"listen_port"`
+	Host       string       `json:"host"`
 	DNS        []string     `json:"dns"`
 	MTU        int          `json:"mtu"`
+	PreUp      []string     `json:"pre_up"`
 	PostUp     []string     `json:"post_up"`
+	PreDown    []string     `json:"pre_down"`
 	PostDown   []string     `json:"post_down"`
 	Peers      []PeerConfig `json:"peers"`
 }
 
 type PeerInfo struct {
-	PeerConfig
+	peerFile
 
+	PublicKey         string  `json:"public_key"`
 	LastHandshake     string  `json:"last_handshake"`      // RFC3339 or "never"
 	LastHandshakeUnix int64   `json:"last_handshake_unix"` // 0 if never
 	RxBytes           int64   `json:"rx_bytes"`

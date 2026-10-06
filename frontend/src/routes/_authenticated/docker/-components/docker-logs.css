@@ -1,0 +1,42 @@
+.docker-logs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.docker-logs__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--app-space-8);
+  margin-bottom: var(--app-space-8);
+}
+
+/* One hue per container, derived from its name. The lightness flips with the
+   colour scheme so the soft chip stays readable on both surfaces. */
+.app-chip.docker-logs__source {
+  --app-chip-color: oklch(48% 0.14 var(--docker-log-hue));
+}
+
+:root[data-app-color-scheme="dark"] .app-chip.docker-logs__source {
+  --app-chip-color: oklch(78% 0.14 var(--docker-log-hue));
+}
+
+.docker-logs__line {
+  font-family: var(--app-font-mono);
+}
+
+.docker-logs__line--stderr {
+  color: var(--app-palette-error-main);
+}
+
+.docker-logs__expanded {
+  margin: 0;
+  padding: var(--app-space-8) var(--app-space-12);
+  font-family: var(--app-font-mono);
+  font-size: 0.8125rem; /* body2 */
+  white-space: pre-wrap;
+  word-break: break-all;
+}

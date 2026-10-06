@@ -1035,25 +1035,38 @@ type VersionResponse struct {
 }
 
 type WireGuardInterface struct {
-	Address     string `json:"address"`
-	IsConnected string `json:"isConnected"`
-	IsEnabled   bool   `json:"isEnabled"`
-	Name        string `json:"name"`
-	PeerCount   int    `json:"peerCount"`
-	Port        int    `json:"port"`
+	Address     string   `json:"address"`
+	DNS         []string `json:"dns"`
+	Host        string   `json:"host"`
+	IsConnected string   `json:"isConnected"`
+	IsEnabled   bool     `json:"isEnabled"`
+	MTU         int      `json:"mtu"`
+	Name        string   `json:"name"`
+	PeerCount   int      `json:"peerCount"`
+	Port        int      `json:"port"`
+	PostDown    []string `json:"postDown"`
+	PostUp      []string `json:"postUp"`
+	PreDown     []string `json:"preDown"`
+	PreUp       []string `json:"preUp"`
 }
 
 type Peer struct {
-	AllowedIPs          []string `json:"allowed_ips,omitempty"`
+	Address             string   `json:"address"`
+	ClientAllowedIPs    []string `json:"client_allowed_ips"`
+	DNS                 []string `json:"dns"`
+	Enabled             bool     `json:"enabled"`
 	Endpoint            *string  `json:"endpoint,omitempty"`
+	ID                  string   `json:"id"`
 	LastHandshake       *string  `json:"last_handshake,omitempty"`
 	LastHandshakeUnix   *int64   `json:"last_handshake_unix,omitempty"`
+	MTU                 int      `json:"mtu"`
 	Name                string   `json:"name"`
 	PersistentKeepalive *int     `json:"persistent_keepalive,omitempty"`
 	PresharedKey        *string  `json:"preshared_key,omitempty"`
 	PublicKey           string   `json:"public_key"`
 	RXBPS               *float64 `json:"rx_bps,omitempty"`
 	RXBytes             *int64   `json:"rx_bytes,omitempty"`
+	ServerAllowedIPs    []string `json:"server_allowed_ips"`
 	TXBPS               *float64 `json:"tx_bps,omitempty"`
 	TXBytes             *int64   `json:"tx_bytes,omitempty"`
 }

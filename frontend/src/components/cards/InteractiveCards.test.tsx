@@ -34,6 +34,13 @@ mocks.networkInterface = networkInterface;
 
 const wireguardInterface: WireGuardInterface = {
   address: "10.0.0.1/24",
+  dns: [],
+  host: "",
+  mtu: 0,
+  postDown: [],
+  postUp: [],
+  preDown: [],
+  preUp: [],
   isConnected: "Active",
   isEnabled: true,
   name: "wg0",
@@ -68,6 +75,7 @@ describe("interactive cards", () => {
       <WireguardInterfaceCard
         handleAddPeer={vi.fn()}
         handleDelete={vi.fn()}
+        handleEdit={vi.fn()}
         handleSelectInterface={onSelect}
         handleToggleBootPersistence={vi.fn()}
         handleToggleInterface={onToggle}

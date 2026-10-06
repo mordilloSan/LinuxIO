@@ -11,6 +11,8 @@ import (
 
 const (
 	wgQuickInterface = "%i"
+	metaKeyHost      = "host"
+	metaKeyDNS       = "dns"
 )
 
 // --- Config Parsing ---
@@ -33,37 +35,37 @@ func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	if listenPort, parseErr := ifSec.Key("ListenPort").Int(); parseErr == nil {
 		cfg.ListenPort = listenPort
 	}
-	cfg.DNS = parseCSV(ifSec.Key("DNS").String())
 	if mtu, parseErr := ifSec.Key("MTU").Int(); parseErr == nil {
 		cfg.MTU = mtu
 	}
+	cfg.PreUp = sectionValues(ifSec, "PreUp")
 	cfg.PostUp = sectionValues(ifSec, "PostUp")
+	cfg.PreDown = sectionValues(ifSec, "PreDown")
 	cfg.PostDown = sectionValues(ifSec, "PostDown")
 
+	meta := parseMetadata(ifSec.Comment)
+	cfg.Host = meta[metaKeyHost]
+	cfg.DNS = parseCSV(meta[metaKeyDNS])
+
 	// Parse Peer sections
-	peerIdx := 1
 	for _, sec := range iniFile.Sections() {
 		if !isPeerSection(sec.Name()) {
 			continue
 		}
 
+		// Peer names live in the exported peer file; the server config only
+		// carries them as a comment, since wg setconf rejects unknown keys.
 		pc := PeerConfig{
 			PublicKey:    sec.Key("PublicKey").String(),
 			PresharedKey: sec.Key("PresharedKey").String(),
 			Endpoint:     sec.Key("Endpoint").String(),
-			Name:         sec.Key("Name").String(),
 			AllowedIPs:   parseCSV(sec.Key("AllowedIPs").String()),
-		}
-
-		if pc.Name == "" {
-			pc.Name = fmt.Sprintf("peer%d", peerIdx)
 		}
 
 		if keepalive, parseErr := sec.Key("PersistentKeepalive").Int(); parseErr == nil {
 			pc.PersistentKeepalive = keepalive
 		}
 		cfg.Peers = append(cfg.Peers, pc)
-		peerIdx++
 	}
 
 	return cfg, nil
@@ -82,16 +84,23 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 		return fmt.Errorf("create interface section: %w", err)
 	}
 
+	ifSec.Comment = formatMetadata(
+		[2]string{metaKeyHost, cfg.Host},
+		[2]string{metaKeyDNS, strings.Join(cfg.DNS, ", ")},
+	)
+
 	// Set interface keys
 	setKeyIfNotEmpty(ifSec, "Address", strings.Join(cfg.Address, ","))
 	setKeyIfPositive(ifSec, "ListenPort", cfg.ListenPort)
 	setKey(ifSec, "PrivateKey", cfg.PrivateKey)
 	setKeyIfPositive(ifSec, "MTU", cfg.MTU)
-	for _, hook := range cfg.PostUp {
-		setKeyIfNotEmpty(ifSec, "PostUp", hook)
-	}
-	for _, hook := range cfg.PostDown {
-		setKeyIfNotEmpty(ifSec, "PostDown", hook)
+	for _, kind := range []struct {
+		key   string
+		hooks []string
+	}{{"PreUp", cfg.PreUp}, {"PostUp", cfg.PostUp}, {"PreDown", cfg.PreDown}, {"PostDown", cfg.PostDown}} {
+		for _, hook := range kind.hooks {
+			setKeyIfNotEmpty(ifSec, kind.key, hook)
+		}
 	}
 
 	// Create Peer sections
@@ -168,6 +177,26 @@ func natPostDownHooks(egressNic, subnet string) []string {
 		fmt.Sprintf("iptables -D FORWARD -o %s -i %s -m state --state RELATED,ESTABLISHED -j ACCEPT || true", iface, egress),
 		fmt.Sprintf("iptables -t nat -D POSTROUTING -o %s -s %s -j MASQUERADE || true", egress, source),
 	}
+}
+
+// replacePeerSection drops the [Peer] section whose public key is oldPublicKey
+// and appends section when it is non-nil. It reports whether a section was
+// dropped.
+func replacePeerSection(cfg *WireGuardConfig, oldPublicKey string, section *PeerConfig) bool {
+	kept := make([]PeerConfig, 0, len(cfg.Peers)+1)
+	found := false
+	for _, peer := range cfg.Peers {
+		if peer.PublicKey == oldPublicKey {
+			found = true
+			continue
+		}
+		kept = append(kept, peer)
+	}
+	if section != nil {
+		kept = append(kept, *section)
+	}
+	cfg.Peers = kept
+	return found
 }
 
 func shellArg(value string) string {

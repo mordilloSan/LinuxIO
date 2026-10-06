@@ -2,13 +2,16 @@ package services
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -222,15 +225,34 @@ func TestCopyFileWithCallbacksRejectsFifo(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot copy non-regular file")
 }
 
-func TestCopyFileWithCallbacksRejectsNestedFifo(t *testing.T) {
+func TestCopyFileWithCallbacksSkipsNestedFifo(t *testing.T) {
 	tmpDir := t.TempDir()
 	srcDir := createTestDir(t, tmpDir, "src")
+	createTestFile(t, srcDir, "data.txt", []byte("data"))
 	srcFIFO := filepath.Join(srcDir, "source-fifo")
 	if err := syscall.Mkfifo(srcFIFO, 0o644); err != nil {
 		t.Skipf("mkfifo not supported: %v", err)
 	}
 
-	err := CopyFileWithCallbacks(srcDir, filepath.Join(tmpDir, "dest"), false, nil)
+	destDir := filepath.Join(tmpDir, "dest")
+	// Must not block opening the FIFO and must not fail the rest of the copy.
+	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+
+	_, err := os.Lstat(filepath.Join(destDir, "source-fifo"))
+	assert.True(t, os.IsNotExist(err), "fifo should be skipped, not recreated")
+	content, err := os.ReadFile(filepath.Join(destDir, "data.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("data"), content)
+}
+
+func TestCopyFileWithCallbacksRejectsTopLevelFifo(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcFIFO := filepath.Join(tmpDir, "source-fifo")
+	if err := syscall.Mkfifo(srcFIFO, 0o644); err != nil {
+		t.Skipf("mkfifo not supported: %v", err)
+	}
+
+	err := CopyFileWithCallbacks(srcFIFO, filepath.Join(tmpDir, "dest-fifo"), false, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot copy non-regular file")
 }
@@ -356,4 +378,153 @@ func TestCountEntries(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), total)
 	})
+}
+
+func TestCopyFileWithCallbacksPreservesModeAndTimes(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	script := createTestFile(t, srcDir, "run.sh", []byte("#!/bin/sh\n"))
+	secret := createTestFile(t, srcDir, "key", []byte("secret"))
+	roDir := createTestDir(t, srcDir, "readonly")
+	createTestFile(t, roDir, "inside.txt", []byte("inside"))
+	sgidDir := createTestDir(t, srcDir, "shared")
+
+	when := time.Date(2020, 3, 4, 5, 6, 7, 0, time.UTC)
+	require.NoError(t, os.Chmod(script, 0o750))
+	require.NoError(t, os.Chmod(secret, 0o600))
+	require.NoError(t, os.Chmod(sgidDir, os.ModeSetgid|0o770))
+	require.NoError(t, os.Chtimes(script, when, when))
+	require.NoError(t, os.Chtimes(roDir, when, when))
+	require.NoError(t, os.Chmod(roDir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(roDir, 0o755) })
+
+	destDir := filepath.Join(tmpDir, "dest")
+	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(destDir, "readonly"), 0o755) })
+
+	assert.Equal(t, os.FileMode(0o750), statMode(t, filepath.Join(destDir, "run.sh")))
+	assert.Equal(t, os.FileMode(0o600), statMode(t, filepath.Join(destDir, "key")))
+	assert.Equal(t, os.FileMode(0o555), statMode(t, filepath.Join(destDir, "readonly")).Perm())
+	assert.Equal(t, os.ModeDir|os.ModeSetgid|0o770, statMode(t, filepath.Join(destDir, "shared")))
+
+	content, err := os.ReadFile(filepath.Join(destDir, "readonly", "inside.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("inside"), content)
+
+	assert.Equal(t, when.UnixNano(), statModTime(t, filepath.Join(destDir, "run.sh")).UnixNano())
+	assert.Equal(t, when.UnixNano(), statModTime(t, filepath.Join(destDir, "readonly")).UnixNano())
+}
+
+func TestCopyFileWithCallbacksPreservesHardlinks(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	first := createTestFile(t, srcDir, "first.bin", []byte("linked-data"))
+	require.NoError(t, os.Link(first, filepath.Join(srcDir, "second.bin")))
+	createTestFile(t, srcDir, "plain.bin", []byte("plain"))
+
+	destDir := filepath.Join(tmpDir, "dest")
+	var progressed int64
+	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, &ipc.OperationCallbacks{
+		Progress: func(n int64) { progressed += n },
+	}))
+
+	firstStat := statSys(t, filepath.Join(destDir, "first.bin"))
+	secondStat := statSys(t, filepath.Join(destDir, "second.bin"))
+	plainStat := statSys(t, filepath.Join(destDir, "plain.bin"))
+	assert.Equal(t, firstStat.Ino, secondStat.Ino, "hardlinked files should share an inode after copy")
+	assert.EqualValues(t, 2, firstStat.Nlink)
+	assert.NotEqual(t, firstStat.Ino, plainStat.Ino)
+
+	expected, err := ComputeCopySize(srcDir)
+	require.NoError(t, err)
+	assert.Equal(t, expected, progressed, "progress should still account for every file")
+}
+
+func TestCopyFileWithCallbacksPreservesXattrs(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	file := createTestFile(t, srcDir, "tagged.txt", []byte("tagged"))
+	if err := unix.Setxattr(file, "user.linuxio", []byte("file-value"), 0); err != nil {
+		t.Skipf("xattrs not supported here: %v", err)
+	}
+	require.NoError(t, unix.Setxattr(srcDir, "user.linuxio", []byte("dir-value"), 0))
+
+	destDir := filepath.Join(tmpDir, "dest")
+	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+
+	assert.Equal(t, "file-value", readXattr(t, filepath.Join(destDir, "tagged.txt"), "user.linuxio"))
+	assert.Equal(t, "dir-value", readXattr(t, destDir, "user.linuxio"))
+}
+
+func TestCopyFileWithCallbacksSkipsSpecialFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	createTestFile(t, srcDir, "data.txt", []byte("data"))
+	listener, err := net.Listen("unix", filepath.Join(srcDir, "app.sock"))
+	if err != nil {
+		t.Skipf("unix sockets not supported here: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	destDir := filepath.Join(tmpDir, "dest")
+	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+
+	content, err := os.ReadFile(filepath.Join(destDir, "data.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("data"), content)
+	_, err = os.Lstat(filepath.Join(destDir, "app.sock"))
+	assert.True(t, os.IsNotExist(err), "socket should be skipped, not recreated")
+}
+
+func TestCopyFileWithCallbacksPreservesOwnershipAsRoot(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("ownership can only be preserved as root")
+	}
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	file := createTestFile(t, srcDir, "owned.txt", []byte("owned"))
+	createSymlinkOrSkip(t, "owned.txt", filepath.Join(srcDir, "owned-link"))
+	require.NoError(t, os.Lchown(file, 12345, 12346))
+	require.NoError(t, os.Lchown(filepath.Join(srcDir, "owned-link"), 12345, 12346))
+	require.NoError(t, os.Lchown(srcDir, 12345, 12346))
+
+	destDir := filepath.Join(tmpDir, "dest")
+	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+
+	for _, name := range []string{"", "owned.txt", "owned-link"} {
+		st := statSys(t, filepath.Join(destDir, name))
+		assert.EqualValues(t, 12345, st.Uid, name)
+		assert.EqualValues(t, 12346, st.Gid, name)
+	}
+}
+
+func statMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Lstat(path)
+	require.NoError(t, err)
+	return info.Mode()
+}
+
+func statModTime(t *testing.T, path string) time.Time {
+	t.Helper()
+	info, err := os.Lstat(path)
+	require.NoError(t, err)
+	return info.ModTime()
+}
+
+func statSys(t *testing.T, path string) *syscall.Stat_t {
+	t.Helper()
+	info, err := os.Lstat(path)
+	require.NoError(t, err)
+	st, ok := info.Sys().(*syscall.Stat_t)
+	require.True(t, ok)
+	return st
+}
+
+func readXattr(t *testing.T, path, name string) string {
+	t.Helper()
+	buf := make([]byte, 256)
+	n, err := unix.Getxattr(path, name, buf)
+	require.NoError(t, err)
+	return string(buf[:n])
 }

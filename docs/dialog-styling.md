@@ -68,7 +68,7 @@ trigger; pending operations must retain their existing close restrictions.
 
 | Family | Dialogs and flows to check |
 | --- | --- |
-| WireGuard | Create interface (name, port, CIDR, DNS, peers, NIC); peer QR code. |
+| WireGuard | Create interface (name, port, CIDR, endpoint host, DNS, MTU, peers, NIC); edit interface (endpoint host, DNS, MTU, port, PreUp/PostUp/PreDown/PostDown); add peer (name); edit peer (name, client routes, networks behind the peer, DNS, MTU, keepalive, preshared key, regenerate keys behind the confirm dialog); peer QR code. |
 | Accounts | Create/edit user and group; password; group members; terminate session. |
 | Network | Create bridge; move host IP to bridge; confirmation/recovery during handoff. |
 | Docker resources | Create/edit/recreate container; create network/volume; connect/disconnect container; remove, prune and volume archive confirmations. |

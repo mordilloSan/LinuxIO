@@ -23,7 +23,7 @@ export interface CapabilityDef {
   /**
    * Whether the backend can install this capability via
    * `system.install_capability`. Omit for capabilities that have no
-   * install path (Docker, PackageKit itself).
+   * install path (PackageKit itself).
    */
   installable?: {
     /** True when installing also requires PackageKit (i.e. there is a
@@ -66,6 +66,8 @@ export const CAPABILITIES = [
     icon: "mdi:docker",
     reasonUnknown: "Docker availability is still being checked.",
     reasonUnavailable: "Docker service is unavailable.",
+    installable: { requiresPackageKit: false },
+    route: { label: "Open Docker", to: "/docker" },
   },
   {
     wire: "libvirt",

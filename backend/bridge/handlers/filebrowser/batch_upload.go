@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -27,6 +28,7 @@ type uploadBatchFile struct {
 	relPath string // manifest path, relative to the batch destination
 	absPath string // cleaned absolute final path
 	size    int64
+	modTime time.Time // zero when the manifest carried no modified time
 }
 
 // uploadBatchTransferTask receives many files over one data stream. The wire
@@ -44,6 +46,7 @@ type uploadBatchTransferTask struct {
 	directories []string
 	total       int64
 	overwrite   bool
+	owner       uploadOwner
 	done        chan transferOutcome
 	activity    chan struct{}
 	finishOnce  sync.Once
@@ -124,10 +127,18 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 		if err != nil || size < 0 {
 			return "", nil, nil, 0, fmt.Errorf("invalid size for %q", entry.Path)
 		}
+		var modTime time.Time
+		if entry.Modified != nil {
+			modTime, err = time.Parse(time.RFC3339Nano, *entry.Modified)
+			if err != nil {
+				return "", nil, nil, 0, fmt.Errorf("invalid modified time for %q", entry.Path)
+			}
+		}
 		files = append(files, uploadBatchFile{
 			relPath: rel,
 			absPath: filepath.Join(destination, rel),
 			size:    size,
+			modTime: modTime,
 		})
 		total += size
 	}
@@ -143,7 +154,7 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 	return destination, files, directories, total, nil
 }
 
-func runUploadBatchTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest) (any, error) {
+func runUploadBatchTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest, owner uploadOwner) (any, error) {
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	if err != nil {
 		return nil, bridgetasks.NewError(err.Error(), 400)
@@ -169,6 +180,7 @@ func runUploadBatchTask(ctx context.Context, task *bridgetasks.Task, req apische
 		directories: directories,
 		total:       total,
 		overwrite:   req.Overwrite != nil && *req.Overwrite,
+		owner:       owner,
 		done:        make(chan transferOutcome, 1),
 		activity:    make(chan struct{}, 1),
 	}
@@ -385,6 +397,8 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 	if err != nil {
 		return err
 	}
+	attrs.owner = t.owner
+	attrs.modTime = current.modTime
 	err = session.root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(current.absPath)), services.PermDir)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)

@@ -25,6 +25,8 @@ import {
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
+import AddPeerDialog from "./AddPeerDialog";
+import EditInterfaceDialog from "./EditInterfaceDialog";
 import InterfaceDetails from "./InterfaceClients";
 
 const WIREGUARD_TOAST_META = {
@@ -60,6 +62,14 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, WireguardInterfaceAction>
   >(() => new Map());
+  // Interface the add-peer dialog is open for.
+  const [addPeerTarget, setAddPeerTarget] = useState<string | null>(null);
+  // Interface the edit dialog is open for; the dialog reads the live list
+  // entry so a refetch while editing never resurrects stale values on reopen.
+  const [editTarget, setEditTarget] = useState<string | null>(null);
+  const editingInterface = interfaces.find(
+    (iface) => iface.name === editTarget,
+  );
   const selectedCardRef = useRef<HTMLDivElement>(null!);
   const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
 
@@ -180,8 +190,15 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   };
 
   const handleAddPeer = (interfaceName: string) => {
+    setAddPeerTarget(interfaceName);
+  };
+
+  const handleCreatePeer = (name: string) => {
+    const interfaceName = addPeerTarget;
+    setAddPeerTarget(null);
+    if (!interfaceName) return;
     runInterfaceAction(interfaceName, "add-peer", () =>
-      addPeer.mutateAsync({ interfaceName }),
+      addPeer.mutateAsync({ interfaceName, name: name || undefined }),
     );
   };
 
@@ -229,6 +246,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
               <WireguardInterfaceCard
                 handleAddPeer={handleAddPeer}
                 handleDelete={handleDelete}
+                handleEdit={setEditTarget}
                 handleSelectInterface={handleSelectInterface}
                 handleToggleBootPersistence={handleToggleBootPersistence}
                 handleToggleInterface={handleToggleInterface}
@@ -288,6 +306,21 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
           No interfaces found
         </AppTypography>
       )}
+      {editingInterface && (
+        <EditInterfaceDialog
+          iface={editingInterface}
+          key={editingInterface.name}
+          onClose={() => setEditTarget(null)}
+          open
+        />
+      )}
+      <AddPeerDialog
+        interfaceName={addPeerTarget ?? ""}
+        loading={false}
+        onClose={() => setAddPeerTarget(null)}
+        onCreate={handleCreatePeer}
+        open={addPeerTarget !== null}
+      />
     </>
   );
 };

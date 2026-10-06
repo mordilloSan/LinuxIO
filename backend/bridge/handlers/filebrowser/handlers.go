@@ -27,7 +27,7 @@ var Routes = apischema.CombineRoutes(api.Routes(), fileTaskRoutes)
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	RegisterTaskRoutes(router, rt.Store)
+	RegisterTaskRoutes(router, rt.Store, uploadOwner{uid: rt.Session.User.UID, gid: rt.Session.User.GID, set: true})
 
 	api.Register(router)
 }

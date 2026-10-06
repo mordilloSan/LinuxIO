@@ -18,16 +18,20 @@ type wgQuickCall struct {
 }
 
 type wireGuardTestEnv struct {
-	dir         string
-	wgQuick     []wgQuickCall
-	syncs       []string
-	interfaceUp bool
+	dir     string
+	wgQuick []wgQuickCall
+	// wgQuickPorts[i] is the listen port found on disk when wgQuick[i] ran,
+	// so tests can prove "down" saw the old config and "up" the new one.
+	wgQuickPorts []int
+	syncs        []string
+	interfaceUp  bool
+	publicIP     string
 }
 
 func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 	t.Helper()
 
-	env := &wireGuardTestEnv{dir: t.TempDir()}
+	env := &wireGuardTestEnv{dir: t.TempDir(), publicIP: "203.0.113.10"}
 	oldConfigDir := wgConfigDir
 	oldRunWGQuick := runWGQuickCommand
 	oldSyncConfig := syncWireGuardConfigFunc
@@ -39,6 +43,11 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 	wgConfigDir = env.dir
 	runWGQuickCommand = func(_ context.Context, action, name string) (string, error) {
 		env.wgQuick = append(env.wgQuick, wgQuickCall{action: action, name: name})
+		port := 0
+		if cfg, err := ParseWireGuardConfig(configPath(name)); err == nil {
+			port = cfg.ListenPort
+		}
+		env.wgQuickPorts = append(env.wgQuickPorts, port)
 		return action + " ok", nil
 	}
 	syncWireGuardConfigFunc = func(_ context.Context, name string) (string, error) {
@@ -49,7 +58,7 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 		return env.interfaceUp
 	}
 	getPublicIPFunc = func() (string, error) {
-		return "203.0.113.10", nil
+		return env.publicIP, nil
 	}
 	getDefaultGatewayIPv4Func = func() (string, error) {
 		return "192.0.2.1", nil
@@ -97,6 +106,13 @@ func TestAddAndRemoveInterfaceLifecycle(t *testing.T) {
 		t.Fatalf("peer count = %d, want 1", len(cfg.Peers))
 	}
 	assertPathExists(t, peerConfigPath("wgtest", "Peer2"))
+	exported, err := readPeerFile(peerConfigPath("wgtest", "Peer2"))
+	if err != nil {
+		t.Fatalf("readPeerFile returned error: %v", err)
+	}
+	if exported.Name != "Peer2" || !exported.Enabled || exported.PresharedKey == "" || !slices.Equal(exported.DNS, []string{"1.1.1.1"}) {
+		t.Fatalf("exported peer = %+v", exported)
+	}
 	if !slices.Equal(env.wgQuick, []wgQuickCall{{action: "up", name: "wgtest"}}) {
 		t.Fatalf("wg-quick calls = %v", env.wgQuick)
 	}
@@ -132,17 +148,12 @@ func TestAddAndRemovePeerLifecyclePreservesNATHooks(t *testing.T) {
 		t.Fatalf("WriteWireGuardConfig returned error: %v", err)
 	}
 
-	result, err := AddPeer(context.Background(), apischema.InterfaceNameRequest{InterfaceName: "wgtest"})
+	peerName, err := AddPeer(context.Background(), apischema.WireGuardAddPeerRequest{InterfaceName: "wgtest"})
 	if err != nil {
 		t.Fatalf("AddPeer returned error: %v", err)
 	}
-	added, ok := result.(map[string]any)
-	if !ok {
-		t.Fatalf("AddPeer result = %T, want map[string]any", result)
-	}
-	peerName, ok := added["peer_name"].(string)
-	if !ok || peerName == "" {
-		t.Fatalf("AddPeer peer_name = %#v", added["peer_name"])
+	if peerName == "" {
+		t.Fatal("AddPeer returned an empty peer id")
 	}
 
 	cfg, err = ParseWireGuardConfig(configPath("wgtest"))
@@ -159,12 +170,12 @@ func TestAddAndRemovePeerLifecyclePreservesNATHooks(t *testing.T) {
 		t.Fatalf("syncs after add = %v, want [wgtest]", env.syncs)
 	}
 
-	_, err = RemovePeerByName(context.Background(), apischema.InterfaceNamePeerNameRequest{
+	err = RemovePeer(context.Background(), apischema.WireGuardPeerRequest{
 		InterfaceName: "wgtest",
-		PeerName:      peerName,
+		PeerID:        peerName,
 	})
 	if err != nil {
-		t.Fatalf("RemovePeerByName returned error: %v", err)
+		t.Fatalf("RemovePeer returned error: %v", err)
 	}
 
 	cfg, err = ParseWireGuardConfig(configPath("wgtest"))

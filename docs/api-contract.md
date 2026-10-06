@@ -537,6 +537,7 @@ payload-specific helper instead of constructing envelopes directly.
 | `openTerminalStream(cols, rows)` | `terminal.open` | Host shell. |
 | `openContainerStream(containerId, shell, cols, rows)` | `container.open` | Container shell. |
 | `openChannel("docker.logs.follow", request)` | `docker.logs.follow` | Direct server-producing container log Channel. |
+| `openChannel("docker.logs.follow_all", request)` | `docker.logs.follow_all` | Direct server-producing merged log Channel for every running container; NDJSON records `{id, name, ts, line, stderr?}`, containers that start later are attached. |
 | `openChannel("logs.service.follow", request)` | `logs.service.follow` | Direct server-producing unit log Channel. |
 | `openChannel("logs.general.follow", request)` | `logs.general.follow` | Direct journal Channel with backlog progress and cursor resume. |
 | `openAppUpdateStream(runId, version?)` | `control.app_update` | Task-backed app update output. |

@@ -58,6 +58,13 @@ function createDeferred<T>(): Deferred<T> {
 
 const wg0: WireGuardInterface = {
   address: "10.0.0.1/24",
+  dns: [],
+  host: "",
+  mtu: 0,
+  postDown: [],
+  postUp: [],
+  preDown: [],
+  preUp: [],
   isConnected: "Inactive",
   isEnabled: false,
   name: "wg0",
@@ -76,14 +83,26 @@ const wg1: WireGuardInterface = {
 
 const peers: Peer[] = [
   {
-    allowed_ips: ["10.0.0.2/32"],
+    address: "10.0.0.2/32",
+    client_allowed_ips: ["0.0.0.0/0"],
+    dns: [],
+    enabled: true,
+    id: "Peer2",
+    mtu: 0,
     name: "alice",
     public_key: "alice-key",
+    server_allowed_ips: [],
   },
   {
-    allowed_ips: ["10.0.0.3/32"],
+    address: "10.0.0.3/32",
+    client_allowed_ips: ["0.0.0.0/0"],
+    dns: [],
+    enabled: false,
+    id: "Peer3",
+    mtu: 0,
     name: "bob",
     public_key: "bob-key",
+    server_allowed_ips: ["172.16.0.0/24"],
   },
 ];
 
@@ -212,12 +231,11 @@ describe("WireGuard mutation feedback", () => {
     });
     vi.spyOn(core, "request").mockImplementation(
       (_handler, command, request) => {
-        const peerName = (request as { peerName?: string } | undefined)
-          ?.peerName;
-        if (command === "remove_peer" && peerName === "alice") {
+        const peerId = (request as { peerId?: string } | undefined)?.peerId;
+        if (command === "remove_peer" && peerId === "Peer2") {
           return deleting.promise;
         }
-        if (command === "peer_config_download" && peerName === "bob") {
+        if (command === "peer_config_download" && peerId === "Peer3") {
           return downloading.promise;
         }
         if (command === "list_peers") {
@@ -286,6 +304,40 @@ describe("WireGuard mutation feedback", () => {
           name: "Downloading config for bob",
         }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows disabled peers and toggles enabled with a single-field update", async () => {
+    const queryClient = createTestQueryClient();
+    const peersQuery = linuxio.wireguard.list_peers({ interfaceName: "wg0" });
+    queryClient.setQueryData(peersQuery.queryKey, peers);
+    const updates: unknown[] = [];
+    vi.spyOn(core, "request").mockImplementation(
+      (_handler, command, request) => {
+        if (command === "update_peer") updates.push(request);
+        if (command === "list_peers") return Promise.resolve(peers);
+        return Promise.resolve();
+      },
+    );
+    const view = render(<InterfaceClients params={{ id: "wg0" }} />, {
+      queryClient,
+    });
+
+    await screen.findByRole("group", { name: "Actions for bob" });
+    expect(screen.getByText("Disabled")).toBeVisible();
+    expect(screen.getByText("172.16.0.0/24")).toBeVisible();
+    expect(
+      screen.getByRole("switch", { name: "Enable peer bob" }),
+    ).not.toBeChecked();
+
+    await view.user.click(
+      screen.getByRole("switch", { name: "Disable peer alice" }),
+    );
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toEqual({
+      interfaceName: "wg0",
+      peerId: "Peer2",
+      enabled: false,
     });
   });
 });

@@ -38,3 +38,15 @@ func TestGeneratePeersReturnsErrorWhenSubnetFull(t *testing.T) {
 		t.Fatalf("error = %q, want peer allocation context", err)
 	}
 }
+
+func TestGeneratePeersIncludePresharedKeys(t *testing.T) {
+	peers, err := generatePeers("10.7.0.1/29", 2)
+	if err != nil {
+		t.Fatalf("generatePeers returned error: %v", err)
+	}
+	for _, peer := range peers {
+		if peer.PresharedKey == "" {
+			t.Fatalf("peer %s has no preshared key", peer.Name)
+		}
+	}
+}

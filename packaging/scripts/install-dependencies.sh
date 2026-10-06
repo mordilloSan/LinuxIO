@@ -196,8 +196,8 @@ Mandatory (installed automatically; failures are fatal):
 Other optional capabilities are installed from LinuxIO Capability Manager
 after signing in. PackageKit is required for those in-app installations.
 
-Docker is not installed by this script. Use Docker's separate installer when
-container support is needed.
+Docker is not installed by this script. Install it from LinuxIO Capability
+Manager when container support is needed.
 
 This script must be run as root.
 EOF

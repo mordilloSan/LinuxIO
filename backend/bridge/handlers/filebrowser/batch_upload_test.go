@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -45,6 +46,7 @@ func TestParseUploadBatchRequestValidation(t *testing.T) {
 		t.Fatalf("total = %d, want 5", total)
 	}
 
+	badModified := "yesterday"
 	invalid := []apischema.FileUploadBatchRequest{
 		{Destination: "", Files: valid.Files},
 		{Destination: "/data/dest"},
@@ -54,6 +56,7 @@ func TestParseUploadBatchRequestValidation(t *testing.T) {
 		{Destination: "/data/dest", Files: []apischema.FileUploadBatchEntry{{Path: "a.txt", Size: "-1"}}},
 		{Destination: "/data/dest", Files: []apischema.FileUploadBatchEntry{{Path: "a.txt", Size: "nope"}}},
 		{Destination: "/data/dest", Directories: []string{".."}},
+		{Destination: "/data/dest", Files: []apischema.FileUploadBatchEntry{{Path: "a.txt", Size: "1", Modified: &badModified}}},
 	}
 	for i, req := range invalid {
 		if _, _, _, _, err := parseUploadBatchRequest(req); err == nil {
@@ -66,13 +69,18 @@ func TestParseUploadBatchRequestValidation(t *testing.T) {
 // returns the task. The runner parks until a data stream drives it.
 func startUploadBatchTask(t *testing.T, req apischema.FileUploadBatchRequest) *bridgetasks.Task {
 	t.Helper()
+	return startUploadBatchTaskAs(t, req, uploadOwner{})
+}
+
+func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, owner uploadOwner) *bridgetasks.Task {
+	t.Helper()
 	registry := bridgetasks.NewTaskService()
 	task, err := registry.Create(routeUploadBatch, req)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 	task.Start(func(ctx context.Context, j *bridgetasks.Task, _ any) (any, error) {
-		return runUploadBatchTask(ctx, j, req)
+		return runUploadBatchTask(ctx, j, req, owner)
 	})
 	return task
 }
@@ -510,5 +518,90 @@ func TestUploadBatchMissingDestinationFailsTask(t *testing.T) {
 	}
 	if snapshot.Error == nil || snapshot.Error.Code != 404 {
 		t.Fatalf("task error = %+v, want 404", snapshot.Error)
+	}
+}
+
+func TestUploadBatchAppliesManifestModifiedTime(t *testing.T) {
+	dest := t.TempDir()
+	modified := "2021-05-06T07:08:09.5Z"
+	req := apischema.FileUploadBatchRequest{
+		Destination: dest,
+		Files: []apischema.FileUploadBatchEntry{
+			{Path: "dated.txt", Size: "5", Modified: &modified},
+			{Path: "undated.txt", Size: "0"},
+		},
+	}
+
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
+	writeData(t, conn, []byte("hello"))
+	writeClose(t, conn)
+
+	result := waitResult(t, results)
+	if result.Status != "ok" {
+		t.Fatalf("result status = %q (error %q)", result.Status, result.Error)
+	}
+	waitTaskDone(t, task)
+
+	dated, err := os.Stat(filepath.Join(dest, "dated.txt"))
+	if err != nil {
+		t.Fatalf("stat dated: %v", err)
+	}
+	want := time.Date(2021, 5, 6, 7, 8, 9, 500_000_000, time.UTC)
+	if !dated.ModTime().Equal(want) {
+		t.Fatalf("dated mtime = %v, want %v", dated.ModTime(), want)
+	}
+	undated, err := os.Stat(filepath.Join(dest, "undated.txt"))
+	if err != nil {
+		t.Fatalf("stat undated: %v", err)
+	}
+	if time.Since(undated.ModTime()) > time.Minute {
+		t.Fatalf("undated file should keep its write time, got %v", undated.ModTime())
+	}
+}
+
+func TestUploadBatchNewFilesBelongToSessionUserAsRoot(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("ownership of new uploads can only be changed as root")
+	}
+	dest := t.TempDir()
+	existing := filepath.Join(dest, "existing.txt")
+	if err := os.WriteFile(existing, []byte("old"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	if err := os.Chown(existing, 23456, 23457); err != nil {
+		t.Fatalf("chown seed: %v", err)
+	}
+	overwrite := true
+	req := apischema.FileUploadBatchRequest{
+		Destination: dest,
+		Files: []apischema.FileUploadBatchEntry{
+			{Path: "new.txt", Size: "3"},
+			{Path: "existing.txt", Size: "3"},
+		},
+		Overwrite: &overwrite,
+	}
+
+	task := startUploadBatchTaskAs(t, req, uploadOwner{uid: 12345, gid: 12346, set: true})
+	conn, results, _ := attachUploadBatchStream(t, task, "")
+	writeData(t, conn, []byte("newnew"))
+	writeClose(t, conn)
+	if result := waitResult(t, results); result.Status != "ok" {
+		t.Fatalf("result status = %q (error %q)", result.Status, result.Error)
+	}
+	waitTaskDone(t, task)
+
+	for path, want := range map[string][2]uint32{"new.txt": {12345, 12346}, "existing.txt": {23456, 23457}} {
+		info, err := os.Stat(filepath.Join(dest, path))
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			t.Fatalf("%s: unexpected stat type %T", path, info.Sys())
+		}
+		if st.Uid != want[0] || st.Gid != want[1] {
+			t.Fatalf("%s owner = %d:%d, want %d:%d", path, st.Uid, st.Gid, want[0], want[1])
+		}
 	}
 }

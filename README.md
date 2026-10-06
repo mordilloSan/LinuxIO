@@ -72,7 +72,7 @@ curl -fsSL https://raw.githubusercontent.com/mordilloSan/LinuxIO/main/packaging/
 ```
 
 PackageKit is required because LinuxIO uses it for capability installation from the dashboard. Docker is separate from this bootstrap; when container support
-is needed, use Docker's convenience installer directly:
+is needed, install it from the Capability Manager (which runs Docker's convenience script and shows its output) or run the script directly:
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
 ```
@@ -132,7 +132,7 @@ for permissions, lifecycle, and recovery.
 | Category | Packages | Required |
 |----------|----------|----------|
 | PAM, PolicyKit, PackageKit | Authentication, authorization, system updates, and in-app capability installation | Mandatory bootstrap dependencies |
-| Docker | Container management, installed separately with Docker's convenience installer | Optional |
+| Docker | Container management, installed from the Capability Manager with Docker's convenience script | Optional |
 | Other capabilities | Sensors, SMART monitoring, NFS, Avahi, and other host facilities | Install from LinuxIO Capability Manager |
 
 </details>
