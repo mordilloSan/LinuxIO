@@ -33,6 +33,15 @@ configuration.
 | DNF4 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never; if needed/always when supported by the installed version | Yes |
 | DNF5 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never, if needed, always | Yes |
 
+On Ubuntu and Debian, scopes only cover distribution archives (the widest
+APT scope is security, updates, and backports). Third-party repositories such
+as Docker CE are opted in separately under **Additional repositories**. LinuxIO
+lists them from the `Origin` and `Label` fields of the Release files in
+`/var/lib/apt/lists/` and writes each selection as an
+`Unattended-Upgrade::Origins-Pattern` entry, for example
+`origin=Docker,label=Docker CE`. DNF and Linux Mint already include every
+enabled repository in their "all" scope, so they do not offer this list.
+
 An unavailable provider is reported as not configurable with an installation
 note. LinuxIO leaves its controls read-only until the native package or plugin
 is installed.

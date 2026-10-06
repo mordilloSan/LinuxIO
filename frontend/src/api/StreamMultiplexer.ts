@@ -444,6 +444,9 @@ class StreamImpl implements Stream {
 
   /** Handle progress frame from bridge */
   private handleProgress(payload: Uint8Array): void {
+    // Bridge progress only flows while work the user started is running, so
+    // it keeps the session from idling out mid-copy (or mid-update, etc.).
+    this.mux.sendActivity();
     if (!this.onProgress) return;
     try {
       const json = decodeString(payload);
@@ -489,7 +492,7 @@ export class StreamMultiplexer {
   private static readonly ACTIVITY_THROTTLE_MS = 60_000;
 
   private readonly handleUserActivity = () => {
-    this.sendDocumentActivity();
+    this.sendActivity();
   };
 
   // Rapid-close detection: when the server upgrades the WebSocket but
@@ -703,7 +706,7 @@ export class StreamMultiplexer {
     return true;
   }
 
-  private sendDocumentActivity(): void {
+  sendActivity(): void {
     if (!this.takeActivitySlot()) return;
     if (!this.sendFrame(0, Flags.Activity, new Uint8Array(0)))
       this.activityLastSentAt = Number.NEGATIVE_INFINITY;

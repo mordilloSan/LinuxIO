@@ -1501,7 +1501,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make update-go-deps   $(COLOR_RESET) Update all Go dependencies (optional GO_MODULES=...)"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Quality checks$(COLOR_RESET)"
-	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run ESLint + Oxfmt (frontend)"
+	@$(PRINTC) "$(COLOR_GREEN)    make lint             $(COLOR_RESET) Run OXLint + Oxfmt (frontend)"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint-only        $(COLOR_RESET) Run frontend lint without setup prerequisites"
 	@$(PRINTC) "$(COLOR_GREEN)    make lint-ci          $(COLOR_RESET) Install locked frontend deps and run read-only lint"
 	@$(PRINTC) "$(COLOR_GREEN)    make tsc              $(COLOR_RESET) Type-check with TypeScript (frontend)"

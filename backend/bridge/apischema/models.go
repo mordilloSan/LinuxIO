@@ -659,6 +659,7 @@ type AutoUpdateOptions struct {
 	DownloadOnly    bool                   `json:"download_only"`
 	Enabled         bool                   `json:"enabled"`
 	ExcludePackages []string               `json:"exclude_packages"`
+	ExtraOrigins    []string               `json:"extra_origins"`
 	Frequency       AutoUpdateFrequency    `json:"frequency"`
 	RebootPolicy    AutoUpdateRebootPolicy `json:"reboot_policy"`
 	Scope           AutoUpdateScope        `json:"scope"`
@@ -667,17 +668,26 @@ type AutoUpdateOptions struct {
 type AutoUpdateOptionSupport struct {
 	DownloadOnly    bool                     `json:"download_only"`
 	ExcludePackages bool                     `json:"exclude_packages"`
+	ExtraOrigins    bool                     `json:"extra_origins"`
 	Frequencies     []AutoUpdateFrequency    `json:"frequencies"`
 	RebootPolicies  []AutoUpdateRebootPolicy `json:"reboot_policies"`
 	Scopes          []AutoUpdateScope        `json:"scopes"`
 }
 
+// AutoUpdateOrigin is a package repository that can be opted into automatic
+// updates on top of the distribution scope.
+type AutoUpdateOrigin struct {
+	Label   string `json:"label"`
+	Pattern string `json:"pattern"`
+}
+
 type AutoUpdateState struct {
-	Backend      AutoUpdateBackend       `json:"backend"`
-	CanConfigure bool                    `json:"can_configure"`
-	Notes        []string                `json:"notes,omitempty"`
-	Options      AutoUpdateOptions       `json:"options"`
-	Support      AutoUpdateOptionSupport `json:"support"`
+	AvailableOrigins []AutoUpdateOrigin      `json:"available_origins,omitempty"`
+	Backend          AutoUpdateBackend       `json:"backend"`
+	CanConfigure     bool                    `json:"can_configure"`
+	Notes            []string                `json:"notes,omitempty"`
+	Options          AutoUpdateOptions       `json:"options"`
+	Support          AutoUpdateOptionSupport `json:"support"`
 }
 
 type Service struct {

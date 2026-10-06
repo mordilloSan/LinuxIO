@@ -152,6 +152,7 @@ export type AutoUpdateFrequency = "hourly" | "daily" | "weekly";
 export interface AutoUpdateOptionSupport {
   download_only: boolean;
   exclude_packages: boolean;
+  extra_origins: boolean;
   frequencies: AutoUpdateFrequency[];
   reboot_policies: AutoUpdateRebootPolicy[];
   scopes: AutoUpdateScope[];
@@ -161,9 +162,15 @@ export interface AutoUpdateOptions {
   download_only: boolean;
   enabled: boolean;
   exclude_packages: string[];
+  extra_origins: string[];
   frequency: AutoUpdateFrequency;
   reboot_policy: AutoUpdateRebootPolicy;
   scope: AutoUpdateScope;
+}
+
+export interface AutoUpdateOrigin {
+  label: string;
+  pattern: string;
 }
 
 export type AutoUpdateRebootPolicy =
@@ -175,6 +182,7 @@ export type AutoUpdateRebootPolicy =
 export type AutoUpdateScope = "security" | "updates" | "all";
 
 export interface AutoUpdateState {
+  available_origins?: AutoUpdateOrigin[];
   backend: AutoUpdateBackend;
   can_configure: boolean;
   notes?: string[];

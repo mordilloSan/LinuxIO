@@ -280,7 +280,6 @@ const VirtualDirectoryItems = ({
   );
 
   // TanStack Virtual exposes dynamic helper functions that React Compiler cannot memoize safely.
-  // eslint-disable-next-line react-hooks/incompatible-library
   // oxlint-disable-next-line react/incompatible-library
   const virtualizer = useVirtualizer({
     count: layout.totalRowCount,

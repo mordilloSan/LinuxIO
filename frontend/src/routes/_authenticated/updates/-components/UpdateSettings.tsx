@@ -17,6 +17,8 @@ import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
@@ -40,8 +42,23 @@ const normalizeState = (s: AutoUpdateState): AutoUpdateState => ({
     exclude_packages: Array.isArray(s.options.exclude_packages)
       ? s.options.exclude_packages
       : [],
+    extra_origins: Array.isArray(s.options.extra_origins)
+      ? s.options.extra_origins
+      : [],
   },
 });
+
+// Third-party repositories APT knows about, plus any selected origin whose
+// repository has since been removed so it can still be unchecked.
+const originRows = (state: AutoUpdateState) => {
+  const available = state.available_origins ?? [];
+  return [
+    ...available,
+    ...state.options.extra_origins
+      .filter((pattern) => !available.some((o) => o.pattern === pattern))
+      .map((pattern) => ({ label: pattern, pattern })),
+  ];
+};
 
 interface ManagedTimer {
   allowedActive: boolean;
@@ -130,6 +147,16 @@ const scopeLabels: Record<AutoUpdateScope, string> = {
   updates: "Security + updates",
   all: "All enabled repositories",
 };
+
+// APT's widest scope is still limited to distribution archives; third-party
+// repositories are opted into separately.
+const scopeLabel = (
+  backend: AutoUpdateState["backend"],
+  scope: AutoUpdateScope,
+) =>
+  backend === "apt-unattended" && scope === "all"
+    ? "Security + updates + backports"
+    : scopeLabels[scope];
 
 const rebootLabels: Record<AutoUpdateRebootPolicy, string> = {
   never: "Never reboot",
@@ -395,7 +422,7 @@ const SavedConfiguration = ({
     },
     {
       label: "Update scope",
-      value: scopeLabels[state.options.scope],
+      value: scopeLabel(state.backend, state.options.scope),
     },
     {
       label: "Install mode",
@@ -413,6 +440,21 @@ const SavedConfiguration = ({
         ? state.options.exclude_packages.join(", ")
         : "None",
     },
+    ...(state.support.extra_origins
+      ? [
+          {
+            label: "Additional repositories",
+            value: state.options.extra_origins.length
+              ? originRows(state)
+                  .filter(({ pattern }) =>
+                    state.options.extra_origins.includes(pattern),
+                  )
+                  .map(({ label }) => label)
+                  .join(", ")
+              : "None",
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -545,6 +587,72 @@ const AutomaticUpdatesControl = ({
   );
 };
 
+const ExtraOriginsField = ({
+  disabled,
+  onChange,
+  rows,
+  selected,
+}: {
+  disabled: boolean;
+  onChange: (selected: string[]) => void;
+  rows: { label: string; pattern: string }[];
+  selected: string[];
+}) => (
+  <fieldset
+    style={{
+      border: 0,
+      margin: "var(--app-space-8) 0 0",
+      minWidth: 0,
+      padding: 0,
+    }}
+  >
+    <AppTypography component="legend" fontWeight={600} variant="body2">
+      Additional repositories
+    </AppTypography>
+    <AppTypography
+      color="text.secondary"
+      style={{ display: "block", marginBottom: 4 }}
+      variant="caption"
+    >
+      {rows.length
+        ? "Also update packages from these third-party repositories, regardless of the update scope."
+        : "No third-party repositories found. Use Refresh Sources after adding one."}
+    </AppTypography>
+    {rows.map(({ label, pattern }) => (
+      <AppFormControlLabel
+        control={
+          <AppCheckbox
+            checked={selected.includes(pattern)}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange(
+                rows
+                  .map((row) => row.pattern)
+                  .filter((p) =>
+                    p === pattern ? event.target.checked : selected.includes(p),
+                  ),
+              )
+            }
+          />
+        }
+        key={pattern}
+        label={
+          <>
+            {label}{" "}
+            <AppTypography
+              color="text.secondary"
+              component="span"
+              variant="caption"
+            >
+              {pattern}
+            </AppTypography>
+          </>
+        }
+      />
+    ))}
+  </fieldset>
+);
+
 interface UpdateSettingsProps {
   disablePadding?: boolean;
   state: ReturnType<typeof useUpdateSettingsState>;
@@ -666,7 +774,7 @@ const UpdateSettings = ({
           >
             {serverState.support.scopes.map((scope) => (
               <option key={scope} value={scope}>
-                {scopeLabels[scope]}
+                {scopeLabel(serverState.backend, scope)}
               </option>
             ))}
           </AppSelect>
@@ -772,6 +880,20 @@ const UpdateSettings = ({
             Optional comma-separated package names or patterns.
           </AppTypography>
         </div>
+
+        {serverState.support.extra_origins ? (
+          <ExtraOriginsField
+            disabled={saving || !serverState.can_configure}
+            onChange={(extra_origins) =>
+              setDraftOverrides((previous) => ({
+                ...previous,
+                extra_origins,
+              }))
+            }
+            rows={originRows(serverState)}
+            selected={currentOptions.extra_origins}
+          />
+        ) : null}
       </FrostedCard>
 
       <div

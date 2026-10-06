@@ -44,9 +44,9 @@ func (sm *SmartManager) currentLiveSmartData(ctx context.Context) map[string]mon
 			copyPower.States = append([]monitoringapi.DiskPowerState(nil), power.States...)
 			power = &copyPower
 		}
-		id := key
-		if name := strings.TrimSpace(item.DiskName); name != "" {
-			id = filepath.Base(name)
+		id := deviceKey
+		if id == "" {
+			id = filepath.Base(strings.TrimSpace(item.DiskName))
 		}
 		if id == "." || id == "" {
 			id = key
@@ -84,8 +84,13 @@ func (sm *SmartManager) refreshLivePower(ctx context.Context, data map[string]mo
 
 }
 
+// liveNVMeDevice returns the block-device name lsblk reports. smartctl scans
+// NVMe controllers (/dev/nvme0), so those map to their first namespace.
 func liveNVMeDevice(value string) string {
 	name := filepath.Base(strings.TrimSpace(value))
+	if isNvmeControllerPath(name) {
+		name += "n1"
+	}
 	if !strings.HasPrefix(name, "nvme") || !liveNVMeDevicePattern.MatchString(name) {
 		return ""
 	}

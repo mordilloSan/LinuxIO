@@ -522,4 +522,34 @@ describe("StreamMultiplexer", () => {
     passive.write(encodeString("request"));
     expect(readMuxFrame(socket.sent[0]).flags).toBe(Flags.DATA);
   });
+
+  it("reports activity, throttled, while a task streams progress", () => {
+    const { mux, socket } = openMux();
+    const watch = requireStream(mux.openStream("tasks.watch"));
+    const progress = () =>
+      socket.receive(
+        makeInboundMuxFrame(
+          watch.id,
+          Flags.DATA,
+          makeBridgeFrame(
+            BridgeOpcode.StreamProgress,
+            watch.id,
+            encodeString(JSON.stringify({ pct: 1 })),
+          ),
+        ),
+      );
+    socket.sent = [];
+
+    progress();
+    progress();
+    expect(socket.sent).toHaveLength(1);
+    expect(readMuxFrame(socket.sent[0])).toMatchObject({
+      streamID: 0,
+      flags: Flags.Activity,
+    });
+
+    vi.advanceTimersByTime(60_000);
+    progress();
+    expect(socket.sent).toHaveLength(2);
+  });
 });
