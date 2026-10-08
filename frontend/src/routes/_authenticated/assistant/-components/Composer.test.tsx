@@ -164,12 +164,10 @@ describe("Composer", () => {
       .getByRole("menuitem", { name: /review/ })
       .querySelector(".app-menu__item-label");
     expect(label?.closest(".assistant__slash-menu")).not.toBeNull();
-    expect(label?.querySelector(".assistant__slash-name")).toHaveTextContent(
-      "/review",
-    );
-    expect(
-      label?.querySelector(".assistant__slash-description"),
-    ).toHaveTextContent("Review code");
+    // Just the name in the row; the description is a tooltip on hover.
+    expect(label).toHaveTextContent(/^\/review$/);
+    await userEvent.hover(screen.getByRole("menuitem", { name: /review/ }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Review code");
     await userEvent.type(input, "re");
     expect(
       screen.queryByRole("menuitem", { name: /compact/ }),
@@ -322,19 +320,40 @@ describe("Composer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("lists every command from the / button and inserts the chosen one", async () => {
+  it("types a / from the button so further typing filters the list", async () => {
     setup();
+    const input = screen.getByLabelText("Message");
     await userEvent.click(screen.getByRole("button", { name: "Commands" }));
+    expect(input).toHaveValue("/");
+    expect(input).toHaveFocus();
     expect(
       await screen.findByRole("menuitem", { name: /compact/ }),
     ).toBeInTheDocument();
+    await userEvent.type(input, "re");
+    expect(
+      screen.queryByRole("menuitem", { name: /compact/ }),
+    ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: /review/ }));
-    expect(screen.getByLabelText("Message")).toHaveValue("/review ");
+    expect(input).toHaveValue("/review ");
     await waitFor(() =>
       expect(
         screen.queryByRole("menu", { name: "Slash commands" }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("lists every command from the button when a message is already written", async () => {
+    setup();
+    const input = screen.getByLabelText("Message");
+    await userEvent.type(input, "check the disk");
+    await userEvent.click(screen.getByRole("button", { name: "Commands" }));
+    expect(input).toHaveValue("check the disk");
+    expect(
+      await screen.findByRole("menuitem", { name: /compact/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /review/ }),
+    ).toBeInTheDocument();
   });
 
   it("changes model and effort through one chip", async () => {
@@ -349,6 +368,35 @@ describe("Composer", () => {
     expect(onSetConfigOption).toHaveBeenCalledWith("effort", "high");
     await userEvent.click(screen.getByRole("menuitem", { name: /Sonnet/ }));
     expect(onSetConfigOption).toHaveBeenCalledWith("model", "sonnet");
+  });
+
+  it("moves model settings such as Fast mode into the chip's menu", async () => {
+    const { onSetConfigOption } = setup({
+      configOptions: [
+        {
+          id: "fast",
+          name: "Fast mode",
+          description: "Faster responses on supported models",
+          type: "boolean",
+          category: "model_config",
+          currentValue: false,
+        },
+        effortOption,
+        modelOption,
+      ],
+    });
+    // Not in the toolbar…
+    expect(
+      screen.queryByRole("checkbox", { name: "Fast mode" }),
+    ).not.toBeInTheDocument();
+    // …but in the model menu, as a row the whole of which toggles it.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Model: Opus Low" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "Fast mode, off" }),
+    );
+    expect(onSetConfigOption).toHaveBeenCalledWith("fast", true);
   });
 
   it("keeps other options next to the chip and renders booleans as switches", async () => {
@@ -479,7 +527,8 @@ describe("Composer", () => {
       await userEvent.type(screen.getByLabelText("Message"), "/");
       const items = await screen.findAllByRole("menuitem");
       expect(items[0]).toHaveTextContent("/btw");
-      expect(items[0]).toHaveTextContent(
+      await userEvent.hover(items[0]);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(
         "Ask a side question without touching this chat",
       );
     });

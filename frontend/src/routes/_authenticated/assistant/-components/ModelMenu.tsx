@@ -1,6 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import { Icon } from "@iconify/react";
-import { type CSSProperties, useState } from "react";
+import { useState } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
@@ -80,15 +80,7 @@ function EffortSlider({
         {effort.name}{" "}
         <span className="assistant__effort-value">({levels[index].name})</span>
       </span>
-      <span
-        className="assistant__effort-slider"
-        // Where the accent line ends: from the first level to the thumb.
-        style={
-          {
-            "--effort-fill": `${levels.length > 1 ? (index / (levels.length - 1)) * 100 : 0}%`,
-          } as CSSProperties
-        }
-      >
+      <span className="assistant__effort-slider">
         <span aria-hidden="true" className="assistant__effort-dots">
           {levels.map((level, position) => (
             <span
@@ -125,24 +117,98 @@ function EffortSlider({
 }
 
 /**
+ * A model setting as a menu row: the agent's name and description, and for a
+ * yes/no option a switch that the whole row toggles. The row stays a
+ * `menuitem` so arrow keys reach it; its state is part of its name, because a
+ * switch input nested in the row's button would be invalid markup.
+ */
+function ExtraOption({
+  option,
+  onChange,
+}: {
+  option: acp.SessionConfigOption;
+  onChange: (configId: string, value: string | boolean) => void;
+}) {
+  if (option.type === "boolean") {
+    const on = option.currentValue;
+    return (
+      <AppMenuItem
+        aria-label={`${option.name}, ${on ? "on" : "off"}`}
+        endAdornment={
+          <span
+            aria-hidden="true"
+            className={
+              on
+                ? "assistant__toggle assistant__toggle--on"
+                : "assistant__toggle"
+            }
+          />
+        }
+        onClick={() => onChange(option.id, !on)}
+        title={option.description ?? undefined}
+      >
+        <span className="assistant__mode-name">{option.name}</span>
+        {option.description ? (
+          <span className="assistant__mode-description">
+            {option.description}
+          </span>
+        ) : null}
+      </AppMenuItem>
+    );
+  }
+  // A select-shaped setting: cycle through its values on click.
+  const values = flatten(option.options).flatMap((entry) =>
+    "option" in entry ? [entry.option] : [],
+  );
+  const index = values.findIndex(
+    (value) => value.value === option.currentValue,
+  );
+  const next = values[(index + 1) % Math.max(values.length, 1)];
+  return (
+    <AppMenuItem
+      endAdornment={
+        <span className="assistant__extra-value">
+          {values[index]?.name ?? option.currentValue}
+        </span>
+      }
+      onClick={() => {
+        if (next) onChange(option.id, next.value);
+      }}
+      title={option.description ?? undefined}
+    >
+      <span className="assistant__mode-name">{option.name}</span>
+      {option.description ? (
+        <span className="assistant__mode-description">
+          {option.description}
+        </span>
+      ) : null}
+    </AppMenuItem>
+  );
+}
+
+/**
  * One chip for model and effort ("Opus 5.5 High"). It opens a menu as wide as
- * the prompt: every model with its description, then the effort slider, which
- * stays visible while the model list scrolls. Picking a model closes the menu;
+ * the prompt: every model with its description, then the model settings
+ * (Fast mode) and the effort slider, which stay visible while the model list
+ * scrolls. Picking a model closes the menu;
  * moving the slider leaves it open so both can be set in one visit.
  */
 export default function ModelMenu({
   model,
   effort,
+  extras = [],
   disabled,
   widthAnchor,
   onChange,
 }: {
   model?: SelectOption;
   effort?: SelectOption;
+  /** Other model settings the agent offers (Fast mode), shown as rows. */
+  extras?: acp.SessionConfigOption[];
   disabled: boolean;
   /** The prompt box: the menu aligns to it and takes its width. */
   widthAnchor: HTMLElement | null;
-  onChange: (configId: string, value: string) => void;
+  onChange: (configId: string, value: string | boolean) => void;
 }) {
   const [open, setOpen] = useState<{
     anchor: HTMLElement;
@@ -224,7 +290,20 @@ export default function ModelMenu({
             )}
           </>
         ) : null}
-        {effort ? <EffortSlider effort={effort} onChange={onChange} /> : null}
+        {extras.length > 0 || effort ? (
+          <div className="assistant__model-footer" role="presentation">
+            {extras.map((option) => (
+              <ExtraOption
+                key={option.id}
+                onChange={onChange}
+                option={option}
+              />
+            ))}
+            {effort ? (
+              <EffortSlider effort={effort} onChange={onChange} />
+            ) : null}
+          </div>
+        ) : null}
       </AppMenu>
     </>
   );

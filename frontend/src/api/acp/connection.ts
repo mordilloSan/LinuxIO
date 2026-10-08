@@ -135,7 +135,12 @@ export async function connectAssistant(
     ({ cwd } = await transport.ready);
     init = await connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
-      clientCapabilities: { auth: { terminal: true } },
+      // Boolean options (Fast mode) arrive as real toggles instead of an
+      // "On"/"Off" select once the agent knows the client can show them.
+      clientCapabilities: {
+        auth: { terminal: true },
+        session: { configOptions: { boolean: {} } },
+      },
     });
   } catch (error) {
     connection.close();

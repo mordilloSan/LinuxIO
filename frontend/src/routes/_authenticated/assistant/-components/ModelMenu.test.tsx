@@ -103,16 +103,11 @@ describe("ModelMenu", () => {
       "Effort (High)",
     );
     expect(slider).toHaveAttribute("aria-valuetext", "High");
-    // Both levels up to the thumb carry the accent; the line reaches it.
+    // Both levels up to the thumb carry the accent.
     const effortRow = slider.closest(".assistant__effort") as HTMLElement;
     expect(
       effortRow.querySelectorAll(".assistant__effort-dot--on"),
     ).toHaveLength(2);
-    expect(
-      (
-        effortRow.querySelector(".assistant__effort-slider") as HTMLElement
-      ).style.getPropertyValue("--effort-fill"),
-    ).toBe("100%");
 
     // Dragging moves the thumb and the label but sends nothing yet.
     fireEvent.change(slider, { target: { value: "0" } });
@@ -149,6 +144,60 @@ describe("ModelMenu", () => {
     slider.focus();
     fireEvent.keyDown(slider, { key: "ArrowDown" });
     expect(slider).toHaveFocus();
+  });
+
+  it("shows model settings as rows above the effort slider", async () => {
+    const { onChange } = setup({
+      extras: [
+        {
+          id: "fast",
+          name: "Fast mode",
+          description: "Faster responses on supported models",
+          type: "boolean",
+          category: "model_config",
+          currentValue: true,
+        },
+      ],
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Model: Opus 5.5 High" }),
+    );
+    const row = await screen.findByRole("menuitem", { name: "Fast mode, on" });
+    expect(row).toHaveTextContent("Faster responses on supported models");
+    expect(row.querySelector(".assistant__toggle--on")).not.toBeNull();
+    // The settings sit in the pinned footer, before the effort slider.
+    const footer = row.closest(".assistant__model-footer") as HTMLElement;
+    expect(footer).not.toBeNull();
+    expect(footer.querySelector(".assistant__effort")).not.toBeNull();
+    await userEvent.click(row);
+    expect(onChange).toHaveBeenCalledWith("fast", false);
+    // Toggling keeps the menu open.
+    expect(screen.getByRole("menu", { name: "Model" })).toBeInTheDocument();
+  });
+
+  it("cycles a select-shaped model setting from older agents", async () => {
+    const { onChange } = setup({
+      extras: [
+        {
+          id: "fast",
+          name: "Fast mode",
+          type: "select",
+          category: "model_config",
+          currentValue: "off",
+          options: [
+            { value: "on", name: "On" },
+            { value: "off", name: "Off" },
+          ],
+        },
+      ],
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Model: Opus 5.5 High" }),
+    );
+    const row = await screen.findByRole("menuitem", { name: /Fast mode/ });
+    expect(row).toHaveTextContent("Off");
+    await userEvent.click(row);
+    expect(onChange).toHaveBeenCalledWith("fast", "on");
   });
 
   it("works with only an effort option", () => {

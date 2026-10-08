@@ -99,8 +99,20 @@ export default function ConfigControls({
   const effort = sorted.find((option) => option.category === "thought_level");
   const chipModel = isSelect(model) ? model : undefined;
   const chipEffort = isSelect(effort) ? effort : undefined;
+  const hasChip = Boolean(chipModel || chipEffort);
+  // Model settings (Fast mode) live in the chip's menu, next to the model
+  // they affect; anything else stays in the toolbar.
+  const extras = hasChip
+    ? sorted.filter(
+        (option) =>
+          option.category === "model_config" &&
+          option !== chipModel &&
+          option !== chipEffort,
+      )
+    : [];
   const rest = sorted.filter(
-    (option) => option !== chipModel && option !== chipEffort,
+    (option) =>
+      option !== chipModel && option !== chipEffort && !extras.includes(option),
   );
   return (
     <>
@@ -108,6 +120,7 @@ export default function ConfigControls({
         <ModelMenu
           disabled={disabled}
           effort={chipEffort}
+          extras={extras}
           model={chipModel}
           onChange={onChange}
           widthAnchor={widthAnchor}

@@ -475,31 +475,12 @@
   background: var(--app-palette-background-paper);
 }
 
+/* Command names only, in the menu's standard row type; each description
+   is a tooltip on hover or focus. */
 .app-popover__paper.assistant__slash-menu {
-  width: 400px;
+  width: 260px;
   max-width: calc(100vw - 16px);
   max-height: 320px;
-}
-
-.assistant__slash-menu .app-menu__item-label {
-  display: flex;
-  align-items: baseline;
-  gap: var(--app-space-12);
-  min-width: 0;
-}
-
-.assistant__slash-name {
-  flex: none;
-  font-family: var(--app-font-mono);
-}
-
-.assistant__slash-description {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--app-palette-text-secondary);
 }
 
 /* Everything in the bar but the send button is dim until pointed at. */
@@ -654,12 +635,11 @@
   padding-block: 4px;
 }
 
-/* The current choice carries the accent: a tinted row, an accent bar and an
-   accent check, in both the model and the mode menus. */
+/* The current choice carries the accent: a tinted row and an accent check,
+   in both the model and the mode menus. */
 .assistant__model-menu .app-menu__item--selected,
 .assistant__mode-menu .app-menu__item--selected {
   background: color-mix(in srgb, var(--app-palette-primary-main), transparent 84%);
-  box-shadow: inset 2px 0 0 var(--app-palette-primary-main);
 }
 
 .assistant__model-menu .app-menu__item--selected .app-menu__item-end,
@@ -679,20 +659,66 @@
   color: var(--app-palette-text-disabled);
 }
 
-/* Effort stays in view at the bottom of the menu while the models scroll.
-   The negative margins cover the menu's own padding so nothing shows under it. */
-.assistant__effort {
+/* Model settings and effort stay in view at the bottom of the menu while the
+   models scroll. The negative margins cover the menu's own padding so
+   nothing shows under it. */
+.assistant__model-footer {
   position: sticky;
   bottom: -5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 4px -5px -5px;
+  padding: 4px 5px 0;
+  border-top: 1px solid var(--app-palette-divider);
+  background: var(--app-palette-background-paper);
+}
+
+.assistant__effort {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--app-space-12);
-  margin: 4px -5px -5px;
-  padding: 8px 15px 10px;
-  border-top: 1px solid var(--app-palette-divider);
-  background: var(--app-palette-background-paper);
+  padding: 6px 10px 10px;
   font-size: 0.8125rem;
+}
+
+.assistant__extra-value {
+  color: var(--app-palette-primary-main);
+}
+
+/* A switch drawn in CSS: the whole row is the control. */
+.assistant__toggle {
+  position: relative;
+  display: inline-block;
+  width: 26px;
+  height: 14px;
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-action-selected);
+  transition: background-color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+}
+
+.assistant__toggle::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--app-palette-text-secondary);
+  transition: transform var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+  content: "";
+}
+
+.assistant__toggle--on {
+  background: var(--app-palette-primary-main);
+}
+
+.assistant__toggle--on::after {
+  background: var(--app-palette-primary-contrast-text);
+  transform: translateX(12px);
 }
 
 .assistant__effort-value {
@@ -731,19 +757,6 @@
 
 .assistant__effort-dot--on {
   background: var(--app-palette-primary-main);
-}
-
-/* An accent line from the first level to the thumb. */
-.assistant__effort-dots::before {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: var(--effort-fill, 0%);
-  height: 2px;
-  border-radius: var(--app-radius-pill);
-  background: color-mix(in srgb, var(--app-palette-primary-main), transparent 40%);
-  transform: translateY(-50%);
-  content: "";
 }
 
 .assistant__effort-range {

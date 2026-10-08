@@ -17,6 +17,7 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTextField from "@/components/ui/AppTextField";
+import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 
@@ -394,7 +395,17 @@ export default function Composer({
                 icon="mdi:slash-forward-box"
                 iconSize={20}
                 label="Commands"
-                onClick={(event) => setCommandsAnchor(event.currentTarget)}
+                onClick={(event) => {
+                  // An empty prompt gets a "/" so typing filters the list;
+                  // with a message already written, show every command.
+                  if (draft.trim() === "") {
+                    changeDraft("/");
+                    setSlashDismissedFor(null);
+                    inputRef.current?.focus();
+                  } else {
+                    setCommandsAnchor(event.currentTarget);
+                  }
+                }}
               />
               {running ? (
                 <>
@@ -495,21 +506,29 @@ export default function Composer({
         open={slashOpen || commandsOpen}
         transformOrigin={{ vertical: "bottom", horizontal: "left" }}
       >
-        {listedCommands.map((command, index) => (
-          <AppMenuItem
-            key={command.name}
-            onClick={() => insertCommand(command)}
-            onMouseDown={(event) => event.preventDefault()}
-            selected={!commandsOpen && index === activeSlash}
-          >
-            <span className="assistant__slash-name">/{command.name}</span>
-            {command.description ? (
-              <span className="assistant__slash-description">
-                {command.description}
-              </span>
-            ) : null}
-          </AppMenuItem>
-        ))}
+        {listedCommands.map((command, index) => {
+          const item = (
+            <AppMenuItem
+              key={command.name}
+              onClick={() => insertCommand(command)}
+              onMouseDown={(event) => event.preventDefault()}
+              selected={!commandsOpen && index === activeSlash}
+            >
+              /{command.name}
+            </AppMenuItem>
+          );
+          return command.description ? (
+            <AppTooltip
+              key={command.name}
+              placement="right"
+              title={command.description}
+            >
+              {item}
+            </AppTooltip>
+          ) : (
+            item
+          );
+        })}
       </AppMenu>
     </div>
   );

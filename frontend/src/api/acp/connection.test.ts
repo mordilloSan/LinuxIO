@@ -95,7 +95,10 @@ describe("connectAssistant", () => {
     expect(conn.canLogout).toBe(true);
     const init = agent.sent.find((m) => m.method === "initialize");
     expect(init?.params).toMatchObject({
-      clientCapabilities: { auth: { terminal: true } },
+      clientCapabilities: {
+        auth: { terminal: true },
+        session: { configOptions: { boolean: {} } },
+      },
     });
   });
 
