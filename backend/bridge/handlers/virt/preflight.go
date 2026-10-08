@@ -21,6 +21,7 @@ var firmwareDescriptorDirs = []string{"/etc/qemu/firmware", "/usr/share/qemu/fir
 type qemuFirmwareDescriptor struct {
 	InterfaceTypes []string `json:"interface-types"`
 	Mapping        struct {
+		Mode       string `json:"mode"`
 		Executable struct {
 			Filename string `json:"filename"`
 		} `json:"executable"`
@@ -269,6 +270,7 @@ func plainUEFIFirmwareExecutable(descriptor qemuFirmwareDescriptor) bool {
 		firmwareTargetsArch(descriptor, "x86_64") &&
 		!slices.Contains(descriptor.Features, "secure-boot") &&
 		!slices.Contains(descriptor.Features, "requires-smm") &&
+		descriptor.Mapping.Mode != "stateless" &&
 		executable != "" &&
 		qemuReadable(executable)
 }

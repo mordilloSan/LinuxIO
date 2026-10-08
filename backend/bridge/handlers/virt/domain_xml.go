@@ -66,6 +66,10 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 	}
 	if firmware.UEFIAvailable {
 		osConfig.Firmware = "efi"
+		// Without stateless="no", libvirt 12 can autoselect stateless SEV
+		// firmware (OVMF.amdsev.fd), which has no NVRAM and which Ubuntu's
+		// AppArmor helper refuses to load.
+		osConfig.Loader = &libvirtxml.DomainLoader{Stateless: "no"}
 		osConfig.FirmwareInfo = &libvirtxml.DomainOSFirmwareInfo{
 			Features: []libvirtxml.DomainOSFirmwareFeature{
 				{Enabled: "no", Name: "secure-boot"},

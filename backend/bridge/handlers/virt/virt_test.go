@@ -71,6 +71,7 @@ func TestBuildDomainXML(t *testing.T) {
 		"<memory unit=\"MiB\">2048</memory>",
 		"<vcpu>2</vcpu>",
 		"firmware=\"efi\"",
+		"<loader stateless=\"no\"></loader>",
 		"<feature enabled=\"no\" name=\"secure-boot\"></feature>",
 		"<feature enabled=\"no\" name=\"enrolled-keys\"></feature>",
 		"<features>",
@@ -750,6 +751,25 @@ func TestDetectOVMFCodePathUsesFirmwareDescriptors(t *testing.T) {
 	secureFirmware := tempFile(t, "OVMF_CODE_4M.secboot.fd")
 	writeFirmwareDescriptor(t, dir, "40-secure.json", secureFirmware, []string{"secure-boot", "requires-smm"})
 	writeFirmwareDescriptor(t, dir, "60-plain.json", plainFirmware, []string{"acpi-s3"})
+	oldDirs := firmwareDescriptorDirs
+	firmwareDescriptorDirs = []string{dir}
+	t.Cleanup(func() { firmwareDescriptorDirs = oldDirs })
+
+	if got := detectOVMFCodePath(); got != plainFirmware {
+		t.Fatalf("detectOVMFCodePath = %q, want %q", got, plainFirmware)
+	}
+}
+
+func TestDetectOVMFCodePathSkipsStatelessDescriptors(t *testing.T) {
+	dir := t.TempDir()
+	plainFirmware := tempFile(t, "OVMF_CODE_4M.fd")
+	sevFirmware := tempFile(t, "OVMF.amdsev.fd")
+	// Sorts before the plain descriptor, as on Ubuntu.
+	stateless := fmt.Sprintf(`{"interface-types":["uefi"],"mapping":{"mode":"stateless","executable":{"filename":%q}},"targets":[{"architecture":"x86_64"}],"features":["amd-sev"]}`, sevFirmware)
+	if err := os.WriteFile(filepath.Join(dir, "60-edk2-x86_64-amdsev.json"), []byte(stateless), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeFirmwareDescriptor(t, dir, "60-edk2-x86_64.json", plainFirmware, []string{"acpi-s3", "amd-sev"})
 	oldDirs := firmwareDescriptorDirs
 	firmwareDescriptorDirs = []string{dir}
 	t.Cleanup(func() { firmwareDescriptorDirs = oldDirs })
