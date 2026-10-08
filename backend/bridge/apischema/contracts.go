@@ -935,3 +935,11 @@ type ShareUpdateSambaRequest struct {
 type FailedLoginEventsRequest struct {
 	Limit *string `json:"limit,omitempty"`
 }
+
+type AlertDismissRequest struct {
+	ID string `json:"id"`
+}
+
+type AlertIDsRequest struct {
+	IDs []string `json:"ids"`
+}

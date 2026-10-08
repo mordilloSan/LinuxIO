@@ -4,8 +4,8 @@
 
 This is the canonical dependency-ordered roadmap for the remaining API
 reliability work. It starts from the completed transport migration and connects
-connection-loss behavior, Task lifetime, durable execution, and the planned
-notification system. This roadmap is temporary: keep it until the remaining
+connection-loss behavior, Task lifetime, durable execution, and the alert
+lifecycle. This roadmap is temporary: keep it until the remaining
 phases are complete, then fold the verified lifecycle into the focused
 implementation documents.
 
@@ -17,7 +17,7 @@ Focused implementation and design details remain in their own documents:
   defines durable Task execution and recovery mechanics.
 - [Notifications](./notifications.md) defines the notification product and
   storage contract.
-- [Scheduled Execution](../scheduled-execution.md) defines the systemd timer,
+- [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
   service, and journald ownership boundaries.
 
 The [TODO index](./README.md) links here instead of duplicating these
@@ -102,19 +102,18 @@ Bridge
 ├── Task service
 │   ├── session Task          in memory, exact-session owner
 │   └── durable Task          persistent record + external execution owner
-├── alert client              Calls + watch Channel over the alert daemon socket
+├── alerts handler family     list, seen, and dismiss Calls over the alert file
 └── scheduled-script controls definitions + native service/timer state
 
-Alert daemon (root, standalone, socket-activated)
-├── alert lifecycle           dedup, resolution, per-user seen state
-└── routing and delivery      matchers and targets
+Root alert writers (automatic updates, Docker update worker, `linuxio alert`)
+└── alert lifecycle           dedup, resolution, per-user seen state
 
 Native Linux owners
 ├── systemd service/timer     schedule and process state
 └── journald                  execution logs
 
 Server-side persistent state
-├── alert daemon SQLite       alerts, seen state, delivery attempts
+├── alerts.json               alerts and seen state, root-owned, filelock-guarded
 └── schedule configuration    managed scripts and native unit definitions
 ~~~
 
@@ -126,8 +125,8 @@ Server-side persistent state
 | Durable Task | External executor plus persistent operation record | A later bridge discovers the same operation by stable ID. |
 | Schedule | Native systemd timer and service | systemd owns activation and process state even when no bridge is connected. |
 | Script status and logs | Native systemd state and retained journal entries | Reconnect reads native state; reboot or journal retention may leave historical outcomes unavailable. |
-| Alert | Standalone root alert daemon owning its own SQLite store | A reconnecting client receives authoritative lifecycle and per-user seen state before live changes. |
-| Delivery | Alert router plus configured target | Matchers select targets; retry and outcome state do not alter the source alert or run. |
+| Alert | Root-owned JSON file written through `filelock` by root processes | Privileged bridges read the file through `alerts.list`; seen state is per UID. |
+| Delivery | Not implemented | External delivery is listed under "Not in this slice" in [Alerts](./notifications.md). |
 
 Task is a service composed from bounded control operations and Channels. It is
 not a third wire protocol.
@@ -449,49 +448,25 @@ accessibility/regression pass (Batch 5) were completed on 2026-08-12.
 
 ## Phase 6: Persistent Alert Lifecycle
 
-Implement [Notifications](./notifications.md) after uniform Task progress and
-the mutation-feedback consistency gate.
-The domain is an alert lifecycle rather than a persisted toast list:
-
-- stable alert identity and source-defined deduplication key;
-- severity, category, title, message, material occurrence count, and separate
-  observation time;
-- active/resolved state distinct from seen/unseen and dismissed/restored state;
-- authenticated Calls for list and lifecycle mutations;
-- one snapshot-first watch Channel feeding the TanStack Query cache; and
-- Sonner as presentation only.
-
-A standalone root alert daemon, shaped like `linuxio-indexer` with its own
-service, socket, and SQLite file, owns this store; bridges are clients and never
-open the file. Seen state, deduplication, concurrent sessions, resolution, and
-delivery attempts are relational application semantics; replaying journald or
-rewriting per-user JSON snapshots is no longer the simpler reliable solution.
-Run history is not in this database. Do not put raw logs, every toast, or
-progress frames in it.
-
-Prove this phase with Docker's existing timer-driven check-only source. Manual
-and scheduled discovery of the same condition update one alert, independent of
-login state. Trusted producers use the daemon's private socket API; generated
-bridge Calls and the watch Channel expose authorized alert state to the UI.
+Implemented per [Alerts](./notifications.md): one root-owned JSON file under
+`/var/lib/linuxio`, written through `filelock` by existing root processes and
+read by privileged bridges through the `alerts` handler family. There is no
+daemon, database, or watch Channel; the navbar polls `alerts.list` and
+replaces its cache from mutation results.
 
 ### Phase 6 exit criteria
 
-- [ ] Reconnect receives an authoritative bounded alert snapshot before live
-  changes.
-- [ ] Seen, dismissal, restoration, recurrence, and source resolution have
-  explicit tested transitions.
-- [ ] Stable source keys make repeated creation idempotent.
-- [ ] Unchanged checks preserve seen/dismissed state and occurrence count;
-  failed or incomplete checks cannot resolve an availability condition.
-- [ ] The first source records and reconciles alerts with no session present;
-  login retrieves them with the source's visibility rules and per-UID seen state.
-- [ ] Alert persistence failure never changes the originating Task or systemd
-  run outcome.
-- [ ] The server-backed navbar replaces local toast-history persistence.
+- [x] Raise, same-occurrence silence, material change, dismiss, seen, and
+  resolve have explicit store tests.
+- [x] Stable `(source, key)` identity makes repeated raises idempotent.
+- [x] The automatic-updates and Docker update sources record alerts with no
+  session present; a later privileged login lists them with per-UID seen state.
+- [x] Alert persistence failure never changes the originating run outcome.
+- [x] The server-backed navbar replaces local toast-history persistence.
 
 ## Phase 7: Scheduled Scripts with Native Status and Logs
 
-Implemented [Scheduled Execution](../scheduled-execution.md). LinuxIO manages
+Implemented [Scheduled Execution](./scheduled-execution.md). LinuxIO manages
 scripts and declarative definitions; native systemd `.timer` and `.service`
 units own calendar activation, execution identity, overlap, process lifetime,
 timeout, and exit state. Journald owns stdout and stderr. Use the existing
@@ -528,30 +503,10 @@ process runs inside the bridge.
 
 ## Phase 8: Alert Sources, Routing, and Delivery
 
-Extend the source catalogue in [Notifications](./notifications.md) after the
-alert core is proven. Package and LinuxIO release checks need unattended
-producers with explicit result and freshness semantics. Health events and
-selected operation outcomes can raise alerts during interactive sessions too.
-Source recovery resolves the same stable alert; routine successful operations
-remain UI feedback or run history.
-
-Scheduled-run alerts depend on Phase 7. Other sources and external delivery
-depend on Phase 6 and can proceed independently of generic scheduled execution.
-Each source must name its owner for retries and reconciliation without a live
-bridge. Scheduled scripts use native evidence and triggers; any durable alert
-retry state belongs to this integration, not a new schedule run-history store.
-Routine update availability stays in-app unless users configure delivery.
-
-Delivery follows an event/matcher/target model:
-
-- events contain severity, source, type, timestamp, and allow-listed metadata;
-- matchers select by severity and metadata, with calendar rules only when
-  needed; and
-- targets initially cover email or webhook-style delivery, with secrets stored
-  separately and delivery attempts bounded and auditable.
-
-Frequency, grouping, and retry belong to delivery policy. They do not redefine
-whether the alert itself is active, seen, or dismissed.
+Later sources (storage checks, scheduled-task `OnFailure=`, unit failures,
+release checks) and external delivery are listed under "Not in this slice" in
+[Alerts](./notifications.md). Each new source is a root writer calling
+`alerts.Raise`/`alerts.Resolve` or a drop-in running `linuxio alert raise`.
 
 ## Phase 9: Converge and Extend from Evidence
 
@@ -611,9 +566,9 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 - `bridge_handler_patterns.md`: current handler style.
 - `durable-operations-architecture.md`: durable execution and recovery
   mechanics.
-- `notifications.md`: alert lifecycle, metadata storage, API, Channel, routing,
+- `notifications.md`: alert lifecycle, file store, API, polling,
   and frontend behavior.
-- `../scheduled-execution.md`: schedule, systemd unit, status, and journald
+- `scheduled-execution.md`: schedule, systemd unit, status, and journald
   ownership.
 - this roadmap: phase ordering and cross-cutting decisions.
 - `TODO/README.md`: one short entry linking this roadmap.

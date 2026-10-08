@@ -185,6 +185,7 @@ func scheduledUpdateError(ctx context.Context, inspect container.InspectResponse
 	if inspect.Config != nil {
 		status.ImageRef = inspect.Config.Image
 	}
+	raiseDockerUpdateAlert(ctx, inspect.Name, err)
 	if mergeErr := mergeUpdateStatuses(ctx, []imageUpdateStatus{status}); mergeErr != nil {
 		return errors.Join(err, mergeErr)
 	}

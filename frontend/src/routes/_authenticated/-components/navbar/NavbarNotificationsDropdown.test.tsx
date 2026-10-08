@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { Alert } from "@/api";
 
 const state = {
   transfers: [] as Array<{ id: string; progress: number; type: string }>,
@@ -26,10 +29,30 @@ vi.mock("@/hooks/backgroundTasks/useBackgroundTaskActions", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useToastHistory", () => ({
-  useClearToastHistory: () => vi.fn(),
-  useToastHistory: () => [],
-}));
+const useAlertsMock = vi.fn();
+vi.mock("./useAlerts", () => ({ useAlerts: () => useAlertsMock() }));
+
+const alertFixture = (over: Partial<Alert> = {}): Alert => ({
+  id: "auto-update/run",
+  source: "auto-update",
+  severity: "info",
+  title: "Automatic updates installed 3 packages",
+  message: "curl libssl3 openssl",
+  link: "/updates",
+  occurrenceCount: 1,
+  seen: false,
+  firstOccurrence: "2026-10-08T06:00:00Z",
+  lastOccurrence: "2026-10-08T06:00:00Z",
+  ...over,
+});
+
+const noAlerts = () => ({
+  alerts: [] as Alert[],
+  unseen: 0,
+  enabled: true,
+  markAllSeen: vi.fn(),
+  dismiss: vi.fn(),
+});
 
 vi.mock("@/theme", () => ({
   useAppTheme: () => ({
@@ -86,6 +109,7 @@ describe("NavbarNotificationsDropdown peek timer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     state.transfers = [];
+    useAlertsMock.mockReturnValue(noAlerts());
   });
 
   afterEach(() => {
@@ -116,5 +140,81 @@ describe("NavbarNotificationsDropdown peek timer", () => {
     const panel = screen.getByRole("dialog", { name: "Notifications" });
     expect(view.container).not.toContainElement(panel);
     expect(panel.closest(".app-popover-root")).toBeInTheDocument();
+  });
+});
+
+describe("NavbarNotificationsDropdown alerts", () => {
+  beforeEach(() => {
+    state.transfers = [];
+    useAlertsMock.mockReturnValue(noAlerts());
+  });
+
+  it("renders alerts and marks them seen when opened", async () => {
+    const markAllSeen = vi.fn();
+    useAlertsMock.mockReturnValue({
+      ...noAlerts(),
+      alerts: [alertFixture()],
+      unseen: 1,
+      markAllSeen,
+    });
+    render(<NavbarNotificationsDropdown />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Notifications" }),
+    );
+    expect(
+      await screen.findByText("Automatic updates installed 3 packages"),
+    ).toBeInTheDocument();
+    expect(markAllSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the unseen count on the trigger", () => {
+    useAlertsMock.mockReturnValue({
+      ...noAlerts(),
+      alerts: [
+        alertFixture(),
+        alertFixture({
+          id: "docker-update/x",
+          severity: "error",
+          title: "Docker update failed: x",
+        }),
+      ],
+      unseen: 2,
+    });
+    render(<NavbarNotificationsDropdown />);
+    expect(
+      screen.getByRole("button", { name: "Notifications" }),
+    ).toHaveTextContent("2");
+  });
+
+  it("dismisses an alert", async () => {
+    const dismiss = vi.fn();
+    useAlertsMock.mockReturnValue({
+      ...noAlerts(),
+      alerts: [alertFixture()],
+      dismiss,
+    });
+    render(<NavbarNotificationsDropdown />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Notifications" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Dismiss alert" }),
+    );
+    expect(dismiss).toHaveBeenCalledWith("auto-update/run");
+  });
+
+  it("does not call markAllSeen when nothing is unseen", async () => {
+    const markAllSeen = vi.fn();
+    useAlertsMock.mockReturnValue({
+      ...noAlerts(),
+      alerts: [alertFixture({ seen: true })],
+      markAllSeen,
+    });
+    render(<NavbarNotificationsDropdown />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Notifications" }),
+    );
+    await screen.findByText("Automatic updates installed 3 packages");
+    expect(markAllSeen).not.toHaveBeenCalled();
   });
 });

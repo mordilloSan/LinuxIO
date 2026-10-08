@@ -1,181 +1,21 @@
-import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const sonnerMocks = vi.hoisted(() => ({
-  dismiss: vi.fn(),
-  getHistory: vi.fn(),
-  toasts: [] as Array<{
-    description?: string;
-    id: string | number;
-    meta?: { label?: string; params?: { _splat: string }; to: string };
-    title?: ReactNode;
-    type?: string;
-  }>,
-}));
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("sonner", () => ({
   Toaster: () => <div data-testid="toaster" />,
-  toast: {
-    dismiss: sonnerMocks.dismiss,
-    getHistory: sonnerMocks.getHistory,
-  },
-  useSonner: () => ({
-    toasts: sonnerMocks.toasts,
-  }),
 }));
 
-const { __resetToastHistoryStore } = await import("@/contexts/ToastContext");
 const { ToastProvider } = await import("@/contexts/ToastProvider");
-const { useClearToastHistory, useToastHistory } =
-  await import("@/hooks/useToastHistory");
-const { act, render, screen } = await import("@/test/render");
-
-function Probe({ limit = 5 }: { limit?: number }) {
-  const history = useToastHistory(limit);
-  const clearHistory = useClearToastHistory();
-  return (
-    <div>
-      <div data-testid="history">
-        {history
-          .map((item) =>
-            [
-              item.title,
-              item.description ?? "",
-              item.type ?? "",
-              item.meta?.to ?? "",
-            ].join(":"),
-          )
-          .join("|")}
-      </div>
-      <button onClick={clearHistory}>clear</button>
-    </div>
-  );
-}
-
-function renderProvider(limit?: number) {
-  return render(
-    <ToastProvider>
-      <Probe limit={limit} />
-    </ToastProvider>,
-  );
-}
+const { render, screen } = await import("@/test/render");
 
 describe("ToastProvider", () => {
-  beforeEach(() => {
-    __resetToastHistoryStore();
-    sonnerMocks.toasts = [];
-    sonnerMocks.getHistory.mockReturnValue([]);
-  });
-
-  it("records active sonner toasts into history and persists after the debounce", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-    sonnerMocks.toasts = [
-      {
-        description: "Compose stack is up",
-        id: 1,
-        meta: { label: "Open Docker", to: "/docker" },
-        title: "Started",
-        type: "success",
-      },
-    ];
-
-    renderProvider();
-
-    expect(screen.getByTestId("history")).toHaveTextContent(
-      "Started:Compose stack is up:success:/docker",
-    );
-    // Persist is debounced: nothing hits localStorage until the timer fires.
-    expect(localStorage.getItem("linuxio.toastHistory")).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(1_000);
-    });
-
-    expect(localStorage.getItem("linuxio.toastHistory")).toContain("Started");
-  });
-
-  it("loads stored history and applies hook limits", () => {
-    localStorage.setItem(
-      "linuxio.toastHistory",
-      JSON.stringify([
-        {
-          createdAt: 20,
-          id: "stored-2",
-          title: "newer",
-          type: "info",
-        },
-        {
-          createdAt: 10,
-          id: "stored-1",
-          title: "older",
-          type: "warning",
-        },
-      ]),
-    );
-
-    renderProvider(1);
-
-    expect(screen.getByTestId("history")).toHaveTextContent("newer::info:");
-    expect(screen.getByTestId("history")).not.toHaveTextContent("older");
-  });
-
-  it("sanitizes stored history and ignores malformed entries", () => {
-    localStorage.setItem(
-      "linuxio.toastHistory",
-      JSON.stringify([
-        {
-          createdAt: 1,
-          id: "bad-title",
-          title: { not: "text" },
-        },
-        {
-          createdAt: "2",
-          description: 123,
-          id: 7,
-          meta: "invalid",
-          title: 42,
-          type: "invalid",
-        },
-        {
-          createdAt: 3,
-          id: { invalid: true },
-          title: "discarded",
-        },
-      ]),
-    );
-
-    renderProvider();
-
-    expect(screen.getByTestId("history")).toHaveTextContent("Notification");
-    expect(screen.getByTestId("history")).toHaveTextContent("42:::");
-    expect(screen.getByTestId("history")).not.toHaveTextContent("discarded");
-  });
-
-  it("clears persisted history, dismisses active toasts, and ignores current active toast ids", async () => {
-    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-    const activeToast = {
-      id: "toast-1",
-      title: "Still visible",
-      type: "info",
-    };
-    sonnerMocks.toasts = [activeToast];
-    sonnerMocks.getHistory.mockReturnValue([activeToast]);
-    const { rerender } = renderProvider();
-
-    expect(screen.getByTestId("history")).toHaveTextContent("Still visible");
-
-    await act(async () => {
-      screen.getByRole("button", { name: "clear" }).click();
-    });
-    rerender(
+  it("renders its children next to the toaster", () => {
+    render(
       <ToastProvider>
-        <Probe />
+        <p>child</p>
       </ToastProvider>,
     );
 
-    expect(sonnerMocks.dismiss).toHaveBeenCalledTimes(1);
-    expect(localStorage.getItem("linuxio.toastHistory")).toBe("[]");
-    expect(screen.getByTestId("history")).toHaveTextContent("");
+    expect(screen.getByText("child")).toBeInTheDocument();
+    expect(screen.getByTestId("toaster")).toBeInTheDocument();
   });
 });

@@ -109,8 +109,34 @@ export interface ActionSourceDestinationRequest {
   dst: string;
 }
 
+export interface Alert {
+  firstOccurrence: string;
+  id: string;
+  lastOccurrence: string;
+  link?: string;
+  message?: string;
+  occurrenceCount: number;
+  seen: boolean;
+  severity: string;
+  source: string;
+  title: string;
+}
+
+export interface AlertDismissRequest {
+  id: string;
+}
+
 export interface AlertIDRequest {
   alertId: string;
+}
+
+export interface AlertIDsRequest {
+  ids: string[];
+}
+
+export interface AlertList {
+  alerts: Alert[];
+  unseen: number;
 }
 
 export interface ApiDisk {
@@ -158,11 +184,14 @@ export type AutoUpdateBackend =
 
 export type AutoUpdateFrequency = "hourly" | "daily" | "weekly";
 
+export type AutoUpdateNotify = "never" | "on_failure" | "on_change" | "always";
+
 export interface AutoUpdateOptionSupport {
   download_only: boolean;
   exclude_packages: boolean;
   extra_origins: boolean;
   frequencies: AutoUpdateFrequency[];
+  notify_policies: AutoUpdateNotify[];
   reboot_policies: AutoUpdateRebootPolicy[];
   scopes: AutoUpdateScope[];
 }
@@ -173,6 +202,7 @@ export interface AutoUpdateOptions {
   exclude_packages: string[];
   extra_origins: string[];
   frequency: AutoUpdateFrequency;
+  notify: AutoUpdateNotify;
   reboot_policy: AutoUpdateRebootPolicy;
   scope: AutoUpdateScope;
 }
@@ -3038,6 +3068,21 @@ export interface LinuxIOSchema {
     };
   };
 
+  alerts: {
+    dismiss: {
+      input: [id: string];
+      request: AlertDismissRequest;
+      result: AlertList;
+    };
+    list: { input: []; request: void; result: AlertList };
+    mark_all_seen: { input: []; request: void; result: AlertList };
+    mark_seen: {
+      input: [ids: string[]];
+      request: AlertIDsRequest;
+      result: AlertList;
+    };
+  };
+
   config: {
     get: { input: []; request: void; result: AppConfig };
     get_ui: { input: []; request: void; result: UIConfig };
@@ -4065,6 +4110,10 @@ export interface LinuxIOCallSchema {
     result: void;
   };
   "accounts.unlock_user": { request: UsernameRequest; result: void };
+  "alerts.dismiss": { request: AlertDismissRequest; result: AlertList };
+  "alerts.list": { request: void; result: AlertList };
+  "alerts.mark_all_seen": { request: void; result: AlertList };
+  "alerts.mark_seen": { request: AlertIDsRequest; result: AlertList };
   "config.get": { request: void; result: AppConfig };
   "config.get_ui": { request: void; result: UIConfig };
   "config.set": { request: ConfigSetPayload; result: ConfigSetResult };

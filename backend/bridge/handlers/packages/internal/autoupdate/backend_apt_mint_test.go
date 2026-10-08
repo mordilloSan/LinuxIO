@@ -181,10 +181,20 @@ func TestAptApplyUsesOwnedFilesAndKeepsDailyTimerEnabled(t *testing.T) {
 	backend := &aptBackend{host: host, flavor: aptUbuntu}
 	err := backend.Apply(context.Background(), AutoUpdateOptions{
 		Enabled: true, ExcludePackages: []string{"linux-*"}, Frequency: "weekly",
-		RebootPolicy: "if_needed", Scope: "all",
+		RebootPolicy: "if_needed", Scope: "all", Notify: AutoUpdateNotifyOnFailure,
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
+	}
+	if got := string(fake.files["/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf"]); !strings.Contains(got, "--provider apt --policy on_failure") {
+		t.Fatalf("APT notify drop-in = %q", got)
+	}
+	state, err := backend.Read(context.Background())
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 4 {
+		t.Fatalf("APT notify state = %q, support %v", state.Options.Notify, state.Support.NotifyPolicies)
 	}
 	if _, ok := fake.files[aptPeriodicPath]; !ok {
 		t.Fatalf("%s was not written", aptPeriodicPath)
@@ -397,10 +407,20 @@ func TestMintApplyPreservesNativeConfigurationAndEnablesLast(t *testing.T) {
 	backend := &mintBackend{host: host}
 	err := backend.Apply(context.Background(), AutoUpdateOptions{
 		Enabled: true, ExcludePackages: []string{"linux-*", "docker.io"}, Frequency: "hourly",
-		RebootPolicy: "never", Scope: "security",
+		RebootPolicy: "never", Scope: "security", Notify: AutoUpdateNotifyOnFailure,
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
+	}
+	if got := string(fake.files["/etc/systemd/system/mintupdate-automation-upgrade.service.d/linuxio-alert.conf"]); !strings.Contains(got, "--provider mint --policy on_failure") {
+		t.Fatalf("Mint notify drop-in = %q", got)
+	}
+	state, err := backend.Read(context.Background())
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 4 {
+		t.Fatalf("Mint notify state = %q, support %v", state.Options.Notify, state.Support.NotifyPolicies)
 	}
 	options := string(fake.files[mintOptionsPath])
 	for _, want := range []string{"# native option", "--keep-configuration", "--only-security"} {

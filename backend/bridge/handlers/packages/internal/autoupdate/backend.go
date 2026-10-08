@@ -17,12 +17,20 @@ import (
 type (
 	AutoUpdateBackend       = apischema.AutoUpdateBackend
 	AutoUpdateFrequency     = apischema.AutoUpdateFrequency
+	AutoUpdateNotify        = apischema.AutoUpdateNotify
 	AutoUpdateOptions       = apischema.AutoUpdateOptions
 	AutoUpdateOptionSupport = apischema.AutoUpdateOptionSupport
 	AutoUpdateOrigin        = apischema.AutoUpdateOrigin
 	AutoUpdateRebootPolicy  = apischema.AutoUpdateRebootPolicy
 	AutoUpdateScope         = apischema.AutoUpdateScope
 	AutoUpdateState         = apischema.AutoUpdateState
+)
+
+const (
+	AutoUpdateNotifyNever     = apischema.AutoUpdateNotify("never")
+	AutoUpdateNotifyOnFailure = apischema.AutoUpdateNotify("on_failure")
+	AutoUpdateNotifyOnChange  = apischema.AutoUpdateNotify("on_change")
+	AutoUpdateNotifyAlways    = apischema.AutoUpdateNotify("always")
 )
 
 const (
@@ -135,6 +143,9 @@ func validateOptions(options AutoUpdateOptions, support AutoUpdateOptionSupport)
 	}
 	if !slices.Contains(support.RebootPolicies, options.RebootPolicy) {
 		return fmt.Errorf("reboot policy %q is not supported by this update backend", options.RebootPolicy)
+	}
+	if options.Notify != "" && options.Notify != AutoUpdateNotifyNever && !slices.Contains(support.NotifyPolicies, options.Notify) {
+		return fmt.Errorf("notify policy %q is not supported by this update backend", options.Notify)
 	}
 	if options.DownloadOnly && !support.DownloadOnly {
 		return fmt.Errorf("download-only mode is not supported by this update backend")

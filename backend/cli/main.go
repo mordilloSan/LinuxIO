@@ -59,6 +59,8 @@ func runCLI(args []string) int {
 		return runRestart(ctx, cmdArgs)
 	case "verbose":
 		return runVerbose(ctx, cmdArgs)
+	case "alert":
+		return runAlert(ctx, cmdArgs)
 	case "version":
 		showVersion(cmdArgs)
 		return 0
@@ -84,6 +86,7 @@ Commands:
   stop        Stop LinuxIO services
   restart     Restart LinuxIO control plane [--full]
   verbose     Manage verbose logging [enable|disable|status]
+  alert raise|resolve|auto-update   Record or clear an alert (used by systemd hooks; needs sudo)
   version     Show version information [--self]
   help        Show this help message
 
