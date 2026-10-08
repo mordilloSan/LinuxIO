@@ -61,10 +61,14 @@ func CreateVMWithProgress(ctx context.Context, req apischema.VMCreateRequest, re
 
 	var created apischema.VirtualMachine
 	reportVMCreateProgress(report, "connecting", "Connecting to libvirt", "", nil)
-	connErr := withLibvirtConn(ctx, func(conn libvirtConn) error {
-		var createErr error
-		created, createErr = createVMWithConn(ctx, conn, req, preflight.Firmware, report)
-		return createErr
+	// The name lock keeps unused-disk cleanup away from a disk this create has
+	// written but not yet attached to a defined VM.
+	connErr := withVMNameLock(ctx, req.Name, func() error {
+		return withLibvirtConn(ctx, func(conn libvirtConn) error {
+			var createErr error
+			created, createErr = createVMWithConn(ctx, conn, req, preflight.Firmware, report)
+			return createErr
+		})
 	})
 	return created, connErr
 }

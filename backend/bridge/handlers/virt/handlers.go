@@ -16,6 +16,8 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.VMTemplateRequest, apischema.NoResponse]("virt.template_delete", apischema.Privileged()).HandleVoid(handleTemplateDelete),
 		apischema.TaskRunner[apischema.VMTemplateDownloadRequest, apischema.VMTemplate]("virt.template_download", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleTemplateDownload, bridgeipc.TaskDefault),
 		apischema.Call[apischema.NoRequest, []apischema.VMNetwork]("virt.networks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleNetworks),
+		apischema.Call[apischema.NoRequest, []apischema.VMUnusedDisk]("virt.unused_disks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleUnusedDisks),
+		apischema.Call[apischema.PathRequest, apischema.NoResponse]("virt.unused_disk_delete", apischema.Privileged()).HandleVoid(handleUnusedDiskDelete),
 		apischema.Call[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.RetrySafe(), apischema.Privileged()).Handle(handleList),
 		apischema.Call[apischema.NameRequest, apischema.VirtualMachine]("virt.get", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGet),
 		apischema.Call[apischema.VMPreflightRequest, apischema.VMPreflight]("virt.preflight", apischema.RetrySafe(), apischema.Privileged()).Handle(handlePreflight),
@@ -68,6 +70,14 @@ func handleList(ctx context.Context, _ apischema.NoRequest) ([]apischema.Virtual
 
 func handleNetworks(ctx context.Context, _ apischema.NoRequest) ([]apischema.VMNetwork, error) {
 	return ListVMNetworks(ctx)
+}
+
+func handleUnusedDisks(ctx context.Context, _ apischema.NoRequest) ([]apischema.VMUnusedDisk, error) {
+	return ListUnusedDisks(ctx)
+}
+
+func handleUnusedDiskDelete(ctx context.Context, req apischema.PathRequest) error {
+	return DeleteUnusedDisk(ctx, req.Path)
 }
 
 func handleGet(ctx context.Context, req apischema.NameRequest) (apischema.VirtualMachine, error) {

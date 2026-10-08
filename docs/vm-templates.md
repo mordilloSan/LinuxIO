@@ -15,6 +15,12 @@ Templates contain no VM login credentials or cloud-init seed data.
 Deleting a VM with **Delete LinuxIO-managed disks** selected removes its owned
 disk and cloud-init seed even when libvirt does not list them as storage volumes.
 Saved templates and external disks are preserved.
+Disks kept by a delete without that option appear on the **Disks** tab
+(`virt.unused_disks`): LinuxIO-named disks and seeds in the default pool and
+`linuxio/cloud-images` that no defined VM references by file name and whose VM
+name no longer exists. `virt.unused_disk_delete` re-checks that under a per-VM
+name file lock that `virt.create` also holds, so a disk a create is still
+writing is never removed.
 
 **Download update** explicitly checks the publisher and saves a new version
 when needed. Home Assistant OS records the release tag and uses versioned

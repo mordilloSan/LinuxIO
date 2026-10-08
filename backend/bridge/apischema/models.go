@@ -1505,6 +1505,16 @@ type VMTemplateLibrary struct {
 	Templates []VMTemplate `json:"templates"`
 }
 
+// VMUnusedDisk is a LinuxIO-created VM disk or cloud-init seed that no
+// defined VM references, such as one kept when its VM was deleted.
+type VMUnusedDisk struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	VMName     string `json:"vmName"`
+	SizeBytes  int64  `json:"sizeBytes"`
+	ModifiedAt string `json:"modifiedAt"`
+}
+
 func (p VMCreateProgress) ProgressEnvelope() TaskProgress {
 	return TaskProgress{
 		Percentage: p.Percent,

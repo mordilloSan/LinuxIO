@@ -1686,7 +1686,12 @@ func withFakeLibvirt(t *testing.T, fake libvirtConn) {
 	withLibvirtConn = func(ctx context.Context, fn func(libvirtConn) error) error {
 		return fn(fake)
 	}
-	t.Cleanup(func() { withLibvirtConn = old })
+	oldLockDir := vmLockDir
+	vmLockDir = t.TempDir()
+	t.Cleanup(func() {
+		withLibvirtConn = old
+		vmLockDir = oldLockDir
+	})
 }
 
 func withReadyPreflight(t *testing.T) {

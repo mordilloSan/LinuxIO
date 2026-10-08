@@ -2840,6 +2840,14 @@ export interface VMTemplateRequest {
   templateId: string;
 }
 
+export interface VMUnusedDisk {
+  name: string;
+  path: string;
+  vmName: string;
+  sizeBytes: number;
+  modifiedAt: string;
+}
+
 export interface ValidateComposeError {
   line?: number;
   column?: number;
@@ -3954,6 +3962,12 @@ export interface LinuxIOSchema {
       progress: TaskProgress<VMCreateProgress>;
     };
     templates: { input: []; request: void; result: VMTemplateLibrary };
+    unused_disk_delete: {
+      input: [path: string];
+      request: PathRequest;
+      result: void;
+    };
+    unused_disks: { input: []; request: void; result: VMUnusedDisk[] };
   };
 
   wireguard: {
@@ -4480,6 +4494,8 @@ export interface LinuxIOCallSchema {
   "virt.suspend": { request: NameRequest; result: void };
   "virt.template_delete": { request: VMTemplateRequest; result: void };
   "virt.templates": { request: void; result: VMTemplateLibrary };
+  "virt.unused_disk_delete": { request: PathRequest; result: void };
+  "virt.unused_disks": { request: void; result: VMUnusedDisk[] };
   "wireguard.add_interface": {
     request: WireGuardAddInterfaceRequest;
     result: void;

@@ -109,6 +109,7 @@ describe("generated application router", () => {
         "/updates/history",
         "/vm",
         "/vm/",
+        "/vm/disks",
         "/vm/images",
         "/vm/machines",
         "/vm/machines/",
