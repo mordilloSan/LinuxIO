@@ -35,6 +35,9 @@ const GroupsPage = lazy(() => import("./routes/GroupsPage"));
 const AccessibilityPage = lazy(() => import("./routes/AccessibilityPage"));
 const IconsPage = lazy(() => import("./routes/IconsPage"));
 const CodeEditorPage = lazy(() => import("./routes/CodeEditorPage"));
+const AssistantFixturePage = lazy(
+  () => import("./routes/AssistantFixturePage"),
+);
 const ContainerActionsPage = lazy(
   () => import("./routes/ContainerActionsPage"),
 );
@@ -166,6 +169,11 @@ const containerActionsRoute = createRoute({
   component: ContainerActionsPage,
   getParentRoute: () => rootRoute,
   path: "docker/container-actions",
+});
+const assistantRoute = createRoute({
+  component: AssistantFixturePage,
+  getParentRoute: () => rootRoute,
+  path: "assistant",
 });
 const fileBrowserReadPathsRoute = createRoute({
   component: FileBrowserReadPathsPage,
@@ -341,6 +349,7 @@ const routeTree = rootRoute.addChildren([
   accessibilityRoute,
   iconsRoute,
   codeEditorRoute,
+  assistantRoute,
   containerActionsRoute,
   fileBrowserReadPathsRoute,
   fileEditorHistoryRoute,

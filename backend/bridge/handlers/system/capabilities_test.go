@@ -37,8 +37,11 @@ func TestCapabilityRegistryCoversWireFields(t *testing.T) {
 		if registryNames[spec.Name] {
 			t.Fatalf("duplicate registry entry %q", spec.Name)
 		}
-		if spec.Detect == nil {
-			t.Errorf("capability %q has nil Detect", spec.Name)
+		if spec.Detect == nil && spec.DetectAsUser == nil {
+			t.Errorf("capability %q has neither Detect nor DetectAsUser", spec.Name)
+		}
+		if spec.Detect != nil && spec.DetectAsUser != nil {
+			t.Errorf("capability %q sets both Detect and DetectAsUser", spec.Name)
 		}
 		registryNames[spec.Name] = true
 	}
@@ -72,7 +75,7 @@ func TestBuildCapabilitiesResponseStopsBeforeDetectionWhenCanceled(t *testing.T)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := buildCapabilitiesResponse(ctx); !errors.Is(err, context.Canceled) {
+	if _, err := buildCapabilitiesResponse(ctx, session.User{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("buildCapabilitiesResponse error = %v, want context.Canceled", err)
 	}
 	if detected {
@@ -128,7 +131,7 @@ func TestBuildCapabilitiesResponseDetectsCapabilitiesConcurrently(t *testing.T) 
 	}
 	result := make(chan responseResult, 1)
 	go func() {
-		response, err := buildCapabilitiesResponse(context.Background())
+		response, err := buildCapabilitiesResponse(context.Background(), session.User{})
 		result <- responseResult{response: response, err: err}
 	}()
 
@@ -380,6 +383,52 @@ func TestRsyncCapabilityDetection(t *testing.T) {
 	}
 	if available, message := spec.Detect(context.Background()); !available || message != "" {
 		t.Fatalf("installed rsync: available=%v, message=%q", available, message)
+	}
+}
+
+func TestNodeCapabilityProbesTheSessionUsersLoginShell(t *testing.T) {
+	spec, ok := CapabilitySpecByName("node")
+	if !ok {
+		t.Fatal("node capability is not registered")
+	}
+	if spec.Install != nil {
+		t.Fatal("node must not be installable from the UI in v1")
+	}
+	if spec.Detect != nil || spec.DetectAsUser == nil {
+		t.Fatal("node must detect through the session user's login shell, not the bridge PATH")
+	}
+	// A user that does not exist has no login shell to probe; the message must
+	// say why rather than silently reporting "available".
+	available, message := spec.DetectAsUser(context.Background(), session.User{Username: "linuxio-no-such-user"})
+	if available || message == "" {
+		t.Fatalf("unknown user: available=%v, message=%q", available, message)
+	}
+}
+
+func TestBuildCapabilitiesResponsePassesTheSessionUserToDetectAsUser(t *testing.T) {
+	originalRegistry := capabilityRegistry
+	var seen session.User
+	capabilityRegistry = []CapabilitySpec{{
+		Name: "node",
+		DetectAsUser: func(_ context.Context, u session.User) (bool, string) {
+			seen = u
+			return true, ""
+		},
+	}}
+	t.Cleanup(func() {
+		capabilityRegistry = originalRegistry
+	})
+
+	want := session.User{Username: "alice", UID: 1000, GID: 1000}
+	response, err := buildCapabilitiesResponse(context.Background(), want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen != want {
+		t.Fatalf("DetectAsUser saw %+v, want %+v", seen, want)
+	}
+	if !response.NodeAvailable {
+		t.Fatal("node must be reported available when DetectAsUser says so")
 	}
 }
 

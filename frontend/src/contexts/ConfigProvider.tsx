@@ -75,6 +75,7 @@ function bridgePatch(patch: ConfigPatch): ConfigPatch {
   const result: ConfigPatch = {};
   const appSettings = pickImportantAppSettings(patch.appSettings ?? {});
   if (Object.keys(appSettings).length > 0) result.appSettings = appSettings;
+  if (patch.assistant !== undefined) result.assistant = patch.assistant;
   if (patch.docker !== undefined) result.docker = patch.docker;
   if (patch.jobs !== undefined) result.jobs = patch.jobs;
   if (patch.dismissals !== undefined) result.dismissals = patch.dismissals;
@@ -122,6 +123,9 @@ function buildUIPayload(ui: UIConfig): ConfigUISetPayload {
 
 function mergeBridgeConfig(previous: AppConfig, patch: ConfigPatch): AppConfig {
   return {
+    assistant: patch.assistant
+      ? { ...previous.assistant, ...patch.assistant }
+      : previous.assistant,
     appSettings: {
       ...previous.appSettings,
       ...pickImportantAppSettings(patch.appSettings ?? {}),
@@ -349,6 +353,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
       if (
         hasValues(pickImportantAppSettings(patch.appSettings ?? {})) ||
+        patch.assistant !== undefined ||
         patch.docker !== undefined ||
         patch.jobs !== undefined ||
         patch.dismissals !== undefined

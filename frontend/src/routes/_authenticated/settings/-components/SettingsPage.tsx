@@ -10,6 +10,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAccessContext } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
+import AssistantSettingsSection from "@/routes/_authenticated/-components/navbar/AssistantSettingsSection";
 import CapabilityManagerSection from "@/routes/_authenticated/-components/navbar/CapabilityManagerSection";
 import DockerSettingsSection from "@/routes/_authenticated/-components/navbar/DockerSettingsSection";
 import IndexerSettingsSection from "@/routes/_authenticated/-components/navbar/IndexerSettingsSection";
@@ -53,7 +54,8 @@ const NAVIGATION_MODE_OPTIONS: readonly {
 
 const SettingsPage = () => {
   const isDesktop = useAppMediaQuery(up("md"));
-  const { privileged, dockerAvailable, tunedAvailable } = useAccessContext();
+  const { privileged, dockerAvailable, nodeAvailable, tunedAvailable } =
+    useAccessContext();
   const [themeMode, setThemeMode] = useConfigValue("theme");
   const [navigationMode, setNavigationMode] = useConfigValue("navigationMode");
   const [dockTileColors, setDockTileColors] = useConfigValue("dockTileColors");
@@ -75,6 +77,7 @@ const SettingsPage = () => {
     ({ value }) =>
       (privileged || !PRIVILEGED_SETTINGS_TABS.includes(value)) &&
       (value !== "docker" || dockerAvailable === true) &&
+      (value !== "assistant" || nodeAvailable === true) &&
       (value !== "power" || tunedAvailable === true),
   );
   // Direct links follow the same permissions and capabilities as the tab strip.
@@ -301,6 +304,7 @@ const SettingsPage = () => {
               <CapabilityManagerSection />
             ) : null}
             {effectiveTab === "docker" ? <DockerSettingsSection /> : null}
+            {effectiveTab === "assistant" ? <AssistantSettingsSection /> : null}
             {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
             {effectiveTab === "monitoring" ? (
               <MonitoringSettingsSection />

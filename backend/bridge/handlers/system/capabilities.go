@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
@@ -28,7 +30,11 @@ type CapabilitySpec struct {
 	Name    string // wire prefix, e.g. "avahi"
 	LogName string // human-friendly name for logs, e.g. "Avahi mDNS"
 	Detect  func(ctx context.Context) (bool, string)
-	Install *InstallSpec // nil = "not installable from the UI"
+	// DetectAsUser replaces Detect for capabilities that depend on the session
+	// user's own environment (a per-user Node install, for example). Exactly
+	// one of Detect and DetectAsUser is set.
+	DetectAsUser func(ctx context.Context, user session.User) (bool, string)
+	Install      *InstallSpec // nil = "not installable from the UI"
 }
 
 // InstallSpec describes what `system.install_capability` should do for one
@@ -184,6 +190,19 @@ var capabilityRegistry = []CapabilitySpec{
 			return checkedCapability(checkDependencyCommand("rsync", "rsync"))
 		},
 		Install: &InstallSpec{PackageDebian: "rsync", PackageRHEL: "rsync"},
+	},
+	{
+		Name:    "node",
+		LogName: "Node.js (npx)",
+		// The agent is spawned through the user's login shell, so detection
+		// asks that same shell: nvm-style installs live under the home
+		// directory and never appear on the bridge's PATH.
+		DetectAsUser: func(ctx context.Context, u session.User) (bool, string) {
+			if err := assistant.ProbeLoginShell(ctx, u, "npx"); err != nil {
+				return false, err.Error()
+			}
+			return true, ""
+		},
 	},
 	{
 		Name:    "tuned",
@@ -346,6 +365,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.SambaClientAvailable, out.SambaClientError = ok, errPtr
 	case "rsync":
 		out.RsyncAvailable, out.RsyncError = ok, errPtr
+	case "node":
+		out.NodeAvailable, out.NodeError = ok, errPtr
 	case "tuned":
 		out.TunedAvailable, out.TunedError = ok, errPtr
 	case "avahi":
@@ -359,7 +380,7 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 	}
 }
 
-func buildCapabilitiesResponse(ctx context.Context) (apischema.CapabilitiesResponse, error) {
+func buildCapabilitiesResponse(ctx context.Context, user session.User) (apischema.CapabilitiesResponse, error) {
 	slog.Info("Checking system capabilities.")
 
 	if err := ctx.Err(); err != nil {
@@ -377,7 +398,11 @@ func buildCapabilitiesResponse(ctx context.Context) (apischema.CapabilitiesRespo
 	for index, spec := range capabilityRegistry {
 		wg.Go(func() {
 			started := time.Now()
-			results[index].ok, results[index].errMsg = spec.Detect(ctx)
+			if spec.DetectAsUser != nil {
+				results[index].ok, results[index].errMsg = spec.DetectAsUser(ctx, user)
+			} else {
+				results[index].ok, results[index].errMsg = spec.Detect(ctx)
+			}
 			results[index].duration = time.Since(started)
 		})
 	}

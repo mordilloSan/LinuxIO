@@ -60,6 +60,7 @@ export { isConnected, getStatus } from "./linuxio";
 // === Stream Openers ===
 export {
   openChannel,
+  openTerminalLoginStream,
   openTerminalStream,
   openContainerStream,
   openAppUpdateStream,
@@ -105,6 +106,9 @@ export type * from "./StreamMultiplexer";
 
 // === Domain/API Types ===
 export type * from "./generated/linuxio-types";
+
+// === Assistant (Agent Client Protocol) ===
+export type { AssistantAgentId } from "./acp/agents";
 
 // === Capabilities (manifest, types, helpers) ===
 export type {

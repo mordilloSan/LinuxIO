@@ -1,8 +1,4 @@
-import {
-  StreamLanguage,
-  syntaxHighlighting,
-  type StreamParser,
-} from "@codemirror/language";
+import { syntaxHighlighting } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import { classHighlighter } from "@lezer/highlight";
 import CodeMirror, { type Extension } from "@uiw/react-codemirror";
@@ -15,6 +11,8 @@ import {
 } from "react";
 
 import "./file-editor.css";
+import { languageLoaders } from "./languageLoaders";
+import type { LanguageName } from "./languageNames";
 
 interface FileEditorProps {
   // Used as the editor container's DOM id, so it must be unique when two
@@ -43,32 +41,6 @@ export interface FileEditorHandle {
   reset: (content: string, version?: string) => void;
   save: () => Promise<boolean>;
 }
-
-type LanguageName =
-  | "c"
-  | "cpp"
-  | "css"
-  | "diff"
-  | "dockerfile"
-  | "go"
-  | "html"
-  | "ini"
-  | "java"
-  | "javascript"
-  | "json"
-  | "lua"
-  | "perl"
-  | "python"
-  | "ruby"
-  | "rust"
-  | "scss"
-  | "shell"
-  | "sql"
-  | "text"
-  | "toml"
-  | "typescript"
-  | "xml"
-  | "yaml";
 
 const languageByExtension: Record<string, LanguageName> = {
   bash: "shell",
@@ -134,81 +106,6 @@ export const getEditorLanguageName = (fileName: string): LanguageName => {
   const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
   return languageByExtension[extension] ?? "text";
 };
-
-function legacy<M>(
-  load: () => Promise<M>,
-  pick: (mod: M) => StreamParser<unknown>,
-) {
-  return () => load().then((mod) => StreamLanguage.define(pick(mod)));
-}
-
-const clike = () => import("@codemirror/legacy-modes/mode/clike");
-const cssModes = () => import("@codemirror/legacy-modes/mode/css");
-const jsModes = () => import("@codemirror/legacy-modes/mode/javascript");
-const xmlModes = () => import("@codemirror/legacy-modes/mode/xml");
-
-const languageLoaders: Partial<Record<LanguageName, () => Promise<Extension>>> =
-  {
-    c: legacy(clike, (m) => m.c),
-    cpp: legacy(clike, (m) => m.cpp),
-    css: legacy(cssModes, (m) => m.css),
-    diff: legacy(
-      () => import("@codemirror/legacy-modes/mode/diff"),
-      (m) => m.diff,
-    ),
-    dockerfile: legacy(
-      () => import("@codemirror/legacy-modes/mode/dockerfile"),
-      (m) => m.dockerFile,
-    ),
-    go: legacy(
-      () => import("@codemirror/legacy-modes/mode/go"),
-      (m) => m.go,
-    ),
-    html: legacy(xmlModes, (m) => m.html),
-    ini: legacy(
-      () => import("@codemirror/legacy-modes/mode/properties"),
-      (m) => m.properties,
-    ),
-    java: legacy(clike, (m) => m.java),
-    javascript: legacy(jsModes, (m) => m.javascript),
-    json: () => import("@codemirror/lang-json").then(({ json }) => json()),
-    lua: legacy(
-      () => import("@codemirror/legacy-modes/mode/lua"),
-      (m) => m.lua,
-    ),
-    perl: legacy(
-      () => import("@codemirror/legacy-modes/mode/perl"),
-      (m) => m.perl,
-    ),
-    python: legacy(
-      () => import("@codemirror/legacy-modes/mode/python"),
-      (m) => m.python,
-    ),
-    ruby: legacy(
-      () => import("@codemirror/legacy-modes/mode/ruby"),
-      (m) => m.ruby,
-    ),
-    rust: legacy(
-      () => import("@codemirror/legacy-modes/mode/rust"),
-      (m) => m.rust,
-    ),
-    scss: legacy(cssModes, (m) => m.sCSS),
-    shell: legacy(
-      () => import("@codemirror/legacy-modes/mode/shell"),
-      (m) => m.shell,
-    ),
-    sql: legacy(
-      () => import("@codemirror/legacy-modes/mode/sql"),
-      (m) => m.standardSQL,
-    ),
-    toml: legacy(
-      () => import("@codemirror/legacy-modes/mode/toml"),
-      (m) => m.toml,
-    ),
-    typescript: legacy(jsModes, (m) => m.typescript),
-    xml: legacy(xmlModes, (m) => m.xml),
-    yaml: () => import("@codemirror/lang-yaml").then(({ yaml }) => yaml()),
-  };
 
 // Selection colour must beat CodeMirror's base theme. A theme extension is
 // guaranteed to; a stylesheet rule only wins on selector specificity.

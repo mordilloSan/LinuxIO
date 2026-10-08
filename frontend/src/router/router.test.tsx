@@ -72,6 +72,7 @@ describe("generated application router", () => {
         "/accounts",
         "/accounts/",
         "/accounts/groups",
+        "/assistant",
         "/docker",
         "/docker/",
         "/docker/compose",
@@ -173,6 +174,7 @@ describe("generated application router", () => {
       "Processes",
       "Navigator",
       "Terminal",
+      "Assistant",
       "Settings",
     ]);
   });

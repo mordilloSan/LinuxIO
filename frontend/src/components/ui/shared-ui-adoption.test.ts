@@ -42,6 +42,20 @@ const nativeControlExceptions: ReviewedException[] = [
     protects: "browser file and directory picker behavior",
   },
   {
+    file: "routes/_authenticated/assistant/-components/ModelMenu.tsx",
+    tag: "input",
+    attribute: 'className="assistant__effort-range"',
+    reason: "native stepped range for the agent's effort levels",
+    protects: "dragging, keyboard and touch on the effort slider",
+  },
+  {
+    file: "routes/_authenticated/assistant/-components/Composer.tsx",
+    tag: "input",
+    attribute: 'type="file"',
+    reason: "hidden native image input opened from the attach menu",
+    protects: "browser image picker feeding the same path as paste",
+  },
+  {
     file: "components/filebrowser/FileListRow.tsx",
     tag: "input",
     attribute: 'className="file-row-rename-input"',

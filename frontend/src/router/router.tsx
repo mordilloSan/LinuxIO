@@ -1,6 +1,7 @@
 import { createRouter } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 
+import type { AssistantAgentId } from "@/api/acp/agents";
 import PageLoader from "@/components/loaders/PageLoader";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
 import type { LinuxIORouterContext } from "@/routes/-auth";
@@ -40,6 +41,12 @@ export const router = createRouter({
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
+  }
+
+  // Set by the Assistant when it sends the user to log an agent in. History
+  // state, not the URL: a crafted link must not choose the agent's arguments.
+  interface HistoryState {
+    terminalLogin?: { agent: AssistantAgentId; args: string[] };
   }
 
   interface StaticDataRouteOption {

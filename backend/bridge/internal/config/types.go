@@ -15,6 +15,7 @@ type Settings struct {
 	AppSettings PersistedAppSettings `json:"appSettings" yaml:"appSettings"`
 	Docker      Docker               `json:"docker" yaml:"docker"`
 	Jobs        PersistedJobSettings `json:"jobs" yaml:"jobs"`
+	Assistant   Assistant            `json:"assistant" yaml:"assistant"`
 	Dismissals  *PersistedDismissals `json:"dismissals,omitempty" yaml:"dismissals,omitempty"`
 }
 
@@ -120,6 +121,12 @@ type Docker struct {
 	Folders                 []AbsolutePath `json:"folders" yaml:"folders"`
 	RequireMountsForFolders bool           `json:"requireMountsForFolders" yaml:"requireMountsForFolders"`
 	Proxy                   DockerProxy    `json:"proxy" yaml:"proxy,omitempty"`
+}
+
+// Assistant holds the user's ACP agent choice for the Assistant page. Login
+// state is owned by the agent's own files, never stored here.
+type Assistant struct {
+	Agent string `json:"agent" yaml:"agent"`
 }
 
 // PersistedJobSettings holds job progress and worker tuning settings.

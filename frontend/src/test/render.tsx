@@ -131,6 +131,7 @@ export function buildTestConfigSnapshots(
   };
   const bridge: AppConfig = {
     appSettings: { showHiddenFiles, chunkSizeMB },
+    assistant: { agent: "" },
     docker: {
       folders: [],
       proxy: { caddyEnabled: false },

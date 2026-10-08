@@ -23,6 +23,11 @@ func applyConfigPayload(cfg *bridgeconfig.Settings, payload *apischema.ConfigSet
 			return err
 		}
 	}
+	if payload.Assistant != nil {
+		if err := applyAssistantSettingsUpdate(&cfg.Assistant, payload.Assistant); err != nil {
+			return err
+		}
+	}
 	if payload.Dismissals != nil {
 		applyDismissalsUpdate(&cfg.Dismissals, payload.Dismissals)
 	}

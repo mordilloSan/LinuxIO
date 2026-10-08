@@ -127,6 +127,21 @@ describe("StreamMultiplexer", () => {
     expect([terminalA.id, requestA.id, requestB.id]).toEqual([1, 3, 5]);
   });
 
+  it("does not cache assistant streams and lets cache:false bypass the terminal cache", () => {
+    const { mux } = openMux();
+
+    const assistantA = requireStream(mux.openStream("assistant.open"));
+    const assistantB = requireStream(mux.openStream("assistant.open"));
+    const shell = requireStream(mux.openStream("terminal.open"));
+    const login = requireStream(
+      mux.openStream("terminal.open", undefined, { cache: false }),
+    );
+
+    expect(assistantB).not.toBe(assistantA);
+    expect(login).not.toBe(shell);
+    expect(mux.openStream("terminal.open")).toBe(shell);
+  });
+
   it("routes split inbound bridge data, progress, result, and close frames", () => {
     const { mux, socket } = openMux();
     const stream = requireStream(mux.openStream("tasks.watch"));

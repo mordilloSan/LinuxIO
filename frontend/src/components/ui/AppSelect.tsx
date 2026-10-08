@@ -29,12 +29,15 @@ interface AppSelectProps extends Omit<
   renderOption?: (value: string, label: string) => ReactNode;
   renderValue?: (value: string, label: string) => ReactNode;
   ref?: Ref<HTMLDivElement>;
+  /** "top" always opens the list above the trigger; "auto" flips only when clipped. */
+  placement?: "auto" | "top";
   size?: "small" | "medium";
   variant?: "outlined" | "standard";
 }
 
 interface OptionData {
   disabled?: boolean;
+  group?: string;
   hidden?: boolean;
   label: string;
   value: string;
@@ -49,14 +52,22 @@ function optionLabel(children: ReactNode): string {
   return "";
 }
 
-function collectOptions(children: ReactNode): OptionData[] {
+function collectOptions(children: ReactNode, group?: string): OptionData[] {
   const opts: OptionData[] = [];
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
     if (child.type === Fragment) {
       opts.push(
-        ...collectOptions((child.props as { children: ReactNode }).children),
+        ...collectOptions(
+          (child.props as { children: ReactNode }).children,
+          group,
+        ),
       );
+      return;
+    }
+    if (child.type === "optgroup") {
+      const p = child.props as { children: ReactNode; label?: string };
+      opts.push(...collectOptions(p.children, p.label));
       return;
     }
     if (child.type === "option") {
@@ -64,6 +75,7 @@ function collectOptions(children: ReactNode): OptionData[] {
       opts.push({
         value: String(p.value ?? ""),
         label: optionLabel(p.children),
+        group,
         disabled: !!p.disabled,
         hidden: !!p.hidden,
       });
@@ -87,6 +99,7 @@ const AppSelect = ({
   value,
   onChange,
   disabled,
+  placement = "auto",
   "aria-label": ariaLabel,
 }: AppSelectProps) => {
   const [open, setOpen] = useState(false);
@@ -95,7 +108,9 @@ const AppSelect = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{
-    top: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
     left: number;
     minWidth: number;
     fontSize: string;
@@ -111,13 +126,22 @@ const AppSelect = ({
     const trigger =
       containerRef.current.querySelector<HTMLElement>(".app-select__input");
     const cs = getComputedStyle(trigger ?? containerRef.current);
+    // Open upward when the list would be clipped by the viewport bottom, as
+    // for a select inside a bottom-docked composer.
+    const below = window.innerHeight - rect.bottom - 8;
+    const above = rect.top - 8;
+    const flip =
+      placement === "top" || (below < 300 && above > below && above >= 120);
     setDropdownPos({
-      top: rect.bottom + 2,
+      ...(flip
+        ? { bottom: window.innerHeight - rect.top + 2 }
+        : { top: rect.bottom + 2 }),
+      maxHeight: Math.min(300, Math.max(flip ? above : below, 120)),
       left: rect.left,
       minWidth: rect.width,
       fontSize: cs.fontSize,
     });
-  }, []);
+  }, [placement]);
 
   useLayoutEffect(() => {
     if (open) updatePosition();
@@ -169,7 +193,12 @@ const AppSelect = ({
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
-      setOpen(false);
+      // An open list owns this Escape; it must not reach page-level handlers.
+      if (open) {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+      }
       return;
     }
     if (e.key === " " || e.key === "Enter") {
@@ -253,7 +282,9 @@ const AppSelect = ({
             ref={dropdownRef}
             role="listbox"
             style={{
-              top: dropdownPos.top,
+              top: dropdownPos.top ?? "auto",
+              bottom: dropdownPos.bottom,
+              maxHeight: dropdownPos.maxHeight,
               left: dropdownPos.left,
               minWidth: dropdownPos.minWidth,
               fontSize: dropdownPos.fontSize,
@@ -261,26 +292,32 @@ const AppSelect = ({
           >
             {options
               .filter((o) => !o.hidden)
-              .map((opt) => (
-                <li
-                  aria-selected={opt.value === currentValue}
-                  className={[
-                    "app-select__option",
-                    opt.value === currentValue &&
-                      "app-select__option--selected",
-                    opt.disabled && "app-select__option--disabled",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  key={opt.value}
-                  onClick={() => select(opt)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  role="option"
-                >
-                  {renderOption
-                    ? renderOption(opt.value, opt.label)
-                    : opt.label}
-                </li>
+              .map((opt, index, visible) => (
+                <Fragment key={opt.value}>
+                  {opt.group && opt.group !== visible[index - 1]?.group ? (
+                    <li className="app-select__group" role="presentation">
+                      {opt.group}
+                    </li>
+                  ) : null}
+                  <li
+                    aria-selected={opt.value === currentValue}
+                    className={[
+                      "app-select__option",
+                      opt.value === currentValue &&
+                        "app-select__option--selected",
+                      opt.disabled && "app-select__option--disabled",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => select(opt)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    role="option"
+                  >
+                    {renderOption
+                      ? renderOption(opt.value, opt.label)
+                      : opt.label}
+                  </li>
+                </Fragment>
               ))}
           </ul>,
           document.body,

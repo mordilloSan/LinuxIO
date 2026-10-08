@@ -389,3 +389,32 @@ a {
     animation-iteration-count: infinite !important;
   }
 }
+
+/* Syntax colours for highlighted code in rendered Markdown. Muted hues, picked
+   to hold contrast on each scheme's default background. Dark is the default
+   until AppThemeProvider sets data-app-color-scheme. */
+:root {
+  --app-code-keyword: #b794d6;
+  --app-code-string: #8fbf8f;
+  --app-code-comment: #8b98a9;
+  --app-code-number: #d4a574;
+  --app-code-variable: #9cc4e4;
+  --app-code-type: #6fbfb5;
+  --app-code-operator: #a9b4c2;
+  --app-code-property: #8fb4d9;
+  --app-code-literal: #d19a8a;
+  --app-code-meta: #9aa5b5;
+}
+
+:root[data-app-color-scheme="light"] {
+  --app-code-keyword: #7b4fa0;
+  --app-code-string: #3d7a3d;
+  --app-code-comment: #6b7280;
+  --app-code-number: #a35f1c;
+  --app-code-variable: #2f6a99;
+  --app-code-type: #1f7a70;
+  --app-code-operator: #5a6572;
+  --app-code-property: #3a6a9a;
+  --app-code-literal: #a14a3a;
+  --app-code-meta: #6b7280;
+}

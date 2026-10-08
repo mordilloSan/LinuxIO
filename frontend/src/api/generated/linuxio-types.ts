@@ -126,6 +126,7 @@ export interface ApiDisk {
 export interface AppConfig {
   appSettings: AppSettings;
   dismissals?: Dismissals;
+  assistant: AssistantSettings;
   docker: DockerSettings;
   jobs: JobSettings;
   storageMode: ConfigStorageMode;
@@ -139,6 +140,14 @@ export interface AppSettings {
 export interface AppUpdateRequest {
   runId: string;
   version?: string;
+}
+
+export interface AssistantOpenRequest {
+  agent: string;
+}
+
+export interface AssistantSettings {
+  agent: string;
 }
 
 export type AutoUpdateBackend =
@@ -279,6 +288,7 @@ export interface CapabilitiesResponse {
   avahi_available: boolean;
   wireguard_available: boolean;
   libvirt_available: boolean;
+  node_available: boolean;
   docker_error?: string;
   docker_updates_error?: string;
   monitoring_error?: string;
@@ -295,6 +305,7 @@ export interface CapabilitiesResponse {
   avahi_error?: string;
   wireguard_error?: string;
   libvirt_error?: string;
+  node_error?: string;
 }
 
 export interface CapabilityRequest {
@@ -368,6 +379,10 @@ export interface ConfigAppSettingsPayload {
   chunkSizeMB?: number;
 }
 
+export interface ConfigAssistantPayload {
+  agent?: string;
+}
+
 export interface ConfigDismissalsPayload {
   uncleanShutdownBootId?: string;
   failedLoginAlertId?: string;
@@ -423,6 +438,7 @@ export interface ConfigSetPayload {
   docker?: ConfigDockerPayload;
   jobs?: ConfigJobSettingsPayload;
   dismissals?: ConfigDismissalsPayload;
+  assistant?: ConfigAssistantPayload;
 }
 
 export interface ConfigSetResult {
@@ -2565,6 +2581,8 @@ export type TaskState =
 export interface TerminalOpenRequest {
   cols: number;
   rows: number;
+  agent?: string;
+  args?: string[];
 }
 
 export interface TerminateSessionRequest {
@@ -4545,6 +4563,7 @@ export type CommandProgress<
  * `void` marks routes opened without a request payload.
  */
 export interface LinuxIOStreamSchema {
+  "assistant.open": AssistantOpenRequest;
   "container.open": ContainerOpenRequest;
   "control.app_update": AppUpdateRequest;
   "docker.delete_compose_stack": ProjectNameRequest;

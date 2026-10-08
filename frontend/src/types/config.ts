@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type {
   AppConfig,
   AppSettings,
+  AssistantSettings,
   ConfigDockAccentGradient,
   ConfigDockerDashboardSections,
   ConfigHardwareSections,
@@ -47,6 +48,7 @@ export type ConfigValueKey = keyof ConfigValueMap;
 
 export interface ConfigPatch {
   appSettings?: Partial<ConfigValueMap>;
+  assistant?: Partial<AssistantSettings>;
   dismissals?: Partial<Dismissals>;
   docker?: Partial<Omit<DockerSettings, "proxy">> & {
     proxy?: Partial<DockerProxySettings>;

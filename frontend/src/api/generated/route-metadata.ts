@@ -18,6 +18,7 @@ export const ROUTE_MODES = {
   "accounts.modify_user": "call",
   "accounts.terminate_session": "call",
   "accounts.unlock_user": "call",
+  "assistant.open": "duplex",
   "config.get": "call",
   "config.get_ui": "call",
   "config.set": "call",

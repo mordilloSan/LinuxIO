@@ -1,9 +1,15 @@
+import { useLocation } from "@tanstack/react-router";
 import { useMemo, useSyncExternalStore } from "react";
 import "@xterm/xterm/css/xterm.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/700.css";
 
-import { openTerminalStream, useStreamMux } from "@/api";
+import {
+  openTerminalLoginStream,
+  openTerminalStream,
+  useStreamMux,
+} from "@/api";
+import { type AssistantAgentId, isAssistantAgentId } from "@/api/acp/agents";
 import TerminalContextMenu from "@/components/terminal/TerminalContextMenu";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppTypography from "@/components/ui/AppTypography";
@@ -14,6 +20,23 @@ import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
 import { cardBorderRadius, shadowSm } from "@/theme/constants";
 import { alpha } from "@/utils/color";
+
+interface TerminalLogin {
+  agent: AssistantAgentId;
+  args: string[];
+}
+
+// History state is only ever set by in-app navigation, but it is still
+// untrusted input to a process spawn: validate before use.
+function terminalLoginFromState(value: unknown): TerminalLogin | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { agent, args } = value as { agent?: unknown; args?: unknown };
+  if (!isAssistantAgentId(agent)) return null;
+  if (!Array.isArray(args) || !args.every((arg) => typeof arg === "string")) {
+    return null;
+  }
+  return { agent, args };
+}
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
@@ -104,10 +127,13 @@ const TerminalXTerm = () => {
   const theme = useAppTheme();
 
   const { isOpen, getStream } = useStreamMux();
-  // The PTY stream persists server-side across page visits: never close it
-  // on unmount, only detach the handlers (reattach happens via getStream).
+  // Set when the Assistant sends the user here to log an agent in.
+  const login = terminalLoginFromState(useLocation().state.terminalLogin);
+  // The shell PTY persists server-side across page visits: never close it on
+  // unmount, only detach the handlers (reattach happens via getStream). A login
+  // PTY is separate and ends when the user leaves the page.
   const { streamRef, openStream, closeStream, detachStream } = useLiveStream({
-    closeOnUnmount: false,
+    closeOnUnmount: Boolean(login),
   });
   const [fontSize, setConfigFontSize] = useConfigValue("terminalFontSize");
 
@@ -149,23 +175,32 @@ const TerminalXTerm = () => {
       if (!isOpen) return;
 
       // Reattach to the persistent PTY stream when one exists (page revisit),
-      // otherwise open a fresh one.
+      // otherwise open a fresh one. A login runs beside the shell, never in it.
       const opened = openStream({
         open: () =>
-          getStream("terminal.open") ??
-          openTerminalStream(terminal.cols, terminal.rows),
+          login
+            ? openTerminalLoginStream(terminal.cols, terminal.rows, login)
+            : (getStream("terminal.open") ??
+              openTerminalStream(terminal.cols, terminal.rows)),
         onData: writeData,
+        onClose: login
+          ? () =>
+              terminal.write(
+                "\r\n[login command finished — go back to the Assistant page]\r\n",
+              )
+          : undefined,
       });
       if (opened) {
         streamRef.current?.resize(terminal.cols, terminal.rows);
       }
 
       return () => {
-        // Do not close the stream; it persists for reconnection.
-        detachStream();
+        // The shell persists for reconnection; only a login PTY is closed.
+        if (login) closeStream();
+        else detachStream();
       };
     },
-    sessionKey: isOpen ? "open" : "closed",
+    sessionKey: `${isOpen ? "open" : "closed"}:${login ? `${login.agent}:${login.args.join(" ")}` : ""}`,
     streamRef,
     terminalOptions,
   });

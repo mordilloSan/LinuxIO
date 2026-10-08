@@ -1527,9 +1527,14 @@ type CapabilitiesResponse struct {
 type AppConfig struct {
 	AppSettings AppSettings       `json:"appSettings"`
 	Dismissals  *Dismissals       `json:"dismissals,omitempty"`
+	Assistant   AssistantSettings `json:"assistant"`
 	Docker      DockerSettings    `json:"docker"`
 	Jobs        JobSettings       `json:"jobs"`
 	StorageMode ConfigStorageMode `json:"storageMode"`
+}
+
+type AssistantSettings struct {
+	Agent string `json:"agent"`
 }
 
 type AppSettings struct {

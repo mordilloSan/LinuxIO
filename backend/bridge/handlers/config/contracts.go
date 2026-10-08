@@ -22,6 +22,7 @@ func appConfigToAPI(value bridgeconfig.Settings, storageMode bridgeconfig.Storag
 			ProgressMinBytesMB: value.Jobs.ProgressMinBytesMB, HeavyArchiveConcurrency: value.Jobs.HeavyArchiveConcurrency,
 			ArchiveCompressionWorkers: value.Jobs.ArchiveCompressionWorkers, ArchiveExtractWorkers: value.Jobs.ArchiveExtractWorkers,
 		},
+		Assistant:   apischema.AssistantSettings{Agent: value.Assistant.Agent},
 		StorageMode: apischema.ConfigStorageMode(storageMode),
 	}
 	if value.AppSettings.ChunkSizeMB != 0 {
