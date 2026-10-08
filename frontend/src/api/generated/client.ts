@@ -24,6 +24,12 @@ const linuxio = {
     terminate_session: defineCallWithRequest("accounts.terminate_session"),
     unlock_user: defineCallWithRequest("accounts.unlock_user"),
   },
+  alerts: {
+    dismiss: defineCallWithRequest("alerts.dismiss"),
+    list: defineCall("alerts.list"),
+    mark_all_seen: defineCall("alerts.mark_all_seen"),
+    mark_seen: defineCallWithRequest("alerts.mark_seen"),
+  },
   config: {
     get: defineCall("config.get"),
     get_ui: defineCall("config.get_ui"),

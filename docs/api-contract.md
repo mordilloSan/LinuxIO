@@ -21,9 +21,9 @@ product surface. A future supported external API would be a separate contract.
 Task progress and data streams are not a durable audit/history API. A Task
 snapshot retains only the latest common progress envelope. Durable operation
 records may keep a small bounded progress window solely for recovery; that does
-not turn `tasks.events` or `tasks.watch` into queryable history. The current
-navbar keeps toast history in the browser, and the planned alert store is
-separate from Task snapshots.
+not turn `tasks.events` or `tasks.watch` into queryable history. Alerts live in a
+root-owned file read through the `alerts` family and are separate from Task
+snapshots.
 
 - Go owns route names, modes, request types, and result types. Route declarations live with each handler family's registration in `backend/bridge/handlers/<domain>/handlers.go`.
 - TypeScript API files under `frontend/src/api/generated` are generated. Do not edit them by hand.
@@ -212,7 +212,7 @@ Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for th
 
 The same guard file also fences the byte/mux-level transport primitives (`encodeString`, `bindStreamHandlers`, `getStreamMux`, …): feature code opens typed Channels with `openChannel(route, request)` and uses the stream lifecycle hooks (`useLiveStream`/`useLogStream`/`useStreamResult`). Only a short, shrink-only allowlist may import lower-level primitives from `@/api`.
 
-Call descriptors compose with normal React Query options, including `select` for transformed output data. `useCallMutation` and `useTaskAction` take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast metadata for notification-history links), and `options` as a raw React Query options escape hatch.
+Call descriptors compose with normal React Query options, including `select` for transformed output data. `useCallMutation` and `useTaskAction` take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast metadata such as an action link), and `options` as a raw React Query options escape hatch.
 
 ### Choosing a member (decision table)
 

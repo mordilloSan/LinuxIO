@@ -39,6 +39,7 @@ func aptSupport() AutoUpdateOptionSupport {
 		ExcludePackages: true,
 		ExtraOrigins:    true,
 		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
+		NotifyPolicies:  allNotifyPolicies,
 		RebootPolicies:  []AutoUpdateRebootPolicy{"never", "if_needed"},
 		Scopes:          []AutoUpdateScope{"security", "updates", "all"},
 	}
@@ -57,6 +58,7 @@ func (b *aptBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 		CanConfigure: b.installed(),
 		Options: AutoUpdateOptions{
 			Frequency:       AutoUpdateFrequency(readTimerFrequency(b.host, "apt-daily.timer")),
+			Notify:          readNotifyPolicy(b.host, aptUpgradeService),
 			Scope:           "security",
 			RebootPolicy:    "never",
 			ExcludePackages: []string{},
@@ -127,6 +129,9 @@ func (b *aptBackend) Apply(ctx context.Context, options AutoUpdateOptions) error
 	}
 	if err := writeTimerDropIn(b.host, "apt-daily-upgrade.timer", onCalendar); err != nil {
 		return fmt.Errorf("write apt-daily-upgrade.timer schedule: %w", err)
+	}
+	if err := writeNotifyDropIn(b.host, aptUpgradeService, "apt", options.Notify); err != nil {
+		return fmt.Errorf("configure update notifications: %w", err)
 	}
 	if err := b.host.daemonReload(ctx); err != nil {
 		return fmt.Errorf("reload systemd after configuring APT updates: %w", err)

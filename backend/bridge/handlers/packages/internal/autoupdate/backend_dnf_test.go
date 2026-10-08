@@ -141,9 +141,20 @@ debuglevel = 2
 		Frequency:       "hourly",
 		RebootPolicy:    "always",
 		Scope:           "all",
+		Notify:          AutoUpdateNotifyOnFailure,
 	}
 	if err := newDNFBackend(fake.host(), dnf5).Apply(context.Background(), options); err != nil {
 		t.Fatalf("Apply: %v", err)
+	}
+	if got := string(fake.files["/etc/systemd/system/dnf5-automatic.service.d/linuxio-alert.conf"]); !strings.Contains(got, "--provider dnf --policy on_failure") {
+		t.Fatalf("DNF notify drop-in = %q", got)
+	}
+	state, err := newDNFBackend(fake.host(), dnf5).Read(context.Background())
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 4 {
+		t.Fatalf("DNF notify state = %q, support %v", state.Options.Notify, state.Support.NotifyPolicies)
 	}
 
 	config := string(fake.files[dnfAutomaticConfig])

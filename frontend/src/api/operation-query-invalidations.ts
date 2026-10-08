@@ -184,6 +184,11 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "schedules.run_now": SCHEDULE_KEYS,
   "schedules.stop": SCHEDULE_KEYS,
 
+  // The frontend replaces the alerts.list cache from each mutation result.
+  "alerts.mark_seen": [],
+  "alerts.mark_all_seen": [],
+  "alerts.dismiss": [],
+
   "network.set_ipv4": [
     endpointQueryPrefix("network.get_network_info"),
     endpointQueryPrefix("monitoring.get_live"),

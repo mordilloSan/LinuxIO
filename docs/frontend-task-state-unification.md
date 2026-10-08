@@ -33,8 +33,7 @@ progress frames.
 summary (dialog visibility, last result, and last error). The State, Indexer,
 and IsIndexing contexts were removed. `BackgroundTasksActionsContext` retains
 its 16 actions in an object initialized once per provider mount. Upload actions
-still read chunk size through the render-inert config getter. Toast history
-continues to use its existing external store.
+still read chunk size through the render-inert config getter.
 
 Recovery writes the same per-user task keys and domain entries as live work.
 Transfers share their existing watcher and progress reducer. Recovered indexers

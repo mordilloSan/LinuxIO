@@ -83,6 +83,7 @@
 /* Sits in the footer next to the dev-tools button, so it is sized to that row
    rather than to the header's icon buttons. */
 .app-icon-btn.app-navbar-notifications__trigger {
+  position: relative;
   padding: 4px;
   border-radius: 4px;
 }
@@ -288,4 +289,30 @@
 
 .app-navbar__route-actions-portal {
   display: contents;
+}
+
+.navbar-notifications-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--app-palette-error-main);
+  color: var(--app-palette-error-contrast-text);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+.app-navbar-notifications__title--unseen {
+  font-weight: 700;
+}
+
+.app-navbar-notifications__message {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }

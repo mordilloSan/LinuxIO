@@ -44,6 +44,10 @@ func (b *dnfBackend) timer() string {
 	return "dnf-automatic.timer"
 }
 
+func (b *dnfBackend) service() string {
+	return strings.TrimSuffix(b.timer(), ".timer") + ".service"
+}
+
 func (b *dnfBackend) providerInstalled() bool {
 	return timerArtifactExists(b.host.fileExists, b.timer())
 }
@@ -69,6 +73,7 @@ func (b *dnfBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 			Enabled:         false,
 			ExcludePackages: []string{},
 			Frequency:       "daily",
+			Notify:          readNotifyPolicy(b.host, b.service()),
 			RebootPolicy:    "never",
 			Scope:           "all",
 		},
@@ -119,6 +124,7 @@ func (b *dnfBackend) support(config *ini.File) AutoUpdateOptionSupport {
 		DownloadOnly:    true,
 		ExcludePackages: true,
 		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
+		NotifyPolicies:  allNotifyPolicies,
 		RebootPolicies:  reboots,
 		Scopes:          []AutoUpdateScope{"security", "all"},
 	}
@@ -167,6 +173,9 @@ func (b *dnfBackend) Apply(ctx context.Context, options AutoUpdateOptions) error
 	}
 	if err := writeTimerDropIn(b.host, b.timer(), onCalendar); err != nil {
 		return fmt.Errorf("write %s schedule: %w", b.timer(), err)
+	}
+	if err := writeNotifyDropIn(b.host, b.service(), "dnf", options.Notify); err != nil {
+		return fmt.Errorf("configure update notifications: %w", err)
 	}
 	if err := b.host.daemonReload(ctx); err != nil {
 		return fmt.Errorf("reload systemd after configuring %s: %w", b.timer(), err)

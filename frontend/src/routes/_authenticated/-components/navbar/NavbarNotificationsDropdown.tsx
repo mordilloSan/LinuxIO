@@ -13,17 +13,16 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppPopover from "@/components/ui/AppPopover";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { type ToastHistoryItem } from "@/contexts/ToastContext";
 import { useBackgroundTaskActions } from "@/hooks/backgroundTasks/useBackgroundTaskActions";
 import {
   useBackgroundTask,
   useBackgroundTaskList,
   useBackgroundTasks,
 } from "@/hooks/backgroundTasks/useBackgroundTaskState";
-import { useClearToastHistory, useToastHistory } from "@/hooks/useToastHistory";
 import { iconSize as iconSizes } from "@/theme/constants";
 
-const MAX_RECENT_TOASTS = 5;
+import { useAlerts } from "./useAlerts";
+
 const PEEK_DURATION_MS = 3000;
 
 interface CompletedTransfer {
@@ -333,8 +332,7 @@ export function NavbarNotificationsDropdown() {
   const [peekOpen, setPeekOpen] = useState(false);
   const peekTimerRef = useRef<number>(0);
 
-  const recentToasts = useToastHistory(MAX_RECENT_TOASTS);
-  const clearToastHistory = useClearToastHistory();
+  const { alerts, unseen, markAllSeen, dismiss } = useAlerts();
 
   // File transfers
   const transfers = useBackgroundTaskList();
@@ -419,6 +417,7 @@ export function NavbarNotificationsDropdown() {
     window.clearTimeout(peekTimerRef.current);
     setPeekOpen(false);
     setNow(Date.now());
+    if (!anchorEl && unseen > 0) markAllSeen();
     setAnchorEl((current) => (current ? null : ref.current));
   };
 
@@ -429,6 +428,7 @@ export function NavbarNotificationsDropdown() {
     window.clearTimeout(peekTimerRef.current);
     setPeekOpen(false);
     setNow(Date.now());
+    if (unseen > 0) markAllSeen();
     setAnchorEl(ref.current);
   };
 
@@ -444,8 +444,6 @@ export function NavbarNotificationsDropdown() {
   };
 
   const clearCompletedTransfers = () => setCompletedTransfers([]);
-
-  const recentToastCount = recentToasts.length;
 
   useEffect(() => {
     if (!isFullOpen) return;
@@ -475,43 +473,22 @@ export function NavbarNotificationsDropdown() {
     return `${years}y ago`;
   };
 
-  const getToastVisuals = (type?: ToastHistoryItem["type"]) => {
-    switch (type) {
-      case "success":
-        return {
-          icon: (
-            <Icon height={iconSize} icon="mdi:check-circle" width={iconSize} />
-          ),
-          color: "var(--app-palette-success-main)",
-        };
+  const getAlertIcon = (severity: string) => {
+    switch (severity) {
       case "error":
         return {
-          icon: (
-            <Icon height={iconSize} icon="mdi:close-circle" width={iconSize} />
-          ),
+          icon: "mdi:alert-circle-outline",
           color: "var(--app-palette-error-main)",
         };
       case "warning":
         return {
-          icon: <Icon height={iconSize} icon="mdi:alert" width={iconSize} />,
+          icon: "mdi:alert-outline",
           color: "var(--app-palette-warning-main)",
-        };
-      case "info":
-        return {
-          icon: (
-            <Icon height={iconSize} icon="mdi:information" width={iconSize} />
-          ),
-          color: "var(--app-palette-info-main)",
-        };
-      case "loading":
-        return {
-          icon: <Icon height={iconSize} icon="mdi:loading" width={iconSize} />,
-          color: "var(--app-palette-text-secondary)",
         };
       default:
         return {
-          icon: <Icon height={iconSize} icon="mdi:bell" width={iconSize} />,
-          color: "var(--app-palette-text-secondary)",
+          icon: "mdi:information-outline",
+          color: "var(--app-palette-info-main)",
         };
     }
   };
@@ -549,7 +526,7 @@ export function NavbarNotificationsDropdown() {
   };
 
   const totalItems =
-    transfers.length + completedTransfers.length + recentToastCount;
+    transfers.length + completedTransfers.length + alerts.length;
 
   return (
     <>
@@ -578,9 +555,16 @@ export function NavbarNotificationsDropdown() {
                 footer reads as an outline rather than a solid badge. */}
             <Icon
               height={16}
-              icon={totalItems === 0 ? "mdi:bell-outline" : "mdi:bell"}
+              icon={
+                unseen > 0 || transfers.length > 0
+                  ? "mdi:bell"
+                  : "mdi:bell-outline"
+              }
               width={16}
             />
+            {unseen > 0 ? (
+              <span className="navbar-notifications-badge">{unseen}</span>
+            ) : null}
           </AppIconButton>
         </AppTooltip>
 
@@ -605,26 +589,22 @@ export function NavbarNotificationsDropdown() {
                   ? "Notifications"
                   : `${totalItems} notification${totalItems === 1 ? "" : "s"}`}
               </p>
-              <AppButton
-                className="app-navbar-panel__action"
-                disabled={
-                  recentToastCount === 0 && completedTransfers.length === 0
-                }
-                onClick={() => {
-                  clearToastHistory();
-                  clearCompletedTransfers();
-                }}
-                size="small"
-              >
-                Clear
-              </AppButton>
+              {completedTransfers.length > 0 ? (
+                <AppButton
+                  className="app-navbar-panel__action"
+                  onClick={clearCompletedTransfers}
+                  size="small"
+                >
+                  Clear
+                </AppButton>
+              ) : null}
             </div>
 
             {totalItems === 0 ? (
               <div className="app-navbar-notifications__empty">
                 <Icon height={30} icon="mdi:bell-outline" width={30} />
                 <p className="app-navbar-notifications__empty-copy">
-                  You&apos;re all caught up.
+                  No notifications
                 </p>
               </div>
             ) : (
@@ -688,56 +668,60 @@ export function NavbarNotificationsDropdown() {
                   );
                 })}
 
-                {recentToasts.map((toastItem) => {
-                  const visuals = getToastVisuals(toastItem.type);
-                  const fullText = toastItem.description
-                    ? `${toastItem.title} - ${toastItem.description}`
-                    : toastItem.title;
+                {alerts.map((alert) => {
+                  const visuals = getAlertIcon(alert.severity);
                   return (
                     <li
                       className="app-navbar-notifications__item"
-                      key={toastItem.id}
+                      key={alert.id}
                     >
                       <div
                         className="app-navbar-notifications__icon"
                         style={tileStyle(visuals.color)}
                       >
-                        {visuals.icon}
+                        <Icon
+                          height={iconSize}
+                          icon={visuals.icon}
+                          width={iconSize}
+                        />
                       </div>
                       <div className="app-navbar-notifications__content">
                         <div className="app-navbar-notifications__row">
                           <p
-                            className="app-navbar-notifications__title"
-                            title={fullText}
+                            className={`app-navbar-notifications__title${alert.seen ? "" : " app-navbar-notifications__title--unseen"}`}
+                            title={alert.title}
                           >
-                            {fullText}
+                            {alert.title}
                           </p>
                           <p className="app-navbar-notifications__status">
-                            {formatTimeAgo(toastItem.createdAt)}
+                            {formatTimeAgo(Date.parse(alert.lastOccurrence))}
+                            {alert.occurrenceCount > 1
+                              ? ` ×${alert.occurrenceCount}`
+                              : ""}
                           </p>
+                          <AppIconButton
+                            aria-label="Dismiss alert"
+                            onClick={() => dismiss(alert.id)}
+                            size="small"
+                          >
+                            <Icon height={14} icon="mdi:close" width={14} />
+                          </AppIconButton>
                         </div>
-                        {toastItem.meta?.to ? (
+                        {alert.message ? (
+                          <p className="app-navbar-notifications__caption app-navbar-notifications__message">
+                            {alert.message}
+                          </p>
+                        ) : null}
+                        {alert.link ? (
                           <div className="app-navbar-notifications__meta-row">
-                            {toastItem.meta.to === "/filebrowser/$" ? (
-                              <AppRouterLinkButton
-                                className="app-navbar-notifications__link"
-                                onClick={handleClose}
-                                params={toastItem.meta.params}
-                                size="small"
-                                to={toastItem.meta.to}
-                              >
-                                {toastItem.meta.label || "Open"}
-                              </AppRouterLinkButton>
-                            ) : (
-                              <AppRouterLinkButton
-                                className="app-navbar-notifications__link"
-                                onClick={handleClose}
-                                size="small"
-                                to={toastItem.meta.to}
-                              >
-                                {toastItem.meta.label || "Open"}
-                              </AppRouterLinkButton>
-                            )}
+                            <AppRouterLinkButton
+                              className="app-navbar-notifications__link"
+                              onClick={handleClose}
+                              size="small"
+                              to={alert.link}
+                            >
+                              Open
+                            </AppRouterLinkButton>
                           </div>
                         ) : null}
                       </div>

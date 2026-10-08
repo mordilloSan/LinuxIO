@@ -11,6 +11,7 @@ type AutoUpdateFrequency string
 type AutoUpdateScope string
 type AutoUpdateRebootPolicy string
 type AutoUpdateBackend string
+type AutoUpdateNotify string
 type DockerContainerAutoUpdateMode string
 type DockerUpdateCheckState string
 type ContainerMetricsStatus string
@@ -27,6 +28,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateFrequency":           {"hourly", "daily", "weekly"},
 	"AutoUpdateScope":               {"security", "updates", "all"},
 	"AutoUpdateRebootPolicy":        {"never", "if_needed", "always", "schedule"},
+	"AutoUpdateNotify":              {"never", "on_failure", "on_change", "always"},
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
@@ -661,6 +663,7 @@ type AutoUpdateOptions struct {
 	ExcludePackages []string               `json:"exclude_packages"`
 	ExtraOrigins    []string               `json:"extra_origins"`
 	Frequency       AutoUpdateFrequency    `json:"frequency"`
+	Notify          AutoUpdateNotify       `json:"notify"`
 	RebootPolicy    AutoUpdateRebootPolicy `json:"reboot_policy"`
 	Scope           AutoUpdateScope        `json:"scope"`
 }
@@ -670,6 +673,7 @@ type AutoUpdateOptionSupport struct {
 	ExcludePackages bool                     `json:"exclude_packages"`
 	ExtraOrigins    bool                     `json:"extra_origins"`
 	Frequencies     []AutoUpdateFrequency    `json:"frequencies"`
+	NotifyPolicies  []AutoUpdateNotify       `json:"notify_policies"`
 	RebootPolicies  []AutoUpdateRebootPolicy `json:"reboot_policies"`
 	Scopes          []AutoUpdateScope        `json:"scopes"`
 }
@@ -1595,4 +1599,22 @@ type JobSettings struct {
 type Dismissals struct {
 	FailedLoginAlertID    *string `json:"failedLoginAlertId,omitempty"`
 	UncleanShutdownBootID *string `json:"uncleanShutdownBootId,omitempty"`
+}
+
+type Alert struct {
+	FirstOccurrence string `json:"firstOccurrence"`
+	ID              string `json:"id"`
+	LastOccurrence  string `json:"lastOccurrence"`
+	Link            string `json:"link,omitempty"`
+	Message         string `json:"message,omitempty"`
+	OccurrenceCount int    `json:"occurrenceCount"`
+	Seen            bool   `json:"seen"`
+	Severity        string `json:"severity"`
+	Source          string `json:"source"`
+	Title           string `json:"title"`
+}
+
+type AlertList struct {
+	Alerts []Alert `json:"alerts"`
+	Unseen int     `json:"unseen"`
 }

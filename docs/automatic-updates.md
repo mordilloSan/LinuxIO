@@ -26,12 +26,12 @@ The server reports the settings supported by the selected provider. The UI
 only offers those values, and the server validates them again before changing
 configuration.
 
-| Provider | Frequency | Scope | Download only | Reboot policy | Exclusions |
-|---|---|---|---|---|---|
-| Ubuntu/Debian APT | Hourly, daily, weekly | Security, updates, all | Yes | Never, if needed | Yes |
-| Linux Mint | Hourly, daily, weekly | Security, all enabled repositories | No | Never | Yes |
-| DNF4 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never; if needed/always when supported by the installed version | Yes |
-| DNF5 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never, if needed, always | Yes |
+| Provider | Frequency | Scope | Download only | Reboot policy | Exclusions | Notify |
+|---|---|---|---|---|---|---|
+| Ubuntu/Debian APT | Hourly, daily, weekly | Security, updates, all | Yes | Never, if needed | Yes | Never, on failure, on change, always |
+| Linux Mint | Hourly, daily, weekly | Security, all enabled repositories | No | Never | Yes | Never, on failure, on change, always |
+| DNF4 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never; if needed/always when supported by the installed version | Yes | Never, on failure, on change, always |
+| DNF5 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never, if needed, always | Yes | Never, on failure, on change, always |
 
 On Ubuntu and Debian, scopes only cover distribution archives (the widest
 APT scope is security, updates, and backports). Third-party repositories such
@@ -64,3 +64,8 @@ and semantics differ:
 Disabling LinuxIO-managed automatic installation does not require disabling
 `apt-daily.timer`. APT may continue using that timer to refresh package metadata;
 `apt-daily-upgrade.timer` is the unit that performs unattended installation.
+
+When notifications are enabled, LinuxIO writes
+`/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` with an
+`ExecStopPost=` that runs `linuxio alert auto-update` after each run. The
+drop-in is removed when the policy is `never`. See [Alerts](./TODO/notifications.md).

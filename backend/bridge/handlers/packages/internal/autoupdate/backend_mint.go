@@ -30,6 +30,7 @@ func mintSupport() AutoUpdateOptionSupport {
 		DownloadOnly:    false,
 		ExcludePackages: true,
 		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
+		NotifyPolicies:  allNotifyPolicies,
 		RebootPolicies:  []AutoUpdateRebootPolicy{"never"},
 		Scopes:          []AutoUpdateScope{"security", "all"},
 	}
@@ -47,6 +48,7 @@ func (b *mintBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 		CanConfigure: b.installed(),
 		Options: AutoUpdateOptions{
 			Frequency:       AutoUpdateFrequency(readTimerFrequency(b.host, mintTimer)),
+			Notify:          readNotifyPolicy(b.host, mintUpgradeService),
 			Scope:           "all",
 			RebootPolicy:    "never",
 			ExcludePackages: []string{},
@@ -104,6 +106,9 @@ func (b *mintBackend) Apply(ctx context.Context, options AutoUpdateOptions) erro
 	}
 	if err := writeTimerDropIn(b.host, mintTimer, onCalendar); err != nil {
 		return fmt.Errorf("write %s schedule: %w", mintTimer, err)
+	}
+	if err := writeNotifyDropIn(b.host, mintUpgradeService, "mint", options.Notify); err != nil {
+		return fmt.Errorf("configure update notifications: %w", err)
 	}
 	if err := b.host.daemonReload(ctx); err != nil {
 		return fmt.Errorf("reload systemd after configuring Linux Mint updates: %w", err)
