@@ -424,3 +424,62 @@ func makeWirelessBridgeMemberFixture(t *testing.T, root, bridge, member string) 
 		t.Fatalf("mkdir wireless fixture: %v", err)
 	}
 }
+
+func TestEnsureDefaultNetworkActiveRemovesStaleBridge(t *testing.T) {
+	inUse := libvirtErr(libvirt.ErrInternalError, "internal error: Network is already in use by interface virbr0")
+	setup := func(t *testing.T) (*fakeConn, string, *[]string) {
+		t.Helper()
+		root := t.TempDir()
+		makeBridgeFixture(t, root, "virbr0", "down")
+		if err := os.MkdirAll(filepath.Join(root, "virbr0", "brif"), 0o755); err != nil {
+			t.Fatalf("mkdir brif: %v", err)
+		}
+		withNetworkSysfsRoot(t, root)
+		fake := newFakeConn()
+		fake.networkActive = 0
+		fake.networkCreateErr = inUse
+		fake.networkXML["default"] = `<network><name>default</name><forward mode="nat"></forward><bridge name="virbr0"></bridge></network>`
+		var deleted []string
+		old := deleteHostLink
+		deleteHostLink = func(name string) error {
+			deleted = append(deleted, name)
+			fake.networkCreateErr = nil
+			return nil
+		}
+		t.Cleanup(func() { deleteHostLink = old })
+		return fake, root, &deleted
+	}
+
+	t.Run("unused own bridge is removed and start retried", func(t *testing.T) {
+		fake, _, deleted := setup(t)
+		if err := ensureDefaultNetworkActive(fake); err != nil {
+			t.Fatalf("ensureDefaultNetworkActive: %v", err)
+		}
+		if !slices.Equal(*deleted, []string{"virbr0"}) || fake.networkCreateCount != 2 {
+			t.Fatalf("deleted = %v, creates = %d; want virbr0 removed and one retry", *deleted, fake.networkCreateCount)
+		}
+	})
+
+	t.Run("bridge with members is kept", func(t *testing.T) {
+		fake, root, deleted := setup(t)
+		makeBridgeMemberFixture(t, root, "virbr0", "vnet0", false, true)
+		err := ensureDefaultNetworkActive(fake)
+		if err == nil || !strings.Contains(err.Error(), "already assigned to a host interface") {
+			t.Fatalf("ensureDefaultNetworkActive error = %v, want stale bridge guidance", err)
+		}
+		if len(*deleted) != 0 || fake.networkCreateCount != 1 {
+			t.Fatalf("deleted = %v, creates = %d; want nothing removed", *deleted, fake.networkCreateCount)
+		}
+	})
+
+	t.Run("conflict on another interface is kept", func(t *testing.T) {
+		fake, _, deleted := setup(t)
+		fake.networkCreateErr = libvirtErr(libvirt.ErrInternalError, "internal error: Network is already in use by interface eth0")
+		if err := ensureDefaultNetworkActive(fake); err == nil {
+			t.Fatal("ensureDefaultNetworkActive succeeded, want conflict error")
+		}
+		if len(*deleted) != 0 {
+			t.Fatalf("deleted = %v, want nothing removed", *deleted)
+		}
+	})
+}
