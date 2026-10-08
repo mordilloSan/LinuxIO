@@ -335,6 +335,9 @@ func defaultNetworkStartError(err error) error {
 	if defaultNetworkAddressInUse(err) {
 		return fmt.Errorf("default NAT network cannot start because 192.168.122.1 is already in use; stop the conflicting dnsmasq/libvirt process or reconfigure the libvirt default network address, then retry: %w", err)
 	}
+	if strings.Contains(strings.ToLower(err.Error()), "network is already in use by interface") {
+		return fmt.Errorf("default NAT network cannot start because its subnet is already assigned to a host interface, often a bridge left behind by an earlier libvirt run (for example after a WSL or daemon restart); delete that interface if no VM uses it, or reconfigure the libvirt default network address, then retry: %w", err)
+	}
 	return fmt.Errorf("start default NAT network: %w", err)
 }
 

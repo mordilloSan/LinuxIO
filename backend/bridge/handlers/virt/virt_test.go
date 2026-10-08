@@ -625,6 +625,17 @@ func TestCreateVMReportsDefaultNetworkAddressConflict(t *testing.T) {
 	}
 }
 
+func TestDefaultNetworkStartErrorExplainsStaleBridge(t *testing.T) {
+	cause := libvirtErr(libvirt.ErrInternalError, "internal error: Network is already in use by interface virbr0")
+	err := defaultNetworkStartError(cause)
+	if !errors.Is(err, cause) {
+		t.Fatalf("defaultNetworkStartError lost the cause: %v", err)
+	}
+	if !strings.Contains(err.Error(), "already assigned to a host interface") {
+		t.Fatalf("defaultNetworkStartError = %v, want stale bridge guidance", err)
+	}
+}
+
 func TestEnsureDefaultNetworkActiveHandlesAutostartAndTOCTOU(t *testing.T) {
 	t.Run("create failure tolerated when active after recheck", func(t *testing.T) {
 		fake := newFakeConn()
