@@ -154,9 +154,7 @@ const scopeLabel = (
   backend: AutoUpdateState["backend"],
   scope: AutoUpdateScope,
 ) =>
-  backend === "apt-unattended" && scope === "all"
-    ? "Security + updates + backports"
-    : scopeLabels[scope];
+  backend === "apt-unattended" && scope === "all" ? "All" : scopeLabels[scope];
 
 const rebootLabels: Record<AutoUpdateRebootPolicy, string> = {
   never: "Never reboot",
