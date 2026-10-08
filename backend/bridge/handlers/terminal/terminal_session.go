@@ -20,6 +20,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -49,6 +50,11 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 		rows = req.Rows
 	}
 
+	loginAgent, err := lookupLoginAgent(stream, req.Agent)
+	if err != nil {
+		return err
+	}
+
 	// Look up user for environment setup
 	u, err := user.LookupId(strconv.FormatUint(uint64(sess.User.UID), 10))
 	if err != nil {
@@ -76,7 +82,16 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 		shellPath = "sh"
 	}
 
-	cmd := exec.CommandContext(ctx, shellPath, "-i", "-l")
+	var cmd *exec.Cmd
+	if req.Agent != "" {
+		argv := assistant.LoginShellArgv(loginAgent, req.Args)
+		cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
+		// CLI login flows print the URL and prompt for a code instead of
+		// trying to open a browser on the server.
+		env = append(env, "NO_BROWSER=1")
+	} else {
+		cmd = exec.CommandContext(ctx, shellPath, "-i", "-l")
+	}
 	cmd.Dir = u.HomeDir
 	env = append(env, "SHELL="+shellPath)
 	cmd.Env = env
@@ -142,6 +157,22 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 
 	wg.Wait()
 	return nil
+}
+
+// lookupLoginAgent resolves the requested agent id; an empty id means the
+// plain login shell. An unknown id closes the stream and returns an error.
+func lookupLoginAgent(stream net.Conn, id string) (assistant.Agent, error) {
+	if id == "" {
+		return assistant.Agent{}, nil
+	}
+	agent, ok := assistant.LookupAgent(id)
+	if !ok {
+		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
+			slog.Debug("failed to write terminal stream close frame", "error", closeErr)
+		}
+		return assistant.Agent{}, fmt.Errorf("terminal: unknown agent %q", id)
+	}
+	return agent, nil
 }
 
 // relayPTYToStream reads PTY output and sends it as stream data frames.

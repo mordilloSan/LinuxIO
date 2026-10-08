@@ -224,6 +224,11 @@ describe("targeted route query ownership", () => {
       /\.\.\.linuxio\.virt\.networks,\s*enabled: open,/,
     );
     expect(createDialog).toContain("refetchInterval: open ? 30000 : false");
+    // The Networks tab reads the host network list on demand from its own
+    // route loader; only the VM list rides the parent cadence.
+    expect(readRouteSource("vm/networks.tsx")).toContain(
+      "linuxio.virt.networks",
+    );
     for (const [relativePath, observerCount] of childObserverCounts) {
       const child = readRouteSource(relativePath);
       expect(child).not.toContain("refetchInterval");

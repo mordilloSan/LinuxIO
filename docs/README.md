@@ -20,6 +20,7 @@ its plan lands.
 | [Handler Patterns](./bridge_handler_patterns.md) | Handler package style: `handlers.go` layout, context propagation, logging, naming, validation. |
 | [Privilege Pattern](./privilege_pattern.md) | How to decide and declare privileged routes. |
 | [Capabilities](./capabilities.md) | Detecting optional host tooling, gating features/routes on it, and the UI install flow. |
+| [Assistant](./assistant.md) | The ACP agent relay behind the Assistant page: launch table, login flow, and what LinuxIO deliberately does not store. |
 | [Process & Systemd Architecture](./process-systemd-architecture.md) | LinuxIO processes and helpers, systemd socket activation, `linuxio.target`, and privilege separation. |
 | [Filesystem Indexer](./indexer.md) | Architecture, operation, bridge and daemon APIs, configuration, recovery, and administration. |
 | [Monitoring Daemon](./monitoring.md) | Trust boundary and sockets, installed files, sampling semantics, HTTP API and plugin allowlists, configuration, capability, and troubleshooting. |

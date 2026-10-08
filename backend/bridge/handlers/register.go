@@ -6,6 +6,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime"
@@ -54,6 +55,7 @@ var Families = []Family{
 	{Name: "network", Routes: network.Routes, Register: network.RegisterHandlers},
 	{Name: "packages", Routes: packages.Routes, Register: packages.RegisterHandlers},
 	{Name: "terminal", Routes: terminal.Routes, Register: terminal.RegisterHandlers},
+	{Name: "assistant", Routes: assistant.Routes, Register: assistant.RegisterHandlers},
 	{Name: "virt", Routes: virt.Routes, Register: virt.RegisterHandlers},
 	{Name: "wireguard", Routes: wireguard.Routes, Register: wireguard.RegisterHandlers},
 	{Name: "storage", Routes: storage.Routes, Register: storage.RegisterHandlers},

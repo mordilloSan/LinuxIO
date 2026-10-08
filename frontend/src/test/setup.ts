@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
+import * as nodeStreams from "node:stream/web";
+
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
@@ -67,6 +69,21 @@ if (!globalThis.crypto?.randomUUID) {
       randomUUID: () => "00000000-0000-4000-8000-000000000000",
     },
   });
+}
+
+// jsdom does not expose the web streams the ACP transport is built on.
+for (const name of [
+  "ReadableStream",
+  "WritableStream",
+  "TransformStream",
+] as const) {
+  if (!(name in globalThis)) {
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: nodeStreams[name],
+    });
+  }
 }
 
 afterEach(async () => {

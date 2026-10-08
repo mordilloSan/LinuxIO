@@ -23,6 +23,7 @@ export type StreamType = string;
 
 const INTERACTIVE_STREAM_TYPES = new Set([
   "terminal.open",
+  "assistant.open",
   "container.open",
   "virt.console_open",
 ]);
@@ -790,9 +791,16 @@ export class StreamMultiplexer {
    * Open a new stream and send initial payload.
    * The payload is wrapped in a StreamFrame for the bridge.
    */
-  openStream(type: StreamType, initialPayload?: Uint8Array): Stream | null {
-    // Only reuse persistent streams (terminal) - not request/response streams
-    const isPersistent = StreamMultiplexer.PERSISTENT_STREAM_TYPES.has(type);
+  openStream(
+    type: StreamType,
+    initialPayload?: Uint8Array,
+    options?: { cache?: boolean },
+  ): Stream | null {
+    // Only reuse persistent streams (terminal) - not request/response streams.
+    // `cache: false` opts a persistent type out (e.g. a login PTY beside the shell).
+    const isPersistent =
+      options?.cache !== false &&
+      StreamMultiplexer.PERSISTENT_STREAM_TYPES.has(type);
     if (isPersistent) {
       const existing = this.streamsByType.get(type);
       if (existing && existing.status === "open") {

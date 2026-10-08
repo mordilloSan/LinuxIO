@@ -249,3 +249,10 @@
   color: var(--app-palette-text-disabled);
   cursor: default;
 }
+
+.app-select__group {
+  padding: 6px 16px 2px;
+  font-size: 0.85em;
+  color: var(--app-palette-text-secondary);
+  white-space: nowrap;
+}

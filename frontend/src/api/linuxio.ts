@@ -8,6 +8,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
+import type { AssistantAgentId } from "./acp/agents";
 import type {
   LinuxIOStreamSchema,
   StreamRouteName,
@@ -31,12 +32,13 @@ import { isTerminalTaskState } from "./task-state";
 function openMuxStream(
   type: StreamType,
   initialPayload: Uint8Array,
+  options?: { cache?: boolean },
 ): Stream | null {
   const mux = getStreamMux();
   if (!mux || mux.status !== "open") {
     return null;
   }
-  return mux.openStream(type, initialPayload);
+  return mux.openStream(type, initialPayload, options);
 }
 
 function streamOpenPayload(route: string, request: unknown = {}): Uint8Array {
@@ -377,6 +379,24 @@ export function getStatus(): "connecting" | "open" | "closed" | "error" | null {
 
 export function openTerminalStream(cols: number, rows: number): Stream | null {
   return openChannel("terminal.open", { cols, rows });
+}
+
+/** An agent login PTY: never cached, so it runs beside the user's shell. */
+export function openTerminalLoginStream(
+  cols: number,
+  rows: number,
+  login: { agent: AssistantAgentId; args: string[] },
+): Stream | null {
+  return openMuxStream(
+    "terminal.open",
+    streamOpenPayload("terminal.open", {
+      cols,
+      rows,
+      agent: login.agent,
+      args: login.args,
+    }),
+    { cache: false },
+  );
 }
 
 export function openContainerStream(

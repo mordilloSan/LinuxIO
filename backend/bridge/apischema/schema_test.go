@@ -64,6 +64,7 @@ func TestRoutesAreUniqueAndComplete(t *testing.T) {
 		"docker.update_container",
 		"tasks.watch",
 		"terminal.open",
+		"assistant.open",
 		"logs.general.follow",
 	} {
 		if _, ok := seen[route]; !ok {
@@ -92,13 +93,13 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 237; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 239; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeTask], 19; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeDuplex], 11; got != want {
+	if got, want := modes[bridgeipc.ModeDuplex], 12; got != want {
 		t.Errorf("duplex route count = %d, want %d", got, want)
 	}
 }
@@ -203,8 +204,8 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
 	}
-	if count != 99 {
-		t.Fatalf("retry-safe Call count = %d, want 99", count)
+	if count != 100 {
+		t.Fatalf("retry-safe Call count = %d, want 100", count)
 	}
 	for _, route := range []string{"schedules.list", "schedules.get", "config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "storage.get_topology", "tasks.get", "virt.preflight", "virt.templates", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
@@ -396,7 +397,7 @@ func assertContainerRequestDecode(
 }
 
 func TestEndpointExcludesChannels(t *testing.T) {
-	for _, route := range []string{"tasks.watch", "tasks.data", "terminal.open", "container.open", "filebrowser.download_stream"} {
+	for _, route := range []string{"tasks.watch", "tasks.data", "terminal.open", "assistant.open", "container.open", "filebrowser.download_stream"} {
 		spec := mustRoute(t, route)
 		if spec.Endpoint() {
 			t.Fatalf("%s should not generate an endpoint", route)

@@ -96,7 +96,7 @@ describe("UpdateSettings", () => {
     expect(
       within(
         screen.getByLabelText("Saved automatic update configuration"),
-      ).getByText("Security + updates + backports"),
+      ).getByText("All"),
     ).toBeInTheDocument();
     expect(screen.getByText("Download and install")).toBeInTheDocument();
     expect(within(runtime).getByText("Next scheduled run")).toBeInTheDocument();

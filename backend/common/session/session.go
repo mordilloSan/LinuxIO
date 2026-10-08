@@ -94,6 +94,7 @@ type CapabilitiesAvailable struct {
 	AvahiAvailable           bool `json:"avahi_available"`
 	WireGuardAvailable       bool `json:"wireguard_available"`
 	LibvirtAvailable         bool `json:"libvirt_available"`
+	NodeAvailable            bool `json:"node_available"`
 }
 
 type CapabilitiesError struct {
@@ -113,6 +114,7 @@ type CapabilitiesError struct {
 	AvahiError           *string `json:"avahi_error,omitempty"`
 	WireGuardError       *string `json:"wireguard_error,omitempty"`
 	LibvirtError         *string `json:"libvirt_error,omitempty"`
+	NodeError            *string `json:"node_error,omitempty"`
 }
 
 type Session struct {

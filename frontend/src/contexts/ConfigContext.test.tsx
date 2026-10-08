@@ -89,13 +89,14 @@ vi.mock("@/api", async () => {
 });
 const { LinuxIOError } = await import("@/api");
 const { ConfigProvider } = await import("@/contexts/ConfigProvider");
-const { useConfig, useConfigValue, useDockerSettings } =
+const { useAssistantSettings, useConfig, useConfigValue, useDockerSettings } =
   await import("@/hooks/useConfig");
 const { act, createAuthContextValue, createTestQueryClient, render } =
   await import("@/test/render");
 
 function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
+    assistant: { agent: "" },
     appSettings: {
       chunkSizeMB: 1,
       showHiddenFiles: true,
@@ -175,6 +176,7 @@ function Probe() {
   const [dockerDashboardSections] = useConfigValue("dockerDashboardSections");
   const [viewModes] = useConfigValue("viewModes");
   const docker = useDockerSettings();
+  const assistant = useAssistantSettings();
   return (
     <div>
       <div data-testid="loaded">{String(isLoaded)}</div>
@@ -185,6 +187,7 @@ function Probe() {
       <div data-testid="dock-accent-gradient">
         {JSON.stringify(dockAccentGradient)}
       </div>
+      <div data-testid="assistant-agent">{assistant.agent}</div>
       <div data-testid="docker-folders">{docker.folders.join(",")}</div>
       <div data-testid="docker-dashboard-sections">
         {JSON.stringify(dockerDashboardSections)}
@@ -212,6 +215,9 @@ function Probe() {
         }
       >
         set folders
+      </button>
+      <button onClick={() => updateConfig({ assistant: { agent: "gemini" } })}>
+        set assistant agent
       </button>
       <button
         onClick={() =>
@@ -600,6 +606,22 @@ describe("ConfigProvider", () => {
     await screen.findByTestId("loaded");
     expect(screen.getByTestId("view-modes")).toHaveTextContent(
       '{"docker.networks":"card"}',
+    );
+  });
+
+  it("saves and caches the chosen assistant agent", async () => {
+    renderProvider();
+
+    await screen.findByTestId("loaded");
+    await act(async () => {
+      screen.getByRole("button", { name: "set assistant agent" }).click();
+    });
+
+    expect(apiMocks.setConfigRemote).toHaveBeenCalledWith({
+      assistant: { agent: "gemini" },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("assistant-agent")).toHaveTextContent("gemini"),
     );
   });
 

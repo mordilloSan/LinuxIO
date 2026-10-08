@@ -10,6 +10,7 @@ import {
   type UIConfig,
   linuxio,
 } from "@/api";
+import { type AssistantAgentId, isAssistantAgentId } from "@/api/acp/agents";
 import {
   bridgeConfigQueryKey,
   isBridgeAppSettingKey,
@@ -112,6 +113,18 @@ export function useDockerSettings(): DockerSettings {
     );
   }
   return data;
+}
+
+export function useAssistantSettings(): { agent: "" | AssistantAgentId } {
+  const userId = useConfigUserId();
+  const { data } = useQuery({
+    ...linuxio.config.get,
+    queryKey: bridgeConfigQueryKey(userId),
+    enabled: false,
+    select: (config: AppConfig) => config.assistant,
+  });
+  const agent = data?.agent ?? "";
+  return { agent: isAssistantAgentId(agent) ? agent : "" };
 }
 
 export function useConfigStorageMode(): ConfigStorageMode {

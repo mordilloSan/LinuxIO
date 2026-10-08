@@ -91,7 +91,11 @@ const VMMachinesLayout = () => {
     toast: VM_TOAST,
   });
   const deleteMutation = useCallMutation(linuxio.virt.delete, {
-    invalidates: [linuxio.virt.list.queryKey],
+    // Disks kept by a delete show up on the Disks tab.
+    invalidates: [
+      linuxio.virt.list.queryKey,
+      linuxio.virt.unused_disks.queryKey,
+    ],
     success: (result, request) => {
       const deleteResult = normalizeVMDeleteResult(result);
       const diskText =

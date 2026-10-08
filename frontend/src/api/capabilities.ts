@@ -221,6 +221,19 @@ export const CAPABILITIES = [
     route: { label: "Set up rsync", to: "/shares/rsync" },
   },
   {
+    wire: "node",
+    state: "nodeAvailable",
+    label: "Node.js",
+    description: "Runs the Assistant's agent adapters through npx",
+    readyText: "npx resolves on your login-shell PATH.",
+    dependency: "nodejs",
+    icon: "mdi:nodejs",
+    reasonUnknown: "Node.js availability is still being checked.",
+    reasonUnavailable:
+      "Node.js is not installed. Install it with your package manager (for example `apt install nodejs npm`) and reload.",
+    route: { label: "Open Assistant", to: "/assistant" },
+  },
+  {
     wire: "tuned",
     state: "tunedAvailable",
     label: "TuneD",

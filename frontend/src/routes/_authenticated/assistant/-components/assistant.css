@@ -1,0 +1,908 @@
+.assistant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  height: 100%;
+  min-height: 0;
+  outline: none;
+}
+
+.assistant__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.assistant__history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-4);
+  padding-right: var(--app-space-8);
+}
+
+.assistant__history-row > .app-menu__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.assistant__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--app-space-12);
+}
+
+.assistant__body > .assistant__main {
+  flex: 1;
+}
+
+.assistant__side {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: var(--app-space-8);
+  max-height: 50%;
+  min-height: 0;
+  padding: var(--app-space-12);
+}
+
+.assistant__side-header,
+.assistant__side-composer {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+}
+
+.assistant__side-title {
+  flex: 1;
+}
+
+.assistant__side .assistant__transcript {
+  padding: 0;
+}
+
+.assistant__side-composer > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (min-width: 960px) {
+  .assistant__body--split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+
+  .assistant__side {
+    max-height: none;
+    height: 100%;
+  }
+}
+
+.assistant__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--app-space-12);
+}
+
+.assistant__transcript,
+.assistant__composer {
+  font-size: var(--app-font-size-body);
+}
+
+.assistant__transcript {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+  padding: var(--app-space-12);
+}
+
+.assistant-block {
+  overflow-wrap: anywhere;
+}
+
+.assistant-block--user,
+.assistant-block--thought {
+  white-space: pre-wrap;
+}
+
+/* A little extra air around each prompt, so it reads apart from the work and
+   the answer around it. */
+.assistant-block--user {
+  align-self: flex-end;
+  max-width: 80%;
+  margin-block: var(--app-space-8);
+  padding: var(--app-space-8) var(--app-space-12);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-action-selected);
+}
+
+.assistant-block--thought {
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant-block pre,
+.assistant-tool pre {
+  margin: var(--app-space-8) 0;
+  padding: var(--app-space-8) var(--app-space-12);
+  border-radius: var(--app-radius-base);
+  background: var(--app-palette-background-default);
+  color: var(--app-palette-text-primary);
+  overflow: auto;
+  font-family: var(--app-font-mono);
+  font-size: 0.75rem;
+}
+
+.assistant-code {
+  position: relative;
+}
+
+.assistant-code .assistant-code__copy {
+  position: absolute;
+  top: var(--app-space-12);
+  right: var(--app-space-4);
+}
+
+.assistant-markdown > :first-child {
+  margin-top: 0;
+}
+
+.assistant-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.assistant-markdown ul,
+.assistant-markdown ol {
+  padding-left: var(--app-space-24);
+}
+
+.assistant-markdown a {
+  color: var(--app-palette-primary-main);
+}
+
+.assistant-markdown h1,
+.assistant-markdown h2,
+.assistant-markdown h3,
+.assistant-markdown h4,
+.assistant-markdown h5,
+.assistant-markdown h6 {
+  color: var(--app-code-type);
+}
+
+.assistant-markdown li::marker {
+  color: var(--app-code-keyword);
+}
+
+.assistant-markdown blockquote {
+  margin: var(--app-space-8) 0;
+  padding-left: var(--app-space-12);
+  border-left: 3px solid var(--app-palette-divider);
+  color: var(--app-code-meta);
+}
+
+.assistant-markdown :not(pre) > code {
+  font-family: var(--app-font-mono);
+  font-size: 0.75rem;
+  color: var(--app-code-string);
+}
+
+/* Classes are the ones classHighlighter emits (@lezer/highlight). */
+.assistant-markdown .tok-keyword {
+  color: var(--app-code-keyword);
+}
+
+.assistant-markdown .tok-string,
+.assistant-markdown .tok-string2,
+.assistant-markdown .tok-inserted {
+  color: var(--app-code-string);
+}
+
+.assistant-markdown .tok-comment {
+  color: var(--app-code-comment);
+  font-style: italic;
+}
+
+.assistant-markdown .tok-number {
+  color: var(--app-code-number);
+}
+
+.assistant-markdown .tok-variableName,
+.assistant-markdown .tok-variableName2 {
+  color: var(--app-code-variable);
+}
+
+.assistant-markdown .tok-typeName,
+.assistant-markdown .tok-className,
+.assistant-markdown .tok-namespace {
+  color: var(--app-code-type);
+}
+
+.assistant-markdown .tok-operator,
+.assistant-markdown .tok-punctuation {
+  color: var(--app-code-operator);
+}
+
+.assistant-markdown .tok-propertyName {
+  color: var(--app-code-property);
+}
+
+.assistant-markdown .tok-literal,
+.assistant-markdown .tok-atom,
+.assistant-markdown .tok-bool,
+.assistant-markdown .tok-deleted {
+  color: var(--app-code-literal);
+}
+
+.assistant-markdown .tok-meta,
+.assistant-markdown .tok-macroName {
+  color: var(--app-code-meta);
+}
+
+.assistant-markdown table {
+  border-collapse: collapse;
+}
+
+.assistant-markdown th,
+.assistant-markdown td {
+  border: 1px solid var(--app-palette-divider);
+  padding: var(--app-space-4) var(--app-space-8);
+}
+
+.assistant-markdown th {
+  background: var(--app-palette-action-hover);
+}
+
+.assistant-diff {
+  margin: var(--app-space-8) 0;
+}
+
+.assistant-diff__path {
+  font-family: var(--app-font-mono);
+  font-size: 0.75rem;
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant-diff pre {
+  margin: var(--app-space-4) 0 0;
+  padding: 0;
+}
+
+.assistant-diff__add {
+  background: color-mix(in srgb, var(--app-palette-success-main), transparent 80%);
+}
+
+.assistant-diff__del {
+  background: color-mix(in srgb, var(--app-palette-error-main), transparent 80%);
+}
+
+.assistant-tool {
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  padding: var(--app-space-8) var(--app-space-12);
+}
+
+.assistant-tool__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  cursor: pointer;
+}
+
+.assistant-tool__title {
+  font-family: var(--app-font-mono);
+}
+
+.assistant-tool-group {
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+}
+
+.assistant-tool-group .assistant-tool-group__header {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--app-space-8);
+}
+
+.assistant-tool-group__header > :last-child {
+  margin-left: auto;
+}
+
+.assistant-tool-group__dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.assistant-tool-group__dot--done {
+  background: var(--app-palette-success-main);
+}
+
+.assistant-tool-group__dot--failed {
+  background: var(--app-palette-error-main);
+}
+
+.assistant-tool-group__dot--active {
+  background: var(--app-palette-primary-main);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .assistant-tool-group__dot--active {
+    animation: assistant-pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes assistant-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.assistant-tool-group__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  padding: 0 var(--app-space-8) var(--app-space-8);
+}
+
+.assistant__composer {
+  display: flex;
+  gap: var(--app-space-8);
+  align-items: flex-end;
+}
+
+/* The prompt and its status line sit in a centred column instead of
+   stretching across a wide screen; the conversation keeps the full width. */
+.assistant__composer-stack,
+.assistant__main > .assistant__status,
+.assistant__main > .assistant__permission {
+  width: 100%;
+  max-width: 768px;
+  margin-inline: auto;
+}
+
+.assistant__composer-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  /* Room for the focus ring, which sits outside the box. */
+  padding: 3px;
+}
+
+.assistant__status {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+}
+
+/* The box owns the border; the text field and the bar sit inside it. */
+.assistant__composer-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--app-palette-action-disabled);
+  border-radius: var(--app-radius-card);
+  padding: var(--app-space-8) var(--app-space-12) var(--app-space-4);
+  overflow: hidden;
+  outline: 1px solid transparent;
+  outline-offset: 2px;
+  transition:
+    border-color var(--app-transition-duration-fast) var(--app-easing-standard),
+    outline-color var(--app-transition-duration-fast) var(--app-easing-standard);
+}
+
+/* Two lines, like the Claude prompt: the border in the accent and a fainter
+   ring two pixels outside it. */
+.assistant__composer-box:focus-within {
+  border-color: var(--app-palette-primary-main);
+  outline-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 60%);
+}
+
+/* 1. A quiet placeholder: hint text, not content. */
+.assistant__composer-box .app-text-field__input::placeholder {
+  color: var(--app-palette-text-secondary);
+  opacity: 0.6;
+}
+
+/* One surface: no underline between the field and the bar, at rest, hover or focus. */
+.assistant__composer-box .app-text-field--standard .app-text-field__wrapper,
+.assistant__composer-box .app-text-field--standard .app-text-field__wrapper:hover,
+.assistant__composer-box
+  .app-text-field--standard.app-text-field--focused
+  .app-text-field__wrapper {
+  border-bottom: none;
+}
+
+.assistant__composer-box .app-text-field__input {
+  resize: none;
+  overflow-y: auto;
+}
+
+.assistant__composer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--app-space-4) var(--app-space-12);
+}
+
+.assistant__bar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+}
+
+.assistant__bar-group--config {
+  flex: 1;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.assistant__bar-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-4);
+  font-size: var(--app-font-size-body);
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--app-space-8);
+}
+
+.assistant__thumb {
+  position: relative;
+  width: 48px;
+  height: 48px;
+}
+
+.assistant__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--app-radius-base);
+}
+
+.assistant__thumb .assistant__thumb-remove {
+  position: absolute;
+  top: calc(-1 * var(--app-space-4));
+  right: calc(-1 * var(--app-space-4));
+  background: var(--app-palette-background-paper);
+}
+
+/* Command names only, in the menu's standard row type; each description
+   is a tooltip on hover or focus. */
+.app-popover__paper.assistant__slash-menu {
+  width: 260px;
+  max-width: calc(100vw - 16px);
+  max-height: 320px;
+}
+
+/* Everything in the bar but the send button is dim until pointed at. */
+.assistant__composer-bar .app-select__input {
+  color: var(--app-palette-text-secondary);
+  transition: color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+}
+
+/* Model and effort read as one chip: "Opus 5.5 High". */
+.app-icon-btn.assistant__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 var(--app-space-8);
+  border-radius: var(--app-radius-pill);
+  background-color: var(--app-palette-action-hover);
+  color: var(--app-palette-text-secondary);
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.app-icon-btn.assistant__pill:hover:not(:disabled),
+.app-icon-btn.assistant__pill:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+/* Two tones, like the Claude chip: the model reads first, the effort after. */
+.assistant__pill-major {
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant__pill-minor {
+  color: var(--app-palette-text-disabled);
+}
+
+.app-icon-btn.assistant__pill:hover:not(:disabled) .assistant__pill-major,
+.app-icon-btn.assistant__pill:focus-visible .assistant__pill-major {
+  color: var(--app-palette-text-primary);
+}
+
+.app-icon-btn.assistant__pill:hover:not(:disabled) .assistant__pill-minor,
+.app-icon-btn.assistant__pill:focus-visible .assistant__pill-minor {
+  color: var(--app-palette-text-secondary);
+}
+
+.app-icon-btn.assistant__pill:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.assistant__composer-bar .app-select__input:hover:not(:disabled),
+.assistant__composer-bar .app-select__input:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+.assistant__bar-button {
+  gap: var(--app-space-4);
+  padding: var(--app-space-4) 6px;
+  border-radius: var(--app-radius-md);
+  font: inherit;
+  font-size: var(--app-font-size-body);
+}
+
+.assistant__bar-button:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+.assistant__bar-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* .app-icon-btn:disabled would drop the fill, so the compound selectors
+   carry the disabled look explicitly. */
+.app-icon-btn.assistant__send,
+.app-icon-btn.assistant__send:disabled {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--app-radius-md);
+  background-color: var(--app-palette-primary-main);
+  color: var(--app-palette-primary-contrast-text);
+}
+
+.app-icon-btn.assistant__send:hover:not(:disabled) {
+  background-color: var(--app-palette-primary-dark);
+  box-shadow: none;
+}
+
+.app-icon-btn.assistant__send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.assistant__gauge-wrap {
+  display: inline-flex;
+}
+
+.assistant__gauge-track {
+  stroke: var(--app-palette-divider);
+}
+
+.assistant__gauge--primary .assistant__gauge-fill {
+  stroke: var(--app-palette-primary-main);
+}
+
+.assistant__gauge--warning .assistant__gauge-fill {
+  stroke: var(--app-palette-warning-main);
+}
+
+.assistant__gauge--error .assistant__gauge-fill {
+  stroke: var(--app-palette-error-main);
+}
+
+.assistant__menu-header {
+  padding: 6px 10px 4px;
+  font-size: 0.75rem;
+  color: var(--app-palette-text-secondary);
+}
+
+.app-popover__paper.assistant__mode-menu {
+  min-width: 260px;
+}
+
+.assistant__mode-menu .app-menu__item-label,
+.assistant__model-menu .app-menu__item-label {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-popover__paper.assistant__model-menu {
+  max-width: calc(100vw - 16px);
+  max-height: min(340px, 50vh);
+}
+
+/* Denser rows so more models fit before the list scrolls. */
+.assistant__model-menu .app-menu__item {
+  padding-block: 4px;
+}
+
+/* The current choice carries the accent: a tinted row and an accent check,
+   in both the model and the mode menus. */
+.assistant__model-menu .app-menu__item--selected,
+.assistant__mode-menu .app-menu__item--selected {
+  background: color-mix(in srgb, var(--app-palette-primary-main), transparent 84%);
+}
+
+.assistant__model-menu .app-menu__item--selected .app-menu__item-end,
+.assistant__mode-menu .app-menu__item--selected .app-menu__item-end,
+.assistant__mode-menu .app-menu__item--selected .app-menu__item-start {
+  color: var(--app-palette-primary-main);
+}
+
+.assistant__model-menu .app-menu__item--selected .assistant__mode-name,
+.assistant__mode-menu .app-menu__item--selected .assistant__mode-name {
+  color: var(--app-palette-primary-main);
+}
+
+.assistant__menu-subheader {
+  padding: 4px 10px 2px;
+  font-size: 0.6875rem;
+  color: var(--app-palette-text-disabled);
+}
+
+/* Model settings and effort stay in view at the bottom of the menu while the
+   models scroll. The negative margins cover the menu's own padding so
+   nothing shows under it. */
+.assistant__model-footer {
+  position: sticky;
+  bottom: -5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 4px -5px -5px;
+  padding: 4px 5px 0;
+  border-top: 1px solid var(--app-palette-divider);
+  background: var(--app-palette-background-paper);
+}
+
+.assistant__effort {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-space-12);
+  padding: 6px 10px 10px;
+  font-size: 0.8125rem;
+}
+
+.assistant__extra-value {
+  color: var(--app-palette-primary-main);
+}
+
+/* A switch drawn in CSS: the whole row is the control. */
+.assistant__toggle {
+  position: relative;
+  display: inline-block;
+  width: 26px;
+  height: 14px;
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-action-selected);
+  transition: background-color var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+}
+
+.assistant__toggle::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--app-palette-text-secondary);
+  transition: transform var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+  content: "";
+}
+
+.assistant__toggle--on {
+  background: var(--app-palette-primary-main);
+}
+
+.assistant__toggle--on::after {
+  background: var(--app-palette-primary-contrast-text);
+  transform: translateX(12px);
+}
+
+.assistant__effort-value {
+  color: var(--app-palette-primary-main);
+}
+
+/* A short track of dots with a round thumb, drawn over a native range input
+   so dragging, keyboard and touch come from the browser. */
+.assistant__effort-slider {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 96px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-action-hover);
+}
+
+.assistant__effort-dots {
+  position: absolute;
+  inset: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.assistant__effort-dot {
+  position: relative;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--app-palette-text-disabled);
+}
+
+.assistant__effort-dot--on {
+  background: var(--app-palette-primary-main);
+}
+
+.assistant__effort-range {
+  position: relative;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.assistant__effort-range:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+  border-radius: var(--app-radius-pill);
+}
+
+/* Each engine's thumb in its own rule: one unknown pseudo-element in a
+   selector list drops the whole rule. */
+.assistant__effort-range::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+
+.assistant__effort-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 50%;
+  background: var(--app-palette-primary-main);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--app-palette-primary-main), transparent 75%);
+  appearance: none;
+}
+
+.assistant__effort-range::-moz-range-track {
+  background: transparent;
+}
+
+.assistant__effort-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--app-palette-primary-main);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--app-palette-primary-main), transparent 75%);
+}
+
+.assistant__mode-description {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--app-palette-text-secondary);
+}
+
+/* The agent asking before it acts: a question, the exact command or diff,
+   and the agent's choices as a numbered list. Same surface as the prompt. */
+.assistant__permission {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  padding: var(--app-space-12);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-card);
+  background: var(--app-palette-background-paper);
+  font-size: var(--app-font-size-body);
+}
+
+.assistant__permission-head {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  font-weight: 600;
+  color: var(--app-palette-text-primary);
+}
+
+.assistant__permission-head svg {
+  color: var(--app-palette-warning-main);
+}
+
+.assistant__permission-description {
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant__permission-command {
+  margin: 0;
+  padding: var(--app-space-8) var(--app-space-12);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-background-default);
+  color: var(--app-palette-text-primary);
+  font-family: var(--app-font-mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.assistant__permission-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-btn.assistant__permission-option {
+  justify-content: flex-start;
+  gap: var(--app-space-12);
+  width: 100%;
+  min-width: 0;
+  padding: 6px var(--app-space-8);
+  border-radius: var(--app-radius-md);
+  color: var(--app-palette-text-primary);
+  font-weight: 400;
+  text-align: left;
+}
+
+.app-btn.assistant__permission-option:hover,
+.app-btn.assistant__permission-option:focus-visible,
+.app-btn.assistant__permission-option:focus {
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-primary-main),
+    transparent 84%
+  );
+}
+
+.assistant__permission-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-base);
+  color: var(--app-palette-text-secondary);
+  font-family: var(--app-font-mono);
+  font-size: 0.6875rem;
+}
+
+.app-btn.assistant__permission-option:focus .assistant__permission-key,
+.app-btn.assistant__permission-option:hover .assistant__permission-key {
+  border-color: var(--app-palette-primary-main);
+  color: var(--app-palette-primary-main);
+}
+
+.assistant__permission-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.assistant__permission-esc {
+  color: var(--app-palette-text-disabled);
+  font-size: 0.6875rem;
+}

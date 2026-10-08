@@ -340,6 +340,8 @@ const linuxio = {
       field: "imagePresetId",
     }),
     templates: defineCall("virt.templates"),
+    unused_disk_delete: defineCallWithRequest("virt.unused_disk_delete"),
+    unused_disks: defineCall("virt.unused_disks"),
   },
   wireguard: {
     add_interface: defineCallWithRequest("wireguard.add_interface"),

@@ -19,6 +19,7 @@ export interface AppTextFieldProps {
   "aria-autocomplete"?: "none" | "inline" | "list" | "both";
   "aria-controls"?: string;
   "aria-expanded"?: boolean;
+  "aria-keyshortcuts"?: string;
   autoComplete?: string;
   autoFocus?: boolean;
   className?: string;
@@ -87,6 +88,7 @@ const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
     "aria-label": ariaLabel,
     "aria-controls": ariaControls,
     "aria-expanded": ariaExpanded,
+    "aria-keyshortcuts": ariaKeyshortcuts,
     "aria-autocomplete": ariaAutocomplete,
   } = props;
 
@@ -161,6 +163,7 @@ const AppTextField = ({ ref, ...props }: AppTextFieldProps) => {
     "aria-label": ariaLabel,
     "aria-controls": ariaControls,
     "aria-expanded": ariaExpanded,
+    "aria-keyshortcuts": ariaKeyshortcuts,
     "aria-autocomplete": ariaAutocomplete,
   };
 

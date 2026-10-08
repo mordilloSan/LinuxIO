@@ -373,6 +373,11 @@ vi.mock("@/api", async (importOriginal) => {
             return Promise.resolve(mocks.networks);
           },
         ),
+        unused_disks: callDescriptor(
+          "virt.unused_disks",
+          ["linuxio", "virt", "unused_disks"],
+          () => Promise.resolve([]),
+        ),
         preflight: requestCall(
           "virt.preflight",
           (request: object) => ["linuxio", "virt", "preflight", request],

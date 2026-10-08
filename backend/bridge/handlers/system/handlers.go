@@ -6,6 +6,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 var Routes = routeBindings(runtime.Runtime{}).Routes()
@@ -13,7 +14,7 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	handlers := systemHandlers{rt: rt}
 	return apischema.Bindings(
-		apischema.Call[apischema.NoRequest, apischema.CapabilitiesResponse]("system.get_capabilities", apischema.RetrySafe()).Handle(handleGetCapabilities),
+		apischema.Call[apischema.NoRequest, apischema.CapabilitiesResponse]("system.get_capabilities", apischema.RetrySafe()).Handle(handlers.handleGetCapabilities),
 		apischema.Call[apischema.NoRequest, *apischema.CPUInfoResponse]("system.get_cpu_info", apischema.RetrySafe()).Handle(handleGetCPUInfo),
 		apischema.Call[apischema.NoRequest, apischema.MotherboardInfo]("system.get_motherboard_info", apischema.RetrySafe()).Handle(handleGetMotherboardInfo),
 		apischema.Call[apischema.NoRequest, apischema.HostInfo]("system.get_host_info", apischema.RetrySafe()).Handle(handleGetHostInfo),
@@ -36,8 +37,12 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	routeBindings(rt).Register(router)
 }
 
-func handleGetCapabilities(ctx context.Context, _ apischema.NoRequest) (apischema.CapabilitiesResponse, error) {
-	return buildCapabilitiesResponse(ctx)
+func (h systemHandlers) handleGetCapabilities(ctx context.Context, _ apischema.NoRequest) (apischema.CapabilitiesResponse, error) {
+	var user session.User
+	if h.rt.Session != nil {
+		user = h.rt.Session.User
+	}
+	return buildCapabilitiesResponse(ctx, user)
 }
 
 func handleGetCPUInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.CPUInfoResponse, error) {

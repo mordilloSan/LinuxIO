@@ -13,6 +13,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as SignInRouteRouteImport } from './routes/sign-in/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAccountsRouteRouteImport } from './routes/_authenticated/accounts/route'
+import { Route as AuthenticatedAssistantRouteRouteImport } from './routes/_authenticated/assistant/route'
 import { Route as AuthenticatedDockerRouteRouteImport } from './routes/_authenticated/docker/route'
 import { Route as AuthenticatedHardwareRouteRouteImport } from './routes/_authenticated/hardware/route'
 import { Route as AuthenticatedLogsRouteRouteImport } from './routes/_authenticated/logs/route'
@@ -51,6 +52,7 @@ import { Route as AuthenticatedStorageTopologyRouteImport } from './routes/_auth
 import { Route as AuthenticatedUpdatesIndexRouteImport } from './routes/_authenticated/updates/index'
 import { Route as AuthenticatedUpdatesHistoryRouteImport } from './routes/_authenticated/updates/history'
 import { Route as AuthenticatedVmIndexRouteImport } from './routes/_authenticated/vm/index'
+import { Route as AuthenticatedVmDisksRouteImport } from './routes/_authenticated/vm/disks'
 import { Route as AuthenticatedVmImagesRouteImport } from './routes/_authenticated/vm/images'
 import { Route as AuthenticatedVmMachinesRouteRouteImport } from './routes/_authenticated/vm/machines/route'
 import { Route as AuthenticatedVmNetworksRouteImport } from './routes/_authenticated/vm/networks'
@@ -75,6 +77,12 @@ const AuthenticatedAccountsRouteRoute =
   AuthenticatedAccountsRouteRouteImport.update({
     id: '/accounts',
     path: '/accounts',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAssistantRouteRoute =
+  AuthenticatedAssistantRouteRouteImport.update({
+    id: '/assistant',
+    path: '/assistant',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedDockerRouteRoute =
@@ -300,6 +308,11 @@ const AuthenticatedVmIndexRoute = AuthenticatedVmIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedVmRouteRoute,
 } as any)
+const AuthenticatedVmDisksRoute = AuthenticatedVmDisksRouteImport.update({
+  id: '/disks',
+  path: '/disks',
+  getParentRoute: () => AuthenticatedVmRouteRoute,
+} as any)
 const AuthenticatedVmImagesRoute = AuthenticatedVmImagesRouteImport.update({
   id: '/images',
   path: '/images',
@@ -333,6 +346,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRouteRoute
   '/': typeof AuthenticatedIndexRoute
   '/accounts': typeof AuthenticatedAccountsRouteRouteWithChildren
+  '/assistant': typeof AuthenticatedAssistantRouteRoute
   '/docker': typeof AuthenticatedDockerRouteRouteWithChildren
   '/hardware': typeof AuthenticatedHardwareRouteRoute
   '/logs': typeof AuthenticatedLogsRouteRoute
@@ -364,6 +378,7 @@ export interface FileRoutesByFullPath {
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
+  '/vm/disks': typeof AuthenticatedVmDisksRoute
   '/vm/images': typeof AuthenticatedVmImagesRoute
   '/vm/networks': typeof AuthenticatedVmNetworksRoute
   '/accounts/': typeof AuthenticatedAccountsIndexRoute
@@ -379,6 +394,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/sign-in': typeof SignInRouteRoute
+  '/assistant': typeof AuthenticatedAssistantRouteRoute
   '/hardware': typeof AuthenticatedHardwareRouteRoute
   '/logs': typeof AuthenticatedLogsRouteRoute
   '/network': typeof AuthenticatedNetworkRouteRoute
@@ -403,6 +419,7 @@ export interface FileRoutesByTo {
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
+  '/vm/disks': typeof AuthenticatedVmDisksRoute
   '/vm/images': typeof AuthenticatedVmImagesRoute
   '/vm/networks': typeof AuthenticatedVmNetworksRoute
   '/accounts': typeof AuthenticatedAccountsIndexRoute
@@ -421,6 +438,7 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRouteRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_authenticated/accounts': typeof AuthenticatedAccountsRouteRouteWithChildren
+  '/_authenticated/assistant': typeof AuthenticatedAssistantRouteRoute
   '/_authenticated/docker': typeof AuthenticatedDockerRouteRouteWithChildren
   '/_authenticated/hardware': typeof AuthenticatedHardwareRouteRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRouteRoute
@@ -453,6 +471,7 @@ export interface FileRoutesById {
   '/_authenticated/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/_authenticated/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/_authenticated/updates/history': typeof AuthenticatedUpdatesHistoryRoute
+  '/_authenticated/vm/disks': typeof AuthenticatedVmDisksRoute
   '/_authenticated/vm/images': typeof AuthenticatedVmImagesRoute
   '/_authenticated/vm/networks': typeof AuthenticatedVmNetworksRoute
   '/_authenticated/accounts/': typeof AuthenticatedAccountsIndexRoute
@@ -472,6 +491,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/'
     | '/accounts'
+    | '/assistant'
     | '/docker'
     | '/hardware'
     | '/logs'
@@ -503,6 +523,7 @@ export interface FileRouteTypes {
     | '/storage/lvm'
     | '/storage/topology'
     | '/updates/history'
+    | '/vm/disks'
     | '/vm/images'
     | '/vm/networks'
     | '/accounts/'
@@ -518,6 +539,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/sign-in'
+    | '/assistant'
     | '/hardware'
     | '/logs'
     | '/network'
@@ -542,6 +564,7 @@ export interface FileRouteTypes {
     | '/storage/lvm'
     | '/storage/topology'
     | '/updates/history'
+    | '/vm/disks'
     | '/vm/images'
     | '/vm/networks'
     | '/accounts'
@@ -559,6 +582,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/_authenticated'
     | '/_authenticated/accounts'
+    | '/_authenticated/assistant'
     | '/_authenticated/docker'
     | '/_authenticated/hardware'
     | '/_authenticated/logs'
@@ -591,6 +615,7 @@ export interface FileRouteTypes {
     | '/_authenticated/storage/lvm'
     | '/_authenticated/storage/topology'
     | '/_authenticated/updates/history'
+    | '/_authenticated/vm/disks'
     | '/_authenticated/vm/images'
     | '/_authenticated/vm/networks'
     | '/_authenticated/accounts/'
@@ -638,6 +663,13 @@ declare module '@tanstack/react-router' {
       path: '/accounts'
       fullPath: '/accounts'
       preLoaderRoute: typeof AuthenticatedAccountsRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/assistant': {
+      id: '/_authenticated/assistant'
+      path: '/assistant'
+      fullPath: '/assistant'
+      preLoaderRoute: typeof AuthenticatedAssistantRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/docker': {
@@ -906,6 +938,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedVmIndexRouteImport
       parentRoute: typeof AuthenticatedVmRouteRoute
     }
+    '/_authenticated/vm/disks': {
+      id: '/_authenticated/vm/disks'
+      path: '/disks'
+      fullPath: '/vm/disks'
+      preLoaderRoute: typeof AuthenticatedVmDisksRouteImport
+      parentRoute: typeof AuthenticatedVmRouteRoute
+    }
     '/_authenticated/vm/images': {
       id: '/_authenticated/vm/images'
       path: '/images'
@@ -1092,6 +1131,7 @@ const AuthenticatedVmMachinesRouteRouteWithChildren =
 
 interface AuthenticatedVmRouteRouteChildren {
   AuthenticatedVmMachinesRouteRoute: typeof AuthenticatedVmMachinesRouteRouteWithChildren
+  AuthenticatedVmDisksRoute: typeof AuthenticatedVmDisksRoute
   AuthenticatedVmImagesRoute: typeof AuthenticatedVmImagesRoute
   AuthenticatedVmNetworksRoute: typeof AuthenticatedVmNetworksRoute
   AuthenticatedVmIndexRoute: typeof AuthenticatedVmIndexRoute
@@ -1100,6 +1140,7 @@ interface AuthenticatedVmRouteRouteChildren {
 const AuthenticatedVmRouteRouteChildren: AuthenticatedVmRouteRouteChildren = {
   AuthenticatedVmMachinesRouteRoute:
     AuthenticatedVmMachinesRouteRouteWithChildren,
+  AuthenticatedVmDisksRoute: AuthenticatedVmDisksRoute,
   AuthenticatedVmImagesRoute: AuthenticatedVmImagesRoute,
   AuthenticatedVmNetworksRoute: AuthenticatedVmNetworksRoute,
   AuthenticatedVmIndexRoute: AuthenticatedVmIndexRoute,
@@ -1110,6 +1151,7 @@ const AuthenticatedVmRouteRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAccountsRouteRoute: typeof AuthenticatedAccountsRouteRouteWithChildren
+  AuthenticatedAssistantRouteRoute: typeof AuthenticatedAssistantRouteRoute
   AuthenticatedDockerRouteRoute: typeof AuthenticatedDockerRouteRouteWithChildren
   AuthenticatedHardwareRouteRoute: typeof AuthenticatedHardwareRouteRoute
   AuthenticatedLogsRouteRoute: typeof AuthenticatedLogsRouteRoute
@@ -1129,6 +1171,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAccountsRouteRoute: AuthenticatedAccountsRouteRouteWithChildren,
+  AuthenticatedAssistantRouteRoute: AuthenticatedAssistantRouteRoute,
   AuthenticatedDockerRouteRoute: AuthenticatedDockerRouteRouteWithChildren,
   AuthenticatedHardwareRouteRoute: AuthenticatedHardwareRouteRoute,
   AuthenticatedLogsRouteRoute: AuthenticatedLogsRouteRoute,

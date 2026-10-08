@@ -192,6 +192,19 @@ rsync** to configure the read-only module on port 873 and start its daemon,
 or use the existing SSH listener on port 9222 with Linux account credentials. See
 [TerraMaster backups](rsync-backups.md) for the UI workflow and service details.
 
+## Node.js (Assistant)
+
+The `node` capability resolves `npx` on the PATH the session user's
+interactive login shell reports, through `DetectAsUser` rather than `Detect`,
+because version managers such as nvm install under the home directory, add
+themselves in `~/.bashrc`, and never appear on the bridge's `PATH`. It is not installable from the UI: Node.js comes from the
+host's own package manager or version manager. It gates the Assistant route
+and its settings tab, whose ACP agent adapters run through `npx`.
+
+`DetectAsUser(ctx, user)` is the variant for capabilities that depend on the
+session user's own environment; every other capability keeps `Detect(ctx)`.
+Exactly one of the two is set, which the registry test enforces.
+
 ## Consuming A Capability
 
 There are two established patterns. Pick based on whether the *whole feature* or

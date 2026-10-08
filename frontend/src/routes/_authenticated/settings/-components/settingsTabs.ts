@@ -8,6 +8,7 @@ export const SETTINGS_TABS = [
   { label: "Theme", value: "theme" },
   { label: "Capabilities", value: "capabilities" },
   { label: "Docker", value: "docker" },
+  { label: "Assistant", value: "assistant" },
   { label: "Indexer", value: "indexer" },
   { label: "Monitoring", value: "monitoring" },
   { label: "Power", value: "power" },
