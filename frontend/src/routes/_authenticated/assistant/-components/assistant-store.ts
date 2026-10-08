@@ -58,6 +58,8 @@ export interface AssistantState {
   canSteer: boolean;
   canDeleteSession: boolean;
   canFork: boolean;
+  /** A side question is being forked; the panel shows "Opening…" meanwhile. */
+  sideOpening: boolean;
   promptCapabilities: { image: boolean; embeddedContext: boolean };
   configOptions: acp.SessionConfigOption[];
   modes: acp.SessionModeState | null;
@@ -107,6 +109,7 @@ const initialState = (): AssistantState => ({
   canSteer: false,
   canDeleteSession: false,
   canFork: false,
+  sideOpening: false,
   promptCapabilities: { image: false, embeddedContext: false },
   configOptions: [],
   modes: null,
@@ -371,6 +374,7 @@ async function releaseSide(conn: AssistantConnection, sessionId: string) {
 function dropSide() {
   sideEpoch++;
   forking = false;
+  if (state.sideOpening) setState({ sideOpening: false });
   const side = state.side;
   if (!side) return Promise.resolve();
   side.pending?.resolve(cancelled);
@@ -443,6 +447,7 @@ export const assistantStore = {
           state.pending?.resolve(cancelled);
           state.side?.pending?.resolve(cancelled);
           setState({
+            sideOpening: false,
             status: "stopped",
             exit,
             pending: null,
@@ -623,6 +628,7 @@ export const assistantStore = {
       return;
     }
     forking = true;
+    setState({ sideOpening: true });
     queuedSideText = initialText ?? null;
     const epoch = sideEpoch;
     try {
@@ -645,7 +651,10 @@ export const assistantStore = {
       if (epoch === sideEpoch) setState({ error: errorMessage(error) });
       return;
     } finally {
-      if (epoch === sideEpoch) forking = false;
+      if (epoch === sideEpoch) {
+        forking = false;
+        setState({ sideOpening: false });
+      }
     }
     const text = queuedSideText;
     queuedSideText = null;

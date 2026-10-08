@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -81,7 +81,6 @@ function setup(props: Partial<ComposerProps> = {}) {
       disabled={false}
       modes={null}
       running={false}
-      turnStartedAt={null}
       usage={null}
       {...handlers}
       {...props}
@@ -544,11 +543,23 @@ describe("Composer", () => {
       expect(screen.getByLabelText("Message")).toHaveValue("");
     });
 
-    it("opens the panel with no question for a bare /btw", async () => {
+    it("opens the panel at once when /btw is picked from the menu with Enter", async () => {
+      const { onBtw, onSend } = setup();
+      const input = screen.getByLabelText("Message");
+      await userEvent.type(input, "/btw");
+      await userEvent.keyboard("{Enter}");
+      expect(onBtw).toHaveBeenCalledTimes(1);
+      expect(onBtw).toHaveBeenCalledWith("");
+      expect(input).toHaveValue("");
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it("opens the panel at once when /btw is clicked in the menu", async () => {
       const { onBtw } = setup();
-      await userEvent.type(screen.getByLabelText("Message"), "/btw");
-      // The first Enter completes the command, the second submits it.
-      await userEvent.keyboard("{Enter}{Enter}");
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      await userEvent.click(
+        await screen.findByRole("menuitem", { name: "/btw" }),
+      );
       expect(onBtw).toHaveBeenCalledWith("");
     });
 
@@ -666,45 +677,20 @@ describe("Composer", () => {
       vi.useRealTimers();
     });
 
-    it("shows the elapsed time, advances it, and wires Stop", () => {
-      const { onStop } = setup({
-        running: true,
-        turnStartedAt: Date.now(),
-      });
-      expect(screen.getByText("0:00")).toBeInTheDocument();
+    it("wires Stop and shows no spinner or time in the bar", () => {
+      const { onStop } = setup({ running: true });
+      // The status line above the prompt carries the spinner and the time.
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+      expect(screen.queryByText("0:00")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
-      act(() => {
-        vi.advanceTimersByTime(61_000);
-      });
-      expect(screen.getByText("1:01")).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Stop" }));
       expect(onStop).toHaveBeenCalledTimes(1);
     });
 
-    it("starts no interval while idle", () => {
+    it("starts no interval of its own while running", () => {
       const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
-      setup({ running: false });
+      setup({ running: true });
       expect(setIntervalSpy).not.toHaveBeenCalled();
-      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    });
-
-    it("clears the elapsed interval when the turn ends while mounted", () => {
-      const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
-      const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
-      const { rerender } = setup({ running: true, turnStartedAt: Date.now() });
-      const id = setIntervalSpy.mock.results[0].value;
-      rerender({ running: false, turnStartedAt: null });
-      expect(clearIntervalSpy).toHaveBeenCalledWith(id);
-    });
-
-    it("clears the elapsed interval on unmount", () => {
-      const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
-      const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
-      const { unmount } = setup({ running: true, turnStartedAt: Date.now() });
-      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
-      const id = setIntervalSpy.mock.results[0].value;
-      unmount();
-      expect(clearIntervalSpy).toHaveBeenCalledWith(id);
     });
   });
 });

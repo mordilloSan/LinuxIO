@@ -13,7 +13,6 @@ import {
 import { call, linuxio } from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppChip from "@/components/ui/AppChip";
-import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTextField from "@/components/ui/AppTextField";
@@ -32,7 +31,6 @@ import {
 import ConfigControls from "./ConfigControls";
 import ContextGauge from "./ContextGauge";
 import ModeMenu from "./ModeMenu";
-import { useElapsed } from "./useElapsed";
 
 export interface ComposerProps {
   disabled: boolean;
@@ -45,7 +43,6 @@ export interface ComposerProps {
   configOptions: acp.SessionConfigOption[];
   modes: acp.SessionModeState | null;
   connecting: boolean;
-  turnStartedAt: number | null;
   usage: AssistantState["usage"];
   onBtw: (text: string) => void;
   onSetConfigOption: (configId: string, value: string | boolean) => void;
@@ -127,7 +124,6 @@ export default function Composer({
   configOptions,
   modes,
   connecting,
-  turnStartedAt,
   usage,
   onBtw,
   onSetConfigOption,
@@ -152,7 +148,6 @@ export default function Composer({
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const elapsed = useElapsed(running ? turnStartedAt : null);
 
   const commands = [
     BTW_COMMAND,
@@ -190,8 +185,23 @@ export default function Composer({
     setDraft(value);
   };
 
+  const runBtw = (question: string) => {
+    if (!canFork) {
+      setAttachError("This agent cannot open side questions");
+      return;
+    }
+    setDraft("");
+    onBtw(question);
+  };
+
   const insertCommand = (command: acp.AvailableCommand) => {
     setCommandsAnchor(null);
+    // /btw needs no argument here: the side panel has its own input.
+    if (command.name === BTW_COMMAND.name) {
+      runBtw("");
+      inputRef.current?.focus();
+      return;
+    }
     setDraft(`/${command.name} `);
     inputRef.current?.focus();
   };
@@ -201,12 +211,7 @@ export default function Composer({
     if (!text || disabled) return;
     const btw = BTW.exec(text);
     if (btw) {
-      if (!canFork) {
-        setAttachError("This agent cannot open side questions");
-        return;
-      }
-      setDraft("");
-      onBtw(btw[1] ?? "");
+      runBtw(btw[1] ?? "");
       return;
     }
     // A turn the agent cannot steer takes nothing but /btw until it ends.
@@ -407,15 +412,6 @@ export default function Composer({
                   }
                 }}
               />
-              {running ? (
-                <>
-                  <AppCircularProgress size={14} />
-                  <span className="assistant__bar-dim assistant__bar-time">
-                    <Icon height={14} icon="mdi:clock-outline" width={14} />
-                    {elapsed}
-                  </span>
-                </>
-              ) : null}
               <ContextGauge usage={usage} />
             </div>
             <div className="assistant__bar-group assistant__bar-group--config">

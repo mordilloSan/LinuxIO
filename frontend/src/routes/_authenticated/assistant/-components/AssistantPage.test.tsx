@@ -505,6 +505,23 @@ describe("AssistantPage", () => {
       expect(openSide).not.toHaveBeenCalled();
     });
 
+    it("shows an opening panel while the fork runs", async () => {
+      render(<AssistantPage agent="claude" />);
+      setState({ status: "ready", sessionId: "s", canFork: true });
+      await screen.findByLabelText("Message");
+      setState({ sideOpening: true });
+      const panel = await screen.findByRole("complementary", {
+        name: "Side question",
+      });
+      expect(panel).toHaveAttribute("aria-busy", "true");
+      expect(panel).toHaveTextContent(/Opening a side question/);
+      setState({ sideOpening: false, side });
+      expect(await screen.findByText("A side answer")).toBeInTheDocument();
+      expect(
+        screen.getByRole("complementary", { name: "Side question" }),
+      ).not.toHaveAttribute("aria-busy");
+    });
+
     it("shows the panel only while side.open", async () => {
       render(<AssistantPage agent="claude" />);
       setState({ status: "ready", sessionId: "s", canFork: true });

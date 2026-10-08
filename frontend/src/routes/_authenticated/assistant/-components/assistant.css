@@ -112,9 +112,12 @@
   white-space: pre-wrap;
 }
 
+/* A little extra air around each prompt, so it reads apart from the work and
+   the answer around it. */
 .assistant-block--user {
   align-self: flex-end;
   max-width: 80%;
+  margin-block: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
   border-radius: var(--app-radius-md);
   background: var(--app-palette-action-selected);
@@ -357,7 +360,8 @@
 /* The prompt and its status line sit in a centred column instead of
    stretching across a wide screen; the conversation keeps the full width. */
 .assistant__composer-stack,
-.assistant__main > .assistant__status {
+.assistant__main > .assistant__status,
+.assistant__main > .assistant__permission {
   width: 100%;
   max-width: 768px;
   margin-inline: auto;
@@ -484,21 +488,10 @@
 }
 
 /* Everything in the bar but the send button is dim until pointed at. */
-.assistant__bar-dim,
 .assistant__composer-bar .app-select__input {
   color: var(--app-palette-text-secondary);
   transition: color var(--app-transition-duration-fast)
     var(--app-easing-standard);
-}
-
-.assistant__bar-dim {
-  font-size: 0.75rem;
-}
-
-.assistant__bar-time {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--app-space-4);
 }
 
 /* Model and effort read as one chip: "Opus 5.5 High". */
@@ -544,7 +537,6 @@
   cursor: default;
 }
 
-.assistant__bar-dim:hover,
 .assistant__composer-bar .app-select__input:hover:not(:disabled),
 .assistant__composer-bar .app-select__input:focus-visible {
   color: var(--app-palette-text-primary);
@@ -812,4 +804,105 @@
   font-size: 0.75rem;
   font-weight: 400;
   color: var(--app-palette-text-secondary);
+}
+
+/* The agent asking before it acts: a question, the exact command or diff,
+   and the agent's choices as a numbered list. Same surface as the prompt. */
+.assistant__permission {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  padding: var(--app-space-12);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-card);
+  background: var(--app-palette-background-paper);
+  font-size: var(--app-font-size-body);
+}
+
+.assistant__permission-head {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  font-weight: 600;
+  color: var(--app-palette-text-primary);
+}
+
+.assistant__permission-head svg {
+  color: var(--app-palette-warning-main);
+}
+
+.assistant__permission-description {
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant__permission-command {
+  margin: 0;
+  padding: var(--app-space-8) var(--app-space-12);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-background-default);
+  color: var(--app-palette-text-primary);
+  font-family: var(--app-font-mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.assistant__permission-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-btn.assistant__permission-option {
+  justify-content: flex-start;
+  gap: var(--app-space-12);
+  width: 100%;
+  min-width: 0;
+  padding: 6px var(--app-space-8);
+  border-radius: var(--app-radius-md);
+  color: var(--app-palette-text-primary);
+  font-weight: 400;
+  text-align: left;
+}
+
+.app-btn.assistant__permission-option:hover,
+.app-btn.assistant__permission-option:focus-visible,
+.app-btn.assistant__permission-option:focus {
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-primary-main),
+    transparent 84%
+  );
+}
+
+.assistant__permission-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-base);
+  color: var(--app-palette-text-secondary);
+  font-family: var(--app-font-mono);
+  font-size: 0.6875rem;
+}
+
+.app-btn.assistant__permission-option:focus .assistant__permission-key,
+.app-btn.assistant__permission-option:hover .assistant__permission-key {
+  border-color: var(--app-palette-primary-main);
+  color: var(--app-palette-primary-main);
+}
+
+.assistant__permission-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.assistant__permission-esc {
+  color: var(--app-palette-text-disabled);
+  font-size: 0.6875rem;
 }

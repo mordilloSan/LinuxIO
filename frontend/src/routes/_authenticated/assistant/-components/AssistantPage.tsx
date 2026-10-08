@@ -19,7 +19,7 @@ import "./assistant.css";
 import { assistantStore, useAssistantState } from "./assistant-store";
 import Composer from "./Composer";
 import PermissionCard from "./PermissionCard";
-import SidePanel from "./SidePanel";
+import SidePanel, { SidePanelOpening } from "./SidePanel";
 import StatusLine from "./StatusLine";
 import Transcript from "./Transcript";
 
@@ -189,7 +189,7 @@ export default function AssistantPage({
       />
 
       <div
-        className={`assistant__body${state.side?.open ? " assistant__body--split" : ""}`}
+        className={`assistant__body${state.side?.open || (state.sideOpening && !state.side) ? " assistant__body--split" : ""}`}
       >
         <section className="assistant__main">
           {state.status === "connecting" ? (
@@ -266,6 +266,7 @@ export default function AssistantPage({
 
           {state.pending ? (
             <PermissionCard
+              key={state.pending.request.toolCall.toolCallId}
               request={state.pending.request}
               onAnswer={(optionId) => assistantStore.answerPermission(optionId)}
             />
@@ -297,11 +298,14 @@ export default function AssistantPage({
             onSetMode={(modeId) => void assistantStore.setMode(modeId)}
             onStop={() => assistantStore.stop()}
             running={state.status === "running"}
-            turnStartedAt={state.turnStartedAt}
             usage={state.usage}
           />
         </section>
-        {state.side?.open ? <SidePanel side={state.side} /> : null}
+        {state.side?.open ? (
+          <SidePanel side={state.side} />
+        ) : state.sideOpening && !state.side ? (
+          <SidePanelOpening />
+        ) : null}
       </div>
     </div>
   );

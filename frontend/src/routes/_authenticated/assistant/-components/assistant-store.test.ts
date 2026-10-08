@@ -967,6 +967,39 @@ describe("assistantStore", () => {
       expect(assistantStore.getState().side?.open).toBe(true);
     });
 
+    it("flags sideOpening while the fork runs, and clears it either way", async () => {
+      let finishFork!: () => void;
+      let failFork!: () => void;
+      const forkSession = vi.fn(
+        () =>
+          new Promise<SessionOpenResult>((resolve, reject) => {
+            finishFork = () =>
+              resolve({ sessionId: "s-side", modes: null, configOptions: [] });
+            failFork = () => reject(new Error("fork failed"));
+          }),
+      );
+      await connectWithFork({ forkSession });
+      const opening = assistantStore.openSide();
+      expect(assistantStore.getState().sideOpening).toBe(true);
+      finishFork();
+      await opening;
+      expect(assistantStore.getState()).toMatchObject({
+        sideOpening: false,
+        side: { sessionId: "s-side", open: true },
+      });
+
+      await assistantStore.discardSide();
+      const failing = assistantStore.openSide();
+      expect(assistantStore.getState().sideOpening).toBe(true);
+      failFork();
+      await failing;
+      expect(assistantStore.getState()).toMatchObject({
+        sideOpening: false,
+        side: null,
+        error: "fork failed",
+      });
+    });
+
     it("does not fork twice when openSide is called while the fork is in flight", async () => {
       let finishFork!: () => void;
       const { conn } = await connectWithFork({

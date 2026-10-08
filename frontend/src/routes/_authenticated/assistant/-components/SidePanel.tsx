@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
@@ -55,6 +56,7 @@ export default function SidePanel({ side }: { side: SideSession }) {
       />
       {side.pending ? (
         <PermissionCard
+          key={side.pending.request.toolCall.toolCallId}
           request={side.pending.request}
           onAnswer={(optionId) => assistantStore.answerSidePermission(optionId)}
         />
@@ -91,6 +93,32 @@ export default function SidePanel({ side }: { side: SideSession }) {
             tooltip={false}
           />
         )}
+      </div>
+    </AppPaper>
+  );
+}
+
+/** Shown the moment /btw is sent, while the agent forks the chat. */
+export function SidePanelOpening() {
+  return (
+    <AppPaper
+      aria-busy="true"
+      aria-label="Side question"
+      className="assistant__side"
+      role="complementary"
+      variant="outlined"
+    >
+      <div className="assistant__side-header">
+        <Icon height={18} icon="mdi:comment-question-outline" width={18} />
+        <AppTypography className="assistant__side-title" fontWeight={600}>
+          Side question
+        </AppTypography>
+      </div>
+      <div className="assistant__status">
+        <AppCircularProgress size={14} />
+        <AppTypography color="text.secondary" variant="body2">
+          {"Opening a side question with this chat's context…"}
+        </AppTypography>
       </div>
     </AppPaper>
   );
