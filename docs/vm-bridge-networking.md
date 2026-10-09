@@ -1,23 +1,19 @@
-# VM Bridge Networking Plan
-
-> **Status: usable on Netplan and NetworkManager hosts.** Phase 1 is implemented.
-> Phase 2a covers NetworkManager, Netplan, and native systemd-networkd within
-> the restrictions below. Phase 2b covers NetworkManager (stock profiles
-> included) and Netplan. ifupdown hosts are out of scope by design and get a
-> manual recipe. Remaining work is session-independent recovery and native
-> systemd-networkd host-IP handoff.
+# VM Bridge Networking
 
 LinuxIO gives a VM a physical-LAN presence by attaching it to a Linux bridge.
 The host and VM can then communicate normally, unlike macvtap. Libvirt's
 `default` NAT network remains the safe default.
 
-The required outcome is bridge setup from the LinuxIO UI using the host's
-existing network manager, without manual configuration or additional networking
-packages. LinuxIO must ship any helper or boot integration it needs. Completion
-requires host and guest connectivity, persistence after reboot, and recovery
-from an unconfirmed or failed handoff.
+Bridge setup runs from the LinuxIO UI through the host's existing network
+manager, without manual configuration or additional networking packages, on
+Netplan and NetworkManager hosts. Phase 1 attaches VMs to any existing bridge;
+Phase 2a creates a bridge on a spare NIC; Phase 2b moves the host's management
+IP onto a new bridge inside the manager's native rollback transaction. ifupdown
+hosts are out of scope by design and get a manual recipe. See
+[Deliberately not done](#deliberately-not-done) for the gaps that were closed
+as not worth their cost.
 
-Current implementation coverage:
+Implementation coverage:
 
 | Host networking owner | Phase 2a: spare NIC | Phase 2b: move host IP |
 | --- | --- | --- |
@@ -38,10 +34,8 @@ Retain one ownership rule across all phases:
 - Phase 2a asks the current network owner to create a bridge without moving
   the host IP.
 - Phase 2b moves the host IP through the current network owner, using its native
-  rollback transaction where available and LinuxIO recovery where required.
-
-The recovery requirement supersedes the previous native-transaction-only scope.
-The sections below distinguish implemented behavior from remaining work.
+  rollback transaction. Owners without one (networkd, ifupdown) are not
+  automated.
 
 ## Phase 1 — attach VMs to an existing bridge
 
@@ -70,8 +64,7 @@ Implemented behavior:
    data does not prevent VM list or detail results.
 
 Phase 1 does not configure the host network manager. It can use an existing
-bridge regardless of who created it; the automatic setup requirement also
-needs Phases 2a and 2b.
+bridge regardless of who created it.
 
 ## Phase 2a — create a bridge on a spare NIC
 
@@ -144,10 +137,9 @@ Netplan remains the persistence owner even when it renders NetworkManager.
 
 ### Native systemd-networkd
 
-The current implementation refuses guided handoff because networkd has no
-native timed rollback primitive. Supporting this flow requires the LinuxIO
-recovery mechanism and networkd work listed below. Manual bridge configuration
-does not satisfy the required outcome.
+Guided handoff is refused because networkd has no native timed rollback
+primitive; the message tells the operator to define the bridge in networkd
+configuration, after which Phase 1 attaches VMs to it.
 
 ### ifupdown / interfaces-based Debian
 
@@ -179,16 +171,15 @@ under the store's exclusive lock, including records owned by another UID,
 without exposing their contents. Recovery allows for bounded native start and
 decision calls before releasing exclusivity.
 
-The current implementation has no LinuxIO reverter service or startup recovery
-hook. NetworkManager or Netplan owns the timeout outside the authenticated
-session. The remaining recovery work must extend this record and lifecycle for
-backends without native transactions and for recovery after a restart.
+There is no LinuxIO reverter service or startup recovery hook. NetworkManager
+or Netplan owns the timeout outside the authenticated session.
 
-## Current safety limits and invariants
+## Safety limits and invariants
 
-- Rebooting during the confirmation window remains unsupported: native D-Bus
-  transaction objects are not assumed to survive daemon or host restart.
-  Closing this gap is part of the remaining recovery work.
+- Rebooting during the confirmation window is unsupported: native D-Bus
+  transaction objects are not assumed to survive daemon or host restart. The
+  new profiles stay on disk, so a working change becomes permanent and a broken
+  one needs a console fix.
 - A process failure exactly while committing a confirmation can leave the
   durable result unknown. LinuxIO reports that state and asks the operator to
   inspect the console instead of claiming either outcome.
@@ -204,81 +195,29 @@ backends without native transactions and for recovery after a restart.
   supports static IPv6 and EUI64 SLAAC without privacy extensions. LinuxIO
   never converts a dynamic address into a static one to make verification pass.
 
-## Remaining implementation
+## Deliberately not done
 
-Implement recovery first, then reuse it for native networkd. Complete the
-remaining backend and configuration coverage before marking out-of-the-box
-support complete.
+Closed on 2026-10-09 as not worth their cost for the targeted hosts (Debian
+stable, Ubuntu LTS, current and previous Fedora):
 
-### 1. Recovery independent of the authenticated session
-
-- [ ] Add a bounded privileged recovery path that can run after the browser,
-  WebSocket, or authenticated `linuxio-bridge` process exits. Reuse systemd
-  scheduling and the existing durable-task store where suitable.
-- [ ] Persist the original configuration, required runtime state, ownership,
-  deadline, and decision before mutation. Restore file contents and permissions
-  and remove only resources created by the operation. Protect stored state
-  from unprivileged access.
-- [ ] Arm recovery before applying changes. Preserve host exclusivity and
-  UID-bound API access; make confirm, explicit revert, and expiry idempotent
-  under concurrent requests and process failures.
-- [ ] Recover pending operations after service restart and reboot. A transient
-  timer or stored native D-Bus handle alone does not cover reboot. Define boot
-  ordering so an unconfirmed configuration cannot leave management unreachable.
-- [ ] Verify restoration before reporting rollback success. Keep native
-  NetworkManager/Netplan transactions and reconcile their outcome with durable
-  state, including interruption during confirmation.
-- [ ] Package recovery helpers, units, state directories, and upgrade/uninstall
-  handling with LinuxIO. Keep privileged network mutation in the bridge/network
-  responsibility boundary; webserver and auth must not acquire that behavior.
-
-### 2. Debian ifupdown bridge creation and host-IP handoff
-
-Not planned. Netplan/networkd (Ubuntu Server) and NetworkManager (Fedora and
-every desktop) cover the targeted hosts; interfaces-based Debian servers get the
-manual recipe above. Revisit only if the recovery mechanism from item 1 makes
-a non-transactional backend safe to automate.
-
-### 3. Native systemd-networkd host-IP handoff
-
-- [ ] Extend the existing networkd persistence code to move host addressing,
-  routes, DNS, and relevant link settings onto the bridge while retaining the
-  physical interface as its port.
-- [ ] Resolve effective networkd configuration, including matching rules,
-  drop-ins, and file precedence, before changing the owning configuration.
-- [ ] Use the shared recovery path for apply, confirm, revert, timeout, and
-  reboot recovery; verify that confirmed configuration persists after reboot.
-
-### 4. Remaining backend and configuration coverage
-
-- [ ] Add bridge lifecycle and handoff support for legacy ifcfg/network-service
-  hosts using the shared recovery path and the existing host manager.
-- [ ] Handle effective Netplan configuration, including merged files and
-  interface matching, and check required D-Bus transaction capabilities before
-  offering setup.
-- [ ] Support reusable existing NetworkManager profiles for spare-NIC bridge
-  creation (NetworkManager auto-creates a profile for every wired NIC).
-- [ ] Support bond and VLAN uplinks with topology-aware ownership and migration.
-  Record physical or upstream restrictions separately from missing LinuxIO
-  implementation.
-
-### 5. Connectivity checks and setup feedback
-
-- [ ] Verify the expected gateway, route metrics/policy, DNS behavior, and
-  management reachability in addition to link membership, MAC, and addresses.
-- [ ] Handle relevant interface-bound firewall rules and zones without opening
-  unrelated traffic. Validate guest forwarding with nftables/iptables,
-  firewalld where present, and Docker networking.
-- [ ] Show the detected manager and actionable capabilities for physical
-  interfaces. Keep virtual-device exclusion details out of the primary error;
-  the current flat Docker/veth list obscures the reason setup is unavailable.
-- [ ] Keep bridge selection and setup in the VM flow, selecting a bridge only
-  after successful creation or confirmed handoff. Remove manual-setup and
-  package-install instructions as the normal path for supported hosts.
+- **Session-independent recovery.** It would only change the outcome when a
+  broken bridge configuration coincides with a reboot inside the 90-second
+  window. NetworkManager and Netplan already revert on timeout; the reverter
+  service, boot ordering and state directory are not justified by that double
+  failure.
+- **Native systemd-networkd host-IP handoff.** Hosts running networkd without
+  Netplan are outside the target list, and the feature needs the recovery
+  mechanism above. Those operators get a clear message and write the bridge
+  themselves.
+- **Debian ifupdown automation.** No transactional rollback, and restarting
+  `networking.service` drops every interface. The manual recipe is the product.
+- **Legacy ifcfg/network-service hosts, bond/VLAN uplinks, spare-NIC bridges on
+  NICs that already carry a NetworkManager auto-profile.** Revisit only when a
+  real host needs them.
 
 ## Verification
 
-Automated coverage must include:
+Automated coverage includes:
 
 - network enumeration, domain XML, and ARP/guest-agent fallback;
 - one-scan Phase 2a preflight and all three persistence backends;
@@ -289,36 +228,20 @@ Automated coverage must include:
 - transport interruption during blocked address discovery; and
 - real browser navigation and refresh recovery without a second Start;
 - bridge setup from VM creation, preserving its form and selecting only a
-  successfully created or confirmed bridge.
+  successfully created or confirmed bridge;
+- NetworkManager dynamic-IPv6 pinning, IPv4-only handoff verification, the
+  ifupdown recipe in both flows, and hook-aware firewall warnings.
 
-Remaining acceptance checks:
+Runtime verification still pending on representative hosts (unit tests,
+browser fixtures and WSL do not establish host-IP migration or guest LAN
+connectivity):
 
-- [ ] On an ifupdown Debian host, confirm both bridge flows show the manual
-  recipe and that a hand-made `br0` is attached and reachable.
-- [ ] On a Docker host, confirm a bridged VM is reachable from the LAN and from
-  a container after a VM start and after a reboot (the libvirt hook path).
-- [ ] On a stock Fedora/NetworkManager host, confirm the handoff succeeds with
-  `ipv6.method=auto` defaults and the host keeps its IPv4 address.
-- [ ] Complete setup from VM creation without terminal commands or extra
-  networking packages. Preserve the host address and working DNS, confirm
-  management access, and verify the guest receives a LAN DHCP lease and can
-  communicate with the host and LAN.
-- [ ] Verify confirmed configuration after reboot and unconfirmed configuration
-  recovery after browser disconnection, bridge-process termination, manager
-  restart, timeout, failed apply, and reboot during the confirmation window.
-  Exercise concurrent confirmation/expiry and repeated requests.
-- [ ] Cover spare and management NICs, static and DHCP configurations, native
-  networkd, NetworkManager, Netplan, and legacy ifcfg. Include IPv6,
-  included/matched configuration, and supported bond/VLAN layouts.
-- [ ] Test alongside Docker, WireGuard, and supported firewall configurations;
-  preserve their connectivity and verify guest traffic beyond bridge creation.
-- [ ] Add focused automated regressions for the new behavior. Use repository
-  Make targets, including `make test-quiet` for changes spanning backend,
-  frontend, contracts, or packaging, and `make test-frontend-browser-quiet` for
-  browser behavior. Record exact targets, results, host configuration, and
-  observed connectivity before checking off runtime acceptance.
+- [ ] Ubuntu Server (Netplan/networkd) with Docker: handoff from the Create VM
+  dialog, Home Assistant reachable from the LAN and from a container, and still
+  reachable after a host reboot (exercises the libvirt hook).
+- [ ] Stock Fedora/NetworkManager host with `ipv6.method=auto` defaults: handoff
+  succeeds and the host keeps its IPv4 address.
+- [ ] ifupdown Debian host: both bridge flows show the recipe; a hand-made
+  `br0` is attached and reachable.
 
-Use console access during host-level tests. WSL can cover some local link and
-attachment behavior, but its nested virtual switch may not provide guest LAN
-DHCP. Unit tests, browser fixtures, and WSL results do not establish successful
-management-IP migration or guest LAN connectivity on a representative host.
+Use console access during host-level tests.

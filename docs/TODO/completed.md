@@ -1,5 +1,15 @@
 # Completed or closed TODOs
 
+- [x] Completed [VM bridged networking](../vm-bridge-networking.md)
+  (2026-10-09): VMs attach to host bridges; the Create VM dialog creates a
+  bridge on a spare NIC or moves the host IP onto one through Netplan or
+  NetworkManager native rollback, accepts stock NetworkManager IPv6 profiles,
+  warns when Home Assistant OS stays on NAT, and gives ifupdown hosts a manual
+  recipe. A packaged libvirt hook lets bridged VM traffic through Docker's
+  FORWARD DROP. Session-independent recovery, native networkd handoff and
+  ifupdown automation were closed as not worth their cost. Real-host
+  verification of the handoff and the hook is still pending.
+
 - [x] Completed [frontend task state unification](../frontend-task-state-unification.md)
   (2026-09-21): per-user task cache entries, per-task subscriptions, shared live
   and recovery writers, and one stable actions context. Frontend checks,

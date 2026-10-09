@@ -5,7 +5,6 @@ Each active plan has its own document:
 - [API reliability, recovery, and notifications](./api-reliability-roadmap.md)
 - [Frontend test coverage](./e2e-testing.md)
 - [Notifications](./notifications.md)
-- [VM bridged networking](./vm-bridge-networking-plan.md)
 
 ## Dependency maintenance
 
