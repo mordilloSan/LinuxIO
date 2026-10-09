@@ -486,17 +486,9 @@ func defaultInterfaceProbes(ctx context.Context, env Environment) ([]InterfacePr
 		}
 		defaultRoutes[route.LinkIndex] = true
 	}
-	links, err := netlink.LinkList()
+	virtualChildren, err := virtualChildrenByParent()
 	if err != nil {
-		return nil, fmt.Errorf("list links: %w", err)
-	}
-	virtualChildren := make(map[int][]string)
-	for _, link := range links {
-		switch link.Type() {
-		case "macvlan", "macvtap", "ipvlan", "ipvtap":
-			parent := link.Attrs().ParentIndex
-			virtualChildren[parent] = append(virtualChildren[parent], link.Attrs().Name)
-		}
+		return nil, err
 	}
 	probes := make([]InterfaceProbe, 0, len(interfaces))
 	for _, iface := range interfaces {
@@ -529,6 +521,24 @@ func defaultInterfaceProbes(ctx context.Context, env Environment) ([]InterfacePr
 		probes = append(probes, probe)
 	}
 	return probes, nil
+}
+
+// virtualChildrenByParent maps a link index to the macvlan/ipvlan links
+// stacked on it, which the kernel will not let share a bridge port.
+func virtualChildrenByParent() (map[int][]string, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, fmt.Errorf("list links: %w", err)
+	}
+	children := make(map[int][]string)
+	for _, link := range links {
+		switch link.Type() {
+		case "macvlan", "macvtap", "ipvlan", "ipvtap":
+			parent := link.Attrs().ParentIndex
+			children[parent] = append(children[parent], link.Attrs().Name)
+		}
+	}
+	return children, nil
 }
 
 func masterLinkName(index int, lookup func(int) (netlink.Link, error)) string {
