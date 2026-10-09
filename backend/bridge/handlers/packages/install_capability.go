@@ -18,7 +18,9 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
@@ -87,7 +89,7 @@ const (
 	detectRetryInterval  = 300 * time.Millisecond
 )
 
-var capabilityInstallRoutes = capabilityInstallBindings().Routes()
+var capabilityInstallRoutes = capabilityInstallBindings(runtime.Runtime{}).Routes()
 
 var (
 	capabilityDistroFamily      = detectDistroFamily
@@ -98,30 +100,37 @@ var (
 	capabilityDetectWithRetry   = detectWithRetry
 )
 
-func capabilityInstallBindings() apischema.BindingSet {
+func capabilityInstallBindings(rt runtime.Runtime) apischema.BindingSet {
 	policy := bridgetask.TaskSingletonSystem
 	policy.Timeout = 10 * time.Minute
+	run := func(ctx context.Context, task *bridgetask.Task, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
+		var user session.User
+		if rt.Session != nil {
+			user = rt.Session.User
+		}
+		return runInstallCapabilityTask(ctx, task, user, req)
+	}
 	return apischema.Bindings(
 		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgetask.TaskMetadata {
 			return bridgetask.TaskMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
-		})).Run(runInstallCapabilityTask, policy),
+		})).Run(run, policy),
 	)
 }
 
 // RegisterCapabilityTaskRoutes attaches the install_capability runner. It
 // streams per-stage progress events to the UI and is registered alongside
 // the other packages-package task runners from handlers.go.
-func RegisterCapabilityTaskRoutes(router *bridgetask.Router) {
-	capabilityInstallBindings().Register(router)
+func RegisterCapabilityTaskRoutes(rt runtime.Runtime, router *bridgetask.Router) {
+	capabilityInstallBindings(rt).Register(router)
 }
 
-func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
+func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, user session.User, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
 	name := strings.TrimSpace(req.Capability)
 	if name == "" {
 		return apischema.InstallCapabilityResult{}, bridgetask.NewError("capability name required", 400)
 	}
 
-	result, err := installCapability(ctx, task, name)
+	result, err := installCapability(ctx, task, user, name)
 	if err != nil {
 		if ctx.Err() != nil {
 			return apischema.InstallCapabilityResult{}, context.Canceled
@@ -131,7 +140,7 @@ func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, req ap
 	return result, nil
 }
 
-func installCapability(ctx context.Context, task *bridgetask.Task, name string) (apischema.InstallCapabilityResult, error) {
+func installCapability(ctx context.Context, task *bridgetask.Task, user session.User, name string) (apischema.InstallCapabilityResult, error) {
 	spec, ok := system.CapabilitySpecByName(name)
 	if !ok {
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
@@ -148,7 +157,7 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 		return apischema.InstallCapabilityResult{}, err
 	}
 
-	if err := installCapabilityComponent(ctx, task, spec.Install.OptionalComponent); err != nil {
+	if err := installCapabilityComponent(ctx, task, user, spec.Install.OptionalComponent); err != nil {
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("install %s: %w", spec.LogName, err)
 	}
 
@@ -183,7 +192,7 @@ func installCapability(ctx context.Context, task *bridgetask.Task, name string) 
 	}
 
 	reportProgress(task, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
-	available, errMsg := capabilityDetectWithRetry(ctx, spec, detectRetryTimeout)
+	available, errMsg := capabilityDetectWithRetry(ctx, spec, user, detectRetryTimeout)
 	return apischema.InstallCapabilityResult{
 		Available: available,
 		Error:     utils.OptionalString(errMsg),
@@ -343,7 +352,12 @@ func runCapabilityCommand(ctx context.Context, name string, args []string, repor
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", name, err)
 	}
-	cmd := capabilityCommandExec(ctx, path, args...)
+	return runCapabilityProcess(ctx, capabilityCommandExec(ctx, path, args...), name, report)
+}
+
+// runCapabilityProcess starts a prepared, context-bound cmd and streams its
+// output the way runCapabilityCommand describes.
+func runCapabilityProcess(ctx context.Context, cmd *exec.Cmd, name string, report func(InstallCapabilityOutput)) error {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("capture %s stdout: %w", name, err)
@@ -490,16 +504,17 @@ func waitUnitActive(ctx context.Context, unit string, timeout time.Duration) err
 	}
 }
 
-// detectWithRetry re-runs the capability's detect function for up to `timeout`
+// detectWithRetry re-runs the capability's detect function, as user for
+// per-user capabilities, for up to `timeout`
 // while it still reports unavailable. This covers the small window between a
 // service becoming "active" and its public surface (D-Bus name, listening
 // socket, etc.) being reachable from the detector.
-func detectWithRetry(ctx context.Context, spec system.CapabilitySpec, timeout time.Duration) (bool, string) {
+func detectWithRetry(ctx context.Context, spec system.CapabilitySpec, user session.User, timeout time.Duration) (bool, string) {
 	deadline := time.Now().Add(timeout)
 	var available bool
 	var errMsg string
 	for {
-		available, errMsg = spec.Detect(ctx)
+		available, errMsg = spec.DetectFor(ctx, user)
 		if available {
 			return true, ""
 		}

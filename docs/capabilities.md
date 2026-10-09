@@ -144,7 +144,7 @@ resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_ser
 | `OptionalPackageRHELFailureWarning` | Concise capability-specific consequence returned to the UI; raw package-manager errors remain in task output. |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
-| `OptionalComponent` | Names a LinuxIO-managed non-package installer, run before any package step. `"docker"` downloads Docker's convenience script from `https://get.docker.com`, reports its sha256, and streams its output (skipped when a `docker` binary is already on `PATH`); `handlers/packages` rejects any other value. |
+| `OptionalComponent` | Names a LinuxIO-managed non-package installer, run before any package step. `"docker"` downloads Docker's convenience script from `https://get.docker.com`, reports its sha256, and streams its output (skipped when a `docker` binary is already on `PATH`). `"node"` downloads the pinned nvm install script and runs it, then `nvm install --lts`, as the session user (see [Node.js](#nodejs-assistant)). `handlers/packages` rejects any other value. |
 | `RequiresDocker` | Optional-component prerequisite checked before install. |
 
 Omit `Install` entirely for capabilities with no UI install path (the
@@ -197,9 +197,14 @@ or use the existing SSH listener on port 9222 with Linux account credentials. Se
 The `node` capability resolves `npx` on the PATH the session user's
 interactive login shell reports, through `DetectAsUser` rather than `Detect`,
 because version managers such as nvm install under the home directory, add
-themselves in `~/.bashrc`, and never appear on the bridge's `PATH`. It is not installable from the UI: Node.js comes from the
-host's own package manager or version manager. It gates the Assistant route
-and its settings tab, whose ACP agent adapters run through `npx`.
+themselves in `~/.bashrc`, and never appear on the bridge's `PATH`. Installing
+it from the UI runs the pinned nvm install script and then
+`nvm install --lts && nvm alias default 'lts/*'` as the session user, never
+as root, so Node.js lands in that user's `~/.nvm` and nvm adds itself to their
+`~/.bashrc`; verification then re-runs the same login-shell probe as that
+user. A host-wide Node.js from the package manager also satisfies the probe.
+It gates the Assistant route and its settings tab, whose ACP agent adapters
+run through `npx`.
 
 `DetectAsUser(ctx, user)` is the variant for capabilities that depend on the
 session user's own environment; every other capability keeps `Detect(ctx)`.

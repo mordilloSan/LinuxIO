@@ -230,7 +230,8 @@ export const CAPABILITIES = [
     icon: "mdi:nodejs",
     reasonUnknown: "Node.js availability is still being checked.",
     reasonUnavailable:
-      "Node.js is not installed. Install it with your package manager (for example `apt install nodejs npm`) and reload.",
+      "npx is not on your login-shell PATH. Install sets up nvm and Node.js LTS for your user.",
+    installable: { requiresPackageKit: false },
     route: { label: "Open Assistant", to: "/assistant" },
   },
   {

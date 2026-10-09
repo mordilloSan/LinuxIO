@@ -36,7 +36,9 @@ func stubBridgeHandoffBackend(t *testing.T) *int {
 	confirmBridgeHandoff = func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error {
 		return nil
 	}
-	revertBridgeHandoff = func(context.Context, *networkbackend.BridgeHandoffState) error { return nil }
+	revertBridgeHandoff = func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error {
+		return nil
+	}
 	return &applyCalls
 }
 
@@ -103,7 +105,7 @@ func TestBridgeHandoffConfirmAndRevertUseStoredHandle(t *testing.T) {
 	}
 
 	reverted := ""
-	revertBridgeHandoff = func(_ context.Context, state *networkbackend.BridgeHandoffState) error {
+	revertBridgeHandoff = func(_ context.Context, _ networkbackend.Environment, state *networkbackend.BridgeHandoffState) error {
 		reverted = state.Handle
 		return nil
 	}
@@ -259,7 +261,7 @@ func TestBridgeHandoffApplyFailureRetainsExclusivityUntilSafeRelease(t *testing.
 
 func TestBridgeHandoffRollbackFailureDoesNotBecomeSuccessfulRevert(t *testing.T) {
 	stubBridgeHandoffBackend(t)
-	revertBridgeHandoff = func(context.Context, *networkbackend.BridgeHandoffState) error {
+	revertBridgeHandoff = func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error {
 		return errors.New("rollback failed for device eth0")
 	}
 	now := time.Now().UTC()

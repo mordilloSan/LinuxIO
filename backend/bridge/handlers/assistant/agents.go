@@ -102,21 +102,13 @@ func loginShell() string {
 // evaluated as that user. Stdin is /dev/null and stderr is discarded, so the
 // "no job control" warnings bash prints without a tty never reach a caller.
 func UserPath(ctx context.Context, u session.User) (string, error) {
-	home, err := bridgeconfig.Homedir(u.Username)
-	if err != nil {
-		return "", fmt.Errorf("resolve %s's home directory: %w", u.Username, err)
-	}
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, loginShell(), "-i", "-l", "-c", `printf %s "$PATH"`)
-	cmd.Dir = home
-	cmd.Env = append(os.Environ(), "HOME="+home, "USER="+u.Username, "LOGNAME="+u.Username)
-	sysAttr := &syscall.SysProcAttr{Setsid: true}
-	if os.Geteuid() == 0 {
-		sysAttr.Credential = &syscall.Credential{Uid: u.UID, Gid: u.GID}
+	cmd, err := UserCommand(ctx, u, loginShell(), "-i", "-l", "-c", `printf %s "$PATH"`)
+	if err != nil {
+		return "", err
 	}
-	cmd.SysProcAttr = sysAttr
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
@@ -127,6 +119,25 @@ func UserPath(ctx context.Context, u session.User) (string, error) {
 		return "", fmt.Errorf("%s's login shell reported an empty PATH", u.Username)
 	}
 	return path, nil
+}
+
+// UserCommand builds a command that runs as u in u's home directory, in its
+// own session, with HOME, USER and LOGNAME set for u. Credentials are only
+// switched when the bridge runs as root.
+func UserCommand(ctx context.Context, u session.User, name string, args ...string) (*exec.Cmd, error) {
+	home, err := bridgeconfig.Homedir(u.Username)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %s's home directory: %w", u.Username, err)
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = home
+	cmd.Env = append(os.Environ(), "HOME="+home, "USER="+u.Username, "LOGNAME="+u.Username)
+	sysAttr := &syscall.SysProcAttr{Setsid: true}
+	if os.Geteuid() == 0 {
+		sysAttr.Credential = &syscall.Credential{Uid: u.UID, Gid: u.GID}
+	}
+	cmd.SysProcAttr = sysAttr
+	return cmd, nil
 }
 
 // lookPathIn is exec.LookPath against an explicit PATH value. A command that

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
+	"github.com/vishvananda/netlink"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
@@ -218,7 +219,7 @@ func ApplyBridgeHandoff(ctx context.Context, env Environment, state *BridgeHando
 	if err := waitForBridgeHandoff(ctx, env, state); err != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), netplanHandoffCleanupTimeout)
 		defer cancel()
-		return errors.Join(err, RevertBridgeHandoff(cleanupCtx, state))
+		return errors.Join(err, RevertBridgeHandoff(cleanupCtx, env, state))
 	}
 	return nil
 }
@@ -245,19 +246,52 @@ func ConfirmBridgeHandoff(ctx context.Context, env Environment, state *BridgeHan
 	}
 }
 
-func RevertBridgeHandoff(ctx context.Context, state *BridgeHandoffState) error {
+func RevertBridgeHandoff(ctx context.Context, env Environment, state *BridgeHandoffState) error {
 	if err := validateHandoffState(state, true); err != nil {
 		return err
 	}
 	path := godbus.ObjectPath(state.Handle)
+	var err error
 	switch state.Backend {
 	case bridgeBackendNetworkManager:
-		return revertNetworkManagerHandoffNative(ctx, path)
+		err = revertNetworkManagerHandoffNative(ctx, path)
 	case bridgeBackendNetplan:
-		return revertNetplanHandoffNative(ctx, path)
+		err = revertNetplanHandoffNative(ctx, path)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedBackend, state.Backend)
 	}
+	if err != nil {
+		return err
+	}
+	// Netplan's Cancel restores the configuration but leaves the bridge
+	// netdev behind, unmanaged and empty, which blocks the next attempt with
+	// "bridge already exists". Remove it once no port is attached.
+	if removeErr := removeEmptyRuntimeBridge(ctx, env, state.Plan.Name); removeErr != nil {
+		return fmt.Errorf("handoff reverted, but the leftover bridge could not be removed: %w", removeErr)
+	}
+	return nil
+}
+
+func removeEmptyRuntimeBridge(ctx context.Context, env Environment, name string) error {
+	if env.RemoveBridge == nil {
+		bridge, err := netlink.LinkByName(name)
+		if err != nil {
+			if _, ok := errors.AsType[netlink.LinkNotFoundError](err); ok {
+				return nil
+			}
+			return fmt.Errorf("find runtime bridge %s: %w", name, err)
+		}
+		links, err := netlink.LinkList()
+		if err != nil {
+			return fmt.Errorf("list links: %w", err)
+		}
+		for _, link := range links {
+			if link.Attrs().MasterIndex == bridge.Attrs().Index {
+				return nil
+			}
+		}
+	}
+	return removeRuntimeBridge(ctx, env, name)
 }
 
 func validateHandoffState(state *BridgeHandoffState, requireHandle bool) error {

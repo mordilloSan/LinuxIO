@@ -248,7 +248,11 @@ func TestBridgeHandoffUsesNativeTransactionHandle(t *testing.T) {
 	var confirmed, reverted godbus.ObjectPath
 	confirmNetworkManagerHandoffNative = func(_ context.Context, path godbus.ObjectPath) error { confirmed = path; return nil }
 	revertNetworkManagerHandoffNative = func(_ context.Context, path godbus.ObjectPath) error { reverted = path; return nil }
-	env := Environment{VerifyBridgeHandoff: func(context.Context, *BridgeHandoffState) (bool, error) { return true, nil }}
+	var removed []string
+	env := Environment{
+		VerifyBridgeHandoff: func(context.Context, *BridgeHandoffState) (bool, error) { return true, nil },
+		RemoveBridge:        func(name string) error { removed = append(removed, name); return nil },
+	}
 	state := BridgeHandoffState{
 		Plan:    BridgeHandoffPlan{Name: "br0", Member: "eth0", ConsoleAcknowledged: true},
 		Backend: bridgeBackendNetworkManager, MemberMAC: "00:11:22:33:44:55",
@@ -262,11 +266,17 @@ func TestBridgeHandoffUsesNativeTransactionHandle(t *testing.T) {
 	if err := ConfirmBridgeHandoff(context.Background(), env, &state); err != nil {
 		t.Fatalf("ConfirmBridgeHandoff: %v", err)
 	}
-	if err := RevertBridgeHandoff(context.Background(), &state); err != nil {
+	if len(removed) != 0 {
+		t.Fatalf("confirm removed bridges %v", removed)
+	}
+	if err := RevertBridgeHandoff(context.Background(), env, &state); err != nil {
 		t.Fatalf("RevertBridgeHandoff: %v", err)
 	}
 	if confirmed != wantPath || reverted != wantPath {
 		t.Fatalf("confirmed %q, reverted %q", confirmed, reverted)
+	}
+	if strings.Join(removed, ",") != "br0" {
+		t.Fatalf("revert removed bridges %v, want br0", removed)
 	}
 }
 
