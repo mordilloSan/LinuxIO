@@ -72,6 +72,7 @@ Show 2 "Removing systemd files..."
 rm -rf /etc/systemd/system/linuxio*
 rm -rf /lib/systemd/system/linuxio*
 rm -f /etc/systemd/system/*.wants/linuxio*
+rm -f /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter
 Show 0 "Systemd files removed"
 
 # ========== RELOAD SYSTEMD ==========

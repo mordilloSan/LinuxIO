@@ -62,6 +62,9 @@ func inspectBridgeHandoffCandidate(ctx context.Context, env Environment, probe I
 func bridgeHandoffBackend(ctx context.Context, env Environment, iface string) (string, error) {
 	owner, err := managerForInterface(ctx, env, iface)
 	if err != nil {
+		if reason := ifupdownBridgeUnsupported(env, iface); reason != nil {
+			return "", reason
+		}
 		return "", err
 	}
 	netplan, err := detectNetplanBackend(env, iface)
@@ -138,7 +141,7 @@ func PrepareBridgeHandoff(ctx context.Context, env Environment, plan BridgeHando
 		Plan:                 plan,
 		Backend:              candidate.Backend,
 		MemberMAC:            member.MAC,
-		OriginalAddresses:    append([]string(nil), nonLinkLocalAddresses(member.Addresses)...),
+		OriginalAddresses:    handoffVerifiedAddresses(candidate.Backend, member.Addresses),
 		OriginalDefaultRoute: member.DefaultRoute,
 	}
 	if state.Backend == bridgeBackendNetplan {
@@ -163,6 +166,23 @@ func bridgeHandoffMember(probes []InterfaceProbe, plan BridgeHandoffPlan) (Inter
 		return InterfaceProbe{}, fmt.Errorf("%w: interface %s was not found", errBridgeMember, plan.Member)
 	}
 	return *member, nil
+}
+
+// handoffVerifiedAddresses lists the member addresses the bridge must carry
+// before confirmation. NetworkManager re-derives dynamic IPv6 identity on the
+// bridge (see pinNetworkManagerDynamicIPv6), so only IPv4 is verified there.
+func handoffVerifiedAddresses(backend string, addresses []string) []string {
+	result := nonLinkLocalAddresses(addresses)
+	if backend != bridgeBackendNetworkManager {
+		return result
+	}
+	ipv4 := result[:0]
+	for _, address := range result {
+		if ip, _, err := net.ParseCIDR(address); err == nil && ip.To4() != nil {
+			ipv4 = append(ipv4, address)
+		}
+	}
+	return ipv4
 }
 
 func nonLinkLocalAddresses(addresses []string) []string {

@@ -265,9 +265,6 @@ func validateNetworkManagerHandoffSettings(settings map[string]map[string]godbus
 	if err := validateNetworkManagerHandoffConnection(connection); err != nil {
 		return err
 	}
-	if err := validateNetworkManagerHandoffIPv6(settings); err != nil {
-		return err
-	}
 	if err := validateNetworkManagerHandoffIPv4(settings); err != nil {
 		return err
 	}
@@ -305,45 +302,6 @@ func validateNetworkManagerHandoffConnection(connection map[string]godbus.Varian
 		if len(secondaries) > 0 {
 			return unsupportedf("NetworkManager profiles with secondary connections cannot be moved")
 		}
-	}
-	return nil
-}
-
-func validateNetworkManagerHandoffIPv6(settings map[string]map[string]godbus.Variant) error {
-	ipv6 := settings["ipv6"]
-	method := strings.ToLower(strings.TrimSpace(variantString(ipv6["method"])))
-	if method != "auto" && method != "dhcp" {
-		return nil
-	}
-	addrGen, ok := ipv6["addr-gen-mode"].Value().(int32)
-	if !ok || addrGen != 0 {
-		return unsupportedf("NetworkManager dynamic IPv6 uses interface-dependent address generation; require explicit eui64")
-	}
-	privacy, ok := ipv6["ip6-privacy"].Value().(int32)
-	if !ok || privacy != 0 {
-		return unsupportedf("NetworkManager dynamic IPv6 privacy extensions cannot be preserved across the bridge rename")
-	}
-	duid, hasDUID := ipv6["dhcp-duid"]
-	if !hasDUID || strings.TrimSpace(variantString(duid)) == "" {
-		return unsupportedf("NetworkManager dynamic IPv6 has an implicit DHCPv6 lease identity that cannot be moved to the bridge")
-	}
-	iaid, hasIAID := ipv6["dhcp-iaid"]
-	if !hasIAID || strings.TrimSpace(variantString(iaid)) == "" {
-		return unsupportedf("NetworkManager dynamic IPv6 has an implicit interface-name DHCPv6 identity")
-	}
-	if networkManagerStableIDDependsOnRenamedContext(settings) {
-		return unsupportedf("NetworkManager dynamic IPv6 identity depends on the source interface or connection")
-	}
-	duidValue := strings.ToLower(strings.TrimSpace(variantString(duid)))
-	if duidValue == "lease" {
-		return unsupportedf("NetworkManager DHCPv6 lease identity cannot be moved to the bridge")
-	}
-	if strings.HasPrefix(duidValue, "stable-") && strings.TrimSpace(variantString(settings["connection"]["stable-id"])) == "" {
-		return unsupportedf("NetworkManager stable DHCPv6 identity requires an explicit connection.stable-id")
-	}
-	iaidValue := strings.ToLower(strings.TrimSpace(variantString(iaid)))
-	if iaidValue == "ifname" || iaidValue == "stable" || iaidValue == "perm-mac" {
-		return unsupportedf("NetworkManager DHCPv6 identity depends on the source interface")
 	}
 	return nil
 }
@@ -388,6 +346,7 @@ func networkManagerHandoffSettings(plan BridgeHandoffPlan, memberMAC string, sou
 	bridge["802-3-ethernet"] = map[string]godbus.Variant{"cloned-mac-address": godbus.MakeVariant(memberMAC)}
 	bridge["ipv4"] = maps.Clone(source["ipv4"])
 	bridge["ipv6"] = maps.Clone(source["ipv6"])
+	pinNetworkManagerDynamicIPv6(bridge["ipv6"])
 	for _, key := range []string{
 		"auth-retries", "autoconnect-retries", "dns-over-tls", "dnssec", "down-on-poweroff", "gateway-ping-timeout",
 		"ip-ping-addresses", "ip-ping-addresses-require-all", "ip-ping-timeout",
@@ -402,6 +361,22 @@ func networkManagerHandoffSettings(plan BridgeHandoffPlan, memberMAC string, sou
 	port["connection"]["autoconnect-priority"] = godbus.MakeVariant(networkManagerAutoconnectPriority)
 	port["802-3-ethernet"] = maps.Clone(source["802-3-ethernet"])
 	return bridge, port
+}
+
+// pinNetworkManagerDynamicIPv6 derives the bridge's dynamic IPv6 identity from
+// its MAC, which is cloned from the member. Stock profiles use stable-privacy
+// addresses and interface-name DHCPv6 identities that NetworkManager cannot
+// carry across a rename, so the host may receive a different global IPv6
+// address once; from then on the identity is portable. IPv4 is unaffected.
+func pinNetworkManagerDynamicIPv6(ipv6 map[string]godbus.Variant) {
+	method := strings.ToLower(strings.TrimSpace(variantString(ipv6["method"])))
+	if method != "auto" && method != "dhcp" {
+		return
+	}
+	ipv6["addr-gen-mode"] = godbus.MakeVariant(int32(0)) // eui64
+	ipv6["ip6-privacy"] = godbus.MakeVariant(int32(0))
+	ipv6["dhcp-duid"] = godbus.MakeVariant("ll")
+	ipv6["dhcp-iaid"] = godbus.MakeVariant("mac")
 }
 
 func variantString(value godbus.Variant) string {

@@ -635,6 +635,13 @@ export default function CreateVMDialog({
                 Create LAN bridge
               </AppButton>
             </div>
+            {activeImagePreset?.bridgedPreferred && network === "default" ? (
+              <AppAlert severity="warning" style={wideGridItemStyle}>
+                {activeImagePreset.label} on NAT is reachable only from this
+                host and cannot discover devices on your LAN. Use Create LAN
+                bridge to give it an address on your network.
+              </AppAlert>
+            ) : null}
             {networksQuery.isError ? (
               <AppAlert severity="error" style={wideGridItemStyle}>
                 Unable to load the available VM networks.

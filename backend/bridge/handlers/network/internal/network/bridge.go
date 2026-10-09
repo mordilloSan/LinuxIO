@@ -21,7 +21,9 @@ const (
 	bridgeBackendNetworkManager = "nmconnection"
 	bridgeBackendNetworkd       = "systemd-networkd"
 	bridgeBackendNetplan        = "netplan"
-	maxLinuxInterfaceNameBytes  = 15
+	// Installed from packaging/libvirt/hooks/qemu.d by the LinuxIO installers.
+	libvirtBridgeNetfilterHook = "/etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter"
+	maxLinuxInterfaceNameBytes = 15
 )
 
 // BridgeCandidate describes one physical link that can safely be used by the
@@ -313,9 +315,34 @@ func validateBridgeBackendConfiguration(backend ConfigBackend, iface string) err
 			}
 		}
 		return ensureSimpleNetworkdLayout(cfg)
+	case *ifupdownBackend:
+		return ifupdownUnsupported(iface)
 	default:
 		return unsupportedf("%s owns %s", backend.Name(), iface)
 	}
+}
+
+// ifupdownBridgeUnsupported reports the manual recipe when iface is configured
+// by ifupdown, and nil otherwise.
+func ifupdownBridgeUnsupported(env Environment, iface string) error {
+	if backend, err := OpenBackend(env, iface); err == nil {
+		if _, ok := backend.(*ifupdownBackend); ok {
+			return ifupdownUnsupported(iface)
+		}
+	}
+	return nil
+}
+
+// ifupdown has no transactional rollback and restarting networking.service
+// drops every interface, so LinuxIO does not automate it. Interfaces-based
+// Debian hosts get a recipe instead.
+func ifupdownUnsupported(iface string) error {
+	return unsupportedf(
+		"%s is configured by ifupdown (/etc/network/interfaces), which LinuxIO does not bridge automatically; "+
+			"add a bridge stanza there (iface br0 inet dhcp, bridge_ports %s) carrying %s's address settings, "+
+			"set %s to 'iface %s inet manual', run 'systemctl restart networking', then choose br0 as the VM network",
+		iface, iface, iface, iface, iface,
+	)
 }
 
 func bridgeRuntimeOwner(backend string) string {
@@ -570,7 +597,13 @@ func firewallWarnings(ctx context.Context, env Environment) []string {
 	if !strings.Contains(string(output), "-P FORWARD DROP") {
 		return nil
 	}
-	return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP; VM traffic may be filtered"}
+	// The packaged libvirt hook accepts intra-bridge forwarding for every
+	// bridge a VM attaches to, so the DROP policy (Docker's default) is only a
+	// problem when the hook is missing.
+	if _, err := readEnvironmentFile(env, libvirtBridgeNetfilterHook); err == nil {
+		return nil
+	}
+	return []string{"bridge netfilter is enabled while the iptables FORWARD policy is DROP (Docker does this) and the LinuxIO libvirt hook that allows bridged VM traffic is not installed; reinstall LinuxIO or VM traffic on the bridge will be dropped"}
 }
 
 func verifyBridge(ctx context.Context, env Environment, bridge, member string) (bool, error) {

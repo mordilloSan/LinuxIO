@@ -628,6 +628,18 @@ install_systemd_files() {
 		Show 0 "tmpfiles.d configuration installed"
 	fi
 
+	# libvirt hook: lets bridged VM traffic through Docker's FORWARD DROP policy
+	Show 2 "Installing libvirt bridge hook..."
+	mkdir -p /etc/libvirt/hooks/qemu.d
+	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/libvirt/hooks/qemu.d/linuxio-bridge-netfilter" -o /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter; then
+		Show 3 "Failed to download libvirt bridge hook (non-critical)"
+	else
+		chmod 0755 /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter
+		# libvirt only discovers hook scripts when its daemon starts.
+		systemctl try-restart libvirtd.service virtqemud.service 2>/dev/null || true
+		Show 0 "libvirt bridge hook installed"
+	fi
+
 	Show 2 "Reloading systemd daemon..."
 	systemctl daemon-reload
 	Show 0 "Systemd daemon reloaded"

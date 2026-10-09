@@ -353,60 +353,41 @@ func TestNetworkManagerHandoffRefusesUnpreservableIPv4Identity(t *testing.T) {
 	}
 }
 
-func TestNetworkManagerHandoffRefusesUnpreservableIPv6Identity(t *testing.T) {
-	for name, testCase := range map[string]struct {
-		ipv6 map[string]godbus.Variant
-		want string
-	}{
-		"stable privacy": {
-			ipv6: map[string]godbus.Variant{
-				"method": godbus.MakeVariant("auto"), "addr-gen-mode": godbus.MakeVariant(int32(1)), "ip6-privacy": godbus.MakeVariant(int32(0)),
-			},
-			want: "interface-dependent address generation",
-		},
-		"privacy extensions": {
-			ipv6: map[string]godbus.Variant{
-				"method": godbus.MakeVariant("auto"), "addr-gen-mode": godbus.MakeVariant(int32(0)), "ip6-privacy": godbus.MakeVariant(int32(2)),
-			},
-			want: "privacy extensions",
-		},
-		"interface stable id": {
-			ipv6: map[string]godbus.Variant{
-				"method": godbus.MakeVariant("auto"), "addr-gen-mode": godbus.MakeVariant(int32(0)), "ip6-privacy": godbus.MakeVariant(int32(0)), "dhcp-duid": godbus.MakeVariant("ll"), "dhcp-iaid": godbus.MakeVariant("mac"),
-			},
-			want: "source interface or connection",
-		},
-		"lease DUID": {
-			ipv6: map[string]godbus.Variant{
-				"method": godbus.MakeVariant("auto"), "addr-gen-mode": godbus.MakeVariant(int32(0)), "ip6-privacy": godbus.MakeVariant(int32(0)), "dhcp-duid": godbus.MakeVariant("lease"), "dhcp-iaid": godbus.MakeVariant("mac"),
-			},
-			want: "lease identity",
-		},
-		"stable DUID without stable id": {
-			ipv6: map[string]godbus.Variant{
-				"method": godbus.MakeVariant("auto"), "addr-gen-mode": godbus.MakeVariant(int32(0)), "ip6-privacy": godbus.MakeVariant(int32(0)), "dhcp-duid": godbus.MakeVariant("stable-ll"), "dhcp-iaid": godbus.MakeVariant("mac"),
-			},
-			want: "explicit connection.stable-id",
-		},
-		"implicit DHCP identity": {
-			ipv6: map[string]godbus.Variant{
-				"method": godbus.MakeVariant("auto"), "addr-gen-mode": godbus.MakeVariant(int32(0)), "ip6-privacy": godbus.MakeVariant(int32(0)),
-			},
-			want: "implicit DHCPv6",
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			connection := map[string]godbus.Variant{"type": godbus.MakeVariant("802-3-ethernet")}
-			if name == "interface stable id" {
-				connection["stable-id"] = godbus.MakeVariant("host-${DEVICE}")
-			}
-			source := map[string]map[string]godbus.Variant{
-				"connection": connection, "802-3-ethernet": {}, "ipv4": {"method": godbus.MakeVariant("auto")}, "ipv6": testCase.ipv6,
-			}
-			if err := validateNetworkManagerHandoffSettings(source); err == nil || !strings.Contains(err.Error(), testCase.want) {
-				t.Fatalf("validation error = %v, want %q", err, testCase.want)
-			}
-		})
+func TestNetworkManagerHandoffPinsStockDynamicIPv6(t *testing.T) {
+	// A stock profile: ipv6.method=auto with NetworkManager's default
+	// stable-privacy addresses, privacy extensions, and implicit DHCPv6 identity.
+	source := map[string]map[string]godbus.Variant{
+		"connection":     {"type": godbus.MakeVariant("802-3-ethernet"), "stable-id": godbus.MakeVariant("host-${DEVICE}")},
+		"802-3-ethernet": {},
+		"ipv4":           {"method": godbus.MakeVariant("auto")},
+		"ipv6":           {"method": godbus.MakeVariant("auto"), "addr-gen-mode": godbus.MakeVariant(int32(1)), "ip6-privacy": godbus.MakeVariant(int32(2))},
+	}
+	if err := validateNetworkManagerHandoffSettings(source); err != nil {
+		t.Fatalf("stock dynamic IPv6 profile refused: %v", err)
+	}
+	bridge, _ := networkManagerHandoffSettings(BridgeHandoffPlan{Name: "br0", Member: "eth0"}, "00:11:22:33:44:55", source)
+	ipv6 := bridge["ipv6"]
+	if ipv6["addr-gen-mode"].Value() != int32(0) || ipv6["ip6-privacy"].Value() != int32(0) || variantString(ipv6["dhcp-duid"]) != "ll" || variantString(ipv6["dhcp-iaid"]) != "mac" {
+		t.Fatalf("bridge ipv6 = %#v", ipv6)
+	}
+	if source["ipv6"]["addr-gen-mode"].Value() != int32(1) {
+		t.Fatalf("source ipv6 mutated: %#v", source["ipv6"])
+	}
+
+	source["ipv6"] = map[string]godbus.Variant{"method": godbus.MakeVariant("manual")}
+	bridge, _ = networkManagerHandoffSettings(BridgeHandoffPlan{Name: "br0", Member: "eth0"}, "00:11:22:33:44:55", source)
+	if _, pinned := bridge["ipv6"]["addr-gen-mode"]; pinned || variantString(bridge["ipv6"]["method"]) != "manual" {
+		t.Fatalf("static ipv6 changed: %#v", bridge["ipv6"])
+	}
+}
+
+func TestHandoffVerifiedAddressesSkipIPv6ForNetworkManager(t *testing.T) {
+	addresses := []string{"192.0.2.5/24", "2001:db8::5/64", "fe80::1/64"}
+	if got := strings.Join(handoffVerifiedAddresses(bridgeBackendNetworkManager, addresses), ","); got != "192.0.2.5/24" {
+		t.Fatalf("NetworkManager verified addresses = %q", got)
+	}
+	if got := strings.Join(handoffVerifiedAddresses(bridgeBackendNetplan, addresses), ","); got != "192.0.2.5/24,2001:db8::5/64" {
+		t.Fatalf("Netplan verified addresses = %q", got)
 	}
 }
 

@@ -15,7 +15,7 @@ Focused implementation and design details remain in their own documents:
 - [Handler Patterns](../bridge_handler_patterns.md) defines handler code style.
 - [Durable Operations Architecture](../durable-operations-architecture.md)
   defines durable Task execution and recovery mechanics.
-- [Notifications](./notifications.md) defines the notification product and
+- [Notifications](../alerts.md) defines the notification product and
   storage contract.
 - [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
   service, and journald ownership boundaries.
@@ -126,7 +126,7 @@ Server-side persistent state
 | Schedule | Native systemd timer and service | systemd owns activation and process state even when no bridge is connected. |
 | Script status and logs | Native systemd state and retained journal entries | Reconnect reads native state; reboot or journal retention may leave historical outcomes unavailable. |
 | Alert | Root-owned JSON file written through `filelock` by root processes | Privileged bridges read the file through `alerts.list`; seen state is per UID. |
-| Delivery | Not implemented | External delivery is listed under "Not in this slice" in [Alerts](./notifications.md). |
+| Delivery | Not implemented | External delivery is listed under "Not in this slice" in [Alerts](../alerts.md). |
 
 Task is a service composed from bounded control operations and Channels. It is
 not a third wire protocol.
@@ -448,7 +448,7 @@ accessibility/regression pass (Batch 5) were completed on 2026-08-12.
 
 ## Phase 6: Persistent Alert Lifecycle
 
-Implemented per [Alerts](./notifications.md): one root-owned JSON file under
+Implemented per [Alerts](../alerts.md): one root-owned JSON file under
 `/var/lib/linuxio`, written through `filelock` by existing root processes and
 read by privileged bridges through the `alerts` handler family. There is no
 daemon, database, or watch Channel; the navbar polls `alerts.list` and
@@ -505,7 +505,7 @@ process runs inside the bridge.
 
 Later sources (storage checks, scheduled-task `OnFailure=`, unit failures,
 release checks) and external delivery are listed under "Not in this slice" in
-[Alerts](./notifications.md). Each new source is a root writer calling
+[Alerts](../alerts.md). Each new source is a root writer calling
 `alerts.Raise`/`alerts.Resolve` or a drop-in running `linuxio alert raise`.
 
 ## Phase 9: Converge and Extend from Evidence
@@ -566,7 +566,7 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 - `bridge_handler_patterns.md`: current handler style.
 - `durable-operations-architecture.md`: durable execution and recovery
   mechanics.
-- `notifications.md`: alert lifecycle, file store, API, polling,
+- `docs/alerts.md`: alert lifecycle, file store, API, polling,
   and frontend behavior.
 - `scheduled-execution.md`: schedule, systemd unit, status, and journald
   ownership.

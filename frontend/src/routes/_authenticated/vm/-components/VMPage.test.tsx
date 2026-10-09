@@ -1284,7 +1284,7 @@ describe("Virtual Machines page", () => {
     expect(screen.getByText("Unavailable")).toBeVisible();
   });
 
-  it("keeps Home Assistant OS on NAT for an unverified sole bridge", async () => {
+  it("warns when Home Assistant OS stays on NAT for an unverified sole bridge", async () => {
     mocks.networks = [
       {
         active: true,
@@ -1311,5 +1311,17 @@ describe("Virtual Machines page", () => {
     expect(
       within(dialog).getByRole("combobox", { name: "Network" }),
     ).toHaveTextContent("NAT (default)");
+    expect(
+      within(dialog).getByText(
+        /Home Assistant OS on NAT is reachable only from this host/i,
+      ),
+    ).toBeVisible();
+
+    await user.click(
+      within(dialog).getByRole("radio", { name: /debian server/i }),
+    );
+    expect(
+      within(dialog).queryByText(/on NAT is reachable only from this host/i),
+    ).toBeNull();
   });
 });
