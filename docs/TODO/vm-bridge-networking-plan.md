@@ -1,10 +1,11 @@
 # VM Bridge Networking Plan
 
-> **Status: incomplete for out-of-the-box bridge setup.** Phase 1 is implemented.
+> **Status: usable on Netplan and NetworkManager hosts.** Phase 1 is implemented.
 > Phase 2a covers NetworkManager, Netplan, and native systemd-networkd within
-> the restrictions below. Phase 2b covers NetworkManager and Netplan only.
-> The next milestone is Debian ifupdown bridge creation and host-IP handoff
-> with recovery, followed by native systemd-networkd host-IP handoff.
+> the restrictions below. Phase 2b covers NetworkManager (stock profiles
+> included) and Netplan. ifupdown hosts are out of scope by design and get a
+> manual recipe. Remaining work is session-independent recovery and native
+> systemd-networkd host-IP handoff.
 
 LinuxIO gives a VM a physical-LAN presence by attaching it to a Linux bridge.
 The host and VM can then communicate normally, unlike macvtap. Libvirt's
@@ -20,10 +21,10 @@ Current implementation coverage:
 
 | Host networking owner | Phase 2a: spare NIC | Phase 2b: move host IP |
 | --- | --- | --- |
-| NetworkManager | Implemented with profile restrictions | Implemented with profile restrictions |
+| NetworkManager | Implemented; refuses NICs that already have a profile | Implemented; dynamic IPv6 identity is re-derived on the bridge |
 | Netplan | Implemented with renderer/configuration restrictions | Implemented with configuration restrictions |
 | Native systemd-networkd | Implemented | Missing |
-| ifupdown / interfaces-based Debian | Missing | Missing |
+| ifupdown / interfaces-based Debian | Out of scope; manual recipe shown | Out of scope; manual recipe shown |
 | Legacy ifcfg / network service | Missing | Missing |
 
 An ifcfg profile managed by NetworkManager belongs to the NetworkManager row.
@@ -53,7 +54,9 @@ Implemented behavior:
    either `<interface type="network">` or `<interface type="bridge">`.
 3. The create dialog defaults to NAT. Home Assistant OS prefers the sole active
    host bridge only when it has a live physical Ethernet uplink. Other bridges
-   remain available for explicit selection.
+   remain available for explicit selection. When a bridge-preferring image
+   stays on NAT, the dialog warns that the VM is reachable only from the host
+   and cannot discover LAN devices, and points at **Create LAN bridge**.
    **Create LAN bridge** beside the network selector opens the existing bridge
    setup. It can create a bridge on a spare wired NIC or guide the host-IP move
    below. Successful setup selects the new bridge and retains the VM form;
@@ -73,9 +76,15 @@ needs Phases 2a and 2b.
 ## Phase 2a — create a bridge on a spare NIC
 
 LinuxIO offers only wired physical interfaces that are not wireless, loopback,
-already enslaved, or carrying non-link-local addresses/default routes. It also
-reports Docker/iptables forwarding warnings without treating them as link
-ownership.
+already enslaved, or carrying non-link-local addresses/default routes.
+
+Docker loads `br_netfilter` and sets the iptables `FORWARD` policy to `DROP`,
+which drops VM↔LAN frames on any Linux bridge. The installers ship
+`packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` into
+`/etc/libvirt/hooks/qemu.d/`; on every domain start it inserts
+`FORWARD -i <bridge> -o <bridge> -j ACCEPT` (IPv4 and IPv6) for each host bridge
+the domain attaches to, skipping libvirt's own `virbr*`. Bridge options only
+warn about the `DROP` policy when that hook is not installed.
 
 The current request performs one inventory and ownership scan. The selected
 backend then rechecks its mutation boundary and owns persistence:
@@ -98,9 +107,8 @@ verifies that the member, addresses, and default route moved before offering
 confirmation.
 
 The current runtime ownership check resolves NetworkManager and networkd per
-interface and refuses mixed or unknown ownership. It does not recognize
-ifupdown ownership, including a Debian host with active `networking.service`
-and its management interface in `/etc/network/interfaces`.
+interface and refuses mixed or unknown ownership. An interface configured in
+`/etc/network/interfaces` is reported as ifupdown with the manual recipe below.
 
 ### NetworkManager
 
@@ -110,6 +118,12 @@ and its management interface in `/etc/network/interfaces`.
 2. Create a 90-second checkpoint with flags `0x02|0x04`.
 3. Add a persistent bridge profile containing copies of the active `ipv4` and
    `ipv6` maps, connection policy including the firewall zone, and the pinned MAC.
+   Dynamic IPv6 (`auto`/`dhcp`) is pinned to the cloned MAC on the bridge:
+   `addr-gen-mode=eui64`, `ip6-privacy=0`, `dhcp-duid=ll`, `dhcp-iaid=mac`.
+   Stock profiles use stable-privacy addresses and interface-name DHCPv6
+   identities that cannot cross the rename, so the host may get a different
+   global IPv6 address once; verification therefore requires the original IPv4
+   addresses and default route on the bridge, not the original IPv6 addresses.
 4. Add a persistent Ethernet port profile, retaining physical Ethernet
    settings, and activate both profiles.
 5. Confirmation calls `CheckpointDestroy`; explicit revert calls
@@ -137,10 +151,13 @@ does not satisfy the required outcome.
 
 ### ifupdown / interfaces-based Debian
 
-Bridge creation and host-IP handoff are missing. The ordinary network settings
-backend can read and edit interface configuration, but the bridge flow rejects
-the interface before reaching that backend. Adding ownership detection alone
-will not provide bridge persistence, lifecycle management, or rollback.
+Out of scope by design: ifupdown has no transactional rollback and
+`systemctl restart networking` drops every interface, so a guided handoff
+cannot be made safe without replacing the network manager. Both bridge flows
+report the interface as ifupdown-managed and give the manual recipe: add a
+`br0` stanza (`iface br0 inet dhcp`, `bridge_ports <nic>`) carrying the NIC's
+address settings, set the NIC to `inet manual`, restart networking, then pick
+`br0` as the VM network. Phase 1 attaches VMs to that bridge like any other.
 
 ## Durable operation record
 
@@ -181,17 +198,17 @@ backends without native transactions and for recovery after a restart.
   is preferable to locking out the host.
 - Complex or secret-bearing layouts are refused rather than partially copied.
 - Dynamic IPv6 needs a portable address and DHCP identity. NetworkManager
-  handoff requires explicit EUI64 generation, disabled privacy, and portable
-  DHCPv6 identifiers. Netplan DHCPv6 and NetworkManager-rendered dynamic IPv6
-  are refused. Netplan with networkd supports static IPv6 and EUI64 SLAAC
-  without privacy extensions. LinuxIO never converts a dynamic address into
-  a static one to make verification pass.
+  handoff re-derives it from the cloned MAC on the bridge and accepts that the
+  host's global IPv6 address may change once. Netplan DHCPv6 and
+  NetworkManager-rendered dynamic IPv6 are refused. Netplan with networkd
+  supports static IPv6 and EUI64 SLAAC without privacy extensions. LinuxIO
+  never converts a dynamic address into a static one to make verification pass.
 
 ## Remaining implementation
 
-Implement recovery and the Debian path together as the first usable milestone,
-then reuse that recovery for native networkd. Complete the remaining backend
-and configuration coverage before marking out-of-the-box support complete.
+Implement recovery first, then reuse it for native networkd. Complete the
+remaining backend and configuration coverage before marking out-of-the-box
+support complete.
 
 ### 1. Recovery independent of the authenticated session
 
@@ -217,22 +234,10 @@ and configuration coverage before marking out-of-the-box support complete.
 
 ### 2. Debian ifupdown bridge creation and host-IP handoff
 
-- [ ] Recognize per-interface ifupdown ownership and distinguish installed
-  ifupdown variants. Resolve `source` and `source-directory` configuration and
-  conflicting owners before offering either bridge flow.
-- [ ] Implement both spare-NIC creation and management-IP migration. Preserve
-  `auto`/`allow-hotplug`, unrelated stanzas, includes, and existing lifecycle
-  hooks; tear down the original interface using its original configuration.
-- [ ] Support static IPv4 and DHCP, preserving address/lease identity, gateway,
-  routes, DNS, MTU, and MAC. Preserve effective DNS through the installed
-  resolver integration without adding a resolver package.
-- [ ] Supply bridge lifecycle support for classic ifupdown when bridge helper
-  hooks are absent. Reuse the existing Go Netlink dependency for kernel bridge
-  operations and ship the required boot/up/down integration with LinuxIO.
-  Do not assume that writing `bridge_ports` works without its supporting hooks,
-  or require installation of bridge-utils or a replacement network manager.
-- [ ] Integrate creation and migration with durable recovery, confirmation,
-  explicit revert, and timeout. Retain networking.service as the existing owner.
+Not planned. Netplan/networkd (Ubuntu Server) and NetworkManager (Fedora and
+every desktop) cover the targeted hosts; interfaces-based Debian servers get the
+manual recipe above. Revisit only if the recovery mechanism from item 1 makes
+a non-transactional backend safe to automate.
 
 ### 3. Native systemd-networkd host-IP handoff
 
@@ -251,12 +256,11 @@ and configuration coverage before marking out-of-the-box support complete.
 - [ ] Handle effective Netplan configuration, including merged files and
   interface matching, and check required D-Bus transaction capabilities before
   offering setup.
-- [ ] Support reusable existing NetworkManager profiles and expand dynamic IPv6
-  support while preserving DHCP identity and address-generation behavior.
-  Retain safe rejection of settings that cannot yet be preserved.
+- [ ] Support reusable existing NetworkManager profiles for spare-NIC bridge
+  creation (NetworkManager auto-creates a profile for every wired NIC).
 - [ ] Support bond and VLAN uplinks with topology-aware ownership and migration.
   Record physical or upstream restrictions separately from missing LinuxIO
-  implementation; ordinary wired Debian is a required supported case.
+  implementation.
 
 ### 5. Connectivity checks and setup feedback
 
@@ -289,10 +293,12 @@ Automated coverage must include:
 
 Remaining acceptance checks:
 
-- [ ] Reproduce the reported Debian setup with active `networking.service`,
-  NetworkManager absent, networkd inactive, and bridge-utils absent. Use
-  `allow-hotplug enp2s0`, static `192.168.1.66/24`, gateway `192.168.1.1`, and
-  `dns-nameservers 192.168.1.66`, with `/etc/network/interfaces.d/*` included.
+- [ ] On an ifupdown Debian host, confirm both bridge flows show the manual
+  recipe and that a hand-made `br0` is attached and reachable.
+- [ ] On a Docker host, confirm a bridged VM is reachable from the LAN and from
+  a container after a VM start and after a reboot (the libvirt hook path).
+- [ ] On a stock Fedora/NetworkManager host, confirm the handoff succeeds with
+  `ipv6.method=auto` defaults and the host keeps its IPv4 address.
 - [ ] Complete setup from VM creation without terminal commands or extra
   networking packages. Preserve the host address and working DNS, confirm
   management access, and verify the guest receives a LAN DHCP lease and can
@@ -301,9 +307,9 @@ Remaining acceptance checks:
   recovery after browser disconnection, bridge-process termination, manager
   restart, timeout, failed apply, and reboot during the confirmation window.
   Exercise concurrent confirmation/expiry and repeated requests.
-- [ ] Cover spare and management NICs, static and DHCP configurations, supported
-  ifupdown variants, native networkd, NetworkManager, Netplan, and legacy ifcfg.
-  Include IPv6, included/matched configuration, and supported bond/VLAN layouts.
+- [ ] Cover spare and management NICs, static and DHCP configurations, native
+  networkd, NetworkManager, Netplan, and legacy ifcfg. Include IPv6,
+  included/matched configuration, and supported bond/VLAN layouts.
 - [ ] Test alongside Docker, WireGuard, and supported firewall configurations;
   preserve their connectivity and verify guest traffic beyond bridge creation.
 - [ ] Add focused automated regressions for the new behavior. Use repository

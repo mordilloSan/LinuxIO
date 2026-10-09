@@ -1,0 +1,26 @@
+#!/bin/sh
+# LinuxIO libvirt QEMU hook: let bridged VM traffic through iptables.
+#
+# Docker loads br_netfilter and sets the iptables FORWARD policy to DROP, which
+# silently drops frames between a VM and the LAN on any Linux bridge. For each
+# host bridge the starting domain attaches to, accept intra-bridge forwarding.
+#
+# Installed as /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter. libvirt
+# calls it with <domain> <operation> <sub-operation> <extra> and the domain XML
+# on stdin. A non-zero exit would abort the VM start, so this always exits 0.
+
+[ "$2" = "start" ] || exit 0
+
+bridges=$(grep -o "<source bridge=['\"][^'\"]*['\"]" | sed "s/.*=['\"]//; s/['\"]\$//" | sort -u)
+
+for bridge in $bridges; do
+	case "$bridge" in
+	virbr*) continue ;; # libvirt filters its own NAT bridges itself
+	esac
+	for tool in iptables ip6tables; do
+		command -v "$tool" >/dev/null 2>&1 || continue
+		"$tool" -C FORWARD -i "$bridge" -o "$bridge" -j ACCEPT 2>/dev/null ||
+			"$tool" -I FORWARD 1 -i "$bridge" -o "$bridge" -j ACCEPT 2>/dev/null || true
+	done
+done
+exit 0

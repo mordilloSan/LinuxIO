@@ -222,6 +222,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Component | Path |
 |-----------|------|
 | Systemd units | `packaging/systemd/*.{target,socket,service}` |
+| libvirt QEMU hook (bridged VM forwarding past Docker's FORWARD DROP) | `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` → `/etc/libvirt/hooks/qemu.d/` |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
 | Install script | `packaging/scripts/localinstall.sh` |
 | CLI (commands) | `backend/cli/main.go` |

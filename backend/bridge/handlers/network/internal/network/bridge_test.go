@@ -404,3 +404,49 @@ func TestValidateBridgeName(t *testing.T) {
 		}
 	}
 }
+
+func TestBridgeOptionsExplainIfupdownInterfaces(t *testing.T) {
+	env, _ := bridgeTestEnvironment(t, []InterfaceProbe{
+		{Name: "eth0", MAC: "00:11:22:33:44:55", Ethernet: true, Addresses: []string{"192.0.2.5/24"}, DefaultRoute: true},
+	})
+	env.ManagerForInterface = func(context.Context, string) (string, error) {
+		return "", errors.New("no supported runtime manager owns eth0")
+	}
+	mustWriteFile(t, env.IfupdownMain, "auto eth0\niface eth0 inet static\n\taddress 192.0.2.5/24\n\tgateway 192.0.2.1\n")
+
+	options, err := GetBridgeOptions(context.Background(), env)
+	if err != nil {
+		t.Fatalf("GetBridgeOptions: %v", err)
+	}
+	candidate := options.Candidates[0]
+	for _, reasons := range [][]string{candidate.Reasons, candidate.HandoffReasons} {
+		if joined := strings.Join(reasons, "; "); !strings.Contains(joined, "configured by ifupdown") || !strings.Contains(joined, "bridge_ports eth0") {
+			t.Fatalf("candidate = %#v", candidate)
+		}
+	}
+}
+
+func TestFirewallWarningsDependOnLibvirtHook(t *testing.T) {
+	env, runner := bridgeTestEnvironment(t, nil)
+	runner.outputs = map[string][]byte{"iptables -S FORWARD": []byte("-P FORWARD DROP\n")}
+	hookInstalled := false
+	env.ReadFile = func(path string) ([]byte, error) {
+		switch path {
+		case "/proc/sys/net/bridge/bridge-nf-call-iptables":
+			return []byte("1\n"), nil
+		case libvirtBridgeNetfilterHook:
+			if hookInstalled {
+				return []byte("#!/bin/sh\n"), nil
+			}
+		}
+		return nil, os.ErrNotExist
+	}
+
+	if warnings := firewallWarnings(context.Background(), env); len(warnings) != 1 || !strings.Contains(warnings[0], "libvirt hook") {
+		t.Fatalf("warnings without hook = %v", warnings)
+	}
+	hookInstalled = true
+	if warnings := firewallWarnings(context.Background(), env); len(warnings) != 0 {
+		t.Fatalf("warnings with hook = %v", warnings)
+	}
+}

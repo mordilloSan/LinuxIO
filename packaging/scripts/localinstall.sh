@@ -326,6 +326,18 @@ main() {
 		Show 3 "linuxio-tmpfiles.conf not found"
 	fi
 
+	# libvirt hook: lets bridged VM traffic through Docker's FORWARD DROP policy
+	Show 2 "Installing libvirt bridge hook..."
+	if [[ -f "$REPO_ROOT/packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter" ]]; then
+		mkdir -p /etc/libvirt/hooks/qemu.d
+		install -m 0755 "$REPO_ROOT/packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter" /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter
+		# libvirt only discovers hook scripts when its daemon starts.
+		systemctl try-restart libvirtd.service virtqemud.service 2>/dev/null || true
+		Show 0 "libvirt bridge hook installed"
+	else
+		Show 3 "linuxio-bridge-netfilter hook not found"
+	fi
+
 	# Config files
 	Show 2 "Installing configuration files..."
 	if [[ -d "$REPO_ROOT/packaging/etc/linuxio" ]]; then
