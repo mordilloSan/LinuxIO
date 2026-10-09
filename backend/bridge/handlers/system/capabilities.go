@@ -37,6 +37,14 @@ type CapabilitySpec struct {
 	Install      *InstallSpec // nil = "not installable from the UI"
 }
 
+// DetectFor runs whichever of DetectAsUser and Detect the spec sets.
+func (s CapabilitySpec) DetectFor(ctx context.Context, user session.User) (bool, string) {
+	if s.DetectAsUser != nil {
+		return s.DetectAsUser(ctx, user)
+	}
+	return s.Detect(ctx)
+}
+
 // InstallSpec describes what `system.install_capability` should do for one
 // capability. Either or both of the package/service halves may be set.
 type InstallSpec struct {
@@ -56,7 +64,8 @@ type InstallSpec struct {
 	PostInstall                       *InstallCommand
 
 	// OptionalComponent names a LinuxIO-managed install that is not provided by
-	// the distro package manager ("docker" runs Docker's convenience script).
+	// the distro package manager ("docker" runs Docker's convenience script,
+	// "node" installs nvm and Node.js LTS for the session user).
 	OptionalComponent string
 	RequiresDocker    bool
 }
@@ -203,6 +212,7 @@ var capabilityRegistry = []CapabilitySpec{
 			}
 			return true, ""
 		},
+		Install: &InstallSpec{OptionalComponent: "node"},
 	},
 	{
 		Name:    "tuned",
@@ -398,11 +408,7 @@ func buildCapabilitiesResponse(ctx context.Context, user session.User) (apischem
 	for index, spec := range capabilityRegistry {
 		wg.Go(func() {
 			started := time.Now()
-			if spec.DetectAsUser != nil {
-				results[index].ok, results[index].errMsg = spec.DetectAsUser(ctx, user)
-			} else {
-				results[index].ok, results[index].errMsg = spec.Detect(ctx)
-			}
+			results[index].ok, results[index].errMsg = spec.DetectFor(ctx, user)
 			results[index].duration = time.Since(started)
 		})
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // dockerComponent is the InstallSpec.OptionalComponent value that installs
@@ -18,18 +19,20 @@ import (
 const dockerComponent = "docker"
 
 const (
-	dockerScriptFetchTimeout = 30 * time.Second
-	dockerScriptMaxBytes     = 1 << 20
+	installScriptFetchTimeout = 30 * time.Second
+	installScriptMaxBytes     = 1 << 20
 )
 
 var dockerInstallScriptURL = "https://get.docker.com"
 
-func installCapabilityComponent(ctx context.Context, task *bridgetask.Task, component string) error {
+func installCapabilityComponent(ctx context.Context, task *bridgetask.Task, user session.User, component string) error {
 	switch component {
 	case "":
 		return nil
 	case dockerComponent:
 		return installDockerEngine(ctx, task)
+	case nodeComponent:
+		return installNodeForUser(ctx, task, user)
 	default:
 		return fmt.Errorf("unknown optional component %q", component)
 	}
@@ -46,7 +49,7 @@ func installDockerEngine(ctx context.Context, task *bridgetask.Task) error {
 	}
 
 	reportProgress(task, stageResolve, fmt.Sprintf("Downloading Docker install script from %s", dockerInstallScriptURL), pctResolve)
-	script, err := fetchDockerInstallScript(ctx)
+	script, err := fetchInstallScript(ctx, dockerInstallScriptURL)
 	if err != nil {
 		return fmt.Errorf("download docker install script: %w", err)
 	}
@@ -77,10 +80,10 @@ func installDockerEngine(ctx context.Context, task *bridgetask.Task) error {
 	return nil
 }
 
-func fetchDockerInstallScript(ctx context.Context) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, dockerScriptFetchTimeout)
+func fetchInstallScript(ctx context.Context, url string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, installScriptFetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dockerInstallScriptURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -91,14 +94,14 @@ func fetchDockerInstallScript(ctx context.Context) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s returned %s", dockerInstallScriptURL, resp.Status)
+		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
 	}
-	script, err := io.ReadAll(io.LimitReader(resp.Body, dockerScriptMaxBytes+1))
+	script, err := io.ReadAll(io.LimitReader(resp.Body, installScriptMaxBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(script) > dockerScriptMaxBytes {
-		return nil, fmt.Errorf("script exceeds %d bytes", dockerScriptMaxBytes)
+	if len(script) > installScriptMaxBytes {
+		return nil, fmt.Errorf("script exceeds %d bytes", installScriptMaxBytes)
 	}
 	if len(script) == 0 {
 		return nil, fmt.Errorf("script is empty")

@@ -98,6 +98,10 @@ type InterfaceProbe struct {
 	Master       string
 	Addresses    []string
 	DefaultRoute bool
+	// VirtualChildren are macvlan/macvtap/ipvlan links stacked on this
+	// interface. They hold the kernel rx handler a bridge port would need, so
+	// enslaving fails with EBUSY while any exist.
+	VirtualChildren []string
 }
 
 // BridgeHandoffPlan is the explicit, risky operation that moves a host's

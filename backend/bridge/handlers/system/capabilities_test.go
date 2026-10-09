@@ -391,8 +391,8 @@ func TestNodeCapabilityProbesTheSessionUsersLoginShell(t *testing.T) {
 	if !ok {
 		t.Fatal("node capability is not registered")
 	}
-	if spec.Install != nil {
-		t.Fatal("node must not be installable from the UI in v1")
+	if spec.Install == nil || spec.Install.OptionalComponent != "node" || spec.Install.PackageDebian != "" || spec.Install.PackageRHEL != "" {
+		t.Fatalf("install spec = %#v, want only the per-user nvm component", spec.Install)
 	}
 	if spec.Detect != nil || spec.DetectAsUser == nil {
 		t.Fatal("node must detect through the session user's login shell, not the bridge PATH")

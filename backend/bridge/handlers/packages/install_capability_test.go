@@ -13,6 +13,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
@@ -209,12 +210,12 @@ func TestInstallCapabilityInstallsAvahiNSSBeforeServiceActions(t *testing.T) {
 				order = append(order, "wait:"+service)
 				return nil
 			}
-			capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ time.Duration) (bool, string) {
+			capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 				order = append(order, "detect:"+spec.Name)
 				return true, ""
 			}
 
-			if _, err := installCapability(context.Background(), nil, "avahi"); err != nil {
+			if _, err := installCapability(context.Background(), nil, session.User{}, "avahi"); err != nil {
 				t.Fatalf("installCapability: %v", err)
 			}
 			want := make([]string, 0, len(test.packages)+4)
@@ -271,7 +272,7 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 		order = append(order, "wait:"+service)
 		return nil
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}
@@ -281,7 +282,7 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	result, err := installCapability(context.Background(), task, "avahi")
+	result, err := installCapability(context.Background(), task, session.User{}, "avahi")
 	if err != nil {
 		t.Fatalf("installCapability: %v", err)
 	}
@@ -394,12 +395,12 @@ func TestInstallCapabilityRunsSensorsDetectBeforeRedetection(t *testing.T) {
 		order = append(order, "post-install:"+name)
 		return originalLookPath(name)
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}
 
-	if _, err := installCapability(context.Background(), nil, "lm_sensors"); err != nil {
+	if _, err := installCapability(context.Background(), nil, session.User{}, "lm_sensors"); err != nil {
 		t.Fatalf("installCapability: %v", err)
 	}
 	want := []string{"package:lm-sensors", "post-install:sensors-detect", "detect:lm_sensors"}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // withDockerInstall serves script as the Docker convenience script, reports
@@ -64,7 +65,7 @@ func withDockerInstall(t *testing.T, dockerInstalled bool, handler http.HandlerF
 		order = append(order, "wait:"+service)
 		return nil
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}
@@ -85,7 +86,7 @@ func TestInstallCapabilityRunsDockerScriptBeforeServiceActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	result, err := installCapability(context.Background(), task, "docker")
+	result, err := installCapability(context.Background(), task, session.User{}, "docker")
 	if err != nil {
 		t.Fatalf("installCapability: %v", err)
 	}
@@ -135,7 +136,7 @@ func TestInstallCapabilitySkipsDockerScriptWhenDockerIsInstalled(t *testing.T) {
 		t.Error("install script downloaded although docker is installed")
 	})
 
-	if _, err := installCapability(context.Background(), nil, "docker"); err != nil {
+	if _, err := installCapability(context.Background(), nil, session.User{}, "docker"); err != nil {
 		t.Fatalf("installCapability: %v", err)
 	}
 	want := []string{"enable:docker.service", "start:docker.service", "wait:docker.service", "detect:docker"}
@@ -172,7 +173,7 @@ func TestInstallCapabilityStopsWhenDockerScriptFails(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			order := withDockerInstall(t, false, test.handler)
 
-			_, err := installCapability(context.Background(), nil, "docker")
+			_, err := installCapability(context.Background(), nil, session.User{}, "docker")
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want it to contain %q", err, test.want)
 			}

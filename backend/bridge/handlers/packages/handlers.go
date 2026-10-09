@@ -23,7 +23,7 @@ var Routes = apischema.CombineRoutes(api.Routes(), packageUpdateRoutes, capabili
 // RegisterHandlers registers package + update handlers with the IPC router.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterTaskRoutes(router)
-	RegisterCapabilityTaskRoutes(router)
+	RegisterCapabilityTaskRoutes(rt, router)
 
 	api.Register(router)
 }

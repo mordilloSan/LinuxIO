@@ -450,3 +450,25 @@ func TestFirewallWarningsDependOnLibvirtHook(t *testing.T) {
 		t.Fatalf("warnings with hook = %v", warnings)
 	}
 }
+
+func TestBridgeOptionsRefuseMacvlanParents(t *testing.T) {
+	env, _ := bridgeTestEnvironment(t, []InterfaceProbe{
+		{Name: "eth0", MAC: "00:11:22:33:44:55", Ethernet: true, Addresses: []string{"192.0.2.5/24"}, DefaultRoute: true, VirtualChildren: []string{"unifi-net"}},
+		{Name: "eth1", MAC: "00:11:22:33:44:66", Ethernet: true, VirtualChildren: []string{"macvlan0"}},
+	})
+
+	options, err := GetBridgeOptions(context.Background(), env)
+	if err != nil {
+		t.Fatalf("GetBridgeOptions: %v", err)
+	}
+	for _, candidate := range options.Candidates {
+		if candidate.Eligible || candidate.HandoffEligible {
+			t.Fatalf("%s unexpectedly eligible: %#v", candidate.Name, candidate)
+		}
+		for _, reasons := range [][]string{candidate.Reasons, candidate.HandoffReasons} {
+			if joined := strings.Join(reasons, "; "); !strings.Contains(joined, "macvlan/ipvlan links (") || !strings.Contains(joined, "docker network rm") {
+				t.Fatalf("%s reasons = %v", candidate.Name, reasons)
+			}
+		}
+	}
+}

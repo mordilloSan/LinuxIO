@@ -261,9 +261,7 @@ func (s *durableBridgeHandoffService) Confirm(ctx context.Context, uid uint32, i
 }
 
 func (s *durableBridgeHandoffService) Revert(ctx context.Context, uid uint32, id string) (apischema.NetworkBridgeHandoffStatus, error) {
-	return s.finish(ctx, uid, id, "reverting", durabletask.StateCanceled, func(ctx context.Context, _ networkbackend.Environment, state *networkbackend.BridgeHandoffState) error {
-		return revertBridgeHandoff(ctx, state)
-	})
+	return s.finish(ctx, uid, id, "reverting", durabletask.StateCanceled, revertBridgeHandoff)
 }
 
 func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id, phase string, terminal durabletask.State, action func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error) (apischema.NetworkBridgeHandoffStatus, error) {

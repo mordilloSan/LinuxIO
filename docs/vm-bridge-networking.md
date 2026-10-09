@@ -69,7 +69,12 @@ bridge regardless of who created it.
 ## Phase 2a — create a bridge on a spare NIC
 
 LinuxIO offers only wired physical interfaces that are not wireless, loopback,
-already enslaved, or carrying non-link-local addresses/default routes.
+already enslaved, or carrying non-link-local addresses/default routes. A NIC
+that is the parent of macvlan/macvtap/ipvlan links (a Docker `macvlan`
+network, for example) is refused in both flows: those links hold the kernel
+rx handler a bridge port needs, so enslaving fails with `EBUSY`. The reason
+names the links and the fix: remove them, set up the bridge, recreate them
+with the bridge as parent.
 
 Docker loads `br_netfilter` and sets the iptables `FORWARD` policy to `DROP`,
 which drops VM↔LAN frames on any Linux bridge. The installers ship
