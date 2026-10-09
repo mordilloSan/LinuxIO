@@ -32,6 +32,7 @@ its plan lands.
 
 | Doc | Use |
 |-----|-----|
+| [Alerts](./alerts.md) | The file-backed alert store, who raises alerts and how, the `linuxio alert` CLI, bridge routes, the navbar bell, and what is deliberately not built (no email or webhook delivery). |
 | [Automatic Updates](./automatic-updates.md) | Per-distribution automatic-update providers, the systemd timers LinuxIO manages, and how the backend selects a provider from `/etc/os-release`. |
 | [Scheduled Scripts](./scheduled-execution.md) | Script scheduling through systemd, execution accounts, task controls, and retained journal logs. |
 | [Storage Topology](./storage-topology.md) | Block-device and mount inventory, application path relationships, live activity, and interpretation limits. |

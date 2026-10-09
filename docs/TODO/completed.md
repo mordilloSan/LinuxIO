@@ -1,5 +1,12 @@
 # Completed or closed TODOs
 
+- [x] Completed [Alerts](../alerts.md) (2026-10-08, `be248b4c`): root-owned
+  `alerts.json` store, `linuxio alert` CLI, automatic-update notify policy via
+  an `ExecStopPost=` drop-in, the Docker update source, `alerts.*` bridge
+  routes, and the navbar bell replacing toast history. External delivery
+  (email, webhooks), a settings card and further sources were declared out of
+  scope.
+
 - [x] Completed [VM bridged networking](../vm-bridge-networking.md)
   (2026-10-09): VMs attach to host bridges; the Create VM dialog creates a
   bridge on a spare NIC or moves the host IP onto one through Netplan or

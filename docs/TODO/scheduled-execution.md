@@ -1,10 +1,5 @@
 # Scheduled scripts with systemd
 
-> **Status: Implemented.** Administrators manage scripts under **Services → Scheduled tasks**.
-> Completion is recorded in [Completed or closed TODOs](./TODO/completed.md).
-> The initial implementation uses systemd and journald directly; it does not
-> require a new worker binary, scheduler daemon, or LinuxIO run-history store.
-
 LinuxIO supplies the script editor, validated configuration, and controls for
 native systemd services and timers. Reuse existing Linux functionality before
 adding execution, logging, or recovery code. The existing Docker auto-update

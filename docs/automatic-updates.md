@@ -68,4 +68,4 @@ Disabling LinuxIO-managed automatic installation does not require disabling
 When notifications are enabled, LinuxIO writes
 `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` with an
 `ExecStopPost=` that runs `linuxio alert auto-update` after each run. The
-drop-in is removed when the policy is `never`. See [Alerts](./TODO/notifications.md).
+drop-in is removed when the policy is `never`. See [Alerts](./alerts.md).

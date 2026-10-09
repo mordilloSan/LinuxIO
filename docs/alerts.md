@@ -1,8 +1,5 @@
 # Alerts
 
-> **Status: Planned.** Implementation plan:
-> [docs/superpowers/plans/2026-10-08-alerts.md](../superpowers/plans/2026-10-08-alerts.md).
-
 LinuxIO's persistent, user-facing alert list: conditions that need an
 administrator's attention and outcomes that happened while nobody was logged
 in. It is deliberately small. There is no daemon, no database, no delivery
