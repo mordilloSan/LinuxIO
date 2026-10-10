@@ -955,7 +955,7 @@ Options:
 What gets installed:
   - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring
   - Systemd:      /etc/systemd/system/linuxio*
-  - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and /run/linuxio/icons)
+  - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and ${DATA_DIR}/icons)
   - PAM:          /etc/pam.d/linuxio
   - Config:       /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml, /etc/linuxio/disallowed-users
   - Licenses:     ${DOC_DIR}/

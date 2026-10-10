@@ -12,7 +12,7 @@ LinuxIO displays icons for Docker containers, compose services, and compose stac
 | Simple Icons | `si:react` | [simpleicons.org](https://simpleicons.org) |
 | Simple Icons long form | `simple-icon:react` | Same as `si:` |
 | URL | `https://example.com/icon.svg` | Downloads an HTTP(S) icon |
-| Local file | `my-icon.svg` | Reads from `/run/linuxio/icons/user/` |
+| Local file | `my-icon.svg` | Reads from `/var/lib/linuxio/icons/user/` |
 
 Supported local-file extensions are `.svg`, `.png`, `.jpg`, `.jpeg`, and `.webp`.
 
@@ -95,7 +95,7 @@ URL icons are fetched with a 10 second timeout and a 5 MB response-size limit.
 
 ### Local Files
 
-Place the icon under `/run/linuxio/icons/user/` and reference it by filename:
+Place the icon under `/var/lib/linuxio/icons/user/` and reference it by filename:
 
 ```yaml
 labels:
@@ -148,7 +148,7 @@ When `io.linuxio.container.proxy.port` is present and no explicit URL is set, Li
 
 ## Cache Layout
 
-Remote icons are cached for 24 hours in `/run/linuxio/icons/`:
+Remote icons are cached in `/var/lib/linuxio/icons/` and refreshed after 24 hours. The cache survives reboots; when a refresh fails (for example, offline), the expired copy is served instead:
 
 | Directory | Contents |
 |-----------|----------|
@@ -176,5 +176,5 @@ The Docker bridge exposes these icon methods:
 |---------|-----|
 | Wrong icon | Set `io.linuxio.container.icon` explicitly |
 | Generic service name | Use a plain name or explicit source prefix, for example `si:postgresql` |
-| Local icon missing | Confirm the file exists under `/run/linuxio/icons/user/` |
+| Local icon missing | Confirm the file exists under `/var/lib/linuxio/icons/user/` |
 | Slow first load | Icons are fetched on first use and then cached for 24 hours |

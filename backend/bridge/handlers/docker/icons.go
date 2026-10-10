@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const (
@@ -29,12 +31,14 @@ var httpClient = &http.Client{
 	Timeout: httpClientTimeout,
 }
 
+// The cache lives under the persistent data dir so icons survive reboots and
+// stay available offline; the packaged tmpfiles policy creates these dirs.
 var (
-	iconCacheDir           = "/run/linuxio/icons"
-	dashboardIconsCacheDir = "/run/linuxio/icons/dashboard-icons"
-	simpleIconsCacheDir    = "/run/linuxio/icons/simple-icons"
-	urlCacheDir            = "/run/linuxio/icons/url-cache"
-	userIconsDir           = "/run/linuxio/icons/user"
+	iconCacheDir           = filepath.Join(version.DataDir, "icons")
+	dashboardIconsCacheDir = filepath.Join(iconCacheDir, "dashboard-icons")
+	simpleIconsCacheDir    = filepath.Join(iconCacheDir, "simple-icons")
+	urlCacheDir            = filepath.Join(iconCacheDir, "url-cache")
+	userIconsDir           = filepath.Join(iconCacheDir, "user")
 )
 
 type IconType string
@@ -113,80 +117,52 @@ func parseIconIdentifier(identifier string) (IconType, string) {
 	return IconTypeDerived, identifier
 }
 
-// getCachedIcon checks if an icon is cached and returns its path
-func getCachedIcon(ctx context.Context, iconType IconType, identifier string) (string, bool) {
-	if err := ctx.Err(); err != nil {
-		return "", false
-	}
-	var cachePath string
-
+// getCachedIcon checks if an icon is cached and returns its path. With
+// allowStale, entries older than iconCacheDuration still count, so a failed
+// refresh can fall back to the last copy.
+func getCachedIcon(ctx context.Context, iconType IconType, identifier string, allowStale bool) (string, bool) {
 	switch iconType {
 	case IconTypeDashboardIcon:
-		return getDashboardCachedIcon(ctx, identifier)
+		return getDashboardCachedIcon(ctx, identifier, allowStale)
 	case IconTypeSimpleIcon:
-		cachePath = filepath.Join(simpleIconsCacheDir, identifier+".svg")
+		return cachedIconPath(ctx, filepath.Join(simpleIconsCacheDir, identifier+".svg"), allowStale)
 	case IconTypeURL:
 		// Hash the URL to create a filename
 		hash := sha256.Sum256([]byte(identifier))
 		hashStr := fmt.Sprintf("%x", hash[:8])
-		cachePath = filepath.Join(urlCacheDir, hashStr+".svg")
+		return cachedIconPath(ctx, filepath.Join(urlCacheDir, hashStr+".svg"), allowStale)
 	case IconTypeFile:
-		cachePath = filepath.Join(userIconsDir, identifier)
+		return cachedIconPath(ctx, filepath.Join(userIconsDir, identifier), allowStale)
 	case IconTypeDerived:
-		return getDerivedCachedIcon(ctx, identifier)
+		if cachePath, found := getDashboardCachedIcon(ctx, identifier, allowStale); found {
+			return cachePath, true
+		}
+		return cachedIconPath(ctx, filepath.Join(simpleIconsCacheDir, identifier+".svg"), allowStale)
 	default:
 		return "", false
 	}
-
-	// Check if file exists and is not too old
-	if err := ctx.Err(); err != nil {
-		return "", false
-	}
-	info, err := os.Stat(cachePath)
-	if err != nil {
-		return "", false
-	}
-
-	// Check cache age
-	if time.Since(info.ModTime()) > iconCacheDuration {
-		return "", false
-	}
-
-	return cachePath, true
 }
 
-func getDashboardCachedIcon(ctx context.Context, identifier string) (string, bool) {
+func getDashboardCachedIcon(ctx context.Context, identifier string, allowStale bool) (string, bool) {
 	for _, ext := range []string{".svg", ".png", ".webp"} {
-		if err := ctx.Err(); err != nil {
-			return "", false
+		if cachePath, found := cachedIconPath(ctx, filepath.Join(dashboardIconsCacheDir, identifier+ext), allowStale); found {
+			return cachePath, true
 		}
-		cachePath := filepath.Join(dashboardIconsCacheDir, identifier+ext)
-		info, err := os.Stat(cachePath)
-		if err != nil {
-			continue
-		}
-		if time.Since(info.ModTime()) > iconCacheDuration {
-			continue
-		}
-		return cachePath, true
 	}
 	return "", false
 }
 
-func getDerivedCachedIcon(ctx context.Context, identifier string) (string, bool) {
-	if cachePath, found := getDashboardCachedIcon(ctx, identifier); found {
-		return cachePath, true
-	}
-
-	cachePath := filepath.Join(simpleIconsCacheDir, identifier+".svg")
-	if err := ctx.Err(); err != nil {
+// cachedIconPath reports whether cachePath exists and, unless allowStale, is
+// younger than iconCacheDuration.
+func cachedIconPath(ctx context.Context, cachePath string, allowStale bool) (string, bool) {
+	if ctx.Err() != nil {
 		return "", false
 	}
 	info, err := os.Stat(cachePath)
 	if err != nil {
 		return "", false
 	}
-	if time.Since(info.ModTime()) > iconCacheDuration {
+	if !allowStale && time.Since(info.ModTime()) > iconCacheDuration {
 		return "", false
 	}
 	return cachePath, true
@@ -357,25 +333,30 @@ func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 	iconType, value := parseIconIdentifier(identifier)
 
 	// Check cache first
-	if data, found := readCachedIcon(ctx, iconType, value, identifier); found {
+	if data, found := readCachedIcon(ctx, iconType, value, identifier, false); found {
 		return data, nil
 	}
 
-	data, iconType, value, err := fetchIconData(ctx, iconType, value)
+	data, fetchedType, fetchedValue, err := fetchIconData(ctx, iconType, value)
 	if err != nil {
+		// Offline or upstream down: an expired copy beats no icon.
+		if data, found := readCachedIcon(ctx, iconType, value, identifier, true); found {
+			slog.Debug("serving stale cached icon", "identifier", identifier, "error", err)
+			return data, nil
+		}
 		return nil, fmt.Errorf("failed to fetch icon: %w", err)
 	}
 
 	// Cache the icon
-	if cacheErr := cacheIcon(iconType, value, data); cacheErr != nil {
+	if cacheErr := cacheIcon(fetchedType, fetchedValue, data); cacheErr != nil {
 		slog.Warn("failed to cache icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", cacheErr)
 	}
 
 	return data, nil
 }
 
-func readCachedIcon(ctx context.Context, iconType IconType, value, identifier string) ([]byte, bool) {
-	cachePath, found := getCachedIcon(ctx, iconType, value)
+func readCachedIcon(ctx context.Context, iconType IconType, value, identifier string, allowStale bool) ([]byte, bool) {
+	cachePath, found := getCachedIcon(ctx, iconType, value, allowStale)
 	if !found {
 		return nil, false
 	}
@@ -484,7 +465,7 @@ func GetIconURI(ctx context.Context, identifier string) (string, error) {
 // GetIconInfo returns metadata about an icon without fetching it
 func GetIconInfo(ctx context.Context, identifier string) IconInfo {
 	iconType, value := parseIconIdentifier(identifier)
-	_, cached := getCachedIcon(ctx, iconType, value)
+	_, cached := getCachedIcon(ctx, iconType, value, false)
 
 	return IconInfo{
 		Type:       iconType,
