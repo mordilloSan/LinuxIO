@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -310,7 +311,7 @@ func (o *capabilityProcessOutput) read(stream string, reader io.Reader) {
 			}
 			o.mu.Unlock()
 		}
-		if err == nil || err == bufio.ErrBufferFull {
+		if err == nil || errors.Is(err, bufio.ErrBufferFull) {
 			continue
 		}
 		if err != io.EOF {

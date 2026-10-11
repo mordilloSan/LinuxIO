@@ -100,6 +100,22 @@ func TestParseChmodBatchRequest(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "negative mode",
+			req:     apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "-1"},
+			wantErr: true,
+		},
+		{
+			name:    "mode above 7777",
+			req:     apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "10000"},
+			wantErr: true,
+		},
+		{
+			name:      "special bits map to FileMode flags",
+			req:       apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "7755"},
+			wantPaths: []string{"/tmp/file"},
+			wantMode:  os.ModeSetuid | os.ModeSetgid | os.ModeSticky | 0o755,
+		},
+		{
 			name:      "paths and mode only",
 			req:       apischema.FileChmodBatchRequest{Paths: []string{"/tmp/file"}, Mode: "0644"},
 			wantPaths: []string{"/tmp/file"},

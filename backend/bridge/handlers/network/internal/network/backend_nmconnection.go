@@ -87,7 +87,7 @@ func (b *nmConnectionBackend) SetIPv4DHCP(ctx context.Context) error {
 		deletePrefixedKeys(section, "route")
 		deletePrefixedKeys(section, "routing-rule")
 		section.DeleteKey("gateway")
-		mergedDNS := mergeDNSPreservingOtherFamily(append(nmDNS(section), nmDNS(cfg.Section("ipv6"))...), nil, 4)
+		mergedDNS := mergeIPv4DNS(append(nmDNS(section), nmDNS(cfg.Section("ipv6"))...), nil)
 		if dns := filterStringSlice(mergedDNS, isIPv4); len(dns) > 0 {
 			section.Key("dns").SetValue(nmDNSValue(dns))
 		} else {
@@ -115,7 +115,7 @@ func (b *nmConnectionBackend) SetIPv4Manual(ctx context.Context, addressCIDR, ga
 		deletePrefixedKeys(section, "routing-rule")
 		section.Key("address1").SetValue(strings.TrimSpace(addressCIDR))
 		section.Key("gateway").SetValue(strings.TrimSpace(gateway))
-		merged := mergeDNSPreservingOtherFamily(append(nmDNS(section), nmDNS(cfg.Section("ipv6"))...), dns, 4)
+		merged := mergeIPv4DNS(append(nmDNS(section), nmDNS(cfg.Section("ipv6"))...), dns)
 		ipv4DNS := filterStringSlice(merged, isIPv4)
 		if len(ipv4DNS) > 0 {
 			section.Key("dns").SetValue(nmDNSValue(ipv4DNS))
@@ -145,7 +145,7 @@ func (b *nmConnectionBackend) SetIPv6DHCP(ctx context.Context) error {
 }
 
 func (b *nmConnectionBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
-	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
+	if err := validateIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
 	return b.update(ctx, func(cfg *ini.File) error {

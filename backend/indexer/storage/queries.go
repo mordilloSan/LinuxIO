@@ -158,9 +158,14 @@ func scanSearchEntry(rows *sql.Rows) (EntryResult, error) {
 	var entry EntryResult
 	var modUnix int64
 	var dbType string
-	if err := rows.Scan(&entry.Path, &entry.Name, &dbType, &entry.Size, &modUnix, &entry.Inode); err != nil {
+	// Inodes are stored as int64 bit patterns (see the entries writers), so
+	// values >= 2^63 come back negative; scanning straight into uint64 would
+	// fail the whole query.
+	var inode int64
+	if err := rows.Scan(&entry.Path, &entry.Name, &dbType, &entry.Size, &modUnix, &inode); err != nil {
 		return EntryResult{}, fmt.Errorf("scan failed: %w", err)
 	}
+	entry.Inode = uint64(inode)
 	if dbType == "directory" {
 		entry.Type = "folder"
 	} else {

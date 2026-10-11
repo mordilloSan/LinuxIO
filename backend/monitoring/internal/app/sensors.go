@@ -174,7 +174,7 @@ func (a *App) getTempsWithPanicRecovery(ctx context.Context, getTemps getTempsFn
 	}()
 	// get sensor data (error ignored intentionally as it may be only with one sensor)
 	temps, _ = getTemps(ctx)
-	return
+	return temps, nil
 }
 
 func (c *SensorConfig) tryStartRead() bool {

@@ -126,7 +126,7 @@ func liveExtrasSnapshot(run *liveRun) (filesystems []monitoringapi.FilesystemInf
 	if smart == nil {
 		smart = map[string]monitoringapi.LiveSmart{}
 	}
-	return
+	return filesystems, sensors, frequencies, gpus, smart
 }
 
 // runLiveCollection collects into run with liveMu released and publishes the

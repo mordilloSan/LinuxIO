@@ -1,3 +1,5 @@
+import { Icon } from "@iconify/react";
+
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
 
@@ -35,17 +37,15 @@ const DockerIcon = ({
     );
   }
 
-  // Error state or no icon found - show placeholder
+  // Error state or no icon found - bundled Docker icon, works offline
   if (isError || !iconUri) {
     return (
-      <div
-        style={{
-          width: size,
-          height: size,
-          borderRadius: "50%",
-          backgroundColor: "var(--app-palette-action-hover)",
-          flexShrink: 0,
-        }}
+      <Icon
+        aria-label={alt}
+        height={size}
+        icon="mdi:docker"
+        style={{ color: "var(--app-palette-text-secondary)", flexShrink: 0 }}
+        width={size}
       />
     );
   }

@@ -15,7 +15,33 @@ import (
 func newTestSessionManager(cfg session.SessionConfig) *session.Manager {
 	cfg.Cookie.Secure = false
 	cfg.GCInterval = 0
-	return session.NewManager(session.New(), cfg)
+	return session.NewManager(cfg)
+}
+
+// watchDeletes records delete-hook reasons. Expired-session tests assert on
+// the hook rather than re-reading the table, because a validating read would
+// itself delete the expired session and mask a missed deletion.
+func watchDeletes(sm *session.Manager) <-chan session.DeleteReason {
+	ch := make(chan session.DeleteReason, 4)
+	sm.RegisterOnDelete(func(_ *session.Session, r session.DeleteReason) {
+		select {
+		case ch <- r:
+		default:
+		}
+	})
+	return ch
+}
+
+func requireDeleted(t *testing.T, deletes <-chan session.DeleteReason, want session.DeleteReason) {
+	t.Helper()
+	select {
+	case got := <-deletes:
+		if got != want {
+			t.Fatalf("delete reason = %q, want %q", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("session was not deleted")
+	}
 }
 
 func wsURL(httpURL string, path string) string {
@@ -60,6 +86,7 @@ func TestWebSocketAuthMiddlewareRejectsExpiredSessionCookieWithPolicyViolation(t
 	cfg.IdleTimeout = -time.Second
 	sm := newTestSessionManager(cfg)
 	defer sm.Close()
+	deletes := watchDeletes(sm)
 
 	sess, err := sm.CreateSession("expired-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
 	if err != nil {
@@ -90,9 +117,7 @@ func TestWebSocketAuthMiddlewareRejectsExpiredSessionCookieWithPolicyViolation(t
 	if closeErr.Text != "no-session" {
 		t.Fatalf("close text = %q, want no-session", closeErr.Text)
 	}
-	if _, err := sm.GetSession(sess.SessionID); err == nil {
-		t.Fatal("expired session should be deleted during websocket validation")
-	}
+	requireDeleted(t, deletes, session.ReasonGCIdle)
 }
 
 func TestCloseWebSocketForSessionSendsSessionExpiredPolicyViolation(t *testing.T) {
@@ -202,6 +227,7 @@ func TestProtectedRouteReturnsUnauthorizedForExpiredSessionCookie(t *testing.T) 
 	cfg.IdleTimeout = -time.Second
 	sm := newTestSessionManager(cfg)
 	defer sm.Close()
+	deletes := watchDeletes(sm)
 
 	sess, err := sm.CreateSession("expired-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
 	if err != nil {
@@ -223,9 +249,7 @@ func TestProtectedRouteReturnsUnauthorizedForExpiredSessionCookie(t *testing.T) 
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"error":"unauthorized"}` {
 		t.Fatalf("body = %q", got)
 	}
-	if _, err := sm.GetSession(sess.SessionID); err == nil {
-		t.Fatal("expired session should be deleted during route validation")
-	}
+	requireDeleted(t, deletes, session.ReasonGCIdle)
 }
 
 func TestWebSocketActivityRefreshIsExplicitAndExpiryStopsFrames(t *testing.T) {
@@ -234,6 +258,7 @@ func TestWebSocketActivityRefreshIsExplicitAndExpiryStopsFrames(t *testing.T) {
 	cfg.RefreshThrottle = 0
 	sm := newTestSessionManager(cfg)
 	defer sm.Close()
+	deletes := watchDeletes(sm)
 
 	sess, err := sm.CreateSession("activity-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
 	if err != nil {
@@ -249,7 +274,7 @@ func TestWebSocketActivityRefreshIsExplicitAndExpiryStopsFrames(t *testing.T) {
 	}
 	defer conn.Close()
 
-	beforeHandshake, err := sm.GetSession(sess.SessionID)
+	beforeHandshake, err := sm.ValidateSession(sess.SessionID)
 	if err != nil {
 		t.Fatalf("get session after handshake: %v", err)
 	}
@@ -257,7 +282,7 @@ func TestWebSocketActivityRefreshIsExplicitAndExpiryStopsFrames(t *testing.T) {
 		t.Fatalf("write passive frame: %v", writeErr)
 	}
 	time.Sleep(20 * time.Millisecond)
-	afterPassive, err := sm.GetSession(sess.SessionID)
+	afterPassive, err := sm.ValidateSession(sess.SessionID)
 	if err != nil {
 		t.Fatalf("get session after passive frame: %v", err)
 	}
@@ -270,7 +295,7 @@ func TestWebSocketActivityRefreshIsExplicitAndExpiryStopsFrames(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	var afterActivity *session.Session
 	for time.Now().Before(deadline) {
-		afterActivity, err = sm.GetSession(sess.SessionID)
+		afterActivity, err = sm.ValidateSession(sess.SessionID)
 		if err == nil && afterActivity.Timing.IdleUntil.After(afterPassive.Timing.IdleUntil) {
 			break
 		}
@@ -291,9 +316,7 @@ func TestWebSocketActivityRefreshIsExplicitAndExpiryStopsFrames(t *testing.T) {
 	if readErr == nil {
 		t.Fatal("expected expired-session websocket to close")
 	}
-	if _, err := sm.GetSession(sess.SessionID); err == nil {
-		t.Fatal("expired session should be deleted after inbound frame")
-	}
+	requireDeleted(t, deletes, session.ReasonGCIdle)
 }
 
 func TestValidateSessionActivityDoesNotRefresh(t *testing.T) {
@@ -303,7 +326,7 @@ func TestValidateSessionActivityDoesNotRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	before, err := m.GetSession(sess.SessionID)
+	before, err := m.ValidateSession(sess.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +334,7 @@ func TestValidateSessionActivityDoesNotRefresh(t *testing.T) {
 	if validateErr := validateSessionActivity(m, sess.SessionID); validateErr != nil {
 		t.Fatalf("validate activity: %v", validateErr)
 	}
-	after, err := m.GetSession(sess.SessionID)
+	after, err := m.ValidateSession(sess.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

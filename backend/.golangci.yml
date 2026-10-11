@@ -16,35 +16,11 @@ linters:
     errcheck:
       check-type-assertions: true
     exhaustive:
+      # A default clause counts as handling the remaining enum values, and
+      # partial maps keyed by an enum (env overrides, test tables) are fine.
+      default-signifies-exhaustive: true
       check:
         - switch
-        - map
-    exhaustruct:
-      exclude:
-        - ^net/http.Client$
-        - ^net/http.Cookie$
-        - ^net/http.Request$
-        - ^net/http.Response$
-        - ^net/http.Server$
-        - ^net/http.Transport$
-        - ^net/url.URL$
-        - ^os/exec.Cmd$
-        - ^reflect.StructField$
-        - ^github.com/Shopify/sarama.Config$
-        - ^github.com/Shopify/sarama.ProducerMessage$
-        - ^github.com/mitchellh/mapstructure.DecoderConfig$
-        - ^github.com/spf13/cobra.Command$
-        - ^github.com/spf13/cobra.CompletionOptions$
-        - ^github.com/stretchr/testify/mock.Mock$
-        - ^github.com/testcontainers/testcontainers-go.+Request$
-        - ^github.com/testcontainers/testcontainers-go.FromDockerfile$
-        - ^golang.org/x/tools/go/analysis.Analyzer$
-        - ^google.golang.org/protobuf/.+Options$
-        - ^gopkg.in/yaml.v3.Node$
-    funlen:
-      lines: 100
-      statements: 50
-      ignore-comments: true
     gocognit:
       min-complexity: 20
     gocritic:
@@ -82,37 +58,16 @@ linters:
       settings:
         shadow:
           strict: false
-    inamedparam:
-      skip-single-param: true
-    mnd:
-      ignored-functions:
-        - args.Error
-        - flag.Arg
-        - flag.Duration.*
-        - flag.Float.*
-        - flag.Int.*
-        - flag.Uint.*
-        - os.Chmod
-        - os.Mkdir.*
-        - os.OpenFile
-        - os.WriteFile
     nakedret:
       max-func-lines: 0
     nolintlint:
       require-explanation: true
       require-specific: true
       allow-no-explanation:
-        - funlen
         - gocognit
-        - lll
-    perfsprint:
-      strconcat: false
     rowserrcheck:
       packages:
         - github.com/jmoiron/sqlx
-    sloglint:
-      no-global: all
-      context: scope
     unused:
       field-writes-are-uses: true
       post-statements-are-reads: true
@@ -123,17 +78,22 @@ linters:
   enable:
     - bodyclose
     - cyclop
+    - dupl
     - durationcheck
+    - errorlint
+    - exhaustive
     - gocognit
     - gocritic
     - gomodguard_v2
     - makezero
+    - nakedret
     - nilnesserr
     - nolintlint
     - rowserrcheck
     - sqlclosecheck
     - testifylint
     - unconvert
+    - unparam
     - unused
     - usestdlibvars
     - wastedassign
@@ -146,24 +106,22 @@ linters:
       - std-error-handling
     rules:
       - linters:
-          - godot
-        source: (noinspection|TODO)
-      - linters:
           - gocritic
         source: //noinspection
       - linters:
           - bodyclose
           - dupl
-          - funlen
-          - goconst
-          - gosec
-          - noctx
-          - wrapcheck
+          - errorlint
+          - unparam
         path: _test\.go
+      # Calls that already wrap one error with %w keep the secondary cause
+      # (rollback, cleanup, decode, indexer) as text on purpose: wrapping it
+      # too would add errors.Is/As matches for it, such as cancellation, that
+      # callers and statusCode do not see today.
       - linters:
-          - gofumpt
-          - gofmt
-        path: bridge/handlers/config/generator\.go
+          - errorlint
+        text: non-wrapping format verb
+        source: '%w.*%v'
     paths:
       - third_party$
       - builtin$

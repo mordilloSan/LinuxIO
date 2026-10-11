@@ -29,12 +29,7 @@ func ListPhysicalVolumes(ctx context.Context) ([]apischema.PhysicalVolume, error
 	out, err := cmd.Output()
 	if err != nil {
 		// LVM not installed or no PVs - return empty list
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			if exitErr.ExitCode() == 5 {
-				// No PVs found
-				return []apischema.PhysicalVolume{}, nil
-			}
-		}
+		// Exit code 5 means no PVs were found; every other failure is treated the same way.
 		return []apischema.PhysicalVolume{}, nil
 	}
 

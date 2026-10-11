@@ -13,7 +13,7 @@ import (
 func newIdleWatcherTestManager() *session.Manager {
 	cfg := session.DefaultConfig
 	cfg.GCInterval = 0
-	return session.NewManager(session.NewWithCleanupInterval(0), cfg)
+	return session.NewManager(cfg)
 }
 
 func TestHTTPHandlerRefreshesIdleGraceAfterCompletion(t *testing.T) {
@@ -53,9 +53,7 @@ func TestSocketIdleWatcherWaitsForReleasedSessionGrace(t *testing.T) {
 	activity.touch()
 	done := startSocketIdleExitWatcher(ctx, srv, sm, activity, grace, 5*time.Millisecond)
 	time.Sleep(15 * time.Millisecond)
-	if err := sm.DeleteSession(sessID, session.ReasonLogout); err != nil {
-		t.Fatalf("delete session: %v", err)
-	}
+	sm.DeleteSession(sessID, session.ReasonLogout)
 	released := time.Now()
 	select {
 	case <-shutdown:
@@ -93,8 +91,7 @@ func TestSocketIdleWatcherStopsWithContext(t *testing.T) {
 }
 
 func TestNewHTTPServerConnectionTimeouts(t *testing.T) {
-	store := session.New()
-	sm := session.NewManager(store, session.DefaultConfig)
+	sm := session.NewManager(session.DefaultConfig)
 	defer sm.Close()
 	srv, _, err := newHTTPServer(ServerConfig{Port: 8080}, sm)
 	if err != nil {

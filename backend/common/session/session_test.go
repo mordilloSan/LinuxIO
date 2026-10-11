@@ -2,26 +2,15 @@ package session
 
 import (
 	"bytes"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
-
-type sessionLogStore struct {
-	Store
-	deleteErr error
-}
-
-func (s *sessionLogStore) Delete(id string) error {
-	if s.deleteErr != nil {
-		return s.deleteErr
-	}
-	return s.Store.Delete(id)
-}
 
 func TestDiagnosticRefDoesNotExposeSessionCredential(t *testing.T) {
 	const credential = "0123456789abcdef0123456789abcdef"
@@ -58,21 +47,15 @@ func TestSessionLogsDoNotExposeUsername(t *testing.T) {
 	cfg := DefaultConfig
 	cfg.GCInterval = 0
 	cfg.SingleSessionPerUser = true
-	store := &sessionLogStore{Store: NewWithCleanupInterval(0)}
-	m := NewManager(store, cfg)
+	m := NewManager(cfg)
 	defer m.Close()
 
 	if _, err := m.CreateSession("deleted", User{Username: username}, false); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-	if err := m.DeleteSession("deleted", ReasonManual); err != nil {
-		t.Fatalf("DeleteSession: %v", err)
-	}
+	m.DeleteSession("deleted", ReasonManual)
 
 	for _, id := range []string{"first", "second"} {
-		if id == "second" {
-			store.deleteErr = errors.New("delete failed")
-		}
 		if _, err := m.CreateSession(id, User{Username: username}, false); err != nil {
 			t.Fatalf("CreateSession(%q): %v", id, err)
 		}
@@ -84,7 +67,6 @@ func TestSessionLogsDoNotExposeUsername(t *testing.T) {
 
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
-	st := NewWithCleanupInterval(0)
 	cfg := DefaultConfig
 	cfg.IdleTimeout = 20 * time.Millisecond
 	cfg.AbsoluteTimeout = 500 * time.Millisecond
@@ -92,7 +74,7 @@ func newTestManager(t *testing.T) *Manager {
 	cfg.GCInterval = 0
 	cfg.Cookie.SameSite = 0
 	cfg.Cookie.Secure = false
-	return NewManager(st, cfg)
+	return NewManager(cfg)
 }
 
 func createTestSession(t *testing.T, m *Manager, user User, privileged bool) *Session {
@@ -122,20 +104,18 @@ func TestManager_CreateGetDelete(t *testing.T) {
 	}
 
 	// Get
-	got, err := m.GetSession(s.SessionID)
+	got, err := m.ValidateSession(s.SessionID)
 	if err != nil || got.SessionID != s.SessionID {
-		t.Fatalf("GetSession mismatch got=%v err=%v", got, err)
+		t.Fatalf("ValidateSession mismatch got=%v err=%v", got, err)
 	}
 	if !got.Privileged {
 		t.Fatal("privileged flag did not persist")
 	}
 
 	// Delete
-	if err := m.DeleteSession(s.SessionID, ReasonManual); err != nil {
-		t.Fatalf("DeleteSession error: %v", err)
-	}
-	if _, err := m.GetSession(s.SessionID); err == nil {
-		t.Fatalf("GetSession should fail after delete")
+	m.DeleteSession(s.SessionID, ReasonManual)
+	if _, err := m.ValidateSession(s.SessionID); err == nil {
+		t.Fatalf("ValidateSession should fail after delete")
 	}
 }
 
@@ -152,7 +132,7 @@ func TestManager_RefreshUpdatesIdle(t *testing.T) {
 	if err := m.Refresh(s.SessionID); err != nil {
 		t.Fatalf("Refresh error: %v", err)
 	}
-	s2, _ := m.GetSession(s.SessionID)
+	s2, _ := m.ValidateSession(s.SessionID)
 	if !s2.Timing.IdleUntil.After(before) {
 		t.Fatalf("IdleUntil did not move forward")
 	}
@@ -217,7 +197,6 @@ func TestManager_WriteAndValidateCookieDoesNotRefresh(t *testing.T) {
 }
 
 func TestManager_UsesExplicitCookieConfig(t *testing.T) {
-	st := NewWithCleanupInterval(0)
 	cfg := DefaultConfig
 	cfg.GCInterval = 0
 	cfg.Cookie.Domain = "example.com"
@@ -225,7 +204,7 @@ func TestManager_UsesExplicitCookieConfig(t *testing.T) {
 	cfg.Cookie.SameSite = http.SameSiteLaxMode
 	cfg.Cookie.Secure = false
 	cfg.Cookie.HTTPOnly = false
-	m := NewManager(st, cfg)
+	m := NewManager(cfg)
 	defer m.Close()
 
 	rr := httptest.NewRecorder()
@@ -258,7 +237,6 @@ func TestManager_UsesExplicitCookieConfig(t *testing.T) {
 }
 
 func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
-	st := NewWithCleanupInterval(0)
 	cfg := DefaultConfig
 	cfg.IdleTimeout = 100 * time.Millisecond
 	cfg.AbsoluteTimeout = 20 * time.Millisecond
@@ -266,7 +244,7 @@ func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
 	cfg.GCInterval = 5 * time.Millisecond
 	cfg.Cookie.SameSite = 0
 	cfg.Cookie.Secure = false
-	m := NewManager(st, cfg)
+	m := NewManager(cfg)
 	defer m.Close()
 
 	done := make(chan DeleteReason, 1)
@@ -277,7 +255,7 @@ func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
 		}
 	})
 
-	s := createTestSession(t, m, User{Username: "dana", UID: 1003, GID: 1003}, false)
+	createTestSession(t, m, User{Username: "dana", UID: 1003, GID: 1003}, false)
 
 	select {
 	case reason := <-done:
@@ -287,9 +265,45 @@ func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
 	case <-time.After(250 * time.Millisecond):
 		t.Fatal("timed out waiting for absolute-expiry GC")
 	}
+}
 
-	if _, err := m.GetSession(s.SessionID); err == nil {
-		t.Fatalf("expected session deleted after absolute-expiry GC")
+func TestManager_RefreshDoesNotResurrectDeletedSession(t *testing.T) {
+	cfg := DefaultConfig
+	cfg.RefreshThrottle = 0
+	cfg.GCInterval = 0
+	m := NewManager(cfg)
+	defer m.Close()
+
+	var deletes atomic.Int32
+	m.RegisterOnDelete(func(*Session, DeleteReason) { deletes.Add(1) })
+
+	for i := range 200 {
+		s := createTestSession(t, m, User{Username: "race"}, false)
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Go(func() { _ = m.Refresh(s.SessionID) })
+			wg.Go(func() { m.DeleteSession(s.SessionID, ReasonLogout) })
+		}
+		wg.Wait()
+		if _, err := m.ValidateSession(s.SessionID); err == nil {
+			t.Fatalf("iteration %d: deleted session became valid again", i)
+		}
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for deletes.Load() < 200 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if got := deletes.Load(); got != 200 {
+		t.Fatalf("delete hooks fired %d times, want once per session (200)", got)
+	}
+}
+
+func TestDefaultCookieUsesHostPrefix(t *testing.T) {
+	c := DefaultConfig.Cookie
+	if !strings.HasPrefix(c.Name, "__Host-") || !c.Secure || c.Path != "/" || c.Domain != "" {
+		t.Fatalf("default cookie %+v does not satisfy __Host- prefix rules", c)
 	}
 }
 

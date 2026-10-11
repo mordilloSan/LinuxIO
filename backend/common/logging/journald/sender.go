@@ -144,5 +144,5 @@ func isSocketSpaceError(err error) bool {
 		return false
 	}
 
-	return sysErr.Err == syscall.EMSGSIZE || sysErr.Err == syscall.ENOBUFS
+	return errors.Is(sysErr.Err, syscall.EMSGSIZE) || errors.Is(sysErr.Err, syscall.ENOBUFS)
 }

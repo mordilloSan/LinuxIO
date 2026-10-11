@@ -319,42 +319,30 @@ func TestShouldSkip(t *testing.T) {
 	tests := []struct {
 		name         string
 		isDir        bool
-		isHidden     bool
 		fullCombined string
 		shouldSkip   bool
 	}{
 		{
 			name:         "root directory never skipped",
 			isDir:        true,
-			isHidden:     false,
 			fullCombined: "/",
 			shouldSkip:   false,
 		},
 		{
 			name:         "hidden file included",
 			isDir:        false,
-			isHidden:     true,
-			fullCombined: "/.hidden",
-			shouldSkip:   false,
-		},
-		{
-			name:         "hidden file not skipped when includeHidden=true",
-			isDir:        false,
-			isHidden:     true,
 			fullCombined: "/.hidden",
 			shouldSkip:   false,
 		},
 		{
 			name:         "regular file not skipped",
 			isDir:        false,
-			isHidden:     false,
 			fullCombined: "/file.txt",
 			shouldSkip:   false,
 		},
 		{
 			name:         "regular directory not skipped",
 			isDir:        true,
-			isHidden:     false,
 			fullCombined: "/documents",
 			shouldSkip:   false,
 		},
@@ -363,7 +351,7 @@ func TestShouldSkip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			idx := Initialize("/tmp/test")
-			result := idx.shouldSkip(tt.isDir, tt.isHidden, tt.fullCombined)
+			result := idx.shouldSkip(tt.isDir, tt.fullCombined)
 
 			if result != tt.shouldSkip {
 				t.Errorf("Expected shouldSkip=%v, got %v", tt.shouldSkip, result)
@@ -376,11 +364,11 @@ func TestShouldSkipExcludedPaths(t *testing.T) {
 	idx := Initialize("/srv", WithExcludePaths([]string{"/srv/cache"}))
 
 	for _, path := range []string{"/cache", "/cache/nested"} {
-		if !idx.shouldSkip(true, false, path) {
+		if !idx.shouldSkip(true, path) {
 			t.Fatalf("expected %s to be excluded", path)
 		}
 	}
-	if idx.shouldSkip(true, false, "/cache-old") {
+	if idx.shouldSkip(true, "/cache-old") {
 		t.Fatal("path boundary excluded /cache-old")
 	}
 }
@@ -392,10 +380,10 @@ func TestShouldSkipDockerOverlayMergedWhenIndexingRoot(t *testing.T) {
 
 	idx := Initialize("/")
 
-	if !idx.shouldSkip(true, false, "/var/lib/docker/overlay2/layer123/merged") {
+	if !idx.shouldSkip(true, "/var/lib/docker/overlay2/layer123/merged") {
 		t.Fatal("expected docker overlay merged directory to be skipped")
 	}
-	if idx.shouldSkip(true, false, "/var/lib/docker/overlay2/layer123/diff") {
+	if idx.shouldSkip(true, "/var/lib/docker/overlay2/layer123/diff") {
 		t.Fatal("expected docker overlay diff directory not to be skipped")
 	}
 }
@@ -407,10 +395,10 @@ func TestShouldSkipDockerOverlayMergedWhenIndexingDockerRoot(t *testing.T) {
 
 	idx := Initialize("/var/lib/docker")
 
-	if !idx.shouldSkip(true, false, "/overlay2/layer123/merged") {
+	if !idx.shouldSkip(true, "/overlay2/layer123/merged") {
 		t.Fatal("expected docker overlay merged directory to be skipped")
 	}
-	if idx.shouldSkip(true, false, "/overlay2/layer123/diff") {
+	if idx.shouldSkip(true, "/overlay2/layer123/diff") {
 		t.Fatal("expected docker overlay diff directory not to be skipped")
 	}
 }
@@ -427,12 +415,12 @@ func TestShouldSkipExternalMountRespectsNetworkMountOption(t *testing.T) {
 	defer func() { loadExternalMountPointsFn = restore }()
 
 	defaultIdx := Initialize("/mnt/share")
-	if !defaultIdx.shouldSkip(true, false, "/nested") {
+	if !defaultIdx.shouldSkip(true, "/nested") {
 		t.Fatal("expected network mount contents to be skipped by default")
 	}
 
 	includeIdx := Initialize("/mnt/share", WithNetworkMounts(true))
-	if includeIdx.shouldSkip(true, false, "/nested") {
+	if includeIdx.shouldSkip(true, "/nested") {
 		t.Fatal("expected network mount contents to be indexed when option is enabled")
 	}
 	if !IsPathExcludedFromIndex("/", nil, false, "/mnt/share/file") {

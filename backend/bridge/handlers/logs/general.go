@@ -415,7 +415,7 @@ func journalOutputLine(raw string) (string, bool) {
 }
 
 func journalReadError(err error) error {
-	if err == io.EOF || errors.Is(err, context.Canceled) {
+	if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
 		return nil
 	}
 	return err

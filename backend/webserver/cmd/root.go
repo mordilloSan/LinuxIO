@@ -51,10 +51,9 @@ func RunServer(cfg ServerConfig) error {
 }
 
 func newSessionManager() *session.Manager {
-	ms := session.New()
 	sessionCfg := session.DefaultConfig
 	sessionCfg.SingleSessionPerUser = false
-	sm := session.NewManager(ms, sessionCfg)
+	sm := session.NewManager(sessionCfg)
 	sm.RegisterOnDelete(func(sess *session.Session, reason session.DeleteReason) {
 		if sess.User.Username == "" {
 			return
@@ -266,11 +265,7 @@ func shutdownHTTPServer(srv *http.Server) {
 }
 
 func closeBridgeSessions(sm *session.Manager) {
-	sessions, err := sm.ActiveSessions()
-	if err != nil {
-		return
-	}
-	for _, sess := range sessions {
+	for _, sess := range sm.ActiveSessions() {
 		bridge.CloseYamuxSession(sess.SessionID)
 	}
 }
@@ -311,11 +306,7 @@ func startSocketIdleExitWatcher(
 }
 
 func socketIdleState(sm *session.Manager, activity *serverActivity, idleGrace time.Duration, hadSessions bool) (idle, nextHadSessions bool) {
-	act, err := sm.ActiveSessions()
-	if err != nil {
-		return false, hadSessions
-	}
-	if len(act) > 0 {
+	if len(sm.ActiveSessions()) > 0 {
 		activity.touch()
 		return false, true
 	}

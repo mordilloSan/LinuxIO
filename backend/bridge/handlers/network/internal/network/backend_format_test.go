@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -415,4 +416,28 @@ method=auto
 		"nmcli device reapply eth0",
 		"nmcli connection up uuid aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
 	)
+}
+
+func TestNetplanUintRejectsValuesThatDoNotFitUint32(t *testing.T) {
+	for _, test := range []struct {
+		value  any
+		want   uint32
+		wantOK bool
+	}{
+		{value: 1500, want: 1500, wantOK: true},
+		{value: int64(9000), want: 9000, wantOK: true},
+		{value: uint64(math.MaxUint32), want: math.MaxUint32, wantOK: true},
+		{value: float64(1500), want: 1500, wantOK: true},
+		{value: -1},
+		{value: int64(math.MaxUint32) + 1},
+		{value: uint64(math.MaxUint32) + 1},
+		{value: 1500.5},
+		{value: -1.0},
+		{value: "1500"},
+	} {
+		got, ok := netplanUint(test.value)
+		if got != test.want || ok != test.wantOK {
+			t.Errorf("netplanUint(%#v) = (%d, %v), want (%d, %v)", test.value, got, ok, test.want, test.wantOK)
+		}
+	}
 }

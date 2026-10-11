@@ -122,9 +122,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.SM.DeleteCookie(w)
-	if err := h.SM.DeleteSession(ck.Value, session.ReasonLogout); err != nil {
-		slog.Error("session delete failed", "error", err)
-	}
+	h.SM.DeleteSession(ck.Value, session.ReasonLogout)
 	slog.Info("session logout", "cookie_cleared", true)
 	w.WriteHeader(http.StatusOK)
 }

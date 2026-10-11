@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"slices"
@@ -63,7 +64,7 @@ func ListBlockDevices(ctx context.Context) ([]apischema.StorageBlockDevice, erro
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("list block devices: %w", ctx.Err())
 		}
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			out = exitErr.Stderr
 		}
 		return nil, utils.CommandOutputError("lsblk", args, out, err)

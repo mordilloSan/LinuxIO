@@ -3,9 +3,11 @@ package services
 import (
 	"archive/tar"
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -165,10 +167,20 @@ func computeZipExtractSize(root *fsroot.FSRoot, archivePath string) (int64, erro
 	var total int64
 	for _, file := range reader.File {
 		if !file.FileInfo().IsDir() {
-			total += int64(file.UncompressedSize64)
+			total = addArchiveSize(total, file.UncompressedSize64)
 		}
 	}
 	return total, nil
+}
+
+// addArchiveSize adds a size declared by an archive header to a running
+// total, saturating at math.MaxInt64 so hostile headers cannot wrap the
+// extract-size estimate negative.
+func addArchiveSize(total int64, size uint64) int64 {
+	if size > uint64(math.MaxInt64-total) {
+		return math.MaxInt64
+	}
+	return total + int64(size)
 }
 
 func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, error) {
@@ -195,7 +207,7 @@ func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, er
 			return 0, err
 		}
 		if !header.FileInfo().IsDir() {
-			total += header.Size
+			total = addArchiveSize(total, uint64(max(header.Size, 0)))
 		}
 	}
 	return total, nil
@@ -244,7 +256,7 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 			closeWithLog("zip writer", zipWriter)
 			closeWithLog("zip output file", file)
 			fileOpen = false
-			if addErr == ipc.ErrAborted {
+			if errors.Is(addErr, ipc.ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
 				slog.Error("failed to add file to zip", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
@@ -321,7 +333,7 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 			closeWithLog("gzip writer", gzWriter)
 			closeWithLog("tar.gz output file", file)
 			fileOpen = false
-			if addErr == ipc.ErrAborted {
+			if errors.Is(addErr, ipc.ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
 				slog.Error("failed to add file to tar.gz", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)

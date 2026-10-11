@@ -76,7 +76,7 @@ func (b *networkdBackend) Read() (InterfaceConfig, error) {
 
 func (b *networkdBackend) SetIPv4DHCP(ctx context.Context) error {
 	return b.update(ctx, func(cfg *ini.File) error {
-		return updateNetworkdConfig(cfg, 4, "", "", nil, nil)
+		return updateNetworkdConfig(cfg, 4, "", "", nil)
 	})
 }
 
@@ -88,22 +88,22 @@ func (b *networkdBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gatewa
 		return fmt.Errorf("invalid IPv4 gateway %q", gateway)
 	}
 	return b.update(ctx, func(cfg *ini.File) error {
-		return updateNetworkdConfig(cfg, 4, addressCIDR, gateway, dns, nil)
+		return updateNetworkdConfig(cfg, 4, addressCIDR, gateway, dns)
 	})
 }
 
 func (b *networkdBackend) SetIPv6DHCP(ctx context.Context) error {
 	return b.update(ctx, func(cfg *ini.File) error {
-		return updateNetworkdConfig(cfg, 6, "", "", nil, nil)
+		return updateNetworkdConfig(cfg, 6, "", "", nil)
 	})
 }
 
 func (b *networkdBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
-	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
+	if err := validateIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
 	return b.update(ctx, func(cfg *ini.File) error {
-		return updateNetworkdConfig(cfg, 6, addressCIDR, "", nil, nil)
+		return updateNetworkdConfig(cfg, 6, addressCIDR, "", nil)
 	})
 }
 
@@ -221,7 +221,7 @@ func ensureSimpleNetworkdLayout(cfg *ini.File) error {
 	return nil
 }
 
-func updateNetworkdConfig(cfg *ini.File, family int, addressCIDR, gateway string, dns []string, mtu *uint32) error {
+func updateNetworkdConfig(cfg *ini.File, family int, addressCIDR, gateway string, dns []string) error {
 	networkSection := cfg.Section("Network")
 	addresses := replaceFamilyAddresses(
 		append(sectionShadowValues(networkSection, "Address"), sectionShadowValues(cfg.Section("Address"), "Address")...),
@@ -250,7 +250,7 @@ func updateNetworkdConfig(cfg *ini.File, family int, addressCIDR, gateway string
 		}
 		setShadowValues(networkSection, "Gateway", gateways)
 		cfg.DeleteSection("Route")
-		setShadowValues(networkSection, "DNS", mergeDNSPreservingOtherFamily(sectionShadowValues(networkSection, "DNS"), dns, 4))
+		setShadowValues(networkSection, "DNS", mergeIPv4DNS(sectionShadowValues(networkSection, "DNS"), dns))
 	case 6:
 		dhcp6 = strings.TrimSpace(addressCIDR) == ""
 	}
@@ -263,9 +263,6 @@ func updateNetworkdConfig(cfg *ini.File, family int, addressCIDR, gateway string
 		networkSection.Key("DHCP").SetValue("ipv6")
 	default:
 		networkSection.Key("DHCP").SetValue("no")
-	}
-	if mtu != nil {
-		cfg.Section("Link").Key("MTUBytes").SetValue(strconv.FormatUint(uint64(*mtu), 10))
 	}
 	maybeDeleteEmptySection(cfg, "Route")
 	maybeDeleteEmptySection(cfg, "Address")

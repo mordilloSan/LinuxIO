@@ -520,7 +520,7 @@ func (r *Router) startOrQueueTaskWithIdentity(route Route, req Request, identity
 		r.releaseTaskReservation(req.Route, ownerRouteKey, canStart)
 		return task, false, nil
 	}
-	return r.startOrEnqueueClaimedTask(route, req.Owner, task, ownerRouteKey, canStart)
+	return r.startOrEnqueueClaimedTask(route, req.Owner, task, canStart)
 }
 
 func (r *Router) reserveTaskAdmission(routeName, ownerRouteKey string, policy TaskPolicy, now time.Time) (bool, error) {
@@ -567,8 +567,7 @@ func (r *Router) releaseTaskReservation(routeName, ownerRouteKey string, canStar
 	r.mu.Unlock()
 }
 
-func (r *Router) startOrEnqueueClaimedTask(route Route, owner TaskOwner, task *Task, ownerRouteKey string, canStart bool) (*Task, bool, error) {
-
+func (r *Router) startOrEnqueueClaimedTask(route Route, owner TaskOwner, task *Task, canStart bool) (*Task, bool, error) {
 	r.mu.Lock()
 	if canStart {
 		r.mu.Unlock()

@@ -815,13 +815,15 @@ test-auth: check-c-build-deps
 	"$$TEST_BIN" | $(CHECKMARK_SED); \
 	$(PRINTC) "$(COLOR_GREEN)✅ C authentication helper tests passed!$(COLOR_RESET)"
 
-test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
-	@echo ""
-	@$(PRINTC) "$(COLOR_CYAN)🧪 Running cross-language auth protocol tests...$(COLOR_RESET)"
+# Stable path + real file deps keep the frametool's mtime unchanged between
+# runs, so Go's test cache (which stats it) can reuse a passing result. It
+# lives inside the backend module because Go ignores files outside it when
+# keying the test cache.
+auth_frametool_bin := $(backend_dir)/.cache/auth-frametool/linuxio-auth-frametool
+
+$(auth_frametool_bin): $(backend_auth_dir)/linuxio-auth-frametool.c $(backend_auth_dir)/linuxio-auth.c $(backend_auth_dir)/linuxio_protocol.h | check-c-build-deps
 	@set -euo pipefail; \
-	TEST_DIR="$$(mktemp -d)"; \
-	trap 'rm -rf "$$TEST_DIR"' EXIT; \
-	TEST_BIN="$$TEST_DIR/linuxio-auth-frametool"; \
+	mkdir -p "$(@D)"; \
 	LIBS="-lpam"; \
 	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libsystemd 2>/dev/null; then \
 	  LIBS="$$LIBS $$(pkg-config --libs libsystemd)"; \
@@ -829,9 +831,15 @@ test-auth-protocol: check-c-build-deps $(GO_BUILD_PREREQ)
 	  LIBS="$$LIBS -lsystemd"; \
 	fi; \
 	$(CC) $(CFLAGS) -Werror -DLINUXIO_VERSION=\"test\" \
-	  -o "$$TEST_BIN" "$(backend_auth_dir)/linuxio-auth-frametool.c" $(LDFLAGS) $$LIBS; \
-	cd "$(backend_dir)" && LINUXIO_AUTH_FRAMETOOL="$$TEST_BIN" $(GO_CMD_ENV) \
-	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage -count=1 | $(GOTEST_STATUS_SED); \
+	  -o "$@.tmp" "$(backend_auth_dir)/linuxio-auth-frametool.c" $(LDFLAGS) $$LIBS; \
+	mv "$@.tmp" "$@"
+
+test-auth-protocol: $(auth_frametool_bin) $(GO_BUILD_PREREQ)
+	@echo ""
+	@$(PRINTC) "$(COLOR_CYAN)🧪 Running cross-language auth protocol tests...$(COLOR_RESET)"
+	@set -euo pipefail; \
+	cd "$(backend_dir)" && LINUXIO_AUTH_FRAMETOOL="$(auth_frametool_bin)" $(GO_CMD_ENV) \
+	  "$(GO_BIN)" test ./common/ipc/auth -run TestCrossLanguage $(GO_TEST_FLAGS) | $(GOTEST_STATUS_SED); \
 	$(PRINTC) "$(COLOR_GREEN)✅ Cross-language auth protocol tests passed!$(COLOR_RESET)"
 
 # Tier-1 hermetic PAM/host-integration suite for the C launcher. Runs the

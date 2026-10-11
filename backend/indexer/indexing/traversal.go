@@ -45,8 +45,7 @@ func (idx *Index) indexDirectory(ctx context.Context, adjustedPath string) error
 	}
 
 	// check if excluded from indexing
-	hidden := isHidden(dirInfo)
-	if idx.shouldSkip(dirInfo.IsDir(), hidden, adjustedPath) {
+	if idx.shouldSkip(dirInfo.IsDir(), adjustedPath) {
 		return ErrNotIndexed
 	}
 
@@ -111,7 +110,7 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 		isDir := file.IsDir()
 		baseName := file.Name()
 		fullCombined := combinedPath + baseName
-		if idx.shouldSkip(isDir, hidden, fullCombined) {
+		if idx.shouldSkip(isDir, fullCombined) {
 			continue
 		}
 
@@ -231,7 +230,7 @@ func isHidden(file os.FileInfo) bool {
 	return len(name) > 0 && name[0] == '.'
 }
 
-func (idx *Index) shouldSkip(isDir bool, isHidden bool, fullCombined string) bool {
+func (idx *Index) shouldSkip(isDir bool, fullCombined string) bool {
 	if fullCombined == "/" {
 		return false
 	}

@@ -88,8 +88,8 @@ func rollbackNetworkdBridge(ctx context.Context, env Environment, plan BridgePla
 	return errors.Join(
 		restoreFileSnapshots(env, snapshots),
 		removeRuntimeBridge(cleanupCtx, env, plan.Name),
-		runNetworkCommand(cleanupCtx, env, "networkctl", "reload"),
-		runNetworkCommand(cleanupCtx, env, "networkctl", "reconfigure", plan.Member),
+		runNetworkctl(cleanupCtx, env, "reload"),
+		runNetworkctl(cleanupCtx, env, "reconfigure", plan.Member),
 	)
 }
 
@@ -144,11 +144,11 @@ func networkdMemberConfig(env Environment, path, member, bridge string) ([]byte,
 }
 
 func applyNetworkdBridge(ctx context.Context, env Environment, plan BridgePlan) error {
-	if err := runNetworkCommand(ctx, env, "networkctl", "reload"); err != nil {
+	if err := runNetworkctl(ctx, env, "reload"); err != nil {
 		return err
 	}
-	if err := runNetworkCommand(ctx, env, "networkctl", "reconfigure", plan.Name); err != nil {
+	if err := runNetworkctl(ctx, env, "reconfigure", plan.Name); err != nil {
 		return err
 	}
-	return runNetworkCommand(ctx, env, "networkctl", "reconfigure", plan.Member)
+	return runNetworkctl(ctx, env, "reconfigure", plan.Member)
 }
