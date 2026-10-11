@@ -127,7 +127,7 @@ func NewDaemon(cfg DaemonConfig) (*daemon, error) {
 func openDaemonDatabase(path string, opts storage.OpenOptions) (*sql.DB, error) {
 	db, err := storage.Open(path, opts)
 	if err == nil {
-		return db, err
+		return db, nil
 	}
 	var reason string
 	switch {
