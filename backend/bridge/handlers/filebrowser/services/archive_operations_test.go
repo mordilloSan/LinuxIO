@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -407,4 +408,11 @@ func TestCopyWithCallbacksReportsProgressAfterWrite(t *testing.T) {
 
 	require.Error(t, copyWithCallbacks(failingWriter{}, strings.NewReader("hello"), opts))
 	assert.Zero(t, progressed, "bytes that never reached the destination must not count as progress")
+}
+
+func TestAddArchiveSizeSaturates(t *testing.T) {
+	assert.Equal(t, int64(30), addArchiveSize(10, 20))
+	assert.Equal(t, int64(math.MaxInt64), addArchiveSize(10, math.MaxUint64))
+	assert.Equal(t, int64(math.MaxInt64), addArchiveSize(math.MaxInt64-5, 6))
+	assert.Equal(t, int64(math.MaxInt64), addArchiveSize(math.MaxInt64, 1))
 }

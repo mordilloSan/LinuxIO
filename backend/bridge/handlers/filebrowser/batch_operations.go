@@ -336,11 +336,32 @@ func parseChmodBatchRequest(req apischema.FileChmodBatchRequest) (paths []string
 	if len(req.Paths) == 0 || req.Mode == "" {
 		return nil, 0, "", "", false, fmt.Errorf("missing paths or mode")
 	}
-	parsed, err := strconv.ParseInt(req.Mode, 8, 32)
+	mode, err = parseOctalMode(req.Mode)
 	if err != nil {
-		return nil, 0, "", "", false, fmt.Errorf("invalid mode: %w", err)
+		return nil, 0, "", "", false, err
 	}
-	return req.Paths, os.FileMode(parsed), req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
+	return req.Paths, mode, req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
+}
+
+// parseOctalMode parses a chmod-style octal mode (at most 0o7777) and maps the
+// setuid, setgid and sticky bits onto their os.FileMode flags; os.Chmod ignores
+// the raw 0o7000 bits.
+func parseOctalMode(value string) (os.FileMode, error) {
+	parsed, err := strconv.ParseUint(value, 8, 12)
+	if err != nil {
+		return 0, fmt.Errorf("invalid mode: %w", err)
+	}
+	mode := os.FileMode(parsed) & os.ModePerm
+	if parsed&0o4000 != 0 {
+		mode |= os.ModeSetuid
+	}
+	if parsed&0o2000 != 0 {
+		mode |= os.ModeSetgid
+	}
+	if parsed&0o1000 != 0 {
+		mode |= os.ModeSticky
+	}
+	return mode, nil
 }
 
 // chmodBatchReporter accumulates a running processed-entry count across all

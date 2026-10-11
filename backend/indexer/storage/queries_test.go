@@ -89,6 +89,25 @@ func TestSearchEntriesWithType(t *testing.T) {
 	}
 }
 
+func TestSearchEntriesReturnsInodesAboveMaxInt64(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+
+	const bigInode = uint64(1)<<63 + 5
+	entry := indexing.IndexEntry{RelativePath: "/fuse.bin", Name: "fuse.bin", Size: 1, ModTime: time.Now(), Type: "file", Inode: bigInode}
+	if _, err := UpdateEntry(ctx, db, indexID, entry); err != nil {
+		t.Fatalf("insert entry: %v", err)
+	}
+
+	results, err := NewStoreWithDB(db, dbPath).SearchEntriesUnder(ctx, "fuse", "/", 100)
+	if err != nil {
+		t.Fatalf("search entries: %v", err)
+	}
+	if len(results) != 1 || results[0].Inode != bigInode {
+		t.Fatalf("results = %+v, want one entry with inode %d", results, bigInode)
+	}
+}
+
 func TestSearchEntriesUsesParsedTerms(t *testing.T) {
 	ctx, db, dbPath := setupTestDB(t)
 	indexID := insertTestIndex(t, db)

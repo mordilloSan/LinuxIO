@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -514,16 +515,27 @@ func setNetplanGateway(ifaceMap map[string]any, gateway string) {
 	ifaceMap["routes"] = filtered
 }
 
+// netplanUint reads a YAML number that must fit in a uint32. Negative,
+// fractional or out-of-range values are treated as unset rather than
+// truncated.
 func netplanUint(value any) (uint32, bool) {
 	switch typed := value.(type) {
 	case int:
-		return uint32(typed), true
+		if typed >= 0 && uint64(typed) <= math.MaxUint32 {
+			return uint32(typed), true
+		}
 	case int64:
-		return uint32(typed), true
+		if typed >= 0 && typed <= math.MaxUint32 {
+			return uint32(typed), true
+		}
 	case uint64:
-		return uint32(typed), true
+		if typed <= math.MaxUint32 {
+			return uint32(typed), true
+		}
 	case float64:
-		return uint32(typed), true
+		if typed >= 0 && typed <= math.MaxUint32 && typed == math.Trunc(typed) {
+			return uint32(typed), true
+		}
 	}
 	return 0, false
 }
