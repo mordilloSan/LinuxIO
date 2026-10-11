@@ -15,7 +15,7 @@ import (
 func newTestSessionManager(cfg session.SessionConfig) *session.Manager {
 	cfg.Cookie.Secure = false
 	cfg.GCInterval = 0
-	return session.NewManager(session.New(), cfg)
+	return session.NewManager(cfg)
 }
 
 func wsURL(httpURL string, path string) string {

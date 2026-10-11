@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -54,7 +53,7 @@ var DefaultConfig = SessionConfig{
 	SingleSessionPerUser: false,
 	GCInterval:           15 * time.Second,
 	Cookie: CookieConfig{
-		Name:        "session_id",
+		Name:        "__Host-session_id",
 		Path:        "/",
 		SameSite:    http.SameSiteStrictMode,
 		Secure:      true,
@@ -125,30 +124,22 @@ type Session struct {
 	Timing       Timing                `json:"timing"`
 
 	// Termination handler (not serialized)
-	terminateFunc func(DeleteReason) error
+	terminateFunc func(DeleteReason)
 	terminateMu   sync.Mutex
-}
-
-// -----------------------------------------------------------------------------
-// Store interface
-// -----------------------------------------------------------------------------
-
-type Store interface {
-	Find(string) ([]byte, bool, error)
-	Commit(string, []byte, time.Time) error
-	Delete(string) error
-	// All returns all records still present in the store.
-	// Manager expiry checks determine whether those records are still usable.
-	All() (map[string][]byte, error)
 }
 
 // -----------------------------------------------------------------------------
 // Manager
 // -----------------------------------------------------------------------------
 
+// Manager owns the in-memory session table. Every read-modify-write and
+// delete happens under mu, so a refresh cannot resurrect a session that a
+// concurrent logout or GC already removed, and delete hooks fire once.
 type Manager struct {
 	cfg SessionConfig
-	st  Store
+
+	mu       sync.Mutex
+	sessions map[string]*Session
 
 	onDeleteMu sync.RWMutex
 	onDelete   []func(*Session, DeleteReason)
@@ -159,8 +150,8 @@ type Manager struct {
 
 // NewManager constructs a manager from a fully resolved SessionConfig.
 // Callers should start from DefaultConfig and override fields explicitly.
-func NewManager(store Store, cfg SessionConfig) *Manager {
-	m := &Manager{st: store, cfg: cfg}
+func NewManager(cfg SessionConfig) *Manager {
+	m := &Manager{cfg: cfg, sessions: make(map[string]*Session)}
 	slog.Info("Session manager ready")
 	slog.Debug("session timings configured",
 		"idle_timeout", m.cfg.IdleTimeout,
@@ -169,9 +160,6 @@ func NewManager(store Store, cfg SessionConfig) *Manager {
 		"single_user", m.cfg.SingleSessionPerUser,
 		"gc_interval", m.cfg.GCInterval)
 
-	// Stored records get a short TTL grace after absolute expiry so manager GC
-	// can emit delete hooks before the store prunes any leftovers.
-	// Manager GC handles idle expiry and transport teardown hooks.
 	if m.cfg.GCInterval > 0 {
 		m.gcStop = make(chan struct{})
 		go m.gcLoop()
@@ -184,11 +172,6 @@ func (m *Manager) Close() {
 	m.closeOnce.Do(func() {
 		if m.gcStop != nil {
 			close(m.gcStop)
-		}
-		if closer, ok := m.st.(interface{ Close() error }); ok {
-			if err := closer.Close(); err != nil {
-				slog.Warn("failed to close session store", "error", err)
-			}
 		}
 		slog.Info("Session manager stopped")
 	})
@@ -203,18 +186,17 @@ func (m *Manager) CookieName() string { return m.cfg.Cookie.Name }
 
 // Terminate invokes the session's termination handler if set.
 // This allows the session to request its own deletion (e.g., on bridge failure).
-func (s *Session) Terminate(reason DeleteReason) error {
+func (s *Session) Terminate(reason DeleteReason) {
 	s.terminateMu.Lock()
 	fn := s.terminateFunc
 	s.terminateMu.Unlock()
 	if fn != nil {
-		return fn(reason)
+		fn(reason)
 	}
-	return nil
 }
 
 // setTerminateFunc sets the termination handler for this session.
-func (s *Session) setTerminateFunc(fn func(DeleteReason) error) {
+func (s *Session) setTerminateFunc(fn func(DeleteReason)) {
 	s.terminateMu.Lock()
 	s.terminateFunc = fn
 	s.terminateMu.Unlock()
@@ -276,44 +258,54 @@ func (m *Manager) newSessionTiming(now time.Time) Timing {
 func expiredIdle(s *Session, now time.Time) bool     { return now.After(s.Timing.IdleUntil) }
 func expiredAbsolute(s *Session, now time.Time) bool { return now.After(s.Timing.AbsoluteUntil) }
 
-func (m *Manager) decode(b []byte) (*Session, error) {
-	var s Session
-	if err := json.Unmarshal(b, &s); err != nil {
-		return nil, err
+// snapshot returns a caller-owned copy of a stored session so callers never
+// share mutable state with the table. Callers must hold m.mu.
+func (m *Manager) snapshot(s *Session) *Session {
+	out := &Session{
+		SessionID:    s.SessionID,
+		User:         s.User,
+		Privileged:   s.Privileged,
+		Capabilities: s.Capabilities,
+		Timing:       s.Timing,
 	}
-	return &s, nil
+	out.setTerminateFunc(func(reason DeleteReason) {
+		m.DeleteSession(out.SessionID, reason)
+	})
+	return out
 }
 
-func (m *Manager) storeExpiry(absolute time.Time) time.Time {
-	if m.cfg.GCInterval <= 0 {
-		return absolute
-	}
-	// Keep the stored record briefly past absolute expiry so manager GC can emit
-	// delete hooks and tear down websocket/yamux state consistently.
-	return absolute.Add(m.cfg.GCInterval)
-}
-
-func (m *Manager) commitSession(s *Session) error {
-	b, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	return m.st.Commit(s.SessionID, b, m.storeExpiry(s.Timing.AbsoluteUntil))
-}
-
-func (m *Manager) refreshLoadedSession(s *Session, now time.Time) error {
+func (m *Manager) refreshTiming(s *Session, now time.Time) {
+	s.Timing.LastAccess = now
 	if now.Sub(s.Timing.LastRefresh) < m.cfg.RefreshThrottle {
-		s.Timing.LastAccess = now
-	} else {
-		s.Timing.LastAccess = now
-		s.Timing.LastRefresh = now
-		newIdle := now.Add(m.cfg.IdleTimeout)
-		if newIdle.After(s.Timing.AbsoluteUntil) {
-			newIdle = s.Timing.AbsoluteUntil
-		}
-		s.Timing.IdleUntil = newIdle
+		return
 	}
-	return m.commitSession(s)
+	s.Timing.LastRefresh = now
+	newIdle := now.Add(m.cfg.IdleTimeout)
+	if newIdle.After(s.Timing.AbsoluteUntil) {
+		newIdle = s.Timing.AbsoluteUntil
+	}
+	s.Timing.IdleUntil = newIdle
+}
+
+// expiryReason reports why s is no longer usable, or "" when it is live.
+func expiryReason(s *Session, now time.Time) DeleteReason {
+	switch {
+	case expiredAbsolute(s, now):
+		return ReasonGCAbsolute
+	case expiredIdle(s, now):
+		return ReasonGCIdle
+	}
+	return ""
+}
+
+// deleted logs and broadcasts sessions already removed from the table.
+func (m *Manager) deleted(sessions []*Session, r DeleteReason) {
+	for _, s := range sessions {
+		slog.Info("session deleted",
+			"session_ref", DiagnosticRef(s.SessionID),
+			"reason", string(r))
+		m.broadcastOnDelete(s, r)
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -341,32 +333,32 @@ func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session
 	if id == "" {
 		return nil, fmt.Errorf("session id required")
 	}
-	if _, ok, err := m.st.Find(id); err != nil {
-		return nil, err
-	} else if ok {
+
+	m.mu.Lock()
+	if _, ok := m.sessions[id]; ok {
+		m.mu.Unlock()
 		return nil, fmt.Errorf("session id already exists")
 	}
-
-	now := time.Now()
-
-	sess := &Session{
+	var evicted []*Session
+	if m.cfg.SingleSessionPerUser {
+		for tok, s := range m.sessions {
+			if s.User.Username == user.Username {
+				delete(m.sessions, tok)
+				evicted = append(evicted, s)
+			}
+		}
+	}
+	stored := &Session{
 		SessionID:  id,
 		User:       user,
 		Privileged: privileged,
-		Timing:     m.newSessionTiming(now),
+		Timing:     m.newSessionTiming(time.Now()),
 	}
+	m.sessions[id] = stored
+	sess := m.snapshot(stored)
+	m.mu.Unlock()
 
-	if m.cfg.SingleSessionPerUser {
-		m.evictUserSessions(user.Username)
-	}
-
-	if err := m.commitSession(sess); err != nil {
-		return nil, err
-	}
-
-	sess.setTerminateFunc(func(reason DeleteReason) error {
-		return m.DeleteSession(sess.SessionID, reason)
-	})
+	m.deleted(evicted, ReasonManual)
 	slog.Info("session created",
 		"session_ref", DiagnosticRef(sess.SessionID),
 		"privileged", privileged)
@@ -374,80 +366,65 @@ func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session
 }
 
 func (m *Manager) GetSession(id string) (*Session, error) {
-	b, ok, err := m.st.Find(id)
-	if err != nil {
-		return nil, err
-	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
 	if !ok {
 		return nil, errors.New("session not found")
 	}
-	sess, err := m.decode(b)
-	if err != nil {
-		return nil, err
-	}
-	// Restore termination handler (not serialized)
-	sess.setTerminateFunc(func(reason DeleteReason) error {
-		return m.DeleteSession(sess.SessionID, reason)
-	})
-	return sess, nil
+	return m.snapshot(s), nil
 }
 
-func (m *Manager) DeleteSession(id string, r DeleteReason) error {
-	b, ok, err := m.st.Find(id)
-	if err != nil {
-		return err
+// DeleteSession removes a session and fires delete hooks. Only the call that
+// actually removes the session broadcasts, so concurrent logout, GC and bridge
+// failure tear down transports once.
+func (m *Manager) DeleteSession(id string, r DeleteReason) {
+	m.mu.Lock()
+	s, ok := m.sessions[id]
+	if ok {
+		delete(m.sessions, id)
 	}
-	if !ok {
-		return nil
+	m.mu.Unlock()
+	if ok {
+		m.deleted([]*Session{s}, r)
 	}
-	if err := m.st.Delete(id); err != nil {
-		return err
-	}
-	if s, err := m.decode(b); err == nil {
-		slog.Info("session deleted",
-			"session_ref", DiagnosticRef(s.SessionID),
-			"reason", string(r))
-		m.broadcastOnDelete(s, r)
-	}
-	return nil
 }
 
+// Refresh validates a session and extends its idle deadline as explicit user
+// activity. Validation and the timing update happen under one lock, so a
+// concurrent delete either wins outright or sees the refreshed session.
 func (m *Manager) Refresh(id string) error {
-	s, err := m.ValidateSession(id)
-	if err != nil {
-		return err
-	}
-	return m.refreshLoadedSession(s, time.Now())
+	_, err := m.validate(id, true)
+	return err
 }
 
 // ValidateSession loads a session and verifies its absolute and idle expiry
 // without extending its idle deadline. Callers that represent explicit user
 // activity must use Refresh after validation.
 func (m *Manager) ValidateSession(id string) (*Session, error) {
-	s, err := m.GetSession(id)
-	if err != nil {
-		return nil, err
+	return m.validate(id, false)
+}
+
+func (m *Manager) validate(id string, refresh bool) (*Session, error) {
+	m.mu.Lock()
+	s, ok := m.sessions[id]
+	if !ok {
+		m.mu.Unlock()
+		return nil, errors.New("session not found")
 	}
 	now := time.Now()
-	if expiredAbsolute(s, now) {
-		if delErr := m.DeleteSession(id, ReasonGCAbsolute); delErr != nil {
-			slog.Warn("failed to delete absolute-expired session",
-				"session_ref", DiagnosticRef(id),
-				"reason", string(ReasonGCAbsolute),
-				"error", delErr)
-		}
+	if reason := expiryReason(s, now); reason != "" {
+		delete(m.sessions, id)
+		m.mu.Unlock()
+		m.deleted([]*Session{s}, reason)
 		return nil, fmt.Errorf("session expired")
 	}
-	if expiredIdle(s, now) {
-		if delErr := m.DeleteSession(id, ReasonGCIdle); delErr != nil {
-			slog.Warn("failed to delete idle-expired session",
-				"session_ref", DiagnosticRef(id),
-				"reason", string(ReasonGCIdle),
-				"error", delErr)
-		}
-		return nil, fmt.Errorf("session expired")
+	if refresh {
+		m.refreshTiming(s, now)
 	}
-	return s, nil
+	out := m.snapshot(s)
+	m.mu.Unlock()
+	return out, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -537,9 +514,8 @@ func WithSession(ctx context.Context, s *Session) context.Context {
 
 // -----------------------------------------------------------------------------
 // Background session sweep.
-// Stored records get a short TTL grace after absolute expiry so manager GC can
-// emit delete hooks before the store eventually prunes any leftovers.
-// Manager GC enforces both absolute and idle expiry.
+// Manager GC enforces both absolute and idle expiry so delete hooks tear down
+// websocket/yamux state for sessions nobody touches again.
 // -----------------------------------------------------------------------------
 
 func (m *Manager) gcLoop() {
@@ -555,82 +531,39 @@ func (m *Manager) gcLoop() {
 	}
 }
 
-func (m *Manager) evictUserSessions(username string) {
-	mm, err := m.st.All()
-	if err != nil {
-		return
-	}
-	for tok, data := range mm {
-		s, decodeErr := m.decode(data)
-		if decodeErr != nil {
-			continue
-		}
-		if s.User.Username == username {
-			if deleteErr := m.st.Delete(tok); deleteErr != nil {
-				slog.Warn("failed deleting existing session",
-					"session_ref", DiagnosticRef(tok),
-					"error", deleteErr)
-				continue
-			}
-			m.broadcastOnDelete(s, ReasonManual)
-		}
-	}
-}
-
 func (m *Manager) gcCollect() {
-	mm, err := m.st.All()
-	if err != nil {
-		return
-	}
 	now := time.Now()
+	expired := make(map[DeleteReason][]*Session)
+	m.mu.Lock()
+	for tok, s := range m.sessions {
+		if reason := expiryReason(s, now); reason != "" {
+			delete(m.sessions, tok)
+			expired[reason] = append(expired[reason], s)
+		}
+	}
+	m.mu.Unlock()
+
 	collected := 0
-	for tok, data := range mm {
-		s, err := m.decode(data)
-		if err != nil {
-			continue
-		}
-		reason := DeleteReason("")
-		switch {
-		case expiredAbsolute(s, now):
-			reason = ReasonGCAbsolute
-		case expiredIdle(s, now):
-			reason = ReasonGCIdle
-		}
-		if reason != "" {
-			if err := m.st.Delete(tok); err != nil {
-				slog.Warn("failed to delete expired session",
-					"session_ref", DiagnosticRef(tok),
-					"reason", string(reason),
-					"error", err)
-				continue
-			}
-			m.broadcastOnDelete(s, reason)
-			collected++
-		}
+	for reason, sessions := range expired {
+		m.deleted(sessions, reason)
+		collected += len(sessions)
 	}
 	if collected > 0 {
 		slog.Info("session garbage collection completed", "count", collected)
 	}
 }
 
-// ActiveSessions returns decoded, non-expired sessions.
-// It filters out sessions that are idle- or absolute-expired.
-func (m *Manager) ActiveSessions() ([]*Session, error) {
-	all, err := m.st.All()
-	if err != nil {
-		return nil, err
-	}
+// ActiveSessions returns copies of the sessions that are neither idle- nor
+// absolute-expired.
+func (m *Manager) ActiveSessions() []*Session {
 	now := time.Now()
-	out := make([]*Session, 0, len(all))
-	for _, b := range all {
-		s, err := m.decode(b)
-		if err != nil {
-			continue
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		if expiryReason(s, now) == "" {
+			out = append(out, m.snapshot(s))
 		}
-		if expiredAbsolute(s, now) || expiredIdle(s, now) {
-			continue
-		}
-		out = append(out, s)
 	}
-	return out, nil
+	return out
 }

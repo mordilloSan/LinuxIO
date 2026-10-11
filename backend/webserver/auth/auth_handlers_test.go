@@ -103,7 +103,7 @@ func TestLoginRejectsNonCanonicalJSON(t *testing.T) {
 	oldStart := startBridge
 	t.Cleanup(func() { startBridge = oldStart })
 
-	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	sm := session.NewManager(session.DefaultConfig)
 	t.Cleanup(sm.Close)
 	handler := newRouterForTests(&Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)})
 	tests := []struct {
@@ -165,7 +165,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}
 	// Manager + handlers
 	cfg := session.DefaultConfig
-	sm := session.NewManager(session.New(), cfg)
+	sm := session.NewManager(cfg)
 	h := &Handlers{SM: sm, Verbose: true, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -209,7 +209,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 }
 
 func TestUpdateInfo_MissingSessionReturns401ThroughMiddleware(t *testing.T) {
-	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	sm := session.NewManager(session.DefaultConfig)
 	t.Cleanup(sm.Close)
 	mux := http.NewServeMux()
 	RegisterAuthRoutes(mux, sm, false)
@@ -229,7 +229,7 @@ func TestUpdateInfo_UnprivilegedReturns204WithoutChecking(t *testing.T) {
 		return &UpdateInfo{Available: true}
 	}
 
-	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	sm := session.NewManager(session.DefaultConfig)
 	t.Cleanup(sm.Close)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, false))
@@ -256,7 +256,7 @@ func TestUpdateInfo_PrivilegedNilReturns204(t *testing.T) {
 		return nil
 	}
 
-	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	sm := session.NewManager(session.DefaultConfig)
 	t.Cleanup(sm.Close)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, true))
@@ -282,7 +282,7 @@ func TestUpdateInfo_PrivilegedResultReturnsExactJSON(t *testing.T) {
 	}
 	checkForUpdate = func(context.Context) *UpdateInfo { return want }
 
-	sm := session.NewManager(session.NewWithCleanupInterval(0), session.DefaultConfig)
+	sm := session.NewManager(session.DefaultConfig)
 	t.Cleanup(sm.Close)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, true))
@@ -386,7 +386,7 @@ func TestLogin_Success_OmitsCapabilities(t *testing.T) {
 	}
 
 	cfg := session.DefaultConfig
-	sm := session.NewManager(session.New(), cfg)
+	sm := session.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -414,7 +414,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 		}
 	}
 	cfg := session.DefaultConfig
-	sm := session.NewManager(session.New(), cfg)
+	sm := session.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -450,7 +450,7 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 		}
 	}
 	cfg := session.DefaultConfig
-	sm := session.NewManager(session.New(), cfg)
+	sm := session.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -491,7 +491,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 	defer close(block)
 
 	cfg := session.DefaultConfig
-	sm := session.NewManager(session.New(), cfg)
+	sm := session.NewManager(cfg)
 	// Semaphore of 1 so one in-flight login saturates it
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, 1)}
 	r := newRouterForTests(h)
@@ -526,7 +526,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Minimal happy path to get a session cookie:
 	cfg := session.DefaultConfig
-	sm := session.NewManager(session.New(), cfg)
+	sm := session.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 

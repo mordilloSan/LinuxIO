@@ -87,10 +87,9 @@ func TestRegisterYamuxSessionAlreadyClosedDoesNotDeadlock(t *testing.T) {
 }
 
 func TestOldYamuxCloseDoesNotRemoveReplacement(t *testing.T) {
-	store := session.NewWithCleanupInterval(0)
 	cfg := session.DefaultConfig
 	cfg.GCInterval = 0
-	manager := session.NewManager(store, cfg)
+	manager := session.NewManager(cfg)
 	t.Cleanup(manager.Close)
 	oldSession, err := manager.CreateSession("replacement", session.User{Username: "test"}, false)
 	if err != nil {

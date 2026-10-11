@@ -283,10 +283,9 @@ func TestStreamNativeDownloadDetectsTruncatedBody(t *testing.T) {
 }
 
 func TestNativeDownloadHandlerRequiresSession(t *testing.T) {
-	store := session.NewWithCleanupInterval(0)
 	cfg := session.DefaultConfig
 	cfg.GCInterval = 0
-	manager := session.NewManager(store, cfg)
+	manager := session.NewManager(cfg)
 	t.Cleanup(manager.Close)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/download?taskId=task-1", nil)
@@ -299,10 +298,9 @@ func TestNativeDownloadHandlerRequiresSession(t *testing.T) {
 }
 
 func TestNativeDownloadHandlerRequiresExactlyOneSource(t *testing.T) {
-	store := session.NewWithCleanupInterval(0)
 	cfg := session.DefaultConfig
 	cfg.GCInterval = 0
-	manager := session.NewManager(store, cfg)
+	manager := session.NewManager(cfg)
 	t.Cleanup(manager.Close)
 	sess, err := manager.CreateSession("download-source", session.User{Username: "test", UID: 1000, GID: 1000}, false)
 	if err != nil {

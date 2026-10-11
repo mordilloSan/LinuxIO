@@ -77,11 +77,7 @@ func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost 
 	}
 
 	if attachErr := attachBridgeSession(sess, result.Conn); attachErr != nil {
-		if delErr := sm.DeleteSession(sess.SessionID, session.ReasonManual); delErr != nil {
-			slog.Warn("failed to cleanup session after bridge setup failure",
-				"session_ref", session.DiagnosticRef(sess.SessionID),
-				"error", delErr)
-		}
+		sm.DeleteSession(sess.SessionID, session.ReasonManual)
 		return nil, attachErr
 	}
 
@@ -134,11 +130,7 @@ func registerYamuxSession(sess *session.Session, yamuxSession *relay.YamuxSessio
 
 		// Terminate the session when bridge dies. This triggers session
 		// deletion which closes the WebSocket.
-		if err := sess.Terminate(session.ReasonBridgeFailure); err != nil {
-			slog.Warn("failed to terminate session after bridge closure",
-				"session_ref", session.DiagnosticRef(sess.SessionID),
-				"error", err)
-		}
+		sess.Terminate(session.ReasonBridgeFailure)
 	})
 
 	if old != nil {
