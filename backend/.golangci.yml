@@ -134,6 +134,7 @@ linters:
     - sqlclosecheck
     - testifylint
     - unconvert
+    - unparam
     - unused
     - usestdlibvars
     - wastedassign
@@ -158,6 +159,7 @@ linters:
           - goconst
           - gosec
           - noctx
+          - unparam
           - wrapcheck
         path: _test\.go
       - linters:
