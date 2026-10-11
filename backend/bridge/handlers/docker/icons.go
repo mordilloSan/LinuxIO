@@ -340,9 +340,9 @@ func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 	data, fetchedType, fetchedValue, err := fetchIconData(ctx, iconType, value)
 	if err != nil {
 		// Offline or upstream down: an expired copy beats no icon.
-		if data, found := readCachedIcon(ctx, iconType, value, identifier, true); found {
+		if stale, found := readCachedIcon(ctx, iconType, value, identifier, true); found {
 			slog.Debug("serving stale cached icon", "identifier", identifier, "error", err)
-			return data, nil
+			return stale, nil
 		}
 		return nil, fmt.Errorf("failed to fetch icon: %w", err)
 	}
