@@ -16,9 +16,11 @@ linters:
     errcheck:
       check-type-assertions: true
     exhaustive:
+      # A default clause counts as handling the remaining enum values, and
+      # partial maps keyed by an enum (env overrides, test tables) are fine.
+      default-signifies-exhaustive: true
       check:
         - switch
-        - map
     exhaustruct:
       exclude:
         - ^net/http.Client$
@@ -125,6 +127,7 @@ linters:
     - cyclop
     - durationcheck
     - errorlint
+    - exhaustive
     - gocognit
     - gocritic
     - gomodguard_v2
