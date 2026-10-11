@@ -22,6 +22,11 @@ func frametoolPath(t *testing.T) string {
 	if path == "" {
 		t.Skip("LINUXIO_AUTH_FRAMETOOL not set; run via make test-auth-protocol")
 	}
+	// The stat also makes Go's test cache key on the binary's mtime/size,
+	// so a rebuilt frametool invalidates a cached pass.
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("frametool: %v", err)
+	}
 	return path
 }
 
