@@ -136,7 +136,7 @@
   color: var(--app-palette-text-primary);
   overflow: auto;
   font-family: var(--app-font-mono);
-  font-size: 0.75rem;
+  font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
 .assistant-code {
@@ -188,7 +188,7 @@
 
 .assistant-markdown :not(pre) > code {
   font-family: var(--app-font-mono);
-  font-size: 0.75rem;
+  font-size: calc(var(--app-font-size-body) * 0.92);
   color: var(--app-code-string);
 }
 
@@ -264,7 +264,7 @@
 
 .assistant-diff__path {
   font-family: var(--app-font-mono);
-  font-size: 0.75rem;
+  font-size: calc(var(--app-font-size-body) * 0.92);
   color: var(--app-palette-text-secondary);
 }
 
@@ -505,7 +505,7 @@
   background-color: var(--app-palette-action-hover);
   color: var(--app-palette-text-secondary);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
 .app-icon-btn.assistant__pill:hover:not(:disabled),
@@ -603,7 +603,7 @@
 
 .assistant__menu-header {
   padding: 6px 10px 4px;
-  font-size: 0.75rem;
+  font-size: calc(var(--app-font-size-body) * 0.92);
   color: var(--app-palette-text-secondary);
 }
 
@@ -647,7 +647,7 @@
 
 .assistant__menu-subheader {
   padding: 4px 10px 2px;
-  font-size: 0.6875rem;
+  font-size: calc(var(--app-font-size-body) * 0.85);
   color: var(--app-palette-text-disabled);
 }
 
@@ -672,7 +672,7 @@
   justify-content: space-between;
   gap: var(--app-space-12);
   padding: 6px 10px 10px;
-  font-size: 0.8125rem;
+  font-size: var(--app-font-size-body);
 }
 
 .assistant__extra-value {
@@ -801,7 +801,7 @@
 }
 
 .assistant__mode-description {
-  font-size: 0.75rem;
+  font-size: calc(var(--app-font-size-body) * 0.92);
   font-weight: 400;
   color: var(--app-palette-text-secondary);
 }
@@ -842,7 +842,7 @@
   background: var(--app-palette-background-default);
   color: var(--app-palette-text-primary);
   font-family: var(--app-font-mono);
-  font-size: 0.75rem;
+  font-size: calc(var(--app-font-size-body) * 0.92);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 160px;
@@ -888,7 +888,7 @@
   border-radius: var(--app-radius-base);
   color: var(--app-palette-text-secondary);
   font-family: var(--app-font-mono);
-  font-size: 0.6875rem;
+  font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
 .app-btn.assistant__permission-option:focus .assistant__permission-key,
@@ -904,5 +904,5 @@
 
 .assistant__permission-esc {
   color: var(--app-palette-text-disabled);
-  font-size: 0.6875rem;
+  font-size: calc(var(--app-font-size-body) * 0.85);
 }

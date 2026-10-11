@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useStreamMux } from "@/api";
@@ -13,6 +13,11 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
+import { useConfigValue } from "@/hooks/useConfig";
+import {
+  readPersistedState,
+  writePersistedState,
+} from "@/utils/persistedState";
 
 import "./assistant.css";
 
@@ -25,6 +30,14 @@ import Transcript from "./Transcript";
 
 // Escape inside an overlay belongs to that overlay, not to the running turn.
 const OVERLAY_SELECTOR = `${OVERLAY_ROOT_SELECTOR}, .app-popover-root, [role="menu"], [role="listbox"]`;
+
+// Same bounds the terminal enforces for terminalFontSize.
+const MIN_FONT = 10;
+const MAX_FONT = 28;
+const FONT_SIZE_KEY = "linuxio.assistant.fontSize";
+
+const isFontSize = (value: unknown): value is number =>
+  typeof value === "number" && value >= MIN_FONT && value <= MAX_FONT;
 
 export default function AssistantPage({
   agent,
@@ -40,6 +53,18 @@ export default function AssistantPage({
     sessionId: string;
     label: string;
   } | null>(null);
+
+  // Follows the terminal's font size until the user picks one here.
+  const [terminalFontSize] = useConfigValue("terminalFontSize");
+  const [ownFontSize, setOwnFontSize] = useState(() =>
+    readPersistedState(FONT_SIZE_KEY, isFontSize),
+  );
+  const fontSize = ownFontSize ?? terminalFontSize;
+  const adjustFontSize = (delta: number) => {
+    const next = Math.min(MAX_FONT, Math.max(MIN_FONT, fontSize + delta));
+    setOwnFontSize(next);
+    writePersistedState(FONT_SIZE_KEY, next);
+  };
 
   useEffect(() => {
     if (agent && isOpen) void assistantStore.connect(agent);
@@ -99,6 +124,28 @@ export default function AssistantPage({
       options={
         <>
           <AppActionIconButton
+            disabled={fontSize <= MIN_FONT}
+            icon="mdi:format-font-size-decrease"
+            iconSize={20}
+            label="Decrease font size"
+            onClick={() => adjustFontSize(-1)}
+          />
+          <AppTypography
+            align="center"
+            color="text.secondary"
+            style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
+            variant="body2"
+          >
+            {fontSize}
+          </AppTypography>
+          <AppActionIconButton
+            disabled={fontSize >= MAX_FONT}
+            icon="mdi:format-font-size-increase"
+            iconSize={20}
+            label="Increase font size"
+            onClick={() => adjustFontSize(1)}
+          />
+          <AppActionIconButton
             ariaLabel="Previous chats"
             disabled={!state.canListSessions}
             icon="mdi:history"
@@ -122,7 +169,10 @@ export default function AssistantPage({
   );
 
   return (
-    <div className="assistant">
+    <div
+      className="assistant"
+      style={{ "--app-font-size-body": `${fontSize}px` } as CSSProperties}
+    >
       {slot?.host ? (
         createPortal(actions, slot.host)
       ) : (

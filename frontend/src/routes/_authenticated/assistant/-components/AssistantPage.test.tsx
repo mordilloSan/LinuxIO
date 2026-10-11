@@ -42,6 +42,22 @@ describe("AssistantPage", () => {
     expect(connectSpy).not.toHaveBeenCalled();
   });
 
+  it("starts at the terminal font size and lets the user resize the chat", async () => {
+    window.localStorage.removeItem("linuxio.assistant.fontSize");
+    const { container } = render(<AssistantPage agent="claude" />);
+    const root = container.querySelector<HTMLElement>(".assistant")!;
+    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("16px");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /increase font size/i }),
+    );
+    expect(root.style.getPropertyValue("--app-font-size-body")).toBe("17px");
+    expect(window.localStorage.getItem("linuxio.assistant.fontSize")).toBe(
+      "17",
+    );
+    window.localStorage.removeItem("linuxio.assistant.fontSize");
+  });
+
   it("connects to the configured agent on mount", () => {
     render(<AssistantPage agent="claude" />);
     expect(connectSpy).toHaveBeenCalledWith("claude");
