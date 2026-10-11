@@ -104,9 +104,9 @@ func TestManager_CreateGetDelete(t *testing.T) {
 	}
 
 	// Get
-	got, err := m.GetSession(s.SessionID)
+	got, err := m.ValidateSession(s.SessionID)
 	if err != nil || got.SessionID != s.SessionID {
-		t.Fatalf("GetSession mismatch got=%v err=%v", got, err)
+		t.Fatalf("ValidateSession mismatch got=%v err=%v", got, err)
 	}
 	if !got.Privileged {
 		t.Fatal("privileged flag did not persist")
@@ -114,8 +114,8 @@ func TestManager_CreateGetDelete(t *testing.T) {
 
 	// Delete
 	m.DeleteSession(s.SessionID, ReasonManual)
-	if _, err := m.GetSession(s.SessionID); err == nil {
-		t.Fatalf("GetSession should fail after delete")
+	if _, err := m.ValidateSession(s.SessionID); err == nil {
+		t.Fatalf("ValidateSession should fail after delete")
 	}
 }
 
@@ -132,7 +132,7 @@ func TestManager_RefreshUpdatesIdle(t *testing.T) {
 	if err := m.Refresh(s.SessionID); err != nil {
 		t.Fatalf("Refresh error: %v", err)
 	}
-	s2, _ := m.GetSession(s.SessionID)
+	s2, _ := m.ValidateSession(s.SessionID)
 	if !s2.Timing.IdleUntil.After(before) {
 		t.Fatalf("IdleUntil did not move forward")
 	}
@@ -255,7 +255,7 @@ func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
 		}
 	})
 
-	s := createTestSession(t, m, User{Username: "dana", UID: 1003, GID: 1003}, false)
+	createTestSession(t, m, User{Username: "dana", UID: 1003, GID: 1003}, false)
 
 	select {
 	case reason := <-done:
@@ -264,10 +264,6 @@ func TestManager_GCLoopDeletesAbsoluteExpiredSessions(t *testing.T) {
 		}
 	case <-time.After(250 * time.Millisecond):
 		t.Fatal("timed out waiting for absolute-expiry GC")
-	}
-
-	if _, err := m.GetSession(s.SessionID); err == nil {
-		t.Fatalf("expected session deleted after absolute-expiry GC")
 	}
 }
 

@@ -365,16 +365,6 @@ func (m *Manager) CreateSession(id string, user User, privileged bool) (*Session
 	return sess, nil
 }
 
-func (m *Manager) GetSession(id string) (*Session, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s, ok := m.sessions[id]
-	if !ok {
-		return nil, errors.New("session not found")
-	}
-	return m.snapshot(s), nil
-}
-
 // DeleteSession removes a session and fires delete hooks. Only the call that
 // actually removes the session broadcasts, so concurrent logout, GC and bridge
 // failure tear down transports once.

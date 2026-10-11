@@ -108,7 +108,7 @@ func TestOldYamuxCloseDoesNotRemoveReplacement(t *testing.T) {
 	if current != newYamux {
 		t.Fatal("old session close removed replacement mapping")
 	}
-	if _, err := manager.GetSession(oldSession.SessionID); err != nil {
+	if _, err := manager.ValidateSession(oldSession.SessionID); err != nil {
 		t.Fatalf("old session close terminated owning session: %v", err)
 	}
 

@@ -196,7 +196,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}
 
 	// Session exists and is marked privileged (validated later by websocket)
-	sess, err := sm.GetSession(c.Value)
+	sess, err := sm.ValidateSession(c.Value)
 	if err != nil {
 		t.Fatalf("expected session stored, got error: %v", err)
 	}
@@ -557,7 +557,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	}
 
 	// Session should be deleted
-	if _, err := sm.GetSession(cookie.Value); err == nil {
+	if _, err := sm.ValidateSession(cookie.Value); err == nil {
 		t.Fatalf("expected session deleted after logout")
 	}
 }
