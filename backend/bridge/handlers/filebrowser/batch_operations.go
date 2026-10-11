@@ -167,7 +167,7 @@ func executeBatchTransfer(ctx context.Context, root *fsroot.FSRoot, items []batc
 			return 0, failures, nil, abortErr(ctx)
 		}
 		err := transfer(item, opts, overwrite)
-		if err == ipc.ErrAborted {
+		if errors.Is(err, ipc.ErrAborted) {
 			return 0, failures, nil, abortErr(ctx)
 		}
 		if err != nil {
@@ -338,7 +338,7 @@ func parseChmodBatchRequest(req apischema.FileChmodBatchRequest) (paths []string
 	}
 	parsed, err := strconv.ParseInt(req.Mode, 8, 32)
 	if err != nil {
-		return nil, 0, "", "", false, fmt.Errorf("invalid mode: %v", err)
+		return nil, 0, "", "", false, fmt.Errorf("invalid mode: %w", err)
 	}
 	return req.Paths, os.FileMode(parsed), req.Owner, req.Group, req.Recursive != nil && *req.Recursive, nil
 }

@@ -2,6 +2,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -56,7 +57,7 @@ func ReadStringFileLimited(path string, maxSize int) (string, error) {
 
 	buf := make([]byte, maxSize)
 	n, err := f.Read(buf)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
 	if n < 0 {

@@ -660,14 +660,14 @@ func logLatestIndexStatus(db *sql.DB) {
 	ctx := context.Background()
 	li, err := loadLatestIndex(ctx, db)
 
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		last := "unknown"
 		if li.LastIndexed.Valid && li.LastIndexed.Int64 > 0 {
 			last = time.Unix(li.LastIndexed.Int64, 0).UTC().Format(time.RFC3339)
 		}
 		slog.Info("latest index loaded", "last_indexed", last, "dirs", li.NumDirs, "files", li.NumFiles)
-	case sql.ErrNoRows:
+	case errors.Is(err, sql.ErrNoRows):
 		slog.Info("no prior index metadata found in database")
 	default:
 		slog.Warn("could not load latest index metadata", "err", err)

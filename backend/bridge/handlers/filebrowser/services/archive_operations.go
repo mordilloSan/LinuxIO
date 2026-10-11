@@ -3,6 +3,7 @@ package services
 import (
 	"archive/tar"
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -244,7 +245,7 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 			closeWithLog("zip writer", zipWriter)
 			closeWithLog("zip output file", file)
 			fileOpen = false
-			if addErr == ipc.ErrAborted {
+			if errors.Is(addErr, ipc.ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
 				slog.Error("failed to add file to zip", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
@@ -321,7 +322,7 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 			closeWithLog("gzip writer", gzWriter)
 			closeWithLog("tar.gz output file", file)
 			fileOpen = false
-			if addErr == ipc.ErrAborted {
+			if errors.Is(addErr, ipc.ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
 			} else {
 				slog.Error("failed to add file to tar.gz", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)

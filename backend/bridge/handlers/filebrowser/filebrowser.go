@@ -60,7 +60,7 @@ func listDirectory(ctx context.Context, req apischema.PathRequest) (apischema.Di
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return apischema.DirectoryListing{}, err
 		}
-		return apischema.DirectoryListing{}, fmt.Errorf("bad_request:%v", err)
+		return apischema.DirectoryListing{}, fmt.Errorf("bad_request:%w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return apischema.DirectoryListing{}, err
@@ -80,7 +80,7 @@ func directoryChildren(ctx context.Context, req apischema.DirectoryChildrenReque
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return apischema.DirectoryChildren{}, err
 		}
-		return apischema.DirectoryChildren{}, fmt.Errorf("bad_request:%v", err)
+		return apischema.DirectoryChildren{}, fmt.Errorf("bad_request:%w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return apischema.DirectoryChildren{}, err
@@ -100,7 +100,7 @@ func readText(ctx context.Context, req apischema.PathRequest) (apischema.TextFil
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return apischema.TextFile{}, err
 		}
-		return apischema.TextFile{}, fmt.Errorf("bad_request:%v", err)
+		return apischema.TextFile{}, fmt.Errorf("bad_request:%w", err)
 	}
 	return apischema.TextFile{Content: string(file.Content), Version: file.Version, CanSave: file.CanSave}, nil
 }
@@ -311,17 +311,17 @@ func createDirectoryResource(ctx context.Context, root *fsroot.FSRoot, req resou
 	if stat, statErr := root.Root.Stat(req.relPath); statErr == nil && !stat.IsDir() && req.override {
 		if removeErr := root.Root.Remove(req.relPath); removeErr != nil {
 			slog.Debug("error removing existing file for directory create", "path", req.cleanPath, "error", removeErr)
-			return nil, fmt.Errorf("bad_request:%v", removeErr)
+			return nil, fmt.Errorf("bad_request:%w", removeErr)
 		}
 	}
 
 	if mkdirErr := root.Root.MkdirAll(req.relPath, services.PermDir); mkdirErr != nil {
 		slog.Debug("error writing directory", "path", req.cleanPath, "error", mkdirErr)
-		return nil, fmt.Errorf("bad_request:%v", mkdirErr)
+		return nil, fmt.Errorf("bad_request:%w", mkdirErr)
 	}
 	if chmodErr := root.Root.Chmod(req.relPath, services.PermDir); chmodErr != nil {
 		slog.Debug("error setting directory permissions", "path", req.cleanPath, "error", chmodErr)
-		return nil, fmt.Errorf("bad_request:%v", chmodErr)
+		return nil, fmt.Errorf("bad_request:%w", chmodErr)
 	}
 
 	notifyIndexerForCreatedResource(ctx, root, req.cleanPath, req.relPath)
@@ -334,7 +334,7 @@ func createFileResource(ctx context.Context, root *fsroot.FSRoot, req resourcePo
 	if parentRel != "." {
 		if mkdirErr := root.Root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
 			slog.Debug("error creating parent directory", "path", req.cleanPath, "error", mkdirErr)
-			return nil, fmt.Errorf("bad_request:failed to create parent directory: %v", mkdirErr)
+			return nil, fmt.Errorf("bad_request:failed to create parent directory: %w", mkdirErr)
 		}
 	}
 
@@ -345,7 +345,7 @@ func createFileResource(ctx context.Context, root *fsroot.FSRoot, req resourcePo
 	f, err := root.Root.OpenFile(req.relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
 	if err != nil {
 		slog.Debug("error creating file", "path", req.cleanPath, "error", err)
-		return nil, fmt.Errorf("bad_request:%v", err)
+		return nil, fmt.Errorf("bad_request:%w", err)
 	}
 	if cerr := f.Close(); cerr != nil {
 		slog.Warn("failed to close created file", "path", req.cleanPath, "error", cerr)
@@ -584,7 +584,7 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 	opts := newPatchTaskCallbacks(ctx, task, patchReq.action, size.total)
 	if err := executeResourcePatch(patchReq, opts, size); err != nil {
 		slog.Debug("error patching resource", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest, "error", err)
-		return apischema.MessageResponse{}, fmt.Errorf("bad_request:%v", err)
+		return apischema.MessageResponse{}, fmt.Errorf("bad_request:%w", err)
 	}
 
 	notifyIndexerAfterPatch(ctx, root, patchReq, size, destExisted)

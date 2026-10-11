@@ -230,7 +230,7 @@ func (c *gpuCollector) start(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			if err == errNoValidData {
+			if errors.Is(err, errNoValidData) {
 				slog.Warn(c.name + " found no valid GPU data, stopping")
 				break
 			}

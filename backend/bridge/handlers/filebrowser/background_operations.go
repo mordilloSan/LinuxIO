@@ -549,7 +549,7 @@ func runCompressTask(ctx context.Context, task *bridgetasks.Task, store *config.
 	writeTaskPhaseProgress(task, 0, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, size, "compressing")
 	err = createArchive(req.Format, tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
-	if err == ipc.ErrAborted {
+	if errors.Is(err, ipc.ErrAborted) {
 		slog.Info("compress aborted, cleaning up", "path", targetPath)
 		removeWithDebug(root, tempRel, tempPath)
 		return FileCompressResult{}, abortErr(ctx)
@@ -607,7 +607,7 @@ func runExtractTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 	writeTaskPhaseProgress(task, totalSize, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(totalSize), "extracting")
 	err = services.ExtractArchive(archivePath, destination, opts, archiveExtractWorkers(settings))
-	if err == ipc.ErrAborted {
+	if errors.Is(err, ipc.ErrAborted) {
 		slog.Info("extract aborted, cleaning up", "path", destination)
 		if !destExistedBefore {
 			if removeErr := root.Root.RemoveAll(fsroot.ToRel(destination)); removeErr != nil {

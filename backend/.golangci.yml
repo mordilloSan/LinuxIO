@@ -124,6 +124,7 @@ linters:
     - bodyclose
     - cyclop
     - durationcheck
+    - errorlint
     - gocognit
     - gocritic
     - gomodguard_v2
@@ -158,10 +159,19 @@ linters:
           - funlen
           - goconst
           - gosec
+          - errorlint
           - noctx
           - unparam
           - wrapcheck
         path: _test\.go
+      # Calls that already wrap one error with %w keep the secondary cause
+      # (rollback, cleanup, decode, indexer) as text on purpose: wrapping it
+      # too would add errors.Is/As matches for it, such as cancellation, that
+      # callers and statusCode do not see today.
+      - linters:
+          - errorlint
+        text: non-wrapping format verb
+        source: '%w.*%v'
       - linters:
           - gofumpt
           - gofmt
