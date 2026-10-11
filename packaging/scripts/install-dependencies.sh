@@ -45,6 +45,7 @@ Header() {
 DISTRO=""
 detect_distro() {
 	if [[ -f /etc/os-release ]]; then
+		# shellcheck source=/dev/null
 		. /etc/os-release
 		DISTRO="${ID:-unknown}"
 	elif [[ -f /etc/debian_version ]]; then

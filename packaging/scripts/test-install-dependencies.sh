@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Focused, host-independent coverage for install-dependencies.sh.
+# shellcheck source-path=SCRIPTDIR source=install-dependencies.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER="${SCRIPT_DIR}/install-dependencies.sh"
-REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
 

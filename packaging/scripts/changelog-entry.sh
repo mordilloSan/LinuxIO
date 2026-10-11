@@ -81,7 +81,7 @@ fi
 
 # Full changelog link
 if [ -n "$PREV_TAG" ]; then
-	printf "\n\n**Full Changelog**: https://github.com/$REPO/compare/$PREV_TAG...$VERSION\n"
+	printf '\n\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' "$REPO" "$PREV_TAG" "$VERSION"
 else
-	printf "\n\n**Full Changelog**: https://github.com/$REPO/releases/tag/$VERSION\n"
+	printf '\n\n**Full Changelog**: https://github.com/%s/releases/tag/%s\n' "$REPO" "$VERSION"
 fi
