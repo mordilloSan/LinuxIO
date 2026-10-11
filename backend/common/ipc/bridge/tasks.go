@@ -892,10 +892,10 @@ func (j *Task) closeSubscribers() {
 	j.mu.Unlock()
 }
 
-func (s *eventSubscriber) send(event TaskEvent, scope string) bool {
+func (s *eventSubscriber) send(event TaskEvent, scope string) {
 	select {
 	case s.ch <- event:
-		return true
+		return
 	default:
 	}
 
@@ -903,13 +903,12 @@ func (s *eventSubscriber) send(event TaskEvent, scope string) bool {
 		select {
 		case s.ch <- event:
 			s.logDropped(event, scope)
-			return true
+			return
 		default:
 		}
 	}
 
 	s.logDropped(event, scope)
-	return false
 }
 
 func (s *eventSubscriber) dropOldest() bool {

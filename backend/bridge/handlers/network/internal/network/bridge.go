@@ -678,12 +678,12 @@ func waitForBridge(ctx context.Context, env Environment, bridge, member string) 
 	}, fmt.Errorf("bridge %s was not created with member %s", bridge, member))
 }
 
-func runNetworkCommand(ctx context.Context, env Environment, name string, args ...string) error {
+func runNetworkctl(ctx context.Context, env Environment, args ...string) error {
 	if env.Runner == nil {
 		return fmt.Errorf("network command runner is unavailable")
 	}
-	output, err := env.Runner.Run(ctx, name, args...)
-	return utils.CommandOutputError(name, args, output, err)
+	output, err := env.Runner.Run(ctx, "networkctl", args...)
+	return utils.CommandOutputError("networkctl", args, output, err)
 }
 
 func removeRuntimeBridge(ctx context.Context, env Environment, name string) error {

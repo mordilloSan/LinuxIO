@@ -126,7 +126,7 @@ func (b *ifupdownBackend) SetIPv6DHCP(ctx context.Context) error {
 }
 
 func (b *ifupdownBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
-	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
+	if err := validateIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
 	return b.update(ctx, func(state *ifupdownInterfaceState) error {

@@ -39,25 +39,20 @@ func parseIPv4CIDR(addressCIDR string) (string, int, error) {
 	return ip.String(), prefix, nil
 }
 
-func parseIPv6CIDR(addressCIDR string) (string, int, error) {
-	ip, prefix, err := parseCIDR(addressCIDR)
+func validateIPv6CIDR(addressCIDR string) error {
+	ip, _, err := parseCIDR(addressCIDR)
 	if err != nil {
-		return "", 0, err
+		return err
 	}
 	if ip.To16() == nil || ip.To4() != nil {
-		return "", 0, fmt.Errorf("not an IPv6 CIDR: %s", addressCIDR)
+		return fmt.Errorf("not an IPv6 CIDR: %s", addressCIDR)
 	}
-	return ip.String(), prefix, nil
+	return nil
 }
 
 func isIPv4(value string) bool {
 	ip := stdnet.ParseIP(strings.TrimSpace(value))
 	return ip != nil && ip.To4() != nil
-}
-
-func isIPv6(value string) bool {
-	ip := stdnet.ParseIP(strings.TrimSpace(value))
-	return ip != nil && ip.To4() == nil
 }
 
 func filterAddressesByFamily(addresses []string, family int) []string {
@@ -100,20 +95,14 @@ func replaceFamilyAddresses(existing []string, family int, replacement []string)
 	return append(updated, replacement...)
 }
 
-func mergeDNSPreservingOtherFamily(existing, replacement []string, family int) []string {
+// mergeIPv4DNS replaces the IPv4 entries of existing with replacement while
+// keeping its IPv6 entries.
+func mergeIPv4DNS(existing, replacement []string) []string {
 	merged := make([]string, 0, len(existing)+len(replacement))
 	for _, entry := range existing {
-		switch family {
-		case 4:
-			if isIPv4(entry) {
-				continue
-			}
-		case 6:
-			if isIPv6(entry) {
-				continue
-			}
+		if !isIPv4(entry) {
+			merged = append(merged, entry)
 		}
-		merged = append(merged, entry)
 	}
 	seen := make(map[string]struct{}, len(merged)+len(replacement))
 	for _, entry := range merged {

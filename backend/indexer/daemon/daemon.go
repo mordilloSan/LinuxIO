@@ -76,18 +76,11 @@ func DaemonConfigFromConfig(cfg configfile.Config, configPath string) (DaemonCon
 	if err != nil {
 		return DaemonConfig{}, err
 	}
-	var daemonCfg DaemonConfig
-	if err := applyFileConfigFields(&daemonCfg, cfg); err != nil {
-		return DaemonConfig{}, err
-	}
-	daemonCfg.ConfigPath = configPath
-	return daemonCfg, nil
-}
-
-func applyFileConfigFields(dst *DaemonConfig, cfg configfile.Config) error {
-	dst.ExcludePaths = append([]string(nil), cfg.ExcludePaths...)
-	dst.IncludeNetworkMounts = cfg.IncludeNetworkMounts
-	return nil
+	return DaemonConfig{
+		ConfigPath:           configPath,
+		ExcludePaths:         append([]string(nil), cfg.ExcludePaths...),
+		IncludeNetworkMounts: cfg.IncludeNetworkMounts,
+	}, nil
 }
 
 func NewDaemon(cfg DaemonConfig) (*daemon, error) {

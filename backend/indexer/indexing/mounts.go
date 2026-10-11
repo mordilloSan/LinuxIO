@@ -80,7 +80,7 @@ func IsPathExcludedFromIndex(indexPath string, excludedPaths []string, includeNe
 		WithNetworkMounts(includeNetworkMounts),
 		WithExcludePaths(excludedPaths),
 	)
-	return idx.shouldSkip(true, false, relativePath)
+	return idx.shouldSkip(true, relativePath)
 }
 
 func (idx *Index) isExternalMount(fullCombined string) bool {

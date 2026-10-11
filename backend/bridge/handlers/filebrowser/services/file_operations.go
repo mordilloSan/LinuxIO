@@ -424,8 +424,8 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 		return destErr
 	}
 
-	if moved, err := tryRenameMove(root, src, dst, opts, moveOpts); moved {
-		return err
+	if tryRenameMove(root, src, dst, opts, moveOpts) {
+		return nil
 	}
 
 	if err := copyWithCallbacksAndRoot(root, src, dst, overwrite, opts); err != nil {
@@ -446,9 +446,9 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	return nil
 }
 
-func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) (bool, error) {
+func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) bool {
 	if err := root.Root.Rename(relPath(src), relPath(dst)); err != nil {
-		return false, nil
+		return false
 	}
 
 	totalSize := moveOpts.KnownSize
@@ -457,12 +457,12 @@ func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCall
 		totalSize, sizeErr = ComputeCopySize(dst)
 		if sizeErr != nil {
 			slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
-			return true, nil
+			return true
 		}
 	}
 
 	opts.ReportProgress(totalSize)
-	return true, nil
+	return true
 }
 
 type DeleteOptions struct {

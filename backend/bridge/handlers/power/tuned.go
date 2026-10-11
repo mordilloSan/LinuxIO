@@ -55,9 +55,8 @@ func Available(ctx context.Context) (bool, error) {
 func GetStatus(ctx context.Context) (apischema.PowerStatus, error) {
 	var status apischema.PowerStatus
 	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
-		var err error
-		status, err = getStatus(session)
-		return err
+		status = getStatus(session)
+		return nil
 	})
 	return status, err
 }
@@ -66,12 +65,11 @@ func StartTuned(ctx context.Context) (apischema.PowerStatus, error) {
 	var status apischema.PowerStatus
 	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		if err := ensureTunedRunning(session); err != nil {
-			status, _ = getStatus(session)
+			status = getStatus(session)
 			return err
 		}
-		var err error
-		status, err = getStatus(session)
-		return err
+		status = getStatus(session)
+		return nil
 	})
 	return status, err
 }
@@ -84,11 +82,7 @@ func SetProfile(ctx context.Context, profile string) (apischema.PowerStatus, err
 
 	var status apischema.PowerStatus
 	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
-		var err error
-		status, err = getStatus(session)
-		if err != nil {
-			return err
-		}
+		status = getStatus(session)
 		if !status.TunedAvailable {
 			return ErrUnavailable
 		}
@@ -97,7 +91,7 @@ func SetProfile(ctx context.Context, profile string) (apischema.PowerStatus, err
 			if startErr := ensureTunedRunning(session); startErr != nil {
 				return startErr
 			}
-			status, _ = getStatus(session)
+			status = getStatus(session)
 		}
 
 		if len(status.Profiles) > 0 && !slices.ContainsFunc(status.Profiles, func(p apischema.TunedProfile) bool { return p.Name == profile }) {
@@ -115,8 +109,8 @@ func SetProfile(ctx context.Context, profile string) (apischema.PowerStatus, err
 			return errors.New(message)
 		}
 
-		status, err = getStatus(session)
-		return err
+		status = getStatus(session)
+		return nil
 	})
 	return status, err
 }
@@ -124,11 +118,7 @@ func SetProfile(ctx context.Context, profile string) (apischema.PowerStatus, err
 func DisableTuned(ctx context.Context) (apischema.PowerStatus, error) {
 	var status apischema.PowerStatus
 	err := dbusclient.Tuned.UseSession(ctx, func(session dbusclient.SystemSession) error {
-		var err error
-		status, err = getStatus(session)
-		if err != nil {
-			return err
-		}
+		status = getStatus(session)
 		if !status.TunedAvailable {
 			return ErrUnavailable
 		}
@@ -140,19 +130,19 @@ func DisableTuned(ctx context.Context) (apischema.PowerStatus, error) {
 		if !ok {
 			return fmt.Errorf("TuneD did not disable tunings")
 		}
-		status, err = getStatus(session)
-		return err
+		status = getStatus(session)
+		return nil
 	})
 	return status, err
 }
 
-func getStatus(session dbusclient.SystemSession) (apischema.PowerStatus, error) {
+func getStatus(session dbusclient.SystemSession) apischema.PowerStatus {
 	status := baseStatus()
 
 	tunedState, err := dbusclient.Tuned.BusNameState(session.Context())
 	if err != nil {
 		status.Error = utils.OptionalString(err.Error())
-		return status, nil
+		return status
 	}
 
 	ppdState, ppdErr := dbusclient.PowerProfiles.BusNameState(session.Context())
@@ -171,10 +161,10 @@ func getStatus(session dbusclient.SystemSession) (apischema.PowerStatus, error) 
 	switch {
 	case !status.TunedAvailable:
 		status.Notes = append(status.Notes, "TuneD is not available on the system bus or as a systemd service.")
-		return status, nil
+		return status
 	case !status.TunedActive:
 		status.Notes = append(status.Notes, "TuneD is installed but not running.")
-		return status, nil
+		return status
 	}
 
 	if status.PowerProfilesDaemonActive {
@@ -206,7 +196,7 @@ func getStatus(session dbusclient.SystemSession) (apischema.PowerStatus, error) 
 	}
 
 	markProfiles(status.Profiles, status.ActiveProfile, status.RecommendedProfile)
-	return status, nil
+	return status
 }
 
 func baseStatus() apischema.PowerStatus {

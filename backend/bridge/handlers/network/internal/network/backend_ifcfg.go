@@ -105,7 +105,7 @@ func (b *ifcfgBackend) SetIPv6DHCP(ctx context.Context) error {
 }
 
 func (b *ifcfgBackend) SetIPv6Static(ctx context.Context, addressCIDR string) error {
-	if _, _, err := parseIPv6CIDR(addressCIDR); err != nil {
+	if err := validateIPv6CIDR(addressCIDR); err != nil {
 		return err
 	}
 	return b.update(ctx, func(doc *keyValueDoc) error {
@@ -125,13 +125,11 @@ func (b *ifcfgBackend) SetMTU(ctx context.Context, mtu uint32) error {
 }
 
 func (b *ifcfgBackend) Enable(ctx context.Context) error {
-	_, err := b.runIfup(ctx)
-	return err
+	return b.runIfup(ctx)
 }
 
 func (b *ifcfgBackend) Disable(ctx context.Context) error {
-	_, err := b.runIfdown(ctx)
-	return err
+	return b.runIfdown(ctx)
 }
 
 func (b *ifcfgBackend) update(ctx context.Context, updateFn func(doc *keyValueDoc) error) error {
@@ -147,29 +145,24 @@ func (b *ifcfgBackend) update(ctx context.Context, updateFn func(doc *keyValueDo
 	if writeErr != nil {
 		return writeErr
 	}
-	_, _ = b.runIfdown(ctx)
-	_, err = b.runIfup(ctx)
-	return err
+	_ = b.runIfdown(ctx)
+	return b.runIfup(ctx)
 }
 
-func (b *ifcfgBackend) runIfup(ctx context.Context) ([]byte, error) {
+func (b *ifcfgBackend) runIfup(ctx context.Context) error {
 	output, err := b.env.Runner.Run(ctx, "ifup", b.iface)
 	if err == nil {
-		return output, nil
+		return nil
 	}
-	fallback, fallbackErr := b.env.Runner.Run(ctx, "systemctl", "restart", "network")
-	if fallbackErr == nil {
-		return fallback, nil
+	if _, fallbackErr := b.env.Runner.Run(ctx, "systemctl", "restart", "network"); fallbackErr == nil {
+		return nil
 	}
-	return output, utils.CommandOutputError("ifup", []string{b.iface}, output, err)
+	return utils.CommandOutputError("ifup", []string{b.iface}, output, err)
 }
 
-func (b *ifcfgBackend) runIfdown(ctx context.Context) ([]byte, error) {
+func (b *ifcfgBackend) runIfdown(ctx context.Context) error {
 	output, err := b.env.Runner.Run(ctx, "ifdown", b.iface)
-	if err == nil {
-		return output, nil
-	}
-	return output, utils.CommandOutputError("ifdown", []string{b.iface}, output, err)
+	return utils.CommandOutputError("ifdown", []string{b.iface}, output, err)
 }
 
 type keyValueDoc struct {

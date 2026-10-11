@@ -139,12 +139,14 @@ func extractIssued(changelog string) string {
 	return ""
 }
 
-func extractNameVersion(packageID string) (name, version string) {
+// packageIDVersion returns the version field of a PackageKit package ID
+// ("name;version;arch;data").
+func packageIDVersion(packageID string) string {
 	parts := strings.Split(packageID, ";")
 	if len(parts) >= 2 {
-		return parts[0], parts[1]
+		return parts[1]
 	}
-	return packageID, ""
+	return ""
 }
 
 func toStringSlice(iface any) []string {
@@ -233,7 +235,7 @@ func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 func buildBasicUpdates(pkgIDs []string, metaByPkg map[string]packageUpdateMeta) []UpdateDetail {
 	updates := make([]UpdateDetail, 0, len(pkgIDs))
 	for _, pkgID := range pkgIDs {
-		_, version := extractNameVersion(pkgID)
+		version := packageIDVersion(pkgID)
 		meta := metaByPkg[pkgID]
 		updates = append(updates, UpdateDetail{
 			PackageID: pkgID,
@@ -256,7 +258,7 @@ func buildUpdateDetail(body []any, summary string, infoEnum uint32) (UpdateDetai
 		return UpdateDetail{}, fmt.Errorf("invalid version for %q: %w", pkgID, err)
 	}
 	if version == "" {
-		_, version = extractNameVersion(pkgID)
+		version = packageIDVersion(pkgID)
 	}
 
 	issued, err := dbusclient.AsString(body[10])
