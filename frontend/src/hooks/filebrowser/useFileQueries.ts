@@ -1,6 +1,7 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio, type TextFile } from "@/api";
+import { isImageFile } from "@/components/filebrowser/utils";
 import type { FileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { useFileMultipleDirectoryDetails } from "@/hooks/filebrowser/useFileMultipleDirectoryDetails";
 import type { FileItem, FileResource } from "@/types/filebrowser";
@@ -80,7 +81,7 @@ export const useFileQueries = ({
     isLoading: isEditingFileLoading,
   } = useQuery({
     ...linuxio.filebrowser.read_text({ path: editingPath || "" }),
-    enabled: !!editingPath,
+    enabled: !!editingPath && !isImageFile(editingPath),
   });
   const editingFileResource =
     editingPath && editingData

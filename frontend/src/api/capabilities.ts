@@ -271,6 +271,19 @@ export const CAPABILITIES = [
     installable: { requiresPackageKit: true },
     route: { label: "Open WireGuard", to: "/wireguard" },
   },
+  {
+    wire: "btrfs_maintenance",
+    state: "btrfsMaintenanceAvailable",
+    label: "Btrfs maintenance",
+    description: "Scheduled btrfs scrub, balance, trim, and defrag timers",
+    readyText: "btrfsmaintenance scripts are installed.",
+    dependency: "btrfsmaintenance",
+    icon: "mdi:timer-cog-outline",
+    reasonUnknown: "btrfsmaintenance availability is still being checked.",
+    reasonUnavailable: "btrfsmaintenance is not installed.",
+    installable: { requiresPackageKit: true },
+    route: { label: "Open storage", to: "/storage" },
+  },
 ] as const satisfies readonly CapabilityDef[];
 
 // --- Derived types ------------------------------------------------------------

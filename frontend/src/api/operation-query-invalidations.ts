@@ -299,6 +299,9 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("storage.get_topology"),
     endpointQueryPrefix("monitoring.get_live"),
   ],
+  "storage.set_btrfs_maintenance": [
+    endpointQueryPrefix("storage.get_btrfs_maintenance"),
+  ],
   "monitoring.refresh_smart": [endpointQueryPrefix("monitoring.get_live")],
 
   "updates.set_auto_updates": [endpointQueryPrefix("updates.get_auto_updates")],

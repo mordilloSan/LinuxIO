@@ -252,6 +252,23 @@ export interface BootIDRequest {
   bootId: string;
 }
 
+export interface BtrfsMaintenanceRequest {
+  mountpoint: string;
+  task: string;
+  period: string;
+}
+
+export interface BtrfsMaintenanceSchedule {
+  tasks: BtrfsMaintenanceTask[];
+}
+
+export interface BtrfsMaintenanceTask {
+  task: string;
+  period: string;
+  periods: string[];
+  mountpoints: string[];
+}
+
 export interface CIFSMount {
   domain: string;
   free: number;
@@ -319,6 +336,7 @@ export interface CapabilitiesResponse {
   wireguard_available: boolean;
   libvirt_available: boolean;
   node_available: boolean;
+  btrfs_maintenance_available: boolean;
   docker_error?: string;
   docker_updates_error?: string;
   monitoring_error?: string;
@@ -336,6 +354,7 @@ export interface CapabilitiesResponse {
   wireguard_error?: string;
   libvirt_error?: string;
   node_error?: string;
+  btrfs_maintenance_error?: string;
 }
 
 export interface CapabilityRequest {
@@ -900,6 +919,20 @@ export interface DockerContainerUpdateResult {
   newImageId?: string;
   previousImageId?: string;
   updated: boolean;
+}
+
+export interface DockerDaemonConfig {
+  address_pool_base: string;
+  address_pool_size: number;
+  live_restore: boolean;
+  log_max_file: string;
+  log_max_size: string;
+  userland_proxy: boolean;
+}
+
+export interface DockerDaemonConfigSetResult {
+  config: DockerDaemonConfig;
+  restart_required: boolean;
 }
 
 export interface DockerFoldersResponse {
@@ -3242,6 +3275,7 @@ export interface LinuxIOSchema {
       request: void;
       result: DockerContainerAutoUpdateState;
     };
+    get_daemon_config: { input: []; request: void; result: DockerDaemonConfig };
     get_docker_folders: {
       input: [];
       request: void;
@@ -3302,6 +3336,11 @@ export interface LinuxIOSchema {
       input: [request: DockerContainerAutoUpdateOptions];
       request: DockerContainerAutoUpdateOptions;
       result: DockerContainerAutoUpdateState;
+    };
+    set_daemon_config: {
+      input: [request: DockerDaemonConfig];
+      request: DockerDaemonConfig;
+      result: DockerDaemonConfigSetResult;
     };
     start_all_stopped: {
       input: [];
@@ -3744,6 +3783,11 @@ export interface LinuxIOSchema {
       request: VolumeGroupLogicalVolumeRequest;
       result: SuccessResponse;
     };
+    get_btrfs_maintenance: {
+      input: [];
+      request: void;
+      result: BtrfsMaintenanceSchedule;
+    };
     get_drive_info: { input: []; request: void; result: ApiDisk[] };
     get_topology: {
       input: [];
@@ -3795,6 +3839,11 @@ export interface LinuxIOSchema {
       request: DeviceTestTypeRequest;
       result: SmartTestResult;
       progress: TaskProgress<SmartTestProgress>;
+    };
+    set_btrfs_maintenance: {
+      input: [request: BtrfsMaintenanceRequest];
+      request: BtrfsMaintenanceRequest;
+      result: BtrfsMaintenanceSchedule;
     };
     unmount_cifs: {
       input: [request: MountpointRemoveFstabRequest];
@@ -4198,6 +4247,7 @@ export interface LinuxIOCallSchema {
     request: void;
     result: DockerContainerAutoUpdateState;
   };
+  "docker.get_daemon_config": { request: void; result: DockerDaemonConfig };
   "docker.get_docker_folders": { request: void; result: DockerFoldersResponse };
   "docker.get_docker_info": { request: void; result: DockerSystemInfo };
   "docker.get_icon": {
@@ -4229,6 +4279,10 @@ export interface LinuxIOCallSchema {
   "docker.set_container_auto_update": {
     request: DockerContainerAutoUpdateOptions;
     result: DockerContainerAutoUpdateState;
+  };
+  "docker.set_daemon_config": {
+    request: DockerDaemonConfig;
+    result: DockerDaemonConfigSetResult;
   };
   "docker.start_all_stopped": {
     request: void;
@@ -4435,6 +4489,10 @@ export interface LinuxIOCallSchema {
     request: VolumeGroupLogicalVolumeRequest;
     result: SuccessResponse;
   };
+  "storage.get_btrfs_maintenance": {
+    request: void;
+    result: BtrfsMaintenanceSchedule;
+  };
   "storage.get_drive_info": { request: void; result: ApiDisk[] };
   "storage.get_topology": { request: void; result: StorageTopologyInventory };
   "storage.list_cifs_mounts": { request: void; result: CIFSMount[] };
@@ -4463,6 +4521,10 @@ export interface LinuxIOCallSchema {
   "storage.resize_lv": {
     request: ResizeLogicalVolumeRequest;
     result: SuccessResponse;
+  };
+  "storage.set_btrfs_maintenance": {
+    request: BtrfsMaintenanceRequest;
+    result: BtrfsMaintenanceSchedule;
   };
   "storage.unmount_cifs": {
     request: MountpointRemoveFstabRequest;

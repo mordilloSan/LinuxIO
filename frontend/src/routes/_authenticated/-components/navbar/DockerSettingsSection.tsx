@@ -25,6 +25,7 @@ import { ensureTrailingSlash } from "@/utils/path";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import DockerAutoUpdateSettingsSection from "./DockerAutoUpdateSettingsSection";
+import DockerDaemonSettingsSection from "./DockerDaemonSettingsSection";
 import { useSettingsDraft } from "./SettingsSectionForm";
 import { useDockerAutoUpdateState } from "./useDockerAutoUpdateState";
 
@@ -429,6 +430,10 @@ const DockerSettingsSection = () => {
             {isSaving ? "Saving..." : "Save"}
           </AppButton>
         </div>
+      </div>
+
+      <div style={{ marginTop: "var(--app-space-6)" }}>
+        <DockerDaemonSettingsSection />
       </div>
 
       <div

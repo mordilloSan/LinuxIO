@@ -46,9 +46,15 @@ export const MAX_TEXT_FILE_BYTES = 1_000_000;
 // it can be opened. Derived from the listing fields so no extra request is
 // needed.
 export const getTextEditBlockedReason = (
-  resource: Pick<FileResource, "canOpenAsText" | "isRegularFile" | "size">,
+  resource: Pick<
+    FileResource,
+    "canOpenAsText" | "isRegularFile" | "name" | "size"
+  >,
 ): string | null => {
-  if (resource.isRegularFile === true && resource.canOpenAsText === true) {
+  if (
+    resource.isRegularFile === true &&
+    (resource.canOpenAsText === true || isImageFile(resource.name))
+  ) {
     return null;
   }
   if ((resource.size ?? 0) >= MAX_TEXT_FILE_BYTES) {
@@ -59,6 +65,22 @@ export const getTextEditBlockedReason = (
   }
   return "This file isn't plain text, so it can't be opened in the editor.";
 };
+
+// Extensions browsers render natively in an <img>; these open in the viewer
+// instead of the text editor and skip the 1 MB text limit.
+const IMAGE_EXTENSIONS = new Set([
+  "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "png",
+  "webp",
+]);
+
+export const isImageFile = (name: string) =>
+  IMAGE_EXTENSIONS.has(name.split(".").pop()?.toLowerCase() ?? "");
 
 export const isArchiveFile = (name: string) => {
   const lower = name.toLowerCase();

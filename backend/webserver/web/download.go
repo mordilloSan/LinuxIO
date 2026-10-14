@@ -163,6 +163,7 @@ func streamNativeDownload(w http.ResponseWriter, r *http.Request, stream net.Con
 	state := nativeDownloadStreamState{
 		ctx:    r.Context(),
 		writer: w,
+		inline: r.URL.Query().Get("inline") == "1",
 	}
 
 	for {
@@ -194,6 +195,7 @@ type nativeDownloadStreamState struct {
 	ctx              context.Context
 	writer           http.ResponseWriter
 	name             string
+	inline           bool
 	total            int64
 	written          int64
 	headersCommitted bool
@@ -337,7 +339,7 @@ func (s *nativeDownloadStreamState) commitHeaders() {
 	if s.name == "" {
 		s.name = downloadDefaultName
 	}
-	s.writer.Header().Set("Content-Disposition", formatDownloadDisposition(s.name))
+	s.writer.Header().Set("Content-Disposition", formatDownloadDisposition(s.name, s.inline))
 	s.writer.Header().Set("Content-Type", downloadContentType(s.name))
 	s.writer.Header().Set("Content-Length", strconv.FormatInt(s.total, 10))
 	s.writer.Header().Set("Cache-Control", "no-store")
@@ -386,8 +388,20 @@ func sanitizeDownloadName(name string) string {
 	return name
 }
 
-func formatDownloadDisposition(name string) string {
-	return mime.FormatMediaType("attachment", map[string]string{"filename": name})
+// formatDownloadDisposition defaults to a saved download; inline lets the
+// browser render the file in place (file browser image preview). Inline is
+// only honoured for raster images: anything else served inline same-origin
+// (HTML, SVG) would run script with the session cookie.
+func formatDownloadDisposition(name string, inline bool) string {
+	disposition := "attachment"
+	if inline && inlineRenderable(downloadContentType(name)) {
+		disposition = "inline"
+	}
+	return mime.FormatMediaType(disposition, map[string]string{"filename": name})
+}
+
+func inlineRenderable(contentType string) bool {
+	return strings.HasPrefix(contentType, "image/") && contentType != "image/svg+xml"
 }
 
 func downloadContentType(name string) string {

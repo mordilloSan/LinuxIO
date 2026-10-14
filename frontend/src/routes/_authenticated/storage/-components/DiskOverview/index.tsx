@@ -1,4 +1,4 @@
-import { useSuspenseQueries } from "@tanstack/react-query";
+import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
@@ -323,6 +323,10 @@ const DiskOverview = () => {
   >({});
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
+  const {
+    isEnabled: btrfsMaintenanceAvailable,
+    reason: btrfsMaintenanceReason,
+  } = useCapability("btrfsMaintenanceAvailable");
   const [{ data: rawDrivesData }, { data: liveData }, { data: nfsMountsData }] =
     useSuspenseQueries({
       queries: [
@@ -342,6 +346,18 @@ const DiskOverview = () => {
   const liveSmart = liveData?.smart ?? {};
   const filesystems = liveData?.filesystems ?? [];
   const nfsMounts = Array.isArray(nfsMountsData) ? nfsMountsData : [];
+  const { data: btrfsMaintenance } = useQuery({
+    ...linuxio.storage.get_btrfs_maintenance,
+    enabled:
+      btrfsMaintenanceAvailable &&
+      filesystems.some((fs) => fs.fstype === "btrfs"),
+  });
+  const { mutate: setBtrfsMaintenance, isPending: isUpdatingMaintenance } =
+    useCallMutation(linuxio.storage.set_btrfs_maintenance, {
+      success: () => toast.success("Btrfs maintenance schedule updated"),
+      error: "Failed to update btrfs maintenance schedule",
+      toast: STORAGE_TOAST_META,
+    });
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
     useCallMutation(linuxio.storage.unmount_filesystem, {
       success: () => {
@@ -633,6 +649,16 @@ const DiskOverview = () => {
                       }}
                     >
                       <FilesystemCard
+                        btrfsMaintenance={btrfsMaintenance ?? null}
+                        btrfsMaintenanceReason={
+                          btrfsMaintenanceAvailable
+                            ? null
+                            : btrfsMaintenanceReason
+                        }
+                        isUpdatingMaintenance={isUpdatingMaintenance}
+                        onSetMaintenance={(mountpoint, task, period) =>
+                          setBtrfsMaintenance({ mountpoint, task, period })
+                        }
                         backingDrive={(() => {
                           const bd = findBackingDrive(fs.device, drives);
                           return bd ? { name: bd.name, model: bd.model } : null;

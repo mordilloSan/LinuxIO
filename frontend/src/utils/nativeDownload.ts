@@ -8,6 +8,11 @@ export function nativeFileDownloadUrl(path: string): string {
   return `/api/download?path=${encodeURIComponent(path)}`;
 }
 
+/** Build the same-origin URL that serves a file inline, for <img> previews. */
+export function nativeFileInlineUrl(path: string): string {
+  return `${nativeFileDownloadUrl(path)}&inline=1`;
+}
+
 /** Start a browser-managed download without reading the response in JavaScript. */
 export function triggerNativeArchiveDownload(taskId: string): void {
   triggerDownload(nativeArchiveDownloadUrl(taskId));

@@ -6,6 +6,7 @@ import {
   ensureZipExtension,
   getTextEditBlockedReason,
   isArchiveFile,
+  isImageFile,
   normalizeResource,
   stripArchiveExtension,
 } from "@/components/filebrowser/utils";
@@ -97,16 +98,43 @@ describe("filebrowser utils", () => {
 
   it("explains why an entry cannot be opened in the text editor", () => {
     expect(
-      getTextEditBlockedReason({ canOpenAsText: true, isRegularFile: true }),
+      getTextEditBlockedReason({
+        canOpenAsText: true,
+        isRegularFile: true,
+        name: "a.txt",
+      }),
     ).toBeNull();
     expect(
-      getTextEditBlockedReason({ isRegularFile: true, size: 1_000_000 }),
+      getTextEditBlockedReason({
+        isRegularFile: true,
+        name: "a.bin",
+        size: 1_000_000,
+      }),
     ).toMatch(/1 MB or larger/);
     expect(
-      getTextEditBlockedReason({ isRegularFile: true, size: 999_999 }),
+      getTextEditBlockedReason({
+        isRegularFile: true,
+        name: "a.bin",
+        size: 999_999,
+      }),
     ).toMatch(/isn't plain text/);
-    expect(getTextEditBlockedReason({ isRegularFile: false })).toMatch(
-      /Only regular files/,
-    );
+    expect(
+      getTextEditBlockedReason({ isRegularFile: false, name: "dir" }),
+    ).toMatch(/Only regular files/);
+  });
+
+  it("recognises image files by extension and lets them open regardless of text eligibility", () => {
+    expect(isImageFile("holiday.JPG")).toBe(true);
+    expect(isImageFile("diagram.svg")).toBe(false);
+    expect(isImageFile("notes.txt")).toBe(false);
+    expect(isImageFile("noext")).toBe(false);
+    expect(
+      getTextEditBlockedReason({
+        canOpenAsText: false,
+        isRegularFile: true,
+        name: "big.png",
+        size: 5_000_000,
+      }),
+    ).toBeNull();
   });
 });

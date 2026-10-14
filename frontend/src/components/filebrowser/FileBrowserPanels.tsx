@@ -12,6 +12,7 @@ import FileBrowserHeader from "@/components/filebrowser/FileBrowserHeader";
 import FileDetail from "@/components/filebrowser/FileDetail";
 import type { FileEditorHandle } from "@/components/filebrowser/FileEditor";
 import MultiFileDetail from "@/components/filebrowser/MultiFileDetail";
+import { isImageFile } from "@/components/filebrowser/utils";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -37,6 +38,7 @@ import type {
   ResourceStatData,
   ViewMode,
 } from "@/types/filebrowser";
+import { nativeFileInlineUrl } from "@/utils/nativeDownload";
 
 const FileEditor = lazy(() => import("@/components/filebrowser/FileEditor"));
 
@@ -114,6 +116,8 @@ export const FileBrowserEditorDialog = ({
   viewMode,
 }: FileBrowserEditorDialogProps) => {
   const readOnly = editingFileResource?.canSave !== true;
+  const imagePath =
+    editingPath && isImageFile(editingPath) ? editingPath : null;
 
   return (
     <AppFullscreenDialog
@@ -122,7 +126,10 @@ export const FileBrowserEditorDialog = ({
       open={Boolean(editingPath)}
     >
       <FileBrowserHeader
-        editingFileName={editingFileResource?.name}
+        editingFileName={
+          editingFileResource?.name ??
+          (imagePath ? imagePath.split("/").pop() : undefined)
+        }
         editingFilePath={editingPath || undefined}
         isDirty={isDirty}
         readOnly={readOnly}
@@ -146,6 +153,19 @@ export const FileBrowserEditorDialog = ({
           overflow: "hidden",
         }}
       >
+        {imagePath && (
+          <img
+            alt={imagePath.split("/").pop()}
+            src={nativeFileInlineUrl(imagePath)}
+            style={{
+              flex: 1,
+              minHeight: 0,
+              objectFit: "contain",
+              padding: "var(--app-space-4)",
+            }}
+          />
+        )}
+
         {editingPath && isEditingFileLoading && (
           <div
             style={{

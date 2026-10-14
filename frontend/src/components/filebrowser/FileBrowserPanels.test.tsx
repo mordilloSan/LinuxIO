@@ -42,6 +42,36 @@ describe("file browser editor dialogs", () => {
     expect(onCloseEditor).toHaveBeenCalledOnce();
   });
 
+  it("renders images inline instead of the text editor", () => {
+    render(
+      <FileBrowserEditorDialog
+        editingFileError={null}
+        editingPath="/srv/photos/cat.jpg"
+        editorRef={createRef<FileEditorHandle>()}
+        isDirty={false}
+        isEditingFileLoading={false}
+        isSaving={false}
+        onCloseEditor={vi.fn()}
+        onDirtyChange={vi.fn()}
+        onSaveContent={vi.fn()}
+        onSaveFile={vi.fn()}
+        onSearchChange={vi.fn()}
+        onSwitchView={vi.fn()}
+        onToggleHiddenFiles={vi.fn()}
+        searchQuery=""
+        showHiddenFiles={false}
+        showQuickSave
+        viewMode="list"
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "cat.jpg" })).toHaveAttribute(
+      "src",
+      "/api/download?path=%2Fsrv%2Fphotos%2Fcat.jpg&inline=1",
+    );
+    expect(screen.queryByText("Unable to open file")).not.toBeInTheDocument();
+  });
+
   it("allows cancelling a save conflict", async () => {
     const onCancel = vi.fn();
     const { user } = render(
