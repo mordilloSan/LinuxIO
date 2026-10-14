@@ -192,6 +192,22 @@ rsync** to configure the read-only module on port 873 and start its daemon,
 or use the existing SSH listener on port 9222 with Linux account credentials. See
 [TerraMaster backups](rsync-backups.md) for the UI workflow and service details.
 
+## Btrfs maintenance
+
+The `btrfs_maintenance` capability checks for the `btrfsmaintenance` scripts
+(`/usr/share/btrfsmaintenance/btrfs-scrub.sh`) and installs the distro's
+`btrfsmaintenance` package. Debian installs it with every timer disabled, so
+installation alone changes nothing on the host. Expanding a btrfs filesystem
+card in **Storage** then shows one Off/Daily/Weekly/Monthly select per task
+(scrub, balance, trim, defrag). `storage.set_btrfs_maintenance` rewrites only
+that task's `BTRFS_*_PERIOD` and `BTRFS_*_MOUNTPOINTS`/`_PATHS` lines in
+`/etc/default/btrfsmaintenance` (or `/etc/sysconfig/btrfsmaintenance`) and
+starts the package's `btrfsmaintenance-refresh.service`, which enables or
+disables the matching `btrfs-<task>.timer`. The period is shared by every
+mountpoint a task targets; turning a task off for the last mountpoint sets its
+period to `none`, and a task whose period is `none` reports no mountpoints so
+the package's default of `/` does not leak into a schedule the user enables.
+
 ## Node.js (Assistant)
 
 The `node` capability resolves `npx` on the PATH the session user's

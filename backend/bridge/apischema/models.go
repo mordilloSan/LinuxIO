@@ -1412,6 +1412,20 @@ type StorageMountResult struct {
 	Warning    *string `json:"warning,omitempty"`
 }
 
+// BtrfsMaintenanceTask is one btrfsmaintenance timer (scrub, balance, trim,
+// defrag): its shared period, the periods it accepts, and the mountpoints it
+// targets. A task with period "none" targets nothing.
+type BtrfsMaintenanceTask struct {
+	Task        string   `json:"task"`
+	Period      string   `json:"period"`
+	Periods     []string `json:"periods"`
+	Mountpoints []string `json:"mountpoints"`
+}
+
+type BtrfsMaintenanceSchedule struct {
+	Tasks []BtrfsMaintenanceTask `json:"tasks"`
+}
+
 type StorageWarningResult struct {
 	Success bool    `json:"success"`
 	Warning *string `json:"warning,omitempty"`

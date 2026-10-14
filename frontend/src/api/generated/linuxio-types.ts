@@ -252,6 +252,23 @@ export interface BootIDRequest {
   bootId: string;
 }
 
+export interface BtrfsMaintenanceRequest {
+  mountpoint: string;
+  task: string;
+  period: string;
+}
+
+export interface BtrfsMaintenanceSchedule {
+  tasks: BtrfsMaintenanceTask[];
+}
+
+export interface BtrfsMaintenanceTask {
+  task: string;
+  period: string;
+  periods: string[];
+  mountpoints: string[];
+}
+
 export interface CIFSMount {
   domain: string;
   free: number;
@@ -319,6 +336,7 @@ export interface CapabilitiesResponse {
   wireguard_available: boolean;
   libvirt_available: boolean;
   node_available: boolean;
+  btrfs_maintenance_available: boolean;
   docker_error?: string;
   docker_updates_error?: string;
   monitoring_error?: string;
@@ -336,6 +354,7 @@ export interface CapabilitiesResponse {
   wireguard_error?: string;
   libvirt_error?: string;
   node_error?: string;
+  btrfs_maintenance_error?: string;
 }
 
 export interface CapabilityRequest {
@@ -3744,6 +3763,11 @@ export interface LinuxIOSchema {
       request: VolumeGroupLogicalVolumeRequest;
       result: SuccessResponse;
     };
+    get_btrfs_maintenance: {
+      input: [];
+      request: void;
+      result: BtrfsMaintenanceSchedule;
+    };
     get_drive_info: { input: []; request: void; result: ApiDisk[] };
     get_topology: {
       input: [];
@@ -3795,6 +3819,11 @@ export interface LinuxIOSchema {
       request: DeviceTestTypeRequest;
       result: SmartTestResult;
       progress: TaskProgress<SmartTestProgress>;
+    };
+    set_btrfs_maintenance: {
+      input: [request: BtrfsMaintenanceRequest];
+      request: BtrfsMaintenanceRequest;
+      result: BtrfsMaintenanceSchedule;
     };
     unmount_cifs: {
       input: [request: MountpointRemoveFstabRequest];
@@ -4435,6 +4464,10 @@ export interface LinuxIOCallSchema {
     request: VolumeGroupLogicalVolumeRequest;
     result: SuccessResponse;
   };
+  "storage.get_btrfs_maintenance": {
+    request: void;
+    result: BtrfsMaintenanceSchedule;
+  };
   "storage.get_drive_info": { request: void; result: ApiDisk[] };
   "storage.get_topology": { request: void; result: StorageTopologyInventory };
   "storage.list_cifs_mounts": { request: void; result: CIFSMount[] };
@@ -4463,6 +4496,10 @@ export interface LinuxIOCallSchema {
   "storage.resize_lv": {
     request: ResizeLogicalVolumeRequest;
     result: SuccessResponse;
+  };
+  "storage.set_btrfs_maintenance": {
+    request: BtrfsMaintenanceRequest;
+    result: BtrfsMaintenanceSchedule;
   };
   "storage.unmount_cifs": {
     request: MountpointRemoveFstabRequest;

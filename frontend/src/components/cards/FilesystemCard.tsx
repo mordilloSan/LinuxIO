@@ -1,12 +1,17 @@
 import { useId } from "react";
 
-import { type FilesystemInfo, type NFSMount } from "@/api";
+import {
+  type BtrfsMaintenanceSchedule,
+  type FilesystemInfo,
+  type NFSMount,
+} from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { getUsageColor } from "@/constants/statusColors";
@@ -21,12 +26,88 @@ const canUnmountFilesystem = (filesystem: FilesystemInfo): boolean =>
 const canCreateSubvolume = (filesystem: FilesystemInfo): boolean =>
   filesystem.fstype === "btrfs" && !filesystem.readOnly;
 
+const capitalize = (value: string) =>
+  value.charAt(0).toUpperCase() + value.slice(1);
+
+interface BtrfsMaintenanceProps {
+  /** Schedule from the backend, or null while loading / unavailable. */
+  btrfsMaintenance: BtrfsMaintenanceSchedule | null;
+  /** Capability reason when btrfsmaintenance is not usable; null when it is. */
+  btrfsMaintenanceReason: string | null;
+  isUpdatingMaintenance: boolean;
+  onSetMaintenance: (mountpoint: string, task: string, period: string) => void;
+}
+
+const BtrfsMaintenanceControls = ({
+  mountpoint,
+  btrfsMaintenance,
+  btrfsMaintenanceReason,
+  isUpdatingMaintenance,
+  onSetMaintenance,
+}: BtrfsMaintenanceProps & { mountpoint: string }) => {
+  if (!btrfsMaintenanceReason && !btrfsMaintenance) return null;
+  return (
+    <div style={{ marginTop: 16 }}>
+      <AppTypography color="text.secondary" variant="body2">
+        Scheduled maintenance
+      </AppTypography>
+      {btrfsMaintenanceReason ? (
+        <AppTypography variant="body2">
+          {btrfsMaintenanceReason} Install it from the Capability Manager to
+          schedule scrub, balance, trim, and defrag.
+        </AppTypography>
+      ) : (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              marginTop: 8,
+            }}
+          >
+            {btrfsMaintenance?.tasks.map((task) => (
+              <AppSelect
+                disabled={isUpdatingMaintenance}
+                fullWidth
+                key={task.task}
+                label={capitalize(task.task)}
+                onChange={(event) =>
+                  onSetMaintenance(mountpoint, task.task, event.target.value)
+                }
+                size="small"
+                value={
+                  task.mountpoints.includes(mountpoint) ? task.period : "none"
+                }
+              >
+                {task.periods.map((period) => (
+                  <option key={period} value={period}>
+                    {period === "none" ? "Off" : capitalize(period)}
+                  </option>
+                ))}
+              </AppSelect>
+            ))}
+          </div>
+          <AppTypography
+            color="text.secondary"
+            style={{ marginTop: 8 }}
+            variant="body2"
+          >
+            Each period is shared by every btrfs filesystem scheduled for that
+            task.
+          </AppTypography>
+        </>
+      )}
+    </div>
+  );
+};
+
 interface BackingDrive {
   model?: string;
   name: string;
 }
 
-interface FilesystemCardDetailsProps {
+interface FilesystemCardDetailsProps extends BtrfsMaintenanceProps {
   backingDrive: BackingDrive | null;
   filesystem: FilesystemInfo;
   isCreatingSubvolume: boolean;
@@ -52,6 +133,7 @@ const FilesystemCardDetails = ({
   onUnmount,
   onSubvolumeNameChange,
   onCreateSubvolume,
+  ...btrfsMaintenance
 }: FilesystemCardDetailsProps) => {
   const isSystemMount = SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
@@ -254,12 +336,19 @@ const FilesystemCardDetails = ({
             </AppButton>
           </div>
         )}
+
+        {filesystem.fstype === "btrfs" && (
+          <BtrfsMaintenanceControls
+            mountpoint={filesystem.mountpoint}
+            {...btrfsMaintenance}
+          />
+        )}
       </div>
     </AppCollapse>
   );
 };
 
-export interface FilesystemCardProps {
+export interface FilesystemCardProps extends BtrfsMaintenanceProps {
   backingDrive: BackingDrive | null;
   filesystem: FilesystemInfo;
   isCreatingSubvolume: boolean;
@@ -289,6 +378,7 @@ const FilesystemCard = ({
   onUnmount,
   onSubvolumeNameChange,
   onCreateSubvolume,
+  ...btrfsMaintenance
 }: FilesystemCardProps) => {
   const detailsId = useId();
 
@@ -363,6 +453,7 @@ const FilesystemCard = ({
             onSubvolumeNameChange={onSubvolumeNameChange}
             onUnmount={onUnmount}
             subvolumeName={subvolumeName}
+            {...btrfsMaintenance}
           />
         )}
       </div>

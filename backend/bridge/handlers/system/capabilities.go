@@ -267,6 +267,14 @@ var capabilityRegistry = []CapabilitySpec{
 			PackageRHEL:   "libvirt qemu-kvm qemu-img edk2-ovmf xz",
 		},
 	},
+	{
+		Name:    "btrfs_maintenance",
+		LogName: "btrfsmaintenance",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(storage.CheckBtrfsMaintenanceAvailability())
+		},
+		Install: &InstallSpec{PackageDebian: "btrfsmaintenance", PackageRHEL: "btrfsmaintenance"},
+	},
 }
 
 func CapabilitySpecByName(name string) (CapabilitySpec, bool) {
@@ -385,6 +393,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.WireGuardAvailable, out.WireGuardError = ok, errPtr
 	case "libvirt":
 		out.LibvirtAvailable, out.LibvirtError = ok, errPtr
+	case "btrfs_maintenance":
+		out.BtrfsMaintenanceAvailable, out.BtrfsMaintenanceError = ok, errPtr
 	default:
 		panic("system: unknown capability wire name " + name)
 	}

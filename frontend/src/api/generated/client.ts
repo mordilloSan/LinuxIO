@@ -247,6 +247,7 @@ const linuxio = {
     ),
     create_lv: defineCallWithRequest("storage.create_lv"),
     delete_lv: defineCallWithRequest("storage.delete_lv"),
+    get_btrfs_maintenance: defineCall("storage.get_btrfs_maintenance"),
     get_drive_info: defineCall("storage.get_drive_info"),
     get_topology: defineCall("storage.get_topology"),
     list_cifs_mounts: defineCall("storage.list_cifs_mounts"),
@@ -264,6 +265,9 @@ const linuxio = {
     run_smart_test: createTaskEndpoint("storage", "run_smart_test", {
       kind: "object",
     }),
+    set_btrfs_maintenance: defineCallWithRequest(
+      "storage.set_btrfs_maintenance",
+    ),
     unmount_cifs: defineCallWithRequest("storage.unmount_cifs"),
     unmount_filesystem: defineCallWithRequest("storage.unmount_filesystem"),
     unmount_nfs: defineCallWithRequest("storage.unmount_nfs"),

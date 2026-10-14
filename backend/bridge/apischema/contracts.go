@@ -943,3 +943,11 @@ type AlertDismissRequest struct {
 type AlertIDsRequest struct {
 	IDs []string `json:"ids"`
 }
+
+// BtrfsMaintenanceRequest sets one btrfsmaintenance task's period for one
+// btrfs mountpoint; "none" removes the mountpoint from that task.
+type BtrfsMaintenanceRequest struct {
+	Mountpoint string `json:"mountpoint"`
+	Task       string `json:"task"`
+	Period     string `json:"period"`
+}

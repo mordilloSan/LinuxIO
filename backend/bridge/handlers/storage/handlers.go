@@ -28,6 +28,8 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_cifs").Handle(handleRemountCIFS),
 	apischema.Call[apischema.MountpointRequest, apischema.StorageMountResult]("storage.unmount_filesystem").Handle(handleUnmountFilesystem),
 	apischema.Call[apischema.MountpointNameRequest, apischema.StoragePathResult]("storage.create_btrfs_subvolume").Handle(handleCreateBtrfsSubvolume),
+	apischema.Call[apischema.NoRequest, apischema.BtrfsMaintenanceSchedule]("storage.get_btrfs_maintenance", apischema.RetrySafe()).Handle(handleGetBtrfsMaintenance),
+	apischema.Call[apischema.BtrfsMaintenanceRequest, apischema.BtrfsMaintenanceSchedule]("storage.set_btrfs_maintenance").Handle(handleSetBtrfsMaintenance),
 	apischema.Call[apischema.NoRequest, []apischema.ApiDisk]("storage.get_drive_info", apischema.RetrySafe()).Handle(handleGetDriveInfo),
 	apischema.Call[apischema.NoRequest, apischema.StorageTopologyInventory]("storage.get_topology", apischema.RetrySafe()).Handle(handleGetTopology),
 )
@@ -254,6 +256,20 @@ func handleCreateBtrfsSubvolume(ctx context.Context, req apischema.MountpointNam
 	}
 	slog.Info("btrfs subvolume created", "mountpoint", req.Mountpoint, "name", req.Name)
 	return result, nil
+}
+
+func handleGetBtrfsMaintenance(ctx context.Context, _ apischema.NoRequest) (apischema.BtrfsMaintenanceSchedule, error) {
+	return GetBtrfsMaintenance(ctx)
+}
+
+func handleSetBtrfsMaintenance(ctx context.Context, req apischema.BtrfsMaintenanceRequest) (apischema.BtrfsMaintenanceSchedule, error) {
+	slog.Info("setting btrfs maintenance schedule", "mountpoint", req.Mountpoint, "task", req.Task, "period", req.Period)
+	schedule, err := SetBtrfsMaintenance(ctx, req)
+	if err != nil {
+		slog.Error("failed to set btrfs maintenance schedule", "mountpoint", req.Mountpoint, "task", req.Task, "error", err)
+		return apischema.BtrfsMaintenanceSchedule{}, err
+	}
+	return schedule, nil
 }
 
 func handleGetDriveInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.ApiDisk, error) {
