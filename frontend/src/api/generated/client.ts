@@ -81,6 +81,7 @@ const linuxio = {
     ),
     get_compose_project: defineCallWithRequest("docker.get_compose_project"),
     get_container_auto_update: defineCall("docker.get_container_auto_update"),
+    get_daemon_config: defineCall("docker.get_daemon_config"),
     get_docker_folders: defineCall("docker.get_docker_folders"),
     get_docker_info: defineCall("docker.get_docker_info"),
     get_icon: defineCallWithRequest("docker.get_icon"),
@@ -100,6 +101,7 @@ const linuxio = {
     set_container_auto_update: defineCallWithRequest(
       "docker.set_container_auto_update",
     ),
+    set_daemon_config: defineCallWithRequest("docker.set_daemon_config"),
     start_all_stopped: defineCall("docker.start_all_stopped"),
     start_container: defineCallWithRequest("docker.start_container"),
     stop_all_running: defineCall("docker.stop_all_running"),

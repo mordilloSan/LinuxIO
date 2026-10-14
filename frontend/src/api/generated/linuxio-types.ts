@@ -921,6 +921,20 @@ export interface DockerContainerUpdateResult {
   updated: boolean;
 }
 
+export interface DockerDaemonConfig {
+  address_pool_base: string;
+  address_pool_size: number;
+  live_restore: boolean;
+  log_max_file: string;
+  log_max_size: string;
+  userland_proxy: boolean;
+}
+
+export interface DockerDaemonConfigSetResult {
+  config: DockerDaemonConfig;
+  restart_required: boolean;
+}
+
 export interface DockerFoldersResponse {
   folders: string[];
 }
@@ -3261,6 +3275,7 @@ export interface LinuxIOSchema {
       request: void;
       result: DockerContainerAutoUpdateState;
     };
+    get_daemon_config: { input: []; request: void; result: DockerDaemonConfig };
     get_docker_folders: {
       input: [];
       request: void;
@@ -3321,6 +3336,11 @@ export interface LinuxIOSchema {
       input: [request: DockerContainerAutoUpdateOptions];
       request: DockerContainerAutoUpdateOptions;
       result: DockerContainerAutoUpdateState;
+    };
+    set_daemon_config: {
+      input: [request: DockerDaemonConfig];
+      request: DockerDaemonConfig;
+      result: DockerDaemonConfigSetResult;
     };
     start_all_stopped: {
       input: [];
@@ -4227,6 +4247,7 @@ export interface LinuxIOCallSchema {
     request: void;
     result: DockerContainerAutoUpdateState;
   };
+  "docker.get_daemon_config": { request: void; result: DockerDaemonConfig };
   "docker.get_docker_folders": { request: void; result: DockerFoldersResponse };
   "docker.get_docker_info": { request: void; result: DockerSystemInfo };
   "docker.get_icon": {
@@ -4258,6 +4279,10 @@ export interface LinuxIOCallSchema {
   "docker.set_container_auto_update": {
     request: DockerContainerAutoUpdateOptions;
     result: DockerContainerAutoUpdateState;
+  };
+  "docker.set_daemon_config": {
+    request: DockerDaemonConfig;
+    result: DockerDaemonConfigSetResult;
   };
   "docker.start_all_stopped": {
     request: void;

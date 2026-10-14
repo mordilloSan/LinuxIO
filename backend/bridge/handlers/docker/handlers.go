@@ -46,6 +46,8 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.StackNameRequest, apischema.ComposeFilePathResponse]("docker.get_compose_file_path", apischema.RetrySafe()).Handle(handlers.handleGetComposeFilePath),
 		apischema.Call[apischema.DirPathRequest, apischema.DirectoryValidationResult]("docker.validate_stack_directory", apischema.RetrySafe()).Handle(handlers.handleValidateStackDirectory),
 		apischema.Call[apischema.ProjectNameRequest, apischema.NoResponse]("docker.delete_compose_stack", apischema.NoEndpoint()).HandleVoid(handlers.handleDeleteComposeStack),
+		apischema.Call[apischema.NoRequest, apischema.DockerDaemonConfig]("docker.get_daemon_config", apischema.RetrySafe()).Handle(handlers.handleGetDaemonConfig),
+		apischema.Call[apischema.DockerDaemonConfig, apischema.DockerDaemonConfigSetResult]("docker.set_daemon_config", apischema.Privileged()).Handle(handlers.handleSetDaemonConfig),
 		apischema.Call[apischema.NoRequest, *apischema.DockerSystemInfo]("docker.get_docker_info", apischema.RetrySafe()).Handle(handlers.handleGetDockerInfo),
 		apischema.Call[apischema.IdentifierRequest, apischema.DockerIconURIResponse]("docker.get_icon_uri").Handle(handlers.handleGetIconURI),
 		apischema.Call[apischema.IdentifierRequest, apischema.DockerIconDataResponse]("docker.get_icon").Handle(handlers.handleGetIcon),

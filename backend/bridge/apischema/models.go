@@ -629,6 +629,22 @@ type DockerSystemInfo struct {
 	VolumePlugins   []string `json:"volume_plugins"`
 }
 
+// DockerDaemonConfig is the subset of /etc/docker/daemon.json LinuxIO edits.
+// Keys the form does not cover are preserved untouched on save.
+type DockerDaemonConfig struct {
+	AddressPoolBase string `json:"address_pool_base"`
+	AddressPoolSize int    `json:"address_pool_size"`
+	LiveRestore     bool   `json:"live_restore"`
+	LogMaxFile      string `json:"log_max_file"`
+	LogMaxSize      string `json:"log_max_size"`
+	UserlandProxy   bool   `json:"userland_proxy"`
+}
+
+type DockerDaemonConfigSetResult struct {
+	Config          DockerDaemonConfig `json:"config"`
+	RestartRequired bool               `json:"restart_required"`
+}
+
 type ComposeService struct {
 	ContainerCount int      `json:"container_count"`
 	ContainerIDs   []string `json:"container_ids"`
