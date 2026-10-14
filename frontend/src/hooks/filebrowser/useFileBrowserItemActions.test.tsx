@@ -172,7 +172,7 @@ describe("useFileBrowserItemActions", () => {
   });
 
   describe("editing entry points", () => {
-    it("opens only files the backend marks as eligible", () => {
+    it("opens text files the backend marks as eligible and any image", () => {
       const { result, params } = setup();
 
       act(() => result.current.handleDoubleClickFile(fileItem("notes.txt")));
@@ -186,7 +186,17 @@ describe("useFileBrowserItemActions", () => {
           canOpenAsText: false,
         }),
       );
-      expect(params.editor.actions.openFile).toHaveBeenCalledTimes(1);
+      expect(params.editor.actions.openFile).toHaveBeenCalledWith(
+        "/srv/projects/photo.png",
+      );
+
+      act(() =>
+        result.current.handleDoubleClickFile({
+          ...fileItem("app.bin"),
+          canOpenAsText: false,
+        }),
+      );
+      expect(params.editor.actions.openFile).toHaveBeenCalledTimes(2);
     });
 
     it("edits a file from the detail view and clears the detail target", () => {

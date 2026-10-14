@@ -343,3 +343,12 @@ func TestMonitorNativeDownloadClosesStreamOnCancellation(t *testing.T) {
 		t.Fatal("write after cancellation succeeded, want closed stream")
 	}
 }
+
+func TestFormatDownloadDisposition(t *testing.T) {
+	if got := formatDownloadDisposition("photo.jpg", false); got != `attachment; filename=photo.jpg` {
+		t.Fatalf("attachment disposition = %q", got)
+	}
+	if got := formatDownloadDisposition("photo.jpg", true); got != `inline; filename=photo.jpg` {
+		t.Fatalf("inline disposition = %q", got)
+	}
+}

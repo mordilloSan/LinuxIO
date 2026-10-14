@@ -13,7 +13,7 @@ import { useFileDirectorySize } from "@/hooks/filebrowser/useFileDirectorySize";
 import { GAP_LG, GAP_MD } from "@/theme/constants";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
-import { getTextEditBlockedReason } from "./utils";
+import { getTextEditBlockedReason, isImageFile } from "./utils";
 import type { FileResource, ResourceStatData } from "../../types/filebrowser";
 
 interface FileDetailProps {
@@ -339,7 +339,7 @@ const FileDetail = ({
                 startIcon={<Icon height={20} icon="mdi:pencil" width={20} />}
                 variant="outlined"
               >
-                Open text file
+                {isImageFile(resource.name) ? "View image" : "Open text file"}
               </AppButton>
             </AppTooltip>
           )}

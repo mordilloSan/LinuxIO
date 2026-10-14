@@ -6,6 +6,7 @@ import {
   type FileChmodBatchRequest,
   linuxio,
 } from "@/api";
+import { isImageFile } from "@/components/filebrowser/utils";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import type { BackgroundTasksContextValue } from "@/types/backgroundTasks";
 import type { FileItem, FileResource } from "@/types/filebrowser";
@@ -96,7 +97,10 @@ export const useFileBrowserItemActions = ({
 
   const handleDoubleClickFile = useCallback(
     (item: FileItem) => {
-      if (item.isRegularFile === true && item.canOpenAsText === true) {
+      if (
+        item.isRegularFile === true &&
+        (item.canOpenAsText === true || isImageFile(item.name))
+      ) {
         editorActions.openFile(item.path);
       }
     },
