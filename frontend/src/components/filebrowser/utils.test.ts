@@ -125,7 +125,7 @@ describe("filebrowser utils", () => {
 
   it("recognises image files by extension and lets them open regardless of text eligibility", () => {
     expect(isImageFile("holiday.JPG")).toBe(true);
-    expect(isImageFile("diagram.svg")).toBe(true);
+    expect(isImageFile("diagram.svg")).toBe(false);
     expect(isImageFile("notes.txt")).toBe(false);
     expect(isImageFile("noext")).toBe(false);
     expect(

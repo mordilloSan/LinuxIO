@@ -389,13 +389,19 @@ func sanitizeDownloadName(name string) string {
 }
 
 // formatDownloadDisposition defaults to a saved download; inline lets the
-// browser render the file in place (file browser image preview).
+// browser render the file in place (file browser image preview). Inline is
+// only honoured for raster images: anything else served inline same-origin
+// (HTML, SVG) would run script with the session cookie.
 func formatDownloadDisposition(name string, inline bool) string {
 	disposition := "attachment"
-	if inline {
+	if inline && inlineRenderable(downloadContentType(name)) {
 		disposition = "inline"
 	}
 	return mime.FormatMediaType(disposition, map[string]string{"filename": name})
+}
+
+func inlineRenderable(contentType string) bool {
+	return strings.HasPrefix(contentType, "image/") && contentType != "image/svg+xml"
 }
 
 func downloadContentType(name string) string {
