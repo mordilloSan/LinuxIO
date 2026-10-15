@@ -233,9 +233,13 @@ usage, disk I/O rates and container attribution. The response also includes
 the daemon's process counts. Programs group CPU and memory usage by name and
 include their process count and PIDs.
 
-The authenticated `/processes` page polls every two seconds. Its virtualized
-table supports process/program views, sorting and text filtering. Process
-actions remain outside this read-only page.
+The Services section shows them in three read-only tabs that poll every two
+seconds while open. `/services/processes` and `/services/programs` hold the
+virtualized tables, with sorting and a `?filter=` text filter. `/services/htop`
+adds an htop-style header from `monitoring.get_live` (one meter per core,
+memory split into used, buffers and cache, swap, tasks, load average and
+uptime) above the process list ordered by CPU. Process actions are not
+available on any of these tabs.
 
 ### Plugin allowlist on configured listeners
 

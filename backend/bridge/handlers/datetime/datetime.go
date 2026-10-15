@@ -108,7 +108,15 @@ func GetNTPServers(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return []string{}, nil
 	}
-	return backend.GetServers(ctx)
+	servers, err := backend.GetServers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if servers == nil {
+		// A nil slice encodes as JSON null; the API contract is string[].
+		return []string{}, nil
+	}
+	return servers, nil
 }
 
 func SetNTPServers(ctx context.Context, servers []string) error {

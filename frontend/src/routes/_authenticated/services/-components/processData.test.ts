@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Process } from "@/api";
 
-import { filterProcessRows, validateProcessSearch } from "./processData";
+import { filterProcessRows } from "./processData";
 
 const processRows = [
   {
@@ -52,14 +52,5 @@ describe("process filtering", () => {
 
   it("returns all rows for an empty filter", () => {
     expect(filterProcessRows(processRows, "  ")).toBe(processRows);
-  });
-});
-
-describe("process search", () => {
-  it("keeps only the supported shareable search values", () => {
-    expect(
-      validateProcessSearch({ filter: "nginx", view: "programs" }),
-    ).toEqual({ filter: "nginx", view: "programs" });
-    expect(validateProcessSearch({ filter: "", view: "invalid" })).toEqual({});
   });
 });

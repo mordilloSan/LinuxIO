@@ -1,0 +1,120 @@
+.htop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.htop-header {
+  display: grid;
+  flex: none;
+  gap: var(--app-space-16);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding: var(--app-space-12) var(--app-space-16);
+  font-family: var(--app-font-mono);
+  font-size: var(--app-font-size-body);
+}
+
+.htop-header__cores {
+  display: grid;
+  gap: var(--app-space-4) var(--app-space-16);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  align-content: start;
+}
+
+.htop-header__summary,
+.htop-header__memory {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-4);
+}
+
+.htop-header__summary {
+  gap: var(--app-space-12);
+}
+
+.htop-header__stats {
+  display: grid;
+  gap: var(--app-space-2) var(--app-space-12);
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+}
+
+.htop-header__stats dt {
+  color: var(--app-palette-info-main);
+}
+
+.htop-header__stats dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.htop-meter {
+  display: grid;
+  align-items: center;
+  gap: var(--app-space-8);
+  grid-template-columns: 3ch minmax(0, 1fr);
+}
+
+.htop-meter__label {
+  color: var(--app-palette-info-main);
+  text-align: right;
+}
+
+.htop-meter__track {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  height: 1.25em;
+  border-radius: var(--app-radius-base);
+  background-color: color-mix(
+    in srgb,
+    var(--app-palette-text-primary) 8%,
+    transparent
+  );
+}
+
+.htop-meter__fill {
+  flex: none;
+  transition: width 0.4s linear;
+}
+
+.htop-meter__fill--used {
+  background-color: var(--app-palette-success-main);
+}
+
+.htop-meter__fill--buffers {
+  background-color: var(--app-palette-info-main);
+}
+
+.htop-meter__fill--cache {
+  background-color: var(--app-palette-warning-main);
+}
+
+.htop-meter__fill--swap {
+  background-color: var(--app-palette-error-main);
+}
+
+.htop-meter__text {
+  position: absolute;
+  inset: 0 var(--app-space-6) 0 auto;
+  display: flex;
+  align-items: center;
+  color: var(--app-palette-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .htop-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .htop-meter__fill {
+    transition: none;
+  }
+}

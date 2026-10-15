@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 
 import {
   linuxio,
   type MonitoringProcessesResponse,
   type MonitoringProgramsResponse,
 } from "@/api";
-import type { ProcessView } from "@/routes/_authenticated/processes/-components/processData";
-import ProcessesPage from "@/routes/_authenticated/processes/-components/ProcessesPage";
+import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
+import ProcessesTab from "@/routes/_authenticated/services/-components/ProcessesTab";
 
 const processesResponse: MonitoringProcessesResponse = {
   captured_at_ms: 0,
@@ -86,15 +86,19 @@ queryClient.setQueryData(
 linuxio.monitoring.get_processes.queryFn = async () => processesResponse;
 linuxio.monitoring.get_programs.queryFn = async () => programsResponse;
 
-function ProcessesFixture() {
-  const { search } = useLocation();
+const tabs = [
+  { label: "Processes", to: "/services/processes" },
+  { label: "Programs", to: "/services/programs" },
+] as const satisfies readonly RoutedTab[];
+
+export function ProcessesFixtureTab() {
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const filter = typeof search.filter === "string" ? search.filter : "";
-  const view: ProcessView =
-    search.view === "programs" ? "programs" : "processes";
+  const view = pathname.endsWith("/programs") ? "programs" : "processes";
 
   return (
-    <ProcessesPage
+    <ProcessesTab
       filter={filter}
       onFilterChange={(nextFilter) =>
         void navigate({
@@ -103,16 +107,7 @@ function ProcessesFixture() {
             ...previous,
             filter: nextFilter || undefined,
           }),
-          to: "/processes",
-        })
-      }
-      onViewChange={(nextView) =>
-        void navigate({
-          search: (previous) => ({
-            ...previous,
-            view: nextView === "programs" ? nextView : undefined,
-          }),
-          to: "/processes",
+          to: `/services/${view}`,
         })
       }
       view={view}
@@ -120,11 +115,13 @@ function ProcessesFixture() {
   );
 }
 
-export default function ProcessesFixturePage() {
+export default function ProcessesFixtureLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <div style={{ height: "100dvh", minHeight: 0, overflow: "hidden" }}>
-        <ProcessesFixture />
+        <RoutedTabLayout tabs={tabs}>
+          <Outlet />
+        </RoutedTabLayout>
       </div>
     </QueryClientProvider>
   );
