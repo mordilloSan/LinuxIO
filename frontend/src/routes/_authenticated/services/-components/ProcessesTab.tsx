@@ -1,120 +1,86 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { linuxio, type Program } from "@/api";
-import TabSelector from "@/components/tabbar/TabSelector";
-import AppTextField from "@/components/ui/AppTextField";
+import { linuxio } from "@/api";
+import { RoutedTabSearch } from "@/components/tabbar";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 
 import { filterProcessRows, type ProcessView } from "./processData";
 import ProcessVirtualTable from "./ProcessVirtualTable";
 
-const REFRESH_INTERVAL_MS = 2_000;
+export const PROCESS_REFRESH_INTERVAL_MS = 2_000;
 
-interface ProcessesPageProps {
+interface ProcessesTabProps {
   filter: string;
   onFilterChange: (filter: string) => void;
-  onViewChange: (view: ProcessView) => void;
   view: ProcessView;
 }
 
-const ProcessesPage = ({
-  filter,
-  onFilterChange,
-  onViewChange,
-  view,
-}: ProcessesPageProps) => {
+const ProcessesTab = ({ filter, onFilterChange, view }: ProcessesTabProps) => {
   const processes = useQuery({
     ...linuxio.monitoring.get_processes,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    enabled: view === "processes",
+    refetchInterval: PROCESS_REFRESH_INTERVAL_MS,
   });
   const programs = useQuery({
     ...linuxio.monitoring.get_programs,
     enabled: view === "programs",
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchInterval: PROCESS_REFRESH_INTERVAL_MS,
   });
-  const processItems = filterProcessRows(processes.data?.items ?? [], filter);
-  const programItems = (programs.data?.items ?? []).filter((program: Program) =>
-    program.name
-      .toLocaleLowerCase()
-      .includes(filter.trim().toLocaleLowerCase()),
-  );
-  const count = processes.data?.count;
-  const error =
-    processes.error ?? (view === "programs" ? programs.error : null);
-  const loading =
-    processes.isLoading || (view === "programs" && programs.isLoading);
+  const query = view === "processes" ? processes : programs;
+  const programFilter = filter.trim().toLocaleLowerCase();
 
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 16,
+        gap: 12,
         height: "100%",
         minHeight: 0,
-        padding: 20,
+        minWidth: 0,
       }}
     >
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          <AppTypography gutterBottom variant="h2">
-            Processes
-          </AppTypography>
-          <AppTypography color="text.secondary" variant="body2">
-            {count?.total ?? 0} total · {count?.running ?? 0} running ·{" "}
-            {count?.sleeping ?? 0} sleeping
-          </AppTypography>
-        </div>
-        <TabSelector
-          onChange={onViewChange}
-          options={[
-            { value: "processes", label: "Processes" },
-            { value: "programs", label: "Programs" },
-          ]}
-          value={view}
+      <RoutedTabSearch active={filter !== ""}>
+        <AppHeaderSearch
+          aria-label="Filter processes"
+          clearOnDocumentEscape
+          onChange={onFilterChange}
+          placeholder={
+            view === "programs"
+              ? "Filter by program name…"
+              : "Filter by name, command line, or user…"
+          }
+          value={filter}
         />
-      </div>
+      </RoutedTabSearch>
 
-      <AppTextField
-        aria-label="Filter processes"
-        fullWidth
-        onChange={(event) => onFilterChange(event.target.value)}
-        placeholder={
-          view === "programs"
-            ? "Filter by program name"
-            : "Filter by name, command line, or user"
-        }
-        size="small"
-        value={filter}
-      />
-
-      {error && (
+      {query.error && (
         <AppTypography color="error" variant="body2">
-          Unable to load {view}:{" "}
-          {error instanceof Error ? error.message : "unknown error"}
+          Unable to load {view}: {query.error.message}
         </AppTypography>
       )}
-      {loading && !error && (
+      {query.isLoading && (
         <AppTypography color="text.secondary" variant="body2">
           Loading {view}…
         </AppTypography>
       )}
 
       {view === "processes" ? (
-        <ProcessVirtualTable data={processItems} mode="processes" />
+        <ProcessVirtualTable
+          data={filterProcessRows(processes.data?.items ?? [], filter)}
+          mode="processes"
+        />
       ) : (
-        <ProcessVirtualTable data={programItems} mode="programs" />
+        <ProcessVirtualTable
+          data={(programs.data?.items ?? []).filter((program) =>
+            program.name.toLocaleLowerCase().includes(programFilter),
+          )}
+          mode="programs"
+        />
       )}
     </div>
   );
 };
 
-export default ProcessesPage;
+export default ProcessesTab;

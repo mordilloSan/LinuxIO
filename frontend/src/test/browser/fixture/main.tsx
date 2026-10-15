@@ -25,7 +25,9 @@ import "@/icons/icons";
 import "@/icons/shell";
 import "@/theme/variables.css";
 
-import ProcessesFixturePage from "./routes/ProcessesPage";
+import ProcessesFixtureLayout, {
+  ProcessesFixtureTab,
+} from "./routes/ProcessesPage";
 
 installTabNavigationIntent();
 
@@ -286,17 +288,28 @@ const lightStorageTopologyRoute = createRoute({
     node: typeof search.node === "string" ? search.node : undefined,
   }),
 });
-const processesRoute = createRoute({
-  component: ProcessesFixturePage,
+const validateProcessFixtureSearch = (search: Record<string, unknown>) => ({
+  filter:
+    typeof search.filter === "string" && search.filter
+      ? search.filter
+      : undefined,
+});
+const processesLayoutRoute = createRoute({
+  component: ProcessesFixtureLayout,
   getParentRoute: () => rootRoute,
+  path: "services",
+});
+const processesRoute = createRoute({
+  component: ProcessesFixtureTab,
+  getParentRoute: () => processesLayoutRoute,
   path: "processes",
-  validateSearch: (search) => ({
-    filter:
-      typeof search.filter === "string" && search.filter
-        ? search.filter
-        : undefined,
-    view: search.view === "programs" ? ("programs" as const) : undefined,
-  }),
+  validateSearch: validateProcessFixtureSearch,
+});
+const programsRoute = createRoute({
+  component: ProcessesFixtureTab,
+  getParentRoute: () => processesLayoutRoute,
+  path: "programs",
+  validateSearch: validateProcessFixtureSearch,
 });
 const accountsIndexRoute = createRoute({
   component: UsersPage,
@@ -370,7 +383,7 @@ const routeTree = rootRoute.addChildren([
   lightTopologyRoute,
   storageTopologyRoute,
   lightStorageTopologyRoute,
-  processesRoute,
+  processesLayoutRoute.addChildren([processesRoute, programsRoute]),
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,
