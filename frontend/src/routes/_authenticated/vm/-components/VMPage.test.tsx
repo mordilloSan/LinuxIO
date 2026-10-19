@@ -409,6 +409,7 @@ vi.mock("@/api", async (importOriginal) => {
     },
     openTaskWatchStream: mocks.openTaskWatchStream,
     openVMConsoleStream: mocks.openVMConsoleStream,
+    useStreamMux: () => ({ isOpen: true }),
     waitForStreamResult: mocks.waitForStreamResult,
   };
 });
@@ -1254,7 +1255,9 @@ describe("Virtual Machines page", () => {
 
     await user.click(screen.getByRole("button", { name: "Console" }));
 
-    expect(mocks.openVMConsoleStream).toHaveBeenCalledWith("alpha");
+    await waitFor(() =>
+      expect(mocks.openVMConsoleStream).toHaveBeenCalledWith("alpha"),
+    );
     await waitFor(() => expect(mocks.rfbConstructor).toHaveBeenCalled());
   });
 

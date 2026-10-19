@@ -1,6 +1,5 @@
 import {
   LinuxIOError,
-  type Stream,
   type VMDeleteResult,
   type VMPreflight,
   type VirtualMachine,
@@ -13,11 +12,6 @@ export type VMAction =
   | "force_off"
   | "suspend"
   | "resume";
-
-export type ConsoleSession = {
-  stream: Stream | null;
-  vm: VirtualMachine;
-};
 
 export const VM_TOAST = { label: "Open VMs", to: "/vm" } as const;
 
