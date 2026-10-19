@@ -15,4 +15,14 @@ export const TASK_TYPE_DOCKER_COMPOSE = "docker.compose";
 export const TASK_TYPE_DOCKER_UPDATE = "docker.update_container";
 export const TASK_TYPE_PACKAGE_UPDATE = "packages.update";
 export const TASK_TYPE_STORAGE_SMART_TEST = "storage.run_smart_test";
+export const TASK_TYPE_STORAGE_BTRFS_ROLLBACK =
+  "storage.btrfs_snapshot_rollback";
+export const TASK_TYPE_STORAGE_BTRFS_REPLICATION =
+  "storage.btrfs_replication_run";
+export const TASK_TYPE_STORAGE_BTRFS_BALANCE = "storage.btrfs_balance";
+export const TASK_TYPE_STORAGE_BTRFS_SCRUB = "storage.btrfs_scrub_start";
+export const TASK_TYPE_STORAGE_BTRFS_DEVICE_REMOVE =
+  "storage.btrfs_device_remove";
+export const TASK_TYPE_STORAGE_BTRFS_DEVICE_REPLACE =
+  "storage.btrfs_device_replace";
 export const TASK_TYPE_SYSTEM_INSTALL_CAPABILITY = "system.install_capability";

@@ -30,11 +30,47 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       "unmount_cifs",
       "remount_cifs",
       "unmount_filesystem",
-      "create_btrfs_subvolume",
+      "btrfs_subvolume_create",
     ]) {
       expect(OPERATION_QUERY_INVALIDATIONS[`storage.${action}`]).toContainEqual(
         ["linuxio", "storage", "get_topology"],
       );
+    }
+  });
+  it("refreshes the btrfs inventory after device, balance and scrub actions", () => {
+    for (const action of [
+      "device_add",
+      "device_remove",
+      "device_replace",
+      "balance",
+      "balance_cancel",
+      "scrub_start",
+      "scrub_cancel",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`storage.btrfs_${action}`]).toEqual([
+        ["linuxio", "storage", "btrfs_list"],
+        ["linuxio", "storage", "get_topology"],
+        ["linuxio", "storage", "get_drive_info"],
+      ]);
+    }
+  });
+  it("refreshes btrfs settings and subvolume sizes after quota and compression changes", () => {
+    expect(OPERATION_QUERY_INVALIDATIONS["storage.btrfs_set_quotas"]).toEqual([
+      ["linuxio", "storage", "btrfs_settings"],
+      ["linuxio", "storage", "btrfs_subvolumes"],
+      ["linuxio", "storage", "btrfs_snapshots"],
+    ]);
+    expect(
+      OPERATION_QUERY_INVALIDATIONS["storage.btrfs_set_compression"],
+    ).toEqual([
+      ["linuxio", "storage", "btrfs_settings"],
+      ["linuxio", "storage", "btrfs_list"],
+      ["linuxio", "storage", "get_topology"],
+    ]);
+    for (const action of ["qgroup_limit", "subvolume_set_compression"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`storage.btrfs_${action}`]).toEqual([
+        ["linuxio", "storage", "btrfs_subvolumes"],
+      ]);
     }
   });
   it("refreshes index-backed data after indexing", () => {

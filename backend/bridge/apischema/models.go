@@ -1416,12 +1416,6 @@ type ValidateComposeResponse struct {
 	NormalizedContent string                 `json:"normalized_content,omitempty"`
 }
 
-type StoragePathResult struct {
-	Success    bool    `json:"success"`
-	Mountpoint *string `json:"mountpoint,omitempty"`
-	Path       *string `json:"path,omitempty"`
-}
-
 type StorageMountResult struct {
 	Success    bool    `json:"success"`
 	Mountpoint *string `json:"mountpoint,omitempty"`

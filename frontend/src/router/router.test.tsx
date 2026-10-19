@@ -102,6 +102,7 @@ describe("generated application router", () => {
         "/sign-in",
         "/storage",
         "/storage/",
+        "/storage/btrfs",
         "/storage/lvm",
         "/storage/topology",
         "/terminal",

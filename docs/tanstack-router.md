@@ -617,6 +617,7 @@ inherits its ancestor's.
 | `/shares/mounts` | `shares/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/storage` | `storage/route.tsx` | — | — | — | — |
 | `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs` | — |
+| `/storage/btrfs` | `storage/btrfs.tsx` | `loadRouteQueries` ×1 | — | `fs` | `requireAccess` btrfs |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
 | `/storage/topology` | `storage/topology.tsx` | `loadRouteQueries` ×1 | — | `node` | — |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
@@ -669,7 +670,7 @@ wrappers that only hide an observer.
 
 ## Guards And Access
 
-All guarding goes through `routes/-auth.ts`. There are six `beforeLoad` hooks in
+All guarding goes through `routes/-auth.ts`. There are ten `beforeLoad` hooks in
 the whole tree:
 
 | Route | Guard | Policy |
@@ -677,9 +678,13 @@ the whole tree:
 | `_authenticated.tsx` | `requireAuthentication` | signed in |
 | `sign-in/route.tsx` | `requireGuest` | signed **out** |
 | `docker/route.tsx` | `requireAccess` | `dockerAvailable` |
+| `storage/btrfs.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
 | `hardware/route.tsx` | `requireAccess` | `lmSensorsAvailable` |
 | `vm/route.tsx` | `requireAccess` | `libvirtAvailable` + privileged |
 | `wireguard/route.tsx` | `requireAccess` | `wireguardAvailable` + privileged |
+| `assistant/route.tsx` | `requireAccess` | `nodeAvailable` |
+| `services/schedules.tsx` | `requireAccess` | privileged |
+| `shares/rsync.tsx` | `requireAccess` | privileged |
 
 `requireAccess` throws `notFound()` — a 404, **deliberately not a 403**, so an
 unavailable capability is not disclosed to an unauthorised caller. This is

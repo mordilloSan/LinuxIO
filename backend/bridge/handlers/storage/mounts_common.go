@@ -89,6 +89,21 @@ func getFstabEntries() map[string]fstabEntry {
 	return fstabEntries
 }
 
+// replaceFstabOption returns options without any option starting with prefix,
+// plus replacement appended when it is not empty. Other options keep order.
+func replaceFstabOption(options []string, prefix, replacement string) []string {
+	out := make([]string, 0, len(options)+1)
+	for _, o := range options {
+		if !strings.HasPrefix(o, prefix) {
+			out = append(out, o)
+		}
+	}
+	if replacement != "" {
+		out = append(out, replacement)
+	}
+	return out
+}
+
 // parseOptions converts []string from gopsutil to []string.
 func parseOptions(opts []string) []string {
 	if opts == nil {
@@ -210,7 +225,12 @@ func addToFstab(source, mountpoint, fstype string, options []string) error {
 	return err
 }
 
-// updateFstabEntry updates an existing fstab entry in-place.
+// fstabField matches one whitespace-delimited fstab field.
+var fstabField = regexp.MustCompile(`\S+`)
+
+// updateFstabEntry updates an existing fstab entry in-place. Comment lines
+// are skipped; the first four fields are replaced where they stand, so the
+// original separators, the dump/pass fields and trailing comments survive.
 func updateFstabEntry(mountpoint, source, fstype string, options []string) error {
 	file, err := os.Open(fstabPath)
 	if err != nil {
@@ -222,19 +242,31 @@ func updateFstabEntry(mountpoint, source, fstype string, options []string) error
 	if len(options) > 0 {
 		optStr = strings.Join(options, ",")
 	}
+	replacements := [4]string{source, mountpoint, fstype, optStr}
 
 	var newLines []string
 	found := false
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		fields := strings.Fields(line)
-		if len(fields) >= 4 && fields[1] == mountpoint {
-			newLines = append(newLines, fmt.Sprintf("%s\t%s\t%s\t%s\t0\t0", source, mountpoint, fstype, optStr))
-			found = true
-		} else {
+		spans := fstabField.FindAllStringIndex(line, -1)
+		if strings.HasPrefix(strings.TrimSpace(line), "#") || len(spans) < 4 || line[spans[1][0]:spans[1][1]] != mountpoint {
 			newLines = append(newLines, line)
+			continue
 		}
+		var b strings.Builder
+		prev := 0
+		for i, r := range replacements {
+			b.WriteString(line[prev:spans[i][0]])
+			b.WriteString(r)
+			prev = spans[i][1]
+		}
+		b.WriteString(line[prev:])
+		if len(spans) == 4 {
+			b.WriteString("\t0\t0")
+		}
+		newLines = append(newLines, b.String())
+		found = true
 	}
 
 	if err := scanner.Err(); err != nil {

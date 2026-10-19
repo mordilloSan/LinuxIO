@@ -3,6 +3,7 @@ package apischema
 import (
 	"reflect"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -426,9 +427,103 @@ type MountpointRequest struct {
 	Mountpoint string `json:"mountpoint"`
 }
 
-type MountpointNameRequest struct {
-	Mountpoint string `json:"mountpoint"`
-	Name       string `json:"name"`
+type UUIDRequest struct {
+	UUID string `json:"uuid"`
+}
+
+type BtrfsSubvolumeRequest struct {
+	UUID string `json:"uuid"`
+	Path string `json:"path"`
+}
+
+type BtrfsSnapshotsRequest struct {
+	UUID string  `json:"uuid"`
+	Path *string `json:"path,omitempty"`
+}
+
+type BtrfsSnapshotRequest struct {
+	UUID         string `json:"uuid"`
+	SnapshotPath string `json:"snapshotPath"`
+}
+
+type BtrfsSnapshotRuleRequest struct {
+	Rule btrfs.BtrfsSnapshotRule `json:"rule"`
+}
+
+type BtrfsReplicationJobRequest struct {
+	Job btrfs.BtrfsReplicationJob `json:"job"`
+}
+
+type BtrfsJobIDRequest struct {
+	ID string `json:"id"`
+}
+
+// BtrfsSSHTrustRequest scans a host; with Confirm it trusts only the keys
+// matching Fingerprints, the ones shown to the user by the unconfirmed scan.
+type BtrfsSSHTrustRequest struct {
+	Host         string   `json:"host"`
+	Port         int      `json:"port"`
+	Confirm      bool     `json:"confirm"`
+	Fingerprints []string `json:"fingerprints,omitempty"`
+}
+
+type BtrfsSubvolumeReadOnlyRequest struct {
+	UUID     string `json:"uuid"`
+	Path     string `json:"path"`
+	ReadOnly bool   `json:"readOnly"`
+}
+
+type BtrfsQuotaRequest struct {
+	UUID    string `json:"uuid"`
+	Enabled bool   `json:"enabled"`
+}
+
+// BtrfsQgroupLimitRequest limits the referenced size of one subvolume; nil
+// removes the limit.
+type BtrfsQgroupLimitRequest struct {
+	UUID               string  `json:"uuid"`
+	Path               string  `json:"path"`
+	MaxReferencedBytes *uint64 `json:"maxReferencedBytes"`
+}
+
+// BtrfsCompressionRequest sets the filesystem-wide compression option and
+// persists it in every fstab entry of the filesystem.
+type BtrfsCompressionRequest struct {
+	UUID      string `json:"uuid"`
+	Algorithm string `json:"algorithm"`
+	Level     *int   `json:"level,omitempty"`
+	Force     bool   `json:"force"`
+}
+
+type BtrfsSubvolumeCompressionRequest struct {
+	UUID      string `json:"uuid"`
+	Path      string `json:"path"`
+	Algorithm string `json:"algorithm"`
+}
+
+type BtrfsDeviceAddRequest struct {
+	UUID   string `json:"uuid"`
+	Device string `json:"device"`
+	Force  bool   `json:"force"`
+}
+
+type BtrfsDeviceRequest struct {
+	UUID     string `json:"uuid"`
+	DeviceID int    `json:"deviceId"`
+}
+
+type BtrfsDeviceReplaceRequest struct {
+	UUID      string `json:"uuid"`
+	DeviceID  int    `json:"deviceId"`
+	NewDevice string `json:"newDevice"`
+}
+
+// BtrfsBalanceRequest converts to the given profiles; a nil profile is left
+// as it is, and both nil balances without converting.
+type BtrfsBalanceRequest struct {
+	UUID            string  `json:"uuid"`
+	DataProfile     *string `json:"dataProfile,omitempty"`
+	MetadataProfile *string `json:"metadataProfile,omitempty"`
 }
 
 type MountpointRemoveFstabRequest struct {

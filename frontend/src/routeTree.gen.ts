@@ -48,6 +48,7 @@ import { Route as AuthenticatedSharesIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedSharesMountsRouteImport } from './routes/_authenticated/shares/mounts'
 import { Route as AuthenticatedSharesRsyncRouteImport } from './routes/_authenticated/shares/rsync'
 import { Route as AuthenticatedStorageIndexRouteImport } from './routes/_authenticated/storage/index'
+import { Route as AuthenticatedStorageBtrfsRouteImport } from './routes/_authenticated/storage/btrfs'
 import { Route as AuthenticatedStorageLvmRouteImport } from './routes/_authenticated/storage/lvm'
 import { Route as AuthenticatedStorageTopologyRouteImport } from './routes/_authenticated/storage/topology'
 import { Route as AuthenticatedUpdatesIndexRouteImport } from './routes/_authenticated/updates/index'
@@ -287,6 +288,12 @@ const AuthenticatedStorageIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedStorageRouteRoute,
   } as any)
+const AuthenticatedStorageBtrfsRoute =
+  AuthenticatedStorageBtrfsRouteImport.update({
+    id: '/btrfs',
+    path: '/btrfs',
+    getParentRoute: () => AuthenticatedStorageRouteRoute,
+  } as any)
 const AuthenticatedStorageLvmRoute = AuthenticatedStorageLvmRouteImport.update({
   id: '/lvm',
   path: '/lvm',
@@ -384,6 +391,7 @@ export interface FileRoutesByFullPath {
   '/services/timers': typeof AuthenticatedServicesTimersRoute
   '/shares/mounts': typeof AuthenticatedSharesMountsRoute
   '/shares/rsync': typeof AuthenticatedSharesRsyncRoute
+  '/storage/btrfs': typeof AuthenticatedStorageBtrfsRoute
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
@@ -427,6 +435,7 @@ export interface FileRoutesByTo {
   '/services/timers': typeof AuthenticatedServicesTimersRoute
   '/shares/mounts': typeof AuthenticatedSharesMountsRoute
   '/shares/rsync': typeof AuthenticatedSharesRsyncRoute
+  '/storage/btrfs': typeof AuthenticatedStorageBtrfsRoute
   '/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
@@ -480,6 +489,7 @@ export interface FileRoutesById {
   '/_authenticated/services/timers': typeof AuthenticatedServicesTimersRoute
   '/_authenticated/shares/mounts': typeof AuthenticatedSharesMountsRoute
   '/_authenticated/shares/rsync': typeof AuthenticatedSharesRsyncRoute
+  '/_authenticated/storage/btrfs': typeof AuthenticatedStorageBtrfsRoute
   '/_authenticated/storage/lvm': typeof AuthenticatedStorageLvmRoute
   '/_authenticated/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/_authenticated/updates/history': typeof AuthenticatedUpdatesHistoryRoute
@@ -533,6 +543,7 @@ export interface FileRouteTypes {
     | '/services/timers'
     | '/shares/mounts'
     | '/shares/rsync'
+    | '/storage/btrfs'
     | '/storage/lvm'
     | '/storage/topology'
     | '/updates/history'
@@ -576,6 +587,7 @@ export interface FileRouteTypes {
     | '/services/timers'
     | '/shares/mounts'
     | '/shares/rsync'
+    | '/storage/btrfs'
     | '/storage/lvm'
     | '/storage/topology'
     | '/updates/history'
@@ -628,6 +640,7 @@ export interface FileRouteTypes {
     | '/_authenticated/services/timers'
     | '/_authenticated/shares/mounts'
     | '/_authenticated/shares/rsync'
+    | '/_authenticated/storage/btrfs'
     | '/_authenticated/storage/lvm'
     | '/_authenticated/storage/topology'
     | '/_authenticated/updates/history'
@@ -925,6 +938,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStorageIndexRouteImport
       parentRoute: typeof AuthenticatedStorageRouteRoute
     }
+    '/_authenticated/storage/btrfs': {
+      id: '/_authenticated/storage/btrfs'
+      path: '/btrfs'
+      fullPath: '/storage/btrfs'
+      preLoaderRoute: typeof AuthenticatedStorageBtrfsRouteImport
+      parentRoute: typeof AuthenticatedStorageRouteRoute
+    }
     '/_authenticated/storage/lvm': {
       id: '/_authenticated/storage/lvm'
       path: '/lvm'
@@ -1094,6 +1114,7 @@ const AuthenticatedSharesRouteRouteWithChildren =
   )
 
 interface AuthenticatedStorageRouteRouteChildren {
+  AuthenticatedStorageBtrfsRoute: typeof AuthenticatedStorageBtrfsRoute
   AuthenticatedStorageLvmRoute: typeof AuthenticatedStorageLvmRoute
   AuthenticatedStorageTopologyRoute: typeof AuthenticatedStorageTopologyRoute
   AuthenticatedStorageIndexRoute: typeof AuthenticatedStorageIndexRoute
@@ -1101,6 +1122,7 @@ interface AuthenticatedStorageRouteRouteChildren {
 
 const AuthenticatedStorageRouteRouteChildren: AuthenticatedStorageRouteRouteChildren =
   {
+    AuthenticatedStorageBtrfsRoute: AuthenticatedStorageBtrfsRoute,
     AuthenticatedStorageLvmRoute: AuthenticatedStorageLvmRoute,
     AuthenticatedStorageTopologyRoute: AuthenticatedStorageTopologyRoute,
     AuthenticatedStorageIndexRoute: AuthenticatedStorageIndexRoute,

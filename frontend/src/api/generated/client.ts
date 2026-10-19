@@ -244,9 +244,83 @@ const linuxio = {
     update_samba_share: defineCallWithRequest("shares.update_samba_share"),
   },
   storage: {
-    create_btrfs_subvolume: defineCallWithRequest(
-      "storage.create_btrfs_subvolume",
+    btrfs_balance: createTaskEndpoint("storage", "btrfs_balance", {
+      kind: "object",
+    }),
+    btrfs_balance_cancel: defineCallWithRequest("storage.btrfs_balance_cancel"),
+    btrfs_device_add: defineCallWithRequest("storage.btrfs_device_add"),
+    btrfs_device_remove: createTaskEndpoint("storage", "btrfs_device_remove", {
+      kind: "object",
+    }),
+    btrfs_device_replace: createTaskEndpoint(
+      "storage",
+      "btrfs_device_replace",
+      { kind: "object" },
     ),
+    btrfs_list: defineCall("storage.btrfs_list"),
+    btrfs_qgroup_limit: defineCallWithRequest("storage.btrfs_qgroup_limit"),
+    btrfs_replication_job_delete: defineCallWithRequest(
+      "storage.btrfs_replication_job_delete",
+    ),
+    btrfs_replication_job_set: defineCallWithRequest(
+      "storage.btrfs_replication_job_set",
+    ),
+    btrfs_replication_jobs: defineCall("storage.btrfs_replication_jobs"),
+    btrfs_replication_run: createTaskEndpoint(
+      "storage",
+      "btrfs_replication_run",
+      { kind: "field", field: "id" },
+    ),
+    btrfs_replication_ssh_key: defineCall("storage.btrfs_replication_ssh_key"),
+    btrfs_replication_ssh_trust: defineCallWithRequest(
+      "storage.btrfs_replication_ssh_trust",
+    ),
+    btrfs_scrub_cancel: defineCallWithRequest("storage.btrfs_scrub_cancel"),
+    btrfs_scrub_start: createTaskEndpoint("storage", "btrfs_scrub_start", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_set_compression: defineCallWithRequest(
+      "storage.btrfs_set_compression",
+    ),
+    btrfs_set_quotas: defineCallWithRequest("storage.btrfs_set_quotas"),
+    btrfs_settings: defineCallWithRequest("storage.btrfs_settings"),
+    btrfs_snapshot_create: defineCallWithRequest(
+      "storage.btrfs_snapshot_create",
+    ),
+    btrfs_snapshot_delete: defineCallWithRequest(
+      "storage.btrfs_snapshot_delete",
+    ),
+    btrfs_snapshot_rollback: createTaskEndpoint(
+      "storage",
+      "btrfs_snapshot_rollback",
+      { kind: "object" },
+    ),
+    btrfs_snapshot_rule_delete: defineCallWithRequest(
+      "storage.btrfs_snapshot_rule_delete",
+    ),
+    btrfs_snapshot_rule_set: defineCallWithRequest(
+      "storage.btrfs_snapshot_rule_set",
+    ),
+    btrfs_snapshot_rules: defineCall("storage.btrfs_snapshot_rules"),
+    btrfs_snapshot_run_now: defineCall("storage.btrfs_snapshot_run_now"),
+    btrfs_snapshots: defineCallWithRequest("storage.btrfs_snapshots"),
+    btrfs_subvolume_create: defineCallWithRequest(
+      "storage.btrfs_subvolume_create",
+    ),
+    btrfs_subvolume_delete: defineCallWithRequest(
+      "storage.btrfs_subvolume_delete",
+    ),
+    btrfs_subvolume_set_compression: defineCallWithRequest(
+      "storage.btrfs_subvolume_set_compression",
+    ),
+    btrfs_subvolume_set_default: defineCallWithRequest(
+      "storage.btrfs_subvolume_set_default",
+    ),
+    btrfs_subvolume_set_readonly: defineCallWithRequest(
+      "storage.btrfs_subvolume_set_readonly",
+    ),
+    btrfs_subvolumes: defineCallWithRequest("storage.btrfs_subvolumes"),
     create_lv: defineCallWithRequest("storage.create_lv"),
     delete_lv: defineCallWithRequest("storage.delete_lv"),
     get_btrfs_maintenance: defineCall("storage.get_btrfs_maintenance"),

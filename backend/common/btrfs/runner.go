@@ -1,0 +1,139 @@
+package btrfs
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+)
+
+const alertSource = "btrfs"
+
+// RunReport summarises one pass over the snapshot rules.
+type RunReport struct {
+	Taken   []BtrfsSnapshot `json:"taken"`
+	Pruned  []BtrfsSnapshot `json:"pruned"`
+	Skipped []string        `json:"skipped"`
+	Errors  []string        `json:"errors"`
+}
+
+// Run applies the rules: timeline runs enabled rules that are due, pre-update
+// runs rules with BeforeUpdates whether or not they are enabled; both then
+// prune, a disabled rule only its pre-update snapshots. Rule failures land in
+// the report and as alerts; only a done ctx is an error.
+func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind SnapshotKind) (RunReport, error) {
+	report := RunReport{Taken: []BtrfsSnapshot{}, Pruned: []BtrfsSnapshot{}, Skipped: []string{}, Errors: []string{}}
+	mounts, mountsErr := listMounts(ctx)
+	for _, rule := range rules {
+		if err := ctx.Err(); err != nil {
+			return report, err
+		}
+		if (kind == KindPreUpdate && !rule.BeforeUpdates) || (kind != KindPreUpdate && !rule.Enabled) {
+			continue
+		}
+		id, key := rule.UUID+"/"+rule.Path, snapshotAlertKey(rule.UUID, rule.Path)
+		err := mountsErr
+		if err == nil && !hasFilesystem(mounts, rule.UUID) {
+			report.Skipped = append(report.Skipped, id)
+			raiseAlert(ctx, alerts.Observation{
+				Source: alertSource, Key: key, Severity: alerts.SeverityWarning,
+				Title:        "Snapshot skipped for " + rule.Path,
+				Message:      "Filesystem " + rule.UUID + " is not mounted",
+				Link:         "/storage/btrfs?fs=" + rule.UUID,
+				OccurrenceID: "unmounted",
+			})
+			continue
+		}
+		if err == nil {
+			err = runRule(ctx, rule, now, kind, &report)
+		}
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return report, ctxErr
+			}
+			report.Errors = append(report.Errors, id+": "+err.Error())
+			raiseAlert(ctx, alerts.Observation{
+				Source: alertSource, Key: key, Severity: alerts.SeverityError,
+				Title:        "Snapshot failed for " + rule.Path,
+				Message:      truncate(err.Error(), alerts.MaxMessageLen),
+				Link:         "/storage/btrfs?fs=" + rule.UUID,
+				OccurrenceID: "failed",
+			})
+			continue
+		}
+		if err := alerts.Resolve(ctx, alertSource, key); err != nil {
+			slog.Warn("failed to resolve btrfs snapshot alert", "rule", id, "error", err)
+		}
+	}
+	return report, nil
+}
+
+func runRule(ctx context.Context, rule BtrfsSnapshotRule, now time.Time, kind SnapshotKind, report *RunReport) error {
+	snaps, err := ListSnapshots(ctx, rule.UUID, &rule.Path)
+	if err != nil {
+		return err
+	}
+	take := kind == KindPreUpdate
+	if kind == KindTimeline {
+		var newest *time.Time
+		for _, s := range snaps { // newest first
+			if s.Kind == KindTimeline {
+				newest = &s.CreatedAt
+				break
+			}
+		}
+		take = Due(rule, newest, now)
+	}
+	if take {
+		snap, err := CreateSnapshot(ctx, rule.UUID, rule.Path, kind, now)
+		if err != nil {
+			return err
+		}
+		report.Taken = append(report.Taken, snap)
+		snaps = append(snaps, snap)
+	}
+	if !rule.Enabled {
+		// Only BeforeUpdates runs a disabled rule: leave its timeline alone.
+		snaps = slices.DeleteFunc(snaps, func(s BtrfsSnapshot) bool { return s.Kind != KindPreUpdate })
+	}
+	for _, s := range Prune(snaps, rule.Keep) {
+		if err := DeleteSnapshot(ctx, rule.UUID, s.Path); err != nil {
+			return fmt.Errorf("prune %s: %w", s.Path, err)
+		}
+		report.Pruned = append(report.Pruned, s)
+	}
+	return nil
+}
+
+func hasFilesystem(mounts []Mount, uuid string) bool {
+	for _, m := range mounts {
+		if m.UUID == uuid {
+			return true
+		}
+	}
+	return false
+}
+
+// snapshotAlertKey is a stable alert key for a rule within the alert key
+// alphabet: the uuid prefix plus the sanitised, lower-cased path.
+func snapshotAlertKey(uuid, path string) string {
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			return r
+		}
+		return '-'
+	}, strings.ToLower(uuid[:min(len(uuid), 8)]+"-"+path))
+	return truncate("snapshot-"+safe, 64)
+}
+
+func truncate(s string, n int) string { return s[:min(len(s), n)] }
+
+func raiseAlert(ctx context.Context, obs alerts.Observation) {
+	if err := alerts.Raise(ctx, obs); err != nil {
+		slog.Warn("failed to raise btrfs snapshot alert", "key", obs.Key, "error", err)
+	}
+}
