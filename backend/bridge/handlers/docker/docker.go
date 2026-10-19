@@ -19,7 +19,6 @@ var (
 	dockerClient     *client.Client
 	dockerClientRefs int
 	dockerIdleTimer  *time.Timer
-	ensureNetOnce    sync.Once
 )
 
 // getClient returns the shared Docker client, creating it if necessary.
@@ -40,12 +39,6 @@ func getClient() (*client.Client, error) {
 			return nil, err
 		}
 		dockerClient = cli
-		// Ensure the shared Docker network exists once per client lifetime.
-		go ensureNetOnce.Do(func() {
-			ctx, cancel := detachedDockerStartupContext()
-			defer cancel()
-			EnsureLinuxIONetwork(ctx)
-		})
 	}
 
 	dockerClientRefs++
@@ -77,8 +70,6 @@ func releaseClient(_ *client.Client) {
 		_ = dockerClient.Close()
 		dockerClient = nil
 		dockerIdleTimer = nil
-		// Allow EnsureLinuxIONetwork to run again for the next client.
-		ensureNetOnce = sync.Once{}
 		slog.Debug("docker client closed after idle timeout", "component", "docker", "mode", dockerIdleTimeout.String())
 		// Force GC and return freed pages to the OS immediately.
 		go func() {
@@ -105,9 +96,4 @@ func CheckDockerAvailability(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
 	return true, nil
-}
-
-// detachedDockerStartupContext bounds Docker setup work started from client creation.
-func detachedDockerStartupContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), 30*time.Second)
 }

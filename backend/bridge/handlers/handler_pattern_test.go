@@ -175,9 +175,6 @@ func isAllowedBackground(path, funcName string) bool {
 		"appupdate/app_update_operation.go": {
 			"detachedPostUpdateContext": true,
 		},
-		"docker/docker.go": {
-			"detachedDockerStartupContext": true,
-		},
 		"filebrowser/filebrowser.go": {
 			"runDetachedIndexerUpdate": true,
 		},

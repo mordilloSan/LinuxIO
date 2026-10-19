@@ -131,13 +131,7 @@ function mergeBridgeConfig(previous: AppConfig, patch: ConfigPatch): AppConfig {
       ...pickImportantAppSettings(patch.appSettings ?? {}),
     },
     docker: patch.docker
-      ? {
-          ...previous.docker,
-          ...patch.docker,
-          proxy: patch.docker.proxy
-            ? { ...previous.docker.proxy, ...patch.docker.proxy }
-            : previous.docker.proxy,
-        }
+      ? { ...previous.docker, ...patch.docker }
       : previous.docker,
     jobs: patch.jobs ? { ...previous.jobs, ...patch.jobs } : previous.jobs,
     dismissals:

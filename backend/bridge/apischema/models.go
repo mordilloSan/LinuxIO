@@ -411,7 +411,6 @@ type ContainerInfo struct {
 	Names             []string                  `json:"Names"`
 	NetworkSettings   *ContainerNetworkSettings `json:"NetworkSettings,omitempty"`
 	Ports             []ContainerPort           `json:"Ports,omitempty"`
-	ProxyPort         *string                   `json:"proxyPort,omitempty"`
 	State             string                    `json:"State"`
 	Status            string                    `json:"Status"`
 	UpdateAvailable   *bool                     `json:"updateAvailable,omitempty"`
@@ -1365,19 +1364,6 @@ type UpdatesFastResponse struct {
 	Updates []UpdateItem `json:"updates,omitempty"`
 }
 
-type CaddyStatusResponse struct {
-	Enabled    bool         `json:"enabled"`
-	BaseDomain string       `json:"baseDomain"`
-	Running    bool         `json:"running"`
-	Routes     []CaddyRoute `json:"routes"`
-}
-
-type CaddyRoute struct {
-	Host      string `json:"host"`
-	Container string `json:"container"`
-	Port      string `json:"port"`
-}
-
 type ComposeFilePathResponse struct {
 	Path      string `json:"path"`
 	Exists    bool   `json:"exists"`
@@ -1599,16 +1585,9 @@ type UIConfig struct {
 	ViewModeDefault         TableCardViewMode               `json:"viewModeDefault"`
 }
 
-type DockerProxySettings struct {
-	BaseDomain   *string `json:"baseDomain,omitempty"`
-	CaddyEnabled bool    `json:"caddyEnabled"`
-	TLSEmail     *string `json:"tlsEmail,omitempty"`
-}
-
 type DockerSettings struct {
-	Folders                 []string            `json:"folders"`
-	RequireMountsForFolders bool                `json:"requireMountsForFolders"`
-	Proxy                   DockerProxySettings `json:"proxy"`
+	Folders                 []string `json:"folders"`
+	RequireMountsForFolders bool     `json:"requireMountsForFolders"`
 }
 
 type JobSettings struct {

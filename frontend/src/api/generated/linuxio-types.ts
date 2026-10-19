@@ -559,19 +559,6 @@ export interface CPUInfoResponse {
   vendorId: string;
 }
 
-export interface CaddyRoute {
-  host: string;
-  container: string;
-  port: string;
-}
-
-export interface CaddyStatusResponse {
-  enabled: boolean;
-  baseDomain: string;
-  running: boolean;
-  routes: CaddyRoute[];
-}
-
 export interface CapabilitiesResponse {
   docker_available: boolean;
   docker_updates_available: boolean;
@@ -710,13 +697,6 @@ export interface ConfigDockerDashboardSections {
 export interface ConfigDockerPayload {
   folders?: string[];
   requireMountsForFolders?: boolean;
-  proxy?: ConfigDockerProxyPayload;
-}
-
-export interface ConfigDockerProxyPayload {
-  caddyEnabled?: boolean;
-  baseDomain?: string;
-  tlsEmail?: string;
 }
 
 export interface ConfigHardwareSections {
@@ -857,7 +837,6 @@ export interface ContainerInfo {
   Names: string[];
   NetworkSettings?: ContainerNetworkSettings;
   Ports?: ContainerPort[];
-  proxyPort?: string;
   State: string;
   Status: string;
   updateAvailable?: boolean;
@@ -1293,16 +1272,9 @@ export interface DockerNetworkIPAMConfig {
   Subnet: string;
 }
 
-export interface DockerProxySettings {
-  baseDomain?: string;
-  caddyEnabled: boolean;
-  tlsEmail?: string;
-}
-
 export interface DockerSettings {
   folders: string[];
   requireMountsForFolders: boolean;
-  proxy: DockerProxySettings;
 }
 
 export interface DockerStartedFailedResponse {
@@ -3479,11 +3451,6 @@ export interface LinuxIOSchema {
       request: DockerNetworkConnectRequest;
       result: void;
     };
-    connect_to_proxy: {
-      input: [containerId: string];
-      request: ContainerIDRequest;
-      result: MessageResponse;
-    };
     create_container: {
       input: [request: ContainerCreateRequest];
       request: ContainerCreateRequest;
@@ -3515,7 +3482,6 @@ export interface LinuxIOSchema {
       request: NameRequest;
       result: void;
     };
-    disable_caddy: { input: []; request: void; result: MessageResponse };
     disconnect_network: {
       input: [request: DockerNetworkDisconnectRequest];
       request: DockerNetworkDisconnectRequest;
@@ -3526,8 +3492,6 @@ export interface LinuxIOSchema {
       request: ContainerEditRequest;
       result: ContainerConfigurationResult;
     };
-    enable_caddy: { input: []; request: void; result: MessageResponse };
-    get_caddy_status: { input: []; request: void; result: CaddyStatusResponse };
     get_compose_file_path: {
       input: [stackName: string];
       request: StackNameRequest;
@@ -3589,7 +3553,6 @@ export interface LinuxIOSchema {
       request: ContainerIDRequest;
       result: void;
     };
-    reload_caddy: { input: []; request: void; result: MessageResponse };
     remove_container: {
       input: [request: ContainerRemoveRequest];
       request: ContainerRemoveRequest;
@@ -4625,10 +4588,6 @@ export interface LinuxIOCallSchema {
     request: DockerNetworkConnectRequest;
     result: void;
   };
-  "docker.connect_to_proxy": {
-    request: ContainerIDRequest;
-    result: MessageResponse;
-  };
   "docker.create_container": {
     request: ContainerCreateRequest;
     result: ContainerConfigurationResult;
@@ -4645,7 +4604,6 @@ export interface LinuxIOCallSchema {
     result: DeleteStackResult;
   };
   "docker.delete_volume": { request: NameRequest; result: void };
-  "docker.disable_caddy": { request: void; result: MessageResponse };
   "docker.disconnect_network": {
     request: DockerNetworkDisconnectRequest;
     result: void;
@@ -4654,8 +4612,6 @@ export interface LinuxIOCallSchema {
     request: ContainerEditRequest;
     result: ContainerConfigurationResult;
   };
-  "docker.enable_caddy": { request: void; result: MessageResponse };
-  "docker.get_caddy_status": { request: void; result: CaddyStatusResponse };
   "docker.get_compose_file_path": {
     request: StackNameRequest;
     result: ComposeFilePathResponse;
@@ -4694,7 +4650,6 @@ export interface LinuxIOCallSchema {
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };
   "docker.pause_container": { request: ContainerIDRequest; result: void };
-  "docker.reload_caddy": { request: void; result: MessageResponse };
   "docker.remove_container": { request: ContainerRemoveRequest; result: void };
   "docker.restart_container": { request: ContainerIDRequest; result: void };
   "docker.set_container_auto_update": {

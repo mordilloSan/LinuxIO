@@ -796,15 +796,8 @@ type ConfigHardwareSections struct {
 }
 
 type ConfigDockerPayload struct {
-	Folders                 []string                  `json:"folders,omitempty"`
-	RequireMountsForFolders *bool                     `json:"requireMountsForFolders,omitempty"`
-	Proxy                   *ConfigDockerProxyPayload `json:"proxy,omitempty"`
-}
-
-type ConfigDockerProxyPayload struct {
-	CaddyEnabled *bool   `json:"caddyEnabled,omitempty"`
-	BaseDomain   *string `json:"baseDomain,omitempty"`
-	TLSEmail     *string `json:"tlsEmail,omitempty"`
+	Folders                 []string `json:"folders,omitempty"`
+	RequireMountsForFolders *bool    `json:"requireMountsForFolders,omitempty"`
 }
 
 type ConfigJobSettingsPayload struct {

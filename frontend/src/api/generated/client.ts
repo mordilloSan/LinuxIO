@@ -63,7 +63,6 @@ const linuxio = {
     compose_stop: defineCallWithRequest("docker.compose_stop"),
     compose_up: defineCallWithRequest("docker.compose_up"),
     connect_network: defineCallWithRequest("docker.connect_network"),
-    connect_to_proxy: defineCallWithRequest("docker.connect_to_proxy"),
     create_container: defineCallWithRequest("docker.create_container"),
     create_network: defineCallWithRequest("docker.create_network"),
     create_volume: defineCallWithRequest("docker.create_volume"),
@@ -71,11 +70,8 @@ const linuxio = {
     delete_network: defineCallWithRequest("docker.delete_network"),
     delete_stack: defineCallWithRequest("docker.delete_stack"),
     delete_volume: defineCallWithRequest("docker.delete_volume"),
-    disable_caddy: defineCall("docker.disable_caddy"),
     disconnect_network: defineCallWithRequest("docker.disconnect_network"),
     edit_container: defineCallWithRequest("docker.edit_container"),
-    enable_caddy: defineCall("docker.enable_caddy"),
-    get_caddy_status: defineCall("docker.get_caddy_status"),
     get_compose_file_path: defineCallWithRequest(
       "docker.get_compose_file_path",
     ),
@@ -95,7 +91,6 @@ const linuxio = {
     list_networks: defineCall("docker.list_networks"),
     list_volumes: defineCall("docker.list_volumes"),
     pause_container: defineCallWithRequest("docker.pause_container"),
-    reload_caddy: defineCall("docker.reload_caddy"),
     remove_container: defineCallWithRequest("docker.remove_container"),
     restart_container: defineCallWithRequest("docker.restart_container"),
     set_container_auto_update: defineCallWithRequest(

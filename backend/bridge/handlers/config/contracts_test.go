@@ -16,11 +16,6 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 		Docker: bridgeconfig.Docker{
 			Folders:                 []bridgeconfig.AbsolutePath{"/srv/docker", "/mnt/apps"},
 			RequireMountsForFolders: true,
-			Proxy: bridgeconfig.DockerProxy{
-				CaddyEnabled: true,
-				BaseDomain:   "apps.example.test",
-				TLSEmail:     "admin@example.test",
-			},
 		},
 		Jobs: bridgeconfig.PersistedJobSettings{
 			ProgressMinIntervalMs:     100,

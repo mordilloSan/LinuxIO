@@ -10,7 +10,6 @@ import type {
   ConfigThemeColorsByModePayload,
   Dismissals,
   DockTileColors,
-  DockerProxySettings,
   DockerSettings,
   JobSettings,
   NavigationMode,
@@ -50,9 +49,7 @@ export interface ConfigPatch {
   appSettings?: Partial<ConfigValueMap>;
   assistant?: Partial<AssistantSettings>;
   dismissals?: Partial<Dismissals>;
-  docker?: Partial<Omit<DockerSettings, "proxy">> & {
-    proxy?: Partial<DockerProxySettings>;
-  };
+  docker?: Partial<DockerSettings>;
   jobs?: Partial<JobSettings>;
 }
 

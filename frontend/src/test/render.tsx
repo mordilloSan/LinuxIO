@@ -134,7 +134,6 @@ export function buildTestConfigSnapshots(
     assistant: { agent: "" },
     docker: {
       folders: [],
-      proxy: { caddyEnabled: false },
       requireMountsForFolders: false,
     },
     jobs: {

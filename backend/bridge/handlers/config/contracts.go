@@ -14,8 +14,6 @@ func appConfigToAPI(value bridgeconfig.Settings, storageMode bridgeconfig.Storag
 		},
 		Docker: apischema.DockerSettings{
 			Folders: absolutePathsToStrings(value.Docker.Folders), RequireMountsForFolders: value.Docker.RequireMountsForFolders,
-			Proxy: apischema.DockerProxySettings{CaddyEnabled: value.Docker.Proxy.CaddyEnabled,
-				BaseDomain: optionalString(value.Docker.Proxy.BaseDomain), TLSEmail: optionalString(value.Docker.Proxy.TLSEmail)},
 		},
 		Jobs: apischema.JobSettings{
 			ProgressMinIntervalMs: value.Jobs.ProgressMinIntervalMs, NotificationMinIntervalMs: value.Jobs.NotificationMinIntervalMs,

@@ -17,66 +17,6 @@ import (
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
-const linuxIONetworkName = "linuxio-docker"
-
-// EnsureLinuxIONetwork checks that the linuxio-docker bridge network exists and
-// creates it if it does not. Failures are logged but never fatal — the bridge
-// starts normally even when Docker is unavailable.
-func EnsureLinuxIONetwork(ctx context.Context) {
-	cli, err := getClient()
-	if err != nil {
-		slog.Debug("cannot ensure docker network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
-		return
-	}
-	defer releaseClient(cli)
-
-	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{
-		Filters: client.Filters{}.Add("name", linuxIONetworkName),
-	})
-	if err != nil {
-		slog.Warn("failed to list docker networks", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
-		return
-	}
-
-	// NetworkList filter is a substring match — verify exact name.
-	for _, nw := range networks.Items {
-		if nw.Name == linuxIONetworkName {
-			slog.Debug("docker network already exists", "component", "docker", "subsystem", "network", "network", linuxIONetworkName)
-			return
-		}
-	}
-
-	_, err = cli.NetworkCreate(ctx, linuxIONetworkName, client.NetworkCreateOptions{
-		Driver: "bridge",
-		Labels: map[string]string{
-			"io.linuxio.managed": "true",
-		},
-	})
-	if err != nil {
-		slog.Warn("failed to create docker network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName, "error", err)
-		return
-	}
-	slog.Info("created docker bridge network", "component", "docker", "subsystem", "network", "network", linuxIONetworkName)
-}
-
-// connectToProxyNetwork attaches a container to the linuxio-docker bridge so the
-// built-in path proxy can reach it. The call is idempotent — Docker returns a
-// "already exists" error which is silently ignored.
-func connectToProxyNetwork(ctx context.Context, containerID string) {
-	cli, err := getClient()
-	if err != nil {
-		slog.Debug("failed to get docker client for proxy network connect", "component", "docker", "subsystem", "network", "container", containerID, "error", err)
-		return
-	}
-	defer releaseClient(cli)
-
-	_, err = cli.NetworkConnect(ctx, linuxIONetworkName, client.NetworkConnectOptions{Container: containerID})
-	if err != nil {
-		// "already connected" is expected and harmless
-		slog.Debug("docker proxy network connect returned error", "component", "docker", "subsystem", "network", "container", containerID, "network", linuxIONetworkName, "error", err)
-	}
-}
-
 // List all networks
 func ListDockerNetworks(ctx context.Context) ([]apischema.DockerNetwork, error) {
 	cli, err := getClient()

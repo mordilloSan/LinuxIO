@@ -144,8 +144,6 @@ labels:
   - "io.linuxio.container.url=https://example.local"
 ```
 
-When `io.linuxio.container.proxy.port` is present and no explicit URL is set, LinuxIO derives a local proxy URL from the icon/container name.
-
 ## Cache Layout
 
 Remote icons are cached in `/var/lib/linuxio/icons/` and refreshed after 24 hours. The cache survives reboots; when a refresh fails (for example, offline), the expired copy is served instead:
