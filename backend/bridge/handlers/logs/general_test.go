@@ -504,8 +504,7 @@ func TestGeneralLogsChannelFollowReceivesNewEntries(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if err := exec.Command("logger", "-t", "linuxio-test", marker).Run(); err != nil {
 		cancel()
-		<-done
-		t.Skipf("logger failed: %v", err)
+		t.Skipf("logger failed: %v (follow returned %v)", err, <-done)
 	}
 
 	found := false
@@ -526,7 +525,10 @@ func TestGeneralLogsChannelFollowReceivesNewEntries(t *testing.T) {
 	}
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("follow phase returned %v after cancellation", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("follow phase did not exit after cancellation")
 	}

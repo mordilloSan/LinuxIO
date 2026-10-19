@@ -80,7 +80,10 @@ func TestHandleTerminalSessionReturnsWhenStreamCloses(t *testing.T) {
 	}
 
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("HandleTerminalSession returned %v after the stream closed", err)
+		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("HandleTerminalSession did not return after the stream closed")
 	}

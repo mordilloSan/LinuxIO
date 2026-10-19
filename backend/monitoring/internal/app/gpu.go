@@ -779,7 +779,6 @@ func parseCollectorPriority(value string) []collectorSource {
 // startNvmlCollector initializes NVML and starts its polling loop.
 func (gm *GPUManager) startNvmlCollector(ctx context.Context) bool {
 	collector := &nvmlCollector{gm: gm}
-	//nolint:staticcheck // SA4023: init always fails in the non-glibc stub build; the glibc build can return nil.
 	if err := collector.init(); err != nil {
 		slog.Warn("Failed to initialize NVML", "err", err)
 		return false
@@ -795,7 +794,6 @@ func (gm *GPUManager) startNvmlCollector(ctx context.Context) bool {
 // aggregate backend while still exposing PID-level GPU samples.
 func (gm *GPUManager) startNvmlProcessCollector(ctx context.Context) bool {
 	collector := &nvmlCollector{gm: gm, processOnly: true}
-	//nolint:staticcheck // SA4023: init always fails in the non-glibc stub build; the glibc build can return nil.
 	if err := collector.init(); err != nil {
 		slog.Warn("Failed to initialize NVML GPU process collection", "err", err)
 		return false

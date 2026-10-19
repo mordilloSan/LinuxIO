@@ -153,7 +153,8 @@ func TestHandleAssistantSessionStopsAgentWhenStreamCloses(t *testing.T) {
 	require.NoError(t, client.Close())
 
 	select {
-	case <-done:
+	case err := <-done:
+		require.NoError(t, err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("handler did not return after the stream closed")
 	}
