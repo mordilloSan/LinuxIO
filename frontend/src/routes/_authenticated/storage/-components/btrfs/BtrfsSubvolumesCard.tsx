@@ -13,6 +13,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCardContent from "@/components/ui/AppCardContent";
@@ -23,28 +24,20 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
-import { BTRFS_TOAST_META } from "./btrfsShared";
+import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
 
 const GIB = 1024 ** 3;
 
 type SubvolumeRequest = CallRequest<"storage.btrfs_subvolume_delete">;
 
-interface BtrfsSubvolumesCardProps {
-  /** Wired by the Snapshots card; the row action is hidden until then. */
-  onSnapshot?: (subvolume: BtrfsSubvolume) => void;
-  uuid: string;
-}
-
-const BtrfsSubvolumesCard = ({
-  uuid,
-  onSnapshot,
-}: BtrfsSubvolumesCardProps) => {
+const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
   // Lazy: the route loader cannot know the selected filesystem's uuid.
   const {
     data = [],
@@ -52,6 +45,7 @@ const BtrfsSubvolumesCard = ({
     isPending,
   } = useQuery(linuxio.storage.btrfs_subvolumes({ uuid }));
   const [creating, setCreating] = useState(false);
+  const [showSystem, setShowSystem] = useState(false);
   const [newPath, setNewPath] = useState("");
   const [deleting, setDeleting] = useState<BtrfsSubvolume | null>(null);
   const [limiting, setLimiting] = useState<BtrfsSubvolume | null>(null);
@@ -105,7 +99,14 @@ const BtrfsSubvolumesCard = ({
     },
   );
 
-  const subvolumes = data.filter((subvolume) => !subvolume.isSnapshot);
+  const subvolumes = data.filter(
+    (subvolume) =>
+      !subvolume.isSnapshot &&
+      (showSystem || !isSystemSubvolume(subvolume.path)),
+  );
+  const hasSystem = data.some(
+    (subvolume) => !subvolume.isSnapshot && isSystemSubvolume(subvolume.path),
+  );
   const hasSizes = subvolumes.some(
     (subvolume) => subvolume.referencedBytes !== undefined,
   );
@@ -157,11 +158,14 @@ const BtrfsSubvolumesCard = ({
 
   const columns: AppVirtualTableColumnDef<BtrfsSubvolume>[] = [
     { accessorKey: "path", header: "Path" },
-    { accessorKey: "id", header: "ID", meta: { align: "right" } },
     {
       accessorKey: "mountpoint",
       header: "Mounted at",
-      cell: ({ row }) => row.original.mountpoint ?? "-",
+      cell: ({ row }) => (
+        <AppTypography color="text.secondary" variant="caption">
+          {row.original.mountpoint ?? "-"}
+        </AppTypography>
+      ),
     },
     {
       id: "readOnly",
@@ -194,7 +198,7 @@ const BtrfsSubvolumesCard = ({
               row.original.referencedBytes === undefined ? (
                 "-"
               ) : (
-                <>
+                <AppTypography color="text.secondary" variant="caption">
                   {formatFileSize(row.original.referencedBytes)}
                   {row.original.maxReferencedBytes !== undefined && (
                     <AppTypography
@@ -205,7 +209,7 @@ const BtrfsSubvolumesCard = ({
                       Limit {formatFileSize(row.original.maxReferencedBytes)}
                     </AppTypography>
                   )}
-                </>
+                </AppTypography>
               ),
             meta: { align: "right" },
           } satisfies AppVirtualTableColumnDef<BtrfsSubvolume>,
@@ -215,52 +219,34 @@ const BtrfsSubvolumesCard = ({
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          {onSnapshot && (
-            <AppButton
-              onClick={() => onSnapshot(row.original)}
-              size="small"
-              variant="outlined"
-            >
-              Snapshot
-            </AppButton>
-          )}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
           {hasSizes && (
-            <AppButton
+            <AppActionIconButton
+              icon="mdi:gauge"
+              label="Limit"
               onClick={() => openLimit(row.original)}
-              size="small"
-              variant="outlined"
-            >
-              Limit
-            </AppButton>
+            />
           )}
-          <AppButton
+          <AppActionIconButton
+            icon="mdi:zip-box-outline"
+            label="Compression"
             onClick={() => {
               setCompressing(row.original);
               setAlgorithm("none");
             }}
-            size="small"
-            variant="outlined"
-          >
-            Compression
-          </AppButton>
-          <AppButton
+          />
+          <AppActionIconButton
             disabled={row.original.isDefault}
+            icon="mdi:star-outline"
+            label="Set default"
             onClick={() => setDefault(request(row.original))}
-            size="small"
-            variant="outlined"
-          >
-            Set default
-          </AppButton>
-          <AppButton
-            color="error"
+          />
+          <AppActionIconButton
             disabled={row.original.isDefault || !!row.original.mountpoint}
+            icon="mdi:delete"
+            label="Delete"
             onClick={() => setDeleting(row.original)}
-            size="small"
-            variant="outlined"
-          >
-            Delete
-          </AppButton>
+          />
         </div>
       ),
       meta: { align: "right" },
@@ -273,15 +259,29 @@ const BtrfsSubvolumesCard = ({
         <CardIconHeader
           icon={<Icon height={24} icon="mdi:folder-multiple" width={24} />}
           right={
-            <AppButton
-              onClick={() => setCreating(true)}
-              size="small"
-              variant="outlined"
-            >
-              Create subvolume
-            </AppButton>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {hasSystem && (
+                <AppFormControlLabel
+                  control={
+                    <AppSwitch
+                      checked={showSystem}
+                      onChange={(_, checked) => setShowSystem(checked)}
+                      size="small"
+                    />
+                  }
+                  label="Show system subvolumes"
+                />
+              )}
+              <AppButton
+                onClick={() => setCreating(true)}
+                size="small"
+                variant="outlined"
+              >
+                Create subvolume
+              </AppButton>
+            </div>
           }
-          subtitle={`${subvolumes.length} subvolume(s)`}
+          subtitle="Parts of the filesystem that are snapshotted and restored separately"
           title="Subvolumes"
         />
         {error && <AppAlert severity="error">{error.message}</AppAlert>}
@@ -339,8 +339,8 @@ const BtrfsSubvolumesCard = ({
         <AppDialogTitle>Delete subvolume</AppDialogTitle>
         <AppDialogContent>
           <AppDialogContentText>
-            Delete the subvolume <strong>{deleting?.path}</strong>? All data in
-            it is lost and this cannot be undone.
+            Delete the subvolume <strong>{deleting?.path}</strong>? Every file
+            in it is lost. Its snapshots are kept. This cannot be undone.
           </AppDialogContentText>
         </AppDialogContent>
         <AppDialogActions>

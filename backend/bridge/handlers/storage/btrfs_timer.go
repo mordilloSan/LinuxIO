@@ -2,10 +2,13 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
 	"slices"
+
+	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
@@ -75,6 +78,10 @@ func syncBtrfsTimer(ctx context.Context, ops btrfsTimerOps, paths btrfsTimerPath
 
 func btrfsTimerEnabled(ctx context.Context, ops btrfsTimerOps) (bool, error) {
 	state, err := ops.getUnitFileState(ctx, btrfs.SnapshotTimerName)
+	var dbusErr godbus.Error
+	if errors.As(err, &dbusErr) && dbusErr.Name == "org.freedesktop.DBus.Error.FileNotFound" {
+		return false, nil // the timer unit is written on the first rule or job
+	}
 	if err != nil {
 		return false, fmt.Errorf("read %s unit state: %w", btrfs.SnapshotTimerName, err)
 	}

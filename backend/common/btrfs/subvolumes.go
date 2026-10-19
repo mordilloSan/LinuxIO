@@ -47,9 +47,11 @@ type subvolumeRow struct {
 }
 
 var (
+	// btrfs-progs pads each uuid column to 36 characters, so "-" is
+	// followed by a run of spaces; otime precedes the uuid columns.
 	subvolumeLine = regexp.MustCompile(`^ID (\d+) gen \d+(?: cgen \d+)?(?: parent (\d+))? top level \d+` +
-		`(?: parent_uuid (\S+) received_uuid (\S+) uuid (\S+))?` +
-		`(?: otime (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d|-))? path (.+)$`)
+		`(?: otime (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d|-))?` +
+		`(?: parent_uuid (\S+) +received_uuid (\S+) +uuid (\S+))? +path (.+)$`)
 	defaultSubvolumeLine = regexp.MustCompile(`^ID (\d+)`)
 )
 
@@ -75,8 +77,8 @@ func parseSubvolumeList(out string) ([]subvolumeRow, error) {
 		parent, _ := strconv.Atoi(m[2])
 		rows = append(rows, subvolumeRow{
 			ID: id, ParentID: parent,
-			ParentUUID: unset(m[3]), ReceivedUUID: unset(m[4]), UUID: unset(m[5]),
-			OTime: m[6], Path: strings.TrimPrefix(m[7], "<FS_TREE>/"),
+			OTime: m[3], ParentUUID: unset(m[4]), ReceivedUUID: unset(m[5]), UUID: unset(m[6]),
+			Path: strings.TrimPrefix(m[7], "<FS_TREE>/"),
 		})
 	}
 	return rows, nil

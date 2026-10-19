@@ -103,11 +103,11 @@ describe("BtrfsPage", () => {
     const select = await screen.findByRole("combobox", {
       name: "Filesystem",
     });
-    expect(select).toHaveTextContent("data · /mnt/data");
+    expect(select).toHaveTextContent("/mnt/data · data");
 
     await user.click(select);
     await user.click(
-      screen.getByRole("option", { name: "uuid-backup · /mnt/backup" }),
+      screen.getByRole("option", { name: "/mnt/backup · uuid-backup" }),
     );
     expect(onSelect).toHaveBeenCalledWith("uuid-backup");
   });
@@ -121,18 +121,34 @@ describe("BtrfsPage", () => {
     );
     expect(
       await screen.findByRole("combobox", { name: "Filesystem" }),
-    ).toHaveTextContent("data · /mnt/data");
+    ).toHaveTextContent("/mnt/data · data");
   });
 
-  it("lists the subvolumes of the selected filesystem", async () => {
+  it("hides the picker when only one filesystem is mounted", async () => {
+    mocks.list.mockResolvedValue([data]);
+    renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} />, {
+      capabilities,
+    });
+    expect(await screen.findByText("Health")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Filesystem" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the advanced cards collapsed until asked", async () => {
+    const user = userEvent.setup();
     renderWithTanStackRouter(
       <BtrfsPage selectedUuid="uuid-data" onSelect={vi.fn()} />,
       { capabilities },
     );
-    // The Subvolumes and Automatic snapshots cards both list them.
-    expect(await screen.findAllByText("No subvolumes found")).toHaveLength(2);
-    expect(screen.getByText("Automatic snapshots")).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(await screen.findByText("Automatic snapshots")).toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
+    expect(screen.queryByText("Subvolumes")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    expect(await screen.findByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Subvolumes")).toBeInTheDocument();
+    expect(screen.getByText("Devices")).toBeInTheDocument();
   });
 
   it("says when no btrfs filesystem is mounted", async () => {

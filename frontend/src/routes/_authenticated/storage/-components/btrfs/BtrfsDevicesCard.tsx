@@ -66,10 +66,6 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     linuxio.storage.btrfs_balance_cancel,
     { error: "Failed to cancel balance", toast: BTRFS_TOAST_META },
   );
-  const { mutate: cancelScrub } = useCallMutation(
-    linuxio.storage.btrfs_scrub_cancel,
-    { error: "Failed to cancel scrub", toast: BTRFS_TOAST_META },
-  );
   const taskConfig = (success: string, error: string) => ({
     onProgress: (taskProgress: TaskProgress<BtrfsOpProgress>) =>
       setProgress(taskProgress.detail ?? null),
@@ -91,10 +87,6 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     BtrfsFilesystem,
     TaskProgress<BtrfsOpProgress>
   >(taskConfig("Balance finished", "Failed to balance filesystem"));
-  const scrub = linuxio.storage.btrfs_scrub_start.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Scrub finished", "Failed to scrub filesystem"));
 
   // Balance is the long task, so it is the only one re-attached after a reload.
   useActiveTaskRecovery({
@@ -105,11 +97,10 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   });
 
   const pending =
-    removeDevice.isPending ||
-    replaceDevice.isPending ||
-    balance.isPending ||
-    scrub.isPending;
-  const scrubRunning = filesystem.scrub.status === "running";
+    removeDevice.isPending || replaceDevice.isPending || balance.isPending;
+  // No profile can live on zero devices, so the last present one must stay.
+  const lastDevice =
+    filesystem.devices.filter((device) => !device.missing).length <= 1;
   const closeDialog = () => setDialog(null);
   const start = (action: () => void) => {
     closeDialog();
@@ -137,19 +128,37 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     {
       accessorKey: "sizeBytes",
       header: "Size",
-      cell: ({ row }) => formatFileSize(row.original.sizeBytes),
+      cell: ({ row }) => (
+        <AppTypography color="text.secondary" variant="caption">
+          {formatFileSize(row.original.sizeBytes)}
+        </AppTypography>
+      ),
       meta: { align: "right" },
     },
     {
       accessorKey: "usedBytes",
       header: "Used",
-      cell: ({ row }) => formatFileSize(row.original.usedBytes),
+      cell: ({ row }) => (
+        <AppTypography color="text.secondary" variant="caption">
+          {formatFileSize(row.original.usedBytes)}
+        </AppTypography>
+      ),
       meta: { align: "right" },
     },
     {
       id: "errors",
       header: "Errors",
-      cell: ({ row }) => deviceErrorCount(row.original),
+      cell: ({ row }) => {
+        const errors = deviceErrorCount(row.original);
+        return (
+          <AppTypography
+            color={errors > 0 ? "error" : "text.secondary"}
+            variant="caption"
+          >
+            {errors}
+          </AppTypography>
+        );
+      },
       meta: { align: "right" },
     },
     {
@@ -164,7 +173,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
             onClick={() => setDialog({ kind: "replace", device: row.original })}
           />
           <AppActionIconButton
-            disabled={pending}
+            disabled={pending || lastDevice}
             icon="mdi:delete"
             label="Remove"
             onClick={() => setDialog({ kind: "remove", device: row.original })}
@@ -194,20 +203,6 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
                 label="Change profile"
                 onClick={() => setDialog({ kind: "balance" })}
               />
-              {scrubRunning ? (
-                <AppActionIconButton
-                  icon="mdi:stop"
-                  label="Cancel scrub"
-                  onClick={() => cancelScrub({ uuid })}
-                />
-              ) : (
-                <AppActionIconButton
-                  disabled={pending}
-                  icon="mdi:shield-search"
-                  label="Scrub now"
-                  onClick={() => scrub.mutate({ uuid })}
-                />
-              )}
             </div>
           }
           subtitle={`${filesystem.devices.length} device(s)`}
@@ -297,7 +292,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
         <AppDialogContent>
           <AppDialogContentText>
             {dialog?.kind === "remove" &&
-              `Remove ${deviceName(dialog.device)} from the filesystem? Data is migrated to the remaining devices first.`}
+              `Remove ${deviceName(dialog.device)} from the filesystem? Data is migrated to the remaining devices first, which can take a long time.`}
           </AppDialogContentText>
         </AppDialogContent>
         <AppDialogActions>

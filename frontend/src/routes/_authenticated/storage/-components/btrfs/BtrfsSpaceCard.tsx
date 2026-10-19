@@ -28,8 +28,11 @@ const BtrfsSpaceCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => (
           />
         </div>
       ))}
-      <InfoRow label="Unallocated" noBorder>
+      <InfoRow label="Unallocated">
         {formatFileSize(filesystem.unallocatedBytes)}
+      </InfoRow>
+      <InfoRow label="UUID" noBorder>
+        {filesystem.uuid}
       </InfoRow>
     </AppCardContent>
   </FrostedCard>

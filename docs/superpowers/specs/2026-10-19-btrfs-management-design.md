@@ -73,9 +73,12 @@ filesystem show in the subvolume list, not the snapshot list.
   `storageTabs.ts`, loader-prefetched like `lvm.tsx`.
 - Selected filesystem is URL state: validated search param `fs=<uuid>`,
   defaulting to the first filesystem.
-- Page layout per the detail-card density preference: an `AppGrid` of small
-  titled cards: **Health**, **Devices**, **Space**, **Subvolumes**,
-  **Snapshots**, **Automatic snapshots**, **Replication**, **Settings**.
+- Page layout: a **Health** card (status, space used, integrity check) and a
+  **Snapshots** card (list, take, restore, delete, with the **Automatic
+  snapshots** rules embedded) are always visible. **Devices**, **Space**,
+  **Subvolumes**, **Replication** and **Settings** sit in a collapsed
+  **Advanced** section. The filesystem picker only appears with more than one
+  filesystem, and distro/container-runtime subvolumes are hidden by default.
   All built from `components/ui` and `--app-*` variables.
 - The existing "Create subvolume" field and `BtrfsMaintenanceControls` move
   from `FilesystemCard` into the Btrfs tab's Subvolumes and Settings cards;
@@ -164,7 +167,9 @@ Each phase is independently shippable and gets its own plan section.
 
 - Config `/etc/linuxio/btrfs-snapshots.json`:
   `{ "rules": [{ "uuid", "path", "enabled", "every": "hourly|daily|weekly",
-  "keep": { "hourly", "daily", "weekly", "monthly" }, "beforeUpdates": bool }] }`.
+  "hour": 0-23, "weekday": 0-6, "keep": { "hourly", "daily", "weekly",
+  "monthly" }, "beforeUpdates": bool }] }`. `hour` (local time) is when daily
+  and weekly rules run and `weekday` (0 = Sunday) picks the weekly day.
 - Routes: `storage.btrfs_snapshot_rules` (get), `storage.btrfs_snapshot_rule_set`,
   `storage.btrfs_snapshot_rule_delete`, `storage.btrfs_snapshot_run_now`.
 - Execution: `linuxio btrfs-snapshot run` subcommand in `backend/cli` (same
@@ -172,8 +177,10 @@ Each phase is independently shippable and gets its own plan section.
   `Persistent=true`) + oneshot service, written through the existing unit
   writer and systemd D-Bus ops used by the Docker auto-update timer. The timer
   is enabled while at least one rule is enabled and disabled when none are.
-  Each run: for every enabled rule, take a `timeline` snapshot if the newest
-  timeline snapshot is older than `every`; then prune by the keep counts
+  Each run: for every enabled rule, take a `timeline` snapshot when due:
+  hourly rules an hour after the newest timeline snapshot, daily and weekly
+  ones once their `hour`/`weekday` slot has passed with no snapshot since
+  (a 5-minute tolerance lets an early timer count); then prune by the keep counts
   (newest N per bucket, snapper's "timeline" algorithm). `manual` snapshots
   are never pruned; `pre-update` and `pre-rollback` keep the last 3.
 - Before updates: `updates.apply_offline_updates` and the package auto-update

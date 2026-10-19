@@ -10,13 +10,12 @@ import {
   type BtrfsSubvolume,
 } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
-import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import AppCardContent from "@/components/ui/AppCardContent";
 import AppChip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
@@ -30,7 +29,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
-import { BTRFS_TOAST_META } from "./btrfsShared";
+import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
 
 const EVERY_OPTIONS = [
   { value: "hourly", label: "Hourly", summary: "Every hour" },
@@ -52,8 +51,39 @@ const KEEP_FIELDS = [
 const keepSummary = (keep: BtrfsKeep) =>
   KEEP_FIELDS.map(({ key, unit }) => `${keep[key]}${unit}`).join(" · ");
 
-const scheduleSummary = (every: string) =>
-  EVERY_OPTIONS.find((option) => option.value === every)?.summary ?? every;
+// Hourly snapshots kept for a day, then daily, weekly and monthly ones: the
+// rule the switch turns on, and the dialog's starting point. 03:00 Sunday
+// only matters once the cadence is changed to daily or weekly.
+const defaultRule = (uuid: string, path: string): BtrfsSnapshotRule => ({
+  uuid,
+  path,
+  enabled: false,
+  every: "hourly",
+  hour: 3,
+  weekday: 0,
+  keep: { hourly: 24, daily: 7, weekly: 4, monthly: 6 },
+  beforeUpdates: false,
+});
+
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+const hourLabel = (hour: number) => `${String(hour).padStart(2, "0")}:00`;
+
+const scheduleSummary = ({ every, hour, weekday }: BtrfsSnapshotRule) => {
+  const base =
+    EVERY_OPTIONS.find((option) => option.value === every)?.summary ?? every;
+  if (every === "hourly") return base;
+  const day = every === "weekly" ? ` on ${WEEKDAYS[weekday] ?? ""}` : "";
+  return `${base}${day} at ${hourLabel(hour)}`;
+};
 
 const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
   const toast = useScopedToast(BTRFS_TOAST_META);
@@ -98,7 +128,9 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
     },
   );
 
-  const subvolumes = subvolumeData.filter((subvolume) => !subvolume.isSnapshot);
+  const subvolumes = subvolumeData.filter(
+    (subvolume) => !subvolume.isSnapshot && !isSystemSubvolume(subvolume.path),
+  );
   const rules = (rulesData?.rules ?? []).filter((rule) => rule.uuid === uuid);
   const ruleFor = (path: string) => rules.find((rule) => rule.path === path);
   const hasRule = draft !== null && ruleFor(draft.path) !== undefined;
@@ -108,16 +140,14 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
     KEEP_FIELDS.every(({ key }) => draft.keep[key] === 0);
 
   const edit = (subvolume: BtrfsSubvolume) =>
-    setDraft(
-      ruleFor(subvolume.path) ?? {
-        uuid,
-        path: subvolume.path,
-        enabled: false,
-        every: "hourly",
-        keep: { hourly: 24, daily: 7, weekly: 4, monthly: 6 },
-        beforeUpdates: false,
+    setDraft(ruleFor(subvolume.path) ?? defaultRule(uuid, subvolume.path));
+  const toggle = (subvolume: BtrfsSubvolume, enabled: boolean) =>
+    saveRule({
+      rule: {
+        ...(ruleFor(subvolume.path) ?? defaultRule(uuid, subvolume.path)),
+        enabled,
       },
-    );
+    });
   const closeDialog = () => setDraft(null);
   const handleSave = () => {
     if (!draft) return;
@@ -132,6 +162,19 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
   };
 
   const columns: AppVirtualTableColumnDef<BtrfsSubvolume>[] = [
+    {
+      id: "enabled",
+      header: "On",
+      cell: ({ row }) => (
+        <AppSwitch
+          aria-label={`Automatic snapshots of ${row.original.path}`}
+          checked={ruleFor(row.original.path)?.enabled ?? false}
+          disabled={isSaving}
+          onChange={(_, enabled) => toggle(row.original, enabled)}
+          size="small"
+        />
+      ),
+    },
     { accessorKey: "path", header: "Path" },
     {
       id: "schedule",
@@ -139,7 +182,9 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
       cell: ({ row }) => {
         const rule = ruleFor(row.original.path);
         return rule?.enabled ? (
-          scheduleSummary(rule.every)
+          <AppTypography color="text.secondary" variant="caption">
+            {scheduleSummary(rule)}
+          </AppTypography>
         ) : (
           <AppChip label="Off" size="small" variant="soft" />
         );
@@ -150,31 +195,26 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
       header: "Keep",
       cell: ({ row }) => {
         const rule = ruleFor(row.original.path);
-        return rule ? keepSummary(rule.keep) : "-";
+        return (
+          <AppTypography color="text.secondary" variant="caption">
+            {!rule
+              ? "-"
+              : rule.beforeUpdates
+                ? `${keepSummary(rule.keep)} · before updates`
+                : keepSummary(rule.keep)}
+          </AppTypography>
+        );
       },
     },
     {
-      id: "beforeUpdates",
-      header: "Before updates",
-      cell: ({ row }) => (
-        <AppChip
-          label={ruleFor(row.original.path)?.beforeUpdates ? "Yes" : "No"}
-          size="small"
-          variant="soft"
-        />
-      ),
-    },
-    {
       id: "actions",
-      header: "Actions",
+      header: "",
       cell: ({ row }) => (
-        <AppButton
+        <AppActionIconButton
+          icon="mdi:pencil"
+          label="Edit"
           onClick={() => edit(row.original)}
-          size="small"
-          variant="outlined"
-        >
-          Edit
-        </AppButton>
+        />
       ),
       meta: { align: "right" },
     },
@@ -183,48 +223,49 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
   const error = subvolumesError ?? rulesError;
 
   return (
-    <FrostedCard>
-      <AppCardContent>
-        <CardIconHeader
-          icon={<Icon height={24} icon="mdi:camera-timer" width={24} />}
-          right={
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {rulesData && (
-                <AppChip
-                  color={rulesData.timerEnabled ? "success" : "default"}
-                  label={
-                    rulesData.timerEnabled ? "Timer enabled" : "Timer disabled"
-                  }
-                  size="small"
-                  variant="soft"
-                />
-              )}
-              <AppButton
-                disabled={isRunning}
-                onClick={() => runNow()}
+    <>
+      <CardIconHeader
+        headingVariant="compact"
+        icon={<Icon height={20} icon="mdi:camera-timer" width={20} />}
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {rulesData && (
+              <AppChip
+                color={rulesData.timerEnabled ? "success" : "default"}
+                label={
+                  rulesData.timerEnabled ? "Timer enabled" : "Timer disabled"
+                }
                 size="small"
-                variant="outlined"
-              >
-                Run now
-              </AppButton>
-            </div>
-          }
-          subtitle="Timeline snapshots per subvolume"
-          title="Automatic snapshots"
-        />
-        {error && <AppAlert severity="error">{error.message}</AppAlert>}
-        <AppVirtualTable
-          ariaLabel="Btrfs snapshot rules"
-          columns={columns}
-          data={subvolumes}
-          density="compact"
-          emptyMessage={isPending ? "Loading..." : "No subvolumes found"}
-          fillAvailable={false}
-          getRowId={(subvolume) => String(subvolume.id)}
-          maxHeight={320}
-          variant="embedded"
-        />
-      </AppCardContent>
+                variant="soft"
+              />
+            )}
+            <AppActionIconButton
+              disabled={isRunning}
+              icon="mdi:play"
+              label="Run now"
+              onClick={() => runNow()}
+            />
+          </div>
+        }
+        subtitle="Taken on a schedule and old ones removed automatically"
+        title="Automatic snapshots"
+      />
+      {error && <AppAlert severity="error">{error.message}</AppAlert>}
+      <AppVirtualTable
+        ariaLabel="Btrfs snapshot rules"
+        columns={columns}
+        data={subvolumes}
+        density="compact"
+        emptyMessage={
+          isPending
+            ? "Loading..."
+            : "Nothing to snapshot: this filesystem has no subvolumes of its own"
+        }
+        fillAvailable={false}
+        getRowId={(subvolume) => String(subvolume.id)}
+        maxHeight={320}
+        variant="embedded"
+      />
 
       <GeneralDialog
         fullWidth
@@ -265,6 +306,38 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
                   </option>
                 ))}
               </AppSelect>
+              {draft.every === "weekly" && (
+                <AppSelect
+                  fullWidth
+                  label="On"
+                  onChange={(event) =>
+                    setDraft({ ...draft, weekday: Number(event.target.value) })
+                  }
+                  value={String(draft.weekday)}
+                >
+                  {WEEKDAYS.map((name, weekday) => (
+                    <option key={name} value={String(weekday)}>
+                      {name}
+                    </option>
+                  ))}
+                </AppSelect>
+              )}
+              {draft.every !== "hourly" && (
+                <AppSelect
+                  fullWidth
+                  label="At"
+                  onChange={(event) =>
+                    setDraft({ ...draft, hour: Number(event.target.value) })
+                  }
+                  value={String(draft.hour)}
+                >
+                  {HOURS.map((hour) => (
+                    <option key={hour} value={String(hour)}>
+                      {hourLabel(hour)}
+                    </option>
+                  ))}
+                </AppSelect>
+              )}
               {KEEP_FIELDS.map(({ key, label }) => (
                 <AppTextField
                   fullWidth
@@ -341,7 +414,7 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
           </AppButton>
         </AppDialogActions>
       </GeneralDialog>
-    </FrostedCard>
+    </>
   );
 };
 

@@ -471,6 +471,8 @@ export interface BtrfsSnapshotRule {
   path: string;
   enabled: boolean;
   every: string;
+  hour: number;
+  weekday: number;
   keep: BtrfsKeep;
   beforeUpdates: boolean;
 }

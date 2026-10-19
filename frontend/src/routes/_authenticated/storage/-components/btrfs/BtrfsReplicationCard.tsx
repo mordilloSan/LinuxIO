@@ -119,13 +119,20 @@ const BtrfsReplicationCard = ({ uuid }: { uuid: string }) => {
     {
       id: "target",
       header: "Target",
-      cell: ({ row }) => targetLabel(row.original),
+      cell: ({ row }) => (
+        <AppTypography color="text.secondary" variant="caption">
+          {targetLabel(row.original)}
+        </AppTypography>
+      ),
     },
     {
       id: "lastRun",
       header: "Last run",
-      cell: ({ row }) =>
-        row.original.lastRun ? formatDate(row.original.lastRun) : "Never",
+      cell: ({ row }) => (
+        <AppTypography color="text.secondary" variant="caption">
+          {row.original.lastRun ? formatDate(row.original.lastRun) : "Never"}
+        </AppTypography>
+      ),
     },
     {
       id: "status",

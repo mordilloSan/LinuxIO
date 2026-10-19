@@ -72,6 +72,8 @@ const dataRule: BtrfsSnapshotRule = {
   path: "data",
   enabled: true,
   every: "weekly",
+  hour: 4,
+  weekday: 1,
   keep: { hourly: 0, daily: 3, weekly: 2, monthly: 1 },
   beforeUpdates: false,
 };
@@ -101,7 +103,9 @@ describe("BtrfsSnapshotRulesCard", () => {
 
     expect(within(await rowFor("@")).getByText("Off")).toBeInTheDocument();
     const dataRow = await rowFor("data");
-    expect(within(dataRow).getByText("Every week")).toBeInTheDocument();
+    expect(
+      within(dataRow).getByText("Every week on Monday at 04:00"),
+    ).toBeInTheDocument();
     expect(within(dataRow).getByText("0h · 3d · 2w · 1m")).toBeInTheDocument();
     expect(screen.queryByText("linuxio-snapshots/@-1")).not.toBeInTheDocument();
     expect(await screen.findByText("Timer enabled")).toBeInTheDocument();
@@ -119,8 +123,16 @@ describe("BtrfsSnapshotRulesCard", () => {
       within(dialog).queryByRole("button", { name: "Remove rule" }),
     ).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("checkbox", { name: "Enabled" }));
+    expect(
+      within(dialog).queryByRole("combobox", { name: "At" }),
+    ).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("combobox", { name: "Every" }));
     await user.click(screen.getByRole("option", { name: "Daily" }));
+    expect(
+      within(dialog).queryByRole("combobox", { name: "On" }),
+    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("combobox", { name: "At" }));
+    await user.click(screen.getByRole("option", { name: "22:00" }));
     await user.click(
       within(dialog).getByRole("checkbox", { name: /Snapshot before updates/ }),
     );
@@ -133,6 +145,8 @@ describe("BtrfsSnapshotRulesCard", () => {
           path: "@",
           enabled: true,
           every: "daily",
+          hour: 22,
+          weekday: 0,
           keep: { hourly: 24, daily: 7, weekly: 4, monthly: 6 },
           beforeUpdates: true,
         },
@@ -194,6 +208,45 @@ describe("BtrfsSnapshotRulesCard", () => {
       { uuid: "uuid-1", path: "data" },
       expect.anything(),
     );
+  });
+
+  it("turns automatic snapshots on with the default rule", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsSnapshotRulesCard uuid="uuid-1" />);
+
+    await user.click(
+      within(await rowFor("@")).getByRole("checkbox", {
+        name: "Automatic snapshots of @",
+      }),
+    );
+
+    expect(route("btrfs_snapshot_rule_set")).toHaveBeenCalledWith({
+      rule: {
+        uuid: "uuid-1",
+        path: "@",
+        enabled: true,
+        every: "hourly",
+        hour: 3,
+        weekday: 0,
+        keep: { hourly: 24, daily: 7, weekly: 4, monthly: 6 },
+        beforeUpdates: false,
+      },
+    });
+  });
+
+  it("turns an existing rule off without losing its settings", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsSnapshotRulesCard uuid="uuid-1" />);
+
+    await user.click(
+      within(await rowFor("data")).getByRole("checkbox", {
+        name: "Automatic snapshots of data",
+      }),
+    );
+
+    expect(route("btrfs_snapshot_rule_set")).toHaveBeenCalledWith({
+      rule: { ...dataRule, enabled: false },
+    });
   });
 
   it("runs the timeline now", async () => {

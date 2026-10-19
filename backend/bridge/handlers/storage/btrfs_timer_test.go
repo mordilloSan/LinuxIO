@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"testing"
 
+	godbus "github.com/godbus/dbus/v5"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
@@ -94,6 +96,16 @@ func TestSyncBtrfsTimerEnablesWhenJobEnabled(t *testing.T) {
 	want := []string{"reload", "enable:" + btrfs.SnapshotTimerName, "start:" + btrfs.SnapshotTimerName}
 	if !reflect.DeepEqual(rec.calls, want) {
 		t.Fatalf("calls = %v, want %v", rec.calls, want)
+	}
+}
+
+func TestBtrfsTimerEnabledMissingUnitIsDisabled(t *testing.T) {
+	ops := (&recordingBtrfsTimerOps{}).ops()
+	ops.getUnitFileState = func(context.Context, string) (string, error) {
+		return "", godbus.Error{Name: "org.freedesktop.DBus.Error.FileNotFound", Body: []any{"No such file or directory"}}
+	}
+	if got, err := btrfsTimerEnabled(context.Background(), ops); err != nil || got {
+		t.Fatalf("btrfsTimerEnabled(missing unit) = %v, %v; want false, nil", got, err)
 	}
 }
 

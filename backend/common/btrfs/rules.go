@@ -41,10 +41,14 @@ type BtrfsKeep struct {
 // BtrfsSnapshotRule is the automatic-snapshot policy of one subvolume,
 // identified by (UUID, Path).
 type BtrfsSnapshotRule struct {
-	UUID          string    `json:"uuid"`
-	Path          string    `json:"path"`
-	Enabled       bool      `json:"enabled"`
-	Every         string    `json:"every"`
+	UUID    string `json:"uuid"`
+	Path    string `json:"path"`
+	Enabled bool   `json:"enabled"`
+	Every   string `json:"every"`
+	// Hour (0-23, local time) is when daily and weekly rules run; Weekday
+	// (0 = Sunday) picks the day of weekly ones. Hourly rules ignore both.
+	Hour          int       `json:"hour"`
+	Weekday       int       `json:"weekday"`
 	Keep          BtrfsKeep `json:"keep"`
 	BeforeUpdates bool      `json:"beforeUpdates"`
 }
@@ -125,6 +129,12 @@ func ValidateRule(r BtrfsSnapshotRule) error {
 	if !slices.Contains([]string{EveryHourly, EveryDaily, EveryWeekly}, r.Every) {
 		return fmt.Errorf("invalid rule cadence %q", r.Every)
 	}
+	if r.Hour < 0 || r.Hour > 23 {
+		return fmt.Errorf("rule hour %d must be between 0 and 23", r.Hour)
+	}
+	if r.Weekday < 0 || r.Weekday > 6 {
+		return fmt.Errorf("rule weekday %d must be between 0 and 6", r.Weekday)
+	}
 	if k := r.Keep; k.Hourly < 0 || k.Daily < 0 || k.Weekly < 0 || k.Monthly < 0 {
 		return errors.New("keep counts must not be negative")
 	}
@@ -153,17 +163,29 @@ func DeleteRule(rules []BtrfsSnapshotRule, uuid, path string) []BtrfsSnapshotRul
 }
 
 // Due reports whether a rule should take a snapshot now, given the newest
-// timeline snapshot of its source (nil when there is none).
+// timeline snapshot of its source (nil when there is none). Hourly rules are
+// due an hour after the last snapshot; daily and weekly ones once their
+// scheduled instant has passed without a snapshot since.
 func Due(rule BtrfsSnapshotRule, newestTimeline *time.Time, now time.Time) bool {
 	if newestTimeline == nil {
 		return true
 	}
-	period := time.Hour
-	switch rule.Every {
-	case EveryDaily:
-		period = 24 * time.Hour
-	case EveryWeekly:
-		period = 7 * 24 * time.Hour
+	if rule.Every == EveryHourly {
+		return now.Sub(*newestTimeline) >= time.Hour-dueTolerance
 	}
-	return now.Sub(*newestTimeline) >= period-dueTolerance
+	return newestTimeline.Before(lastScheduled(rule, now.Add(dueTolerance)))
+}
+
+// lastScheduled returns the rule's most recent scheduled instant at or before
+// now, in now's location.
+func lastScheduled(rule BtrfsSnapshotRule, now time.Time) time.Time {
+	at := time.Date(now.Year(), now.Month(), now.Day(), rule.Hour, 0, 0, 0, now.Location())
+	if at.After(now) {
+		at = at.AddDate(0, 0, -1)
+	}
+	if rule.Every == EveryWeekly {
+		back := (int(at.Weekday()) - rule.Weekday + 7) % 7
+		at = at.AddDate(0, 0, -back)
+	}
+	return at
 }

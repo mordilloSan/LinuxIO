@@ -62,6 +62,10 @@ describe("BtrfsHealthCard", () => {
     render(<BtrfsHealthCard filesystem={{ ...filesystem, devices: [] }} />);
     expect(screen.getByText("Degraded")).toBeInTheDocument();
     expect(screen.getByText("Never scrubbed")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Check for errors" }),
+    ).toBeEnabled();
+    expect(screen.getByText("30 GB used of 100 GB")).toBeInTheDocument();
   });
 
   it("shows Errors when a device counter is non-zero", () => {
@@ -103,6 +107,7 @@ describe("BtrfsHealthCard", () => {
       />,
     );
     expect(screen.getByText("Scrub running · 42%")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop check" })).toBeEnabled();
   });
 });
 
@@ -113,6 +118,14 @@ describe("BtrfsDevicesCard", () => {
     expect(screen.getByText("Missing")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
   });
+
+  it("keeps the last present device", () => {
+    render(<BtrfsDevicesCard filesystem={filesystem} />);
+    // /dev/sda is the only device that is not missing.
+    for (const button of screen.getAllByRole("button", { name: "Remove" })) {
+      expect(button).toBeDisabled();
+    }
+  });
 });
 
 describe("BtrfsSpaceCard", () => {
@@ -122,5 +135,6 @@ describe("BtrfsSpaceCard", () => {
     expect(
       screen.getByText(formatFileSize(filesystem.unallocatedBytes)),
     ).toBeInTheDocument();
+    expect(screen.getByText("uuid-1")).toBeInTheDocument();
   });
 });

@@ -11,6 +11,7 @@ import { render } from "@/test/render";
 import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
+import BtrfsHealthCard from "./BtrfsHealthCard";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -237,7 +238,7 @@ describe("BtrfsDevicesCard actions", () => {
 
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
     expect(screen.getByText("Working...")).toBeInTheDocument();
-    for (const name of ["Add device", "Change profile", "Scrub now"]) {
+    for (const name of ["Add device", "Change profile"]) {
       expect(screen.getByRole("button", { name })).toBeDisabled();
     }
     for (const name of ["Remove", "Replace"]) {
@@ -302,7 +303,7 @@ describe("BtrfsDevicesCard actions", () => {
     const dialog = await screen.findByRole("dialog");
     expect(
       within(dialog).getByText(
-        "Remove /dev/sdb from the filesystem? Data is migrated to the remaining devices first.",
+        "Remove /dev/sdb from the filesystem? Data is migrated to the remaining devices first, which can take a long time.",
       ),
     ).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Remove" }));
@@ -330,10 +331,10 @@ describe("BtrfsDevicesCard actions", () => {
     });
   });
 
-  it("starts a scrub, or cancels a running one", async () => {
+  it("starts a scrub from the health card, or stops a running one", async () => {
     const user = userEvent.setup();
-    const { unmount } = render(<BtrfsDevicesCard filesystem={filesystem(1)} />);
-    await user.click(screen.getByRole("button", { name: "Scrub now" }));
+    const { unmount } = render(<BtrfsHealthCard filesystem={filesystem(1)} />);
+    await user.click(screen.getByRole("button", { name: "Check for errors" }));
     expect(mocks.submit).toHaveBeenCalledWith("btrfs_scrub_start", {
       uuid: "uuid-1",
     });
@@ -341,11 +342,11 @@ describe("BtrfsDevicesCard actions", () => {
 
     const running = filesystem(1);
     running.scrub.status = "running";
-    render(<BtrfsDevicesCard filesystem={running} />);
+    render(<BtrfsHealthCard filesystem={running} />);
     expect(
-      screen.queryByRole("button", { name: "Scrub now" }),
+      screen.queryByRole("button", { name: "Check for errors" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cancel scrub" }));
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
     expect(route("btrfs_scrub_cancel")).toHaveBeenCalledWith({
       uuid: "uuid-1",
     });

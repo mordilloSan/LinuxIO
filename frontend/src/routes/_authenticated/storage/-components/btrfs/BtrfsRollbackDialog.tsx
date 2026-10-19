@@ -54,13 +54,13 @@ const BtrfsRollbackDialog = ({
       onClose={isPending ? undefined : onClose}
       open
     >
-      <AppDialogTitle>Roll back {snapshot.source}?</AppDialogTitle>
+      <AppDialogTitle>Restore {snapshot.source}?</AppDialogTitle>
       <AppDialogContent>
         <AppDialogContentText>
-          Replaces the current contents of {snapshot.source} with the snapshot
-          taken {formatDate(snapshot.createdAt)}. Nested subvolumes are not
-          restored. A copy of the current state is kept as a pre-rollback
-          snapshot.
+          Everything in {snapshot.source} goes back to how it was on{" "}
+          {formatDate(snapshot.createdAt)}. Changes made since then disappear
+          from {snapshot.source}, but a snapshot of the current state is kept so
+          you can undo this. Nested subvolumes are not restored.
         </AppDialogContentText>
         {isPending && (
           <>
@@ -82,7 +82,7 @@ const BtrfsRollbackDialog = ({
             }
             severity="warning"
           >
-            Reboot required to finish the rollback of {snapshot.source}.
+            Reboot required to finish restoring {snapshot.source}.
           </AppAlert>
         )}
         {result?.leftoverPath && (
@@ -117,7 +117,7 @@ const BtrfsRollbackDialog = ({
             onClick={onConfirm}
             variant="contained"
           >
-            {isPending ? "Rolling back..." : "Roll back"}
+            {isPending ? "Restoring..." : "Restore"}
           </AppButton>
         )}
       </AppDialogActions>

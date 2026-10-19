@@ -153,20 +153,22 @@ describe("BtrfsSubvolumesCard", () => {
     });
   });
 
-  it("offers Snapshot only when a handler is provided", async () => {
+  it("hides system subvolumes until asked", async () => {
     const user = userEvent.setup();
-    const onSnapshot = vi.fn();
-    const { unmount } = render(<BtrfsSubvolumesCard uuid="uuid-1" />);
-    expect(
-      within(await rowFor("data")).queryByRole("button", { name: "Snapshot" }),
-    ).not.toBeInTheDocument();
-    unmount();
+    const portables = subvolume({
+      id: 258,
+      path: "var/lib/portables",
+      uuid: "u-258",
+    });
+    mocks.subvolumes.mockResolvedValue([root, data, portables]);
+    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
 
-    render(<BtrfsSubvolumesCard onSnapshot={onSnapshot} uuid="uuid-1" />);
+    await rowFor("data");
+    expect(screen.queryByText("var/lib/portables")).not.toBeInTheDocument();
     await user.click(
-      within(await rowFor("data")).getByRole("button", { name: "Snapshot" }),
+      screen.getByRole("checkbox", { name: "Show system subvolumes" }),
     );
-    expect(onSnapshot).toHaveBeenCalledWith(data);
+    expect(await screen.findByText("var/lib/portables")).toBeInTheDocument();
   });
 
   it("sets a size limit when quotas report sizes", async () => {

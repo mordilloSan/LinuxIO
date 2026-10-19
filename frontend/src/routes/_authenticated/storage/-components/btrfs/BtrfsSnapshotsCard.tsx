@@ -16,6 +16,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCardContent from "@/components/ui/AppCardContent";
@@ -26,13 +27,16 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppDivider from "@/components/ui/AppDivider";
 import AppSelect from "@/components/ui/AppSelect";
+import AppTypography from "@/components/ui/AppTypography";
 import { TASK_TYPE_STORAGE_BTRFS_ROLLBACK } from "@/constants/backgroundTaskTypes";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
 import BtrfsRollbackDialog from "./BtrfsRollbackDialog";
-import { BTRFS_TOAST_META } from "./btrfsShared";
+import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
+import BtrfsSnapshotRulesCard from "./BtrfsSnapshotRulesCard";
 
 const ALL_SOURCES = "";
 
@@ -43,8 +47,13 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
     error,
     isPending,
   } = useQuery(linuxio.storage.btrfs_snapshots({ uuid }));
+  const { data: subvolumeData = [] } = useQuery(
+    linuxio.storage.btrfs_subvolumes({ uuid }),
+  );
   const navigate = useNavigate();
   const [source, setSource] = useState(ALL_SOURCES);
+  // null: dialog closed; "": open with nothing picked yet.
+  const [taking, setTaking] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<BtrfsSnapshot | null>(null);
   // Held as a path so a rollback recovered after a reload resolves once the
   // list has loaded.
@@ -52,6 +61,14 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
   const [progress, setProgress] = useState<BtrfsRollbackProgress | null>(null);
   const [result, setResult] = useState<BtrfsRollbackResult | null>(null);
 
+  const { mutate: createSnapshot, isPending: isTaking } = useCallMutation(
+    linuxio.storage.btrfs_snapshot_create,
+    {
+      success: "Snapshot created",
+      error: "Failed to create snapshot",
+      toast: BTRFS_TOAST_META,
+    },
+  );
   const { mutate: deleteSnapshot, isPending: isDeleting } = useCallMutation(
     linuxio.storage.btrfs_snapshot_delete,
     {
@@ -84,6 +101,9 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
     },
   });
 
+  const subvolumes = subvolumeData
+    .filter((s) => !s.isSnapshot && !isSystemSubvolume(s.path))
+    .map((s) => s.path);
   const sources = [...new Set(data.map((snapshot) => snapshot.source))].sort();
   const activeSource = sources.includes(source) ? source : ALL_SOURCES;
   const snapshots = data.filter(
@@ -107,6 +127,15 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
       { onSuccess: () => setDeleting(null) },
     );
   };
+  const openTake = () =>
+    setTaking(subvolumes.length === 1 ? subvolumes[0] : "");
+  const handleTake = () => {
+    if (!taking) return;
+    createSnapshot(
+      { uuid, path: taking },
+      { onSuccess: () => setTaking(null) },
+    );
+  };
   const openRollback = (snapshot: BtrfsSnapshot) => {
     setProgress(null);
     setResult(null);
@@ -118,7 +147,11 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
     {
       accessorKey: "createdAt",
       header: "Taken",
-      cell: ({ row }) => formatDate(row.original.createdAt),
+      cell: ({ row }) => (
+        <AppTypography color="text.secondary" variant="caption">
+          {formatDate(row.original.createdAt)}
+        </AppTypography>
+      ),
     },
     {
       accessorKey: "kind",
@@ -132,10 +165,13 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
           {
             id: "size",
             header: "Size",
-            cell: ({ row }) =>
-              row.original.referencedBytes === undefined
-                ? "-"
-                : formatFileSize(row.original.referencedBytes),
+            cell: ({ row }) => (
+              <AppTypography color="text.secondary" variant="caption">
+                {row.original.referencedBytes === undefined
+                  ? "-"
+                  : formatFileSize(row.original.referencedBytes)}
+              </AppTypography>
+            ),
             meta: { align: "right" },
           } satisfies AppVirtualTableColumnDef<BtrfsSnapshot>,
         ]
@@ -144,29 +180,22 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <AppButton
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <AppActionIconButton
+            icon="mdi:folder-open-outline"
+            label="Browse"
             onClick={() => handleBrowse(row.original)}
-            size="small"
-            variant="outlined"
-          >
-            Browse
-          </AppButton>
-          <AppButton
+          />
+          <AppActionIconButton
+            icon="mdi:backup-restore"
+            label="Restore"
             onClick={() => openRollback(row.original)}
-            size="small"
-            variant="outlined"
-          >
-            Roll back
-          </AppButton>
-          <AppButton
-            color="error"
+          />
+          <AppActionIconButton
+            icon="mdi:delete"
+            label="Delete"
             onClick={() => setDeleting(row.original)}
-            size="small"
-            variant="outlined"
-          >
-            Delete
-          </AppButton>
+          />
         </div>
       ),
       meta: { align: "right" },
@@ -179,20 +208,34 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
         <CardIconHeader
           icon={<Icon height={24} icon="mdi:camera-burst" width={24} />}
           right={
-            <AppSelect
-              label="Source"
-              onChange={(event) => setSource(event.target.value)}
-              value={activeSource}
-            >
-              <option value={ALL_SOURCES}>All</option>
-              {sources.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </AppSelect>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {sources.length > 1 && (
+                <AppSelect
+                  label="Source"
+                  onChange={(event) => setSource(event.target.value)}
+                  size="small"
+                  style={{ minWidth: 160 }}
+                  value={activeSource}
+                >
+                  <option value={ALL_SOURCES}>All</option>
+                  {sources.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </AppSelect>
+              )}
+              <AppButton
+                disabled={subvolumes.length === 0}
+                onClick={openTake}
+                size="small"
+                variant="outlined"
+              >
+                Take snapshot
+              </AppButton>
+            </div>
           }
-          subtitle={`${snapshots.length} snapshot(s)`}
+          subtitle="Go back to an earlier state, or fetch single files from it"
           title="Snapshots"
         />
         {error && <AppAlert severity="error">{error.message}</AppAlert>}
@@ -201,13 +244,59 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
           columns={columns}
           data={snapshots}
           density="compact"
-          emptyMessage={isPending ? "Loading..." : "No snapshots found"}
+          emptyMessage={isPending ? "Loading..." : "No snapshots yet"}
           fillAvailable={false}
           getRowId={(snapshot) => snapshot.path}
           maxHeight={320}
           variant="embedded"
         />
+        <AppDivider style={{ margin: "var(--app-space-16) 0" }} />
+        <BtrfsSnapshotRulesCard uuid={uuid} />
       </AppCardContent>
+
+      <GeneralDialog
+        fullWidth
+        maxWidth="sm"
+        onClose={() => setTaking(null)}
+        open={taking !== null}
+      >
+        <AppDialogTitle>Take snapshot</AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>
+            Keeps a read-only copy of the current state that you can browse or
+            restore later. It takes no extra space until files change.
+          </AppDialogContentText>
+          {subvolumes.length > 1 && (
+            <AppSelect
+              fullWidth
+              label="Subvolume"
+              onChange={(event) => setTaking(event.target.value)}
+              value={taking ?? ""}
+            >
+              <option disabled hidden value="">
+                Choose…
+              </option>
+              {subvolumes.map((path) => (
+                <option key={path} value={path}>
+                  {path}
+                </option>
+              ))}
+            </AppSelect>
+          )}
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton disabled={isTaking} onClick={() => setTaking(null)}>
+            Cancel
+          </AppButton>
+          <AppButton
+            disabled={isTaking || !taking}
+            onClick={handleTake}
+            variant="contained"
+          >
+            {isTaking ? "Taking..." : "Take snapshot"}
+          </AppButton>
+        </AppDialogActions>
+      </GeneralDialog>
 
       {rollingBack && (
         <BtrfsRollbackDialog
@@ -232,7 +321,8 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
         <AppDialogContent>
           <AppDialogContentText>
             Delete the snapshot of <strong>{deleting?.source}</strong> taken{" "}
-            {formatDate(deleting?.createdAt)}? This cannot be undone.
+            {formatDate(deleting?.createdAt)}? Files that only exist in this
+            snapshot are lost. This cannot be undone.
           </AppDialogContentText>
         </AppDialogContent>
         <AppDialogActions>
