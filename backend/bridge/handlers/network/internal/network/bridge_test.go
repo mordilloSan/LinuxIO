@@ -6,10 +6,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 )
 
 func bridgeTestEnvironment(t *testing.T, probes []InterfaceProbe) (Environment, *fakeRunner) {
@@ -470,5 +473,71 @@ func TestBridgeOptionsRefuseMacvlanParents(t *testing.T) {
 				t.Fatalf("%s reasons = %v", candidate.Name, reasons)
 			}
 		}
+	}
+}
+
+func TestAddVirtualChildrenKeepsLinksWhoseParentIsInTheGivenNamespace(t *testing.T) {
+	links := []netlink.Link{
+		&netlink.Macvlan{Name: "eth0", ParentIndex: 2, NetNsID: 0},
+		&netlink.Macvlan{Name: "mv1", ParentIndex: 2, NetNsID: -1},
+		&netlink.IPVlan{Name: "ipv0", ParentIndex: 3, NetNsID: 0},
+		&netlink.Veth{Name: "veth0", ParentIndex: 2, NetNsID: 0},
+	}
+	foreign := map[int][]string{}
+	addVirtualChildren(foreign, links, 0, " (pid 42)")
+	if want := map[int][]string{2: {"eth0 (pid 42)"}, 3: {"ipv0 (pid 42)"}}; !reflect.DeepEqual(foreign, want) {
+		t.Fatalf("foreign children = %v, want %v", foreign, want)
+	}
+	local := map[int][]string{}
+	addVirtualChildren(local, links, -1, "")
+	if want := map[int][]string{2: {"mv1"}}; !reflect.DeepEqual(local, want) {
+		t.Fatalf("local children = %v, want %v", local, want)
+	}
+}
+
+// A Docker macvlan network moves the container's link into the container's
+// namespace, where the host link list cannot see it, while the parent NIC
+// still carries its rx handler and refuses to become a bridge port.
+func TestVirtualChildrenByParentSeesOtherNamespaces(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("creating links and network namespaces needs root")
+	}
+	parent := &netlink.Dummy{Name: "liotest-parent"}
+	if err := netlink.LinkAdd(parent); err != nil {
+		t.Fatalf("add parent: %v", err)
+	}
+	t.Cleanup(func() { _ = netlink.LinkDel(parent) })
+	child := &netlink.Macvlan{Name: "liotest-child", ParentIndex: parent.Attrs().Index, Mode: netlink.MACVLAN_MODE_BRIDGE}
+	if err := netlink.LinkAdd(child); err != nil {
+		t.Fatalf("add child: %v", err)
+	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	host, err := netns.Get()
+	if err != nil {
+		t.Fatalf("host namespace: %v", err)
+	}
+	defer host.Close()
+	other, err := netns.NewNamed("liotest")
+	if err != nil {
+		t.Fatalf("new namespace: %v", err)
+	}
+	defer other.Close()
+	t.Cleanup(func() { _ = netns.DeleteNamed("liotest") })
+	if err = netns.Set(host); err != nil {
+		t.Fatalf("return to host namespace: %v", err)
+	}
+	if err = netlink.LinkSetNsFd(child, int(other)); err != nil {
+		t.Fatalf("move child: %v", err)
+	}
+
+	children, err := virtualChildrenByParent()
+	if err != nil {
+		t.Fatalf("virtualChildrenByParent: %v", err)
+	}
+	got := children[parent.Attrs().Index]
+	if len(got) != 1 || !strings.HasPrefix(got[0], "liotest-child (") {
+		t.Fatalf("children of parent = %v", got)
 	}
 }

@@ -42,6 +42,18 @@ type netplanConfigObject interface {
 	CallWithContext(context.Context, string, godbus.Flags, ...any) *godbus.Call
 }
 
+// netplanHandoffPatch holds the two netplan set payloads of one handoff.
+// memberOrigin is the origin hint of the member delta: netplan set only
+// rewrites its origin-hint file and later files merge by amending keys, so
+// nulling the member's L3 keys from a fresh file would leave its addresses and
+// default route on the bridge port. The delta therefore targets the file that
+// defines the member; netplan's Cancel restores that file from its backup.
+type netplanHandoffPatch struct {
+	memberOrigin string
+	member       []byte
+	bridge       []byte
+}
+
 func inspectBridgeHandoffCandidate(ctx context.Context, env Environment, probe InterfaceProbe) BridgeCandidate {
 	candidate := BridgeCandidate{Name: probe.Name, MAC: probe.MAC}
 	candidate.HandoffReasons = physicalBridgeLinkReasons(probe)
@@ -146,7 +158,7 @@ func PrepareBridgeHandoff(ctx context.Context, env Environment, plan BridgeHando
 		OriginalDefaultRoute: member.DefaultRoute,
 	}
 	if state.Backend == bridgeBackendNetplan {
-		if _, _, err := netplanHandoffDeltas(env, &state); err != nil {
+		if _, err := netplanHandoffDeltas(env, &state); err != nil {
 			return BridgeHandoffState{}, err
 		}
 	}
@@ -308,7 +320,7 @@ func validateHandoffState(state *BridgeHandoffState, requireHandle bool) error {
 }
 
 func startNetplanHandoff(ctx context.Context, env Environment, state *BridgeHandoffState) (godbus.ObjectPath, error) {
-	memberDelta, bridgeDelta, err := netplanHandoffDeltas(env, state)
+	patch, err := netplanHandoffDeltas(env, state)
 	if err != nil {
 		return "", err
 	}
@@ -319,7 +331,7 @@ func startNetplanHandoff(ctx context.Context, env Environment, state *BridgeHand
 			return fmt.Errorf("create Netplan handoff transaction: %w", configErr)
 		}
 		config := conn.Object(netplanBusName, configPath)
-		return configureNetplanHandoff(ctx, config, state, memberDelta, bridgeDelta)
+		return configureNetplanHandoff(ctx, config, state, patch)
 	})
 	if err != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), netplanHandoffCleanupTimeout)
@@ -329,14 +341,13 @@ func startNetplanHandoff(ctx context.Context, env Environment, state *BridgeHand
 	return configPath, nil
 }
 
-func configureNetplanHandoff(ctx context.Context, config netplanConfigObject, state *BridgeHandoffState, memberDelta, bridgeDelta []byte) error {
-	origin := "90-linuxio-handoff-" + state.Plan.Name
-	for _, delta := range []struct{ key, value string }{
-		{"ethernets." + netplanPathSegment(state.Plan.Member), string(memberDelta)},
-		{"bridges." + netplanPathSegment(state.Plan.Name), string(bridgeDelta)},
+func configureNetplanHandoff(ctx context.Context, config netplanConfigObject, state *BridgeHandoffState, patch netplanHandoffPatch) error {
+	for _, delta := range []struct{ key, value, origin string }{
+		{"ethernets." + netplanPathSegment(state.Plan.Member), string(patch.member), patch.memberOrigin},
+		{"bridges." + netplanPathSegment(state.Plan.Name), string(patch.bridge), "90-linuxio-handoff-" + state.Plan.Name},
 	} {
 		var accepted bool
-		if err := config.CallWithContext(ctx, netplanConfigIface+".Set", 0, delta.key+"="+delta.value, origin).Store(&accepted); err != nil {
+		if err := config.CallWithContext(ctx, netplanConfigIface+".Set", 0, delta.key+"="+delta.value, delta.origin).Store(&accepted); err != nil {
 			return fmt.Errorf("set Netplan handoff %s: %w", delta.key, err)
 		}
 		if !accepted {
@@ -353,29 +364,29 @@ func configureNetplanHandoff(ctx context.Context, config netplanConfigObject, st
 	return nil
 }
 
-func netplanHandoffDeltas(env Environment, state *BridgeHandoffState) ([]byte, []byte, error) {
+func netplanHandoffDeltas(env Environment, state *BridgeHandoffState) (netplanHandoffPatch, error) {
 	backend, err := detectNetplanBackend(env, state.Plan.Member)
 	if err != nil {
-		return nil, nil, err
+		return netplanHandoffPatch{}, err
 	}
 	netplan, ok := backend.(*netplanBackend)
 	if !ok || netplan == nil {
-		return nil, nil, errors.New("netplan member configuration disappeared")
+		return netplanHandoffPatch{}, errors.New("netplan member configuration disappeared")
 	}
 	doc, err := netplan.load()
 	if err != nil {
-		return nil, nil, err
+		return netplanHandoffPatch{}, err
 	}
 	memberMap, err := doc.interfaceMap(netplan.kind, state.Plan.Member)
 	if err != nil {
-		return nil, nil, err
+		return netplanHandoffPatch{}, err
 	}
 	renderer, ok := netplanEffectiveRenderer(doc, netplan.kind, state.Plan.Member)
 	if !ok {
 		renderer = "networkd"
 	}
 	if validationErr := validateNetplanHandoffIPv6(memberMap, renderer); validationErr != nil {
-		return nil, nil, validationErr
+		return netplanHandoffPatch{}, validationErr
 	}
 	bridgeMap := cloneAnyMap(memberMap)
 	for key := range bridgeMap {
@@ -399,13 +410,17 @@ func netplanHandoffDeltas(env Environment, state *BridgeHandoffState) ([]byte, [
 
 	memberDelta, err := json.Marshal(memberMap)
 	if err != nil {
-		return nil, nil, err
+		return netplanHandoffPatch{}, err
 	}
 	bridgeDelta, err := json.Marshal(bridgeMap)
 	if err != nil {
-		return nil, nil, err
+		return netplanHandoffPatch{}, err
 	}
-	return memberDelta, bridgeDelta, nil
+	return netplanHandoffPatch{
+		memberOrigin: strings.TrimSuffix(filepath.Base(netplan.path), filepath.Ext(netplan.path)),
+		member:       memberDelta,
+		bridge:       bridgeDelta,
+	}, nil
 }
 
 func validateNetplanHandoffIPv6(settings map[string]any, renderer string) error {
