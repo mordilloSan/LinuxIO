@@ -118,6 +118,7 @@ func TestBuildDomainXMLForImagePreset(t *testing.T) {
 		"<feature enabled=\"no\" name=\"enrolled-keys\"></feature>",
 		"<boot dev=\"hd\"></boot>",
 		"linuxio-haos.qcow2",
+		`os="homeassistant"`,
 	} {
 		if !strings.Contains(xmlDoc, want) {
 			t.Fatalf("domain XML missing %q:\n%s", want, xmlDoc)
@@ -2215,4 +2216,26 @@ func cloudSeedTestDomainXML() string {
     <graphics type="vnc" socket="/var/lib/libvirt/qemu/linuxio-cloud-seed.vnc" autoport="no"></graphics>
   </devices>
 </domain>`
+}
+
+func TestParseVirtualMachineReadsOS(t *testing.T) {
+	domainXML := func(metadata string) string {
+		return `<domain type="kvm"><name>os-test</name><metadata>` + metadata + `</metadata><memory unit="MiB">1024</memory><vcpu>1</vcpu><os><type arch="x86_64" machine="q35">hvm</type></os></domain>`
+	}
+	for _, tc := range []struct {
+		name, metadata, want string
+	}{
+		{"linuxio", `<linuxio xmlns="https://linuxio.local/libvirt/v1" os="ubuntu"></linuxio>`, "ubuntu"},
+		{"libosinfo", `<libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0"><libosinfo:os id="http://microsoft.com/win/11"/></libosinfo:libosinfo>`, "win"},
+		{"linuxio wins", `<linuxio xmlns="https://linuxio.local/libvirt/v1" os="debian"></linuxio><libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0"><libosinfo:os id="http://fedoraproject.org/fedora/40"/></libosinfo:libosinfo>`, "debian"},
+		{"none", ``, ""},
+	} {
+		vm, err := parseVirtualMachine(testDomain("os-test"), domainXML(tc.metadata), "shutoff", false)
+		if err != nil {
+			t.Fatalf("%s: parseVirtualMachine: %v", tc.name, err)
+		}
+		if vm.OS != tc.want {
+			t.Fatalf("%s: OS = %q, want %q", tc.name, vm.OS, tc.want)
+		}
+	}
 }

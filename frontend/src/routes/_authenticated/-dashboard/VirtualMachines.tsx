@@ -9,6 +9,8 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import { useAppMediaQuery } from "@/theme";
+import { up } from "@/theme/breakpoints";
 
 import DashboardStatRows from "./DashboardStatRows";
 import {
@@ -22,6 +24,7 @@ import {
   stateChipColor,
   type VMAction,
   vmIPAddresses,
+  vmOSIcon,
 } from "../vm/-components/vmShared";
 
 const VMS_REFETCH_MS = 5000;
@@ -51,6 +54,7 @@ const selectSummaries = (vms: VirtualMachine[]) =>
     )
     .map((vm) => ({
       name: vm.name,
+      icon: vmOSIcon(vm.os),
       running: vm.state === "running",
       paused: vm.state === "paused",
       state: vm.state,
@@ -91,6 +95,7 @@ const VMList = () => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuName, setMenuName] = useState<string | null>(null);
   const { pendingActions, runAction } = useVMLifecycle(vms);
+  const isSmallUp = useAppMediaQuery(up("sm"));
 
   // Derived from the list so the menu disappears with the row it belongs to
   // when a poll drops that machine.
@@ -120,14 +125,16 @@ const VMList = () => {
       aria-label="Virtual machines"
       role="list"
       style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--app-space-4)",
+        display: "grid",
+        gridTemplateColumns: isSmallUp ? "repeat(4, 36px)" : "repeat(3, 36px)",
+        columnGap: "var(--app-space-16)",
+        rowGap: "var(--app-space-20)",
+        justifyContent: "center",
+        width: "fit-content",
         maxHeight: 110,
         overflowX: "hidden",
         overflowY: "auto",
         paddingRight: "var(--app-space-2)",
-        width: "100%",
       }}
     >
       {vms.map((vm) => {
@@ -164,24 +171,49 @@ const VMList = () => {
               onContextMenu={(event) => openMenu(event, vm.name)}
               role="listitem"
               style={{
-                alignItems: "center",
                 cursor: pendingAction ? "progress" : "context-menu",
-                display: "flex",
-                gap: "var(--app-space-8)",
-                minWidth: 0,
+                height: 36,
+                position: "relative",
+                width: 36,
               }}
             >
-              {progressLabel ? (
-                <AppCircularProgress
-                  aria-label={`${progressLabel} ${vm.name}`}
-                  size={8}
-                />
-              ) : (
-                <StatusDot color={vm.color} size={8} />
+              <Icon
+                color="var(--app-palette-text-primary)"
+                height={36}
+                icon={vm.icon}
+                style={{ opacity: vm.running ? 1 : 0.45 }}
+                width={36}
+              />
+              {progressLabel && (
+                <div
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: "var(--app-overlay-dark)",
+                    borderRadius: "inherit",
+                    display: "flex",
+                    inset: 0,
+                    justifyContent: "center",
+                    position: "absolute",
+                    zIndex: 1,
+                  }}
+                >
+                  <AppCircularProgress
+                    aria-label={`${progressLabel} ${vm.name}`}
+                    color="inherit"
+                    size={20}
+                  />
+                </div>
               )}
-              <AppTypography noWrap variant="body2">
-                {vm.name}
-              </AppTypography>
+              <StatusDot
+                color={vm.color}
+                size={8}
+                style={{
+                  border: "1.5px solid var(--app-palette-background-paper)",
+                  bottom: 0,
+                  position: "absolute",
+                  right: 0,
+                }}
+              />
             </div>
           </AppTooltip>
         );

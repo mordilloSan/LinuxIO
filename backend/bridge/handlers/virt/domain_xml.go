@@ -2,7 +2,9 @@ package virt
 
 import (
 	"encoding/xml"
+	"net/url"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"uuid"
@@ -16,6 +18,7 @@ import (
 type linuxioMetadata struct {
 	XMLName xml.Name              `xml:"https://linuxio.local/libvirt/v1 linuxio"`
 	Disks   []linuxioMetadataDisk `xml:"disk"`
+	OS      string                `xml:"os,attr,omitempty"`
 }
 
 type linuxioMetadataDisk struct {
@@ -45,6 +48,7 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 	}
 	metaXML, err := linuxioMetadata{
 		Disks: metaDisks,
+		OS:    vmImagePresets[req.ImagePresetID].OS,
 	}.marshal()
 	if err != nil {
 		return libvirtxml.Domain{}, err
@@ -288,6 +292,7 @@ func parseVirtualMachine(dom libvirt.Domain, xmlDoc string, state string, autost
 		State:     state,
 		Autostart: autostart,
 		Firmware:  domainFirmware(parsed.OS),
+		OS:        domainOS(meta, parsed.Metadata),
 	}
 	if vm.Name == "" {
 		vm.Name = dom.Name
@@ -389,6 +394,35 @@ func (m linuxioMetadata) marshal() (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// shortcut: a regexp over the raw metadata, so the libosinfo element is found
+// whatever its sibling order; switch to a tokenizer if other prefixes appear.
+var libosinfoOSPattern = regexp.MustCompile(`<libosinfo:os\s+id="([^"]*)"`)
+
+// domainOS prefers the id LinuxIO wrote at create time over libosinfo's.
+func domainOS(meta linuxioMetadata, metadata *libvirtxml.DomainMetadata) string {
+	if meta.OS != "" {
+		return meta.OS
+	}
+	return libosinfoOS(metadata)
+}
+
+// libosinfoOS turns virt-manager's <libosinfo:os id="http://ubuntu.com/ubuntu/24.04"/>
+// into "ubuntu": the first path segment of the id is the distro.
+func libosinfoOS(metadata *libvirtxml.DomainMetadata) string {
+	if metadata == nil {
+		return ""
+	}
+	match := libosinfoOSPattern.FindStringSubmatch(metadata.XML)
+	if match == nil {
+		return ""
+	}
+	id, err := url.Parse(match[1])
+	if err != nil {
+		return ""
+	}
+	return strings.SplitN(strings.TrimPrefix(id.Path, "/"), "/", 2)[0]
 }
 
 func parseLinuxIOMetadata(metadata *libvirtxml.DomainMetadata) linuxioMetadata {

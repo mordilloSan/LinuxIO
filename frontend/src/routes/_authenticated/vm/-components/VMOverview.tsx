@@ -18,7 +18,7 @@ import { formatFileSize } from "@/utils/formaters";
 
 import PreflightSummary from "./PreflightSummary";
 import { PillToggle, STATUS_COLOR, Throughput, Tile } from "./vmCards";
-import { normalizeState } from "./vmShared";
+import { normalizeState, vmOSIcon } from "./vmShared";
 
 const FILTERS = [
   { label: "All", value: "all" },
@@ -343,7 +343,7 @@ export default function VMOverview({
                 : undefined;
             return (
               <Row
-                icon="mdi:monitor"
+                icon={vmOSIcon(vm.os)}
                 key={vm.name}
                 muted={off}
                 name={vm.name}

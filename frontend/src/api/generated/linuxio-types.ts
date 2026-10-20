@@ -3238,6 +3238,7 @@ export interface VirtualMachine {
   autostart: boolean;
   firmware?: VMFirmware;
   hasGraphics: boolean;
+  os?: string;
   ownedDisks: string[];
   disks?: VMDisk[];
   nics?: VMNIC[];

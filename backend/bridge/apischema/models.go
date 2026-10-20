@@ -1484,9 +1484,12 @@ type VirtualMachine struct {
 	Autostart   bool       `json:"autostart"`
 	Firmware    VMFirmware `json:"firmware,omitempty"`
 	HasGraphics bool       `json:"hasGraphics"`
-	OwnedDisks  []string   `json:"ownedDisks"`
-	Disks       []VMDisk   `json:"disks,omitempty"`
-	NICs        []VMNIC    `json:"nics,omitempty"`
+	// OS is a distro id such as "ubuntu" or "win", from LinuxIO's own metadata
+	// or libosinfo's; empty when unknown.
+	OS         string   `json:"os,omitempty"`
+	OwnedDisks []string `json:"ownedDisks"`
+	Disks      []VMDisk `json:"disks,omitempty"`
+	NICs       []VMNIC  `json:"nics,omitempty"`
 	// Metrics is set only for a VM libvirt reported live stats for.
 	Metrics *VMMetrics `json:"metrics,omitempty"`
 }

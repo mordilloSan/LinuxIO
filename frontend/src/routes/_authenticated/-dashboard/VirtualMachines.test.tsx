@@ -50,7 +50,9 @@ describe("dashboard VirtualMachines card", () => {
     expect(screen.getByText("2 GB")).toBeInTheDocument();
     expect(screen.getByText("60 GB")).toBeInTheDocument();
     expect(
-      screen.getAllByRole("listitem").map((item) => item.textContent),
+      screen
+        .getAllByRole("listitem")
+        .map((item) => item.getAttribute("aria-label")),
     ).toEqual(["db", "web"]);
   });
 
