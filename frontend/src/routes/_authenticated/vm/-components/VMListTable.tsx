@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from "react";
+import { Icon } from "@iconify/react";
+import { useCallback, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
 import type { VirtualMachine } from "@/api";
@@ -8,9 +9,12 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
+import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
+import { ACTION_PROGRESS_LABEL } from "./useVMLifecycle";
 import {
   type VMAction,
   formatMemory,
@@ -47,7 +51,49 @@ const rowActionsStyle: CSSProperties = {
   gap: 6,
 };
 
+const usageCellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  minWidth: 0,
+};
+
 const getVirtualMachineId = (vm: VirtualMachine) => vm.name;
+
+/** A value with a usage bar under it; no bar until live metrics exist. */
+function UsageCell({
+  label,
+  percent,
+  value,
+}: {
+  label: string;
+  percent?: number;
+  value: string;
+}) {
+  return (
+    <div style={usageCellStyle}>
+      <span style={percent === undefined ? mutedCellStyle : undefined}>
+        {value}
+      </span>
+      {percent !== undefined && (
+        <AppLinearProgress
+          aria-label={label}
+          value={Math.min(percent, 100)}
+          variant="determinate"
+        />
+      )}
+    </div>
+  );
+}
+
+const POWER_ACTION: Record<
+  string,
+  { action: VMAction; icon: string; label: string }
+> = {
+  paused: { action: "resume", icon: "mdi:play-pause", label: "Resume" },
+  running: { action: "shutdown", icon: "mdi:stop", label: "Shutdown" },
+};
+const START_ACTION = { action: "start", icon: "mdi:play", label: "Start" };
 
 export default function VMListTable({
   effectiveSelectedName,
@@ -66,6 +112,19 @@ export default function VMListTable({
   pendingActions: ReadonlyMap<string, VMAction>;
   vms: VirtualMachine[];
 }) {
+  const [menu, setMenu] = useState<{
+    anchor: HTMLElement;
+    name: string;
+  } | null>(null);
+  // Derived from the list so the menu closes with the row it belongs to when
+  // a poll drops that machine.
+  const menuVM = vms.find((vm) => vm.name === menu?.name);
+  const closeMenu = () => setMenu(null);
+  const runMenuAction = (action: VMAction, vm: VirtualMachine) => {
+    closeMenu();
+    onRunAction(action, vm);
+  };
+
   const columns = useMemo<AppVirtualTableColumnDef<VirtualMachine>[]>(
     () => [
       {
@@ -89,15 +148,64 @@ export default function VMListTable({
       {
         accessorKey: "state",
         header: "State",
-        cell: ({ row }) => (
-          <AppChip
-            color={stateChipColor(row.original.state)}
-            label={normalizeState(row.original.state)}
-            size="small"
-            variant="soft"
-          />
-        ),
+        cell: ({ row }) => {
+          const pendingAction = pendingActions.get(row.original.name);
+          return pendingAction ? (
+            <AppChip
+              color="info"
+              label={ACTION_PROGRESS_LABEL[pendingAction]}
+              size="small"
+              variant="soft"
+            />
+          ) : (
+            <AppChip
+              color={stateChipColor(row.original.state)}
+              label={normalizeState(row.original.state)}
+              size="small"
+              variant="soft"
+            />
+          );
+        },
         meta: { width: "minmax(110px, 0.8fr)" },
+      },
+      {
+        accessorKey: "vcpus",
+        header: "CPU",
+        cell: ({ row }) => {
+          const { metrics, vcpus } = row.original;
+          const percent = metrics?.cpuPercent;
+          return (
+            <UsageCell
+              label="CPU usage"
+              percent={percent}
+              value={
+                percent === undefined
+                  ? `${vcpus} vCPU`
+                  : `${percent.toFixed(1)}%`
+              }
+            />
+          );
+        },
+        meta: { width: "minmax(120px, 0.9fr)" },
+      },
+      {
+        accessorKey: "memoryMB",
+        header: "Memory",
+        cell: ({ row }) => {
+          const { memoryMB, metrics } = row.original;
+          const total = formatMemory(memoryMB);
+          if (!metrics) {
+            return <UsageCell label="Memory usage" value={total} />;
+          }
+          return (
+            <UsageCell
+              label="Memory usage"
+              percent={memoryMB ? (metrics.memoryUsedMB / memoryMB) * 100 : 0}
+              value={`${formatMemory(metrics.memoryUsedMB)} / ${total}`}
+            />
+          );
+        },
+        meta: { width: "minmax(150px, 1fr)" },
       },
       {
         id: "ipAddresses",
@@ -112,18 +220,6 @@ export default function VMListTable({
         meta: { width: "minmax(150px, 1fr)" },
       },
       {
-        accessorKey: "vcpus",
-        header: "CPU",
-        cell: ({ row }) => row.original.vcpus,
-        meta: { align: "right", width: "80px" },
-      },
-      {
-        accessorKey: "memoryMB",
-        header: "Memory",
-        cell: ({ row }) => formatMemory(row.original.memoryMB),
-        meta: { align: "right", width: "120px" },
-      },
-      {
         id: "actions",
         header: "Actions",
         cell: ({ row }) => {
@@ -132,6 +228,7 @@ export default function VMListTable({
           const paused = vm.state === "paused";
           const pendingAction = pendingActions.get(vm.name);
           const rowBusy = Boolean(pendingAction);
+          const power = POWER_ACTION[vm.state] ?? START_ACTION;
           return (
             <div
               aria-busy={rowBusy}
@@ -139,49 +236,14 @@ export default function VMListTable({
               style={rowActionsStyle}
             >
               <AppActionIconButton
-                disabled={rowBusy || running}
-                icon="mdi:play"
-                label="Start"
-                loading={pendingAction === "start"}
-                onClick={() => onRunAction("start", vm)}
+                disabled={rowBusy}
+                icon={power.icon}
+                label={power.label}
+                loading={pendingAction === power.action}
+                onClick={() => onRunAction(power.action, vm)}
               />
               <AppActionIconButton
-                disabled={rowBusy || !running}
-                icon="mdi:stop"
-                label="Shutdown"
-                loading={pendingAction === "shutdown"}
-                onClick={() => onRunAction("shutdown", vm)}
-              />
-              <AppActionIconButton
-                disabled={rowBusy || !running}
-                icon="mdi:restart"
-                label="Reboot"
-                loading={pendingAction === "reboot"}
-                onClick={() => onRunAction("reboot", vm)}
-              />
-              <AppActionIconButton
-                disabled={rowBusy || (!running && !paused)}
-                icon="mdi:power"
-                label="Force off"
-                loading={pendingAction === "force_off"}
-                onClick={() => onRunAction("force_off", vm)}
-              />
-              <AppActionIconButton
-                disabled={rowBusy || !running}
-                icon="mdi:pause"
-                label="Suspend"
-                loading={pendingAction === "suspend"}
-                onClick={() => onRunAction("suspend", vm)}
-              />
-              <AppActionIconButton
-                disabled={rowBusy || !paused}
-                icon="mdi:play-pause"
-                label="Resume"
-                loading={pendingAction === "resume"}
-                onClick={() => onRunAction("resume", vm)}
-              />
-              <AppActionIconButton
-                disabled={rowBusy || !running || !vm.hasGraphics}
+                disabled={!running || !vm.hasGraphics}
                 icon="mdi:monitor"
                 label="Console"
                 onClick={() => onOpenConsole(vm)}
@@ -192,10 +254,18 @@ export default function VMListTable({
                 label="Delete"
                 onClick={() => onDelete(vm)}
               />
+              <AppActionIconButton
+                disabled={rowBusy || (!running && !paused)}
+                icon="mdi:dots-horizontal"
+                label="More actions"
+                onClick={(event) =>
+                  setMenu({ anchor: event.currentTarget, name: vm.name })
+                }
+              />
             </div>
           );
         },
-        meta: { align: "right", width: "minmax(320px, 1.4fr)" },
+        meta: { align: "right", width: "minmax(180px, 0.9fr)" },
       },
     ],
     [onDelete, onOpenConsole, onRunAction, onSelect, pendingActions],
@@ -216,21 +286,56 @@ export default function VMListTable({
   );
 
   return (
-    <FrostedCard style={listPanelStyle}>
-      <AppVirtualTable
-        ariaLabel="Virtual machines"
-        columns={columns}
-        data={surface.items}
-        dnd={tableDnd}
-        emptyMessage="No virtual machines."
-        enableSorting={false}
-        fillAvailable={false}
-        getRowId={getVirtualMachineId}
-        maxHeight={400}
-        onRowClick={handleRowClick}
-        selectedRowId={effectiveSelectedName}
-        variant="embedded"
-      />
-    </FrostedCard>
+    <>
+      <FrostedCard style={listPanelStyle}>
+        <AppVirtualTable
+          ariaLabel="Virtual machines"
+          columns={columns}
+          data={surface.items}
+          dnd={tableDnd}
+          emptyMessage="No virtual machines."
+          enableSorting={false}
+          fillAvailable={false}
+          getRowId={getVirtualMachineId}
+          maxHeight={400}
+          onRowClick={handleRowClick}
+          selectedRowId={effectiveSelectedName}
+          variant="embedded"
+        />
+      </FrostedCard>
+      <AppMenu
+        anchorEl={menu?.anchor ?? null}
+        ariaLabel="More actions"
+        minWidth={160}
+        onClose={closeMenu}
+        open={menu !== null && menuVM !== undefined}
+      >
+        {menuVM?.state === "running" && (
+          <AppMenuItem
+            onClick={() => runMenuAction("reboot", menuVM)}
+            startAdornment={<Icon icon="mdi:restart" width={18} />}
+          >
+            Reboot
+          </AppMenuItem>
+        )}
+        {menuVM?.state === "running" && (
+          <AppMenuItem
+            onClick={() => runMenuAction("suspend", menuVM)}
+            startAdornment={<Icon icon="mdi:pause" width={18} />}
+          >
+            Suspend
+          </AppMenuItem>
+        )}
+        {menuVM && (
+          <AppMenuItem
+            danger
+            onClick={() => runMenuAction("force_off", menuVM)}
+            startAdornment={<Icon icon="mdi:power" width={18} />}
+          >
+            Force off
+          </AppMenuItem>
+        )}
+      </AppMenu>
+    </>
   );
 }

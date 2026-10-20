@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
@@ -72,47 +73,26 @@ const VMImagesPage = () => {
   });
 
   return (
-    <div style={{ display: "grid", gap: "var(--app-space-16)" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "var(--app-space-12)",
-        }}
-      >
-        <AppTypography component="h2" variant="h6">
-          VM templates
-        </AppTypography>
-        <AppButton
-          disabled={library.isFetching}
-          onClick={() => library.refetch()}
-          variant="outlined"
-        >
-          Refresh templates
-        </AppButton>
-      </div>
-      <AppTypography color="text.secondary" variant="body2">
-        Download a template once, then reuse it for new VMs. Updates are
-        downloaded only when you choose; existing VMs keep their own disks.
-      </AppTypography>
-      {library.data ? (
-        <AppTypography component="div" variant="body2">
-          Template folder:{" "}
-          <code style={{ overflowWrap: "anywhere" }}>{library.data.path}</code>
-        </AppTypography>
-      ) : null}
-      <AppTypography component="div" color="text.secondary" variant="body2">
-        VM disks:{" "}
-        <code style={{ overflowWrap: "anywhere" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--app-space-16)",
+      }}
+    >
+      <div style={{ width: "fit-content" }}>
+        {library.data ? (
+          <InfoRow label="Template folder" wrap>
+            {library.data.path}
+          </InfoRow>
+        ) : null}
+        <InfoRow label="VM disks" wrap>
           {preflight.managedPaths.cloudImages}
-        </code>
-        <br />
-        ISO installers:{" "}
-        <code style={{ overflowWrap: "anywhere" }}>
+        </InfoRow>
+        <InfoRow label="ISO installers" wrap>
           {preflight.managedPaths.isos}
-        </code>
-      </AppTypography>
+        </InfoRow>
+      </div>
       {library.isPending ? (
         <AppLinearProgress aria-label="Loading templates" />
       ) : null}

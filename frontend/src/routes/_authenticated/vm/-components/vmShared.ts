@@ -4,6 +4,7 @@ import {
   type VMPreflight,
   type VirtualMachine,
 } from "@/api";
+import { getDistroIcon } from "@/icons/distro";
 
 export type VMAction =
   | "start"
@@ -110,19 +111,6 @@ export function vmIPAddresses(vm: VirtualMachine): string[] {
   return (vm.nics ?? []).flatMap((nic) => nic.ipAddresses ?? []);
 }
 
-export function formatAttachmentType(type: string | undefined): string {
-  switch (type) {
-    case "nat":
-      return "NAT";
-    case "bridge":
-      return "Bridge";
-    case "network":
-      return "Network";
-    default:
-      return "Unknown";
-  }
-}
-
 export function normalizeState(state: string): string {
   return state ? state.replaceAll("_", " ") : "unknown";
 }
@@ -181,4 +169,19 @@ export function folderFromISOPathText(path: string): string {
 
 export function isMissingPathError(error: unknown): boolean {
   return error instanceof LinuxIOError && Number(error.code) === 404;
+}
+
+// libosinfo ids that the distro map does not spell the same way.
+const VM_OS_ICONS: Record<string, string> = {
+  archlinux: "simple-icons:archlinux",
+  "centos-stream": "simple-icons:centos",
+  freebsd: "simple-icons:freebsd",
+  homeassistant: "simple-icons:homeassistant",
+};
+
+/** The logo for a VM's OS id; a plain screen when the OS is unknown. */
+export function vmOSIcon(os?: string): string {
+  if (!os) return "mdi:monitor";
+  if (os.startsWith("win")) return "mdi:microsoft-windows";
+  return VM_OS_ICONS[os] ?? getDistroIcon(os);
 }

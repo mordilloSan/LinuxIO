@@ -5,9 +5,11 @@ import type { VirtualMachine, VMFirmware } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppChip from "@/components/ui/AppChip";
 import AppSelect from "@/components/ui/AppSelect";
+import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
+import { formatThroughput } from "@/utils/formaters";
 
 import {
   VM_TOAST,
@@ -78,6 +80,20 @@ const wrappingCodeStyle: CSSProperties = {
   overflowWrap: "anywhere",
 };
 
+const formatRate = (bytesPerSec: number | undefined) =>
+  bytesPerSec === undefined ? "—" : formatThroughput(bytesPerSec);
+
+function StatItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={statItemStyle}>
+      <AppTypography color="text.secondary" component="span" variant="caption">
+        {label}
+      </AppTypography>
+      <strong style={{ display: "block", marginTop: 4 }}>{value}</strong>
+    </div>
+  );
+}
+
 /**
  * Renders one VM's detail, or the empty prompt when no machine is selected.
  *
@@ -90,6 +106,11 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
   const firmwareMutation = useCallMutation(linuxio.virt.set_firmware, {
     success: "Firmware updated",
     error: "Failed to change firmware",
+    toast: VM_TOAST,
+  });
+  const autostartMutation = useCallMutation(linuxio.virt.set_autostart, {
+    success: "Autostart updated",
+    error: "Failed to change autostart",
     toast: VM_TOAST,
   });
 
@@ -156,6 +177,30 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             {formatDisk(vm.diskGB)}
           </strong>
         </div>
+        {vm.metrics && (
+          <>
+            <StatItem
+              label="CPU usage"
+              value={
+                vm.metrics.cpuPercent === undefined
+                  ? "—"
+                  : `${vm.metrics.cpuPercent.toFixed(1)}%`
+              }
+            />
+            <StatItem
+              label="Memory used"
+              value={formatMemory(vm.metrics.memoryUsedMB)}
+            />
+            <StatItem
+              label="Network ↓ / ↑"
+              value={`${formatRate(vm.metrics.networkReceiveBytesPerSecond)} / ${formatRate(vm.metrics.networkSendBytesPerSecond)}`}
+            />
+            <StatItem
+              label="Disk read / write"
+              value={`${formatRate(vm.metrics.diskReadBytesPerSecond)} / ${formatRate(vm.metrics.diskWriteBytesPerSecond)}`}
+            />
+          </>
+        )}
         <div style={statItemStyle}>
           <AppTypography
             color="text.secondary"
@@ -164,9 +209,17 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
           >
             Autostart
           </AppTypography>
-          <strong style={{ display: "block", marginTop: 4 }}>
-            {vm.autostart ? "On" : "Off"}
-          </strong>
+          <div style={{ marginTop: 4 }}>
+            <AppSwitch
+              aria-label="Autostart"
+              checked={vm.autostart}
+              disabled={autostartMutation.isPending}
+              onChange={(_, autostart) =>
+                autostartMutation.mutate({ autostart, name: vm.name })
+              }
+              size="small"
+            />
+          </div>
         </div>
         <div style={{ ...statItemStyle, gridColumn: "1 / -1" }}>
           <AppSelect

@@ -12,7 +12,8 @@ export type Attachment =
       data: string;
       previewUrl: string;
     }
-  | { id: string; kind: "file"; path: string; block: acp.ContentBlock };
+  | { id: string; kind: "file"; path: string; block: acp.ContentBlock }
+  | { id: string; kind: "text"; text: string };
 
 const MAX_EMBED_CHARS = 200_000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -26,8 +27,28 @@ const newId = () =>
 
 export const baseName = (path: string) => path.split("/").pop() || path;
 
-export const attachmentName = (attachment: Attachment) =>
-  attachment.kind === "image" ? attachment.name : baseName(attachment.path);
+export const attachmentName = (attachment: Attachment) => {
+  switch (attachment.kind) {
+    case "image":
+      return attachment.name;
+    case "file":
+      return baseName(attachment.path);
+    case "text":
+      return "Pasted text";
+  }
+};
+
+export const lineCount = (text: string) => text.split("\n").length;
+
+/** A paste long enough to clutter the prompt box becomes an attachment. */
+export const isLongPaste = (text: string) =>
+  lineCount(text) > 8 || text.length > 1000;
+
+export const textAttachment = (text: string): Attachment => ({
+  id: newId(),
+  kind: "text",
+  text,
+});
 
 /** Embeds a text file under 200 KB; anything larger or unreadable is sent as a link. */
 export async function fileAttachment(
@@ -80,7 +101,7 @@ export function imageAttachment(file: File): Promise<Attachment> {
   });
 }
 
-/** Images first, then files, then the text. */
+/** Images first, then files, then pasted text, then the typed text. */
 export function buildPrompt(
   text: string,
   attachments: Attachment[],
@@ -99,5 +120,8 @@ export function buildPrompt(
   const files = attachments.flatMap((a) =>
     a.kind === "file" ? [a.block] : [],
   );
-  return [...images, ...files, textBlock(text)];
+  const pasted = attachments.flatMap((a) =>
+    a.kind === "text" ? [textBlock(a.text)] : [],
+  );
+  return [...images, ...files, ...pasted, textBlock(text)];
 }

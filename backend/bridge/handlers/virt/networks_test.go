@@ -21,8 +21,11 @@ func TestListVMNetworksEnumeratesAndDeduplicatesBridges(t *testing.T) {
 	makeBridgeFixture(t, root, "br-down", "down")
 	makeBridgeFixture(t, root, "virbr0", "up")
 	makeBridgeFixture(t, root, "br-isolated", "up")
+	makeBridgeFixture(t, root, "br-immich", "up")
+	makeBridgeFixture(t, root, "docker0", "up")
 	makeInterfaceFixture(t, root, "eth0")
 	withNetworkSysfsRoot(t, root)
+	withDockerBridges(t, map[string]struct{}{"br-immich": {}, "docker0": {}}, nil)
 
 	fake := newFakeConn()
 	fake.libvirtNetworks = []libvirt.Network{
@@ -31,7 +34,7 @@ func TestListVMNetworksEnumeratesAndDeduplicatesBridges(t *testing.T) {
 	}
 	fake.networkActiveByName["default"] = 1
 	fake.networkActiveByName["isolated"] = 0
-	fake.networkXML["default"] = `<network><name>default</name><forward mode="nat"></forward><bridge name="virbr0"></bridge></network>`
+	fake.networkXML["default"] = `<network><name>default</name><forward mode="nat"></forward><bridge name="virbr0"></bridge><ip address="192.168.122.1" netmask="255.255.255.0"></ip></network>`
 	fake.networkXML["isolated"] = `<network><name>isolated</name><forward mode="none"></forward><bridge name="br-isolated"></bridge></network>`
 	withFakeLibvirt(t, fake)
 
@@ -42,18 +45,19 @@ func TestListVMNetworksEnumeratesAndDeduplicatesBridges(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("networks = %#v, want three entries", got)
 	}
-	if got[0] != (apischema.VMNetwork{Name: "br-down", Type: bridgeNetworkType, Active: false}) {
+	if got[0] != (apischema.VMNetwork{Name: "br-down", Type: bridgeNetworkType, Active: false, Bridge: "br-down"}) {
 		t.Fatalf("first network = %#v", got[0])
 	}
-	if got[1] != (apischema.VMNetwork{Name: "br-lan", Type: bridgeNetworkType, Active: true}) {
+	if got[1] != (apischema.VMNetwork{Name: "br-lan", Type: bridgeNetworkType, Active: true, Bridge: "br-lan"}) {
 		t.Fatalf("second network = %#v", got[1])
 	}
-	if got[2] != (apischema.VMNetwork{Name: "default", Type: libvirtNetworkType, Active: true}) {
+	if got[2] != (apischema.VMNetwork{Name: "default", Type: libvirtNetworkType, Active: true, Bridge: "virbr0", Subnet: "192.168.122.1/24"}) {
 		t.Fatalf("default network = %#v", got[2])
 	}
 	for _, network := range got {
-		if network.Name == "br-isolated" || network.Name == "isolated" {
-			t.Fatalf("unsupported libvirt network exposed: %#v", got)
+		switch network.Name {
+		case "br-isolated", "isolated", "br-immich", "docker0":
+			t.Fatalf("unsupported network exposed: %#v", got)
 		}
 	}
 }
@@ -83,8 +87,12 @@ func TestListVMNetworksReportsPhysicalUplinkOnlyForEthernetCarrier(t *testing.T)
 			t.Fatalf("bridge %q = %#v, want no physical uplink", name, bridges[name])
 		}
 	}
-	if !bridges["br-lan"].HasPhysicalUplink {
-		t.Fatalf("physical bridge = %#v, want physical uplink", bridges["br-lan"])
+	if !bridges["br-lan"].HasPhysicalUplink || bridges["br-lan"].Uplink != "eth0" {
+		t.Fatalf("physical bridge = %#v, want physical uplink eth0", bridges["br-lan"])
+	}
+	// A wired NIC without link is still the bridge's uplink, just down.
+	if bridges["br-down"].Uplink != "eth1" || bridges["br-docker"].Uplink != "" {
+		t.Fatalf("uplinks = %q / %q, want eth1 / none", bridges["br-down"].Uplink, bridges["br-docker"].Uplink)
 	}
 }
 
@@ -363,6 +371,13 @@ func TestListHostBridgesChecksContext(t *testing.T) {
 	}
 }
 
+func withDockerBridges(t *testing.T, names map[string]struct{}, err error) {
+	t.Helper()
+	previous := dockerBridgeNames
+	dockerBridgeNames = func(context.Context) (map[string]struct{}, error) { return names, err }
+	t.Cleanup(func() { dockerBridgeNames = previous })
+}
+
 func withNetworkSysfsRoot(t *testing.T, root string) {
 	t.Helper()
 	old := networkSysfsRoot
@@ -438,7 +453,7 @@ func TestEnsureDefaultNetworkActiveRemovesStaleBridge(t *testing.T) {
 		fake := newFakeConn()
 		fake.networkActive = 0
 		fake.networkCreateErr = inUse
-		fake.networkXML["default"] = `<network><name>default</name><forward mode="nat"></forward><bridge name="virbr0"></bridge></network>`
+		fake.networkXML["default"] = `<network><name>default</name><forward mode="nat"></forward><bridge name="virbr0"></bridge><ip address="192.168.122.1" netmask="255.255.255.0"></ip></network>`
 		var deleted []string
 		old := deleteHostLink
 		deleteHostLink = func(name string) error {

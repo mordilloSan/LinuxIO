@@ -12,7 +12,7 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { useCapability } from "@/hooks/useCapabilities";
+import { useAccessContext } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 
@@ -26,6 +26,7 @@ import Network from "./Network";
 import Processor from "./Processor";
 import SystemHealth from "./SystemHealth";
 import SystemOverview from "./SystemOverview";
+import VirtualMachines from "./VirtualMachines";
 
 const MemoSystemOverview = memo(SystemOverview);
 const MemoSystemHealth = memo(SystemHealth);
@@ -37,6 +38,7 @@ const MemoMotherBoardInfo = memo(MotherBoardInfo);
 const MemoGpuInfo = memo(GpuInfo);
 const MemoDriveInfo = memo(DriveInfo);
 const MemoDockerInfo = memo(DockerInfo);
+const MemoVirtualMachines = memo(VirtualMachines);
 
 interface DashboardCardDefinition {
   component: ComponentType;
@@ -77,6 +79,12 @@ const allCards: DashboardCardDefinition[] = [
     skeletonLayout: "split",
   },
   {
+    id: "vm",
+    label: "Virtual Machines",
+    component: MemoVirtualMachines,
+    skeletonLayout: "split",
+  },
+  {
     id: "nic",
     label: "Network",
     component: MemoNetwork,
@@ -111,13 +119,19 @@ const allCards: DashboardCardDefinition[] = [
 const getCardId = (card: DashboardCardDefinition) => card.id;
 
 const DashboardPage = () => {
-  const { value: dockerAvailable } = useCapability("dockerAvailable");
+  const { dockerAvailable, libvirtAvailable, privileged } = useAccessContext();
   const [hiddenCards, setHiddenCards] = useConfigValue("hiddenCards");
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
 
   const availableCards = useMemo(
-    () => allCards.filter((card) => card.id !== "docker" || dockerAvailable),
-    [dockerAvailable],
+    () =>
+      allCards.filter((card) => {
+        if (card.id === "docker") return dockerAvailable;
+        // virt.list is a privileged call, like the VM route itself.
+        if (card.id === "vm") return libvirtAvailable && privileged;
+        return true;
+      }),
+    [dockerAvailable, libvirtAvailable, privileged],
   );
 
   const visibleCards = useMemo(() => {

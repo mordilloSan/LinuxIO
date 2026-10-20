@@ -136,6 +136,8 @@ func (a *App) getSystemStats(ctx context.Context, cacheTimeMs uint16) (system.St
 	if err := a.updateCoreSystemStats(ctx, cacheTimeMs, &systemStats); err != nil {
 		return systemStats, err
 	}
+	// Hosts without cpufreq simply have no frequencies.
+	systemStats.CpuFrequencies, _ = getCurrentFrequencies(ctx)
 	if err := a.fsManager.updateDiskUsage(ctx, &systemStats); err != nil {
 		return systemStats, err
 	}

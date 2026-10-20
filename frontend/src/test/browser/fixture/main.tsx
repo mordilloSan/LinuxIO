@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
 import { Route as NetworkRoute } from "@/routes/_authenticated/network/route";
+import { Route as StorageRoute } from "@/routes/_authenticated/storage/index";
 import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
 import { installTabNavigationIntent } from "@/utils/tabNavigation";
@@ -63,6 +64,7 @@ const SchedulesPage = lazy(() => import("./routes/SchedulesPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
 const DialogGalleryPage = lazy(() => import("./routes/DialogGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
+const StorageDisksPage = lazy(() => import("./routes/StorageDisksPage"));
 const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
 const NetworkHandoffPage = lazy(() => import("./routes/NetworkHandoffPage"));
 const VMBridgePage = lazy(() => import("./routes/VMBridgePage"));
@@ -272,6 +274,12 @@ const lightTopologyRoute = createRoute({
   path: "styling/light/topology",
   validateSearch: topologySearch,
 });
+const storageDisksRoute = createRoute({
+  component: StorageDisksPage,
+  getParentRoute: () => authenticatedRoute,
+  path: "storage/",
+  validateSearch: StorageRoute.options.validateSearch,
+});
 const storageTopologyRoute = createRoute({
   component: StorageTopologyPage,
   getParentRoute: () => rootRoute,
@@ -381,6 +389,7 @@ const routeTree = rootRoute.addChildren([
   ...dialogGalleryRoutes,
   dockerTopologyRoute,
   lightTopologyRoute,
+  storageDisksRoute,
   storageTopologyRoute,
   lightStorageTopologyRoute,
   processesLayoutRoute.addChildren([processesRoute, programsRoute]),

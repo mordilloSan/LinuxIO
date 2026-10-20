@@ -5,13 +5,13 @@ import { render, screen } from "@/test/render";
 
 import VMDetailsPanel from "./VMDetailsPanel";
 
-const mocks = vi.hoisted(() => ({ setFirmware: vi.fn() }));
+const mocks = vi.hoisted(() => ({ mutate: vi.fn() }));
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   return {
     ...actual,
-    useCallMutation: () => ({ mutate: mocks.setFirmware, isPending: false }),
+    useCallMutation: () => ({ mutate: mocks.mutate, isPending: false }),
   };
 });
 
@@ -27,17 +27,23 @@ const vm: VirtualMachine = {
   vcpus: 2,
 };
 
-beforeEach(() => mocks.setFirmware.mockReset());
+beforeEach(() => mocks.mutate.mockReset());
 
 describe("VMDetailsPanel firmware", () => {
   it("switches a shut-off VM to UEFI", async () => {
     const { user } = render(<VMDetailsPanel vm={vm} />);
     await user.click(screen.getByRole("combobox", { name: "Firmware" }));
     await user.click(screen.getByRole("option", { name: "UEFI" }));
-    expect(mocks.setFirmware).toHaveBeenCalledWith({
+    expect(mocks.mutate).toHaveBeenCalledWith({
       firmware: "uefi",
       name: "HA",
     });
+  });
+
+  it("toggles autostart", async () => {
+    const { user } = render(<VMDetailsPanel vm={vm} />);
+    await user.click(screen.getByRole("checkbox", { name: "Autostart" }));
+    expect(mocks.mutate).toHaveBeenCalledWith({ autostart: true, name: "HA" });
   });
 
   it("locks the firmware while the VM runs", () => {

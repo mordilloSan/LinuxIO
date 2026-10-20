@@ -1918,6 +1918,7 @@ export interface MonitoringCPUHistoryPoint {
   usage_percent: number;
   breakdown_percent?: number[];
   cores_percent?: number[];
+  frequencies_mhz?: number[];
 }
 
 export interface MonitoringConfig {
@@ -3023,6 +3024,11 @@ export interface UsersGroupsResponse {
   users: string[];
 }
 
+export interface VMAutostartRequest {
+  name: string;
+  autostart: boolean;
+}
+
 export interface VMCreateProgress {
   phase: string;
   message: string;
@@ -3065,6 +3071,7 @@ export interface VMDisk {
   path: string;
   volumeName?: string;
   sizeGB?: number;
+  allocatedBytes?: number;
   owned: boolean;
 }
 
@@ -3087,12 +3094,24 @@ export interface VMManagedPaths {
   cloudImages: string;
 }
 
+export interface VMMetrics {
+  cpuPercent?: number;
+  memoryUsedMB: number;
+  networkReceiveBytesPerSecond?: number;
+  networkSendBytesPerSecond?: number;
+  diskReadBytesPerSecond?: number;
+  diskWriteBytesPerSecond?: number;
+}
+
 export interface VMNIC {
   mac?: string;
   model?: string;
   network?: string;
   attachmentType?: string;
   ipAddresses?: string[];
+  target?: string;
+  receiveBytesPerSecond?: number;
+  sendBytesPerSecond?: number;
 }
 
 export interface VMNetwork {
@@ -3100,6 +3119,9 @@ export interface VMNetwork {
   type: string;
   active: boolean;
   hasPhysicalUplink?: boolean;
+  bridge?: string;
+  uplink?: string;
+  subnet?: string;
 }
 
 export interface VMPreflight {
@@ -3132,6 +3154,16 @@ export interface VMPreflightRequest {
 }
 
 export type VMSourceType = "iso" | "imagePreset" | "import";
+
+export interface VMStoragePool {
+  name: string;
+  type: string;
+  path?: string;
+  active: boolean;
+  capacityBytes: number;
+  allocationBytes: number;
+  availableBytes: number;
+}
 
 export interface VMTemplate {
   id: string;
@@ -3206,9 +3238,11 @@ export interface VirtualMachine {
   autostart: boolean;
   firmware?: VMFirmware;
   hasGraphics: boolean;
+  os?: string;
   ownedDisks: string[];
   disks?: VMDisk[];
   nics?: VMNIC[];
+  metrics?: VMMetrics;
 }
 
 export interface VolumeGroup {
@@ -4434,6 +4468,7 @@ export interface LinuxIOSchema {
     };
     list: { input: []; request: void; result: VirtualMachine[] };
     networks: { input: []; request: void; result: VMNetwork[] };
+    pools: { input: []; request: void; result: VMStoragePool[] };
     preflight: {
       input: [request: VMPreflightRequest];
       request: VMPreflightRequest;
@@ -4441,6 +4476,11 @@ export interface LinuxIOSchema {
     };
     reboot: { input: [name: string]; request: NameRequest; result: void };
     resume: { input: [name: string]; request: NameRequest; result: void };
+    set_autostart: {
+      input: [request: VMAutostartRequest];
+      request: VMAutostartRequest;
+      result: VirtualMachine;
+    };
     set_firmware: {
       input: [request: VMFirmwareRequest];
       request: VMFirmwareRequest;
@@ -5079,9 +5119,11 @@ export interface LinuxIOCallSchema {
   "virt.get": { request: NameRequest; result: VirtualMachine };
   "virt.list": { request: void; result: VirtualMachine[] };
   "virt.networks": { request: void; result: VMNetwork[] };
+  "virt.pools": { request: void; result: VMStoragePool[] };
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };
+  "virt.set_autostart": { request: VMAutostartRequest; result: VirtualMachine };
   "virt.set_firmware": { request: VMFirmwareRequest; result: VirtualMachine };
   "virt.shutdown": { request: NameRequest; result: void };
   "virt.start": { request: NameRequest; result: void };

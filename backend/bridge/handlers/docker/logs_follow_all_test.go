@@ -76,7 +76,7 @@ func TestCopyContainerLogsDemuxesAndJoinsPartialLines(t *testing.T) {
 	}
 
 	assertDockerLogRecords(t, readDockerLogRecords(t, &out), []dockerLogRecord{
-		{ID: "abc123def456", Name: "web", TS: "2026-10-05T10:00:00.000000001Z", Line: "hello world"},
+		{ID: "abc123def456", Name: "web", TS: "2026-10-05T10:00:00.000000001Z", Line: "hello \x1b[32mworld\x1b[0m"},
 		{ID: "abc123def456", Name: "web", TS: "2026-10-05T10:00:00.000000002Z", Line: "partial line"},
 		{ID: "abc123def456", Name: "web", TS: "2026-10-05T10:00:00.000000003Z", Line: "oops", Stderr: true},
 		{ID: "abc123def456", Name: "web", TS: "2026-10-05T10:00:00.000000004Z", Line: "no newline at end"},
@@ -93,7 +93,7 @@ func TestCopyContainerLogsRawTTY(t *testing.T) {
 	}
 
 	assertDockerLogRecords(t, readDockerLogRecords(t, &out), []dockerLogRecord{
-		{ID: "abc123def456", Name: "tty", TS: "2026-10-05T10:00:00Z", Line: "started"},
+		{ID: "abc123def456", Name: "tty", TS: "2026-10-05T10:00:00Z", Line: "\x1b[1mstarted\x1b[0m"},
 		{ID: "abc123def456", Name: "tty", TS: "", Line: "no timestamp here"},
 	})
 }

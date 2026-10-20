@@ -64,10 +64,11 @@ var liveOnlyPluginNames = map[string]struct{}{
 }
 
 type CPUData struct {
-	Cpu           float64           `json:"cpu_percent"`
-	MaxCpu        float64           `json:"max_cpu_percent,omitempty"`
-	CpuBreakdown  []float64         `json:"cpu_breakdown_percent,omitempty"`
-	CpuCoresUsage system.Uint8Slice `json:"cpu_cores_percent,omitempty"`
+	Cpu            float64           `json:"cpu_percent"`
+	MaxCpu         float64           `json:"max_cpu_percent,omitempty"`
+	CpuBreakdown   []float64         `json:"cpu_breakdown_percent,omitempty"`
+	CpuCoresUsage  system.Uint8Slice `json:"cpu_cores_percent,omitempty"`
+	CpuFrequencies []float64         `json:"cpu_frequencies_mhz,omitempty"`
 }
 
 type MemData struct {
@@ -175,10 +176,11 @@ func SnapshotPluginPayloads(data *system.CombinedData) map[string]any {
 	stats := data.Stats
 	return map[string]any{
 		PluginCPU: CPUData{
-			Cpu:           stats.Cpu,
-			MaxCpu:        stats.MaxCpu,
-			CpuBreakdown:  stats.CpuBreakdown,
-			CpuCoresUsage: stats.CpuCoresUsage,
+			Cpu:            stats.Cpu,
+			MaxCpu:         stats.MaxCpu,
+			CpuBreakdown:   stats.CpuBreakdown,
+			CpuCoresUsage:  stats.CpuCoresUsage,
+			CpuFrequencies: stats.CpuFrequencies,
 		},
 		PluginMem: MemData{
 			Mem:          stats.Mem,

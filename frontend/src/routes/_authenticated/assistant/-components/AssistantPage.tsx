@@ -1,3 +1,4 @@
+import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -48,6 +49,8 @@ export default function AssistantPage({
   const state = useAssistantState();
   const navigate = useNavigate();
   const slot = useHeaderActionSlot();
+  const agentLabel =
+    ASSISTANT_AGENTS.find((entry) => entry.id === agent)?.label ?? agent;
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     sessionId: string;
@@ -244,10 +247,7 @@ export default function AssistantPage({
         <section className="assistant__main">
           {state.status === "connecting" ? (
             <AppTypography color="text.secondary">
-              Starting{" "}
-              {ASSISTANT_AGENTS.find((entry) => entry.id === agent)?.label ??
-                agent}
-              …
+              Starting {agentLabel}…
             </AppTypography>
           ) : null}
           {state.status === "auth_required" ? (
@@ -312,7 +312,17 @@ export default function AssistantPage({
             </AppAlert>
           ) : null}
 
-          <Transcript blocks={state.blocks} sessionId={state.sessionId} />
+          <Transcript blocks={state.blocks} sessionId={state.sessionId}>
+            {state.status === "ready" ? (
+              <div className="assistant__empty">
+                <Icon icon="mdi:robot-outline" width={48} />
+                <AppTypography>New chat</AppTypography>
+                <AppTypography color="text.secondary">
+                  Ask {agentLabel} anything about this host.
+                </AppTypography>
+              </div>
+            ) : null}
+          </Transcript>
 
           {state.pending ? (
             <PermissionCard

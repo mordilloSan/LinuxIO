@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import "@fontsource-variable/inter/wght.css";
+import "@fontsource/jetbrains-mono/400.css";
 
 import "./theme/variables.css";
 import "./icons/shell";

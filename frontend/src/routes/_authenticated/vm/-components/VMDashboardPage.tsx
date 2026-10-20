@@ -1,18 +1,44 @@
 import { useSuspenseQueries } from "@tanstack/react-query";
 
-import { linuxio } from "@/api";
+import { CACHE_TTL_MS, linuxio } from "@/api";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 
-import { VMDashboardTab } from "./VMTabs";
+import VMOverview from "./VMOverview";
 
 const VMDashboardPage = () => {
-  const [{ data: vms }, { data: preflight }] = useSuspenseQueries({
+  // VM list and preflight are polled by the /vm layout; the host snapshot
+  // polls at the main dashboard's cadence while this tab is open.
+  const [
+    { data: vms },
+    { data: preflight },
+    { data: pools },
+    { data: host },
+    { data: live },
+    { data: interfaces },
+  ] = useSuspenseQueries({
     queries: [
       { ...linuxio.virt.list, refetchOnMount: false },
       { ...linuxio.virt.preflight({}), refetchOnMount: false },
+      { ...linuxio.virt.pools, refetchInterval: 15000 },
+      { ...linuxio.system.get_host_info, staleTime: CACHE_TTL_MS.ONE_DAY },
+      {
+        ...linuxio.monitoring.get_live,
+        refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+      },
+      linuxio.network.get_network_info,
     ],
   });
 
-  return <VMDashboardTab preflight={preflight} vms={vms} />;
+  return (
+    <VMOverview
+      hostname={host.hostname}
+      interfaces={interfaces}
+      live={live}
+      pools={pools}
+      preflight={preflight}
+      vms={vms}
+    />
+  );
 };
 
 export default VMDashboardPage;

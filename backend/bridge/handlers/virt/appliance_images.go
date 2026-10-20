@@ -45,6 +45,8 @@ type vmImagePreset struct {
 	RequiresUEFI     bool
 	NeedsCloudInit   bool
 	CloudInitGroups  []string
+	// OS is the distro id stored on the domain so the UI can show its logo.
+	OS string
 }
 
 type vmImageAsset struct {
@@ -58,6 +60,7 @@ var (
 		vmImagePresetHomeOS: {
 			ID:               vmImagePresetHomeOS,
 			Label:            "Home Assistant OS",
+			OS:               "homeassistant",
 			ReleaseAPIURL:    "https://api.github.com/repos/home-assistant/operating-system/releases/latest",
 			AssetNamePattern: regexp.MustCompile(`^haos_ova-[^/]+\.qcow2\.xz$`),
 			DownloadPrefix:   "https://github.com/home-assistant/operating-system/releases/download/",
@@ -68,6 +71,7 @@ var (
 		vmImagePresetDebian: {
 			ID:              vmImagePresetDebian,
 			Label:           "Debian Server",
+			OS:              "debian",
 			Version:         "13",
 			ImageURL:        "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2",
 			ImageName:       "debian-13-genericcloud-amd64.qcow2",
@@ -79,6 +83,7 @@ var (
 		vmImagePresetUbuntu: {
 			ID:              vmImagePresetUbuntu,
 			Label:           "Ubuntu Server LTS",
+			OS:              "ubuntu",
 			Version:         "24.04 LTS",
 			ImageURL:        "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img",
 			ImageName:       "noble-server-cloudimg-amd64.img",
@@ -90,6 +95,7 @@ var (
 		vmImagePresetFedoraCloud: {
 			ID:              vmImagePresetFedoraCloud,
 			Label:           "Fedora Cloud",
+			OS:              "fedora",
 			Version:         "44-1.7",
 			ImageURL:        "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2",
 			ImageName:       "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2",

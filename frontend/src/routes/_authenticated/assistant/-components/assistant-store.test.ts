@@ -476,15 +476,16 @@ describe("assistantStore", () => {
     assistantStore._setConnector(connector);
     await assistantStore.connect("claude");
     const sending = send("first");
+    const pasted = { id: "p", kind: "text" as const, text: "a" };
     await assistantStore.steer([textBlock("also")], {
       text: "also",
-      attachments: ["a.txt"],
+      attachments: [pasted],
     });
     expect(conn.steer).toHaveBeenCalledWith("s-old", [textBlock("also")]);
     expect(assistantStore.getState().status).toBe("running");
     expect(assistantStore.getState().blocks).toMatchObject([
       { kind: "user", text: "first" },
-      { kind: "user", text: "also", attachments: ["a.txt"] },
+      { kind: "user", text: "also", attachments: [pasted] },
     ]);
     expect(assistantStore.getState().queuedPrompt).toBeNull();
     finishTurn();

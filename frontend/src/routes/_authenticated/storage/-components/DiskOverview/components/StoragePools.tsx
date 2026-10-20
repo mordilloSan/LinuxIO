@@ -257,6 +257,21 @@ const StoragePools = ({
         Storage space
       </AppTypography>
       <div className="storage-pools">
+        {driveStacks.map(({ drive, volumes }) => (
+          <div className="storage-pools__stack" key={drive.name}>
+            <div className="storage-pools__card storage-pools__disks">
+              <DiskRow
+                caption={drive.model}
+                drive={drive}
+                name={drive.name}
+                onInspectDrive={onInspectDrive}
+                sizeBytes={drive.sizeBytes}
+              />
+            </div>
+            <Connector count={volumes.length} span />
+            <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
+          </div>
+        ))}
         {poolStacks.map(({ pool, volumes }) => (
           <div className="storage-pools__stack" key={pool.uuid}>
             <div className="storage-pools__card storage-pools__disks">
@@ -313,21 +328,6 @@ const StoragePools = ({
                 <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
               </>
             )}
-          </div>
-        ))}
-        {driveStacks.map(({ drive, volumes }) => (
-          <div className="storage-pools__stack" key={drive.name}>
-            <div className="storage-pools__card storage-pools__disks">
-              <DiskRow
-                caption={drive.model}
-                drive={drive}
-                name={drive.name}
-                onInspectDrive={onInspectDrive}
-                sizeBytes={drive.sizeBytes}
-              />
-            </div>
-            <Connector count={volumes.length} span />
-            <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
           </div>
         ))}
         {sourceStacks.map(({ key, label, network, volumes }) => (

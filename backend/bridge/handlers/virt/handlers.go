@@ -16,6 +16,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.VMTemplateRequest, apischema.NoResponse]("virt.template_delete", apischema.Privileged()).HandleVoid(handleTemplateDelete),
 		apischema.TaskRunner[apischema.VMTemplateDownloadRequest, apischema.VMTemplate]("virt.template_download", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleTemplateDownload, bridgeipc.TaskDefault),
 		apischema.Call[apischema.NoRequest, []apischema.VMNetwork]("virt.networks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleNetworks),
+		apischema.Call[apischema.NoRequest, []apischema.VMStoragePool]("virt.pools", apischema.RetrySafe(), apischema.Privileged()).Handle(handlePools),
 		apischema.Call[apischema.NoRequest, []apischema.VMUnusedDisk]("virt.unused_disks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleUnusedDisks),
 		apischema.Call[apischema.PathRequest, apischema.NoResponse]("virt.unused_disk_delete", apischema.Privileged()).HandleVoid(handleUnusedDiskDelete),
 		apischema.Call[apischema.NoRequest, []apischema.VirtualMachine]("virt.list", apischema.RetrySafe(), apischema.Privileged()).Handle(handleList),
@@ -29,6 +30,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.resume", apischema.Privileged()).HandleVoid(handleResume),
 		apischema.Call[apischema.VMDeleteRequest, apischema.VMDeleteResult]("virt.delete", apischema.Privileged()).Handle(handleDelete),
 		apischema.Call[apischema.VMFirmwareRequest, apischema.VirtualMachine]("virt.set_firmware", apischema.Privileged()).Handle(handleSetFirmware),
+		apischema.Call[apischema.VMAutostartRequest, apischema.VirtualMachine]("virt.set_autostart", apischema.Privileged()).Handle(handleSetAutostart),
 		apischema.TaskRunner[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleCreate, bridgeipc.TaskDefault),
 		apischema.DuplexRoute[apischema.NameRequest, apischema.NoResponse]("virt.console_open", apischema.Privileged(), apischema.NoEndpoint()).Duplex(
 			HandleConsoleSession,
@@ -69,12 +71,20 @@ func handleSetFirmware(ctx context.Context, req apischema.VMFirmwareRequest) (ap
 	return SetVMFirmware(ctx, req)
 }
 
+func handleSetAutostart(ctx context.Context, req apischema.VMAutostartRequest) (apischema.VirtualMachine, error) {
+	return SetVMAutostart(ctx, req)
+}
+
 func handleList(ctx context.Context, _ apischema.NoRequest) ([]apischema.VirtualMachine, error) {
 	return ListVMs(ctx)
 }
 
 func handleNetworks(ctx context.Context, _ apischema.NoRequest) ([]apischema.VMNetwork, error) {
 	return ListVMNetworks(ctx)
+}
+
+func handlePools(ctx context.Context, _ apischema.NoRequest) ([]apischema.VMStoragePool, error) {
+	return ListStoragePools(ctx)
 }
 
 func handleUnusedDisks(ctx context.Context, _ apischema.NoRequest) ([]apischema.VMUnusedDisk, error) {

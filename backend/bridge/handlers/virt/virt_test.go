@@ -118,6 +118,7 @@ func TestBuildDomainXMLForImagePreset(t *testing.T) {
 		"<feature enabled=\"no\" name=\"enrolled-keys\"></feature>",
 		"<boot dev=\"hd\"></boot>",
 		"linuxio-haos.qcow2",
+		`os="homeassistant"`,
 	} {
 		if !strings.Contains(xmlDoc, want) {
 			t.Fatalf("domain XML missing %q:\n%s", want, xmlDoc)
@@ -1816,6 +1817,7 @@ type fakeConn struct {
 	domainCreateCount           int
 	domainDestroyCount          int
 	domainState                 int32
+	domainAutostart             int32
 	networkActive               int32
 	networkActivateOnCreateErr  bool
 	networkAutostart            int32
@@ -1839,6 +1841,12 @@ type fakeConn struct {
 	storageVolLookupErr         error
 	storageVolPathLookupErr     error
 	undefineFlags               libvirt.DomainUndefineFlagsValues
+	domainStats                 []libvirt.DomainStatsRecord
+	domainStatsErr              error
+	pools                       []libvirt.StoragePool
+	poolXML                     map[string]string
+	poolInfo                    map[string][3]uint64
+	poolActiveByName            map[string]int32
 }
 
 func newFakeConn() *fakeConn {
@@ -1936,6 +1944,19 @@ func writeFirmwareDescriptor(t *testing.T, dir, name, executable string, feature
 	}
 }
 
+func (f *fakeConn) ConnectGetAllDomainStats([]libvirt.Domain, uint32, uint32) ([]libvirt.DomainStatsRecord, error) {
+	return f.domainStats, f.domainStatsErr
+}
+func (f *fakeConn) ConnectListAllStoragePools(int32, libvirt.ConnectListAllStoragePoolsFlags) ([]libvirt.StoragePool, uint32, error) {
+	return f.pools, uint32(len(f.pools)), nil
+}
+func (f *fakeConn) StoragePoolGetInfo(pool libvirt.StoragePool) (uint8, uint64, uint64, uint64, error) {
+	info := f.poolInfo[pool.Name]
+	return uint8(libvirt.StoragePoolRunning), info[0], info[1], info[2], nil
+}
+func (f *fakeConn) StoragePoolGetXMLDesc(pool libvirt.StoragePool, _ libvirt.StorageXMLFlags) (string, error) {
+	return f.poolXML[pool.Name], nil
+}
 func (f *fakeConn) ConnectListAllDomains(int32, libvirt.ConnectListAllDomainsFlags) ([]libvirt.Domain, uint32, error) {
 	out := make([]libvirt.Domain, 0, len(f.domains))
 	for _, domain := range f.domains {
@@ -1977,7 +1998,11 @@ func (f *fakeConn) DomainDestroy(libvirt.Domain) error {
 	return nil
 }
 func (f *fakeConn) DomainGetAutostart(libvirt.Domain) (int32, error) {
-	return 0, nil
+	return f.domainAutostart, nil
+}
+func (f *fakeConn) DomainSetAutostart(_ libvirt.Domain, autostart int32) error {
+	f.domainAutostart = autostart
+	return nil
 }
 func (f *fakeConn) DomainGetInfo(libvirt.Domain) (uint8, uint64, uint64, uint16, uint64, error) {
 	return uint8(libvirt.DomainShutoff), 1024 * 1024, 1024 * 1024, 1, 0, nil
@@ -2098,7 +2123,10 @@ func (f *fakeConn) StoragePoolDefineXML(xmlDoc string, flags uint32) (libvirt.St
 	f.poolActive = 0
 	return libvirt.StoragePool{Name: pool.Name}, nil
 }
-func (f *fakeConn) StoragePoolIsActive(libvirt.StoragePool) (int32, error) {
+func (f *fakeConn) StoragePoolIsActive(pool libvirt.StoragePool) (int32, error) {
+	if active, ok := f.poolActiveByName[pool.Name]; ok {
+		return active, nil
+	}
 	return f.poolActive, nil
 }
 func (f *fakeConn) StoragePoolLookupByName(name string) (libvirt.StoragePool, error) {
@@ -2188,4 +2216,26 @@ func cloudSeedTestDomainXML() string {
     <graphics type="vnc" socket="/var/lib/libvirt/qemu/linuxio-cloud-seed.vnc" autoport="no"></graphics>
   </devices>
 </domain>`
+}
+
+func TestParseVirtualMachineReadsOS(t *testing.T) {
+	domainXML := func(metadata string) string {
+		return `<domain type="kvm"><name>os-test</name><metadata>` + metadata + `</metadata><memory unit="MiB">1024</memory><vcpu>1</vcpu><os><type arch="x86_64" machine="q35">hvm</type></os></domain>`
+	}
+	for _, tc := range []struct {
+		name, metadata, want string
+	}{
+		{"linuxio", `<linuxio xmlns="https://linuxio.local/libvirt/v1" os="ubuntu"></linuxio>`, "ubuntu"},
+		{"libosinfo", `<libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0"><libosinfo:os id="http://microsoft.com/win/11"/></libosinfo:libosinfo>`, "win"},
+		{"linuxio wins", `<linuxio xmlns="https://linuxio.local/libvirt/v1" os="debian"></linuxio><libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0"><libosinfo:os id="http://fedoraproject.org/fedora/40"/></libosinfo:libosinfo>`, "debian"},
+		{"none", ``, ""},
+	} {
+		vm, err := parseVirtualMachine(testDomain("os-test"), domainXML(tc.metadata), "shutoff", false)
+		if err != nil {
+			t.Fatalf("%s: parseVirtualMachine: %v", tc.name, err)
+		}
+		if vm.OS != tc.want {
+			t.Fatalf("%s: OS = %q, want %q", tc.name, vm.OS, tc.want)
+		}
+	}
 }

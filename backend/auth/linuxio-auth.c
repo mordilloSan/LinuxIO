@@ -2562,6 +2562,8 @@ static int handle_client(int input_fd, int output_fd)
     goto out;
   }
 
+  // Tell pam_systemd this is a web session rather than a tty one.
+  (void)pam_putenv(pamh, "XDG_SESSION_TYPE=web");
   rc = pam_open_session(pamh, 0);
   if (rc != PAM_SUCCESS)
   {

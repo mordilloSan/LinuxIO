@@ -128,7 +128,7 @@ describe("targeted route query ownership", () => {
     expect(dashboardRoute).toContain("linuxio.system.get_health_summary");
     expect(dashboardRoute).toContain("context.access.dockerAvailable === true");
     expect(dashboardRoute).not.toContain(".queryOptions(");
-    expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(13);
+    expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(14);
     expect(hardwareRoute).toContain("sections.sensors");
     expect(hardwareRoute).toContain("sections.systemInfo");
     expect(hardwareRoute).toContain("sections.pciDevices");
@@ -231,7 +231,17 @@ describe("targeted route query ownership", () => {
     );
     for (const [relativePath, observerCount] of childObserverCounts) {
       const child = readRouteSource(relativePath);
-      expect(child).not.toContain("refetchInterval");
+      // The overview and networks tabs poll host-side queries (pools, live
+      // snapshot) on their own cadence; VM list and preflight ride the parent's.
+      expect(child).not.toMatch(
+        /virt\.(list|preflight\(\{\}\))[^}]*refetchInterval/,
+      );
+      if (
+        relativePath !== "vm/-components/VMDashboardPage.tsx" &&
+        relativePath !== "vm/-components/VMNetworksPage.tsx"
+      ) {
+        expect(child).not.toContain("refetchInterval");
+      }
       expect(child.match(/refetchOnMount: false/g)).toHaveLength(observerCount);
     }
   });

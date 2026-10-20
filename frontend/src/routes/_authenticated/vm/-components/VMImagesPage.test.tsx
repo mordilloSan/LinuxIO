@@ -1,7 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen, waitFor, within } from "@/test/render";
+import { render, screen, within } from "@/test/render";
 
 import VMImagesPage from "./VMImagesPage";
 
@@ -83,8 +83,6 @@ describe("VM template manager", () => {
     expect(mocks.download).toHaveBeenCalledWith({
       imagePresetId: "debian-server",
     });
-    await user.click(screen.getByRole("button", { name: "Refresh templates" }));
-    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
   });
 
   it("requires confirmation before deleting exactly the chosen version", async () => {

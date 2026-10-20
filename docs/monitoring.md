@@ -188,6 +188,11 @@ Plugin names are `cpu`, `mem`, `swap`, `load`, `diskio`, `fs`, `network`, `gpu`,
 `connections`, `irq` and `smart`. `processes` and `programs` are live-only and
 never persisted.
 
+The `cpu` history row holds the total percent, the maximum percent, the
+breakdown, the per-core percent and the per-core `cpu_frequencies_mhz`, each
+averaged over the collector tick; the bridge surfaces the frequencies as
+`frequencies_mhz` on `monitoring.get_cpu_history`.
+
 `/healthz` answers from memory: it compares the last collector tick against the
 configured interval and returns `503 Service Unavailable` only when no tick has
 happened yet or the last one is older than twice the interval. A freshly started
@@ -344,6 +349,9 @@ two fixed socket paths are reserved addresses, and every named plugin must
 exist. An address may be
 `host:port`, a bare port (which binds `127.0.0.1`), `unix:/path`, or an absolute
 path; a configured unix socket is mode `0660`.
+The settings UI edits a TCP listener as a port only and writes `:port`, which
+binds every interface; a host-bound or unix address set in the file is shown
+read-only there.
 
 Configured listeners serve the read-only metrics API and are **unauthenticated**
 — anything that can reach the address can read what the listener exposes, which

@@ -8,6 +8,8 @@ import VMDisksPage from "./VMDisksPage";
 const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   list: vi.fn(),
+  pools: vi.fn(),
+  vms: vi.fn(),
   disk: {
     name: "linuxio-teste.qcow2",
     path: "/var/lib/libvirt/images/linuxio/cloud-images/linuxio-teste.qcow2",
@@ -34,6 +36,15 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-unused-disks"],
           queryFn: () => mocks.list(),
         },
+        pools: { queryKey: ["test-pools"], queryFn: () => mocks.pools() },
+        list: { queryKey: ["test-vms"], queryFn: () => mocks.vms() },
+      },
+      system: {
+        ...actual.linuxio.system,
+        get_host_info: {
+          queryKey: ["test-host"],
+          queryFn: () => Promise.resolve({ hostname: "TNAS" }),
+        },
       },
     },
   };
@@ -42,6 +53,59 @@ vi.mock("@/api", async (importOriginal) => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([mocks.disk]);
+  mocks.pools.mockResolvedValue([
+    {
+      active: true,
+      allocationBytes: 300 * 1024 ** 3,
+      availableBytes: 700 * 1024 ** 3,
+      capacityBytes: 1000 * 1024 ** 3,
+      name: "default",
+      path: "/var/lib/libvirt/images",
+      type: "dir",
+    },
+  ]);
+  mocks.vms.mockResolvedValue([
+    {
+      disks: [
+        {
+          allocatedBytes: 17 * 1024 ** 3,
+          device: "disk",
+          path: "/var/lib/libvirt/images/linuxio/cloud-images/linuxio-ha.qcow2",
+          sizeGB: 32,
+        },
+        { device: "cdrom", path: "/var/lib/libvirt/images/installer.iso" },
+        { device: "disk", path: "/srv/elsewhere.qcow2", sizeGB: 8 },
+      ],
+      name: "ha",
+    },
+  ]);
+});
+
+describe("VM storage pools", () => {
+  it("shows each pool's usage and the VM disks it holds", async () => {
+    render(<VMDisksPage />);
+    const card = await screen.findByRole("region", { name: "default" });
+    expect(within(card).getByText("Normal")).toBeInTheDocument();
+    expect(
+      within(card).getByText("Used / Total: 300 GB / 1000 GB"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("progressbar", { name: "default usage" }),
+    ).toHaveAttribute("aria-valuenow", "30");
+    expect(within(card).getByText("TNAS")).toBeInTheDocument();
+    expect(within(card).getByText("700 GB")).toBeInTheDocument();
+    // Only the VM disk under the pool path counts, not the ISO or outside disks.
+    expect(within(card).getByText("32 GB")).toBeInTheDocument();
+    const table = within(card).getByRole("table", {
+      name: "default virtual machine usage",
+    });
+    expect(within(table).getByText("ha")).toBeInTheDocument();
+    expect(within(table).getByText("linuxio-ha.qcow2")).toBeInTheDocument();
+    expect(
+      within(table).getByText("17 GB / 32 GB (53.1%)"),
+    ).toBeInTheDocument();
+    expect(within(table).queryByText("installer.iso")).not.toBeInTheDocument();
+  });
 });
 
 describe("VM unused disks", () => {

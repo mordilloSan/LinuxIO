@@ -188,7 +188,7 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
       accessorKey: "createdAt",
       header: "Taken",
       cell: ({ row }) => (
-        <>
+        <div style={{ minWidth: 0 }}>
           {formatRelativeAge(new Date(row.original.createdAt).getTime())}
           <AppTypography
             color="text.secondary"
@@ -197,14 +197,14 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
           >
             {formatDate(row.original.createdAt)}
           </AppTypography>
-        </>
+        </div>
       ),
     },
     {
       id: "what",
       header: "What",
       cell: ({ row }) => (
-        <>
+        <div style={{ minWidth: 0 }}>
           {KINDS[row.original.kind]?.label ?? row.original.kind} snapshot
           <AppTypography
             color="text.secondary"
@@ -213,7 +213,7 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
           >
             {row.original.source}
           </AppTypography>
-        </>
+        </div>
       ),
     },
     ...(hasSizes

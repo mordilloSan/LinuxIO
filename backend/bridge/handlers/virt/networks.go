@@ -3,6 +3,8 @@ package virt
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +16,7 @@ import (
 	"libvirt.org/go/libvirtxml"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 )
 
 const (
@@ -24,16 +27,26 @@ const (
 
 var (
 	networkSysfsRoot = bridgeSysfsRoot
+	// dockerBridgeNames is swapped in tests; Docker is optional on the host.
+	dockerBridgeNames = docker.BridgeNames
 )
 
 // ListVMNetworks returns the default libvirt NAT network and existing host
-// bridges. Bridges used by any libvirt network are not selectable separately.
+// bridges. Bridges used by any libvirt network or owned by Docker are not
+// selectable separately.
 func ListVMNetworks(ctx context.Context) ([]apischema.VMNetwork, error) {
 	var out []apischema.VMNetwork
 	err := withLibvirtConn(ctx, func(conn libvirtConn) error {
 		libvirtNetworks, backingBridges, err := listLibvirtNetworks(ctx, conn)
 		if err != nil {
 			return err
+		}
+		dockerBridges, dockerErr := dockerBridgeNames(ctx)
+		if dockerErr != nil {
+			slog.Debug("docker bridges unavailable for VM network list", "error", dockerErr)
+		}
+		for name := range dockerBridges {
+			backingBridges[name] = struct{}{}
 		}
 		bridges, err := listHostBridges(ctx, backingBridges)
 		if err != nil {
@@ -83,17 +96,14 @@ func listLibvirtNetworks(ctx context.Context, conn libvirtConn) ([]apischema.VMN
 		if err := parsed.Unmarshal(xmlDoc); err != nil {
 			return nil, nil, fmt.Errorf("parse libvirt network %q XML: %w", network.Name, err)
 		}
-		if parsed.Bridge != nil && parsed.Bridge.Name != "" {
-			backingBridges[parsed.Bridge.Name] = struct{}{}
+		item := libvirtNetworkFromXML(network.Name, active != 0, parsed)
+		if item.Bridge != "" {
+			backingBridges[item.Bridge] = struct{}{}
 		}
 		if network.Name != defaultNetworkName {
 			continue
 		}
-		out = append(out, apischema.VMNetwork{
-			Name:   network.Name,
-			Type:   libvirtNetworkType,
-			Active: active != 0,
-		})
+		out = append(out, item)
 	}
 	return out, backingBridges, nil
 }
@@ -117,21 +127,53 @@ func listHostBridges(ctx context.Context, excluded map[string]struct{}) ([]apisc
 		if statErr != nil || !info.IsDir() {
 			continue
 		}
+		uplink, carrier := bridgePhysicalUplink(name)
 		out = append(out, apischema.VMNetwork{
 			Name:              name,
 			Type:              bridgeNetworkType,
 			Active:            hostBridgeActive(name),
-			HasPhysicalUplink: bridgeHasPhysicalUplink(name),
+			HasPhysicalUplink: carrier,
+			Bridge:            name,
+			Uplink:            uplink,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
-func bridgeHasPhysicalUplink(name string) bool {
+func libvirtNetworkFromXML(name string, active bool, parsed libvirtxml.Network) apischema.VMNetwork {
+	item := apischema.VMNetwork{Name: name, Type: libvirtNetworkType, Active: active}
+	if parsed.Bridge != nil {
+		item.Bridge = parsed.Bridge.Name
+	}
+	for _, ip := range parsed.IPs {
+		if ip.Address != "" && ip.Family != "ipv6" {
+			item.Subnet = ipSubnet(ip)
+			break
+		}
+	}
+	return item
+}
+
+// ipSubnet renders a libvirt network address as CIDR, keeping a dotted
+// netmask when no prefix is given.
+func ipSubnet(ip libvirtxml.NetworkIP) string {
+	if ip.Prefix > 0 {
+		return fmt.Sprintf("%s/%d", ip.Address, ip.Prefix)
+	}
+	if mask := net.ParseIP(ip.Netmask).To4(); mask != nil {
+		ones, _ := net.IPMask(mask).Size()
+		return fmt.Sprintf("%s/%d", ip.Address, ones)
+	}
+	return ip.Address
+}
+
+// bridgePhysicalUplink returns the first wired physical NIC enslaved to the
+// bridge and whether a wired member has link.
+func bridgePhysicalUplink(name string) (uplink string, carrier bool) {
 	members, err := os.ReadDir(filepath.Join(networkSysfsRoot, name, "brif"))
 	if err != nil {
-		return false
+		return "", false
 	}
 	for _, member := range members {
 		memberRoot := filepath.Join(networkSysfsRoot, member.Name())
@@ -147,12 +189,15 @@ func bridgeHasPhysicalUplink(name string) bool {
 		if err != nil || strings.TrimSpace(string(linkType)) != "1" {
 			continue
 		}
-		carrier, err := os.ReadFile(filepath.Join(memberRoot, "carrier"))
-		if err == nil && strings.TrimSpace(string(carrier)) == "1" {
-			return true
+		if uplink == "" {
+			uplink = member.Name()
+		}
+		link, err := os.ReadFile(filepath.Join(memberRoot, "carrier"))
+		if err == nil && strings.TrimSpace(string(link)) == "1" {
+			return member.Name(), true
 		}
 	}
-	return false
+	return uplink, false
 }
 
 func hostBridgeActive(name string) bool {

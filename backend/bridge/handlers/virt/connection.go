@@ -29,8 +29,10 @@ const (
 var validVMName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`)
 
 type libvirtConn interface {
+	ConnectGetAllDomainStats([]libvirt.Domain, uint32, uint32) ([]libvirt.DomainStatsRecord, error)
 	ConnectListAllDomains(int32, libvirt.ConnectListAllDomainsFlags) ([]libvirt.Domain, uint32, error)
 	ConnectListAllNetworks(int32, libvirt.ConnectListAllNetworksFlags) ([]libvirt.Network, uint32, error)
+	ConnectListAllStoragePools(int32, libvirt.ConnectListAllStoragePoolsFlags) ([]libvirt.StoragePool, uint32, error)
 	DomainCreate(libvirt.Domain) error
 	DomainDefineXML(string) (libvirt.Domain, error)
 	DomainDestroy(libvirt.Domain) error
@@ -43,6 +45,7 @@ type libvirtConn interface {
 	DomainLookupByName(string) (libvirt.Domain, error)
 	DomainReboot(libvirt.Domain, libvirt.DomainRebootFlagValues) error
 	DomainResume(libvirt.Domain) error
+	DomainSetAutostart(libvirt.Domain, int32) error
 	DomainShutdown(libvirt.Domain) error
 	DomainSuspend(libvirt.Domain) error
 	DomainUndefineFlags(libvirt.Domain, libvirt.DomainUndefineFlagsValues) error
@@ -54,6 +57,8 @@ type libvirtConn interface {
 	NetworkSetAutostart(libvirt.Network, int32) error
 	StoragePoolCreate(libvirt.StoragePool, libvirt.StoragePoolCreateFlags) error
 	StoragePoolDefineXML(string, uint32) (libvirt.StoragePool, error)
+	StoragePoolGetInfo(libvirt.StoragePool) (uint8, uint64, uint64, uint64, error)
+	StoragePoolGetXMLDesc(libvirt.StoragePool, libvirt.StorageXMLFlags) (string, error)
 	StoragePoolIsActive(libvirt.StoragePool) (int32, error)
 	StoragePoolLookupByName(string) (libvirt.StoragePool, error)
 	StoragePoolRefresh(libvirt.StoragePool, uint32) error

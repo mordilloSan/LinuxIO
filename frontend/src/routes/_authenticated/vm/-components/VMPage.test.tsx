@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { linuxio } from "@/api";
+import { linuxio, type VirtualMachine } from "@/api";
 import {
   act,
   createTestQueryClient,
@@ -38,7 +38,7 @@ const mocks = vi.hoisted(() => {
     warnings: [] as string[],
   };
 
-  const alpha = {
+  const alpha: VirtualMachine = {
     autostart: false,
     diskGB: 16,
     disks: [
@@ -598,9 +598,7 @@ describe("Virtual Machines page", () => {
   it("renders the VM section tabs", async () => {
     await renderVMPage();
 
-    expect(
-      screen.getByRole("tab", { name: /global dashboard/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /overview/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /networks/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /templates/i })).toBeInTheDocument();
     expect(
@@ -622,6 +620,31 @@ describe("Virtual Machines page", () => {
     expect(mocks.mutations.shutdown).toHaveBeenCalledWith({ name: "alpha" });
   });
 
+  it("shows live usage bars and runs reboot from the more-actions menu", async () => {
+    mocks.listVMs = [
+      {
+        ...mocks.alpha,
+        metrics: {
+          cpuPercent: 12.5,
+          memoryUsedMB: 1024,
+          networkReceiveBytesPerSecond: 2048,
+        },
+      },
+    ];
+    const { user } = await renderVMPage();
+
+    expect(screen.getByText("12.5%")).toBeInTheDocument();
+    expect(screen.getByText("1 GB / 2 GB")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "Memory usage" }),
+    ).toHaveAttribute("aria-valuenow", "50");
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Reboot" }));
+
+    expect(mocks.mutations.reboot).toHaveBeenCalledWith({ name: "alpha" });
+  });
+
   // Two pending mutations and four waitFor passes take up to 1.4 s locally and
   // exceeded vitest's 5 s default on a loaded CI runner.
   it("keeps lifecycle feedback scoped to each VM until its action settles", async () => {
@@ -640,7 +663,7 @@ describe("Virtual Machines page", () => {
           resolveStart = resolve;
         }),
     );
-    const { user } = await renderVMPage();
+    const { queryClient, user } = await renderVMPage();
     const getVMRow = (name: string) => {
       const row = screen
         .getByRole("button", { name })
@@ -661,7 +684,9 @@ describe("Virtual Machines page", () => {
         within(getVMAction("alpha", "Shutdown")).getByRole("progressbar"),
       ).toBeInTheDocument();
     });
-    expect(getVMAction("alpha", "Reboot")).toBeDisabled();
+    expect(getVMAction("alpha", "More actions")).toBeDisabled();
+    // The guest is still up while it shuts down, so the console stays usable.
+    expect(getVMAction("alpha", "Console")).toBeEnabled();
     expect(getVMAction("beta", "Start")).toBeEnabled();
 
     await user.click(getVMAction("beta", "Start"));
@@ -676,6 +701,22 @@ describe("Virtual Machines page", () => {
       resolveShutdown();
     });
 
+    // libvirt returns before the guest powers down: the row stays busy until
+    // a poll reports the new state.
+    expect(
+      within(getVMRow("alpha")).getByText("Shutting down"),
+    ).toBeInTheDocument();
+    expect(
+      within(getVMAction("alpha", "Shutdown")).getByRole("progressbar"),
+    ).toBeInTheDocument();
+
+    act(() => {
+      queryClient.setQueryData(linuxio.virt.list.queryKey, [
+        { ...mocks.alpha, state: "shutoff" },
+        mocks.beta,
+      ]);
+    });
+
     await waitFor(() => {
       expect(
         within(getVMRow("alpha")).queryByRole("progressbar"),
@@ -687,6 +728,12 @@ describe("Virtual Machines page", () => {
 
     await act(async () => {
       resolveStart();
+    });
+    act(() => {
+      queryClient.setQueryData(linuxio.virt.list.queryKey, [
+        { ...mocks.alpha, state: "shutoff" },
+        { ...mocks.beta, state: "running" },
+      ]);
     });
 
     await waitFor(() => {

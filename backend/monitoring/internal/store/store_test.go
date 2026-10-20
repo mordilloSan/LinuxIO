@@ -460,9 +460,9 @@ func TestPluginHistoryDownsamplesAtQueryTimeAndAppliesLimitToNewest(t *testing.T
 	defer store.Close()
 	base := int64(1_700_000_000_000)
 	samples := []string{
-		`{"cpu_percent":10,"max_cpu_percent":15,"cpu_breakdown_percent":[10,20],"cpu_cores_percent":[10,20]}`,
-		`{"cpu_percent":20,"max_cpu_percent":18,"cpu_breakdown_percent":[20,30],"cpu_cores_percent":[20,30]}`,
-		`{"cpu_percent":30,"max_cpu_percent":35,"cpu_breakdown_percent":[30,40],"cpu_cores_percent":[30,40]}`,
+		`{"cpu_percent":10,"max_cpu_percent":15,"cpu_breakdown_percent":[10,20],"cpu_cores_percent":[10,20],"cpu_frequencies_mhz":[3000,2000]}`,
+		`{"cpu_percent":20,"max_cpu_percent":18,"cpu_breakdown_percent":[20,30],"cpu_cores_percent":[20,30],"cpu_frequencies_mhz":[3300,2200]}`,
+		`{"cpu_percent":30,"max_cpu_percent":35,"cpu_breakdown_percent":[30,40],"cpu_cores_percent":[30,40],"cpu_frequencies_mhz":[3600,2400]}`,
 	}
 	for i, sample := range samples {
 		_, err = store.db.Exec("INSERT INTO cpu_history (resolution, captured_at, stats_json) VALUES ('1m', ?, ?)", base+int64(i)*60_000, sample)
@@ -478,6 +478,7 @@ func TestPluginHistoryDownsamplesAtQueryTimeAndAppliesLimitToNewest(t *testing.T
 	assert.InDelta(t, 35, cpu.MaxCpu, 0.001)
 	assert.Equal(t, []float64{20, 30}, cpu.CpuBreakdown)
 	assert.Equal(t, []uint8{20, 30}, []uint8(cpu.CpuCoresUsage))
+	assert.Equal(t, []float64{3300, 2200}, cpu.CpuFrequencies)
 }
 
 func TestPluginHistoryDownsamplesContainersByStableIdentityAndPresence(t *testing.T) {

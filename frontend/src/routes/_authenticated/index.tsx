@@ -62,6 +62,14 @@ export const Route = createFileRoute("/_authenticated/")({
       );
     }
 
+    if (
+      context.access.libvirtAvailable === true &&
+      context.access.privileged &&
+      !hiddenCards.has("vm")
+    ) {
+      queries.push(linuxio.virt.list);
+    }
+
     startRouteQueryPrefetches(
       { context, preload, signal: abortController.signal },
       queries,

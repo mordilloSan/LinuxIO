@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   dockerLogHue,
+  dockerLogLevel,
   formatDockerLogTime,
+  groupDockerLogRows,
   mergeDockerLogEntries,
+  parseDockerLogAnsi,
   parseDockerLogFrame,
   stageDockerLogEntries,
   type DockerLogEntry,
@@ -16,10 +19,12 @@ const entry = (
   line = `line ${seq}`,
 ): DockerLogEntry => ({
   id: "abc123def456",
+  level: "unknown",
   line,
   name,
   seq,
   stderr: false,
+  text: line,
   ts,
 });
 
@@ -28,14 +33,92 @@ describe("parseDockerLogFrame", () => {
     const text =
       '{"id":"abc123def456","name":"web","ts":"2026-10-05T10:00:00.000000001Z","line":"hello"}\n' +
       "not json\n" +
-      '{"id":"abc123def456","name":"web","ts":"2026-10-05T10:00:00.000000002Z","line":"oops","stderr":true}\n';
+      '{"id":"abc123def456","name":"web","ts":"2026-10-05T10:00:00.000000002Z","line":"\\u001b[31mERROR\\u001b[0m oops","stderr":true}\n';
     expect(parseDockerLogFrame(text, 7)).toEqual([
       entry(7, "2026-10-05T10:00:00.000000001Z", "web", "hello"),
       {
-        ...entry(8, "2026-10-05T10:00:00.000000002Z", "web", "oops"),
+        ...entry(8, "2026-10-05T10:00:00.000000002Z", "web", "ERROR oops"),
+        level: "error",
+        line: "\u001b[31mERROR\u001b[0m oops",
         stderr: true,
       },
     ]);
+  });
+});
+
+describe("parseDockerLogAnsi", () => {
+  it("splits a line into styled runs and drops other sequences", () => {
+    expect(parseDockerLogAnsi("plain")).toEqual([
+      { bold: false, color: "", text: "plain" },
+    ]);
+    expect(
+      parseDockerLogAnsi(
+        "[\u001b[32m OK \u001b[0m] \u001b[1;91mhot\u001b[22m \u001b[38;5;200mx\u001b[0m\u001b[2K",
+      ),
+    ).toEqual([
+      { bold: false, color: "", text: "[" },
+      { bold: false, color: "green", text: " OK " },
+      { bold: false, color: "", text: "] " },
+      { bold: true, color: "red", text: "hot" },
+      { bold: false, color: "red", text: " " },
+      { bold: false, color: "red", text: "x" },
+    ]);
+  });
+});
+
+describe("groupDockerLogRows", () => {
+  it("rails a levelled line with the close lines that follow it", () => {
+    const rows = groupDockerLogRows([
+      {
+        ...entry(0, "2026-10-05T10:00:00.000Z", "web", "INFO: start"),
+        level: "info",
+      },
+      entry(1, "2026-10-05T10:00:00.010Z", "web", "  detail"),
+      {
+        ...entry(2, "2026-10-05T10:00:00.020Z", "web", "INFO: more"),
+        level: "info",
+      },
+      {
+        ...entry(3, "2026-10-05T10:00:00.030Z", "web", "WARN: other"),
+        level: "warn",
+      },
+      entry(4, "2026-10-05T10:00:00.030Z", "db", "ready"),
+      {
+        ...entry(5, "2026-10-05T10:00:01.000Z", "web", "INFO: later"),
+        level: "info",
+      },
+    ]);
+    expect(
+      rows.map((row) => `${row.seq}:${row.position}:${row.level}`),
+    ).toEqual([
+      "0:start:info",
+      "1:middle:info",
+      "2:end:info",
+      "3:single:warn",
+      "4:single:unknown",
+      "5:single:info",
+    ]);
+  });
+});
+
+describe("dockerLogLevel", () => {
+  it("guesses the level from common logger shapes", () => {
+    expect(dockerLogLevel("ERROR: boom")).toBe("error");
+    expect(dockerLogLevel("2026-10-05 10:00:00 WARN something")).toBe("warn");
+    expect(dockerLogLevel("E0806 14:55:55.980915 1 x.go:1] failed")).toBe(
+      "error",
+    );
+    expect(dockerLogLevel("[09:58:00 INF] Starting up")).toBe("info");
+    expect(dockerLogLevel("[DEBUG] tick")).toBe("debug");
+    expect(dockerLogLevel('{"level":"warn","msg":"x"}')).toBe("warn");
+    expect(dockerLogLevel("Zigbee2MQTT:info MQTT publish")).toBe("info");
+    expect(dockerLogLevel("UTC [61] LOG:  statement")).toBe("unknown");
+    expect(
+      dockerLogLevel("[2026-10-20T06:45:14.682Z] error: <httpProxy> Error"),
+    ).toBe("error");
+    expect(dockerLogLevel("[  OK  ] Started Daily Cleanup.")).toBe("unknown");
+    expect(dockerLogLevel("msg: error handling is fine")).toBe("unknown");
+    expect(dockerLogLevel("")).toBe("unknown");
   });
 });
 
@@ -87,7 +170,7 @@ describe("dockerLogHue", () => {
 describe("formatDockerLogTime", () => {
   it("formats a valid timestamp as a clock time and passes junk through", () => {
     expect(formatDockerLogTime("2026-10-05T10:00:00.000000001Z")).toMatch(
-      /^\d{2}:\d{2}:\d{2}$/,
+      /^\d{2}[./-]\d{2}[./-]\d{4},? \d{2}:\d{2}:\d{2}$/,
     );
     expect(formatDockerLogTime("")).toBe("");
     expect(formatDockerLogTime("junk")).toBe("junk");

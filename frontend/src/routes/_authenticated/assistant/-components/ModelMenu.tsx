@@ -21,6 +21,41 @@ function flatten(options: acp.SessionConfigSelectOptions) {
   }));
 }
 
+/**
+ * The agent lists "Default" as an entry of its own; its description names the
+ * model it stands for. Drop it and point at that entry instead, so the list
+ * and the slider only show real choices.
+ */
+function withoutDefault(select: SelectOption): SelectOption {
+  const all = flatten(select.options).flatMap((entry) =>
+    "option" in entry ? [entry.option] : [],
+  );
+  const placeholder = all.find((option) => option.value === "default");
+  if (!placeholder) return select;
+  const real = (option: acp.SessionConfigSelectOption) =>
+    option.value !== "default";
+  const options =
+    "group" in select.options[0]
+      ? (select.options as acp.SessionConfigSelectGroup[]).map((group) => ({
+          ...group,
+          options: group.options.filter(real),
+        }))
+      : (select.options as acp.SessionConfigSelectOption[]).filter(real);
+  // Effort's "Default" has no description; the agent recommends medium.
+  const resolved =
+    all.find((option) => option.name === placeholder.description) ??
+    all.find((option) => option.value === "medium") ??
+    all.find(real);
+  return {
+    ...select,
+    options,
+    currentValue:
+      select.currentValue === "default" && resolved
+        ? resolved.value
+        : select.currentValue,
+  };
+}
+
 const currentName = (select: SelectOption | undefined) => {
   if (!select) return null;
   for (const entry of flatten(select.options)) {
@@ -194,8 +229,8 @@ function ExtraOption({
  * moving the slider leaves it open so both can be set in one visit.
  */
 export default function ModelMenu({
-  model,
-  effort,
+  model: rawModel,
+  effort: rawEffort,
   extras = [],
   disabled,
   widthAnchor,
@@ -214,6 +249,8 @@ export default function ModelMenu({
     anchor: HTMLElement;
     width: number;
   } | null>(null);
+  const model = rawModel && withoutDefault(rawModel);
+  const effort = rawEffort && withoutDefault(rawEffort);
   const modelName = currentName(model);
   const effortName = currentName(effort);
   const label = [modelName, effortName].filter(Boolean).join(" ");

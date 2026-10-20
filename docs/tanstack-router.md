@@ -427,8 +427,10 @@ tab does not add a stale-query refetch outside that cadence.
 section, since it stays mounted throughout), and each child observes only what
 it needs — `VMImagesPage` shares preflight and owns a separate `virt.templates`
 query that refreshes on mount and template mutations. The Networks and Disks
-tabs load `virt.networks` and `virt.unused_disks` from their own route loaders
-on demand. The create dialog loads networks and saved templates only while
+tabs load `virt.networks`, `virt.pools` and `virt.unused_disks` from their own
+route loaders on demand, alongside the host info, interface list and live
+snapshot they show per card; both also observe the shared `virt.list` to join
+each VM's NICs and disks to its network or pool. The create dialog loads networks and saved templates only while
 needed. The 5-second VM list poll does
 not re-render the template manager:
 

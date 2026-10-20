@@ -103,6 +103,18 @@
   padding: var(--app-space-12);
 }
 
+/* A new chat: nothing to read yet, so say so in the middle of the space. */
+.assistant__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--app-space-4);
+  text-align: center;
+  color: var(--app-palette-primary-main);
+}
+
 .assistant-block {
   overflow-wrap: anywhere;
 }
@@ -119,8 +131,28 @@
   max-width: 80%;
   margin-block: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
+  border: 2px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
-  background: var(--app-palette-action-selected);
+  /* A shade below the page, not a filled chip. */
+  background: color-mix(in srgb, var(--app-palette-background-default) 88%, grey);
+}
+
+/* Answers read as prose: a touch of leading, and bold that stands out from
+   the slightly softened body text. */
+.assistant-markdown {
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--app-palette-text-primary), transparent 12%);
+}
+
+.assistant-markdown p,
+.assistant-markdown ul,
+.assistant-markdown ol {
+  margin-block: var(--app-space-8);
+}
+
+.assistant-markdown strong {
+  font-weight: 700;
+  color: var(--app-palette-text-primary);
 }
 
 .assistant-block--thought {
@@ -139,11 +171,19 @@
   font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
+/* A code block hugs its longest line; the pre keeps room on the right for
+   the copy button that floats over it. */
 .assistant-code {
   position: relative;
+  width: fit-content;
+  max-width: 100%;
 }
 
-.assistant-code .assistant-code__copy {
+.assistant-code pre {
+  padding-right: calc(var(--app-space-12) + 28px);
+}
+
+.assistant-code__copy {
   position: absolute;
   top: var(--app-space-12);
   right: var(--app-space-4);
@@ -282,9 +322,15 @@
 }
 
 .assistant-tool {
+  align-self: flex-start;
+  max-width: 100%;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
   padding: var(--app-space-8) var(--app-space-12);
+}
+
+.assistant-tool[open] {
+  align-self: stretch;
 }
 
 .assistant-tool__summary {
@@ -298,9 +344,17 @@
   font-family: var(--app-font-mono);
 }
 
+/* A collapsed group hugs its label; it only spans the column once opened,
+   because the rows inside need the room. */
 .assistant-tool-group {
+  align-self: flex-start;
+  max-width: 100%;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
+}
+
+.assistant-tool-group:has(.assistant-tool-group__rows) {
+  align-self: stretch;
 }
 
 .assistant-tool-group .assistant-tool-group__header {
@@ -309,8 +363,10 @@
   gap: var(--app-space-8);
 }
 
-.assistant-tool-group__header > :last-child {
-  margin-left: auto;
+/* Captions in tool rows follow the chat font size, not the theme's fixed caption. */
+.assistant-tool-group__header .app-typo--caption,
+.assistant-tool__summary .app-typo--caption {
+  font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
 .assistant-tool-group__dot {
@@ -383,6 +439,9 @@
 
 /* The box owns the border; the text field and the bar sit inside it. */
 .assistant__composer-box {
+  /* The small text field has its own fixed size; the prompt follows the
+     chat font size instead. */
+  --app-text-field-input-font-size: var(--app-font-size-body);
   flex: 1;
   min-width: 0;
   display: flex;
@@ -459,24 +518,69 @@
   gap: var(--app-space-8);
 }
 
-.assistant__thumb {
-  position: relative;
-  width: 48px;
-  height: 48px;
+.assistant-block--user .assistant__attachments {
+  margin-bottom: var(--app-space-8);
 }
 
-.assistant__thumb img {
-  width: 100%;
-  height: 100%;
+/* An attachment reads like a collapsed tool row: thumbnail or icon, name,
+   and a dim detail (image size, line count), with the remove cross after. */
+.assistant__attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  padding-left: var(--app-space-8);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant__attachment .assistant__attachment-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-6);
+  min-width: 0;
+  padding: var(--app-space-4) 0;
+  color: inherit;
+  font: inherit;
+  text-transform: none;
+}
+
+.assistant__attachment .app-btn.assistant__attachment-open:hover {
+  background: none;
+}
+
+.assistant__attachment
+  .app-btn.assistant__attachment-open:hover
+  .assistant__attachment-name {
+  color: var(--app-palette-text-primary);
+}
+
+.assistant__attachment-thumb {
+  width: 20px;
+  height: 20px;
   object-fit: cover;
   border-radius: var(--app-radius-base);
 }
 
-.assistant__thumb .assistant__thumb-remove {
-  position: absolute;
-  top: calc(-1 * var(--app-space-4));
-  right: calc(-1 * var(--app-space-4));
-  background: var(--app-palette-background-paper);
+.assistant__attachment-name {
+  font-weight: 600;
+}
+
+.assistant__attachment-meta {
+  color: var(--app-palette-text-disabled);
+}
+
+.assistant__preview-image {
+  display: block;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.assistant__preview-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--app-font-mono);
 }
 
 /* Command names only, in the menu's standard row type; each description
@@ -505,7 +609,9 @@
   background-color: var(--app-palette-action-hover);
   color: var(--app-palette-text-secondary);
   font: inherit;
-  font-size: calc(var(--app-font-size-body) * 0.92);
+  /* The page scales --app-font-size-body with the chat font size; the chip
+     is a fixed 24px control, so it keeps the theme's base size. */
+  font-size: 0.75rem;
 }
 
 .app-icon-btn.assistant__pill:hover:not(:disabled),
@@ -547,7 +653,8 @@
   padding: var(--app-space-4) 6px;
   border-radius: var(--app-radius-md);
   font: inherit;
-  font-size: var(--app-font-size-body);
+  /* A toolbar control, like the model chip: not scaled with the chat. */
+  font-size: 0.8125rem;
 }
 
 .assistant__bar-button:focus-visible {

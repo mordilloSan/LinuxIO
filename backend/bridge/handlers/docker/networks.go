@@ -321,3 +321,41 @@ func networkConnectionInput(networkID, containerID string, aliases []string) (st
 	}
 	return networkID, containerID, normalized, nil
 }
+
+// BridgeNames returns the Linux bridge interface names backing Docker's
+// bridge-driver networks, so other host views can hide them.
+func BridgeNames(ctx context.Context) (map[string]struct{}, error) {
+	cli, err := getClient()
+	if err != nil {
+		return nil, fmt.Errorf("docker client error: %w", err)
+	}
+	defer releaseClient(cli)
+
+	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list networks: %w", err)
+	}
+	out := make(map[string]struct{}, len(networks.Items))
+	for _, nw := range networks.Items {
+		if name := bridgeInterfaceName(nw); name != "" {
+			out[name] = struct{}{}
+		}
+	}
+	return out, nil
+}
+
+func bridgeInterfaceName(nw network.Summary) string {
+	if nw.Driver != "bridge" {
+		return ""
+	}
+	if name := nw.Options["com.docker.network.bridge.name"]; name != "" {
+		return name
+	}
+	if nw.Name == "bridge" {
+		return "docker0"
+	}
+	if len(nw.ID) < 12 {
+		return ""
+	}
+	return "br-" + nw.ID[:12]
+}

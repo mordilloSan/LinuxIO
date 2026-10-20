@@ -28,6 +28,7 @@ func aggregatePluginHistoryJSON(plugin string, items []string) (string, error) {
 			stats.MaxCpu = item.MaxCpu
 			stats.CpuBreakdown = item.CpuBreakdown
 			stats.CpuCoresUsage = item.CpuCoresUsage
+			stats.CpuFrequencies = item.CpuFrequencies
 			return nil
 		}, func(stats system.Stats) any {
 			return SnapshotPluginPayloads(&system.CombinedData{Stats: stats})[PluginCPU]
@@ -194,6 +195,7 @@ func averageSystemStatsJSON(items []string) (*system.Stats, error) {
 	batterySum := 0
 	var cpuCoresSums []uint64
 	var cpuBreakdownSums []float64
+	var cpuFreqSums []float64
 
 	for _, raw := range items {
 		*temp = system.Stats{}
@@ -246,6 +248,12 @@ func averageSystemStatsJSON(items []string) (*system.Stats, error) {
 		for i, value := range temp.CpuCoresUsage {
 			cpuCoresSums[i] += uint64(value)
 		}
+		if len(temp.CpuFrequencies) > len(cpuFreqSums) {
+			cpuFreqSums = append(cpuFreqSums, make([]float64, len(temp.CpuFrequencies)-len(cpuFreqSums))...)
+		}
+		for i, value := range temp.CpuFrequencies {
+			cpuFreqSums[i] += value
+		}
 
 		sum.MaxCpu = max(sum.MaxCpu, temp.MaxCpu, temp.Cpu)
 		sum.MaxMem = max(sum.MaxMem, temp.MaxMem, temp.MemUsed)
@@ -276,6 +284,12 @@ func averageSystemStatsJSON(items []string) (*system.Stats, error) {
 		sum.CpuBreakdown = make([]float64, len(cpuBreakdownSums))
 		for i, value := range cpuBreakdownSums {
 			sum.CpuBreakdown[i] = utils.TwoDecimals(value / count)
+		}
+	}
+	if len(cpuFreqSums) > 0 {
+		sum.CpuFrequencies = make([]float64, len(cpuFreqSums))
+		for i, value := range cpuFreqSums {
+			sum.CpuFrequencies[i] = utils.TwoDecimals(value / count)
 		}
 	}
 	return sum, nil
