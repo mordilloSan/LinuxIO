@@ -150,11 +150,11 @@ const FONT_FAMILY = [
   '"Segoe UI Emoji"',
   '"Segoe UI Symbol"',
 ].join(",");
-// The app bundles no mono face, so this is the platform-native stack. Bare
-// `monospace` resolves to whatever each OS picked decades ago (DejaVu Sans Mono
-// on most Linux desktops), which sits badly next to Inter; ui-monospace asks the
-// platform for the face its own UI uses for code.
+// JetBrains Mono is bundled (index.tsx imports it) so paths and addresses never
+// fall back to whatever each OS picked decades ago (DejaVu Sans Mono on most
+// Linux desktops), which sits badly next to Inter.
 const FONT_FAMILY_MONO = [
+  '"JetBrains Mono"',
   "ui-monospace",
   "SFMono-Regular",
   '"SF Mono"',

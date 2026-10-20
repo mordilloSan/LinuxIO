@@ -36,6 +36,7 @@ describe("font loading", () => {
 
   it("declares one mono stack in both the theme and the stylesheet", () => {
     const theme = buildAppTheme("DARK");
+    const entry = readFrontendFile("src/index.tsx");
     const variables = readFrontendFile("src/theme/variables.css");
 
     const cssFontMono = variables
@@ -46,8 +47,9 @@ describe("font loading", () => {
     expect(cssFontMono).toBe(
       theme.typography.fontFamilyMono.replace(/\s+/g, ""),
     );
-    // Bare `monospace` is the fallback of last resort, never the first choice:
-    // it resolves per-OS to a face that does not sit with Inter.
-    expect(cssFontMono?.startsWith("ui-monospace,")).toBe(true);
+    // The bundled face comes first so no OS default (DejaVu Sans Mono on most
+    // Linux desktops) ever renders machine values.
+    expect(cssFontMono?.startsWith('"JetBrainsMono",ui-monospace,')).toBe(true);
+    expect(entry).toContain('import "@fontsource/jetbrains-mono/400.css";');
   });
 });
