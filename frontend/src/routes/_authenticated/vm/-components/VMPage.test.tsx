@@ -640,7 +640,7 @@ describe("Virtual Machines page", () => {
           resolveStart = resolve;
         }),
     );
-    const { user } = await renderVMPage();
+    const { queryClient, user } = await renderVMPage();
     const getVMRow = (name: string) => {
       const row = screen
         .getByRole("button", { name })
@@ -676,6 +676,22 @@ describe("Virtual Machines page", () => {
       resolveShutdown();
     });
 
+    // libvirt returns before the guest powers down: the row stays busy until
+    // a poll reports the new state.
+    expect(
+      within(getVMRow("alpha")).getByText("Shutting down"),
+    ).toBeInTheDocument();
+    expect(
+      within(getVMAction("alpha", "Shutdown")).getByRole("progressbar"),
+    ).toBeInTheDocument();
+
+    act(() => {
+      queryClient.setQueryData(linuxio.virt.list.queryKey, [
+        { ...mocks.alpha, state: "shutoff" },
+        mocks.beta,
+      ]);
+    });
+
     await waitFor(() => {
       expect(
         within(getVMRow("alpha")).queryByRole("progressbar"),
@@ -687,6 +703,12 @@ describe("Virtual Machines page", () => {
 
     await act(async () => {
       resolveStart();
+    });
+    act(() => {
+      queryClient.setQueryData(linuxio.virt.list.queryKey, [
+        { ...mocks.alpha, state: "shutoff" },
+        { ...mocks.beta, state: "running" },
+      ]);
     });
 
     await waitFor(() => {

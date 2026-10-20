@@ -9,8 +9,9 @@ import { down } from "@/theme/breakpoints";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
 import DeleteVMDialog from "./DeleteVMDialog";
+import { useVMLifecycle } from "./useVMLifecycle";
 import VMListTable from "./VMListTable";
-import { type VMAction, VM_TOAST, normalizeVMDeleteResult } from "./vmShared";
+import { VM_TOAST, normalizeVMDeleteResult } from "./vmShared";
 import { VMPreflightCard } from "./VMTabs";
 
 // noVNC only loads once a console is opened, like the docker TerminalDialog.
@@ -57,9 +58,6 @@ const VMMachinesLayout = () => {
   );
   const [consoleVM, setConsoleVM] = useState<VirtualMachine | null>(null);
   const [consoleDialogOpen, setConsoleDialogOpen] = useState(false);
-  const [pendingActions, setPendingActions] = useState<
-    ReadonlyMap<string, VMAction>
-  >(() => new Map());
 
   const setSelectedName = useCallback(
     (name: string | null) =>
@@ -73,11 +71,6 @@ const VMMachinesLayout = () => {
   const liveDeleteTarget =
     vms.find((vm) => vm.name === deleteTargetName) ?? null;
 
-  const actionConfig = (successText: string, fallback: string) => ({
-    success: successText,
-    error: fallback,
-    toast: VM_TOAST,
-  });
   const deleteMutation = useCallMutation(linuxio.virt.delete, {
     // Disks kept by a delete show up on the Disks tab.
     invalidates: [
@@ -106,81 +99,7 @@ const VMMachinesLayout = () => {
     },
   });
   const deleteTarget = liveDeleteTarget ?? pendingDeleteVM;
-  const startMutation = useCallMutation(
-    linuxio.virt.start,
-    actionConfig("VM started", "Failed to start VM"),
-  );
-  const shutdownMutation = useCallMutation(
-    linuxio.virt.shutdown,
-    actionConfig("VM shutdown requested", "Failed to shutdown VM"),
-  );
-  const rebootMutation = useCallMutation(
-    linuxio.virt.reboot,
-    actionConfig("VM reboot requested", "Failed to reboot VM"),
-  );
-  const forceOffMutation = useCallMutation(
-    linuxio.virt.force_off,
-    actionConfig("VM powered off", "Failed to force off VM"),
-  );
-  const suspendMutation = useCallMutation(
-    linuxio.virt.suspend,
-    actionConfig("VM suspended", "Failed to suspend VM"),
-  );
-  const resumeMutation = useCallMutation(
-    linuxio.virt.resume,
-    actionConfig("VM resumed", "Failed to resume VM"),
-  );
-  const runAction = useCallback(
-    (action: VMAction, vm: VirtualMachine) => {
-      if (pendingActions.has(vm.name)) return;
-
-      const request = { name: vm.name };
-      let promise: Promise<unknown>;
-
-      setPendingActions((current) => new Map(current).set(vm.name, action));
-
-      switch (action) {
-        case "start":
-          promise = startMutation.mutateAsync(request);
-          break;
-        case "shutdown":
-          promise = shutdownMutation.mutateAsync(request);
-          break;
-        case "reboot":
-          promise = rebootMutation.mutateAsync(request);
-          break;
-        case "force_off":
-          promise = forceOffMutation.mutateAsync(request);
-          break;
-        case "suspend":
-          promise = suspendMutation.mutateAsync(request);
-          break;
-        case "resume":
-          promise = resumeMutation.mutateAsync(request);
-          break;
-      }
-
-      void promise
-        .catch(() => undefined)
-        .finally(() => {
-          setPendingActions((current) => {
-            if (current.get(vm.name) !== action) return current;
-            const next = new Map(current);
-            next.delete(vm.name);
-            return next;
-          });
-        });
-    },
-    [
-      forceOffMutation,
-      pendingActions,
-      rebootMutation,
-      resumeMutation,
-      shutdownMutation,
-      startMutation,
-      suspendMutation,
-    ],
-  );
+  const { pendingActions, runAction } = useVMLifecycle(vms);
 
   return (
     <>

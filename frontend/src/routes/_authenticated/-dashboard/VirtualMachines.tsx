@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState, type MouseEvent } from "react";
 
-import { linuxio, type VirtualMachine, useCallMutation } from "@/api";
+import { linuxio, type VirtualMachine } from "@/api";
 import DashboardCard from "@/components/cards/DashboardCard";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
@@ -12,12 +12,15 @@ import StatusDot from "@/components/ui/StatusDot";
 
 import DashboardStatRows from "./DashboardStatRows";
 import {
+  ACTION_PROGRESS_LABEL,
+  useVMLifecycle,
+} from "../vm/-components/useVMLifecycle";
+import {
   formatDisk,
   formatMemory,
   normalizeState,
   stateChipColor,
   type VMAction,
-  VM_TOAST,
   vmIPAddresses,
 } from "../vm/-components/vmShared";
 
@@ -28,15 +31,6 @@ const STATE_COLOR: Record<ReturnType<typeof stateChipColor>, string> = {
   warning: "var(--app-palette-warning-main)",
   error: "var(--app-palette-error-main)",
   default: "var(--app-palette-text-disabled)",
-};
-
-const ACTION_PROGRESS_LABEL: Record<VMAction, string> = {
-  start: "Starting",
-  shutdown: "Shutting down",
-  reboot: "Rebooting",
-  force_off: "Powering off",
-  suspend: "Suspending",
-  resume: "Resuming",
 };
 
 const selectTotals = (vms: VirtualMachine[]) => {
@@ -59,7 +53,8 @@ const selectSummaries = (vms: VirtualMachine[]) =>
       name: vm.name,
       running: vm.state === "running",
       paused: vm.state === "paused",
-      state: normalizeState(vm.state),
+      state: vm.state,
+      stateLabel: normalizeState(vm.state),
       color: STATE_COLOR[stateChipColor(vm.state)],
       detail: [
         `${vm.vcpus} vCPU`,
@@ -95,44 +90,7 @@ const VMList = () => {
   });
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuName, setMenuName] = useState<string | null>(null);
-  const [pendingActions, setPendingActions] = useState<
-    ReadonlyMap<string, VMAction>
-  >(() => new Map());
-
-  const actionConfig = (success: string, error: string) => ({
-    success,
-    error,
-    toast: VM_TOAST,
-  });
-  const mutations: Record<
-    VMAction,
-    { mutateAsync: (request: { name: string }) => Promise<unknown> }
-  > = {
-    start: useCallMutation(
-      linuxio.virt.start,
-      actionConfig("VM started", "Failed to start VM"),
-    ),
-    shutdown: useCallMutation(
-      linuxio.virt.shutdown,
-      actionConfig("VM shutdown requested", "Failed to shutdown VM"),
-    ),
-    reboot: useCallMutation(
-      linuxio.virt.reboot,
-      actionConfig("VM reboot requested", "Failed to reboot VM"),
-    ),
-    force_off: useCallMutation(
-      linuxio.virt.force_off,
-      actionConfig("VM powered off", "Failed to force off VM"),
-    ),
-    suspend: useCallMutation(
-      linuxio.virt.suspend,
-      actionConfig("VM suspended", "Failed to suspend VM"),
-    ),
-    resume: useCallMutation(
-      linuxio.virt.resume,
-      actionConfig("VM resumed", "Failed to resume VM"),
-    ),
-  };
+  const { pendingActions, runAction } = useVMLifecycle(vms);
 
   // Derived from the list so the menu disappears with the row it belongs to
   // when a poll drops that machine.
@@ -143,30 +101,16 @@ const VMList = () => {
     setMenuAnchor(null);
     setMenuName(null);
   };
+  const act = (action: VMAction, vm: { name: string }) => {
+    closeMenu();
+    runAction(action, vm);
+  };
   const openMenu = (event: MouseEvent<HTMLElement>, name: string) => {
     event.preventDefault();
     if (pendingActions.has(name)) return;
     setMenuAnchor(event.currentTarget);
     setMenuName(name);
   };
-  const runAction = (action: VMAction) => {
-    if (!menuVM || pendingActions.has(menuVM.name)) return;
-    const { name } = menuVM;
-    setPendingActions((current) => new Map(current).set(name, action));
-    closeMenu();
-    void mutations[action]
-      .mutateAsync({ name })
-      .catch(() => undefined)
-      .finally(() => {
-        setPendingActions((current) => {
-          if (current.get(name) !== action) return current;
-          const next = new Map(current);
-          next.delete(name);
-          return next;
-        });
-      });
-  };
-
   if (vms.length === 0) {
     return <AppTypography variant="body2">No virtual machines.</AppTypography>;
   }
@@ -207,7 +151,7 @@ const VMList = () => {
                   }
                   component="div"
                 >
-                  {progressLabel ?? vm.state}
+                  {progressLabel ?? vm.stateLabel}
                 </AppTypography>
               </div>
             }
@@ -251,7 +195,7 @@ const VMList = () => {
       >
         {!menuVM?.running && !menuVM?.paused && (
           <AppMenuItem
-            onClick={() => runAction("start")}
+            onClick={() => menuVM && act("start", menuVM)}
             startAdornment={<Icon icon="mdi:play" width={18} />}
           >
             Start
@@ -259,7 +203,7 @@ const VMList = () => {
         )}
         {menuVM?.running && (
           <AppMenuItem
-            onClick={() => runAction("shutdown")}
+            onClick={() => menuVM && act("shutdown", menuVM)}
             startAdornment={<Icon icon="mdi:stop" width={18} />}
           >
             Shutdown
@@ -267,7 +211,7 @@ const VMList = () => {
         )}
         {menuVM?.running && (
           <AppMenuItem
-            onClick={() => runAction("reboot")}
+            onClick={() => menuVM && act("reboot", menuVM)}
             startAdornment={<Icon icon="mdi:restart" width={18} />}
           >
             Reboot
@@ -275,7 +219,7 @@ const VMList = () => {
         )}
         {menuVM?.running && (
           <AppMenuItem
-            onClick={() => runAction("suspend")}
+            onClick={() => menuVM && act("suspend", menuVM)}
             startAdornment={<Icon icon="mdi:pause" width={18} />}
           >
             Suspend
@@ -283,7 +227,7 @@ const VMList = () => {
         )}
         {menuVM?.paused && (
           <AppMenuItem
-            onClick={() => runAction("resume")}
+            onClick={() => menuVM && act("resume", menuVM)}
             startAdornment={<Icon icon="mdi:play-pause" width={18} />}
           >
             Resume
@@ -291,7 +235,7 @@ const VMList = () => {
         )}
         {(menuVM?.running || menuVM?.paused) && (
           <AppMenuItem
-            onClick={() => runAction("force_off")}
+            onClick={() => menuVM && act("force_off", menuVM)}
             startAdornment={<Icon icon="mdi:power" width={18} />}
           >
             Force off

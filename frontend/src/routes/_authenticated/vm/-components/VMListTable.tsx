@@ -11,6 +11,7 @@ import AppChip from "@/components/ui/AppChip";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
+import { ACTION_PROGRESS_LABEL } from "./useVMLifecycle";
 import {
   type VMAction,
   formatMemory,
@@ -89,14 +90,24 @@ export default function VMListTable({
       {
         accessorKey: "state",
         header: "State",
-        cell: ({ row }) => (
-          <AppChip
-            color={stateChipColor(row.original.state)}
-            label={normalizeState(row.original.state)}
-            size="small"
-            variant="soft"
-          />
-        ),
+        cell: ({ row }) => {
+          const pendingAction = pendingActions.get(row.original.name);
+          return pendingAction ? (
+            <AppChip
+              color="info"
+              label={ACTION_PROGRESS_LABEL[pendingAction]}
+              size="small"
+              variant="soft"
+            />
+          ) : (
+            <AppChip
+              color={stateChipColor(row.original.state)}
+              label={normalizeState(row.original.state)}
+              size="small"
+              variant="soft"
+            />
+          );
+        },
         meta: { width: "minmax(110px, 0.8fr)" },
       },
       {
