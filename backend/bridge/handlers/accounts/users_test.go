@@ -8,6 +8,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
+
+	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
@@ -142,59 +145,60 @@ func TestGetProcessSummaryNoRowsIsNotAnError(t *testing.T) {
 	}
 }
 
-func TestParseWhoUserSessionHandlesSSHPTYLine(t *testing.T) {
-	line := "miguelmariz sshd pts/0   2026-05-09 11:23 00:04     2618794 (192.168.1.239)"
+func TestSessionFromLogindMapsSSHSession(t *testing.T) {
+	now := time.Date(2026, 5, 9, 11, 27, 0, 0, time.UTC)
+	props := map[string]godbus.Variant{
+		"Id":            godbus.MakeVariant("32"),
+		"Class":         godbus.MakeVariant("user"),
+		"TTY":           godbus.MakeVariant("pts/0"),
+		"Service":       godbus.MakeVariant("sshd"),
+		"RemoteHost":    godbus.MakeVariant("192.168.1.239"),
+		"Leader":        godbus.MakeVariant(uint32(2618794)),
+		"Timestamp":     godbus.MakeVariant(uint64(now.Add(-4 * time.Minute).UnixMicro())),
+		"IdleHint":      godbus.MakeVariant(true),
+		"IdleSinceHint": godbus.MakeVariant(uint64(now.Add(-4 * time.Minute).UnixMicro())),
+	}
 
-	session, ok := parseWhoUserSession(line, "miguelmariz")
+	session, ok := sessionFromLogind(props, now)
 	if !ok {
-		t.Fatal("parseWhoUserSession() ok = false, want true")
+		t.Fatal("sessionFromLogind() ok = false, want true")
 	}
-	if session.Terminal != "sshd pts/0" {
-		t.Fatalf("Terminal = %q, want %q", session.Terminal, "sshd pts/0")
+	want := apischema.AccountActiveSession{
+		SessionID: "32", Terminal: "pts/0", Source: "192.168.1.239",
+		Idle: "00:04", StartedAt: now.Add(-4 * time.Minute).Local().Format("2006-01-02 15:04"),
 	}
-	if session.StartedAt != "2026-05-09 11:23" {
-		t.Fatalf("StartedAt = %q, want %q", session.StartedAt, "2026-05-09 11:23")
+	pid := 2618794
+	want.PID = &pid
+	if *session.PID != pid || session.PID == nil {
+		t.Fatalf("PID = %v, want %d", session.PID, pid)
 	}
-	if session.Idle != "00:04" {
-		t.Fatalf("Idle = %q, want %q", session.Idle, "00:04")
-	}
-	if session.PID == nil || *session.PID != 2618794 {
-		t.Fatalf("PID = %v, want %d", session.PID, 2618794)
-	}
-	if session.Source != "192.168.1.239" {
-		t.Fatalf("Source = %q, want %q", session.Source, "192.168.1.239")
+	session.PID = want.PID
+	if session != want {
+		t.Fatalf("session = %+v, want %+v", session, want)
 	}
 }
 
-func TestParseWhoUserSessionHandlesSSHWithoutTTY(t *testing.T) {
-	line := "miguelmariz sshd         2026-05-09 11:13   ?       2606470 (192.168.1.239)"
+func TestSessionFromLogindWebSessionWithoutTTYIsActive(t *testing.T) {
+	props := map[string]godbus.Variant{
+		"Id":       godbus.MakeVariant("40"),
+		"Class":    godbus.MakeVariant("user"),
+		"Service":  godbus.MakeVariant("linuxio"),
+		"IdleHint": godbus.MakeVariant(false),
+	}
 
-	session, ok := parseWhoUserSession(line, "miguelmariz")
+	session, ok := sessionFromLogind(props, time.Now())
 	if !ok {
-		t.Fatal("parseWhoUserSession() ok = false, want true")
+		t.Fatal("sessionFromLogind() ok = false, want true")
 	}
-	if session.Terminal != "sshd" {
-		t.Fatalf("Terminal = %q, want %q", session.Terminal, "sshd")
-	}
-	if session.StartedAt != "2026-05-09 11:13" {
-		t.Fatalf("StartedAt = %q, want %q", session.StartedAt, "2026-05-09 11:13")
-	}
-	if session.Idle != "?" {
-		t.Fatalf("Idle = %q, want %q", session.Idle, "?")
-	}
-	if session.PID == nil || *session.PID != 2606470 {
-		t.Fatalf("PID = %v, want %d", session.PID, 2606470)
-	}
-	if session.Source != "192.168.1.239" {
-		t.Fatalf("Source = %q, want %q", session.Source, "192.168.1.239")
+	if session.Terminal != "linuxio" || session.Idle != "." || session.PID != nil {
+		t.Fatalf("session = %+v, want service as terminal, active, no PID", session)
 	}
 }
 
-func TestParseWhoUserSessionSkipsDifferentUser(t *testing.T) {
-	line := "other sshd pts/0   2026-05-09 11:23 00:04     2618794 (192.168.1.239)"
-
-	if _, ok := parseWhoUserSession(line, "miguelmariz"); ok {
-		t.Fatal("parseWhoUserSession() ok = true, want false")
+func TestSessionFromLogindSkipsManagerClass(t *testing.T) {
+	props := map[string]godbus.Variant{"Class": godbus.MakeVariant("manager")}
+	if _, ok := sessionFromLogind(props, time.Now()); ok {
+		t.Fatal("sessionFromLogind() ok = true, want false")
 	}
 }
 

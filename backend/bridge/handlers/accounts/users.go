@@ -9,16 +9,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	godbus "github.com/godbus/dbus/v5"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
 
 const (
@@ -220,90 +222,81 @@ func allGroupsForUser(user apischema.AccountUser) []string {
 }
 
 func getActiveSessions(ctx context.Context, username string) []apischema.AccountActiveSession {
-	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	output, err := exec.CommandContext(cmdCtx, "who", "-u").Output()
-	if err != nil {
-		return []apischema.AccountActiveSession{}
-	}
-
 	sessions := make([]apischema.AccountActiveSession, 0)
-	for line := range strings.SplitSeq(string(output), "\n") {
-		session, ok := parseWhoUserSession(line, username)
-		if !ok {
-			continue
+	err := dbusclient.Login1Manager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		var listed [][]any
+		if err := session.CallStore(dbusclient.LoginMgrIface+".ListSessions", dbusclient.CallPolicy{}, nil, &listed); err != nil {
+			return err
 		}
-		if session.PID != nil && *session.PID > 0 {
-			session.SessionID = logindSessionFromPID(*session.PID)
+		for _, entry := range listed {
+			// ListSessions returns (id, uid, user, seat, path).
+			if len(entry) < 5 {
+				continue
+			}
+			if name, _ := entry[2].(string); name != username {
+				continue
+			}
+			path, ok := entry[4].(godbus.ObjectPath)
+			if !ok {
+				continue
+			}
+			var props map[string]godbus.Variant
+			if err := session.ObjectAt(path).CallWithContext(session.Context(), "org.freedesktop.DBus.Properties.GetAll", 0, loginSessionIface).Store(&props); err != nil {
+				return err
+			}
+			if s, ok := sessionFromLogind(props, time.Now()); ok {
+				sessions = append(sessions, s)
+			}
 		}
-		sessions = append(sessions, session)
+		return nil
+	})
+	if err != nil {
+		slog.Warn("login1 ListSessions failed", "user", username, "err", err)
 	}
 	return sessions
 }
 
-func parseWhoUserSession(line, username string) (apischema.AccountActiveSession, bool) {
-	fields := strings.Fields(line)
-	if len(fields) < 4 || fields[0] != username {
+const loginSessionIface = "org.freedesktop.login1.Session"
+
+// sessionFromLogind maps login1 Session properties onto the shape the UI
+// already renders: idle is "." when active, "old" past a day, else HH:MM.
+func sessionFromLogind(props map[string]godbus.Variant, now time.Time) (apischema.AccountActiveSession, bool) {
+	str := func(k string) string { v, _ := props[k].Value().(string); return v }
+	if class := str("Class"); class != "user" && !strings.HasPrefix(class, "user-") {
 		return apischema.AccountActiveSession{}, false
 	}
-
-	dateIndex := findWhoDateField(fields)
-	if dateIndex <= 1 || dateIndex+1 >= len(fields) {
-		return apischema.AccountActiveSession{}, false
+	terminal := str("TTY")
+	if terminal == "" {
+		terminal = str("Service")
 	}
-
 	session := apischema.AccountActiveSession{
-		Terminal:  strings.Join(fields[1:dateIndex], " "),
-		StartedAt: fields[dateIndex] + " " + fields[dateIndex+1],
+		SessionID: str("Id"),
+		Terminal:  terminal,
+		Source:    str("RemoteHost"),
+		Idle:      ".",
 	}
-
-	valueIndex := dateIndex + 2
-	if valueIndex < len(fields) {
-		session.Idle = fields[valueIndex]
-		valueIndex++
+	if usec, _ := props["Timestamp"].Value().(uint64); usec > 0 {
+		session.StartedAt = time.UnixMicro(int64(usec)).Format("2006-01-02 15:04")
 	}
-	if valueIndex < len(fields) {
-		if pid, err := strconv.Atoi(fields[valueIndex]); err == nil && pid > 0 {
-			session.PID = &pid
+	if leader, _ := props["Leader"].Value().(uint32); leader > 0 {
+		pid := int(leader)
+		session.PID = &pid
+	}
+	if idle, _ := props["IdleHint"].Value().(bool); idle {
+		since, _ := props["IdleSinceHint"].Value().(uint64)
+		switch d := now.Sub(time.UnixMicro(int64(since))); {
+		case since == 0:
+			session.Idle = "?"
+		case d >= 24*time.Hour:
+			session.Idle = "old"
+		default:
+			session.Idle = fmt.Sprintf("%02d:%02d", int(d.Hours()), int(d.Minutes())%60)
 		}
-		valueIndex++
 	}
-	if valueIndex < len(fields) {
-		session.Source = strings.Trim(strings.Join(fields[valueIndex:], " "), "()")
-	}
-
 	return session, true
-}
-
-func findWhoDateField(fields []string) int {
-	for i := 1; i < len(fields)-1; i++ {
-		if whoDateFieldRegex.MatchString(fields[i]) && whoTimeFieldRegex.MatchString(fields[i+1]) {
-			return i
-		}
-	}
-	return -1
-}
-
-var (
-	whoDateFieldRegex  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-	whoTimeFieldRegex  = regexp.MustCompile(`^\d{2}:\d{2}(?::\d{2})?$`)
-	logindSessionRegex = regexp.MustCompile(`session-([^.]+)\.scope`)
-)
-
-// logindSessionFromPID returns the systemd-logind session ID for a PID by
-// reading /proc/<pid>/cgroup. Returns "" if no session scope is found
-// (e.g. processes outside logind, or kernel-managed sessions).
-func logindSessionFromPID(pid int) string {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
-	if err != nil {
-		return ""
-	}
-	match := logindSessionRegex.FindStringSubmatch(string(data))
-	if len(match) < 2 {
-		return ""
-	}
-	return match[1]
 }
 
 // TerminateSession ends an active login session. Prefers systemd-logind when a
