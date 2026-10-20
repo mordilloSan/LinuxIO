@@ -17,7 +17,6 @@ import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppCollapse from "@/components/ui/AppCollapse";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -25,6 +24,7 @@ import { TASK_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundTaskTypes";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import {
   EASING_DECELERATE,
@@ -327,28 +327,16 @@ const DiskOverview = () => {
       error: "Failed to unmount filesystem",
       toast: STORAGE_TOAST_META,
     });
-  useEffect(() => {
-    if (!expanded && !selectedMountpoint) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        (e.key === "Escape" || e.key === "Esc") &&
-        !e.defaultPrevented &&
-        !document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        void navigate({
-          to: "/storage",
-          search: (previous) => ({
-            ...previous,
-            drive: undefined,
-            fs: undefined,
-          }),
-        });
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [expanded, navigate, selectedMountpoint]);
+  useClearSelectionOnEscape(Boolean(expanded || selectedMountpoint), () => {
+    void navigate({
+      to: "/storage",
+      search: (previous) => ({
+        ...previous,
+        drive: undefined,
+        fs: undefined,
+      }),
+    });
+  });
   const handleToggle = (driveName: string) => {
     void navigate({
       to: "/storage",
