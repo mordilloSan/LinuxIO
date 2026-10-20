@@ -486,6 +486,7 @@ const DiskOverview = () => {
                         expanded={expanded === drive.name}
                         model={drive.model}
                         name={drive.name}
+                        rotational={drive.rotational}
                         onClick={() => handleToggle(drive.name)}
                         sizeBytes={drive.sizeBytes}
                         smart={drive.smart}

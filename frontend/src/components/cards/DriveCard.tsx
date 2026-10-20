@@ -17,9 +17,15 @@ export interface DriveCardProps {
   name: string;
   onClick: () => void;
   sizeBytes: number;
+  /** Spinning disk; false for SSD and NVMe, absent when unknown. */
+  rotational?: boolean;
   smart?: SmartData;
   transport: string;
 }
+
+/** NVMe and SATA SSDs get the M.2 stick; spinning or unknown drives the platter. */
+export const driveIcon = (transport?: string, rotational?: boolean) =>
+  transport === "nvme" || rotational === false ? "bi:nvme" : "mdi:harddisk";
 
 const getTemperature = (smart?: SmartData): number | null => {
   return smart?.temperature_celsius ?? null;
@@ -47,6 +53,7 @@ const DriveCard = ({
   transport,
   sizeBytes,
   smart,
+  rotational,
   expanded,
   onClick,
   children,
@@ -106,7 +113,7 @@ const DriveCard = ({
         <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
           <Icon
             color="var(--app-palette-primary-main)"
-            icon={transport === "nvme" ? "mdi:harddisk" : "mdi:harddisk-plus"}
+            icon={driveIcon(transport, rotational)}
             width={32}
           />
           <div style={{ marginLeft: 6, flexGrow: 1, minWidth: 0 }}>

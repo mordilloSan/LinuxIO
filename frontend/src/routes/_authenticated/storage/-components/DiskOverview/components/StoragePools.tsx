@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
 import { linuxio } from "@/api";
+import { driveIcon } from "@/components/cards/DriveCard";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
@@ -58,12 +59,6 @@ const HEALTH = {
   },
 } as const;
 
-// NVMe and SATA SSDs get the M.2 stick; spinning or unknown drives the platter.
-const driveIcon = (drive: DriveInfo | null) =>
-  drive && (drive.transport === "nvme" || drive.rotational === false)
-    ? "bi:nvme"
-    : "mdi:harddisk";
-
 interface DiskRowProps {
   caption?: string;
   /** The physical drive behind this disk; without one the row is not a link. */
@@ -90,7 +85,7 @@ const DiskRow = ({
       <Icon
         className="storage-pools__icon"
         height={24}
-        icon={driveIcon(drive)}
+        icon={driveIcon(drive?.transport, drive?.rotational)}
         width={24}
       />
       {drive && (
