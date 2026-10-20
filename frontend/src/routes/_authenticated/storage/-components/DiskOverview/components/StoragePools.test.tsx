@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BtrfsFilesystem } from "@/api";
+import type { BtrfsFilesystem, FilesystemInfo, NFSMount } from "@/api";
 import { render } from "@/test/render";
 
 import type { DriveInfo } from "../types";
@@ -103,6 +103,27 @@ const drives = [
   drive("sdb", "Blank disk"),
 ];
 
+const volume = (
+  mountpoint: string,
+  device: string,
+  fstype: string,
+  freeGiB = 60,
+): FilesystemInfo => ({
+  mountpoint,
+  device,
+  fstype,
+  total: 100 * GiB,
+  used: (100 - freeGiB) * GiB,
+  free: freeGiB * GiB,
+  usedPercent: 100 - freeGiB,
+});
+
+const filesystems = [
+  volume("/mnt/tank", "/dev/nvme0n1", "btrfs"),
+  volume("/mnt/tank/media", "/dev/nvme0n1", "btrfs"),
+  volume("/", "/dev/sda2", "btrfs"),
+];
+
 const privileged = { auth: { privileged: true } };
 const capabilities = { btrfsAvailable: true };
 
@@ -113,6 +134,8 @@ const renderPools = (
   render(
     <StoragePools
       drives={drives}
+      filesystems={filesystems}
+      nfsMounts={[]}
       onInspectDrive={vi.fn()}
       onOpenVolume={vi.fn()}
       {...props}
@@ -156,17 +179,50 @@ describe("StoragePools", () => {
     expect(onInspectDrive).toHaveBeenCalledWith("nvme1n1");
   });
 
-  it("lists drives outside every pool, with their model", async () => {
+  it("lists drives with no pool and no volume, with their model", async () => {
     const user = userEvent.setup();
     const onInspectDrive = vi.fn();
     renderPools({ onInspectDrive });
 
-    expect(await screen.findByText("Other disks")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Disks without volumes"),
+    ).toBeInTheDocument();
     // sda backs the "/" pool, so only sdb is outside every pool.
     expect(screen.getByText("Blank disk")).toBeInTheDocument();
     expect(screen.queryByText("Crucial MX500")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Drive details sdb" }));
     expect(onInspectDrive).toHaveBeenCalledWith("sdb");
+  });
+
+  it("hangs plain partitions off their disk and shares off their server", async () => {
+    renderPools({
+      filesystems: [
+        ...filesystems,
+        volume("/boot/efi", "/dev/sdb1", "vfat", 1),
+        volume("/mnt/share", "nas.lan:/export/media", "nfs4", 900),
+      ],
+      nfsMounts: [
+        {
+          mountpoint: "/mnt/share",
+          server: "nas.lan",
+          exportPath: "/export/media",
+        } as NFSMount,
+      ],
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "Volume /boot/efi" }),
+    ).toHaveTextContent("FAT");
+    expect(
+      screen.getByRole("button", { name: "Volume /boot/efi" }),
+    ).toHaveTextContent("Free 1 GB");
+    // sdb now carries a volume, so nothing is left without one.
+    expect(screen.queryByText("Disks without volumes")).toBeNull();
+    expect(screen.getByText("nas.lan:/export/media")).toBeInTheDocument();
+    expect(screen.getByText("Network share")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Volume /mnt/share" }),
+    ).toHaveTextContent("NFS");
   });
 
   it("opens a volume", async () => {
@@ -198,7 +254,10 @@ describe("StoragePools", () => {
       { ...privileged, capabilities: { btrfsAvailable: false } },
     );
     expect(screen.queryByRole("button", { name: "tank" })).toBeNull();
-    expect(screen.queryByText("Other disks")).toBeNull();
+    // Without pools the btrfs volumes hang off their drives instead.
+    expect(
+      screen.getByRole("button", { name: "Volume /mnt/tank" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Drive details nvme0n1" }),
     ).toBeInTheDocument();
@@ -219,7 +278,7 @@ describe("StoragePools", () => {
       }),
     );
     renderPools();
-    expect(screen.queryByText("Other disks")).not.toBeInTheDocument();
+    expect(screen.queryByText("Disks without volumes")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Drive details nvme0n1" }),
     ).not.toBeInTheDocument();
@@ -228,11 +287,11 @@ describe("StoragePools", () => {
     expect(
       await screen.findByRole("button", { name: "tank" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Other disks")).toBeInTheDocument();
+    expect(screen.getByText("Disks without volumes")).toBeInTheDocument();
   });
 
-  it("says when there are no drives at all", () => {
-    renderPools({ drives: [] }, { capabilities });
-    expect(screen.getByText("No drives found.")).toBeInTheDocument();
+  it("says when there are no drives or volumes at all", () => {
+    renderPools({ drives: [], filesystems: [] }, { capabilities });
+    expect(screen.getByText("No drives or volumes found.")).toBeInTheDocument();
   });
 });

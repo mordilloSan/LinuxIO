@@ -125,6 +125,10 @@
   position: relative;
   min-height: 24px;
 }
+/* No pool between a plain disk and its volumes: one line across the gap. */
+.storage-pools__link--span {
+  grid-column: 2 / 5;
+}
 .storage-pools__link svg {
   position: absolute;
   inset: 0;

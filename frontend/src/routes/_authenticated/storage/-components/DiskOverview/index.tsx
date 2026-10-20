@@ -514,12 +514,14 @@ const DiskOverview = () => {
       {!expanded && !selectedMountpoint && (
         <StoragePools
           drives={drives}
+          filesystems={relevantFS}
+          nfsMounts={nfsMounts}
           onInspectDrive={handleInspectDrive}
           onOpenVolume={handleOpenVolume}
         />
       )}
 
-      {!expanded && (
+      {!expanded && selectedMountpoint && (
         <>
           <AppTypography
             style={{
@@ -528,7 +530,7 @@ const DiskOverview = () => {
             }}
             variant="h6"
           >
-            Filesystems
+            Volume
           </AppTypography>
           <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
             <AnimatePresence initial={false}>

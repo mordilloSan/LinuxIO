@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { BtrfsFilesystem } from "@/api";
+import type { BtrfsFilesystem, FilesystemInfo, NFSMount } from "@/api";
 
-import { describePool, profileLabel } from "./storagePools";
+import {
+  buildStorageLayout,
+  describePool,
+  fsTypeLabel,
+  profileLabel,
+} from "./storagePools";
+import type { DriveInfo } from "./types";
 
 const GiB = 1024 ** 3;
 const noErrors = { write: 0, read: 0, flush: 0, corruption: 0, generation: 0 };
@@ -101,5 +107,89 @@ describe("describePool", () => {
     expect(pool.name).toBe("Storage pool 3");
     expect(pool.profile).toBe("");
     expect(pool.volumes).toEqual([]);
+  });
+});
+
+describe("buildStorageLayout", () => {
+  const volume = (
+    mountpoint: string,
+    device: string,
+    fstype: string,
+  ): FilesystemInfo => ({
+    mountpoint,
+    device,
+    fstype,
+    total: 100 * GiB,
+    used: 40 * GiB,
+    free: 60 * GiB,
+    usedPercent: 40,
+  });
+  const drive = (name: string): DriveInfo => ({
+    name,
+    model: name,
+    sizeBytes: 500 * GiB,
+    transport: "nvme",
+  });
+  const drives = [drive("nvme0n1"), drive("sda"), drive("sdb")];
+  const nfs = {
+    mountpoint: "/mnt/share",
+    server: "nas.lan",
+    exportPath: "/export/media",
+  } as NFSMount;
+
+  it("places every mounted filesystem exactly once", () => {
+    const layout = buildStorageLayout(
+      [filesystem({ devices: [filesystem({}).devices[0]] })],
+      [
+        volume("/", "/dev/nvme0n1p2", "btrfs"),
+        volume("/boot/efi", "/dev/nvme0n1p1", "vfat"),
+        volume("/srv", "/dev/sda1", "ext4"),
+        volume("/mnt/share", "nas.lan:/export/media", "nfs4"),
+        volume("/secure", "/dev/mapper/luks-1", "ext4"),
+      ],
+      drives,
+      [nfs],
+    );
+
+    expect(layout.poolStacks[0].volumes.map((v) => v.mountpoint)).toEqual([
+      "/",
+    ]);
+    expect(
+      layout.driveStacks.map((s) => [
+        s.drive.name,
+        s.volumes.map((v) => v.mountpoint),
+      ]),
+    ).toEqual([
+      ["nvme0n1", ["/boot/efi"]],
+      ["sda", ["/srv"]],
+    ]);
+    expect(
+      layout.sourceStacks.map((s) => [s.label, s.network, s.volumes.length]),
+    ).toEqual([
+      ["nas.lan:/export/media", true, 1],
+      ["/dev/mapper/luks-1", false, 1],
+    ]);
+    // nvme0n1 backs the pool, sda has a volume: only sdb is idle.
+    expect(layout.idleDrives.map((d) => d.name)).toEqual(["sdb"]);
+  });
+
+  it("falls back to drive stacks when no btrfs pools are known", () => {
+    const layout = buildStorageLayout(
+      [],
+      [volume("/", "/dev/nvme0n1p2", "btrfs")],
+      drives,
+      [],
+    );
+    expect(layout.poolStacks).toEqual([]);
+    expect(layout.driveStacks[0].drive.name).toBe("nvme0n1");
+  });
+});
+
+describe("fsTypeLabel", () => {
+  it("names common filesystems the way people say them", () => {
+    expect(fsTypeLabel("btrfs")).toBe("Btrfs");
+    expect(fsTypeLabel("vfat")).toBe("FAT");
+    expect(fsTypeLabel("nfs4")).toBe("NFS");
+    expect(fsTypeLabel("ext4")).toBe("ext4");
   });
 });

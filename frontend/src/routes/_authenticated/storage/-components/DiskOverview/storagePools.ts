@@ -1,4 +1,7 @@
-import type { BtrfsFilesystem } from "@/api";
+import type { BtrfsFilesystem, FilesystemInfo, NFSMount } from "@/api";
+
+import type { DriveInfo } from "./types";
+import { findBackingDrive } from "./utils";
 
 export interface PoolDisk {
   key: string;
@@ -50,5 +53,108 @@ export const describePool = (
       missing: device.missing,
     })),
     volumes: mountpoints,
+  };
+};
+
+/** "btrfs" -> "Btrfs", "vfat" -> "FAT", "nfs4" -> "NFS"; others as reported. */
+export const fsTypeLabel = (fstype: string) => {
+  const known: Record<string, string> = {
+    btrfs: "Btrfs",
+    xfs: "XFS",
+    vfat: "FAT",
+    exfat: "exFAT",
+    ntfs: "NTFS",
+    zfs: "ZFS",
+  };
+  if (fstype.startsWith("nfs")) return "NFS";
+  if (fstype.startsWith("cifs") || fstype === "smb3") return "SMB";
+  return known[fstype] ?? fstype;
+};
+
+export interface PoolStack {
+  fs: BtrfsFilesystem;
+  pool: PoolSummary;
+  volumes: FilesystemInfo[];
+}
+
+export interface DriveStack {
+  drive: DriveInfo;
+  volumes: FilesystemInfo[];
+}
+
+/** Volumes with no physical drive behind them: network shares, mapper devices. */
+export interface SourceStack {
+  key: string;
+  label: string;
+  network: boolean;
+  volumes: FilesystemInfo[];
+}
+
+export interface StorageLayout {
+  driveStacks: DriveStack[];
+  idleDrives: DriveInfo[];
+  poolStacks: PoolStack[];
+  sourceStacks: SourceStack[];
+}
+
+/**
+ * Places every mounted filesystem exactly once: under its btrfs pool, else
+ * under the drive its partition lives on, else under its source (an NFS
+ * server or a mapper device). Drives with neither are listed as idle.
+ */
+export const buildStorageLayout = (
+  btrfs: BtrfsFilesystem[],
+  filesystems: FilesystemInfo[],
+  drives: DriveInfo[],
+  nfsMounts: NFSMount[],
+): StorageLayout => {
+  const claimed = new Set<string>();
+  const poolStacks = btrfs.map((fs, index) => {
+    const pool = describePool(fs, index);
+    const volumes = filesystems.filter((v) =>
+      pool.volumes.includes(v.mountpoint),
+    );
+    for (const v of volumes) claimed.add(v.mountpoint);
+    return { fs, pool, volumes };
+  });
+
+  const byDrive = new Map<string, DriveStack>();
+  const bySource = new Map<string, SourceStack>();
+  for (const volume of filesystems) {
+    if (claimed.has(volume.mountpoint)) continue;
+    const drive = findBackingDrive(volume.device, drives);
+    if (drive) {
+      const stack = byDrive.get(drive.name) ?? { drive, volumes: [] };
+      stack.volumes.push(volume);
+      byDrive.set(drive.name, stack);
+      continue;
+    }
+    const nfs = nfsMounts.find((m) => m.mountpoint === volume.mountpoint);
+    const network = nfs !== undefined || volume.fstype.startsWith("nfs");
+    const label = nfs ? `${nfs.server}:${nfs.exportPath}` : volume.device;
+    const stack = bySource.get(label) ?? {
+      key: label,
+      label,
+      network,
+      volumes: [],
+    };
+    stack.volumes.push(volume);
+    bySource.set(label, stack);
+  }
+
+  const pooled = new Set(
+    poolStacks.flatMap(({ pool }) =>
+      pool.disks.flatMap(
+        (disk) => findBackingDrive(disk.name, drives)?.name ?? [],
+      ),
+    ),
+  );
+  return {
+    poolStacks,
+    driveStacks: drives.flatMap((drive) => byDrive.get(drive.name) ?? []),
+    sourceStacks: [...bySource.values()],
+    idleDrives: drives.filter(
+      (drive) => !pooled.has(drive.name) && !byDrive.has(drive.name),
+    ),
   };
 };

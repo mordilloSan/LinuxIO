@@ -80,16 +80,21 @@ filesystem show in the subvolume list, not the snapshot list.
   section with **Subvolumes**, **Replication** and **Settings**. The
   filesystem picker only appears with more than one filesystem, and
   distro/container-runtime subvolumes are hidden by default.
-- Disks tab (`/storage`) gains a **Storage space** flow above Filesystems:
-  disks -> pool -> volumes for each mounted btrfs filesystem (pool = the
-  filesystem, named by its label or "Storage pool N", with its data profile,
-  allocated and free space; volumes = its mount points), centred on the pool.
-  Each disk shows a SMART health dot, an NVMe/SSD or spinning-disk icon from
-  lsblk's rotational flag, size and temperature, and opens that drive's
-  details; drives in no pool are listed as other disks, and the top drive
-  cards only appear for the opened drive. **Details** for the selected pool: the **Disks**
-  card (add, replace, remove, change RAID profile) and the **Space**
-  allocation breakdown. Shown only with the `btrfs` capability and privilege.
+- Disks tab (`/storage`) is one **Storage space** flow listing every drive
+  and every mounted filesystem (a volume) exactly once: disks -> pool ->
+  volumes for each mounted btrfs filesystem (pool = the filesystem, named by
+  its label or "Storage pool N", with its data profile, allocated and free
+  space), disk -> volumes for plain partitions, and source -> volumes for NFS
+  shares and mapper devices with no physical drive found. Disks, pool and
+  volumes take equal thirds. Each disk shows its icon (NVMe/SSD or spinning,
+  from lsblk's rotational flag), a SMART health dot, size and temperature, and
+  opens that drive's details; drives with no pool and no volume are listed as
+  disks without volumes. Opening a volume shows its filesystem card; the drive
+  cards and filesystem cards no longer appear as separate grids. **Details**
+  for the selected pool: the **Disks** card (add, replace, remove, change RAID
+  profile) and the **Space**
+  allocation breakdown. Pools need the `btrfs` capability and privilege; the
+  rest of the flow does not.
   All built from `components/ui` and `--app-*` variables.
 - The existing "Create subvolume" field and `BtrfsMaintenanceControls` move
   from `FilesystemCard` into the Btrfs tab's Subvolumes and Settings cards;
