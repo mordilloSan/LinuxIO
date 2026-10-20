@@ -517,7 +517,9 @@
   background-color: var(--app-palette-action-hover);
   color: var(--app-palette-text-secondary);
   font: inherit;
-  font-size: calc(var(--app-font-size-body) * 0.92);
+  /* The page scales --app-font-size-body with the chat font size; the chip
+     is a fixed 24px control, so it keeps the theme's base size. */
+  font-size: 0.75rem;
 }
 
 .app-icon-btn.assistant__pill:hover:not(:disabled),
