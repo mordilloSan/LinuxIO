@@ -143,8 +143,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 
 	cli, err := getClient()
 	if err != nil {
-		slog.Error("failed to get docker client", "component", "docker", "route", routeDockerLogsFollowAll, "error", err)
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err)
+		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to get docker client", "route", routeDockerLogsFollowAll)
 	}
 	defer releaseClient(cli)
 
@@ -154,8 +153,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	})
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
-		slog.Error("failed to list containers for logs", "component", "docker", "route", routeDockerLogsFollowAll, "error", err)
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err)
+		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to list containers for logs", "route", routeDockerLogsFollowAll)
 	}
 
 	listedAt := time.Now().UnixNano()
@@ -175,8 +173,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	eventsErr := attachStartedContainers(ctx, events, listed, listedAt, follow)
 	followers.Wait()
 	if eventsErr != nil {
-		slog.Error("docker event stream failed", "component", "docker", "route", routeDockerLogsFollowAll, "error", eventsErr)
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, eventsErr)
+		return writeDockerLogErrorUnlessCanceled(ctx, stream, eventsErr, "docker event stream failed", "route", routeDockerLogsFollowAll)
 	}
 	if ctx.Err() != nil {
 		return relay.WriteStreamClose(stream, 0)
