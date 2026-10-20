@@ -135,7 +135,6 @@ export const RangeSelect = ({
       disableUnderline
       onChange={(event) => onChange(event.target.value as HistoryRangeId)}
       renderValue={(selected) => selected}
-      size="small"
       style={{
         ["--app-select-input-font-size" as string]: "0.72rem",
         width: 46,

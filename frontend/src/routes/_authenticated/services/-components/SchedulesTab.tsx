@@ -470,7 +470,6 @@ function ScheduleDialog({
             onChange={(e) => set("script", e.target.value)}
           />
           <AppSelect
-            size="small"
             label="Run as"
             value={value.user}
             onChange={(e) => set("user", e.target.value)}
@@ -491,7 +490,6 @@ function ScheduleDialog({
           />
           <AppSelect
             label="Repeat"
-            size="small"
             value={timing.frequency}
             onChange={(event) =>
               setTiming({
@@ -510,7 +508,6 @@ function ScheduleDialog({
           {timing.frequency === "weekly" && (
             <AppSelect
               label="Day of the week"
-              size="small"
               value={timing.weekday}
               onChange={(event) =>
                 setTiming({

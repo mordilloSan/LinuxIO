@@ -462,7 +462,6 @@ const DockerAutoUpdateSettingsSection = ({
                 event.target.value as DockerContainerAutoUpdateMode,
               )
             }
-            size="small"
             value={currentOptions.mode}
           >
             <option value="update">Update automatically</option>

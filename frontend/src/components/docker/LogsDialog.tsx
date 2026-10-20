@@ -114,7 +114,6 @@ const LogsDialog = ({
           <AppSelect
             label="Lines"
             onChange={(event) => handleTailLinesChange(event.target.value)}
-            size="small"
             style={{ width: 112, flexShrink: 0 }}
             value={tailLines}
           >

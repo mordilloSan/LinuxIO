@@ -789,7 +789,6 @@ const DockerDashboard = ({
                     onChange={(e) =>
                       setContainerSort(e.target.value as typeof containerSort)
                     }
-                    size="small"
                     style={{
                       color: "var(--app-palette-text-secondary)",
                       lineHeight: 1.4,
@@ -841,7 +840,6 @@ const DockerDashboard = ({
                     onChange={(e) =>
                       setImageSort(e.target.value as typeof imageSort)
                     }
-                    size="small"
                     style={{
                       color: "var(--app-palette-text-secondary)",
                       lineHeight: 1.4,

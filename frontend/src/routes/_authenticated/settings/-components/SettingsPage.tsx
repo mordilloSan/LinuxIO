@@ -259,7 +259,6 @@ const SettingsPage = () => {
                       onChange={(event) =>
                         setDockTileColors(event.target.value as DockTileColors)
                       }
-                      size="small"
                       value={dockColorMode}
                     >
                       <option value="accent">Accent family</option>

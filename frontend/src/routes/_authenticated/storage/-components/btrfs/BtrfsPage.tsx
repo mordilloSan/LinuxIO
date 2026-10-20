@@ -48,7 +48,6 @@ const BtrfsFilesystems = ({ selectedUuid, onSelect }: BtrfsPageProps) => {
         <AppSelect
           label="Filesystem"
           onChange={(event) => onSelect(event.target.value)}
-          size="small"
           style={{ minWidth: 320, marginBottom: "var(--app-space-16)" }}
           value={selected.uuid}
         >

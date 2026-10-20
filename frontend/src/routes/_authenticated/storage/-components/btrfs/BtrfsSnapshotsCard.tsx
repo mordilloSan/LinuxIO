@@ -270,7 +270,6 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
                 <AppSelect
                   label="Source"
                   onChange={(event) => setSource(event.target.value)}
-                  size="small"
                   style={{ minWidth: 160 }}
                   value={activeSource}
                 >

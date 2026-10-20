@@ -103,7 +103,6 @@ const CompressionControl = ({
             level: String(LEVELS[algorithm]?.fallback ?? ""),
           });
         }}
-        size="small"
         value={draft.algorithm}
       >
         {ALGORITHMS.map((option) => (
