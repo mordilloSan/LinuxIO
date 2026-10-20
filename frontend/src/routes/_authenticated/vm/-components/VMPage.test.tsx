@@ -662,6 +662,8 @@ describe("Virtual Machines page", () => {
       ).toBeInTheDocument();
     });
     expect(getVMAction("alpha", "Reboot")).toBeDisabled();
+    // The guest is still up while it shuts down, so the console stays usable.
+    expect(getVMAction("alpha", "Console")).toBeEnabled();
     expect(getVMAction("beta", "Start")).toBeEnabled();
 
     await user.click(getVMAction("beta", "Start"));

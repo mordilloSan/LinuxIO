@@ -192,7 +192,7 @@ export default function VMListTable({
                 onClick={() => onRunAction("resume", vm)}
               />
               <AppActionIconButton
-                disabled={rowBusy || !running || !vm.hasGraphics}
+                disabled={!running || !vm.hasGraphics}
                 icon="mdi:monitor"
                 label="Console"
                 onClick={() => onOpenConsole(vm)}
