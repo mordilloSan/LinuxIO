@@ -183,6 +183,9 @@ func extractOVA(ovaPath, dir string) (string, []byte, error) {
 			continue
 		}
 		name := filepath.Base(header.Name)
+		if !filepath.IsLocal(name) {
+			continue
+		}
 		ext := strings.ToLower(filepath.Ext(name))
 		switch {
 		case ext == ".ovf" && ovf == nil:
