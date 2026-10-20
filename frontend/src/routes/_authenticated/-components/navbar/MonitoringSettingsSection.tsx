@@ -74,9 +74,6 @@ const HISTORY_PLUGINS = MONITORING_PLUGINS.filter(
 /** SMART history is written on the SMART refresh, not the collector tick. */
 const HISTORY_PLUGINS_WITHOUT_INTERVAL = new Set(["smart"]);
 
-const DISK_USAGE_CACHE_HELPER =
-  "How often filesystem usage is re-read; 0 re-reads every time, a value like 15m keeps sleeping disks asleep.";
-
 interface DraftConfig {
   collector_interval: string;
   smart_refresh_interval: string;
@@ -779,7 +776,7 @@ const MonitoringSettingsSection = () => {
             return (
               <div
                 key={index}
-                style={{ marginTop: "var(--app-space-6)", minWidth: 0 }}
+                style={{ marginTop: "var(--app-space-12)", minWidth: 0 }}
               >
                 <SettingsGrid>
                   <>
@@ -919,11 +916,12 @@ const MonitoringSettingsSection = () => {
                 value={draft.smart_refresh_interval}
               />
             </AppTooltip>
+            <AppTooltip title="How often filesystem usage is re-read; 0 re-reads every time, a value like 15m keeps sleeping disks asleep.">
             <AppTextField
               disabled={busy}
               error={Boolean(errors.disk_usage_cache)}
               fullWidth
-              helperText={errors.disk_usage_cache ?? DISK_USAGE_CACHE_HELPER}
+              helperText={errors.disk_usage_cache}
               label="Disk usage cache"
               onChange={(event) =>
                 updateDraft("disk_usage_cache", event.target.value)
@@ -931,6 +929,7 @@ const MonitoringSettingsSection = () => {
               size="small"
               value={draft.disk_usage_cache}
             />
+            </AppTooltip>
             <AppTooltip title="How long one-minute history is retained">
               <AppTextField
                 disabled={busy}
