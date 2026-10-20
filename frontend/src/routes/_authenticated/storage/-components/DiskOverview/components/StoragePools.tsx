@@ -7,6 +7,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
@@ -18,6 +19,7 @@ import { describePool } from "../storagePools";
 import type { DriveInfo } from "../types";
 import {
   findBackingDrive,
+  getHealthColor,
   getTemperature,
   getTemperatureColor,
 } from "../utils";
@@ -46,6 +48,22 @@ const Connector = ({ count = 1 }: { count?: number }) => {
   );
 };
 
+const HEALTH = {
+  success: { color: "var(--app-palette-success-main)", label: "Healthy" },
+  warning: { color: "var(--app-palette-warning-main)", label: "Warning" },
+  error: { color: "var(--app-palette-error-main)", label: "Failing" },
+  default: {
+    color: "var(--app-palette-text-disabled)",
+    label: "No SMART data",
+  },
+} as const;
+
+// NVMe and SATA SSDs get the M.2 stick; spinning or unknown drives the platter.
+const driveIcon = (drive: DriveInfo | null) =>
+  drive && (drive.transport === "nvme" || drive.rotational === false)
+    ? "bi:nvme"
+    : "mdi:harddisk";
+
 interface DiskRowProps {
   caption?: string;
   /** The physical drive behind this disk; without one the row is not a link. */
@@ -66,15 +84,24 @@ const DiskRow = ({
   onInspectDrive,
 }: DiskRowProps) => {
   const temperature = getTemperature(drive?.smart);
+  const health = HEALTH[getHealthColor(drive?.smart)];
   const content: ReactNode = (
     <>
       <Icon
         className="storage-pools__icon"
-        height={26}
-        icon="mdi:harddisk"
-        width={26}
+        height={24}
+        icon={driveIcon(drive)}
+        width={24}
       />
-      <span>
+      {drive && (
+        <StatusDot
+          color={health.color}
+          size={8}
+          style={{ marginLeft: -6 }}
+          tooltip={health.label}
+        />
+      )}
+      <span className="storage-pools__name">
         <AppTypography noWrap variant="body2">
           {name}
         </AppTypography>
@@ -142,7 +169,10 @@ const StoragePools = ({
   });
   const [selectedUuid, setSelectedUuid] = useState<string>();
 
-  const pools = filesystems.map((fs) => ({ fs, pool: describePool(fs) }));
+  const pools = filesystems.map((fs, index) => ({
+    fs,
+    pool: describePool(fs, index),
+  }));
   const pooled = new Set(
     pools.flatMap(({ pool }) =>
       pool.disks.flatMap(
@@ -151,8 +181,7 @@ const StoragePools = ({
     ),
   );
   const others = drives.filter((drive) => !pooled.has(drive.name));
-  const selected =
-    filesystems.find((fs) => fs.uuid === selectedUuid) ?? filesystems[0];
+  const selected = pools.find(({ fs }) => fs.uuid === selectedUuid) ?? pools[0];
 
   // Until the pools load every drive would look pool-less, then jump into
   // its pool; draw nothing rather than that flicker.
@@ -189,8 +218,8 @@ const StoragePools = ({
               </div>
               <Connector />
               <AppButton
-                aria-label={`Pool ${pool.name}`}
-                aria-pressed={pool.uuid === selected.uuid}
+                aria-label={pool.name}
+                aria-pressed={pool.uuid === selected?.pool.uuid}
                 className="storage-pools__card storage-pools__pool"
                 color="inherit"
                 onClick={() => setSelectedUuid(pool.uuid)}
@@ -289,7 +318,7 @@ const StoragePools = ({
             style={{ marginBottom: 8, fontWeight: 600 }}
             variant="h6"
           >
-            Pool details · {describePool(selected).name}
+            Details · {selected.pool.name}
           </AppTypography>
           <AppGrid
             container
@@ -297,10 +326,13 @@ const StoragePools = ({
             style={{ marginBottom: 16 }}
           >
             <AppGrid size={{ xs: 12, md: 7 }}>
-              <BtrfsDevicesCard filesystem={selected} key={selected.uuid} />
+              <BtrfsDevicesCard
+                filesystem={selected.fs}
+                key={selected.fs.uuid}
+              />
             </AppGrid>
             <AppGrid size={{ xs: 12, md: 5 }}>
-              <BtrfsSpaceCard filesystem={selected} />
+              <BtrfsSpaceCard filesystem={selected.fs} />
             </AppGrid>
           </AppGrid>
         </>

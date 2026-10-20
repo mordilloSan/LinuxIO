@@ -7,6 +7,8 @@ export interface DriveInfo {
   name: string;
   power?: DiskPowerData;
   ro?: boolean;
+  /** Spinning disk; false for SSD and NVMe, absent when unknown. */
+  rotational?: boolean;
   serial?: string;
   sizeBytes: number;
   smart?: SmartData;

@@ -109,13 +109,15 @@ type GpuDevice struct {
 }
 
 type ApiDisk struct {
-	Model  string  `json:"model"`
-	Name   string  `json:"name"`
-	RO     bool    `json:"ro"`
-	Serial *string `json:"serial,omitempty"`
-	Size   string  `json:"size"`
-	Type   *string `json:"type,omitempty"`
-	Vendor *string `json:"vendor,omitempty"`
+	Model string `json:"model"`
+	Name  string `json:"name"`
+	RO    bool   `json:"ro"`
+	// Rotational is true for spinning disks, false for SSD and NVMe.
+	Rotational bool    `json:"rotational"`
+	Serial     *string `json:"serial,omitempty"`
+	Size       string  `json:"size"`
+	Type       *string `json:"type,omitempty"`
+	Vendor     *string `json:"vendor,omitempty"`
 }
 
 // StorageBlockDevice describes kernel-reported backing relationships. A device

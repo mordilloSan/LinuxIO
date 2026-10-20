@@ -82,8 +82,12 @@ filesystem show in the subvolume list, not the snapshot list.
   distro/container-runtime subvolumes are hidden by default.
 - Disks tab (`/storage`) gains a **Storage space** flow above Filesystems:
   disks -> pool -> volumes for each mounted btrfs filesystem (pool = the
-  filesystem with its data profile, allocated and free space; volumes = its
-  mount points), plus **Pool details** for the selected pool: the **Disks**
+  filesystem, named by its label or "Storage pool N", with its data profile,
+  allocated and free space; volumes = its mount points), centred on the pool.
+  Each disk shows a SMART health dot, an NVMe/SSD or spinning-disk icon from
+  lsblk's rotational flag, size and temperature, and opens that drive's
+  details; drives in no pool are listed as other disks, and the top drive
+  cards only appear for the opened drive. **Details** for the selected pool: the **Disks**
   card (add, replace, remove, change RAID profile) and the **Space**
   allocation breakdown. Shown only with the `btrfs` capability and privilege.
   All built from `components/ui` and `--app-*` variables.

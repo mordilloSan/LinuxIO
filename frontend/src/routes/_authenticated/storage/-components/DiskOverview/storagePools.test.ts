@@ -61,12 +61,12 @@ describe("profileLabel", () => {
 
 describe("describePool", () => {
   it("summarises disks, data profile, space and volumes", () => {
-    const pool = describePool(filesystem({}));
+    const pool = describePool(filesystem({}), 0);
     expect(pool.profile).toBe("RAID 10");
     expect(pool.allocatedBytes).toBe(60 * GiB);
     expect(pool.freeBytes).toBe(70 * GiB);
     expect(pool.volumes).toEqual(["/"]);
-    expect(pool.name).toBe("/");
+    expect(pool.name).toBe("Storage pool 1");
     expect(pool.disks.map((d) => d.name)).toEqual([
       "nvme0n1p2",
       "Missing disk",
@@ -87,16 +87,18 @@ describe("describePool", () => {
           },
         ],
       }),
+      0,
     );
     expect(pool.name).toBe("data");
     expect(pool.profile).toBe("Single");
   });
 
-  it("falls back to a short uuid and no profile when nothing is known", () => {
+  it("numbers unlabelled pools and shows no profile when nothing is known", () => {
     const pool = describePool(
       filesystem({ mountpoints: [], allocation: [], devices: [] }),
+      2,
     );
-    expect(pool.name).toBe("7f84fdfd");
+    expect(pool.name).toBe("Storage pool 3");
     expect(pool.profile).toBe("");
     expect(pool.volumes).toEqual([]);
   });

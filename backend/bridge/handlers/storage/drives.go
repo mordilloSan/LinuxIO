@@ -20,6 +20,7 @@ type BlockDevice struct {
 	Serial     string        `json:"serial"`
 	Size       string        `json:"size"`
 	RO         bool          `json:"ro"`
+	Rota       bool          `json:"rota"`
 	Type       string        `json:"type"`
 	Tran       string        `json:"tran"`
 	Vendor     string        `json:"vendor"`
@@ -65,13 +66,14 @@ func FetchDriveInfo(ctx context.Context) ([]DriveInfo, error) {
 
 func buildDriveInfo(dev BlockDevice) DriveInfo {
 	return DriveInfo{
-		Name:   dev.Name,
-		Model:  strings.TrimSpace(dev.Model),
-		Serial: optionalString(strings.TrimSpace(dev.Serial)),
-		Size:   dev.Size,
-		Type:   optionalString(dev.Tran),
-		Vendor: optionalString(strings.TrimSpace(dev.Vendor)),
-		RO:     dev.RO,
+		Name:       dev.Name,
+		Model:      strings.TrimSpace(dev.Model),
+		Serial:     optionalString(strings.TrimSpace(dev.Serial)),
+		Size:       dev.Size,
+		Type:       optionalString(dev.Tran),
+		Vendor:     optionalString(strings.TrimSpace(dev.Vendor)),
+		RO:         dev.RO,
+		Rotational: dev.Rota,
 	}
 }
 

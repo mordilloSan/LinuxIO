@@ -5,10 +5,11 @@
   gap: var(--app-space-16);
   margin-bottom: var(--app-space-24);
 }
+/* Disks, pool and volumes take equal thirds, so the pool sits centred. */
 .storage-pools__stack {
   display: grid;
   grid-template-columns:
-    minmax(0, 1fr) 56px minmax(0, 1.1fr) 64px minmax(0, 1.4fr);
+    minmax(0, 1fr) 60px minmax(0, 1fr) 60px minmax(0, 1fr);
   align-items: stretch;
 }
 .storage-pools .storage-pools__card {
@@ -84,8 +85,7 @@
   text-align: left;
   line-height: inherit;
 }
-.storage-pools .storage-pools__disk > :nth-child(2),
-.storage-pools__others .storage-pools__disk > :nth-child(2),
+.storage-pools__disk .storage-pools__name,
 .storage-pools .storage-pools__volume > :nth-child(2) {
   display: flex;
   flex: 1;

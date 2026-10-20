@@ -366,6 +366,7 @@ const DiskOverview = () => {
     vendor: d.vendor,
     serial: d.serial,
     ro: d.ro,
+    rotational: d.rotational,
     smart: liveSmart[d.name]?.data,
     power: liveSmart[d.name]?.power,
   }));

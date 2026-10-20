@@ -143,6 +143,7 @@ export interface ApiDisk {
   model: string;
   name: string;
   ro: boolean;
+  rotational: boolean;
   serial?: string;
   size: string;
   type?: string;

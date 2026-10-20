@@ -130,11 +130,11 @@ describe("StoragePools", () => {
     renderPools();
 
     expect(
-      await screen.findByRole("button", { name: "Pool tank" }),
+      await screen.findByRole("button", { name: "tank" }),
     ).toHaveTextContent("RAID 1");
-    expect(screen.getByRole("button", { name: "Pool /" })).toHaveTextContent(
-      "Single",
-    );
+    expect(
+      screen.getByRole("button", { name: "Storage pool 2" }),
+    ).toHaveTextContent("Single");
     expect(screen.getByText("nvme0n1")).toBeInTheDocument();
     expect(screen.getByText("nvme1n1")).toBeInTheDocument();
     expect(screen.getAllByText("Allocated 60 GB")).toHaveLength(2);
@@ -184,13 +184,12 @@ describe("StoragePools", () => {
     const user = userEvent.setup();
     renderPools();
 
-    expect(await screen.findByText("Pool details · tank")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Pool /" }));
-    expect(screen.getByText("Pool details · /")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Pool /" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(await screen.findByText("Details · tank")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Storage pool 2" }));
+    expect(screen.getByText("Details · Storage pool 2")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Storage pool 2" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("still lists the drives without btrfs or without privilege", () => {
@@ -198,7 +197,7 @@ describe("StoragePools", () => {
       {},
       { ...privileged, capabilities: { btrfsAvailable: false } },
     );
-    expect(screen.queryByRole("button", { name: /^Pool / })).toBeNull();
+    expect(screen.queryByRole("button", { name: "tank" })).toBeNull();
     expect(screen.queryByText("Other disks")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Drive details nvme0n1" }),
@@ -227,7 +226,7 @@ describe("StoragePools", () => {
 
     resolve([raid, root]);
     expect(
-      await screen.findByRole("button", { name: "Pool tank" }),
+      await screen.findByRole("button", { name: "tank" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Other disks")).toBeInTheDocument();
   });
