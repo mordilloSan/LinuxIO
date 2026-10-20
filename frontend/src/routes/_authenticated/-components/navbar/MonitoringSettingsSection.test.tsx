@@ -30,7 +30,7 @@ const config: MonitoringConfig = {
   history: "cpu,mem",
   history_intervals: {},
   history_retention: "720h0m0s",
-  listeners: [{ address: "0.0.0.0:45876", name: "lan", plugins: ["cpu"] }],
+  listeners: [{ address: ":45876", name: "lan", plugins: ["cpu"] }],
   smart_refresh_interval: "1h0m0s",
   version: 1,
 };
@@ -105,7 +105,7 @@ describe("MonitoringSettingsSection", () => {
       expect(mocks.setConfig).toHaveBeenCalledWith({
         disk_usage_cache: "15m",
         listeners: [
-          { address: "0.0.0.0:45876", name: "lan", plugins: ["cpu", "mem"] },
+          { address: ":45876", name: "lan", plugins: ["cpu", "mem"] },
         ],
       }),
     );
@@ -127,28 +127,57 @@ describe("MonitoringSettingsSection", () => {
     );
   });
 
-  it("adds a listener row and saves the appended listener", async () => {
+  it("adds a listener row with a default name and the next free port", async () => {
     const { user } = renderSection();
 
     await user.click(screen.getByRole("button", { name: "Add listener" }));
 
     const names = screen.getAllByLabelText("Name");
-    const addresses = screen.getAllByLabelText("Address");
+    const ports = screen.getAllByLabelText("Port");
     expect(names).toHaveLength(2);
-
-    await user.type(names[1], "wan");
-    await user.type(addresses[1], "0.0.0.0:45877");
+    expect(names[1]).toHaveValue("monitor");
+    expect(ports[1]).toHaveValue(45877);
 
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(mocks.setConfig).toHaveBeenCalledWith({
         listeners: [
-          { address: "0.0.0.0:45876", name: "lan", plugins: ["cpu"] },
-          { address: "0.0.0.0:45877", name: "wan", plugins: [] },
+          { address: ":45876", name: "lan", plugins: ["cpu"] },
+          { address: ":45877", name: "monitor", plugins: [] },
         ],
       }),
     );
+  });
+
+  it("rejects a port outside 1-65535", async () => {
+    const { user } = renderSection();
+
+    const port = screen.getByLabelText("Port");
+    await user.clear(port);
+    await user.type(port, "70000");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("Use a port from 1 to 65535."),
+    ).toBeInTheDocument();
+    expect(mocks.setConfig).not.toHaveBeenCalled();
+  });
+
+  it("shows a hand-edited host:port address read-only", () => {
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(linuxio.monitoring.get_config.queryKey, {
+      ...config,
+      listeners: [{ address: "192.168.1.66:45876", name: "lan", plugins: [] }],
+    });
+    queryClient.setQueryData(linuxio.monitoring.get_status.queryKey, status);
+    render(<MonitoringSettingsSection />, {
+      capabilities: { monitoringAvailable: true },
+      queryClient,
+    });
+
+    expect(screen.getByLabelText("Address")).toBeDisabled();
+    expect(screen.queryByLabelText("Port")).toBeNull();
   });
 
   it("sends an explicit empty list when the last listener is removed", async () => {
@@ -180,7 +209,8 @@ describe("MonitoringSettingsSection", () => {
   it("saves history plugin toggles and per-plugin intervals", async () => {
     const { user } = renderSection();
 
-    await user.click(screen.getByLabelText("containers"));
+    await user.click(screen.getByRole("button", { name: /History plugins/ }));
+    await user.click(await screen.findByLabelText("containers"));
     await user.click(screen.getByLabelText("mem"));
     await user.type(screen.getByLabelText("containers interval"), "5m");
 
@@ -197,7 +227,8 @@ describe("MonitoringSettingsSection", () => {
   it("rejects a history interval that is not a whole multiple of the collector interval", async () => {
     const { user } = renderSection();
 
-    await user.type(screen.getByLabelText("mem interval"), "90s");
+    await user.click(screen.getByRole("button", { name: /History plugins/ }));
+    await user.type(await screen.findByLabelText("mem interval"), "90s");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(
@@ -208,10 +239,15 @@ describe("MonitoringSettingsSection", () => {
     expect(mocks.setConfig).not.toHaveBeenCalled();
   });
 
-  it("has no interval field for smart, which follows the SMART refresh", () => {
-    renderSection();
+  it("has no interval field for smart, which follows the SMART refresh", async () => {
+    const { user } = renderSection();
 
-    expect(screen.getByLabelText("smart")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "History plugins: 2 of 14 enabled" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /History plugins/ }));
+
+    expect(await screen.findByLabelText("smart")).toBeInTheDocument();
     expect(screen.queryByLabelText("smart interval")).toBeNull();
     expect(screen.queryByLabelText("processes")).toBeNull();
   });

@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -16,6 +16,7 @@ import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
+import AppCollapse from "@/components/ui/AppCollapse";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
@@ -196,6 +197,43 @@ const isListenerAddress = (value: string) => {
   return address.includes(":");
 };
 
+/**
+ * The UI edits TCP listeners as a bare port and binds every interface by
+ * writing ":port". A host:port or unix address can only come from the YAML,
+ * so it is shown as-is and left untouched.
+ */
+const listenerPort = (address: string) => {
+  const match = /^:(\d*)$/.exec(address.trim());
+  return match ? match[1] : null;
+};
+
+const isValidPort = (port: string) => {
+  const n = Number(port);
+  return Number.isInteger(n) && n >= 1 && n <= 65535;
+};
+
+const DEFAULT_LISTENER_NAME = "monitor";
+const DEFAULT_LISTENER_PORT = 45876;
+
+/** 45876, then the next free port, so an added row saves without typing. */
+const nextListenerPort = (listeners: MonitoringListener[]) => {
+  const taken = new Set(
+    listeners.map((listener) => listenerPort(listener.address)),
+  );
+  let port = DEFAULT_LISTENER_PORT;
+  while (taken.has(String(port))) port += 1;
+  return `:${port}`;
+};
+
+/** "monitor", then "monitor-2", so an added row saves without typing a name. */
+const nextListenerName = (listeners: MonitoringListener[]) => {
+  const taken = new Set(listeners.map((listener) => listener.name.trim()));
+  if (!taken.has(DEFAULT_LISTENER_NAME)) return DEFAULT_LISTENER_NAME;
+  let n = 2;
+  while (taken.has(`${DEFAULT_LISTENER_NAME}-${n}`)) n += 1;
+  return `${DEFAULT_LISTENER_NAME}-${n}`;
+};
+
 const validateDraft = (draft: DraftConfig): DraftErrors => {
   const errors: DraftErrors = {};
 
@@ -255,8 +293,12 @@ const validateDraft = (draft: DraftConfig): DraftErrors => {
     if (!listener.name.trim()) {
       nameErrors[index] = "Required.";
     }
-    if (!listener.address.trim()) {
+    const port = listenerPort(listener.address);
+    if (!listener.address.trim() || port === "") {
       addressErrors[index] = "Required.";
+    } else if (port !== null) {
+      if (!isValidPort(port))
+        addressErrors[index] = "Use a port from 1 to 65535.";
     } else if (!isListenerAddress(listener.address)) {
       addressErrors[index] =
         "Use host:port, :port, port, unix:/path, or /path.";
@@ -410,6 +452,7 @@ const MonitoringSettingsSection = () => {
   });
 
   const busy = setConfigMutation.isPending || restartMutation.isPending;
+  const [historyPluginsOpen, setHistoryPluginsOpen] = useState(false);
   const refreshing = isFetching || isStatusFetching;
 
   const updateDraft = <K extends keyof DraftConfig>(
@@ -482,7 +525,11 @@ const MonitoringSettingsSection = () => {
   const addListener = () => {
     setListeners((listeners) => [
       ...listeners,
-      { address: "", name: "", plugins: [] },
+      {
+        address: nextListenerPort(listeners),
+        name: nextListenerName(listeners),
+        plugins: [],
+      },
     ]);
   };
 
@@ -727,77 +774,102 @@ const MonitoringSettingsSection = () => {
             TCP address.
           </AppTypography>
         ) : (
-          draft.listeners.map((listener, index) => (
-            <div
-              key={index}
-              style={{ marginTop: "var(--app-space-6)", minWidth: 0 }}
-            >
-              <SettingsGrid>
-                <>
-                  <AppTextField
-                    disabled={busy}
-                    error={Boolean(errors.listener_names?.[index])}
-                    fullWidth
-                    helperText={errors.listener_names?.[index]}
-                    label="Name"
-                    onChange={(event) =>
-                      updateListener(index, { name: event.target.value })
-                    }
-                    placeholder="lan"
-                    shrinkLabel
-                    size="small"
-                    value={listener.name}
-                  />
-                  <AppTextField
-                    disabled={busy}
-                    error={Boolean(errors.listener_addresses?.[index])}
-                    fullWidth
-                    helperText={errors.listener_addresses?.[index]}
-                    label="Address"
-                    onChange={(event) =>
-                      updateListener(index, { address: event.target.value })
-                    }
-                    placeholder="0.0.0.0:45876"
-                    shrinkLabel
-                    size="small"
-                    value={listener.address}
-                  />
-                  <AppAutocomplete
-                    disabled={busy}
-                    fullWidth
-                    helperText="Empty serves every plugin."
-                    label="Plugins"
-                    multiple
-                    onChange={(plugins) => updateListener(index, { plugins })}
-                    options={pluginOptions}
-                    shrinkLabel
-                    size="small"
-                    value={listener.plugins ?? []}
-                  />
-                </>
-              </SettingsGrid>
+          draft.listeners.map((listener, index) => {
+            const port = listenerPort(listener.address);
+            return (
               <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  marginTop: "var(--app-space-2)",
-                }}
+                key={index}
+                style={{ marginTop: "var(--app-space-6)", minWidth: 0 }}
               >
-                <AppButton
-                  aria-label="Remove listener"
-                  disabled={busy}
-                  onClick={() => removeListener(index)}
-                  size="small"
-                  startIcon={
-                    <Icon height={16} icon="mdi:delete-outline" width={16} />
-                  }
-                  variant="outlined"
+                <SettingsGrid>
+                  <>
+                    <AppTextField
+                      disabled={busy}
+                      error={Boolean(errors.listener_names?.[index])}
+                      fullWidth
+                      helperText={errors.listener_names?.[index]}
+                      label="Name"
+                      onChange={(event) =>
+                        updateListener(index, { name: event.target.value })
+                      }
+                      placeholder={DEFAULT_LISTENER_NAME}
+                      shrinkLabel
+                      size="small"
+                      value={listener.name}
+                    />
+                    {port === null ? (
+                      <AppTextField
+                        disabled
+                        error={Boolean(errors.listener_addresses?.[index])}
+                        fullWidth
+                        helperText={
+                          errors.listener_addresses?.[index] ??
+                          "Set in config.yaml; edit the file to change it."
+                        }
+                        label="Address"
+                        shrinkLabel
+                        size="small"
+                        value={listener.address}
+                      />
+                    ) : (
+                      <AppTextField
+                        disabled={busy}
+                        error={Boolean(errors.listener_addresses?.[index])}
+                        fullWidth
+                        helperText={
+                          errors.listener_addresses?.[index] ??
+                          "Listens on every interface."
+                        }
+                        label="Port"
+                        onChange={(event) =>
+                          updateListener(index, {
+                            address: `:${event.target.value}`,
+                          })
+                        }
+                        placeholder="45876"
+                        shrinkLabel
+                        size="small"
+                        type="number"
+                        value={port}
+                      />
+                    )}
+                    <AppAutocomplete
+                      disabled={busy}
+                      fullWidth
+                      helperText="Empty serves every plugin."
+                      label="Plugins"
+                      multiple
+                      onChange={(plugins) => updateListener(index, { plugins })}
+                      options={pluginOptions}
+                      shrinkLabel
+                      size="small"
+                      value={listener.plugins ?? []}
+                    />
+                  </>
+                </SettingsGrid>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    marginTop: "var(--app-space-2)",
+                  }}
                 >
-                  Remove
-                </AppButton>
+                  <AppButton
+                    aria-label="Remove listener"
+                    disabled={busy}
+                    onClick={() => removeListener(index)}
+                    size="small"
+                    startIcon={
+                      <Icon height={16} icon="mdi:delete-outline" width={16} />
+                    }
+                    variant="outlined"
+                  >
+                    Remove
+                  </AppButton>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div style={{ display: "flex", marginTop: "var(--app-space-6)" }}>
           <AppButton
@@ -817,7 +889,7 @@ const MonitoringSettingsSection = () => {
         subtitle="Sampling cadence and history retention plugins"
         title="Collector"
       >
-        <SettingsGrid>
+        <SettingsGrid minColumnWidth={180}>
           <>
             <AppTooltip title="How often metrics are sampled">
               <AppTextField
@@ -876,63 +948,91 @@ const MonitoringSettingsSection = () => {
           </>
         </SettingsGrid>
 
-        <AppTypography
-          color="text.secondary"
-          style={{ display: "block", marginTop: "var(--app-space-6)" }}
-          variant="caption"
-        >
-          History plugins. Each interval is a whole multiple of the collector
-          interval; empty means every tick.
-        </AppTypography>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(160px, 1fr) minmax(120px, 180px)",
-            columnGap: "var(--app-space-6)",
-            rowGap: "var(--app-space-2)",
-            alignItems: "center",
-            marginTop: "var(--app-space-2)",
-          }}
-        >
-          {HISTORY_PLUGINS.map((plugin) => {
-            const enabled = draft.history_plugins.includes(plugin);
-            return (
-              <Fragment key={plugin}>
-                <AppFormControlLabel
-                  control={
-                    <AppCheckbox
-                      checked={enabled}
-                      onChange={(event) =>
-                        toggleHistoryPlugin(plugin, event.target.checked)
+        <div style={{ display: "flex", marginTop: "var(--app-space-6)" }}>
+          <AppButton
+            aria-controls="monitoring-history-plugins"
+            aria-expanded={historyPluginsOpen}
+            disabled={busy}
+            onClick={() => setHistoryPluginsOpen((open) => !open)}
+            size="small"
+            startIcon={
+              <Icon
+                height={16}
+                icon={
+                  historyPluginsOpen ? "mdi:chevron-up" : "mdi:chevron-down"
+                }
+                width={16}
+              />
+            }
+            variant="text"
+          >
+            History plugins: {draft.history_plugins.length} of{" "}
+            {HISTORY_PLUGINS.length} enabled
+          </AppButton>
+        </div>
+        <div id="monitoring-history-plugins">
+          <AppCollapse in={historyPluginsOpen} unmountOnExit>
+            <AppTypography
+              color="text.secondary"
+              style={{ display: "block", marginTop: "var(--app-space-2)" }}
+              variant="caption"
+            >
+              Each interval is a whole multiple of the collector interval; empty
+              means every tick.
+            </AppTypography>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(160px, 1fr) minmax(120px, 180px)",
+                columnGap: "var(--app-space-6)",
+                rowGap: "var(--app-space-2)",
+                alignItems: "center",
+                marginTop: "var(--app-space-2)",
+                // The label's negative margin would be clipped by the collapse.
+                paddingLeft: 11,
+              }}
+            >
+              {HISTORY_PLUGINS.map((plugin) => {
+                const enabled = draft.history_plugins.includes(plugin);
+                return (
+                  <Fragment key={plugin}>
+                    <AppFormControlLabel
+                      control={
+                        <AppCheckbox
+                          checked={enabled}
+                          onChange={(event) =>
+                            toggleHistoryPlugin(plugin, event.target.checked)
+                          }
+                          size="small"
+                        />
                       }
-                      size="small"
+                      disabled={busy}
+                      label={plugin}
                     />
-                  }
-                  disabled={busy}
-                  label={plugin}
-                />
-                {HISTORY_PLUGINS_WITHOUT_INTERVAL.has(plugin) ? (
-                  <AppTypography color="text.secondary" variant="caption">
-                    Follows SMART refresh
-                  </AppTypography>
-                ) : (
-                  <AppTextField
-                    aria-label={`${plugin} interval`}
-                    disabled={busy || !enabled}
-                    error={Boolean(errors.history_intervals?.[plugin])}
-                    fullWidth
-                    helperText={errors.history_intervals?.[plugin]}
-                    onChange={(event) =>
-                      updateHistoryInterval(plugin, event.target.value)
-                    }
-                    placeholder={draft.collector_interval}
-                    size="small"
-                    value={draft.history_intervals[plugin] ?? ""}
-                  />
-                )}
-              </Fragment>
-            );
-          })}
+                    {HISTORY_PLUGINS_WITHOUT_INTERVAL.has(plugin) ? (
+                      <AppTypography color="text.secondary" variant="caption">
+                        Follows SMART refresh
+                      </AppTypography>
+                    ) : (
+                      <AppTextField
+                        aria-label={`${plugin} interval`}
+                        disabled={busy || !enabled}
+                        error={Boolean(errors.history_intervals?.[plugin])}
+                        fullWidth
+                        helperText={errors.history_intervals?.[plugin]}
+                        onChange={(event) =>
+                          updateHistoryInterval(plugin, event.target.value)
+                        }
+                        placeholder={draft.collector_interval}
+                        size="small"
+                        value={draft.history_intervals[plugin] ?? ""}
+                      />
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </AppCollapse>
         </div>
       </SectionCard>
 

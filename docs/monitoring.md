@@ -344,6 +344,9 @@ two fixed socket paths are reserved addresses, and every named plugin must
 exist. An address may be
 `host:port`, a bare port (which binds `127.0.0.1`), `unix:/path`, or an absolute
 path; a configured unix socket is mode `0660`.
+The settings UI edits a TCP listener as a port only and writes `:port`, which
+binds every interface; a host-bound or unix address set in the file is shown
+read-only there.
 
 Configured listeners serve the read-only metrics API and are **unauthenticated**
 — anything that can reach the address can read what the listener exposes, which
