@@ -3,7 +3,7 @@ import { useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { closeStreamMux, initStreamMux } from "@/api";
-import GeneralLogsPage from "@/routes/_authenticated/logs/-components/GeneralLogsPage";
+import GeneralLogsPage from "@/routes/_authenticated/services/-components/logs/GeneralLogsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },

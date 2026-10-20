@@ -2,6 +2,7 @@ import type { RoutedTab } from "@/components/tabbar";
 
 export const SERVICES_TABS = [
   { label: "Services", to: "/services" },
+  { label: "Logs", to: "/services/logs" },
   { label: "Timers", to: "/services/timers" },
   { label: "Sockets", to: "/services/sockets" },
   { label: "Scheduled tasks", to: "/services/schedules" },

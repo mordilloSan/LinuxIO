@@ -174,9 +174,11 @@ describe("targeted route query ownership", () => {
   });
 
   it("loads WireGuard network data only inside the create workflow", () => {
-    const page = readRouteSource("wireguard/-components/WireguardPage.tsx");
+    const page = readRouteSource(
+      "network/-components/wireguard/WireguardPage.tsx",
+    );
     const createButton = readRouteSource(
-      "wireguard/-components/CreateInterfaceButton.tsx",
+      "network/-components/wireguard/CreateInterfaceButton.tsx",
     );
 
     expect(page.match(/linuxio\.wireguard\.list_interfaces/g)).toHaveLength(1);
@@ -199,7 +201,9 @@ describe("targeted route query ownership", () => {
   });
 
   it("enables the logs service query only for status-backed filters", () => {
-    const logs = readRouteSource("logs/-components/GeneralLogsPage.tsx");
+    const logs = readRouteSource(
+      "services/-components/logs/GeneralLogsPage.tsx",
+    );
 
     expect(logs).toMatch(
       /\.\.\.linuxio\.systemd\.list_services,\s*enabled: unitStatusNeedsServices,/,

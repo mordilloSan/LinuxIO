@@ -5,8 +5,8 @@ import { closeStreamMux, initStreamMux, useStreamMux } from "@/api";
 import { capabilitiesQueryKey } from "@/api/capabilities";
 import { RoutedTabLayout } from "@/components/tabbar";
 import { AuthContext } from "@/contexts/AuthContext";
-import RsyncPage from "@/routes/_authenticated/shares/-components/RsyncPage";
-import { SHARES_TABS } from "@/routes/_authenticated/shares/-components/sharesTabs";
+import RsyncPage from "@/routes/_authenticated/storage/-components/shares/RsyncPage";
+import { STORAGE_TABS } from "@/routes/_authenticated/storage/-components/storageTabs";
 import type { AuthContextType } from "@/types/auth";
 
 const queryClient = new QueryClient({
@@ -46,7 +46,7 @@ export default function RsyncFixture() {
               boxSizing: "border-box",
             }}
           >
-            <RoutedTabLayout tabs={SHARES_TABS}>
+            <RoutedTabLayout tabs={STORAGE_TABS}>
               {isOpen ? <RsyncPage /> : <div role="status">Connecting…</div>}
             </RoutedTabLayout>
           </main>

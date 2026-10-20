@@ -64,7 +64,7 @@ const ROUTE_CONTEXT_OBSERVER_ENDPOINTS: Record<
   "/_authenticated/services/schedules": {
     listQueryOptions: "schedules.list",
   },
-  "/_authenticated/shares/mounts": {
+  "/_authenticated/storage/mounts": {
     listQueryOptions: ["storage.list_nfs_mounts", "storage.list_cifs_mounts"],
   },
   "/_authenticated/vm/machines/$name": {

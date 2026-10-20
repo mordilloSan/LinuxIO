@@ -30,7 +30,7 @@ import { GAP_MD } from "@/theme/constants";
 
 const HEALTH_REFETCH_MS = 50000;
 
-type HealthRoute = "/accounts" | "/logs" | "/services" | "/updates";
+type HealthRoute = "/accounts" | "/services/logs" | "/services" | "/updates";
 
 interface HealthItem {
   color: string;
@@ -196,7 +196,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
       icon: "mdi:alert-outline",
       color: "var(--app-palette-warning-main)",
       text: "Unclean shutdown",
-      to: "/logs",
+      to: "/services/logs",
       secondaryAction: bootId
         ? {
             label: "Dismiss",
@@ -455,7 +455,7 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
     statusColor = "var(--app-palette-warning-main)";
     iconName = "mdi:shield-alert-outline";
-    iconLink = health?.uncleanShutdown ? "/logs" : "/updates";
+    iconLink = health?.uncleanShutdown ? "/services/logs" : "/updates";
   }
 
   const handleStatusIconClick = () => {

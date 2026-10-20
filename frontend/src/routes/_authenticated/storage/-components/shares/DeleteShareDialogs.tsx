@@ -16,7 +16,10 @@ import {
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
-const SHARES_TOAST_META = { label: "Open shares", to: "/shares" } as const;
+const SHARES_TOAST_META = {
+  label: "Open shares",
+  to: "/storage/shares",
+} as const;
 
 interface DeleteNFSShareDialogProps {
   onClose: () => void;

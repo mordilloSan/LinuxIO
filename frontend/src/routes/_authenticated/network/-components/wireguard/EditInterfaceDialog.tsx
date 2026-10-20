@@ -22,7 +22,7 @@ import { isMtuValid } from "./CreateInterfaceDialog";
 
 const WIREGUARD_TOAST_META = {
   label: "Open WireGuard",
-  to: "/wireguard",
+  to: "/network/wireguard",
 } as const;
 
 const MIN_PORT = 1;

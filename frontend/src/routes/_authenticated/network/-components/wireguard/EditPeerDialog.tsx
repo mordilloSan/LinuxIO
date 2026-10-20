@@ -23,7 +23,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 const WIREGUARD_TOAST_META = {
   label: "Open WireGuard",
-  to: "/wireguard",
+  to: "/network/wireguard",
 } as const;
 
 const FULL_TUNNEL = ["0.0.0.0/0", "::/0"];

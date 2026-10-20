@@ -31,7 +31,7 @@ import InterfaceDetails from "./InterfaceClients";
 
 const WIREGUARD_TOAST_META = {
   label: "Open WireGuard",
-  to: "/wireguard",
+  to: "/network/wireguard",
 } as const;
 
 interface WireGuardDashboardProps {
@@ -39,7 +39,7 @@ interface WireGuardDashboardProps {
 }
 
 const getWireguardInterfaceId = (iface: WireGuardInterface) => iface.name;
-const wireguardRouteApi = getRouteApi("/_authenticated/wireguard");
+const wireguardRouteApi = getRouteApi("/_authenticated/network/wireguard");
 
 const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   const toast = useScopedToast(WIREGUARD_TOAST_META);

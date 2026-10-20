@@ -19,7 +19,7 @@ import EditPeerDialog from "./EditPeerDialog";
 
 const WIREGUARD_TOAST_META = {
   label: "Open WireGuard",
-  to: "/wireguard",
+  to: "/network/wireguard",
 } as const;
 
 interface InterfaceDetailsProps {

@@ -46,7 +46,7 @@ describe("generated application router", () => {
 
   it("rejects malformed log scopes instead of opening unfiltered history", () => {
     const validate =
-      router.routesById["/_authenticated/logs"].options.validateSearch;
+      router.routesById["/_authenticated/services/logs"].options.validateSearch;
     if (typeof validate !== "function")
       throw new Error("Missing log search validation");
     for (const search of [
@@ -84,26 +84,27 @@ describe("generated application router", () => {
         "/docker/volumes",
         "/filebrowser/$",
         "/hardware",
-        "/logs",
         "/network",
+        "/network/",
+        "/network/wireguard",
         "/services",
         "/services/",
         "/services/htop",
+        "/services/logs",
         "/services/processes",
         "/services/programs",
         "/services/schedules",
         "/services/sockets",
         "/services/timers",
         "/settings",
-        "/shares",
-        "/shares/",
-        "/shares/mounts",
-        "/shares/rsync",
         "/sign-in",
         "/storage",
         "/storage/",
         "/storage/btrfs",
         "/storage/lvm",
+        "/storage/mounts",
+        "/storage/rsync",
+        "/storage/shares",
         "/storage/topology",
         "/terminal",
         "/updates",
@@ -117,7 +118,6 @@ describe("generated application router", () => {
         "/vm/machines/",
         "/vm/machines/$name",
         "/vm/networks",
-        "/wireguard",
       ].sort((a, b) => a.localeCompare(b)),
     );
   });
@@ -140,8 +140,8 @@ describe("generated application router", () => {
     for (const routeId of [
       "/_authenticated/accounts",
       "/_authenticated/docker",
+      "/_authenticated/network",
       "/_authenticated/services",
-      "/_authenticated/shares",
       "/_authenticated/storage",
       "/_authenticated/updates",
       "/_authenticated/vm/machines",
@@ -166,13 +166,10 @@ describe("generated application router", () => {
       "Network",
       "Updates",
       "Services",
-      "Logs",
       "Storage",
       "Docker",
       "VMs",
       "Accounts",
-      "Shares",
-      "Wireguard",
       "Hardware",
       "Navigator",
       "Terminal",
@@ -196,7 +193,7 @@ describe("generated application router", () => {
       },
     });
     expect(
-      router.routesById["/_authenticated/wireguard"].options.staticData,
+      router.routesById["/_authenticated/network/wireguard"].options.staticData,
     ).toMatchObject({
       access: {
         requiredCapabilities: ["wireguardAvailable"],

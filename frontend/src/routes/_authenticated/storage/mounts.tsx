@@ -3,9 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 
-import MountsPage from "./-components/MountsPage";
+import MountsPage from "./-components/shares/MountsPage";
 
-export const Route = createFileRoute("/_authenticated/shares/mounts")({
+export const Route = createFileRoute("/_authenticated/storage/mounts")({
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
       linuxio.storage.list_nfs_mounts,

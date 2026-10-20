@@ -187,7 +187,7 @@ Adding the entry automatically: derives the wire/state types, adds the
 
 The `rsync` capability checks for the `rsync` executable after sign-in and
 installs the distro's `rsync` package through the existing privileged
-PackageKit workflow. Installation does not expose a folder. Use **Shares →
+PackageKit workflow. Installation does not expose a folder. Use **Storage →
 rsync** to configure the read-only module on port 873 and start its daemon,
 or use the existing SSH listener on port 9222 with Linux account credentials. See
 [TerraMaster backups](rsync-backups.md) for the UI workflow and service details.
@@ -247,23 +247,24 @@ navigation; the sidebar reads `staticData` and hides inaccessible routes:
 
 ```tsx
 const access = {
-  requiredCapabilities: ["wireguardAvailable"],
+  requiredCapabilities: ["libvirtAvailable"],
   requiresPrivileged: true,
 } satisfies AccessPolicy;
 
-export const Route = createFileRoute("/_authenticated/wireguard")({
+export const Route = createFileRoute("/_authenticated/vm")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.wireguard.list_interfaces,
+      linuxio.virt.list,
+      linuxio.virt.preflight({}),
     ]),
-  component: WireguardPage,
+  component: VMPage,
   staticData: {
     access,
     navigation: {
-      icon: WireguardIcon,
-      position: 80,
-      title: "Wireguard",
+      icon: VirtualMachineIcon,
+      position: 55,
+      title: "VMs",
     },
   },
 });

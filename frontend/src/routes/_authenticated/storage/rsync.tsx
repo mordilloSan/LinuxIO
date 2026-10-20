@@ -5,11 +5,11 @@ import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { requireAccess } from "@/routes/-auth";
 import { loadRouteQueries } from "@/routes/-loader";
 
-import RsyncPage from "./-components/RsyncPage";
+import RsyncPage from "./-components/shares/RsyncPage";
 
 const access = { requiresPrivileged: true } satisfies AccessPolicy;
 
-export const Route = createFileRoute("/_authenticated/shares/rsync")({
+export const Route = createFileRoute("/_authenticated/storage/rsync")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [

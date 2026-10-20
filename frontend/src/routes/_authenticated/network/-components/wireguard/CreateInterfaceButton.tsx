@@ -20,7 +20,7 @@ interface CreateInterfaceButtonProps {
 const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   const toast = useScopedToast({
     label: "Open WireGuard",
-    to: "/wireguard",
+    to: "/network/wireguard",
   });
   const [serverName, setServerName] = useState("");
   const [port, setPort] = useState(0);

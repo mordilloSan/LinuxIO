@@ -48,7 +48,7 @@ test("configures a read-only backup module without a terminal", async ({
   page,
 }) => {
   const { saves, sshPorts } = await mockRsyncServer(page);
-  await page.goto("/shares/rsync");
+  await page.goto("/storage/rsync");
   const ssh = page.getByRole("region", { name: "SSH backup connection" });
   await expect(ssh.getByLabel("SSH port", { exact: false })).toHaveValue("22");
   await expect.poll(() => sshPorts).toContain(22);
@@ -120,7 +120,7 @@ for (const scheme of ["dark", "light"] as const) {
         },
       });
       await page.goto(
-        scheme === "light" ? "/styling/light/rsync" : "/shares/rsync",
+        scheme === "light" ? "/styling/light/rsync" : "/storage/rsync",
       );
       await expect(page.getByText("Running", { exact: true })).toBeVisible();
       await page.evaluate(() => document.fonts.ready);

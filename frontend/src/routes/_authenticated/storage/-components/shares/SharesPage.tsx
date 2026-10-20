@@ -465,7 +465,7 @@ const FolderShareDialog = ({
   onExited,
   onSuccess,
 }: FolderShareDialogProps) => {
-  const toast = useScopedToast({ label: "Open shares", to: "/shares" });
+  const toast = useScopedToast({ label: "Open shares", to: "/storage/shares" });
   const { reason: nfsReason, status: nfsStatus } =
     useCapability("nfsServerAvailable");
   const nfsUnavailable = nfsStatus === "unavailable";

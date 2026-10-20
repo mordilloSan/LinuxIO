@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { closeStreamMux, initStreamMux, linuxio } from "@/api";
 import { uiConfigQueryKey } from "@/api/config-query";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { Route } from "@/routes/_authenticated/network/route";
+import { Route } from "@/routes/_authenticated/network/index";
 import type { ConfigContextType } from "@/types/config";
 
 const queryClient = new QueryClient({

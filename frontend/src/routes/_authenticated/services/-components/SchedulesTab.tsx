@@ -223,7 +223,7 @@ export default function SchedulesTab({
           onEdit={() => edit(selectedQuery.data)}
           onLogs={() =>
             navigate({
-              to: "/logs",
+              to: "/services/logs",
               search: { unit: selectedQuery.data.unit_name },
             })
           }
@@ -231,7 +231,7 @@ export default function SchedulesTab({
             selectedQuery.data.invocation_id
               ? () =>
                   navigate({
-                    to: "/logs",
+                    to: "/services/logs",
                     search: {
                       unit: selectedQuery.data.unit_name,
                       invocationId: selectedQuery.data.invocation_id,

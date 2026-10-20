@@ -12,8 +12,8 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
-import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
-import { Route as NetworkRoute } from "@/routes/_authenticated/network/route";
+import { Route as NetworkRoute } from "@/routes/_authenticated/network/index";
+import { Route as LogsRoute } from "@/routes/_authenticated/services/logs";
 import { Route as StorageRoute } from "@/routes/_authenticated/storage/index";
 import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
@@ -132,7 +132,7 @@ const authenticatedRoute = createRoute({
 const networkHandoffRoute = createRoute({
   component: NetworkHandoffPage,
   getParentRoute: () => authenticatedRoute,
-  path: "network",
+  path: "network/",
   validateSearch: NetworkRoute.options.validateSearch,
 });
 const volumesRoute = createRoute({
@@ -350,7 +350,7 @@ const backgroundTasksRoute = createRoute({
 const rsyncRoute = createRoute({
   component: RsyncPage,
   getParentRoute: () => rootRoute,
-  path: "/shares/rsync",
+  path: "/storage/rsync",
 });
 const rsyncLightRoute = createRoute({
   component: RsyncPage,

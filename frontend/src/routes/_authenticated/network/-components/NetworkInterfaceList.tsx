@@ -36,7 +36,7 @@ import NetworkTrafficGraph from "./NetworkTrafficGraph";
 import NetworkTrafficHistoryCard from "./NetworkTrafficHistoryCard";
 
 export type { NetworkInterface };
-const networkRouteApi = getRouteApi("/_authenticated/network");
+const networkRouteApi = getRouteApi("/_authenticated/network/");
 
 interface NetworkInterfaceIdentity {
   name: string;
