@@ -154,7 +154,7 @@ func (a *App) runLiveCollection(ctx context.Context, run *liveRun, key uint16, i
 	if run.err == nil && key == liveLiveSampleKey {
 		run.filesystems = a.filesystemInfo(ctx)
 		run.sensors = a.fetchLiveSensorsInfo(ctx)
-		run.frequencies, _ = getCurrentFrequencies(ctx)
+		run.frequencies = run.data.Stats.CpuFrequencies
 		if run.sensors == nil {
 			run.sensors = []monitoringapi.SensorGroup{}
 		}

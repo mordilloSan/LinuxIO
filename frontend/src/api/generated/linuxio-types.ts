@@ -1918,6 +1918,7 @@ export interface MonitoringCPUHistoryPoint {
   usage_percent: number;
   breakdown_percent?: number[];
   cores_percent?: number[];
+  frequencies_mhz?: number[];
 }
 
 export interface MonitoringConfig {

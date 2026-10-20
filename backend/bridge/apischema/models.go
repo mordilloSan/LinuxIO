@@ -1200,6 +1200,8 @@ type MonitoringCPUHistoryPoint struct {
 	// BreakdownPercent is [user, system, iowait, steal, idle].
 	BreakdownPercent []float64 `json:"breakdown_percent,omitempty"`
 	CoresPercent     []float64 `json:"cores_percent,omitempty"`
+	// FrequenciesMHz is the per-core scaling frequency averaged over the point.
+	FrequenciesMHz []float64 `json:"frequencies_mhz,omitempty"`
 }
 
 type MonitoringMemoryHistoryPoint struct {

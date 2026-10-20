@@ -188,6 +188,11 @@ Plugin names are `cpu`, `mem`, `swap`, `load`, `diskio`, `fs`, `network`, `gpu`,
 `connections`, `irq` and `smart`. `processes` and `programs` are live-only and
 never persisted.
 
+The `cpu` history row holds the total percent, the maximum percent, the
+breakdown, the per-core percent and the per-core `cpu_frequencies_mhz`, each
+averaged over the collector tick; the bridge surfaces the frequencies as
+`frequencies_mhz` on `monitoring.get_cpu_history`.
+
 `/healthz` answers from memory: it compares the last collector tick against the
 configured interval and returns `503 Service Unavailable` only when no tick has
 happened yet or the last one is older than twice the interval. A freshly started

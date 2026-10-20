@@ -37,7 +37,7 @@ func TestFetchCPUHistoryFlattensPoints(t *testing.T) {
 		return jsonResponse(http.StatusOK, `{
 			"resolution": "1m",
 			"items": [
-				{"captured_at": 1700000060000, "stats": {"cpu_percent": 8.3, "cpu_breakdown_percent": [3.9, 3.0, 1.4, 0, 91.7], "cpu_cores_percent": [12, 5]}},
+				{"captured_at": 1700000060000, "stats": {"cpu_percent": 8.3, "cpu_breakdown_percent": [3.9, 3.0, 1.4, 0, 91.7], "cpu_cores_percent": [12, 5], "cpu_frequencies_mhz": [3200.5, 2100]}},
 				{"captured_at": 1700000120000, "stats": {"cpu_percent": 9.1}}
 			]
 		}`), nil
@@ -57,7 +57,7 @@ func TestFetchCPUHistoryFlattensPoints(t *testing.T) {
 	if points[0].CapturedAtMs != 1700000060000 || points[0].UsagePercent != 8.3 {
 		t.Fatalf("point[0] = %#v", points[0])
 	}
-	if len(points[0].BreakdownPercent) != 5 || len(points[0].CoresPercent) != 2 {
+	if len(points[0].BreakdownPercent) != 5 || len(points[0].CoresPercent) != 2 || len(points[0].FrequenciesMHz) != 2 {
 		t.Fatalf("point[0] arrays = %#v", points[0])
 	}
 	if points[1].UsagePercent != 9.1 || points[1].BreakdownPercent != nil {

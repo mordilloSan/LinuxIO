@@ -51,6 +51,7 @@ type cpuHistoryStats struct {
 	CPUPercent       float64   `json:"cpu_percent"`
 	BreakdownPercent []float64 `json:"cpu_breakdown_percent"`
 	CoresPercent     []float64 `json:"cpu_cores_percent"`
+	FrequenciesMHz   []float64 `json:"cpu_frequencies_mhz"`
 }
 
 type memHistoryStats struct {
@@ -105,6 +106,7 @@ func FetchCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest
 			UsagePercent:     stats.CPUPercent,
 			BreakdownPercent: stats.BreakdownPercent,
 			CoresPercent:     stats.CoresPercent,
+			FrequenciesMHz:   stats.FrequenciesMHz,
 		}
 	})
 }

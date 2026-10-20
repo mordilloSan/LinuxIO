@@ -917,18 +917,18 @@ const MonitoringSettingsSection = () => {
               />
             </AppTooltip>
             <AppTooltip title="How often filesystem usage is re-read; 0 re-reads every time, a value like 15m keeps sleeping disks asleep.">
-            <AppTextField
-              disabled={busy}
-              error={Boolean(errors.disk_usage_cache)}
-              fullWidth
-              helperText={errors.disk_usage_cache}
-              label="Disk usage cache"
-              onChange={(event) =>
-                updateDraft("disk_usage_cache", event.target.value)
-              }
-              size="small"
-              value={draft.disk_usage_cache}
-            />
+              <AppTextField
+                disabled={busy}
+                error={Boolean(errors.disk_usage_cache)}
+                fullWidth
+                helperText={errors.disk_usage_cache}
+                label="Disk usage cache"
+                onChange={(event) =>
+                  updateDraft("disk_usage_cache", event.target.value)
+                }
+                size="small"
+                value={draft.disk_usage_cache}
+              />
             </AppTooltip>
             <AppTooltip title="How long one-minute history is retained">
               <AppTextField

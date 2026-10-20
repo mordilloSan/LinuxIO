@@ -46,6 +46,7 @@ type Stats struct {
 	MaxDiskIO         [2]uint64            `json:"max_disk_io_bytes_per_second,omitzero" cbor:"-"`                // [max read bytes, max write bytes]
 	CpuBreakdown      []float64            `json:"cpu_breakdown_percent,omitempty" cbor:"33,keyasint,omitempty"`  // [user, system, iowait, steal, idle]
 	CpuCoresUsage     Uint8Slice           `json:"cpu_cores_percent,omitempty" cbor:"34,keyasint,omitempty"`      // per-core busy usage [CPU0..]
+	CpuFrequencies    []float64            `json:"cpu_frequencies_mhz,omitempty" cbor:"40,keyasint,omitempty"`    // per-core scaling_cur_freq in MHz [CPU0..]
 	DiskIoStats       [6]float64           `json:"disk_io_stats,omitzero" cbor:"35,keyasint,omitzero"`            // [read time %, write time %, io utilization %, r_await ms, w_await ms, weighted io %]
 	MaxDiskIoStats    [6]float64           `json:"max_disk_io_stats,omitzero" cbor:"-"`                           // max values for DiskIoStats
 	// MemoryBytes and DiskDevices are byte-precise views for the LinuxIO live
