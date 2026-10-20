@@ -230,6 +230,11 @@ type VMFirmwareRequest struct {
 	Firmware VMFirmware `json:"firmware"`
 }
 
+type VMAutostartRequest struct {
+	Name      string `json:"name"`
+	Autostart bool   `json:"autostart"`
+}
+
 type VMDeleteRequest struct {
 	Name        string `json:"name"`
 	DeleteDisks bool   `json:"deleteDisks"`

@@ -157,3 +157,22 @@ func TestSetVMFirmwareRejectsRunningVMAndMissingOVMF(t *testing.T) {
 		t.Fatal("SetVMFirmware accepted an unknown firmware")
 	}
 }
+
+func TestSetVMAutostart(t *testing.T) {
+	fake := newFakeConn()
+	fake.domains["fw"] = testDomain("fw")
+	fake.domainXML["fw"] = strings.ReplaceAll(deleteTestDomainXML(), "delete-me", "fw")
+	withFakeLibvirt(t, fake)
+
+	vm, err := SetVMAutostart(context.Background(), apischema.VMAutostartRequest{Name: "fw", Autostart: true})
+	if err != nil || !vm.Autostart || fake.domainAutostart != 1 {
+		t.Fatalf("enable: err=%v vm.Autostart=%v raw=%d", err, vm.Autostart, fake.domainAutostart)
+	}
+	vm, err = SetVMAutostart(context.Background(), apischema.VMAutostartRequest{Name: "fw"})
+	if err != nil || vm.Autostart || fake.domainAutostart != 0 {
+		t.Fatalf("disable: err=%v vm.Autostart=%v raw=%d", err, vm.Autostart, fake.domainAutostart)
+	}
+	if _, err = SetVMAutostart(context.Background(), apischema.VMAutostartRequest{Name: "missing", Autostart: true}); err == nil {
+		t.Fatal("expected not-found error")
+	}
+}

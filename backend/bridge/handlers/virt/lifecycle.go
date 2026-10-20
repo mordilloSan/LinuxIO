@@ -214,3 +214,27 @@ func deleteIfManagedDisk(conn libvirtConn, vmName string, disk apischema.VMDisk)
 	}
 	return true, nil
 }
+
+// SetVMAutostart marks whether libvirt starts the VM when the host boots.
+func SetVMAutostart(ctx context.Context, req apischema.VMAutostartRequest) (apischema.VirtualMachine, error) {
+	if err := validateVMName(req.Name); err != nil {
+		return apischema.VirtualMachine{}, err
+	}
+	var autostart int32
+	if req.Autostart {
+		autostart = 1
+	}
+	var vm apischema.VirtualMachine
+	err := withLibvirtConn(ctx, func(conn libvirtConn) error {
+		domain, err := lookupDomain(conn, req.Name)
+		if err != nil {
+			return err
+		}
+		if err = conn.DomainSetAutostart(domain, autostart); err != nil {
+			return fmt.Errorf("set VM autostart: %w", err)
+		}
+		vm, err = virtualMachineFromDomain(conn, domain)
+		return err
+	})
+	return vm, err
+}

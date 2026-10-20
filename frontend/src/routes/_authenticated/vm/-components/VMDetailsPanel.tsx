@@ -5,6 +5,7 @@ import type { VirtualMachine, VMFirmware } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppChip from "@/components/ui/AppChip";
 import AppSelect from "@/components/ui/AppSelect";
+import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
@@ -92,6 +93,11 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
     error: "Failed to change firmware",
     toast: VM_TOAST,
   });
+  const autostartMutation = useCallMutation(linuxio.virt.set_autostart, {
+    success: "Autostart updated",
+    error: "Failed to change autostart",
+    toast: VM_TOAST,
+  });
 
   if (!vm) {
     return (
@@ -164,9 +170,17 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
           >
             Autostart
           </AppTypography>
-          <strong style={{ display: "block", marginTop: 4 }}>
-            {vm.autostart ? "On" : "Off"}
-          </strong>
+          <div style={{ marginTop: 4 }}>
+            <AppSwitch
+              aria-label="Autostart"
+              checked={vm.autostart}
+              disabled={autostartMutation.isPending}
+              onChange={(_, autostart) =>
+                autostartMutation.mutate({ autostart, name: vm.name })
+              }
+              size="small"
+            />
+          </div>
         </div>
         <div style={{ ...statItemStyle, gridColumn: "1 / -1" }}>
           <AppSelect

@@ -43,6 +43,7 @@ type libvirtConn interface {
 	DomainLookupByName(string) (libvirt.Domain, error)
 	DomainReboot(libvirt.Domain, libvirt.DomainRebootFlagValues) error
 	DomainResume(libvirt.Domain) error
+	DomainSetAutostart(libvirt.Domain, int32) error
 	DomainShutdown(libvirt.Domain) error
 	DomainSuspend(libvirt.Domain) error
 	DomainUndefineFlags(libvirt.Domain, libvirt.DomainUndefineFlagsValues) error

@@ -424,4 +424,5 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "virt.suspend": VM_KEYS,
   "virt.resume": VM_KEYS,
   "virt.set_firmware": VM_KEYS,
+  "virt.set_autostart": VM_KEYS,
 };

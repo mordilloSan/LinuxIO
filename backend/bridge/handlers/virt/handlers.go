@@ -29,6 +29,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NameRequest, apischema.NoResponse]("virt.resume", apischema.Privileged()).HandleVoid(handleResume),
 		apischema.Call[apischema.VMDeleteRequest, apischema.VMDeleteResult]("virt.delete", apischema.Privileged()).Handle(handleDelete),
 		apischema.Call[apischema.VMFirmwareRequest, apischema.VirtualMachine]("virt.set_firmware", apischema.Privileged()).Handle(handleSetFirmware),
+		apischema.Call[apischema.VMAutostartRequest, apischema.VirtualMachine]("virt.set_autostart", apischema.Privileged()).Handle(handleSetAutostart),
 		apischema.TaskRunner[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleCreate, bridgeipc.TaskDefault),
 		apischema.DuplexRoute[apischema.NameRequest, apischema.NoResponse]("virt.console_open", apischema.Privileged(), apischema.NoEndpoint()).Duplex(
 			HandleConsoleSession,
@@ -67,6 +68,10 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 func handleSetFirmware(ctx context.Context, req apischema.VMFirmwareRequest) (apischema.VirtualMachine, error) {
 	return SetVMFirmware(ctx, req)
+}
+
+func handleSetAutostart(ctx context.Context, req apischema.VMAutostartRequest) (apischema.VirtualMachine, error) {
+	return SetVMAutostart(ctx, req)
 }
 
 func handleList(ctx context.Context, _ apischema.NoRequest) ([]apischema.VirtualMachine, error) {

@@ -1816,6 +1816,7 @@ type fakeConn struct {
 	domainCreateCount           int
 	domainDestroyCount          int
 	domainState                 int32
+	domainAutostart             int32
 	networkActive               int32
 	networkActivateOnCreateErr  bool
 	networkAutostart            int32
@@ -1977,7 +1978,11 @@ func (f *fakeConn) DomainDestroy(libvirt.Domain) error {
 	return nil
 }
 func (f *fakeConn) DomainGetAutostart(libvirt.Domain) (int32, error) {
-	return 0, nil
+	return f.domainAutostart, nil
+}
+func (f *fakeConn) DomainSetAutostart(_ libvirt.Domain, autostart int32) error {
+	f.domainAutostart = autostart
+	return nil
 }
 func (f *fakeConn) DomainGetInfo(libvirt.Domain) (uint8, uint64, uint64, uint16, uint64, error) {
 	return uint8(libvirt.DomainShutoff), 1024 * 1024, 1024 * 1024, 1, 0, nil

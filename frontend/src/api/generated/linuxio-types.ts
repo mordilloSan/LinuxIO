@@ -3023,6 +3023,11 @@ export interface UsersGroupsResponse {
   users: string[];
 }
 
+export interface VMAutostartRequest {
+  name: string;
+  autostart: boolean;
+}
+
 export interface VMCreateProgress {
   phase: string;
   message: string;
@@ -4441,6 +4446,11 @@ export interface LinuxIOSchema {
     };
     reboot: { input: [name: string]; request: NameRequest; result: void };
     resume: { input: [name: string]; request: NameRequest; result: void };
+    set_autostart: {
+      input: [request: VMAutostartRequest];
+      request: VMAutostartRequest;
+      result: VirtualMachine;
+    };
     set_firmware: {
       input: [request: VMFirmwareRequest];
       request: VMFirmwareRequest;
@@ -5082,6 +5092,7 @@ export interface LinuxIOCallSchema {
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };
+  "virt.set_autostart": { request: VMAutostartRequest; result: VirtualMachine };
   "virt.set_firmware": { request: VMFirmwareRequest; result: VirtualMachine };
   "virt.shutdown": { request: NameRequest; result: void };
   "virt.start": { request: NameRequest; result: void };
