@@ -1,4 +1,4 @@
-import { useSuspenseQueries } from "@tanstack/react-query";
+import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
@@ -25,6 +25,7 @@ interface VMPageProps {
 const VMPage = ({ children }: VMPageProps) => {
   const navigate = vmRouteApi.useNavigate();
   const search = vmRouteApi.useSearch();
+  const queryClient = useQueryClient();
   const toast = useScopedToast(VM_TOAST);
   const { status: libvirtStatus, reason: libvirtReason } =
     useCapability("libvirtAvailable");
@@ -110,7 +111,13 @@ const VMPage = ({ children }: VMPageProps) => {
           iconSize={20}
           label="Refresh"
           loading={listQuery.isFetching}
-          onClick={() => listQuery.refetch()}
+          onClick={() => {
+            void listQuery.refetch();
+            // Only active, so this reloads templates while that tab is open.
+            void queryClient.refetchQueries({
+              queryKey: linuxio.virt.templates.queryKey,
+            });
+          }}
         />
       }
     />
