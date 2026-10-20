@@ -208,3 +208,66 @@ export function Throughput({ rx, tx }: { rx?: number; tx?: number }) {
     </span>
   );
 }
+
+const tileStyle: CSSProperties = {
+  alignItems: "center",
+  display: "grid",
+  gap: "var(--app-space-8)",
+  gridTemplateColumns: "1fr auto",
+  padding: "var(--app-space-16)",
+};
+
+/** A count tile: icon and label on top, a big number and a status under it. */
+export function Tile({
+  count,
+  icon,
+  label,
+  status,
+  statusColor,
+}: {
+  count: ReactNode;
+  icon: string;
+  label: string;
+  status: string;
+  statusColor: string;
+}) {
+  return (
+    <FrostedCard hoverLift style={tileStyle}>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          gap: "var(--app-space-8)",
+          gridColumn: "1 / -1",
+        }}
+      >
+        <Icon
+          color="var(--app-palette-primary-main)"
+          height={20}
+          icon={icon}
+          width={20}
+        />
+        <AppTypography fontWeight={600} variant="body2">
+          {label}
+        </AppTypography>
+      </div>
+      <div style={{ gridColumn: "1 / -1", textAlign: "center" }}>
+        <AppTypography
+          component="div"
+          fontWeight={700}
+          style={{ color: statusColor }}
+          variant="h3"
+        >
+          {count}
+        </AppTypography>
+        <AppTypography
+          component="div"
+          style={{ color: statusColor }}
+          variant="body2"
+        >
+          {status}
+        </AppTypography>
+      </div>
+    </FrostedCard>
+  );
+}

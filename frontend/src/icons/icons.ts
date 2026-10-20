@@ -45,7 +45,7 @@ addCollection({
   },
 });
 
-// mdi - 183 icons
+// mdi - 189 icons
 addCollection({
   prefix: "mdi",
   width: 24,
@@ -96,8 +96,14 @@ addCollection({
     "arrow-down": {
       body: '<path fill="currentColor" d="M11 4h2v12l5.5-5.5l1.42 1.42L12 19.84l-7.92-7.92L5.5 10.5L11 16z"/>',
     },
+    "arrow-down-bold": {
+      body: '<path fill="currentColor" d="M9 4h6v8h4.84L12 19.84L4.16 12H9z"/>',
+    },
     "arrow-up": {
       body: '<path fill="currentColor" d="M13 20h-2V8l-5.5 5.5l-1.42-1.42L12 4.16l7.92 7.92l-1.42 1.42L13 8z"/>',
+    },
+    "arrow-up-bold": {
+      body: '<path fill="currentColor" d="M15 20H9v-8H4.16L12 4.16L19.84 12H15z"/>',
     },
     "backup-restore": {
       body: '<path fill="currentColor" d="M12 3a9 9 0 0 0-9 9H0l4 4l4-4H5a7 7 0 0 1 7-7a7 7 0 0 1 7 7a7 7 0 0 1-7 7c-1.5 0-2.91-.5-4.06-1.3L6.5 19.14A9.1 9.1 0 0 0 12 21a9 9 0 0 0 9-9a9 9 0 0 0-9-9m2 9a2 2 0 0 0-2-2a2 2 0 0 0-2 2a2 2 0 0 0 2 2a2 2 0 0 0 2-2"/>',
@@ -417,6 +423,9 @@ addCollection({
     menu: {
       body: '<path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/>',
     },
+    "minus-circle": {
+      body: '<path fill="currentColor" d="M17 13H7v-2h10m-5-9A10 10 0 0 0 2 12a10 10 0 0 0 10 10a10 10 0 0 0 10-10A10 10 0 0 0 12 2"/>',
+    },
     monitor: {
       body: '<path fill="currentColor" d="M21 16H3V4h18m0-2H3c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h7v2H8v2h8v-2h-2v-2h7a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2"/>',
     },
@@ -510,8 +519,14 @@ addCollection({
     "shield-account": {
       body: '<path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12c5.16-1.26 9-6.45 9-12V5zm0 4a3 3 0 0 1 3 3a3 3 0 0 1-3 3a3 3 0 0 1-3-3a3 3 0 0 1 3-3m5.13 12A9.7 9.7 0 0 1 12 20.92A9.7 9.7 0 0 1 6.87 17c-.34-.5-.63-1-.87-1.53c0-1.65 2.71-3 6-3s6 1.32 6 3c-.24.53-.53 1.03-.87 1.53"/>',
     },
+    "shield-alert": {
+      body: '<path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12c5.16-1.26 9-6.45 9-12V5M11 7h2v6h-2m0 2h2v2h-2"/>',
+    },
     "shield-alert-outline": {
       body: '<path fill="currentColor" d="M21 11c0 5.55-3.84 10.74-9 12c-5.16-1.26-9-6.45-9-12V5l9-4l9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12L5 6.3v4.92C5 15.54 8.25 20 12 21M11 7h2v6h-2zm0 8h2v2h-2z"/>',
+    },
+    "shield-check": {
+      body: '<path fill="currentColor" d="m10 17l-4-4l1.41-1.41L10 14.17l6.59-6.59L18 9m-6-8L3 5v6c0 5.55 3.84 10.74 9 12c5.16-1.26 9-6.45 9-12V5z"/>',
     },
     "shield-check-outline": {
       body: '<path fill="currentColor" d="M21 11c0 5.55-3.84 10.74-9 12c-5.16-1.26-9-6.45-9-12V5l9-4l9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12L5 6.3v4.92C5 15.54 8.25 20 12 21m-2-4l-4-4l1.41-1.41L10 14.17l6.59-6.59L18 9"/>',
@@ -527,6 +542,9 @@ addCollection({
     },
     "shield-lock-outline": {
       body: '<path fill="currentColor" d="M21 11c0 5.55-3.84 10.74-9 12c-5.16-1.26-9-6.45-9-12V5l9-4l9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12L5 6.3v4.92C5 15.54 8.25 20 12 21m2.8-10V9.5C14.8 8.1 13.4 7 12 7S9.2 8.1 9.2 9.5V11c-.6 0-1.2.6-1.2 1.2v3.5c0 .7.6 1.3 1.2 1.3h5.5c.7 0 1.3-.6 1.3-1.2v-3.5c0-.7-.6-1.3-1.2-1.3m-1.3 0h-3V9.5c0-.8.7-1.3 1.5-1.3s1.5.5 1.5 1.3z"/>',
+    },
+    "shield-outline": {
+      body: '<path fill="currentColor" d="M21 11c0 5.55-3.84 10.74-9 12c-5.16-1.26-9-6.45-9-12V5l9-4l9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12L5 6.3v4.92C5 15.54 8.25 20 12 21"/>',
     },
     "skull-outline": {
       body: '<path fill="currentColor" d="M8 15a2 2 0 0 1-2-2a2 2 0 0 1 2-2a2 2 0 0 1 2 2a2 2 0 0 1-2 2m2.5 2l1.5-3l1.5 3zm5.5-2a2 2 0 0 1-2-2a2 2 0 0 1 2-2a2 2 0 0 1 2 2a2 2 0 0 1-2 2m6-4A10 10 0 0 0 12 1A10 10 0 0 0 2 11c0 2.8 1.2 5.3 3 7.1V22h14v-3.9c1.8-1.8 3-4.3 3-7.1m-5 9h-2v-2h-2v2h-2v-2H9v2H7v-2.8c-1.8-1.5-3-3.7-3-6.2a8 8 0 0 1 8-8a8 8 0 0 1 8 8c0 2.5-1.2 4.8-3 6.2z"/>',

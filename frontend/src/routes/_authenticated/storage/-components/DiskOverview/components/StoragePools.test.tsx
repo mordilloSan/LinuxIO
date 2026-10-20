@@ -216,6 +216,14 @@ describe("StoragePools", () => {
     expect(
       screen.getByRole("button", { name: "Volume /boot/efi" }),
     ).toHaveTextContent("Free 1 GB");
+    // Plain disks sit above the pools so the boot partition reads first.
+    expect(
+      screen
+        .getByRole("button", { name: "Volume /boot/efi" })
+        .compareDocumentPosition(
+          screen.getByRole("button", { name: "Storage pool 2" }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     // sdb now carries a volume, so nothing is left without one.
     expect(screen.queryByText("Disks without volumes")).toBeNull();
     expect(screen.getByText("nas.lan:/export/media")).toBeInTheDocument();

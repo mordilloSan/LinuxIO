@@ -5,8 +5,8 @@ import { render, screen } from "@/test/render";
 import { formatFileSize } from "@/utils/formaters";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
+import BtrfsHealthBanner from "./BtrfsHealthBanner";
 import BtrfsSpaceCard from "./BtrfsSpaceCard";
-import BtrfsStatusStrip from "./BtrfsStatusStrip";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -57,29 +57,38 @@ const healthy = {
   devices: [filesystem.devices[0]],
 };
 
-describe("BtrfsStatusStrip", () => {
+describe("BtrfsHealthBanner", () => {
   it("shows Degraded when degraded without device errors", () => {
-    render(<BtrfsStatusStrip filesystem={{ ...filesystem, devices: [] }} />);
+    render(<BtrfsHealthBanner filesystem={{ ...filesystem, devices: [] }} />);
     expect(screen.getByText("Degraded")).toBeInTheDocument();
-    expect(screen.getByText("Never scrubbed")).toBeInTheDocument();
+    expect(screen.getByText("Never checked for errors")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Check for errors" }),
     ).toBeEnabled();
   });
 
-  it("shows used and total space", () => {
-    render(<BtrfsStatusStrip filesystem={healthy} />);
-    expect(screen.getByText("30 GB used of 100 GB")).toBeInTheDocument();
+  it("names the filesystem and its mount point", () => {
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...healthy,
+          mountpoints: [{ mountpoint: "/mnt/data" } as never],
+        }}
+      />,
+    );
+    expect(
+      screen.getByText("data at /mnt/data is working normally."),
+    ).toBeInTheDocument();
   });
 
   it("shows Errors when a device counter is non-zero", () => {
-    render(<BtrfsStatusStrip filesystem={filesystem} />);
+    render(<BtrfsHealthBanner filesystem={filesystem} />);
     expect(screen.getByText("Errors")).toBeInTheDocument();
   });
 
   it("shows Healthy and the finished scrub error count", () => {
     render(
-      <BtrfsStatusStrip
+      <BtrfsHealthBanner
         filesystem={{
           ...healthy,
           scrub: {
@@ -93,12 +102,12 @@ describe("BtrfsStatusStrip", () => {
       />,
     );
     expect(screen.getByText("Healthy")).toBeInTheDocument();
-    expect(screen.getByText(/Last scrub: .*, 7 errors/)).toBeInTheDocument();
+    expect(screen.getByText(/Last check: .*, 7 errors/)).toBeInTheDocument();
   });
 
   it("shows scrub progress while running", () => {
     render(
-      <BtrfsStatusStrip
+      <BtrfsHealthBanner
         filesystem={{
           ...healthy,
           scrub: {
@@ -110,7 +119,7 @@ describe("BtrfsStatusStrip", () => {
         }}
       />,
     );
-    expect(screen.getByText("Scrub running · 42%")).toBeInTheDocument();
+    expect(screen.getByText("Checking for errors · 42%")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop check" })).toBeEnabled();
   });
 });

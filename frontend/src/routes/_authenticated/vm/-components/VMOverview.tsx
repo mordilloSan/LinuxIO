@@ -17,7 +17,7 @@ import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
 import PreflightSummary from "./PreflightSummary";
-import { PillToggle, STATUS_COLOR, Throughput } from "./vmCards";
+import { PillToggle, STATUS_COLOR, Throughput, Tile } from "./vmCards";
 import { normalizeState } from "./vmShared";
 
 const FILTERS = [
@@ -47,14 +47,6 @@ const tileGridStyle: CSSProperties = {
   display: "grid",
   gap: DASHBOARD_CARD_GAP,
   gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-};
-
-const tileStyle: CSSProperties = {
-  alignItems: "center",
-  display: "grid",
-  gap: "var(--app-space-8)",
-  gridTemplateColumns: "1fr auto",
-  padding: "var(--app-space-16)",
 };
 
 const rowStyle: CSSProperties = {
@@ -115,60 +107,6 @@ function healthOf(preflight?: VMPreflight) {
     text: "Your virtualization environment is working normally.",
     title: "Normal",
   };
-}
-
-function Tile({
-  count,
-  icon,
-  label,
-  status,
-  statusColor,
-}: {
-  count: number;
-  icon: string;
-  label: string;
-  status: string;
-  statusColor: string;
-}) {
-  return (
-    <FrostedCard hoverLift style={tileStyle}>
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          gap: "var(--app-space-8)",
-          gridColumn: "1 / -1",
-        }}
-      >
-        <Icon
-          color="var(--app-palette-primary-main)"
-          height={20}
-          icon={icon}
-          width={20}
-        />
-        <AppTypography fontWeight={600} variant="body2">
-          {label}
-        </AppTypography>
-      </div>
-      <div style={{ gridColumn: "1 / -1", textAlign: "center" }}>
-        <AppTypography
-          component="div"
-          fontWeight={700}
-          style={{ color: statusColor }}
-          variant="h3"
-        >
-          {count}
-        </AppTypography>
-        <AppTypography
-          component="div"
-          style={{ color: statusColor }}
-          variant="body2"
-        >
-          {status}
-        </AppTypography>
-      </div>
-    </FrostedCard>
-  );
 }
 
 /** A label, a value and a bar; the bar is hidden when there is no live data. */

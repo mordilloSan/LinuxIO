@@ -6,7 +6,12 @@ import { render, renderWithTanStackRouter, screen } from "@/test/render";
 
 import BtrfsPage from "./BtrfsPage";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  list: vi.fn(),
+  rules: vi.fn(),
+  snapshots: vi.fn(),
+  subvolumes: vi.fn(),
+}));
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
@@ -22,11 +27,11 @@ vi.mock("@/api", async (importOriginal) => {
         },
         btrfs_subvolumes: (request: { uuid: string }) => ({
           queryKey: ["test-btrfs-subvolumes", request.uuid],
-          queryFn: () => Promise.resolve([]),
+          queryFn: () => mocks.subvolumes(),
         }),
         btrfs_snapshot_rules: {
           queryKey: ["test-btrfs-snapshot-rules"],
-          queryFn: () => Promise.resolve({ rules: [], timerEnabled: false }),
+          queryFn: () => mocks.rules(),
         },
         btrfs_settings: (request: { uuid: string }) => ({
           queryKey: ["test-btrfs-settings", request.uuid],
@@ -47,7 +52,7 @@ vi.mock("@/api", async (importOriginal) => {
         },
         btrfs_snapshots: (request: { uuid: string }) => ({
           queryKey: ["test-btrfs-snapshots", request.uuid],
-          queryFn: () => Promise.resolve([]),
+          queryFn: () => mocks.snapshots(),
         }),
       },
     },
@@ -86,6 +91,9 @@ const backup = filesystem("uuid-backup", "", "/mnt/backup");
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([data, backup]);
+  mocks.rules.mockResolvedValue({ rules: [], timerEnabled: false });
+  mocks.snapshots.mockResolvedValue([]);
+  mocks.subvolumes.mockResolvedValue([]);
 });
 
 const capabilities = { btrfsAvailable: true };
@@ -129,7 +137,9 @@ describe("BtrfsPage", () => {
     renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} />, {
       capabilities,
     });
-    expect(await screen.findByText("Snapshots")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Snapshots" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Filesystem" }),
     ).not.toBeInTheDocument();
@@ -142,7 +152,9 @@ describe("BtrfsPage", () => {
       { capabilities },
     );
     expect(await screen.findByText("Automatic snapshots")).toBeInTheDocument();
-    expect(screen.getByText("Snapshots")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Snapshots" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Subvolumes")).not.toBeInTheDocument();
 
@@ -162,6 +174,41 @@ describe("BtrfsPage", () => {
     await user.click(screen.getByRole("button", { name: "Advanced" }));
     expect(screen.queryByText("Disks")).not.toBeInTheDocument();
     expect(screen.queryByText("Add device")).not.toBeInTheDocument();
+  });
+
+  it("sums up space, devices, snapshots and protected folders in tiles", async () => {
+    mocks.list.mockResolvedValue([
+      {
+        ...data,
+        degraded: true,
+        devices: [{ missing: true, errors: {} } as never],
+        totalBytes: 100 * 1024 ** 3,
+        usedBytes: 30 * 1024 ** 3,
+      },
+    ]);
+    mocks.snapshots.mockResolvedValue([
+      { path: "a", source: "home", createdAt: "2026-10-20T00:00:00Z" },
+      { path: "b", source: "home", createdAt: "2026-10-19T00:00:00Z" },
+    ]);
+    mocks.subvolumes.mockResolvedValue([
+      { id: 1, path: "home", isSnapshot: false },
+      { id: 2, path: "srv", isSnapshot: false },
+    ]);
+    mocks.rules.mockResolvedValue({
+      rules: [{ uuid: "uuid-data", path: "home", enabled: true }],
+      timerEnabled: true,
+    });
+    renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} />, {
+      capabilities,
+    });
+    expect(await screen.findByText("30%")).toBeInTheDocument();
+    expect(screen.getByText("30 GB of 100 GB")).toBeInTheDocument();
+    expect(screen.getByText("1 missing")).toBeInTheDocument();
+    expect(await screen.findByText("of 2 folders")).toBeInTheDocument();
+    expect(screen.getByText(/^Last .*ago$/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Degraded" }),
+    ).toBeInTheDocument();
   });
 
   it("says when no btrfs filesystem is mounted", async () => {
