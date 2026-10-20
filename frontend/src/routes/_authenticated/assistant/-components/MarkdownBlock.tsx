@@ -60,18 +60,21 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       : null;
   return (
     <div className="assistant-code">
-      <AppActionIconButton
-        ariaLabel="Copy code"
-        className="assistant-code__copy"
-        icon="mdi:content-copy"
-        iconSize={16}
-        label="Copy code"
-        onClick={() => {
-          const code = preRef.current?.textContent ?? "";
-          copyToClipboard(code.replace(/\n$/, "")).catch(() => {});
-        }}
-        size="small"
-      />
+      {/* The wrapper is what gets positioned, so the tooltip anchors to the
+          button and not to where the button would have sat in flow. */}
+      <div className="assistant-code__copy">
+        <AppActionIconButton
+          ariaLabel="Copy code"
+          icon="mdi:content-copy"
+          iconSize={16}
+          label="Copy code"
+          onClick={() => {
+            const code = preRef.current?.textContent ?? "";
+            copyToClipboard(code.replace(/\n$/, "")).catch(() => {});
+          }}
+          size="small"
+        />
+      </div>
       <pre ref={preRef}>
         {shown && text !== null ? (
           <code className={codeProps?.className}>

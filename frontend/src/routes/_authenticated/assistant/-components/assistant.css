@@ -131,8 +131,28 @@
   max-width: 80%;
   margin-block: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
+  border: 2px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
-  background: var(--app-palette-action-selected);
+  /* A shade below the page, not a filled chip. */
+  background: color-mix(in srgb, var(--app-palette-background-default) 88%, grey);
+}
+
+/* Answers read as prose: a touch of leading, and bold that stands out from
+   the slightly softened body text. */
+.assistant-markdown {
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--app-palette-text-primary), transparent 12%);
+}
+
+.assistant-markdown p,
+.assistant-markdown ul,
+.assistant-markdown ol {
+  margin-block: var(--app-space-8);
+}
+
+.assistant-markdown strong {
+  font-weight: 700;
+  color: var(--app-palette-text-primary);
 }
 
 .assistant-block--thought {
@@ -151,11 +171,19 @@
   font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
+/* A code block hugs its longest line; the pre keeps room on the right for
+   the copy button that floats over it. */
 .assistant-code {
   position: relative;
+  width: fit-content;
+  max-width: 100%;
 }
 
-.assistant-code .assistant-code__copy {
+.assistant-code pre {
+  padding-right: calc(var(--app-space-12) + 28px);
+}
+
+.assistant-code__copy {
   position: absolute;
   top: var(--app-space-12);
   right: var(--app-space-4);
@@ -294,9 +322,15 @@
 }
 
 .assistant-tool {
+  align-self: flex-start;
+  max-width: 100%;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
   padding: var(--app-space-8) var(--app-space-12);
+}
+
+.assistant-tool[open] {
+  align-self: stretch;
 }
 
 .assistant-tool__summary {
@@ -310,9 +344,17 @@
   font-family: var(--app-font-mono);
 }
 
+/* A collapsed group hugs its label; it only spans the column once opened,
+   because the rows inside need the room. */
 .assistant-tool-group {
+  align-self: flex-start;
+  max-width: 100%;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
+}
+
+.assistant-tool-group:has(.assistant-tool-group__rows) {
+  align-self: stretch;
 }
 
 .assistant-tool-group .assistant-tool-group__header {
@@ -321,8 +363,10 @@
   gap: var(--app-space-8);
 }
 
-.assistant-tool-group__header > :last-child {
-  margin-left: auto;
+/* Captions in tool rows follow the chat font size, not the theme's fixed caption. */
+.assistant-tool-group__header .app-typo--caption,
+.assistant-tool__summary .app-typo--caption {
+  font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
 .assistant-tool-group__dot {
