@@ -285,6 +285,7 @@ export const ROUTE_MODES = {
   "virt.preflight": "call",
   "virt.reboot": "call",
   "virt.resume": "call",
+  "virt.set_firmware": "call",
   "virt.shutdown": "call",
   "virt.start": "call",
   "virt.suspend": "call",

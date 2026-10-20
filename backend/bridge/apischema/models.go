@@ -46,6 +46,7 @@ var StringEnums = map[string][]string{
 	"ValidationIssueType":       {"error", "warning"},
 	"VMImagePresetID":           {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
 	"VMSourceType":              {"iso", "imagePreset", "import"},
+	"VMFirmware":                {"bios", "uefi"},
 	"NetworkBridgeHandoffState": {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
 }
 
@@ -1460,22 +1461,25 @@ type VMNetwork struct {
 }
 
 type VirtualMachine struct {
-	Name        string   `json:"name"`
-	UUID        string   `json:"uuid,omitempty"`
-	State       string   `json:"state"`
-	VCPUs       int      `json:"vcpus"`
-	MemoryMB    int      `json:"memoryMB"`
-	DiskGB      int      `json:"diskGB"`
-	Autostart   bool     `json:"autostart"`
-	HasGraphics bool     `json:"hasGraphics"`
-	OwnedDisks  []string `json:"ownedDisks"`
-	Disks       []VMDisk `json:"disks,omitempty"`
-	NICs        []VMNIC  `json:"nics,omitempty"`
+	Name        string     `json:"name"`
+	UUID        string     `json:"uuid,omitempty"`
+	State       string     `json:"state"`
+	VCPUs       int        `json:"vcpus"`
+	MemoryMB    int        `json:"memoryMB"`
+	DiskGB      int        `json:"diskGB"`
+	Autostart   bool       `json:"autostart"`
+	Firmware    VMFirmware `json:"firmware,omitempty"`
+	HasGraphics bool       `json:"hasGraphics"`
+	OwnedDisks  []string   `json:"ownedDisks"`
+	Disks       []VMDisk   `json:"disks,omitempty"`
+	NICs        []VMNIC    `json:"nics,omitempty"`
 }
 
 type VMPreflightFirmware struct {
 	UEFIAvailable bool `json:"uefiAvailable"`
 	BIOSAvailable bool `json:"biosAvailable"`
+	// Detected is the firmware create picks for this source when none is requested.
+	Detected VMFirmware `json:"detected,omitempty"`
 }
 
 type VMManagedPaths struct {

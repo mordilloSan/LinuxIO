@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
 import { call, linuxio, useCallMutation } from "@/api";
-import type { VMCreateProgress, VMCreateRequest } from "@/api";
+import type { VMCreateProgress, VMCreateRequest, VMFirmware } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -178,6 +178,9 @@ export default function CreateVMDialog({
     VMDialogImagePresetID | undefined
   >(undefined);
   const [templateID, setTemplateID] = useState("");
+  // Empty keeps the server's detection (UEFI when OVMF exists, or what an
+  // OVA declares); ready images always use what their preset needs.
+  const [firmware, setFirmware] = useState<VMFirmware | "">("");
   const templatesQuery = useQuery({
     ...linuxio.virt.templates,
     enabled: open && sourceType === "imagePreset",
@@ -237,9 +240,12 @@ export default function CreateVMDialog({
     preflight.data?.managedPaths?.cloudImages ?? DEFAULT_MANAGED_CLOUD_PATH;
   const managedRootPath =
     preflight.data?.managedPaths?.root ?? DEFAULT_MANAGED_ROOT_PATH;
+  const uefiAvailable = preflight.data?.firmware.uefiAvailable ?? true;
+  const detectedFirmware = preflight.data?.firmware.detected;
 
   const applyPreset = (preset: ReadyImagePreset) => {
     setTemplateID("");
+    setFirmware("");
     setSelectedPreset(preset.id);
     setVCPUs(preset.vcpus);
     setMemoryMB(preset.memoryMB);
@@ -263,6 +269,7 @@ export default function CreateVMDialog({
       return;
     }
     setTemplateID("");
+    setFirmware("");
     setCreateMode(mode);
     setSelectedPreset("custom");
     setVCPUs("2");
@@ -383,6 +390,9 @@ export default function CreateVMDialog({
     }
     if (usesImport) {
       request.importPath = trimmedImportPath;
+    }
+    if (firmware && !imagePresetId) {
+      request.firmware = firmware;
     }
     if (imagePresetId) {
       request.imagePresetId = imagePresetId;
@@ -661,6 +671,28 @@ export default function CreateVMDialog({
                 Create LAN bridge
               </AppButton>
             </div>
+            {!imagePresetId ? (
+              <AppSelect
+                disabled={isBusy}
+                fullWidth
+                label="Firmware"
+                onChange={(event) =>
+                  setFirmware(event.target.value as VMFirmware | "")
+                }
+                value={firmware}
+              >
+                <option value="">
+                  Auto
+                  {detectedFirmware
+                    ? ` (${detectedFirmware.toUpperCase()})`
+                    : ""}
+                </option>
+                <option disabled={!uefiAvailable} value="uefi">
+                  UEFI{uefiAvailable ? "" : " (OVMF not installed)"}
+                </option>
+                <option value="bios">BIOS (legacy)</option>
+              </AppSelect>
+            ) : null}
             {activeImagePreset?.bridgedPreferred && network === "default" ? (
               <AppAlert severity="warning" style={wideGridItemStyle}>
                 {activeImagePreset.label} on NAT is reachable only from this

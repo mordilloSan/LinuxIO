@@ -27,6 +27,8 @@ const (
 	vmImagePresetDebian      apischema.VMImagePresetID = "debian-server"
 	vmImagePresetUbuntu      apischema.VMImagePresetID = "ubuntu-server"
 	vmImagePresetFedoraCloud apischema.VMImagePresetID = "fedora-cloud"
+	vmFirmwareBIOS           apischema.VMFirmware      = "bios"
+	vmFirmwareUEFI           apischema.VMFirmware      = "uefi"
 )
 
 type vmImagePreset struct {
@@ -111,6 +113,18 @@ func normalizedVMSourceType(sourceType apischema.VMSourceType) apischema.VMSourc
 		return vmSourceTypeISO
 	}
 	return sourceType
+}
+
+func validateVMFirmware(firmware apischema.VMFirmware, required bool) error {
+	switch firmware {
+	case vmFirmwareBIOS, vmFirmwareUEFI:
+		return nil
+	case "":
+		if !required {
+			return nil
+		}
+	}
+	return badRequestf("firmware must be %q or %q", vmFirmwareBIOS, vmFirmwareUEFI)
 }
 
 func validateVMSourceType(sourceType apischema.VMSourceType) error {

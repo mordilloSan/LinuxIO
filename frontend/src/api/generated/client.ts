@@ -412,6 +412,7 @@ const linuxio = {
     preflight: defineCallWithRequest("virt.preflight"),
     reboot: defineCallWithRequest("virt.reboot"),
     resume: defineCallWithRequest("virt.resume"),
+    set_firmware: defineCallWithRequest("virt.set_firmware"),
     shutdown: defineCallWithRequest("virt.shutdown"),
     start: defineCallWithRequest("virt.start"),
     suspend: defineCallWithRequest("virt.suspend"),

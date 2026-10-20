@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
     defaultPoolActive: true,
     defaultPoolExists: true,
     errors: [] as string[],
-    firmware: { biosAvailable: true, uefiAvailable: true },
+    firmware: { biosAvailable: true, detected: "uefi", uefiAvailable: true },
     isoReadable: true,
     kvmPresent: true,
     libvirtReachable: true,
@@ -939,6 +939,33 @@ describe("Virtual Machines page", () => {
       importPath: "/srv/appliance.ova",
       sourceType: "import",
     });
+  });
+
+  it("submits an explicit firmware choice for custom installs", async () => {
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("combobox", { name: "Firmware" }),
+    );
+    expect(
+      screen.getByRole("option", { name: "Auto (UEFI)" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "BIOS (legacy)" }));
+    await user.type(within(dialog).getByLabelText(/name/i), "legacy");
+    await user.type(
+      within(dialog).getByLabelText(/iso path/i),
+      "/isos/legacy.iso",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(mocks.virtCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ firmware: "bios", name: "legacy" }),
+      );
+    });
+    expect(within(dialog).getByText("firmware UEFI")).toBeInTheDocument();
   });
 
   it("does not submit a directory path as install media", async () => {

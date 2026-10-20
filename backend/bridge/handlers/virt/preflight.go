@@ -51,6 +51,12 @@ func Preflight(ctx context.Context, req apischema.VMPreflightRequest) (apischema
 		out.Warnings = append(out.Warnings, "OVMF firmware not found; VM creation will fall back to BIOS")
 	}
 	collectSourcePreflight(ctx, req, &out)
+	if out.Firmware.Detected == "" {
+		out.Firmware.Detected = vmFirmwareBIOS
+		if out.Firmware.UEFIAvailable {
+			out.Firmware.Detected = vmFirmwareUEFI
+		}
+	}
 	requestedNetwork := strings.TrimSpace(req.Network)
 	networkName := normalizeVMNetwork(requestedNetwork)
 	if requestedNetwork != "" {
@@ -118,8 +124,21 @@ func collectImportPreflight(req apischema.VMPreflightRequest, out *apischema.VMP
 	if req.ImportPath == nil || strings.TrimSpace(*req.ImportPath) == "" {
 		return
 	}
-	if _, err := validateImportDisk(*req.ImportPath); err != nil {
+	importPath, err := validateImportDisk(*req.ImportPath)
+	if err != nil {
 		out.Errors = append(out.Errors, err.Error())
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(importPath), ".ova") {
+		return
+	}
+	ovf, err := readOVADescriptor(importPath)
+	if err != nil {
+		out.Errors = append(out.Errors, fmt.Sprintf("read OVA descriptor: %v", err))
+		return
+	}
+	if ovfLegacyBoot(ovf) {
+		out.Firmware.Detected = vmFirmwareBIOS
 	}
 }
 

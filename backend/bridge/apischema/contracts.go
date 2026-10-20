@@ -203,6 +203,7 @@ type NameRequest struct {
 
 type VMSourceType string
 type VMImagePresetID string
+type VMFirmware string
 
 type VMCreateRequest struct {
 	Name              string          `json:"name"`
@@ -219,7 +220,14 @@ type VMCreateRequest struct {
 	CloudInitSSHKey   string          `json:"cloudInitSshKey,omitempty"`
 	CloudInitHostname string          `json:"cloudInitHostname,omitempty"`
 	Network           string          `json:"network,omitempty"`
-	Start             bool            `json:"start"`
+	// Firmware overrides the detected boot firmware; empty picks automatically.
+	Firmware VMFirmware `json:"firmware,omitempty"`
+	Start    bool       `json:"start"`
+}
+
+type VMFirmwareRequest struct {
+	Name     string     `json:"name"`
+	Firmware VMFirmware `json:"firmware"`
 }
 
 type VMDeleteRequest struct {

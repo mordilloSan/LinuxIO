@@ -65,19 +65,7 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 	} else {
 		osConfig.BootDevices = []libvirtxml.DomainBootDevice{{Dev: "hd"}}
 	}
-	if firmware.UEFIAvailable {
-		osConfig.Firmware = "efi"
-		// Without stateless="no", libvirt 12 can autoselect stateless SEV
-		// firmware (OVMF.amdsev.fd), which has no NVRAM and which Ubuntu's
-		// AppArmor helper refuses to load.
-		osConfig.Loader = &libvirtxml.DomainLoader{Stateless: "no"}
-		osConfig.FirmwareInfo = &libvirtxml.DomainOSFirmwareInfo{
-			Features: []libvirtxml.DomainOSFirmwareFeature{
-				{Enabled: "no", Name: "secure-boot"},
-				{Enabled: "no", Name: "enrolled-keys"},
-			},
-		}
-	}
+	setDomainFirmware(osConfig, firmware.UEFIAvailable)
 
 	socketPath := vncSocketPath(req.Name)
 	disks := []libvirtxml.DomainDisk{
@@ -172,6 +160,36 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 	return domain, nil
 }
 
+// setDomainFirmware switches <os> between libvirt's UEFI autoselection and
+// plain SeaBIOS, dropping any loader or NVRAM left from the other mode.
+func setDomainFirmware(osConfig *libvirtxml.DomainOS, uefi bool) {
+	osConfig.Firmware = ""
+	osConfig.FirmwareInfo = nil
+	osConfig.Loader = nil
+	osConfig.NVRam = nil
+	if !uefi {
+		return
+	}
+	osConfig.Firmware = "efi"
+	// Without stateless="no", libvirt 12 can autoselect stateless SEV
+	// firmware (OVMF.amdsev.fd), which has no NVRAM and which Ubuntu's
+	// AppArmor helper refuses to load.
+	osConfig.Loader = &libvirtxml.DomainLoader{Stateless: "no"}
+	osConfig.FirmwareInfo = &libvirtxml.DomainOSFirmwareInfo{
+		Features: []libvirtxml.DomainOSFirmwareFeature{
+			{Enabled: "no", Name: "secure-boot"},
+			{Enabled: "no", Name: "enrolled-keys"},
+		},
+	}
+}
+
+func domainFirmware(osConfig *libvirtxml.DomainOS) apischema.VMFirmware {
+	if osConfig != nil && (osConfig.Firmware == "efi" || osConfig.Loader != nil) {
+		return vmFirmwareUEFI
+	}
+	return vmFirmwareBIOS
+}
+
 func buildVolumeXML(name string, diskGB int) (string, error) {
 	if diskGB <= 0 {
 		return "", badRequestf("diskGB must be greater than 0")
@@ -214,6 +232,9 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 		return badRequestf("templateId must identify a saved image template")
 	}
 	if err := validateVMNetworkName(req.Network); err != nil {
+		return err
+	}
+	if err := validateVMFirmware(req.Firmware, false); err != nil {
 		return err
 	}
 	return validateCreateSource(req, sourceType)
@@ -266,6 +287,7 @@ func parseVirtualMachine(dom libvirt.Domain, xmlDoc string, state string, autost
 		UUID:      parsed.UUID,
 		State:     state,
 		Autostart: autostart,
+		Firmware:  domainFirmware(parsed.OS),
 	}
 	if vm.Name == "" {
 		vm.Name = dom.Name

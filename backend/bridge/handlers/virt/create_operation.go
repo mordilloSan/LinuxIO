@@ -140,8 +140,18 @@ func createVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMCre
 		return apischema.VirtualMachine{}, storageErr
 	}
 
-	if storage.LegacyBoot {
+	switch req.Firmware {
+	case vmFirmwareUEFI:
+		if !firmware.UEFIAvailable {
+			deleteCreatedStorage(conn, storage)
+			return apischema.VirtualMachine{}, conflictf("UEFI firmware was requested but OVMF is not installed")
+		}
+	case vmFirmwareBIOS:
 		firmware.UEFIAvailable = false
+	default:
+		if storage.LegacyBoot {
+			firmware.UEFIAvailable = false
+		}
 	}
 	reportVMCreateProgress(report, "define", "Defining libvirt domain", req.Name, nil)
 	domain, domainErr := defineDomainWithRollback(conn, req, firmware, storage)

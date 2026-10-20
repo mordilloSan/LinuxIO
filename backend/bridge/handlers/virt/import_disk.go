@@ -34,6 +34,35 @@ var importDiskFormats = map[string]string{
 // parse the OVF properly if other tools differ.
 var ovfEFIFirmware = regexp.MustCompile(`(?i)firmware[^>]*efi|use_ovmf="true"`)
 
+// ovfLegacyBoot reports whether an OVF descriptor asks for SeaBIOS. Without a
+// descriptor the host default applies.
+func ovfLegacyBoot(ovf []byte) bool {
+	return len(ovf) > 0 && !ovfEFIFirmware.Match(ovf)
+}
+
+// readOVADescriptor returns the OVF inside an OVA without extracting its
+// disks; tar skips entry bodies by seeking, so the scan stays cheap.
+func readOVADescriptor(ovaPath string) ([]byte, error) {
+	file, err := os.Open(ovaPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	reader := tar.NewReader(file)
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if header.Typeflag == tar.TypeReg && strings.EqualFold(filepath.Ext(header.Name), ".ovf") {
+			return io.ReadAll(io.LimitReader(reader, 8<<20))
+		}
+	}
+}
+
 func validateImportDisk(rawPath string) (string, error) {
 	path := strings.TrimSpace(rawPath)
 	if path == "" {
@@ -96,7 +125,7 @@ func importDiskFile(ctx context.Context, source, volumePath string, minDiskGB in
 		if err != nil {
 			return 0, false, fmt.Errorf("extract OVA: %w", err)
 		}
-		legacyBoot = len(ovf) > 0 && !ovfEFIFirmware.Match(ovf)
+		legacyBoot = ovfLegacyBoot(ovf)
 	}
 	format := importDiskFormats[strings.ToLower(filepath.Ext(source))]
 	if format == "qcow2" {

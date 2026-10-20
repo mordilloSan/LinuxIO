@@ -3045,6 +3045,7 @@ export interface VMCreateRequest {
   cloudInitSshKey?: string;
   cloudInitHostname?: string;
   network?: string;
+  firmware?: VMFirmware;
   start: boolean;
 }
 
@@ -3065,6 +3066,13 @@ export interface VMDisk {
   volumeName?: string;
   sizeGB?: number;
   owned: boolean;
+}
+
+export type VMFirmware = "bios" | "uefi";
+
+export interface VMFirmwareRequest {
+  name: string;
+  firmware: VMFirmware;
 }
 
 export type VMImagePresetID =
@@ -3112,6 +3120,7 @@ export interface VMPreflight {
 export interface VMPreflightFirmware {
   uefiAvailable: boolean;
   biosAvailable: boolean;
+  detected?: VMFirmware;
 }
 
 export interface VMPreflightRequest {
@@ -3195,6 +3204,7 @@ export interface VirtualMachine {
   memoryMB: number;
   diskGB: number;
   autostart: boolean;
+  firmware?: VMFirmware;
   hasGraphics: boolean;
   ownedDisks: string[];
   disks?: VMDisk[];
@@ -4431,6 +4441,11 @@ export interface LinuxIOSchema {
     };
     reboot: { input: [name: string]; request: NameRequest; result: void };
     resume: { input: [name: string]; request: NameRequest; result: void };
+    set_firmware: {
+      input: [request: VMFirmwareRequest];
+      request: VMFirmwareRequest;
+      result: VirtualMachine;
+    };
     shutdown: { input: [name: string]; request: NameRequest; result: void };
     start: { input: [name: string]; request: NameRequest; result: void };
     suspend: { input: [name: string]; request: NameRequest; result: void };
@@ -5067,6 +5082,7 @@ export interface LinuxIOCallSchema {
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };
+  "virt.set_firmware": { request: VMFirmwareRequest; result: VirtualMachine };
   "virt.shutdown": { request: NameRequest; result: void };
   "virt.start": { request: NameRequest; result: void };
   "virt.suspend": { request: NameRequest; result: void };
