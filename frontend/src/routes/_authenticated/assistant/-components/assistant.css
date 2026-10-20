@@ -395,6 +395,9 @@
 
 /* The box owns the border; the text field and the bar sit inside it. */
 .assistant__composer-box {
+  /* The small text field has its own fixed size; the prompt follows the
+     chat font size instead. */
+  --app-text-field-input-font-size: var(--app-font-size-body);
   flex: 1;
   min-width: 0;
   display: flex;
@@ -561,7 +564,8 @@
   padding: var(--app-space-4) 6px;
   border-radius: var(--app-radius-md);
   font: inherit;
-  font-size: var(--app-font-size-body);
+  /* A toolbar control, like the model chip: not scaled with the chat. */
+  font-size: 0.8125rem;
 }
 
 .assistant__bar-button:focus-visible {
