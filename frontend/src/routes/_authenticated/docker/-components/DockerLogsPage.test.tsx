@@ -57,13 +57,19 @@ vi.mock("@/components/tabbar", () => ({
 
 vi.mock("@/components/tables/AppVirtualTable", () => ({
   default: ({
+    columns,
     data,
     scrollElementRef,
   }: {
+    columns: { id: string }[];
     data: DockerLogEntry[];
     scrollElementRef: { current: HTMLDivElement | null };
   }) => (
-    <div data-testid="docker-logs-table" ref={scrollElementRef}>
+    <div
+      data-columns={columns.map((column) => column.id).join(",")}
+      data-testid="docker-logs-table"
+      ref={scrollElementRef}
+    >
       {data.map((entry) => (
         <div
           data-name={entry.name}
@@ -110,12 +116,12 @@ describe("DockerLogsPage", () => {
     });
   });
 
-  it("opens the merged stream and renders records newest first", async () => {
+  it("opens the merged stream and renders records oldest first", async () => {
     render(<DockerLogsPage onContainerChange={vi.fn()} />);
 
     await waitFor(() => expect(mocks.openStream).toHaveBeenCalledTimes(1));
     expect(mocks.openChannel).toHaveBeenCalledWith("docker.logs.follow_all", {
-      tail: "100",
+      tail: "5000",
     });
 
     receive(
@@ -126,9 +132,12 @@ describe("DockerLogsPage", () => {
       ),
     );
 
-    expect(rows()).toEqual(["web:web three", "db:db two", "db:db one"]);
+    expect(rows()).toEqual(["db:db one", "db:db two", "web:web three"]);
     expect(screen.getAllByTestId("docker-log-row")[1].dataset.stderr).toBe(
       "true",
+    );
+    expect(screen.getByTestId("docker-logs-table").dataset.columns).toBe(
+      "time,container,level,line",
     );
     expect(screen.getByText("3 shown")).toBeInTheDocument();
   });
@@ -145,7 +154,10 @@ describe("DockerLogsPage", () => {
     );
 
     rerender(<DockerLogsPage container="web" onContainerChange={vi.fn()} />);
-    expect(rows()).toEqual(["web:GET /about", "web:GET /index"]);
+    expect(rows()).toEqual(["web:GET /index", "web:GET /about"]);
+    expect(screen.getByTestId("docker-logs-table").dataset.columns).toBe(
+      "time,level,line",
+    );
 
     fireEvent.change(screen.getByPlaceholderText("Search logs…"), {
       target: { value: "about" },
@@ -172,30 +184,17 @@ describe("DockerLogsPage", () => {
     expect(onContainerChange).toHaveBeenCalledWith("db");
   });
 
-  it("reopens with the new tail on lines change and with tail 0 when live resumes", async () => {
-    const { user } = render(<DockerLogsPage onContainerChange={vi.fn()} />);
+  it("reopens with tail 0 when live resumes", async () => {
+    render(<DockerLogsPage onContainerChange={vi.fn()} />);
     await waitFor(() => expect(mocks.openStream).toHaveBeenCalledTimes(1));
     receive(frame(record("web", "2026-10-05T10:00:01Z", "first")));
-    expect(rows()).toEqual(["web:first"]);
-
-    await user.click(screen.getByRole("combobox", { name: "Lines" }));
-    await user.click(screen.getByRole("option", { name: "500" }));
-    await waitFor(() => expect(mocks.openStream).toHaveBeenCalledTimes(2));
-    expect(mocks.closeStream).toHaveBeenCalledTimes(1);
-    expect(mocks.openChannel).toHaveBeenLastCalledWith(
-      "docker.logs.follow_all",
-      { tail: "500" },
-    );
-    expect(screen.queryAllByTestId("docker-log-row")).toHaveLength(0);
-
-    receive(frame(record("web", "2026-10-05T10:00:02Z", "second")));
     const live = screen.getByRole("checkbox", { name: "Live" });
     fireEvent.click(live);
-    expect(mocks.closeStream).toHaveBeenCalledTimes(2);
-    expect(rows()).toEqual(["web:second"]);
+    expect(mocks.closeStream).toHaveBeenCalledTimes(1);
+    expect(rows()).toEqual(["web:first"]);
 
     fireEvent.click(live);
-    await waitFor(() => expect(mocks.openStream).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(mocks.openStream).toHaveBeenCalledTimes(2));
     expect(mocks.openChannel).toHaveBeenLastCalledWith(
       "docker.logs.follow_all",
       { tail: "0" },

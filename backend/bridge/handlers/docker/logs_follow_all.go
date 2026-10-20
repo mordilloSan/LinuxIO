@@ -95,7 +95,8 @@ func (w *dockerLogLineWriter) writeFrame(frame *bytes.Buffer) error {
 }
 
 func (w *dockerLogLineWriter) appendRecord(frame *bytes.Buffer, raw []byte) {
-	line := strings.TrimRight(string(dockerLogANSIRegex.ReplaceAll(raw, nil)), "\r")
+	// ANSI colours are kept: the logs page renders them.
+	line := strings.TrimRight(string(raw), "\r")
 	// Docker prefixes each line with an RFC3339Nano timestamp when Timestamps is set.
 	ts, text, _ := strings.Cut(line, " ")
 	if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {

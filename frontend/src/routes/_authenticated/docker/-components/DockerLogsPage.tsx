@@ -28,19 +28,22 @@ import { useLiveStream } from "@/hooks/useLiveStream";
 import { copyToClipboard } from "@/utils/clipboard";
 
 import {
+  DOCKER_LOG_BUFFER_LIMIT,
   type DockerLogEntry,
+  type DockerLogRow,
   dockerLogHue,
   formatDockerLogTime,
+  groupDockerLogRows,
   mergeDockerLogEntries,
+  parseDockerLogAnsi,
   parseDockerLogFrame,
   stageDockerLogEntries,
 } from "./dockerLogs";
 
 import "./docker-logs.css";
 
-const TAIL_OPTIONS = ["100", "500", "1000", "5000"];
 const INITIAL_SILENCE_TIMEOUT_MS = 1500;
-const TOP_THRESHOLD_PX = 24;
+const BOTTOM_THRESHOLD_PX = 24;
 
 interface DockerLogsPageProps {
   /** Container name filter, owned by the route search params. */
@@ -56,18 +59,16 @@ const DockerLogsPage = ({
 }: DockerLogsPageProps) => {
   const [entries, setEntries] = useState<DockerLogEntry[]>([]);
   const [search, setSearch] = useState("");
-  const [tail, setTail] = useState("100");
   const [liveMode, setLiveMode] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [streamEpoch, setStreamEpoch] = useState(0);
 
   const pendingRef = useRef<DockerLogEntry[]>([]);
   const seqRef = useRef(0);
   const flushFrameRef = useRef<number | null>(null);
   const silenceTimerRef = useRef<number | null>(null);
   const hasReceivedDataRef = useRef(false);
-  const pinnedToTopRef = useRef(true);
+  const pinnedToBottomRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { streamRef, openStream, closeStream } = useLiveStream();
@@ -135,15 +136,15 @@ const DockerLogsPage = ({
     });
   });
 
-  // Effect event so the opening effect does not depend on `tail`; a resumed
-  // stream asks for tail 0 because the buffer already holds the history.
+  // A resumed stream asks for tail 0 because the buffer already holds the
+  // history; a fresh one asks for as much as the buffer can hold.
   const startStream = useEffectEvent(() => {
     hasReceivedDataRef.current = false;
     setError(null);
     const opened = openStream({
       open: () =>
         openChannel("docker.logs.follow_all", {
-          tail: seqRef.current > 0 ? "0" : tail,
+          tail: seqRef.current > 0 ? "0" : String(DOCKER_LOG_BUFFER_LIMIT),
         }),
       onOpenError: handleStreamOpenError,
       onText: handleStreamText,
@@ -162,9 +163,7 @@ const DockerLogsPage = ({
   useEffect(() => {
     if (!muxIsOpen || !liveMode || streamRef.current) return;
     startStream();
-    // `streamEpoch` restarts the stream after the lines select cleared the buffer.
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies
-  }, [muxIsOpen, liveMode, streamEpoch, streamRef]);
+  }, [muxIsOpen, liveMode, streamRef]);
 
   useEffect(
     () => () => {
@@ -178,11 +177,11 @@ const DockerLogsPage = ({
     [],
   );
 
-  // Keep the newest line in view while the user is at the top.
+  // Keep the newest line in view while the user is at the bottom.
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && pinnedToTopRef.current) {
-      el.scrollTop = 0;
+    if (el && pinnedToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
     // `entries` retriggers the pin after streamed rows render.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
@@ -190,7 +189,8 @@ const DockerLogsPage = ({
 
   const handleScroll = (event: UIEvent<HTMLDivElement>) => {
     const el = event.currentTarget;
-    pinnedToTopRef.current = el.scrollTop <= TOP_THRESHOLD_PX;
+    pinnedToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD_PX;
   };
 
   const handleLiveModeChange = (checked: boolean) => {
@@ -201,22 +201,6 @@ const DockerLogsPage = ({
       closeStream();
       setIsLoading(false);
     }
-  };
-
-  const handleTailChange = (value: string) => {
-    if (value === tail) return;
-    clearSilenceTimer();
-    closeStream();
-    pendingRef.current = [];
-    seqRef.current = 0;
-    hasReceivedDataRef.current = false;
-    pinnedToTopRef.current = true;
-    setEntries([]);
-    setError(null);
-    setIsLoading(true);
-    setLiveMode(true);
-    setTail(value);
-    setStreamEpoch((epoch) => epoch + 1);
   };
 
   const runningNames = (containers ?? [])
@@ -230,52 +214,93 @@ const DockerLogsPage = ({
   const visible = entries.filter(
     (entry) =>
       (!container || entry.name === container) &&
-      (!needle || entry.line.toLowerCase().includes(needle)),
+      (!needle || entry.text.toLowerCase().includes(needle)),
   );
 
-  const columns = useMemo<AppVirtualTableColumnDef<DockerLogEntry>[]>(
+  const columns = useMemo<AppVirtualTableColumnDef<DockerLogRow>[]>(
     () => [
       {
         id: "time",
         header: "Time",
         enableSorting: false,
-        cell: ({ row }) => (
-          <AppTypography noWrap title={row.original.ts} variant="body2">
-            {formatDockerLogTime(row.original.ts)}
-          </AppTypography>
-        ),
+        // A grouped entry shows its time once, on the first line.
+        cell: ({ row }) =>
+          row.original.position === "middle" ||
+          row.original.position === "end" ? null : (
+            <AppTypography
+              className="docker-logs__time"
+              color="text.secondary"
+              noWrap
+              title={row.original.ts}
+              variant="body2"
+            >
+              {formatDockerLogTime(row.original.ts)}
+            </AppTypography>
+          ),
         meta: {
-          getCellRenderKey: (row) => (row as DockerLogEntry).seq,
+          getCellRenderKey: (row) => [
+            (row as DockerLogRow).seq,
+            (row as DockerLogRow).position,
+          ],
           hideBelow: "sm",
-          width: "96px",
+          width: "184px",
         },
       },
+      // One container selected: every row would repeat its name.
+      ...(container
+        ? []
+        : [
+            {
+              id: "container",
+              header: "Container",
+              enableSorting: false,
+              cell: ({ row }) => (
+                <Chip
+                  className="docker-logs__source"
+                  label={row.original.name}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onContainerChange(row.original.name);
+                  }}
+                  size="xsmall"
+                  style={
+                    {
+                      "--docker-log-hue": dockerLogHue(row.original.name),
+                    } as CSSProperties
+                  }
+                  title={`Show only ${row.original.name} (${row.original.id})`}
+                  variant="soft"
+                />
+              ),
+              meta: {
+                deferTooltipWhileScrolling: true,
+                getCellRenderKey: (row) => (row as DockerLogEntry).seq,
+                width: "minmax(110px, 200px)",
+              },
+            } satisfies AppVirtualTableColumnDef<DockerLogRow>,
+          ]),
       {
-        id: "container",
-        header: "Container",
+        id: "level",
+        header: "",
         enableSorting: false,
         cell: ({ row }) => (
-          <Chip
-            className="docker-logs__source"
-            label={row.original.name}
-            onClick={(event) => {
-              event.stopPropagation();
-              onContainerChange(row.original.name);
-            }}
-            size="xsmall"
-            style={
-              {
-                "--docker-log-hue": dockerLogHue(row.original.name),
-              } as CSSProperties
+          <span
+            className="docker-logs__level"
+            data-level={row.original.level}
+            data-position={row.original.position}
+            title={
+              row.original.level === "unknown" ? undefined : row.original.level
             }
-            title={`Show only ${row.original.name} (${row.original.id})`}
-            variant="soft"
           />
         ),
         meta: {
-          deferTooltipWhileScrolling: true,
-          getCellRenderKey: (row) => (row as DockerLogEntry).seq,
-          width: "minmax(110px, 200px)",
+          cellClassName: "docker-logs__level-cell",
+          getCellRenderKey: (row) => [
+            (row as DockerLogRow).seq,
+            (row as DockerLogRow).level,
+            (row as DockerLogRow).position,
+          ],
+          width: "12px",
         },
       },
       {
@@ -283,31 +308,42 @@ const DockerLogsPage = ({
         header: "Message",
         enableSorting: false,
         cell: ({ row }) => (
-          <AppTypography
-            className={
-              row.original.stderr
-                ? "docker-logs__line docker-logs__line--stderr"
-                : "docker-logs__line"
-            }
-            variant="body2"
-          >
-            {row.original.line}
+          <AppTypography className="docker-logs__line" variant="body2">
+            {parseDockerLogAnsi(row.original.line).map((segment, index) =>
+              segment.color || segment.bold ? (
+                <span
+                  className={
+                    segment.bold ? "docker-logs__ansi--bold" : undefined
+                  }
+                  key={index}
+                  style={
+                    segment.color
+                      ? { color: `var(--docker-log-ansi-${segment.color})` }
+                      : undefined
+                  }
+                >
+                  {segment.text}
+                </span>
+              ) : (
+                segment.text
+              ),
+            )}
           </AppTypography>
         ),
         meta: {
           align: "left",
           deferTooltipWhileScrolling: true,
-          getCellRenderKey: (row) => (row as DockerLogEntry).seq,
+          getCellRenderKey: (row) => (row as DockerLogRow).seq,
         },
       },
     ],
-    [onContainerChange],
+    [container, onContainerChange],
   );
 
   // Raw Docker timestamps first so exported logs stay machine-sortable.
   const exportText = () =>
     visible
-      .map((entry) => `${entry.ts} ${entry.name} ${entry.line}`)
+      .map((entry) => `${entry.ts} ${entry.name} ${entry.text}`)
       .join("\n");
 
   const handleDownload = () => {
@@ -339,18 +375,6 @@ const DockerLogsPage = ({
       </RoutedTabSearch>
       <div className="docker-logs">
         <div className="docker-logs__toolbar">
-          <AppSelect
-            label="Lines"
-            onChange={(event) => handleTailChange(event.target.value)}
-            style={{ width: 112 }}
-            value={tail}
-          >
-            {TAIL_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </AppSelect>
           <AppSelect
             label="Container"
             onChange={(event) =>
@@ -403,9 +427,7 @@ const DockerLogsPage = ({
           <AppVirtualTable
             ariaLabel="Docker logs"
             columns={columns}
-            // Newest first, like General logs; the buffer and exports stay
-            // chronological.
-            data={visible.toReversed()}
+            data={groupDockerLogRows(visible)}
             density="dense"
             emptyMessage={emptyMessage}
             fillAvailable

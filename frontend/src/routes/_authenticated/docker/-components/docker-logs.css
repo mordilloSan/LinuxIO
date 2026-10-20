@@ -30,6 +30,89 @@
   overflow-wrap: anywhere;
 }
 
-.docker-logs__line--stderr {
-  color: var(--app-palette-error-main);
+.docker-logs__time {
+  font-family: var(--app-font-mono);
+}
+
+/* Level marker: a dot for one line, a rail for a grouped entry or an error,
+   in Dozzle's colours. The cell drops its padding so rails join across rows. */
+.app-dt__cell.docker-logs__level-cell {
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+}
+
+.docker-logs__level {
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+
+.docker-logs__level[data-position="start"],
+.docker-logs__level[data-position="middle"],
+.docker-logs__level[data-position="end"],
+.docker-logs__level[data-level="error"],
+.docker-logs__level[data-level="fatal"] {
+  align-self: stretch;
+  width: 3px;
+  height: auto;
+}
+
+.docker-logs__level[data-position="start"] {
+  border-radius: 9999px 9999px 0 0;
+}
+
+.docker-logs__level[data-position="middle"] {
+  border-radius: 0;
+}
+
+.docker-logs__level[data-position="end"] {
+  border-radius: 0 0 9999px 9999px;
+}
+
+.docker-logs__level[data-level="info"] {
+  background: var(--app-palette-success-main);
+}
+
+.docker-logs__level[data-level="warn"] {
+  background: var(--app-palette-warning-main);
+}
+
+.docker-logs__level[data-level="error"],
+.docker-logs__level[data-level="fatal"] {
+  background: var(--app-palette-error-main);
+}
+
+.docker-logs__level[data-level="debug"],
+.docker-logs__level[data-level="trace"] {
+  background: var(--app-palette-info-main);
+}
+
+.docker-logs__ansi--bold {
+  font-weight: 700;
+}
+
+/* The eight ANSI colours, tuned per scheme (Dozzle's palette); bright
+   variants share them. */
+.docker-logs {
+  --docker-log-ansi-black: oklch(25% 0 0);
+  --docker-log-ansi-red: oklch(52% 0.2 25);
+  --docker-log-ansi-green: oklch(52% 0.15 150);
+  --docker-log-ansi-yellow: oklch(60% 0.13 75);
+  --docker-log-ansi-blue: oklch(50% 0.17 255);
+  --docker-log-ansi-magenta: oklch(50% 0.2 330);
+  --docker-log-ansi-cyan: oklch(55% 0.1 210);
+  --docker-log-ansi-white: oklch(70% 0 0);
+}
+
+:root[data-app-color-scheme="dark"] .docker-logs {
+  --docker-log-ansi-black: oklch(45% 0 0);
+  --docker-log-ansi-red: oklch(65% 0.2 25);
+  --docker-log-ansi-green: oklch(72% 0.16 150);
+  --docker-log-ansi-yellow: oklch(80% 0.13 85);
+  --docker-log-ansi-blue: oklch(70% 0.14 250);
+  --docker-log-ansi-magenta: oklch(68% 0.19 330);
+  --docker-log-ansi-cyan: oklch(75% 0.11 200);
+  --docker-log-ansi-white: oklch(89% 0 0);
 }
