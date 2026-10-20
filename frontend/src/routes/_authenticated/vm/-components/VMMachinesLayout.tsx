@@ -2,12 +2,7 @@ import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useState } from "react";
 
-import {
-  linuxio,
-  openVMConsoleStream,
-  type VirtualMachine,
-  useCallMutation,
-} from "@/api";
+import { linuxio, type VirtualMachine, useCallMutation } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
@@ -15,12 +10,7 @@ import { getMutationErrorMessage } from "@/utils/mutations";
 
 import DeleteVMDialog from "./DeleteVMDialog";
 import VMListTable from "./VMListTable";
-import {
-  type ConsoleSession,
-  type VMAction,
-  VM_TOAST,
-  normalizeVMDeleteResult,
-} from "./vmShared";
+import { type VMAction, VM_TOAST, normalizeVMDeleteResult } from "./vmShared";
 import { VMPreflightCard } from "./VMTabs";
 
 // noVNC only loads once a console is opened, like the docker TerminalDialog.
@@ -65,9 +55,7 @@ const VMMachinesLayout = () => {
   const [pendingDeleteVM, setPendingDeleteVM] = useState<VirtualMachine | null>(
     null,
   );
-  const [consoleSession, setConsoleSession] = useState<ConsoleSession | null>(
-    null,
-  );
+  const [consoleVM, setConsoleVM] = useState<VirtualMachine | null>(null);
   const [consoleDialogOpen, setConsoleDialogOpen] = useState(false);
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, VMAction>
@@ -224,10 +212,7 @@ const VMMachinesLayout = () => {
               setDeleteDialogOpen(true);
             }}
             onOpenConsole={(vm) => {
-              setConsoleSession({
-                stream: openVMConsoleStream(vm.name),
-                vm,
-              });
+              setConsoleVM(vm);
               setConsoleDialogOpen(true);
             }}
             onRunAction={runAction}
@@ -258,12 +243,12 @@ const VMMachinesLayout = () => {
         />
       )}
       <Suspense fallback={null}>
-        {consoleSession && (
+        {consoleVM && (
           <ConsoleDialog
             onClose={() => setConsoleDialogOpen(false)}
-            onExited={() => setConsoleSession(null)}
+            onExited={() => setConsoleVM(null)}
             open={consoleDialogOpen}
-            session={consoleSession}
+            vm={consoleVM}
           />
         )}
       </Suspense>

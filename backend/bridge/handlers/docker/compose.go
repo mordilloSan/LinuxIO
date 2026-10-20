@@ -165,10 +165,10 @@ func updateComposeProjectService(project *apischema.ComposeProject, ctr containe
 }
 
 func updateComposeProjectContainer(project *apischema.ComposeProject, ctr container.Summary) {
-	iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
+	iconIdentifier, resolvedURL := resolveContainerPresentation(ctr)
 	project.Containers = append(
 		project.Containers,
-		containerInfoFromSummary(ctr, nil, iconIdentifier, resolvedURL, proxyPort),
+		containerInfoFromSummary(ctr, nil, iconIdentifier, resolvedURL),
 	)
 }
 

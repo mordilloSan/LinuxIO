@@ -25,6 +25,8 @@ type createdVMVolume struct {
 type createdVMStorage struct {
 	Boot createdVMVolume
 	Seed *createdVMVolume
+	// LegacyBoot is set when an imported appliance declares BIOS firmware.
+	LegacyBoot bool
 }
 
 type vmCreateReporter func(apischema.VMCreateProgress)
@@ -49,6 +51,14 @@ func CreateVMWithProgress(ctx context.Context, req apischema.VMCreateRequest, re
 		}
 		req.ISOPath = isoPath
 		preflightReq.ISOPath = &isoPath
+	}
+	if sourceType == vmSourceTypeImport {
+		importPath, importErr := validateImportDisk(req.ImportPath)
+		if importErr != nil {
+			return apischema.VirtualMachine{}, importErr
+		}
+		req.ImportPath = importPath
+		preflightReq.ImportPath = &importPath
 	}
 	reportVMCreateProgress(report, "preflight", "Checking host virtualization prerequisites", "", nil)
 	preflight, preflightErr := runPreflight(ctx, preflightReq)
@@ -130,6 +140,19 @@ func createVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMCre
 		return apischema.VirtualMachine{}, storageErr
 	}
 
+	switch req.Firmware {
+	case vmFirmwareUEFI:
+		if !firmware.UEFIAvailable {
+			deleteCreatedStorage(conn, storage)
+			return apischema.VirtualMachine{}, conflictf("UEFI firmware was requested but OVMF is not installed")
+		}
+	case vmFirmwareBIOS:
+		firmware.UEFIAvailable = false
+	default:
+		if storage.LegacyBoot {
+			firmware.UEFIAvailable = false
+		}
+	}
 	reportVMCreateProgress(report, "define", "Defining libvirt domain", req.Name, nil)
 	domain, domainErr := defineDomainWithRollback(conn, req, firmware, storage)
 	if domainErr != nil {
@@ -155,8 +178,11 @@ func createVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMCre
 }
 
 func createManagedStorage(ctx context.Context, conn libvirtConn, pool libvirt.StoragePool, volumeName string, req apischema.VMCreateRequest, report vmCreateReporter) (createdVMStorage, error) {
-	if normalizedVMSourceType(req.SourceType) == vmSourceTypeImagePreset {
+	switch normalizedVMSourceType(req.SourceType) {
+	case vmSourceTypeImagePreset:
 		return createManagedImageStorage(ctx, conn, pool, volumeName, req, report)
+	case vmSourceTypeImport:
+		return createManagedImportStorage(ctx, conn, pool, volumeName, req, report)
 	}
 	volume, path, volumeErr := createManagedVolume(conn, pool, volumeName, req.DiskGB)
 	if volumeErr != nil {

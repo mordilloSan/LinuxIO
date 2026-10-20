@@ -1,4 +1,4 @@
-import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
+import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
@@ -17,7 +17,6 @@ import DriveCard from "@/components/cards/DriveCard";
 import FilesystemCard from "@/components/cards/FilesystemCard";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppCollapse from "@/components/ui/AppCollapse";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppDivider from "@/components/ui/AppDivider";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
@@ -25,6 +24,7 @@ import { TASK_TYPE_STORAGE_SMART_TEST } from "@/constants/backgroundTaskTypes";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useCapability } from "@/hooks/useCapabilities";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import {
   EASING_DECELERATE,
@@ -39,10 +39,11 @@ import {
   PowerStatesTab,
   SelfTestsTab,
   SmartAttributesTab,
+  StoragePools,
   TabPanel,
 } from "./components";
 import type { DriveInfo, SmartTestProgressEvent } from "./types";
-import { parseSizeToBytes } from "./utils";
+import { findBackingDrive, parseSizeToBytes } from "./utils";
 
 const storageRouteApi = getRouteApi("/_authenticated/storage/");
 const STORAGE_TOAST_META = {
@@ -57,32 +58,6 @@ interface DriveDetailsProps {
   smartmontoolsAvailable: boolean;
   smartmontoolsReason: string;
 }
-
-const normalizeDeviceName = (device: string): string =>
-  device.replace(/^\/dev\//, "");
-
-const findBackingDrive = (
-  device: string,
-  drives: DriveInfo[],
-): DriveInfo | null => {
-  const normalizedDevice = normalizeDeviceName(device);
-  return (
-    drives.find((drive) => {
-      if (normalizedDevice === drive.name) {
-        return true;
-      }
-      if (normalizedDevice.startsWith(`${drive.name}p`)) {
-        return true;
-      }
-      const suffix = normalizedDevice.slice(drive.name.length);
-      return (
-        suffix.length > 0 &&
-        normalizedDevice.startsWith(drive.name) &&
-        /^\d+$/.test(suffix)
-      );
-    }) ?? null
-  );
-};
 
 const DriveDetails = ({
   drive,
@@ -316,17 +291,8 @@ const DiskOverview = () => {
   const expanded = typeof search.drive === "string" ? search.drive : undefined;
   const selectedMountpoint =
     typeof search.fs === "string" ? search.fs : undefined;
-  const [creatingSubvolumeMountpoint, setCreatingSubvolumeMountpoint] =
-    useState<string | null>(null);
-  const [subvolumeDrafts, setSubvolumeDrafts] = useState<
-    Record<string, string>
-  >({});
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
-  const {
-    isEnabled: btrfsMaintenanceAvailable,
-    reason: btrfsMaintenanceReason,
-  } = useCapability("btrfsMaintenanceAvailable");
   const [{ data: rawDrivesData }, { data: liveData }, { data: nfsMountsData }] =
     useSuspenseQueries({
       queries: [
@@ -346,18 +312,6 @@ const DiskOverview = () => {
   const liveSmart = liveData?.smart ?? {};
   const filesystems = liveData?.filesystems ?? [];
   const nfsMounts = Array.isArray(nfsMountsData) ? nfsMountsData : [];
-  const { data: btrfsMaintenance } = useQuery({
-    ...linuxio.storage.get_btrfs_maintenance,
-    enabled:
-      btrfsMaintenanceAvailable &&
-      filesystems.some((fs) => fs.fstype === "btrfs"),
-  });
-  const { mutate: setBtrfsMaintenance, isPending: isUpdatingMaintenance } =
-    useCallMutation(linuxio.storage.set_btrfs_maintenance, {
-      success: () => toast.success("Btrfs maintenance schedule updated"),
-      error: "Failed to update btrfs maintenance schedule",
-      toast: STORAGE_TOAST_META,
-    });
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
     useCallMutation(linuxio.storage.unmount_filesystem, {
       success: () => {
@@ -373,51 +327,16 @@ const DiskOverview = () => {
       error: "Failed to unmount filesystem",
       toast: STORAGE_TOAST_META,
     });
-  const { mutate: createBtrfsSubvolume, isPending: isCreatingSubvolume } =
-    useCallMutation(linuxio.storage.create_btrfs_subvolume, {
-      success: (result) => {
-        if (result.path) {
-          toast.success(`Created subvolume at ${result.path}`);
-        } else {
-          toast.success("Subvolume created");
-        }
-        if (result.mountpoint) {
-          setSubvolumeDrafts((prev) => {
-            const next = {
-              ...prev,
-            };
-            delete next[result.mountpoint!];
-            return next;
-          });
-        }
-      },
-      error: "Failed to create btrfs subvolume",
-      toast: STORAGE_TOAST_META,
+  useClearSelectionOnEscape(Boolean(expanded || selectedMountpoint), () => {
+    void navigate({
+      to: "/storage",
+      search: (previous) => ({
+        ...previous,
+        drive: undefined,
+        fs: undefined,
+      }),
     });
-  useEffect(() => {
-    if (!expanded && !selectedMountpoint && !creatingSubvolumeMountpoint)
-      return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        (e.key === "Escape" || e.key === "Esc") &&
-        !e.defaultPrevented &&
-        !document.querySelector(OVERLAY_ROOT_SELECTOR)
-      ) {
-        void navigate({
-          to: "/storage",
-          search: (previous) => ({
-            ...previous,
-            drive: undefined,
-            fs: undefined,
-          }),
-        });
-        setCreatingSubvolumeMountpoint(null);
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [creatingSubvolumeMountpoint, expanded, navigate, selectedMountpoint]);
+  });
   const handleToggle = (driveName: string) => {
     void navigate({
       to: "/storage",
@@ -435,6 +354,7 @@ const DiskOverview = () => {
     vendor: d.vendor,
     serial: d.serial,
     ro: d.ro,
+    rotational: d.rotational,
     smart: liveSmart[d.name]?.data,
     power: liveSmart[d.name]?.power,
   }));
@@ -455,7 +375,6 @@ const DiskOverview = () => {
     );
   });
   const handleFilesystemToggle = (filesystem: FilesystemInfo) => {
-    setCreatingSubvolumeMountpoint(null);
     void navigate({
       to: "/storage",
       search: (previous) => ({
@@ -465,6 +384,12 @@ const DiskOverview = () => {
             ? undefined
             : filesystem.mountpoint,
       }),
+    });
+  };
+  const handleOpenVolume = (mountpoint: string) => {
+    void navigate({
+      to: "/storage",
+      search: (previous) => ({ ...previous, fs: mountpoint }),
     });
   };
   const handleBrowseFilesystem = (mountpoint: string) => {
@@ -482,36 +407,13 @@ const DiskOverview = () => {
         fs: undefined,
       }),
     });
-    setCreatingSubvolumeMountpoint(null);
   };
   const handleUnmountFilesystem = (mountpoint: string) => {
     unmountFilesystem({ mountpoint });
   };
-  const handleSubvolumeNameChange = (mountpoint: string, value: string) => {
-    setSubvolumeDrafts((prev) => ({
-      ...prev,
-      [mountpoint]: value,
-    }));
-  };
-  const handleCreateSubvolume = (mountpoint: string) => {
-    const name = (subvolumeDrafts[mountpoint] ?? "").trim();
-    if (!name) {
-      toast.error("Subvolume name is required");
-      return;
-    }
-    setCreatingSubvolumeMountpoint(mountpoint);
-    createBtrfsSubvolume(
-      { mountpoint, name },
-      {
-        onSettled: () => {
-          setCreatingSubvolumeMountpoint(null);
-        },
-      },
-    );
-  };
   return (
     <div>
-      {!selectedMountpoint && (
+      {expanded && !selectedMountpoint && (
         <>
           <AppTypography
             style={{
@@ -572,6 +474,7 @@ const DiskOverview = () => {
                         expanded={expanded === drive.name}
                         model={drive.model}
                         name={drive.name}
+                        rotational={drive.rotational}
                         onClick={() => handleToggle(drive.name)}
                         sizeBytes={drive.sizeBytes}
                         smart={drive.smart}
@@ -596,7 +499,17 @@ const DiskOverview = () => {
         </>
       )}
 
-      {!expanded && (
+      {!expanded && !selectedMountpoint && (
+        <StoragePools
+          drives={drives}
+          filesystems={relevantFS}
+          nfsMounts={nfsMounts}
+          onInspectDrive={handleInspectDrive}
+          onOpenVolume={handleOpenVolume}
+        />
+      )}
+
+      {!expanded && selectedMountpoint && (
         <>
           <AppTypography
             style={{
@@ -605,7 +518,7 @@ const DiskOverview = () => {
             }}
             variant="h6"
           >
-            Filesystems
+            Volume
           </AppTypography>
           <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
             <AnimatePresence initial={false}>
@@ -649,37 +562,20 @@ const DiskOverview = () => {
                       }}
                     >
                       <FilesystemCard
-                        btrfsMaintenance={btrfsMaintenance ?? null}
-                        btrfsMaintenanceReason={
-                          btrfsMaintenanceAvailable
-                            ? null
-                            : btrfsMaintenanceReason
-                        }
-                        isUpdatingMaintenance={isUpdatingMaintenance}
-                        onSetMaintenance={(mountpoint, task, period) =>
-                          setBtrfsMaintenance({ mountpoint, task, period })
-                        }
                         backingDrive={(() => {
                           const bd = findBackingDrive(fs.device, drives);
                           return bd ? { name: bd.name, model: bd.model } : null;
                         })()}
                         filesystem={fs}
-                        isCreatingSubvolume={
-                          creatingSubvolumeMountpoint === fs.mountpoint &&
-                          isCreatingSubvolume
-                        }
                         isUnmounting={isUnmounting}
                         nfsMount={
                           nfsMountByMountpoint.get(fs.mountpoint) ?? null
                         }
                         onBrowse={handleBrowseFilesystem}
                         onClick={() => handleFilesystemToggle(fs)}
-                        onCreateSubvolume={handleCreateSubvolume}
                         onInspectDrive={handleInspectDrive}
-                        onSubvolumeNameChange={handleSubvolumeNameChange}
                         onUnmount={handleUnmountFilesystem}
                         selected={selectedMountpoint === fs.mountpoint}
-                        subvolumeName={subvolumeDrafts[fs.mountpoint] ?? ""}
                       />
                     </AppGrid>
                   ),

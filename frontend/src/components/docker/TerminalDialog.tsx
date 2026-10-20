@@ -168,7 +168,6 @@ const TerminalDialog = ({
           <AppSelect
             disabled={!isOpen || availableShells.length === 0}
             onChange={handleShellChange}
-            size="small"
             style={{ minWidth: 80 }}
             value={activeShell}
             variant="standard"

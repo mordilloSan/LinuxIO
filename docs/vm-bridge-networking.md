@@ -72,8 +72,12 @@ LinuxIO offers only wired physical interfaces that are not wireless, loopback,
 already enslaved, or carrying non-link-local addresses/default routes. A NIC
 that is the parent of macvlan/macvtap/ipvlan links (a Docker `macvlan`
 network, for example) is refused in both flows: those links hold the kernel
-rx handler a bridge port needs, so enslaving fails with `EBUSY`. The reason
-names the links and the fix: remove them, set up the bridge, recreate them
+rx handler a bridge port needs, so enslaving fails with `EBUSY`. The scan
+covers every network namespace reachable through `/proc/*/ns/net`,
+`/run/netns` and `/run/docker/netns`, because a Docker macvlan network moves
+the container's link into the container namespace where the host link list
+and sysfs no longer show it. The reason names the links, with the owning pid
+or namespace path, and the fix: remove them, set up the bridge, recreate them
 with the bridge as parent.
 
 Docker loads `br_netfilter` and sets the iptables `FORWARD` policy to `DROP`,
@@ -133,7 +137,13 @@ interface and refuses mixed or unknown ownership. An interface configured in
 
 1. Create a Netplan D-Bus configuration object.
 2. `Set` deltas remove L3 keys from the member and place them on the bridge,
-   preserving the member's effective renderer.
+   preserving the member's effective renderer. The member delta uses the file
+   that defines the interface as its origin hint, because `netplan set` only
+   rewrites its origin-hint file and later files merge by amending keys: a
+   delta under a fresh file would leave the installer's addresses and default
+   route on the bridge port. Netplan rewrites that file inside its staged copy
+   and restores the original on `Cancel`. The bridge delta goes to
+   `90-linuxio-handoff-<bridge>.yaml`.
 3. Call `Try(90)` and leave the transaction pending.
 4. Confirmation calls `Apply`; explicit revert calls `Cancel`; no confirmation
    lets Netplan reject the change automatically.
@@ -243,7 +253,12 @@ connectivity):
 
 - [ ] Ubuntu Server (Netplan/networkd) with Docker: handoff from the Create VM
   dialog, Home Assistant reachable from the LAN and from a container, and still
-  reachable after a host reboot (exercises the libvirt hook).
+  reachable after a host reboot (exercises the libvirt hook). The 2026-10-19
+  run on such a host rolled back cleanly: networkd logged `Failed to set master
+  interface: Device or resource busy` because a Docker macvlan network on the
+  NIC lived in a container namespace, and netplan warned about two default
+  routes because the member delta was written under a fresh file. Both are
+  fixed above; the run has not been repeated yet.
 - [ ] Stock Fedora/NetworkManager host with `ipv6.method=auto` defaults: handoff
   succeeds and the host keeps its IPv4 address.
 - [ ] ifupdown Debian host: both bridge flows show the recipe; a hand-made

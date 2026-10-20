@@ -190,7 +190,6 @@ const BtrfsMaintenanceControls = ({
                           event.target.value,
                         )
                       }
-                      size="small"
                       value={value}
                     >
                       {task.periods.map((period) => (

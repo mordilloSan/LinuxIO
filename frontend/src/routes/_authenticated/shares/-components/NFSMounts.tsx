@@ -640,7 +640,6 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
                 fullWidth
                 label="NFS version"
                 onChange={(e) => setNfsVersion(e.target.value)}
-                size="small"
                 value={nfsVersion}
               >
                 {NFS_VERSION_OPTIONS.map((o) => (
@@ -655,7 +654,6 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
                 fullWidth
                 label="Protocol"
                 onChange={(e) => setProtocol(e.target.value)}
-                size="small"
                 value={protocol}
               >
                 {NFS_PROTO_OPTIONS.map((o) => (
@@ -670,7 +668,6 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
                 fullWidth
                 label="Local lock"
                 onChange={(e) => setLocalLock(e.target.value)}
-                size="small"
                 value={localLock}
               >
                 {NFS_LOCALLOCK_OPTIONS.map((o) => (

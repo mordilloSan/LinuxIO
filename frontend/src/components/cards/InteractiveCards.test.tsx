@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { NetworkInterface, WireGuardInterface } from "@/api";
 import DockerStatCard from "@/components/cards/DockerStatCard";
-import DriveCard from "@/components/cards/DriveCard";
+import DriveCard, { driveIcon } from "@/components/cards/DriveCard";
 import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
 import { testNetworkInterface } from "@/test/networkInterface";
@@ -128,5 +128,15 @@ describe("interactive cards", () => {
     trigger.focus();
     await user.keyboard(" ");
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("driveIcon", () => {
+  it("draws solid-state drives as an M.2 stick and the rest as a platter", () => {
+    expect(driveIcon("nvme")).toBe("bi:nvme");
+    expect(driveIcon("sata", false)).toBe("bi:nvme");
+    expect(driveIcon("sata", true)).toBe("mdi:harddisk");
+    expect(driveIcon("usb")).toBe("mdi:harddisk");
+    expect(driveIcon(undefined)).toBe("mdi:harddisk");
   });
 });

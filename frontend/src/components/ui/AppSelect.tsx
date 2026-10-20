@@ -86,7 +86,7 @@ function collectOptions(children: ReactNode, group?: string): OptionData[] {
 
 const AppSelect = ({
   ref,
-  size = "medium",
+  size = "small",
   variant = "outlined",
   disableUnderline,
   fullWidth,

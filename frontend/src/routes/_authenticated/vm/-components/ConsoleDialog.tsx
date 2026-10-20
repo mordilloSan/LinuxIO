@@ -3,7 +3,12 @@ import RFB from "@novnc/novnc";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
-import type { ResultFrame } from "@/api";
+import {
+  openVMConsoleStream,
+  type ResultFrame,
+  useStreamMux,
+  type VirtualMachine,
+} from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import { AppDialogTitle } from "@/components/ui/AppDialog";
@@ -12,8 +17,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useStreamMessageChannel } from "@/hooks/useStreamMessageChannel";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
-
-import type { ConsoleSession } from "./vmShared";
 
 const consolePaperStyle = (isMobile: boolean): CSSProperties => ({
   height: isMobile ? "calc(100vh - 24px)" : "min(82vh, 820px)",
@@ -37,25 +40,27 @@ export default function ConsoleDialog({
   onClose,
   onExited,
   open,
-  session,
+  vm,
 }: {
   onClose: () => void;
   onExited?: () => void;
   open: boolean;
-  session: ConsoleSession;
+  vm: VirtualMachine;
 }) {
   const isMobile = useAppMediaQuery(down("sm"));
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const { stream, vm } = session;
-  const [status, setStatus] = useState(stream ? "Connecting" : "Unavailable");
-  const [error, setError] = useState<string | null>(
-    stream ? null : "Console stream is unavailable.",
-  );
+  const { isOpen: muxOpen } = useStreamMux();
+  const [status, setStatus] = useState("Connecting");
+  const [error, setError] = useState<string | null>(null);
   const { openChannel, closeChannel } = useStreamMessageChannel();
 
   useEffect(() => {
-    if (!open || !stream || !viewportRef.current) return;
+    if (!open || !muxOpen || !viewportRef.current) return;
 
+    // The effect owns the stream so each run (StrictMode replays it in dev)
+    // opens and closes its own instead of reattaching to a closed one.
+    const stream = openVMConsoleStream(vm.name);
+    if (!stream) return;
     const viewport = viewportRef.current;
     viewport.innerHTML = "";
     const handleStreamResult = (result: ResultFrame) => {
@@ -109,7 +114,9 @@ export default function ConsoleDialog({
       closeChannel();
       viewport.innerHTML = "";
     };
-  }, [open, stream, openChannel, closeChannel]);
+  }, [open, muxOpen, vm.name, openChannel, closeChannel]);
+
+  const shownError = muxOpen ? error : "Console stream is unavailable.";
 
   return (
     <GeneralDialog
@@ -124,16 +131,16 @@ export default function ConsoleDialog({
         <div>
           {vm.name}
           <AppTypography color="text.secondary" variant="caption">
-            {status}
+            {muxOpen ? status : "Unavailable"}
           </AppTypography>
         </div>
         <AppIconButton aria-label="Close console" onClick={onClose}>
           <Icon height={22} icon="mdi:close" width={22} />
         </AppIconButton>
       </AppDialogTitle>
-      {error && (
+      {shownError && (
         <AppAlert severity="error" style={consoleErrorStyle}>
-          {error}
+          {shownError}
         </AppAlert>
       )}
       <div ref={viewportRef} style={consoleViewportStyle} />

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -209,7 +210,11 @@ func TestStreamNativeDownloadRejectsDataBeforeProgress(t *testing.T) {
 	if err := streamNativeDownload(response, req, server); err == nil {
 		t.Fatal("streamNativeDownload error = nil, want protocol error")
 	}
-	<-writeErr
+	// The handler may stop reading before the payload lands, so the write
+	// either completes or fails against the closed pipe.
+	if err := <-writeErr; err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("write unexpected frame: %v", err)
+	}
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadGateway)
 	}

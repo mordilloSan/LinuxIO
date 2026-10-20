@@ -91,6 +91,10 @@ func applyOfflineUpdates(ctx context.Context) (apischema.OfflineUpdatesResponse,
 	if b == nil {
 		return apischema.OfflineUpdatesResponse{}, fmt.Errorf("PackageKit not available")
 	}
+	report, err := preUpdateSnapshot(ctx)
+	if msg := preUpdateSnapshotProblems(report, err); msg != "" {
+		slog.Warn("btrfs pre-update snapshot problems; applying offline updates anyway", "problems", msg)
+	}
 	return apischema.OfflineUpdatesResponse{}, b.ApplyOfflineNow(ctx)
 }
 

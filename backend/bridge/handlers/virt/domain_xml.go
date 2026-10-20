@@ -3,6 +3,7 @@ package virt
 import (
 	"encoding/xml"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"uuid"
 
@@ -64,19 +65,7 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 	} else {
 		osConfig.BootDevices = []libvirtxml.DomainBootDevice{{Dev: "hd"}}
 	}
-	if firmware.UEFIAvailable {
-		osConfig.Firmware = "efi"
-		// Without stateless="no", libvirt 12 can autoselect stateless SEV
-		// firmware (OVMF.amdsev.fd), which has no NVRAM and which Ubuntu's
-		// AppArmor helper refuses to load.
-		osConfig.Loader = &libvirtxml.DomainLoader{Stateless: "no"}
-		osConfig.FirmwareInfo = &libvirtxml.DomainOSFirmwareInfo{
-			Features: []libvirtxml.DomainOSFirmwareFeature{
-				{Enabled: "no", Name: "secure-boot"},
-				{Enabled: "no", Name: "enrolled-keys"},
-			},
-		}
-	}
+	setDomainFirmware(osConfig, firmware.UEFIAvailable)
 
 	socketPath := vncSocketPath(req.Name)
 	disks := []libvirtxml.DomainDisk{
@@ -171,6 +160,36 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 	return domain, nil
 }
 
+// setDomainFirmware switches <os> between libvirt's UEFI autoselection and
+// plain SeaBIOS, dropping any loader or NVRAM left from the other mode.
+func setDomainFirmware(osConfig *libvirtxml.DomainOS, uefi bool) {
+	osConfig.Firmware = ""
+	osConfig.FirmwareInfo = nil
+	osConfig.Loader = nil
+	osConfig.NVRam = nil
+	if !uefi {
+		return
+	}
+	osConfig.Firmware = "efi"
+	// Without stateless="no", libvirt 12 can autoselect stateless SEV
+	// firmware (OVMF.amdsev.fd), which has no NVRAM and which Ubuntu's
+	// AppArmor helper refuses to load.
+	osConfig.Loader = &libvirtxml.DomainLoader{Stateless: "no"}
+	osConfig.FirmwareInfo = &libvirtxml.DomainOSFirmwareInfo{
+		Features: []libvirtxml.DomainOSFirmwareFeature{
+			{Enabled: "no", Name: "secure-boot"},
+			{Enabled: "no", Name: "enrolled-keys"},
+		},
+	}
+}
+
+func domainFirmware(osConfig *libvirtxml.DomainOS) apischema.VMFirmware {
+	if osConfig != nil && (osConfig.Firmware == "efi" || osConfig.Loader != nil) {
+		return vmFirmwareUEFI
+	}
+	return vmFirmwareBIOS
+}
+
 func buildVolumeXML(name string, diskGB int) (string, error) {
 	if diskGB <= 0 {
 		return "", badRequestf("diskGB must be greater than 0")
@@ -200,14 +219,14 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 	if req.VCPUs <= 0 {
 		return badRequestf("vcpus must be greater than 0")
 	}
+	if req.VCPUs > runtime.NumCPU() {
+		return badRequestf("vcpus must not exceed the host's %d logical CPUs", runtime.NumCPU())
+	}
 	if req.MemoryMB < 256 {
 		return badRequestf("memoryMB must be at least 256")
 	}
 	if req.DiskGB <= 0 {
 		return badRequestf("diskGB must be greater than 0")
-	}
-	if sourceType == vmSourceTypeISO && req.ISOPath == "" {
-		return badRequestf("isoPath is required")
 	}
 	if req.TemplateID != "" && (sourceType != vmSourceTypeImagePreset || !validTemplateID.MatchString(req.TemplateID)) {
 		return badRequestf("templateId must identify a saved image template")
@@ -215,7 +234,23 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 	if err := validateVMNetworkName(req.Network); err != nil {
 		return err
 	}
-	if sourceType == vmSourceTypeImagePreset {
+	if err := validateVMFirmware(req.Firmware, false); err != nil {
+		return err
+	}
+	return validateCreateSource(req, sourceType)
+}
+
+func validateCreateSource(req apischema.VMCreateRequest, sourceType apischema.VMSourceType) error {
+	switch sourceType {
+	case vmSourceTypeISO:
+		if req.ISOPath == "" {
+			return badRequestf("isoPath is required")
+		}
+	case vmSourceTypeImport:
+		if strings.TrimSpace(req.ImportPath) == "" {
+			return badRequestf("importPath is required")
+		}
+	case vmSourceTypeImagePreset:
 		preset, err := imagePreset(req.ImagePresetID)
 		if err != nil {
 			return err
@@ -252,6 +287,7 @@ func parseVirtualMachine(dom libvirt.Domain, xmlDoc string, state string, autost
 		UUID:      parsed.UUID,
 		State:     state,
 		Autostart: autostart,
+		Firmware:  domainFirmware(parsed.OS),
 	}
 	if vm.Name == "" {
 		vm.Name = dom.Name

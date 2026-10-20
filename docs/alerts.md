@@ -71,6 +71,9 @@ incomplete checks leave the record alone.
 |---|---|---|---|
 | Automatic updates | `ExecStopPost=` drop-in on the provider's upgrade service, running `linuxio alert auto-update` | A run that matches the configured policy: failed, installed packages, or always | Never; each run is a new occurrence of the one `auto-update/run` record |
 | Docker update outcome | `linuxio-docker-update` worker, already root | A scheduled update fails or the replacement container is not healthy. One record per container name | The next successful update of that container |
+| Btrfs health | `storage.btrfs_list` bridge route, when the Btrfs tab loads | `btrfs/health-<uuid>`: a missing device or non-zero device error counters | The next list that shows a healthy filesystem |
+| Btrfs snapshots | `linuxio btrfs-snapshot` (hourly timer, pre-update hook, Run now) | `btrfs/snapshot-<uuid8>-<path>`: a failed snapshot or an unmounted filesystem | The next successful run for that rule |
+| Btrfs replication | `linuxio btrfs-snapshot run` and Run now | `btrfs/replication-<job id>`: a failed replication run | The next successful run of that job |
 
 Later sources follow the same shape: a root process that already knows the
 outcome calls `alerts.Raise` or `alerts.Resolve`, or a unit drop-in runs

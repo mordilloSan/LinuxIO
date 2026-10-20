@@ -34,6 +34,7 @@ its plan lands.
 |-----|-----|
 | [Alerts](./alerts.md) | The file-backed alert store, who raises alerts and how, the `linuxio alert` CLI, bridge routes, the navbar bell, and what is deliberately not built (no email or webhook delivery). |
 | [Automatic Updates](./automatic-updates.md) | Per-distribution automatic-update providers, the systemd timers LinuxIO manages, and how the backend selects a provider from `/etc/os-release`. |
+| [Btrfs](./btrfs.md) | The Storage → Btrfs tab: top-level access, snapshot layout, rollback steps and leftovers, the hourly snapshot timer and retention, pre-update snapshots, device operations, replication over SSH, quotas and compression, files written on the host, and what is refused. |
 | [Scheduled Scripts](./scheduled-execution.md) | Script scheduling through systemd, execution accounts, task controls, and retained journal logs. |
 | [Storage Topology](./storage-topology.md) | Block-device and mount inventory, application path relationships, live activity, and interpretation limits. |
 | [VM Bridge Networking](./vm-bridge-networking.md) | Attaching VMs to host bridges, spare-NIC and host-IP bridge setup through Netplan/NetworkManager, the Docker libvirt hook, and what is deliberately not automated. |

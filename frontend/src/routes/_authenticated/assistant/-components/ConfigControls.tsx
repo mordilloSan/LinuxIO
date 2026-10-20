@@ -65,7 +65,6 @@ function renderControl(
       disabled={disabled}
       key={option.id}
       onChange={(event) => onChange(option.id, event.target.value)}
-      size="small"
       value={option.currentValue}
       variant="standard"
     >

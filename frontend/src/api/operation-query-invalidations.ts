@@ -67,6 +67,12 @@ const DATETIME_KEYS: QueryKey[] = [
   endpointQueryPrefix("system.get_server_time"),
 ];
 
+const BTRFS_DEVICE_KEYS = [
+  endpointQueryPrefix("storage.btrfs_list"),
+  endpointQueryPrefix("storage.get_topology"),
+  endpointQueryPrefix("storage.get_drive_info"),
+];
+
 const VM_KEYS = [
   endpointQueryPrefix("virt.list"),
   endpointQueryPrefix("virt.get"),
@@ -295,10 +301,80 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.run_smart_test": [endpointQueryPrefix("monitoring.get_live")],
-  "storage.create_btrfs_subvolume": [
+  "storage.btrfs_subvolume_create": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
     endpointQueryPrefix("storage.get_topology"),
-    endpointQueryPrefix("monitoring.get_live"),
   ],
+  "storage.btrfs_subvolume_delete": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+  ],
+  "storage.btrfs_subvolume_set_readonly": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+  ],
+  "storage.btrfs_subvolume_set_default": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+  ],
+  "storage.btrfs_snapshot_create": [
+    endpointQueryPrefix("storage.btrfs_snapshots"),
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+  ],
+  "storage.btrfs_snapshot_delete": [
+    endpointQueryPrefix("storage.btrfs_snapshots"),
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+  ],
+  "storage.btrfs_snapshot_rollback": [
+    endpointQueryPrefix("storage.btrfs_snapshots"),
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+  ],
+  "storage.btrfs_snapshot_rule_set": [
+    endpointQueryPrefix("storage.btrfs_snapshot_rules"),
+  ],
+  "storage.btrfs_snapshot_rule_delete": [
+    endpointQueryPrefix("storage.btrfs_snapshot_rules"),
+  ],
+  "storage.btrfs_snapshot_run_now": [
+    endpointQueryPrefix("storage.btrfs_snapshot_rules"),
+    endpointQueryPrefix("storage.btrfs_snapshots"),
+  ],
+  "storage.btrfs_replication_job_set": [
+    endpointQueryPrefix("storage.btrfs_replication_jobs"),
+  ],
+  "storage.btrfs_replication_job_delete": [
+    endpointQueryPrefix("storage.btrfs_replication_jobs"),
+  ],
+  "storage.btrfs_replication_run": [
+    endpointQueryPrefix("storage.btrfs_replication_jobs"),
+    endpointQueryPrefix("storage.btrfs_snapshots"),
+  ],
+  "storage.btrfs_set_quotas": [
+    endpointQueryPrefix("storage.btrfs_settings"),
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.btrfs_snapshots"),
+  ],
+  "storage.btrfs_set_compression": [
+    endpointQueryPrefix("storage.btrfs_settings"),
+    endpointQueryPrefix("storage.btrfs_list"),
+    endpointQueryPrefix("storage.get_topology"),
+  ],
+  "storage.btrfs_qgroup_limit": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+  ],
+  "storage.btrfs_subvolume_set_compression": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+  ],
+  "storage.btrfs_device_add": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_device_remove": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_device_replace": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_balance": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_balance_cancel": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_scrub_start": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_scrub_cancel": BTRFS_DEVICE_KEYS,
   "storage.set_btrfs_maintenance": [
     endpointQueryPrefix("storage.get_btrfs_maintenance"),
   ],
@@ -347,4 +423,5 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "virt.force_off": VM_KEYS,
   "virt.suspend": VM_KEYS,
   "virt.resume": VM_KEYS,
+  "virt.set_firmware": VM_KEYS,
 };

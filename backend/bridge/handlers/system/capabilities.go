@@ -275,6 +275,14 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 		Install: &InstallSpec{PackageDebian: "btrfsmaintenance", PackageRHEL: "btrfsmaintenance"},
 	},
+	{
+		Name:    "btrfs",
+		LogName: "btrfs-progs",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkDependencyCommand("btrfs", "btrfs-progs"))
+		},
+		Install: &InstallSpec{PackageDebian: "btrfs-progs", PackageRHEL: "btrfs-progs"},
+	},
 }
 
 func CapabilitySpecByName(name string) (CapabilitySpec, bool) {
@@ -395,6 +403,8 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.LibvirtAvailable, out.LibvirtError = ok, errPtr
 	case "btrfs_maintenance":
 		out.BtrfsMaintenanceAvailable, out.BtrfsMaintenanceError = ok, errPtr
+	case "btrfs":
+		out.BtrfsAvailable, out.BtrfsError = ok, errPtr
 	default:
 		panic("system: unknown capability wire name " + name)
 	}

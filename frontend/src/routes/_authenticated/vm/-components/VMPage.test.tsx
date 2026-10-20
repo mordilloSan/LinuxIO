@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
     defaultPoolActive: true,
     defaultPoolExists: true,
     errors: [] as string[],
-    firmware: { biosAvailable: true, uefiAvailable: true },
+    firmware: { biosAvailable: true, detected: "uefi", uefiAvailable: true },
     isoReadable: true,
     kvmPresent: true,
     libvirtReachable: true,
@@ -409,6 +409,7 @@ vi.mock("@/api", async (importOriginal) => {
     },
     openTaskWatchStream: mocks.openTaskWatchStream,
     openVMConsoleStream: mocks.openVMConsoleStream,
+    useStreamMux: () => ({ isOpen: true }),
     waitForStreamResult: mocks.waitForStreamResult,
   };
 });
@@ -900,6 +901,73 @@ describe("Virtual Machines page", () => {
     });
   });
 
+  it("submits an imported OVA appliance with the import source type", async () => {
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: /import disk/i }));
+
+    expect(
+      within(dialog).queryByLabelText(/iso path/i),
+    ).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/name/i), "appliance");
+    const importField = within(dialog).getByLabelText(
+      /disk image or ova path/i,
+    );
+    await user.type(importField, "/srv/appliance.txt");
+    expect(
+      within(dialog).getByRole("button", { name: "Create" }),
+    ).toBeDisabled();
+    await user.clear(importField);
+    await user.type(importField, "/srv/appliance.ova");
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(mocks.virtCreate).toHaveBeenCalledWith({
+        diskGB: 32,
+        importPath: "/srv/appliance.ova",
+        memoryMB: 4096,
+        name: "appliance",
+        network: "default",
+        sourceType: "import",
+        start: true,
+        vcpus: 2,
+      });
+    });
+    expect(mocks.preflightRequests.at(-1)).toMatchObject({
+      importPath: "/srv/appliance.ova",
+      sourceType: "import",
+    });
+  });
+
+  it("submits an explicit firmware choice for custom installs", async () => {
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: /create vm/i }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("combobox", { name: "Firmware" }),
+    );
+    expect(
+      screen.getByRole("option", { name: "Auto (UEFI)" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "BIOS (legacy)" }));
+    await user.type(within(dialog).getByLabelText(/name/i), "legacy");
+    await user.type(
+      within(dialog).getByLabelText(/iso path/i),
+      "/isos/legacy.iso",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(mocks.virtCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ firmware: "bios", name: "legacy" }),
+      );
+    });
+    expect(within(dialog).getByText("firmware UEFI")).toBeInTheDocument();
+  });
+
   it("does not submit a directory path as install media", async () => {
     const { user } = await renderVMPage();
 
@@ -1254,7 +1322,9 @@ describe("Virtual Machines page", () => {
 
     await user.click(screen.getByRole("button", { name: "Console" }));
 
-    expect(mocks.openVMConsoleStream).toHaveBeenCalledWith("alpha");
+    await waitFor(() =>
+      expect(mocks.openVMConsoleStream).toHaveBeenCalledWith("alpha"),
+    );
     await waitFor(() => expect(mocks.rfbConstructor).toHaveBeenCalled());
   });
 

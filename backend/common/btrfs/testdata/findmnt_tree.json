@@ -1,0 +1,1 @@
+{"filesystems":[{"target":"/","source":"/dev/nvme0n1p2[/@]","uuid":"3f1c0a52-7d1e-4b8a-9c11-0e5a6b7d8f90","options":"rw,relatime,ssd,subvolid=256,subvol=/@","children":[{"target":"/home","source":"/dev/nvme0n1p2[/@home]","uuid":"3f1c0a52-7d1e-4b8a-9c11-0e5a6b7d8f90","options":"rw,relatime,ssd,subvolid=257,subvol=/@home"}]}]}

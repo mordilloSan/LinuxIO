@@ -57,7 +57,7 @@ export default function DialogGalleryPage() {
         size="small"
         value="51821"
       />
-      <AppSelect fullWidth label="Protocol" size="small" value="udp">
+      <AppSelect fullWidth label="Protocol" value="udp">
         <option value="udp">UDP</option>
       </AppSelect>
       <AppAutocomplete

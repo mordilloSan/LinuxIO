@@ -92,7 +92,9 @@ func runDaemon(args []string) int {
 	case sig := <-sigCh:
 		slog.Info("received signal, initiating graceful shutdown", "signal", sig)
 		cancel()
-		<-errCh
+		if err := <-errCh; err != nil {
+			slog.Warn("daemon shutdown returned error", "err", err)
+		}
 	case err := <-errCh:
 		if err != nil {
 			slog.Error("daemon exited with error", "err", err)

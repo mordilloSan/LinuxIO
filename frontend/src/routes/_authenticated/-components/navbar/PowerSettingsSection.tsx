@@ -284,7 +284,6 @@ const PowerSettingsSection = () => {
             onChange={(event) => setSelectedProfile(event.target.value)}
             renderOption={renderProfileOption}
             renderValue={renderProfileOption}
-            size="small"
             value={resolvedProfile}
           >
             {status.profiles.length === 0 ? (

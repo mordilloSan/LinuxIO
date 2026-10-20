@@ -52,8 +52,6 @@ func requestLogValues(requestPath string) (kind string, label string, displayPat
 		return "websocket", "websocket upgrade", requestPath
 	case strings.HasPrefix(requestPath, "/auth/"), strings.HasPrefix(requestPath, "/api/"):
 		return "api_http", "api http", requestPath
-	case strings.HasPrefix(requestPath, "/proxy/"):
-		return "proxy", "proxy request", summarizeProxyPath(requestPath)
 	case strings.HasPrefix(requestPath, "/assets/"):
 		return "asset", "asset request", "/assets/*"
 	case isStaticAsset(requestPath):
@@ -70,18 +68,6 @@ func isStaticAsset(requestPath string) bool {
 	}
 	return strings.HasPrefix(requestPath, "/favicon-") ||
 		strings.HasPrefix(requestPath, "/apple-touch-icon")
-}
-
-func summarizeProxyPath(requestPath string) string {
-	trimmed := strings.TrimPrefix(requestPath, "/proxy/")
-	if trimmed == "" {
-		return "/proxy"
-	}
-
-	if strings.Contains(trimmed, "/") {
-		return "/proxy/<container>/..."
-	}
-	return "/proxy/<container>"
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code.

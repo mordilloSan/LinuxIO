@@ -56,6 +56,7 @@ type dockerUpdateScheduleDocument struct {
 	Cleanup        bool                                    `json:"cleanup"`
 	ContainerNames []string                                `json:"container_names"`
 	IncludeStopped bool                                    `json:"include_stopped"`
+	UpdateAll      bool                                    `json:"update_all"`
 	UpdateStopped  bool                                    `json:"update_stopped"`
 	ReviveStopped  bool                                    `json:"revive_stopped"`
 }
@@ -156,6 +157,7 @@ func (s containerAutoUpdateStore) readOptions() (apischema.DockerContainerAutoUp
 			Cleanup:        document.Cleanup,
 			ContainerNames: document.ContainerNames,
 			IncludeStopped: document.IncludeStopped,
+			UpdateAll:      document.UpdateAll,
 			UpdateStopped:  document.UpdateStopped,
 			ReviveStopped:  document.ReviveStopped,
 		})
@@ -174,6 +176,7 @@ func (s containerAutoUpdateStore) writeOptions(opts apischema.DockerContainerAut
 		Cleanup:        opts.Cleanup,
 		ContainerNames: opts.ContainerNames,
 		IncludeStopped: opts.IncludeStopped,
+		UpdateAll:      opts.UpdateAll,
 		UpdateStopped:  opts.UpdateStopped,
 		ReviveStopped:  opts.ReviveStopped,
 	}
@@ -229,6 +232,7 @@ func normalizeContainerAutoUpdateOptions(opts apischema.DockerContainerAutoUpdat
 		Mode:           apischema.DockerContainerAutoUpdateMode(mode),
 		ReviveStopped:  opts.ReviveStopped,
 		Time:           timeOfDay,
+		UpdateAll:      opts.UpdateAll,
 		UpdateStopped:  opts.UpdateStopped,
 	}, nil
 }

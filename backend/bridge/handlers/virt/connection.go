@@ -115,6 +115,7 @@ func withLibvirt(ctx context.Context, fn func(libvirtConn) error) error {
 		}
 		disconnected := l.Disconnected()
 		defer func() {
+			_ = l.Disconnect() // clean CONNECT_CLOSE; a bare socket close makes libvirtd log "End of file while reading data"
 			_ = raw.Close()
 			<-disconnected
 			stopCancellation()

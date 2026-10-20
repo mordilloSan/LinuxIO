@@ -1,6 +1,5 @@
 import {
   LinuxIOError,
-  type Stream,
   type VMDeleteResult,
   type VMPreflight,
   type VirtualMachine,
@@ -13,11 +12,6 @@ export type VMAction =
   | "force_off"
   | "suspend"
   | "resume";
-
-export type ConsoleSession = {
-  stream: Stream | null;
-  vm: VirtualMachine;
-};
 
 export const VM_TOAST = { label: "Open VMs", to: "/vm" } as const;
 
@@ -84,11 +78,11 @@ export const DEFAULT_MANAGED_CLOUD_PATH = `${DEFAULT_MANAGED_ROOT_PATH}/cloud-im
 
 export type ReadyImagePreset = (typeof IMAGE_PRESETS)[number];
 export type VMPresetID = ReadyImagePreset["id"] | "custom";
-export type VMDialogSourceType = "iso" | "imagePreset";
+export type VMDialogSourceType = "iso" | "imagePreset" | "import";
 export type VMDialogImagePresetID = NonNullable<
   ReadyImagePreset["imagePresetId"]
 >;
-export type VMCreateMode = "iso" | "image";
+export type VMCreateMode = "iso" | "image" | "import";
 
 export function formatMemory(memoryMB: number): string {
   if (!memoryMB) return "-";
@@ -157,6 +151,10 @@ export function preflightReady(preflight: VMPreflight | undefined): boolean {
 
 export function isISOPath(path: string): boolean {
   return path.toLowerCase().endsWith(".iso");
+}
+
+export function isImportDiskPath(path: string): boolean {
+  return /\.(ova|qcow2|vmdk|vdi|img|raw)$/i.test(path);
 }
 
 export function normalizeFolderPath(path: string): string {

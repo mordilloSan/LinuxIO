@@ -244,7 +244,7 @@ fi
 grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --config-file /etc/linuxio/indexer/config.yaml' "$INDEXER_SERVICE" || fail "indexer service must start the managed daemon directly"
 grep -Fqx 'ExecStart=/usr/local/bin/linuxio-indexer --trigger-index --socket-path /run/linuxio/indexer.sock' \
 	"${REPO_ROOT}/packaging/systemd/linuxio-indexer-index.service" || fail "index timer must use the private socket trigger"
-if rg -q 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' \
+if grep -rEq 'linuxio-indexer-socket-user|INDEXER_SOCKET_GROUP' \
 	"${REPO_ROOT}/packaging/systemd" "${REPO_ROOT}/backend/auth"; then
 	fail "indexer socket access must not modify the auth launcher"
 fi
@@ -270,7 +270,7 @@ if grep -Fq 'linuxio-indexer.service' "$INDEXER_TARGET"; then
 	fail "linuxio.target must not start the indexer service"
 fi
 [[ -f "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml" ]] || fail "missing packaged indexer config"
-if rg -qv '^(exclude_paths:|  - |include_network_mounts:|[[:space:]]*$|#)' "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml"; then
+if grep -Evq '^(exclude_paths:|  - |include_network_mounts:|[[:space:]]*$|#)' "${REPO_ROOT}/packaging/etc/linuxio/indexer/config.yaml"; then
 	fail "indexer YAML contains non-scan policy"
 fi
 grep -Fq -- '--remove-data' "$UNINSTALLER" || fail "uninstaller must preserve data by default"

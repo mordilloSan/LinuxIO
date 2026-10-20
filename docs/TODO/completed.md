@@ -1,5 +1,12 @@
 # Completed or closed TODOs
 
+- [x] Completed [Btrfs management](../btrfs.md) (2026-10-19): the Storage →
+  Btrfs tab covers health alerts, subvolumes, snapshots with rollback, an
+  hourly timer for timeline snapshots and retention, pre-update snapshots,
+  device add/remove/replace/balance/scrub, local and SSH replication, quotas
+  and compression. RAID5/6, booting into snapshots from GRUB, and hooking
+  manual package-manager runs were declared out of scope.
+
 - [x] Completed [Alerts](../alerts.md) (2026-10-08, `be248b4c`): root-owned
   `alerts.json` store, `linuxio alert` CLI, automatic-update notify policy via
   an `ExecStopPost=` drop-in, the Docker update source, `alerts.*` bridge

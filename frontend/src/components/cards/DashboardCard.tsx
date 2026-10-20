@@ -94,7 +94,6 @@ export const CardHeaderSelect = ({
     <AppSelect
       disableUnderline
       onChange={handleSelectionChange}
-      size="small"
       style={
         {
           marginLeft: 0,

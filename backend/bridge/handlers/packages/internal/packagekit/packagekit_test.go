@@ -70,7 +70,9 @@ func TestOperationGateHonorsContextCancellation(t *testing.T) {
 	<-firstEntered
 	defer func() {
 		close(releaseFirst)
-		<-firstDone
+		if err := <-firstDone; err != nil {
+			t.Errorf("first operation returned %v", err)
+		}
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)

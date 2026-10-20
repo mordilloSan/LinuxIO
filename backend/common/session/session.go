@@ -95,6 +95,7 @@ type CapabilitiesAvailable struct {
 	LibvirtAvailable          bool `json:"libvirt_available"`
 	NodeAvailable             bool `json:"node_available"`
 	BtrfsMaintenanceAvailable bool `json:"btrfs_maintenance_available"`
+	BtrfsAvailable            bool `json:"btrfs_available"`
 }
 
 type CapabilitiesError struct {
@@ -116,6 +117,7 @@ type CapabilitiesError struct {
 	LibvirtError          *string `json:"libvirt_error,omitempty"`
 	NodeError             *string `json:"node_error,omitempty"`
 	BtrfsMaintenanceError *string `json:"btrfs_maintenance_error,omitempty"`
+	BtrfsError            *string `json:"btrfs_error,omitempty"`
 }
 
 type Session struct {

@@ -1,16 +1,13 @@
 import { useId } from "react";
 
 import { type FilesystemInfo, type NFSMount } from "@/api";
-import BtrfsMaintenanceControls, {
-  type BtrfsMaintenanceProps,
-} from "@/components/cards/BtrfsMaintenanceControls";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppDivider from "@/components/ui/AppDivider";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
-import AppTextField from "@/components/ui/AppTextField";
+import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { getUsageColor } from "@/constants/statusColors";
 import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
@@ -21,26 +18,19 @@ const SYSTEM_MOUNTPOINTS = new Set(["/", "/boot", "/boot/efi"]);
 const canUnmountFilesystem = (filesystem: FilesystemInfo): boolean =>
   !SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
 
-const canCreateSubvolume = (filesystem: FilesystemInfo): boolean =>
-  filesystem.fstype === "btrfs" && !filesystem.readOnly;
-
 interface BackingDrive {
   model?: string;
   name: string;
 }
 
-interface FilesystemCardDetailsProps extends BtrfsMaintenanceProps {
+interface FilesystemCardDetailsProps {
   backingDrive: BackingDrive | null;
   filesystem: FilesystemInfo;
-  isCreatingSubvolume: boolean;
   isUnmounting: boolean;
   nfsMount: NFSMount | null;
   onBrowse: (mountpoint: string) => void;
-  onCreateSubvolume: (mountpoint: string) => void;
   onInspectDrive: (driveName: string) => void;
-  onSubvolumeNameChange: (mountpoint: string, value: string) => void;
   onUnmount: (mountpoint: string) => void;
-  subvolumeName: string;
 }
 
 const FilesystemCardDetails = ({
@@ -48,17 +38,13 @@ const FilesystemCardDetails = ({
   backingDrive,
   nfsMount,
   isUnmounting,
-  isCreatingSubvolume,
-  subvolumeName,
   onBrowse,
   onInspectDrive,
   onUnmount,
-  onSubvolumeNameChange,
-  onCreateSubvolume,
-  ...btrfsMaintenance
 }: FilesystemCardDetailsProps) => {
   const isSystemMount = SYSTEM_MOUNTPOINTS.has(filesystem.mountpoint);
   const isNfs = filesystem.fstype === "nfs" || filesystem.fstype === "nfs4";
+  const isBtrfs = filesystem.fstype === "btrfs";
   return (
     <AppCollapse in={true} unmountOnExit>
       <div>
@@ -178,8 +164,8 @@ const FilesystemCardDetails = ({
               ? "This filesystem supports direct unmount here because NFS management already exists in the backend."
               : isNfs
                 ? "This looks like an NFS filesystem, but no matching NFS mount entry was loaded for direct actions."
-                : canCreateSubvolume(filesystem)
-                  ? "This btrfs filesystem can create subvolumes directly from the card."
+                : isBtrfs
+                  ? "Subvolumes, snapshots and maintenance for this btrfs filesystem are managed on the Btrfs tab."
                   : canUnmountFilesystem(filesystem)
                     ? "This filesystem can be unmounted directly from the card."
                     : "Protected system mounts stay visible here but do not expose unmount actions."}
@@ -215,6 +201,11 @@ const FilesystemCardDetails = ({
               Inspect Drive
             </AppButton>
           )}
+          {isBtrfs && (
+            <AppRouterLinkButton to="/storage/btrfs" variant="outlined">
+              Manage btrfs
+            </AppRouterLinkButton>
+          )}
           {canUnmountFilesystem(filesystem) && (
             <AppButton
               color="error"
@@ -226,64 +217,21 @@ const FilesystemCardDetails = ({
             </AppButton>
           )}
         </div>
-
-        {canCreateSubvolume(filesystem) && (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              alignItems: "center",
-              marginTop: 12,
-            }}
-          >
-            <AppTextField
-              label="Subvolume name"
-              onChange={(event) =>
-                onSubvolumeNameChange(filesystem.mountpoint, event.target.value)
-              }
-              placeholder="@data"
-              size="small"
-              style={{ minWidth: 220, flex: "1 1 220px" }}
-              value={subvolumeName}
-            />
-            <AppButton
-              disabled={
-                isCreatingSubvolume || subvolumeName.trim().length === 0
-              }
-              onClick={() => onCreateSubvolume(filesystem.mountpoint)}
-              variant="outlined"
-            >
-              {isCreatingSubvolume ? "Creating..." : "Create subvolume"}
-            </AppButton>
-          </div>
-        )}
-
-        {filesystem.fstype === "btrfs" && (
-          <BtrfsMaintenanceControls
-            mountpoint={filesystem.mountpoint}
-            {...btrfsMaintenance}
-          />
-        )}
       </div>
     </AppCollapse>
   );
 };
 
-export interface FilesystemCardProps extends BtrfsMaintenanceProps {
+export interface FilesystemCardProps {
   backingDrive: BackingDrive | null;
   filesystem: FilesystemInfo;
-  isCreatingSubvolume: boolean;
   isUnmounting: boolean;
   nfsMount: NFSMount | null;
   onBrowse: (mountpoint: string) => void;
   onClick: () => void;
-  onCreateSubvolume: (mountpoint: string) => void;
   onInspectDrive: (driveName: string) => void;
-  onSubvolumeNameChange: (mountpoint: string, value: string) => void;
   onUnmount: (mountpoint: string) => void;
   selected: boolean;
-  subvolumeName: string;
 }
 
 const FilesystemCard = ({
@@ -292,15 +240,10 @@ const FilesystemCard = ({
   backingDrive,
   nfsMount,
   isUnmounting,
-  isCreatingSubvolume,
-  subvolumeName,
   onClick,
   onBrowse,
   onInspectDrive,
   onUnmount,
-  onSubvolumeNameChange,
-  onCreateSubvolume,
-  ...btrfsMaintenance
 }: FilesystemCardProps) => {
   const detailsId = useId();
 
@@ -366,16 +309,11 @@ const FilesystemCard = ({
           <FilesystemCardDetails
             backingDrive={backingDrive}
             filesystem={filesystem}
-            isCreatingSubvolume={isCreatingSubvolume}
             isUnmounting={isUnmounting}
             nfsMount={nfsMount}
             onBrowse={onBrowse}
-            onCreateSubvolume={onCreateSubvolume}
             onInspectDrive={onInspectDrive}
-            onSubvolumeNameChange={onSubvolumeNameChange}
             onUnmount={onUnmount}
-            subvolumeName={subvolumeName}
-            {...btrfsMaintenance}
           />
         )}
       </div>

@@ -51,6 +51,15 @@ cleans staging files left by a terminated bridge. Downloads must be standalone
 qcow2 images; backing files and external data files are rejected before QEMU
 opens them, using the [QEMU header format](https://www.qemu.org/docs/master/interop/qcow2.html).
 
+The create dialog's **Import disk** source (`sourceType: "import"`, `importPath`)
+turns an existing `.ova`, `.qcow2`, `.vmdk`, `.vdi`, `.img` or `.raw` file on the
+host into a new managed qcow2 disk under `linuxio/cloud-images`; the source file
+is left untouched. An OVA's first disk image is extracted with its entry name
+flattened, qcow2 inputs pass the same backing-file check as templates, and every
+input is converted with an explicit format so QEMU never probes it. The
+requested disk size only grows the image. An OVF descriptor without EFI
+firmware defines the VM with BIOS boot.
+
 Automated unit tests use local HTTP fixtures and real filesystem locks, with
 QEMU/XZ command doubles. Real libvirt VM creation remains a host integration
 check.

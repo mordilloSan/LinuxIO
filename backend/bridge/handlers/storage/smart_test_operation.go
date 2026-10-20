@@ -49,6 +49,9 @@ func smartTestBindings() apischema.BindingSet {
 
 func RegisterTaskRoutes(router *bridgetasks.Router) {
 	smartTestBindings().Register(router)
+	btrfsRollbackBindings().Register(router)
+	btrfsDeviceBindings().Register(router)
+	btrfsReplicationBindings().Register(router)
 }
 
 // pollInterval picks how often to poll smartctl based on test type. Short tests

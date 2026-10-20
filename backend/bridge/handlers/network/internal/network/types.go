@@ -99,8 +99,8 @@ type InterfaceProbe struct {
 	Addresses    []string
 	DefaultRoute bool
 	// VirtualChildren are macvlan/macvtap/ipvlan links stacked on this
-	// interface. They hold the kernel rx handler a bridge port would need, so
-	// enslaving fails with EBUSY while any exist.
+	// interface, in any network namespace. They hold the kernel rx handler a
+	// bridge port would need, so enslaving fails with EBUSY while any exist.
 	VirtualChildren []string
 }
 

@@ -759,7 +759,6 @@ const UpdateSettings = ({
                 frequency: event.target.value as AutoUpdateFrequency,
               }))
             }
-            size="small"
             value={currentOptions.frequency}
           >
             {serverState.support.frequencies.map((frequency) => (
@@ -783,7 +782,6 @@ const UpdateSettings = ({
                 scope: event.target.value as AutoUpdateScope,
               }))
             }
-            size="small"
             value={currentOptions.scope}
           >
             {serverState.support.scopes.map((scope) => (
@@ -807,7 +805,6 @@ const UpdateSettings = ({
                 reboot_policy: event.target.value as AutoUpdateRebootPolicy,
               }))
             }
-            size="small"
             value={currentOptions.reboot_policy}
           >
             {serverState.support.reboot_policies.map((policy) => (
@@ -828,7 +825,6 @@ const UpdateSettings = ({
                   notify: event.target.value as AutoUpdateNotify,
                 }))
               }
-              size="small"
               value={currentOptions.notify}
             >
               {serverState.support.notify_policies.map((policy) => (

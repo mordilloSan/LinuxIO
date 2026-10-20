@@ -104,11 +104,6 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     docker: {
       folders: ["/srv/docker"],
       requireMountsForFolders: false,
-      proxy: {
-        baseDomain: "linuxio.test",
-        caddyEnabled: true,
-        tlsEmail: "ops@linuxio.test",
-      },
     },
     jobs: {
       archiveCompressionWorkers: 2,

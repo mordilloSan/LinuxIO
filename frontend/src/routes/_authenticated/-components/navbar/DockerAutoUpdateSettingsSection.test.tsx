@@ -31,6 +31,7 @@ const createController = (): DockerAutoUpdateController => {
       mode: "update",
       revive_stopped: false,
       time: "04:00",
+      update_all: false,
       update_stopped: false,
     },
     timer_active: false,
@@ -147,6 +148,20 @@ describe("DockerAutoUpdateSettingsSection eligibility", () => {
         container_names: ["stopped"],
         mode: "check_only",
       }),
+    );
+  });
+
+  it("saves the update-all policy", async () => {
+    const autoUpdate = createController();
+    const { user } = renderDialog(autoUpdate);
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Update all containers" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(autoUpdate.saveOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ update_all: true }),
     );
   });
 

@@ -1366,7 +1366,6 @@ const GeneralLogsPage = ({
         <AppSelect
           label="Time Period"
           onChange={(e) => handleTimePeriodChange(e.target.value)}
-          size="small"
           style={{ minWidth: 150 }}
           value={timePeriod}
         >
@@ -1381,7 +1380,6 @@ const GeneralLogsPage = ({
         <AppSelect
           label="Priority"
           onChange={(e) => handlePriorityFilterChange(e.target.value)}
-          size="small"
           style={{ minWidth: 180 }}
           value={priorityFilter}
         >
@@ -1402,7 +1400,6 @@ const GeneralLogsPage = ({
             setUnitStatusFilter(e.target.value);
             setDisplayLimit(DISPLAY_LIMIT);
           }}
-          size="small"
           style={{ minWidth: 160 }}
           value={unitStatusFilter}
         >

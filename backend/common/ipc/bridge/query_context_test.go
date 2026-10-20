@@ -209,7 +209,10 @@ func TestTaskStartDisconnectDoesNotCancelTaskContext(t *testing.T) {
 	close(release)
 
 	select {
-	case <-dispatchDone:
+	case err := <-dispatchDone:
+		if !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatalf("Dispatch error = %v, want io.ErrClosedPipe", err)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("Dispatch did not return after the detached task completed")
 	}

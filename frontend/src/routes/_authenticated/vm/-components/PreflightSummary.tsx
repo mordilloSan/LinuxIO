@@ -17,7 +17,9 @@ export default function PreflightSummary({
       ? ([["default network", preflight?.defaultNetworkExists]] as const)
       : []),
     [
-      "firmware",
+      preflight?.firmware.detected
+        ? `firmware ${preflight.firmware.detected.toUpperCase()}`
+        : "firmware",
       preflight?.firmware.biosAvailable || preflight?.firmware.uefiAvailable,
     ],
   ] as const;

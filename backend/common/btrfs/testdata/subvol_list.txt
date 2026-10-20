@@ -1,0 +1,5 @@
+ID 256 gen 12345 parent 5 top level 5 parent_uuid -                                    received_uuid -                                    uuid 6b2c1f0e-1111-4a2b-8c3d-000000000001 path <FS_TREE>/@
+ID 257 gen 12340 parent 5 top level 5 parent_uuid - received_uuid - uuid 6b2c1f0e-1111-4a2b-8c3d-000000000002 path <FS_TREE>/@home
+ID 300 gen 12001 parent 256 top level 256 parent_uuid - received_uuid - uuid 6b2c1f0e-1111-4a2b-8c3d-000000000003 path <FS_TREE>/@/var/lib/docker/btrfs/subvolumes/abc
+ID 301 gen 12100 parent 5 top level 5 parent_uuid 6b2c1f0e-1111-4a2b-8c3d-000000000001 received_uuid - uuid 6b2c1f0e-1111-4a2b-8c3d-000000000004 path <FS_TREE>/linuxio-snapshots/@-2026-10-19
+ID 302 gen 12200 parent 5 top level 5 parent_uuid - received_uuid - uuid 6b2c1f0e-1111-4a2b-8c3d-000000000005 path <FS_TREE>/data

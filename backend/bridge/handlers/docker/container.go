@@ -57,9 +57,9 @@ func ListContainers(ctx context.Context) ([]apischema.ContainerInfo, error) {
 			return nil, err
 		}
 		metrics := containerMetricsFromSnapshot(ctr, metricsSnapshot, metricsErr, now)
-		iconIdentifier, resolvedURL, proxyPort := resolveContainerPresentation(ctr)
+		iconIdentifier, resolvedURL := resolveContainerPresentation(ctr)
 
-		info := containerInfoFromSummary(ctr, metrics, iconIdentifier, resolvedURL, proxyPort)
+		info := containerInfoFromSummary(ctr, metrics, iconIdentifier, resolvedURL)
 		applyContainerUpdateStatus(&info, updateStatus)
 		enriched = append(enriched, info)
 	}
@@ -82,7 +82,6 @@ func containerInfoFromSummary(
 	metrics *apischema.ContainerMetrics,
 	iconIdentifier string,
 	resolvedURL string,
-	proxyPort string,
 ) apischema.ContainerInfo {
 	info := apischema.ContainerInfo{
 		Created:         ctr.Created,
@@ -96,7 +95,6 @@ func containerInfoFromSummary(
 		Names:           ctr.Names,
 		NetworkSettings: containerNetworkSettingsFromSummary(ctr.NetworkSettings),
 		Ports:           containerPortsFromSummary(ctr.Ports),
-		ProxyPort:       utils.OptionalString(proxyPort),
 		State:           string(ctr.State),
 		Status:          ctr.Status,
 		URL:             utils.OptionalString(resolvedURL),
@@ -243,13 +241,10 @@ func containerMetricsFromSnapshot(
 	}
 }
 
-func resolveContainerPresentation(ctr container.Summary) (string, string, string) {
+func resolveContainerPresentation(ctr container.Summary) (string, string) {
 	containerIcon := ctr.Labels["io.linuxio.container.icon"]
 	containerURL := ctr.Labels["io.linuxio.container.url"]
-	proxyPort := ctr.Labels[ProxyPortLabel]
-	iconName := containerIconName(ctr)
-	resolvedURL := resolveContainerURL(containerURL, proxyPort, iconName)
-	return ResolveIconIdentifier(containerIcon, iconName), resolvedURL, proxyPort
+	return ResolveIconIdentifier(containerIcon, containerIconName(ctr)), containerURL
 }
 
 func containerIconName(ctr container.Summary) string {
@@ -267,13 +262,6 @@ func containerIconName(ctr container.Summary) string {
 		return serviceName
 	}
 	return containerName
-}
-
-func resolveContainerURL(containerURL, proxyPort, iconName string) string {
-	if containerURL != "" || proxyPort == "" || iconName == "" {
-		return containerURL
-	}
-	return "/proxy/" + iconName + "/"
 }
 
 func addrString(value netip.Addr) string {

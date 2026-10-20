@@ -11,10 +11,14 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient/testdbus"
 )
 
-type netplanConfigRecorder struct{ methods []string }
+type netplanConfigRecorder struct {
+	methods []string
+	args    [][]any
+}
 
-func (r *netplanConfigRecorder) CallWithContext(_ context.Context, method string, _ godbus.Flags, _ ...any) *godbus.Call {
+func (r *netplanConfigRecorder) CallWithContext(_ context.Context, method string, _ godbus.Flags, args ...any) *godbus.Call {
 	r.methods = append(r.methods, method)
+	r.args = append(r.args, args)
 	return &godbus.Call{Body: []any{true}}
 }
 
@@ -88,15 +92,15 @@ network:
 		Plan:      BridgeHandoffPlan{Name: "br0", Member: "eth0", ConsoleAcknowledged: true},
 		MemberMAC: "00:11:22:33:44:55",
 	}
-	memberDelta, bridgeDelta, err := netplanHandoffDeltas(env, &state)
+	patch, err := netplanHandoffDeltas(env, &state)
 	if err != nil {
 		t.Fatalf("netplanHandoffDeltas: %v", err)
 	}
 	var member, bridge map[string]any
-	if err := json.Unmarshal(memberDelta, &member); err != nil {
+	if err := json.Unmarshal(patch.member, &member); err != nil {
 		t.Fatalf("decode member: %v", err)
 	}
-	if err := json.Unmarshal(bridgeDelta, &bridge); err != nil {
+	if err := json.Unmarshal(patch.bridge, &bridge); err != nil {
 		t.Fatalf("decode bridge: %v", err)
 	}
 	if member["addresses"] != nil || member["routes"] != nil || member["dhcp4"] != false {
@@ -137,12 +141,12 @@ network:
 				Plan:      BridgeHandoffPlan{Name: "br0", Member: "eth0", ConsoleAcknowledged: true},
 				MemberMAC: "00:11:22:33:44:55",
 			}
-			_, bridgeDelta, err := netplanHandoffDeltas(env, &state)
+			patch, err := netplanHandoffDeltas(env, &state)
 			if err != nil {
 				t.Fatalf("netplanHandoffDeltas: %v", err)
 			}
 			var bridge map[string]any
-			if err := json.Unmarshal(bridgeDelta, &bridge); err != nil {
+			if err := json.Unmarshal(patch.bridge, &bridge); err != nil {
 				t.Fatalf("decode bridge: %v", err)
 			}
 			if bridge["renderer"] != "NetworkManager" {
@@ -168,12 +172,12 @@ network:
 		Plan:      BridgeHandoffPlan{Name: "br0", Member: "eth0", ConsoleAcknowledged: true},
 		MemberMAC: "00:11:22:33:44:55",
 	}
-	_, bridgeDelta, err := netplanHandoffDeltas(env, &state)
+	patch, err := netplanHandoffDeltas(env, &state)
 	if err != nil {
 		t.Fatalf("netplanHandoffDeltas: %v", err)
 	}
 	var bridge map[string]any
-	if err := json.Unmarshal(bridgeDelta, &bridge); err != nil {
+	if err := json.Unmarshal(patch.bridge, &bridge); err != nil {
 		t.Fatalf("decode bridge: %v", err)
 	}
 	if bridge["renderer"] != "networkd" {
@@ -196,7 +200,7 @@ network:
 		Plan:      BridgeHandoffPlan{Name: "br0", Member: "eth0", ConsoleAcknowledged: true},
 		MemberMAC: "00:11:22:33:44:55",
 	}
-	_, _, err := netplanHandoffDeltas(env, &state)
+	_, err := netplanHandoffDeltas(env, &state)
 	if err == nil || !strings.Contains(err.Error(), "stable-privacy") {
 		t.Fatalf("netplanHandoffDeltas error = %v", err)
 	}
@@ -216,7 +220,7 @@ network:
 		Plan:      BridgeHandoffPlan{Name: "br0", Member: "eth0", ConsoleAcknowledged: true},
 		MemberMAC: "00:11:22:33:44:55",
 	}
-	_, _, err := netplanHandoffDeltas(env, &state)
+	_, err := netplanHandoffDeltas(env, &state)
 	if err == nil || !strings.Contains(err.Error(), "rendered by NetworkManager") {
 		t.Fatalf("netplanHandoffDeltas error = %v", err)
 	}
@@ -225,7 +229,7 @@ network:
 func TestConfigureNetplanHandoffLeavesTryPending(t *testing.T) {
 	config := &netplanConfigRecorder{}
 	state := &BridgeHandoffState{Plan: BridgeHandoffPlan{Name: "br0", Member: "eth0"}}
-	if err := configureNetplanHandoff(context.Background(), config, state, []byte(`{}`), []byte(`{}`)); err != nil {
+	if err := configureNetplanHandoff(context.Background(), config, state, netplanHandoffPatch{memberOrigin: "x", member: []byte(`{}`), bridge: []byte(`{}`)}); err != nil {
 		t.Fatalf("configureNetplanHandoff: %v", err)
 	}
 	want := []string{netplanConfigIface + ".Set", netplanConfigIface + ".Set", netplanConfigIface + ".Try"}
@@ -437,5 +441,50 @@ func TestNetworkManagerRollbackAcceptsSuccessfulDeviceResults(t *testing.T) {
 	}
 	if err := (networkManagerMutation{checkpoint: godbus.ObjectPath("/org/freedesktop/NetworkManager/Checkpoint/1")}).rollback(context.Background()); err != nil {
 		t.Fatalf("rollback error = %v", err)
+	}
+}
+
+func TestNetplanHandoffPatchesMemberInsideItsDefiningFile(t *testing.T) {
+	env, _, _ := testEnv(t)
+	mustWriteFile(t, env.NetplanDir+"/00-installer-config.yaml", `
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses: [192.0.2.10/24]
+      dhcp4: false
+      match:
+        macaddress: 00:11:22:33:44:55
+      nameservers:
+        addresses: [192.0.2.53]
+      routes:
+      - to: default
+        via: 192.0.2.1
+      set-name: eth0
+`)
+	state := &BridgeHandoffState{
+		Plan:      BridgeHandoffPlan{Name: "br0", Member: "eth0", ConsoleAcknowledged: true},
+		MemberMAC: "00:11:22:33:44:55",
+	}
+	patch, err := netplanHandoffDeltas(env, state)
+	if err != nil {
+		t.Fatalf("netplanHandoffDeltas: %v", err)
+	}
+	config := &netplanConfigRecorder{}
+	if err := configureNetplanHandoff(context.Background(), config, state, patch); err != nil {
+		t.Fatalf("configureNetplanHandoff: %v", err)
+	}
+	// netplan set only rewrites its origin-hint file. Nulling the member's L3
+	// keys under a fresh file leaves the installer's addresses and default
+	// route in place at generate time, so the member delta must target the
+	// file that defines the interface.
+	for i, want := range []struct{ prefix, origin string }{
+		{"ethernets.eth0=", "00-installer-config"},
+		{"bridges.br0=", "90-linuxio-handoff-br0"},
+	} {
+		key, _ := config.args[i][0].(string)
+		if !strings.HasPrefix(key, want.prefix) || config.args[i][1] != want.origin {
+			t.Fatalf("Set %d args = %v, want %s under %s", i, config.args[i], want.prefix, want.origin)
+		}
 	}
 }

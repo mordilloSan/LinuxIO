@@ -1,13 +1,16 @@
 import type { CSSProperties } from "react";
 
-import type { VirtualMachine } from "@/api";
+import { linuxio, useCallMutation } from "@/api";
+import type { VirtualMachine, VMFirmware } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppChip from "@/components/ui/AppChip";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 
 import {
+  VM_TOAST,
   formatDisk,
   formatMemory,
   normalizeState,
@@ -84,6 +87,11 @@ const wrappingCodeStyle: CSSProperties = {
  */
 export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
   const isMobile = useAppMediaQuery(down("sm"));
+  const firmwareMutation = useCallMutation(linuxio.virt.set_firmware, {
+    success: "Firmware updated",
+    error: "Failed to change firmware",
+    toast: VM_TOAST,
+  });
 
   if (!vm) {
     return (
@@ -159,6 +167,33 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
           <strong style={{ display: "block", marginTop: 4 }}>
             {vm.autostart ? "On" : "Off"}
           </strong>
+        </div>
+        <div style={{ ...statItemStyle, gridColumn: "1 / -1" }}>
+          <AppSelect
+            disabled={vm.state !== "shutoff" || firmwareMutation.isPending}
+            fullWidth
+            label="Firmware"
+            onChange={(event) =>
+              firmwareMutation.mutate({
+                firmware: event.target.value as VMFirmware,
+                name: vm.name,
+              })
+            }
+            size="small"
+            value={vm.firmware ?? "bios"}
+          >
+            <option value="uefi">UEFI</option>
+            <option value="bios">BIOS (legacy)</option>
+          </AppSelect>
+          {vm.state !== "shutoff" ? (
+            <AppTypography
+              color="text.secondary"
+              component="small"
+              variant="caption"
+            >
+              Shut off the VM to change its firmware
+            </AppTypography>
+          ) : null}
         </div>
       </div>
       <div style={detailSectionStyle}>

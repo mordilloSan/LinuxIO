@@ -3,6 +3,7 @@ package apischema
 import (
 	"reflect"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
@@ -202,6 +203,7 @@ type NameRequest struct {
 
 type VMSourceType string
 type VMImagePresetID string
+type VMFirmware string
 
 type VMCreateRequest struct {
 	Name              string          `json:"name"`
@@ -209,6 +211,7 @@ type VMCreateRequest struct {
 	MemoryMB          int             `json:"memoryMB"`
 	DiskGB            int             `json:"diskGB"`
 	ISOPath           string          `json:"isoPath,omitempty"`
+	ImportPath        string          `json:"importPath,omitempty"`
 	SourceType        VMSourceType    `json:"sourceType,omitempty"`
 	ImagePresetID     VMImagePresetID `json:"imagePresetId,omitempty"`
 	TemplateID        string          `json:"templateId,omitempty"`
@@ -217,7 +220,14 @@ type VMCreateRequest struct {
 	CloudInitSSHKey   string          `json:"cloudInitSshKey,omitempty"`
 	CloudInitHostname string          `json:"cloudInitHostname,omitempty"`
 	Network           string          `json:"network,omitempty"`
-	Start             bool            `json:"start"`
+	// Firmware overrides the detected boot firmware; empty picks automatically.
+	Firmware VMFirmware `json:"firmware,omitempty"`
+	Start    bool       `json:"start"`
+}
+
+type VMFirmwareRequest struct {
+	Name     string     `json:"name"`
+	Firmware VMFirmware `json:"firmware"`
 }
 
 type VMDeleteRequest struct {
@@ -236,6 +246,7 @@ type VMTemplateRequest struct {
 
 type VMPreflightRequest struct {
 	ISOPath       *string         `json:"isoPath,omitempty"`
+	ImportPath    *string         `json:"importPath,omitempty"`
 	SourceType    VMSourceType    `json:"sourceType,omitempty"`
 	ImagePresetID VMImagePresetID `json:"imagePresetId,omitempty"`
 	Network       string          `json:"network,omitempty"`
@@ -426,9 +437,103 @@ type MountpointRequest struct {
 	Mountpoint string `json:"mountpoint"`
 }
 
-type MountpointNameRequest struct {
-	Mountpoint string `json:"mountpoint"`
-	Name       string `json:"name"`
+type UUIDRequest struct {
+	UUID string `json:"uuid"`
+}
+
+type BtrfsSubvolumeRequest struct {
+	UUID string `json:"uuid"`
+	Path string `json:"path"`
+}
+
+type BtrfsSnapshotsRequest struct {
+	UUID string  `json:"uuid"`
+	Path *string `json:"path,omitempty"`
+}
+
+type BtrfsSnapshotRequest struct {
+	UUID         string `json:"uuid"`
+	SnapshotPath string `json:"snapshotPath"`
+}
+
+type BtrfsSnapshotRuleRequest struct {
+	Rule btrfs.BtrfsSnapshotRule `json:"rule"`
+}
+
+type BtrfsReplicationJobRequest struct {
+	Job btrfs.BtrfsReplicationJob `json:"job"`
+}
+
+type BtrfsJobIDRequest struct {
+	ID string `json:"id"`
+}
+
+// BtrfsSSHTrustRequest scans a host; with Confirm it trusts only the keys
+// matching Fingerprints, the ones shown to the user by the unconfirmed scan.
+type BtrfsSSHTrustRequest struct {
+	Host         string   `json:"host"`
+	Port         int      `json:"port"`
+	Confirm      bool     `json:"confirm"`
+	Fingerprints []string `json:"fingerprints,omitempty"`
+}
+
+type BtrfsSubvolumeReadOnlyRequest struct {
+	UUID     string `json:"uuid"`
+	Path     string `json:"path"`
+	ReadOnly bool   `json:"readOnly"`
+}
+
+type BtrfsQuotaRequest struct {
+	UUID    string `json:"uuid"`
+	Enabled bool   `json:"enabled"`
+}
+
+// BtrfsQgroupLimitRequest limits the referenced size of one subvolume; nil
+// removes the limit.
+type BtrfsQgroupLimitRequest struct {
+	UUID               string  `json:"uuid"`
+	Path               string  `json:"path"`
+	MaxReferencedBytes *uint64 `json:"maxReferencedBytes"`
+}
+
+// BtrfsCompressionRequest sets the filesystem-wide compression option and
+// persists it in every fstab entry of the filesystem.
+type BtrfsCompressionRequest struct {
+	UUID      string `json:"uuid"`
+	Algorithm string `json:"algorithm"`
+	Level     *int   `json:"level,omitempty"`
+	Force     bool   `json:"force"`
+}
+
+type BtrfsSubvolumeCompressionRequest struct {
+	UUID      string `json:"uuid"`
+	Path      string `json:"path"`
+	Algorithm string `json:"algorithm"`
+}
+
+type BtrfsDeviceAddRequest struct {
+	UUID   string `json:"uuid"`
+	Device string `json:"device"`
+	Force  bool   `json:"force"`
+}
+
+type BtrfsDeviceRequest struct {
+	UUID     string `json:"uuid"`
+	DeviceID int    `json:"deviceId"`
+}
+
+type BtrfsDeviceReplaceRequest struct {
+	UUID      string `json:"uuid"`
+	DeviceID  int    `json:"deviceId"`
+	NewDevice string `json:"newDevice"`
+}
+
+// BtrfsBalanceRequest converts to the given profiles; a nil profile is left
+// as it is, and both nil balances without converting.
+type BtrfsBalanceRequest struct {
+	UUID            string  `json:"uuid"`
+	DataProfile     *string `json:"dataProfile,omitempty"`
+	MetadataProfile *string `json:"metadataProfile,omitempty"`
 }
 
 type MountpointRemoveFstabRequest struct {
@@ -701,15 +806,8 @@ type ConfigHardwareSections struct {
 }
 
 type ConfigDockerPayload struct {
-	Folders                 []string                  `json:"folders,omitempty"`
-	RequireMountsForFolders *bool                     `json:"requireMountsForFolders,omitempty"`
-	Proxy                   *ConfigDockerProxyPayload `json:"proxy,omitempty"`
-}
-
-type ConfigDockerProxyPayload struct {
-	CaddyEnabled *bool   `json:"caddyEnabled,omitempty"`
-	BaseDomain   *string `json:"baseDomain,omitempty"`
-	TLSEmail     *string `json:"tlsEmail,omitempty"`
+	Folders                 []string `json:"folders,omitempty"`
+	RequireMountsForFolders *bool    `json:"requireMountsForFolders,omitempty"`
 }
 
 type ConfigJobSettingsPayload struct {

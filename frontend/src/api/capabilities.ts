@@ -284,6 +284,20 @@ export const CAPABILITIES = [
     installable: { requiresPackageKit: true },
     route: { label: "Open storage", to: "/storage" },
   },
+  {
+    wire: "btrfs",
+    state: "btrfsAvailable",
+    label: "Btrfs tools",
+    description:
+      "Subvolumes, snapshots, devices and replication for btrfs filesystems",
+    readyText: "btrfs-progs is installed.",
+    dependency: "btrfs-progs",
+    icon: "mdi:file-tree-outline",
+    reasonUnknown: "btrfs-progs availability is still being checked.",
+    reasonUnavailable: "btrfs-progs is not installed.",
+    installable: { requiresPackageKit: true },
+    route: { label: "Open Btrfs", to: "/storage/btrfs" },
+  },
 ] as const satisfies readonly CapabilityDef[];
 
 // --- Derived types ------------------------------------------------------------

@@ -14,22 +14,7 @@ func applyDockerSettingsUpdate(docker *bridgeconfig.Docker, payload *apischema.C
 		return err
 	}
 	applyOptionalBool(&docker.RequireMountsForFolders, payload.RequireMountsForFolders)
-	if payload.Proxy != nil {
-		applyDockerProxyUpdate(&docker.Proxy, payload.Proxy)
-	}
 	return nil
-}
-
-func applyDockerProxyUpdate(proxy *bridgeconfig.DockerProxy, payload *apischema.ConfigDockerProxyPayload) {
-	if payload.CaddyEnabled != nil {
-		proxy.CaddyEnabled = *payload.CaddyEnabled
-	}
-	if payload.BaseDomain != nil {
-		proxy.BaseDomain = strings.TrimSpace(*payload.BaseDomain)
-	}
-	if payload.TLSEmail != nil {
-		proxy.TLSEmail = strings.TrimSpace(*payload.TLSEmail)
-	}
 }
 
 func applyDockerFoldersSetting(docker *bridgeconfig.Docker, folderValues []string) error {

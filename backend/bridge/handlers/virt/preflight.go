@@ -51,6 +51,12 @@ func Preflight(ctx context.Context, req apischema.VMPreflightRequest) (apischema
 		out.Warnings = append(out.Warnings, "OVMF firmware not found; VM creation will fall back to BIOS")
 	}
 	collectSourcePreflight(ctx, req, &out)
+	if out.Firmware.Detected == "" {
+		out.Firmware.Detected = vmFirmwareBIOS
+		if out.Firmware.UEFIAvailable {
+			out.Firmware.Detected = vmFirmwareUEFI
+		}
+	}
 	requestedNetwork := strings.TrimSpace(req.Network)
 	networkName := normalizeVMNetwork(requestedNetwork)
 	if requestedNetwork != "" {
@@ -104,7 +110,36 @@ func collectSourcePreflight(ctx context.Context, req apischema.VMPreflightReques
 		collectImagePresetPreflight(ctx, req, out)
 		return
 	}
+	if sourceType == vmSourceTypeImport {
+		collectImportPreflight(req, out)
+		return
+	}
 	collectISOPreflight(req, out)
+}
+
+func collectImportPreflight(req apischema.VMPreflightRequest, out *apischema.VMPreflight) {
+	if _, err := execLookPath("qemu-img"); err != nil {
+		out.Errors = append(out.Errors, "qemu-img is required to convert imported VM disks")
+	}
+	if req.ImportPath == nil || strings.TrimSpace(*req.ImportPath) == "" {
+		return
+	}
+	importPath, err := validateImportDisk(*req.ImportPath)
+	if err != nil {
+		out.Errors = append(out.Errors, err.Error())
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(importPath), ".ova") {
+		return
+	}
+	ovf, err := readOVADescriptor(importPath)
+	if err != nil {
+		out.Errors = append(out.Errors, fmt.Sprintf("read OVA descriptor: %v", err))
+		return
+	}
+	if ovfLegacyBoot(ovf) {
+		out.Firmware.Detected = vmFirmwareBIOS
+	}
 }
 
 func collectImagePresetPreflight(ctx context.Context, req apischema.VMPreflightRequest, out *apischema.VMPreflight) {

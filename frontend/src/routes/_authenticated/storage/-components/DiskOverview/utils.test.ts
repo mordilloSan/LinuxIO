@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import type { DriveInfo } from "./types";
 import {
+  findBackingDrive,
   formatDataUnits,
   formatPowerOnTime,
   getHealthColor,
@@ -44,5 +46,27 @@ describe("DiskOverview utils", () => {
     expect(getTemperatureColor(45)).toBe("success.main");
     expect(getTemperatureColor(51)).toBe("warning.main");
     expect(getTemperatureColor(71)).toBe("error.main");
+  });
+});
+
+describe("findBackingDrive", () => {
+  const drive = (name: string): DriveInfo => ({
+    name,
+    model: "",
+    sizeBytes: 0,
+    transport: "",
+  });
+  const drives = [drive("nvme0n1"), drive("sda"), drive("sdaa")];
+
+  it("maps a partition or device path to its drive", () => {
+    expect(findBackingDrive("/dev/nvme0n1p2", drives)?.name).toBe("nvme0n1");
+    expect(findBackingDrive("/dev/sda1", drives)?.name).toBe("sda");
+    expect(findBackingDrive("sda", drives)?.name).toBe("sda");
+  });
+
+  it("does not confuse drives sharing a prefix or match stacked devices", () => {
+    expect(findBackingDrive("/dev/sdaa2", drives)?.name).toBe("sdaa");
+    expect(findBackingDrive("/dev/mapper/crypt", drives)).toBeNull();
+    expect(findBackingDrive("Missing disk", drives)).toBeNull();
   });
 });

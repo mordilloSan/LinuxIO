@@ -213,7 +213,6 @@ export const GPUInfoCard = () => {
           <AppSelect
             disableUnderline
             onChange={(event) => setSelectedGpuAddress(event.target.value)}
-            size="small"
             style={{
               ["--app-select-input-font-size" as string]: "0.72rem",
               width: 190,

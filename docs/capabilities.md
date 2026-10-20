@@ -208,6 +208,14 @@ mountpoint a task targets; turning a task off for the last mountpoint sets its
 period to `none`, and a task whose period is `none` reports no mountpoints so
 the package's default of `/` does not leak into a schedule the user enables.
 
+## Btrfs tools
+
+The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
+installs the distro's `btrfs-progs` package through the existing privileged
+install path. It gates the **Storage → Btrfs** tab (`/storage/btrfs`), which
+manages subvolumes, snapshots, devices and replication; see
+[Btrfs management](./btrfs.md).
+
 ## Node.js (Assistant)
 
 The `node` capability resolves `npx` on the PATH the session user's

@@ -342,7 +342,6 @@ const DockerLogsPage = ({
           <AppSelect
             label="Lines"
             onChange={(event) => handleTailChange(event.target.value)}
-            size="small"
             style={{ width: 112 }}
             value={tail}
           >
@@ -357,7 +356,6 @@ const DockerLogsPage = ({
             onChange={(event) =>
               onContainerChange(event.target.value || undefined)
             }
-            size="small"
             style={{ minWidth: 180 }}
             value={container ?? ""}
           >

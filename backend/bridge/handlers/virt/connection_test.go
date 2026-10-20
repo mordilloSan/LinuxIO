@@ -25,7 +25,10 @@ func TestCloseOnContextDoneClosesConnectionOnCancellation(t *testing.T) {
 	}()
 	cancel()
 	select {
-	case <-readDone:
+	case err := <-readDone:
+		if err == nil {
+			t.Fatal("Read error = nil, want closed connection")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("connection remained blocked after context cancellation")
 	}

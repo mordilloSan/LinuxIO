@@ -59,11 +59,6 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.ContainerIDRequest, apischema.DockerUpdateCheckResult]("docker.check_container_update").Handle(handlers.handleCheckContainerUpdate),
 		apischema.Call[apischema.NoRequest, apischema.DockerContainerAutoUpdateState]("docker.get_container_auto_update", apischema.RetrySafe()).Handle(handlers.handleGetContainerAutoUpdate),
 		apischema.Call[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update").Handle(handlers.handleSetContainerAutoUpdate),
-		apischema.Call[apischema.NoRequest, apischema.CaddyStatusResponse]("docker.get_caddy_status", apischema.RetrySafe()).Handle(handlers.handleGetCaddyStatus),
-		apischema.Call[apischema.NoRequest, apischema.MessageResponse]("docker.enable_caddy").Handle(handlers.handleEnableCaddy),
-		apischema.Call[apischema.NoRequest, apischema.MessageResponse]("docker.disable_caddy").Handle(handlers.handleDisableCaddy),
-		apischema.Call[apischema.NoRequest, apischema.MessageResponse]("docker.reload_caddy").Handle(handlers.handleReloadCaddy),
-		apischema.Call[apischema.ContainerIDRequest, apischema.MessageResponse]("docker.connect_to_proxy").Handle(handlers.handleConnectToProxy),
 		apischema.Call[apischema.DockerSystemPruneRequest, *apischema.DockerSystemPruneResponse]("docker.system_prune").Handle(handlers.handleSystemPrune),
 		apischema.DuplexRoute[apischema.DockerLogsFollowRequest, apischema.NoResponse](routeDockerLogsFollow, apischema.NoEndpoint()).Duplex(
 			func(ctx context.Context, stream net.Conn, req apischema.DockerLogsFollowRequest) error {

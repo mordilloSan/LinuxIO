@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
@@ -523,22 +524,99 @@ func defaultInterfaceProbes(ctx context.Context, env Environment) ([]InterfacePr
 	return probes, nil
 }
 
-// virtualChildrenByParent maps a link index to the macvlan/ipvlan links
-// stacked on it, which the kernel will not let share a bridge port.
+// virtualChildrenByParent maps a host link index to the macvlan/ipvlan links
+// stacked on it, which the kernel will not let share a bridge port. Links
+// that moved into another network namespace (a Docker macvlan network keeps
+// the container's link there) still hold the parent's rx handler, so every
+// namespace with a process or a mount under /run is inspected too.
 func virtualChildrenByParent() (map[int][]string, error) {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return nil, fmt.Errorf("list links: %w", err)
 	}
 	children := make(map[int][]string)
+	addVirtualChildren(children, links, -1, "")
+	if err := foreignVirtualChildren(children); err != nil {
+		return nil, err
+	}
+	return children, nil
+}
+
+// addVirtualChildren records the macvlan/ipvlan links in links whose parent
+// lives in the namespace the links see as parentNsID (-1 for their own).
+func addVirtualChildren(children map[int][]string, links []netlink.Link, parentNsID int, suffix string) {
 	for _, link := range links {
 		switch link.Type() {
 		case "macvlan", "macvtap", "ipvlan", "ipvtap":
-			parent := link.Attrs().ParentIndex
-			children[parent] = append(children[parent], link.Attrs().Name)
+			attrs := link.Attrs()
+			if attrs.NetNsID != parentNsID {
+				continue
+			}
+			children[attrs.ParentIndex] = append(children[attrs.ParentIndex], attrs.Name+suffix)
 		}
 	}
-	return children, nil
+}
+
+func foreignVirtualChildren(children map[int][]string) error {
+	host, err := netns.Get()
+	if err != nil {
+		return fmt.Errorf("open host network namespace: %w", err)
+	}
+	defer host.Close()
+	seen := map[string]bool{host.UniqueId(): true}
+	for _, path := range networkNamespacePaths() {
+		ns, openErr := netns.GetFromPath(path)
+		if openErr != nil {
+			continue // the process exited or the mount is not a namespace
+		}
+		if seen[ns.UniqueId()] {
+			_ = ns.Close()
+			continue
+		}
+		seen[ns.UniqueId()] = true
+		inspectErr := namespaceVirtualChildren(children, ns, host, " ("+networkNamespaceLabel(path)+")")
+		_ = ns.Close()
+		if inspectErr != nil {
+			return fmt.Errorf("inspect network namespace %s: %w", path, inspectErr)
+		}
+	}
+	return nil
+}
+
+// namespaceVirtualChildren adds the macvlan/ipvlan links of ns whose parent
+// lives in host to children.
+func namespaceVirtualChildren(children map[int][]string, ns, host netns.NsHandle, suffix string) error {
+	handle, err := netlink.NewHandleAt(ns)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	hostID, err := handle.GetNetNsIdByFd(int(host))
+	if err != nil || hostID < 0 {
+		return err // no link there references the host namespace
+	}
+	links, err := handle.LinkList()
+	if err != nil {
+		return err
+	}
+	addVirtualChildren(children, links, hostID, suffix)
+	return nil
+}
+
+func networkNamespacePaths() []string {
+	var paths []string
+	for _, pattern := range []string{"/proc/[0-9]*/ns/net", "/run/netns/*", "/run/docker/netns/*"} {
+		matches, _ := filepath.Glob(pattern)
+		paths = append(paths, matches...)
+	}
+	return paths
+}
+
+func networkNamespaceLabel(path string) string {
+	if pid, ok := strings.CutPrefix(path, "/proc/"); ok {
+		return "pid " + strings.SplitN(pid, "/", 2)[0]
+	}
+	return path
 }
 
 func masterLinkName(index int, lookup func(int) (netlink.Link, error)) string {

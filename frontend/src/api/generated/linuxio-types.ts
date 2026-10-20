@@ -143,6 +143,7 @@ export interface ApiDisk {
   model: string;
   name: string;
   ro: boolean;
+  rotational: boolean;
   serial?: string;
   size: string;
   type?: string;
@@ -252,6 +253,91 @@ export interface BootIDRequest {
   bootId: string;
 }
 
+export interface BtrfsAllocation {
+  kind: string;
+  profile: string;
+  totalBytes: number;
+  usedBytes: number;
+}
+
+export interface BtrfsBalanceRequest {
+  uuid: string;
+  dataProfile?: string;
+  metadataProfile?: string;
+}
+
+export interface BtrfsCompression {
+  algorithm: string;
+  level?: number;
+  force: boolean;
+  fstabPersisted: boolean;
+}
+
+export interface BtrfsCompressionRequest {
+  uuid: string;
+  algorithm: string;
+  level?: number;
+  force: boolean;
+}
+
+export interface BtrfsDevice {
+  id: number;
+  path: string;
+  sizeBytes: number;
+  usedBytes: number;
+  missing: boolean;
+  errors: BtrfsDeviceErrors;
+}
+
+export interface BtrfsDeviceAddRequest {
+  uuid: string;
+  device: string;
+  force: boolean;
+}
+
+export interface BtrfsDeviceErrors {
+  write: number;
+  read: number;
+  flush: number;
+  corruption: number;
+  generation: number;
+}
+
+export interface BtrfsDeviceReplaceRequest {
+  uuid: string;
+  deviceId: number;
+  newDevice: string;
+}
+
+export interface BtrfsDeviceRequest {
+  uuid: string;
+  deviceId: number;
+}
+
+export interface BtrfsFilesystem {
+  uuid: string;
+  label: string;
+  mountpoints: Mount[];
+  totalBytes: number;
+  unallocatedBytes: number;
+  usedBytes: number;
+  allocation: BtrfsAllocation[];
+  devices: BtrfsDevice[];
+  scrub: BtrfsScrubStatus;
+  degraded: boolean;
+}
+
+export interface BtrfsJobIDRequest {
+  id: string;
+}
+
+export interface BtrfsKeep {
+  hourly: number;
+  daily: number;
+  weekly: number;
+  monthly: number;
+}
+
 export interface BtrfsMaintenanceRequest {
   mountpoint: string;
   task: string;
@@ -267,6 +353,177 @@ export interface BtrfsMaintenanceTask {
   period: string;
   periods: string[];
   mountpoints: string[];
+}
+
+export interface BtrfsOpProgress {
+  op: string;
+  percent: number;
+  message: string;
+}
+
+export interface BtrfsQgroupLimitRequest {
+  uuid: string;
+  path: string;
+  maxReferencedBytes?: number;
+}
+
+export interface BtrfsQuotaRequest {
+  uuid: string;
+  enabled: boolean;
+}
+
+export interface BtrfsReplicationJob {
+  id: string;
+  uuid: string;
+  path: string;
+  target: BtrfsReplicationTarget;
+  keepOnTarget: number;
+  enabled: boolean;
+  after: string;
+  lastRun?: string;
+  lastError?: string;
+}
+
+export interface BtrfsReplicationJobRequest {
+  job: BtrfsReplicationJob;
+}
+
+export interface BtrfsReplicationResult {
+  sent?: BtrfsSnapshot;
+  parent?: BtrfsSnapshot;
+  bytes: number;
+  pruned: number;
+  upToDate: boolean;
+}
+
+export interface BtrfsReplicationTarget {
+  kind: string;
+  path: string;
+  host?: string;
+  user?: string;
+  port?: number;
+}
+
+export interface BtrfsRollbackProgress {
+  step: number;
+  total: number;
+  message: string;
+}
+
+export interface BtrfsRollbackResult {
+  rebootRequired: boolean;
+  leftoverPath?: string;
+  remounted: boolean;
+  skippedMounts?: string[];
+}
+
+export interface BtrfsSSHKey {
+  publicKey: string;
+}
+
+export interface BtrfsSSHTrust {
+  fingerprints: string[];
+  trusted: boolean;
+}
+
+export interface BtrfsSSHTrustRequest {
+  host: string;
+  port: number;
+  confirm: boolean;
+  fingerprints?: string[];
+}
+
+export interface BtrfsScrubStatus {
+  status: string;
+  startedAt?: string;
+  finishedAt?: string;
+  errorCount: number;
+  bytesScrubbed: number;
+  percent: number;
+}
+
+export interface BtrfsSettings {
+  uuid: string;
+  quotasEnabled: boolean;
+  compression: BtrfsCompression;
+}
+
+export interface BtrfsSnapshot {
+  source: string;
+  path: string;
+  kind: SnapshotKind;
+  createdAt: string;
+  readOnly: boolean;
+  id: number;
+  uuid: string;
+  receivedUuid: string;
+  referencedBytes?: number;
+  exclusiveBytes?: number;
+  maxReferencedBytes?: number;
+}
+
+export interface BtrfsSnapshotRequest {
+  uuid: string;
+  snapshotPath: string;
+}
+
+export interface BtrfsSnapshotRule {
+  uuid: string;
+  path: string;
+  enabled: boolean;
+  every: string;
+  hour: number;
+  weekday: number;
+  keep: BtrfsKeep;
+  beforeUpdates: boolean;
+}
+
+export interface BtrfsSnapshotRuleRequest {
+  rule: BtrfsSnapshotRule;
+}
+
+export interface BtrfsSnapshotRules {
+  rules: BtrfsSnapshotRule[];
+  timerEnabled: boolean;
+}
+
+export interface BtrfsSnapshotsRequest {
+  uuid: string;
+  path?: string;
+}
+
+export interface BtrfsSubvolume {
+  id: number;
+  parentId: number;
+  path: string;
+  uuid: string;
+  parentUuid: string;
+  receivedUuid: string;
+  readOnly: boolean;
+  isDefault: boolean;
+  isSnapshot: boolean;
+  createdAt?: string;
+  mountpoint?: string;
+  referencedBytes?: number;
+  exclusiveBytes?: number;
+  maxReferencedBytes?: number;
+}
+
+export interface BtrfsSubvolumeCompressionRequest {
+  uuid: string;
+  path: string;
+  algorithm: string;
+}
+
+export interface BtrfsSubvolumeReadOnlyRequest {
+  uuid: string;
+  path: string;
+  readOnly: boolean;
+}
+
+export interface BtrfsSubvolumeRequest {
+  uuid: string;
+  path: string;
 }
 
 export interface CIFSMount {
@@ -305,19 +562,6 @@ export interface CPUInfoResponse {
   vendorId: string;
 }
 
-export interface CaddyRoute {
-  host: string;
-  container: string;
-  port: string;
-}
-
-export interface CaddyStatusResponse {
-  enabled: boolean;
-  baseDomain: string;
-  running: boolean;
-  routes: CaddyRoute[];
-}
-
 export interface CapabilitiesResponse {
   docker_available: boolean;
   docker_updates_available: boolean;
@@ -337,6 +581,7 @@ export interface CapabilitiesResponse {
   libvirt_available: boolean;
   node_available: boolean;
   btrfs_maintenance_available: boolean;
+  btrfs_available: boolean;
   docker_error?: string;
   docker_updates_error?: string;
   monitoring_error?: string;
@@ -355,6 +600,7 @@ export interface CapabilitiesResponse {
   libvirt_error?: string;
   node_error?: string;
   btrfs_maintenance_error?: string;
+  btrfs_error?: string;
 }
 
 export interface CapabilityRequest {
@@ -454,13 +700,6 @@ export interface ConfigDockerDashboardSections {
 export interface ConfigDockerPayload {
   folders?: string[];
   requireMountsForFolders?: boolean;
-  proxy?: ConfigDockerProxyPayload;
-}
-
-export interface ConfigDockerProxyPayload {
-  caddyEnabled?: boolean;
-  baseDomain?: string;
-  tlsEmail?: string;
 }
 
 export interface ConfigHardwareSections {
@@ -601,7 +840,6 @@ export interface ContainerInfo {
   Names: string[];
   NetworkSettings?: ContainerNetworkSettings;
   Ports?: ContainerPort[];
-  proxyPort?: string;
   State: string;
   Status: string;
   updateAvailable?: boolean;
@@ -878,6 +1116,7 @@ export interface DockerContainerAutoUpdateOptions {
   mode: DockerContainerAutoUpdateMode;
   revive_stopped: boolean;
   time: string;
+  update_all: boolean;
   update_stopped: boolean;
 }
 
@@ -1037,16 +1276,9 @@ export interface DockerNetworkIPAMConfig {
   Subnet: string;
 }
 
-export interface DockerProxySettings {
-  baseDomain?: string;
-  caddyEnabled: boolean;
-  tlsEmail?: string;
-}
-
 export interface DockerSettings {
   folders: string[];
   requireMountsForFolders: boolean;
-  proxy: DockerProxySettings;
 }
 
 export interface DockerStartedFailedResponse {
@@ -1860,9 +2092,14 @@ export interface MotherboardInfo {
   bios: MotherboardBIOS;
 }
 
-export interface MountpointNameRequest {
+export interface Mount {
   mountpoint: string;
-  name: string;
+  device: string;
+  uuid: string;
+  subvol: string;
+  subvolId: number;
+  options: string[];
+  subPath?: string;
 }
 
 export interface MountpointOptionsUpdateFstabRequest {
@@ -2221,6 +2458,13 @@ export interface RsyncStatus {
   ssh_error?: string;
 }
 
+export interface RunReport {
+  taken: BtrfsSnapshot[];
+  pruned: BtrfsSnapshot[];
+  skipped: string[];
+  errors: string[];
+}
+
 export interface SambaShare {
   name: string;
   properties: Record<string, string>;
@@ -2443,6 +2687,8 @@ export interface SmartValue {
   remaining_percent?: number;
 }
 
+export type SnapshotKind = string;
+
 export interface Socket {
   active_enter_timestamp: number;
   active_state: string;
@@ -2487,12 +2733,6 @@ export interface StorageMountResult {
   success: boolean;
   mountpoint?: string;
   warning?: string;
-}
-
-export interface StoragePathResult {
-  success: boolean;
-  mountpoint?: string;
-  path?: string;
 }
 
 export interface StorageTopologyInventory {
@@ -2703,6 +2943,10 @@ export interface UIConfig {
   viewModeDefault: TableCardViewMode;
 }
 
+export interface UUIDRequest {
+  uuid: string;
+}
+
 export interface UnitInfo {
   ActiveEnterTimestamp?: number;
   ActiveState?: string;
@@ -2792,6 +3036,7 @@ export interface VMCreateRequest {
   memoryMB: number;
   diskGB: number;
   isoPath?: string;
+  importPath?: string;
   sourceType?: VMSourceType;
   imagePresetId?: VMImagePresetID;
   templateId?: string;
@@ -2800,6 +3045,7 @@ export interface VMCreateRequest {
   cloudInitSshKey?: string;
   cloudInitHostname?: string;
   network?: string;
+  firmware?: VMFirmware;
   start: boolean;
 }
 
@@ -2820,6 +3066,13 @@ export interface VMDisk {
   volumeName?: string;
   sizeGB?: number;
   owned: boolean;
+}
+
+export type VMFirmware = "bios" | "uefi";
+
+export interface VMFirmwareRequest {
+  name: string;
+  firmware: VMFirmware;
 }
 
 export type VMImagePresetID =
@@ -2867,16 +3120,18 @@ export interface VMPreflight {
 export interface VMPreflightFirmware {
   uefiAvailable: boolean;
   biosAvailable: boolean;
+  detected?: VMFirmware;
 }
 
 export interface VMPreflightRequest {
   isoPath?: string;
+  importPath?: string;
   sourceType?: VMSourceType;
   imagePresetId?: VMImagePresetID;
   network?: string;
 }
 
-export type VMSourceType = "iso" | "imagePreset";
+export type VMSourceType = "iso" | "imagePreset" | "import";
 
 export interface VMTemplate {
   id: string;
@@ -2949,6 +3204,7 @@ export interface VirtualMachine {
   memoryMB: number;
   diskGB: number;
   autostart: boolean;
+  firmware?: VMFirmware;
   hasGraphics: boolean;
   ownedDisks: string[];
   disks?: VMDisk[];
@@ -3211,11 +3467,6 @@ export interface LinuxIOSchema {
       request: DockerNetworkConnectRequest;
       result: void;
     };
-    connect_to_proxy: {
-      input: [containerId: string];
-      request: ContainerIDRequest;
-      result: MessageResponse;
-    };
     create_container: {
       input: [request: ContainerCreateRequest];
       request: ContainerCreateRequest;
@@ -3247,7 +3498,6 @@ export interface LinuxIOSchema {
       request: NameRequest;
       result: void;
     };
-    disable_caddy: { input: []; request: void; result: MessageResponse };
     disconnect_network: {
       input: [request: DockerNetworkDisconnectRequest];
       request: DockerNetworkDisconnectRequest;
@@ -3258,8 +3508,6 @@ export interface LinuxIOSchema {
       request: ContainerEditRequest;
       result: ContainerConfigurationResult;
     };
-    enable_caddy: { input: []; request: void; result: MessageResponse };
-    get_caddy_status: { input: []; request: void; result: CaddyStatusResponse };
     get_compose_file_path: {
       input: [stackName: string];
       request: StackNameRequest;
@@ -3321,7 +3569,6 @@ export interface LinuxIOSchema {
       request: ContainerIDRequest;
       result: void;
     };
-    reload_caddy: { input: []; request: void; result: MessageResponse };
     remove_container: {
       input: [request: ContainerRemoveRequest];
       request: ContainerRemoveRequest;
@@ -3768,10 +4015,163 @@ export interface LinuxIOSchema {
   };
 
   storage: {
-    create_btrfs_subvolume: {
-      input: [request: MountpointNameRequest];
-      request: MountpointNameRequest;
-      result: StoragePathResult;
+    btrfs_balance: {
+      input: [request: BtrfsBalanceRequest];
+      request: BtrfsBalanceRequest;
+      result: BtrfsFilesystem;
+      progress: TaskProgress<BtrfsOpProgress>;
+    };
+    btrfs_balance_cancel: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: SuccessResponse;
+    };
+    btrfs_device_add: {
+      input: [request: BtrfsDeviceAddRequest];
+      request: BtrfsDeviceAddRequest;
+      result: BtrfsFilesystem;
+    };
+    btrfs_device_remove: {
+      input: [request: BtrfsDeviceRequest];
+      request: BtrfsDeviceRequest;
+      result: BtrfsFilesystem;
+      progress: TaskProgress<BtrfsOpProgress>;
+    };
+    btrfs_device_replace: {
+      input: [request: BtrfsDeviceReplaceRequest];
+      request: BtrfsDeviceReplaceRequest;
+      result: BtrfsFilesystem;
+      progress: TaskProgress<BtrfsOpProgress>;
+    };
+    btrfs_list: { input: []; request: void; result: BtrfsFilesystem[] };
+    btrfs_qgroup_limit: {
+      input: [request: BtrfsQgroupLimitRequest];
+      request: BtrfsQgroupLimitRequest;
+      result: BtrfsSubvolume;
+    };
+    btrfs_replication_job_delete: {
+      input: [id: string];
+      request: BtrfsJobIDRequest;
+      result: BtrfsReplicationJob[];
+    };
+    btrfs_replication_job_set: {
+      input: [job: BtrfsReplicationJob];
+      request: BtrfsReplicationJobRequest;
+      result: BtrfsReplicationJob[];
+    };
+    btrfs_replication_jobs: {
+      input: [];
+      request: void;
+      result: BtrfsReplicationJob[];
+    };
+    btrfs_replication_run: {
+      input: [id: string];
+      request: BtrfsJobIDRequest;
+      result: BtrfsReplicationResult;
+      progress: TaskProgress<BtrfsOpProgress>;
+    };
+    btrfs_replication_ssh_key: {
+      input: [];
+      request: void;
+      result: BtrfsSSHKey;
+    };
+    btrfs_replication_ssh_trust: {
+      input: [request: BtrfsSSHTrustRequest];
+      request: BtrfsSSHTrustRequest;
+      result: BtrfsSSHTrust;
+    };
+    btrfs_scrub_cancel: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: SuccessResponse;
+    };
+    btrfs_scrub_start: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: BtrfsFilesystem;
+      progress: TaskProgress<BtrfsOpProgress>;
+    };
+    btrfs_set_compression: {
+      input: [request: BtrfsCompressionRequest];
+      request: BtrfsCompressionRequest;
+      result: BtrfsSettings;
+    };
+    btrfs_set_quotas: {
+      input: [request: BtrfsQuotaRequest];
+      request: BtrfsQuotaRequest;
+      result: BtrfsSettings;
+    };
+    btrfs_settings: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: BtrfsSettings;
+    };
+    btrfs_snapshot_create: {
+      input: [request: BtrfsSubvolumeRequest];
+      request: BtrfsSubvolumeRequest;
+      result: BtrfsSnapshot;
+    };
+    btrfs_snapshot_delete: {
+      input: [request: BtrfsSnapshotRequest];
+      request: BtrfsSnapshotRequest;
+      result: SuccessResponse;
+    };
+    btrfs_snapshot_rollback: {
+      input: [request: BtrfsSnapshotRequest];
+      request: BtrfsSnapshotRequest;
+      result: BtrfsRollbackResult;
+      progress: TaskProgress<BtrfsRollbackProgress>;
+    };
+    btrfs_snapshot_rule_delete: {
+      input: [request: BtrfsSubvolumeRequest];
+      request: BtrfsSubvolumeRequest;
+      result: BtrfsSnapshotRules;
+    };
+    btrfs_snapshot_rule_set: {
+      input: [rule: BtrfsSnapshotRule];
+      request: BtrfsSnapshotRuleRequest;
+      result: BtrfsSnapshotRules;
+    };
+    btrfs_snapshot_rules: {
+      input: [];
+      request: void;
+      result: BtrfsSnapshotRules;
+    };
+    btrfs_snapshot_run_now: { input: []; request: void; result: RunReport };
+    btrfs_snapshots: {
+      input: [request: BtrfsSnapshotsRequest];
+      request: BtrfsSnapshotsRequest;
+      result: BtrfsSnapshot[];
+    };
+    btrfs_subvolume_create: {
+      input: [request: BtrfsSubvolumeRequest];
+      request: BtrfsSubvolumeRequest;
+      result: BtrfsSubvolume;
+    };
+    btrfs_subvolume_delete: {
+      input: [request: BtrfsSubvolumeRequest];
+      request: BtrfsSubvolumeRequest;
+      result: SuccessResponse;
+    };
+    btrfs_subvolume_set_compression: {
+      input: [request: BtrfsSubvolumeCompressionRequest];
+      request: BtrfsSubvolumeCompressionRequest;
+      result: BtrfsSubvolume;
+    };
+    btrfs_subvolume_set_default: {
+      input: [request: BtrfsSubvolumeRequest];
+      request: BtrfsSubvolumeRequest;
+      result: SuccessResponse;
+    };
+    btrfs_subvolume_set_readonly: {
+      input: [request: BtrfsSubvolumeReadOnlyRequest];
+      request: BtrfsSubvolumeReadOnlyRequest;
+      result: BtrfsSubvolume;
+    };
+    btrfs_subvolumes: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: BtrfsSubvolume[];
     };
     create_lv: {
       input: [request: CreateLogicalVolumeRequest];
@@ -4041,6 +4441,11 @@ export interface LinuxIOSchema {
     };
     reboot: { input: [name: string]; request: NameRequest; result: void };
     resume: { input: [name: string]; request: NameRequest; result: void };
+    set_firmware: {
+      input: [request: VMFirmwareRequest];
+      request: VMFirmwareRequest;
+      result: VirtualMachine;
+    };
     shutdown: { input: [name: string]; request: NameRequest; result: void };
     start: { input: [name: string]; request: NameRequest; result: void };
     suspend: { input: [name: string]; request: NameRequest; result: void };
@@ -4204,10 +4609,6 @@ export interface LinuxIOCallSchema {
     request: DockerNetworkConnectRequest;
     result: void;
   };
-  "docker.connect_to_proxy": {
-    request: ContainerIDRequest;
-    result: MessageResponse;
-  };
   "docker.create_container": {
     request: ContainerCreateRequest;
     result: ContainerConfigurationResult;
@@ -4224,7 +4625,6 @@ export interface LinuxIOCallSchema {
     result: DeleteStackResult;
   };
   "docker.delete_volume": { request: NameRequest; result: void };
-  "docker.disable_caddy": { request: void; result: MessageResponse };
   "docker.disconnect_network": {
     request: DockerNetworkDisconnectRequest;
     result: void;
@@ -4233,8 +4633,6 @@ export interface LinuxIOCallSchema {
     request: ContainerEditRequest;
     result: ContainerConfigurationResult;
   };
-  "docker.enable_caddy": { request: void; result: MessageResponse };
-  "docker.get_caddy_status": { request: void; result: CaddyStatusResponse };
   "docker.get_compose_file_path": {
     request: StackNameRequest;
     result: ComposeFilePathResponse;
@@ -4273,7 +4671,6 @@ export interface LinuxIOCallSchema {
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };
   "docker.pause_container": { request: ContainerIDRequest; result: void };
-  "docker.reload_caddy": { request: void; result: MessageResponse };
   "docker.remove_container": { request: ContainerRemoveRequest; result: void };
   "docker.restart_container": { request: ContainerIDRequest; result: void };
   "docker.set_container_auto_update": {
@@ -4477,9 +4874,94 @@ export interface LinuxIOCallSchema {
     request: ShareUpdateSambaRequest;
     result: SuccessNameResponse;
   };
-  "storage.create_btrfs_subvolume": {
-    request: MountpointNameRequest;
-    result: StoragePathResult;
+  "storage.btrfs_balance_cancel": {
+    request: UUIDRequest;
+    result: SuccessResponse;
+  };
+  "storage.btrfs_device_add": {
+    request: BtrfsDeviceAddRequest;
+    result: BtrfsFilesystem;
+  };
+  "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
+  "storage.btrfs_qgroup_limit": {
+    request: BtrfsQgroupLimitRequest;
+    result: BtrfsSubvolume;
+  };
+  "storage.btrfs_replication_job_delete": {
+    request: BtrfsJobIDRequest;
+    result: BtrfsReplicationJob[];
+  };
+  "storage.btrfs_replication_job_set": {
+    request: BtrfsReplicationJobRequest;
+    result: BtrfsReplicationJob[];
+  };
+  "storage.btrfs_replication_jobs": {
+    request: void;
+    result: BtrfsReplicationJob[];
+  };
+  "storage.btrfs_replication_ssh_key": { request: void; result: BtrfsSSHKey };
+  "storage.btrfs_replication_ssh_trust": {
+    request: BtrfsSSHTrustRequest;
+    result: BtrfsSSHTrust;
+  };
+  "storage.btrfs_scrub_cancel": {
+    request: UUIDRequest;
+    result: SuccessResponse;
+  };
+  "storage.btrfs_set_compression": {
+    request: BtrfsCompressionRequest;
+    result: BtrfsSettings;
+  };
+  "storage.btrfs_set_quotas": {
+    request: BtrfsQuotaRequest;
+    result: BtrfsSettings;
+  };
+  "storage.btrfs_settings": { request: UUIDRequest; result: BtrfsSettings };
+  "storage.btrfs_snapshot_create": {
+    request: BtrfsSubvolumeRequest;
+    result: BtrfsSnapshot;
+  };
+  "storage.btrfs_snapshot_delete": {
+    request: BtrfsSnapshotRequest;
+    result: SuccessResponse;
+  };
+  "storage.btrfs_snapshot_rule_delete": {
+    request: BtrfsSubvolumeRequest;
+    result: BtrfsSnapshotRules;
+  };
+  "storage.btrfs_snapshot_rule_set": {
+    request: BtrfsSnapshotRuleRequest;
+    result: BtrfsSnapshotRules;
+  };
+  "storage.btrfs_snapshot_rules": { request: void; result: BtrfsSnapshotRules };
+  "storage.btrfs_snapshot_run_now": { request: void; result: RunReport };
+  "storage.btrfs_snapshots": {
+    request: BtrfsSnapshotsRequest;
+    result: BtrfsSnapshot[];
+  };
+  "storage.btrfs_subvolume_create": {
+    request: BtrfsSubvolumeRequest;
+    result: BtrfsSubvolume;
+  };
+  "storage.btrfs_subvolume_delete": {
+    request: BtrfsSubvolumeRequest;
+    result: SuccessResponse;
+  };
+  "storage.btrfs_subvolume_set_compression": {
+    request: BtrfsSubvolumeCompressionRequest;
+    result: BtrfsSubvolume;
+  };
+  "storage.btrfs_subvolume_set_default": {
+    request: BtrfsSubvolumeRequest;
+    result: SuccessResponse;
+  };
+  "storage.btrfs_subvolume_set_readonly": {
+    request: BtrfsSubvolumeReadOnlyRequest;
+    result: BtrfsSubvolume;
+  };
+  "storage.btrfs_subvolumes": {
+    request: UUIDRequest;
+    result: BtrfsSubvolume[];
   };
   "storage.create_lv": {
     request: CreateLogicalVolumeRequest;
@@ -4600,6 +5082,7 @@ export interface LinuxIOCallSchema {
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };
+  "virt.set_firmware": { request: VMFirmwareRequest; result: VirtualMachine };
   "virt.shutdown": { request: NameRequest; result: void };
   "virt.start": { request: NameRequest; result: void };
   "virt.suspend": { request: NameRequest; result: void };

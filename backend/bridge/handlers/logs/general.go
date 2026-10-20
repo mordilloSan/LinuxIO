@@ -591,6 +591,16 @@ func readJournalLines(ctx context.Context, stdout io.Reader, lines chan<- string
 	}
 }
 
+// stopJournalFollow kills the journal process and waits for its line reader
+// to exit; the reader's error is expected after the kill.
+func stopJournalFollow(command *runningJournalCommand, readDone <-chan error) {
+	killLogsProcess(command.cmd)
+	if err := <-readDone; err != nil {
+		slog.Debug("journal line reader stopped", "err", err)
+	}
+	_ = command.cmd.Wait()
+}
+
 func cancelGeneralLogsFollow(
 	ctx context.Context,
 	command *runningJournalCommand,
@@ -598,9 +608,7 @@ func cancelGeneralLogsFollow(
 	batch *journalDataBatch,
 	lines <-chan string,
 ) error {
-	killLogsProcess(command.cmd)
-	<-readDone
-	_ = command.cmd.Wait()
+	stopJournalFollow(command, readDone)
 	if err := batch.drain(lines); err != nil {
 		return err
 	}
@@ -646,9 +654,7 @@ func streamGeneralLogsFollow(ctx context.Context, stream net.Conn, req generalLo
 	lines, readDone := startJournalLineReader(ctx, command.stdout)
 	abort := func() {
 		cancel()
-		killLogsProcess(command.cmd)
-		<-readDone
-		_ = command.cmd.Wait()
+		stopJournalFollow(command, readDone)
 	}
 	ticker := time.NewTicker(followFlushInterval)
 	defer ticker.Stop()

@@ -45,10 +45,6 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 	// file contents in the webserver or browser tab.
 	mux.Handle("GET /api/download", nativeDownloadHandler(sm))
 
-	// Container reverse proxy — session-protected
-	// Requests: /proxy/{container-name}/[...] → container's internal IP:port
-	mux.Handle("/proxy/", sm.RequireSession(http.HandlerFunc(ContainerProxyHandler)))
-
 	// Serve embedded SPA
 	mountProductionSPA(mux, cfg.UI)
 

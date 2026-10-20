@@ -45,7 +45,8 @@ var StringEnums = map[string][]string{
 	"DockTileColors":            {"accent", "mono", "neutral", "vibrant"},
 	"ValidationIssueType":       {"error", "warning"},
 	"VMImagePresetID":           {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
-	"VMSourceType":              {"iso", "imagePreset"},
+	"VMSourceType":              {"iso", "imagePreset", "import"},
+	"VMFirmware":                {"bios", "uefi"},
 	"NetworkBridgeHandoffState": {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
 }
 
@@ -109,13 +110,15 @@ type GpuDevice struct {
 }
 
 type ApiDisk struct {
-	Model  string  `json:"model"`
-	Name   string  `json:"name"`
-	RO     bool    `json:"ro"`
-	Serial *string `json:"serial,omitempty"`
-	Size   string  `json:"size"`
-	Type   *string `json:"type,omitempty"`
-	Vendor *string `json:"vendor,omitempty"`
+	Model string `json:"model"`
+	Name  string `json:"name"`
+	RO    bool   `json:"ro"`
+	// Rotational is true for spinning disks, false for SSD and NVMe.
+	Rotational bool    `json:"rotational"`
+	Serial     *string `json:"serial,omitempty"`
+	Size       string  `json:"size"`
+	Type       *string `json:"type,omitempty"`
+	Vendor     *string `json:"vendor,omitempty"`
 }
 
 // StorageBlockDevice describes kernel-reported backing relationships. A device
@@ -411,7 +414,6 @@ type ContainerInfo struct {
 	Names             []string                  `json:"Names"`
 	NetworkSettings   *ContainerNetworkSettings `json:"NetworkSettings,omitempty"`
 	Ports             []ContainerPort           `json:"Ports,omitempty"`
-	ProxyPort         *string                   `json:"proxyPort,omitempty"`
 	State             string                    `json:"State"`
 	Status            string                    `json:"Status"`
 	UpdateAvailable   *bool                     `json:"updateAvailable,omitempty"`
@@ -491,6 +493,7 @@ type DockerContainerAutoUpdateOptions struct {
 	Mode           DockerContainerAutoUpdateMode `json:"mode"`
 	ReviveStopped  bool                          `json:"revive_stopped"`
 	Time           string                        `json:"time"`
+	UpdateAll      bool                          `json:"update_all"`
 	UpdateStopped  bool                          `json:"update_stopped"`
 }
 
@@ -1365,19 +1368,6 @@ type UpdatesFastResponse struct {
 	Updates []UpdateItem `json:"updates,omitempty"`
 }
 
-type CaddyStatusResponse struct {
-	Enabled    bool         `json:"enabled"`
-	BaseDomain string       `json:"baseDomain"`
-	Running    bool         `json:"running"`
-	Routes     []CaddyRoute `json:"routes"`
-}
-
-type CaddyRoute struct {
-	Host      string `json:"host"`
-	Container string `json:"container"`
-	Port      string `json:"port"`
-}
-
 type ComposeFilePathResponse struct {
 	Path      string `json:"path"`
 	Exists    bool   `json:"exists"`
@@ -1414,12 +1404,6 @@ type ValidateComposeResponse struct {
 	Valid             bool                   `json:"valid"`
 	Errors            []ValidateComposeError `json:"errors"`
 	NormalizedContent string                 `json:"normalized_content,omitempty"`
-}
-
-type StoragePathResult struct {
-	Success    bool    `json:"success"`
-	Mountpoint *string `json:"mountpoint,omitempty"`
-	Path       *string `json:"path,omitempty"`
 }
 
 type StorageMountResult struct {
@@ -1477,22 +1461,25 @@ type VMNetwork struct {
 }
 
 type VirtualMachine struct {
-	Name        string   `json:"name"`
-	UUID        string   `json:"uuid,omitempty"`
-	State       string   `json:"state"`
-	VCPUs       int      `json:"vcpus"`
-	MemoryMB    int      `json:"memoryMB"`
-	DiskGB      int      `json:"diskGB"`
-	Autostart   bool     `json:"autostart"`
-	HasGraphics bool     `json:"hasGraphics"`
-	OwnedDisks  []string `json:"ownedDisks"`
-	Disks       []VMDisk `json:"disks,omitempty"`
-	NICs        []VMNIC  `json:"nics,omitempty"`
+	Name        string     `json:"name"`
+	UUID        string     `json:"uuid,omitempty"`
+	State       string     `json:"state"`
+	VCPUs       int        `json:"vcpus"`
+	MemoryMB    int        `json:"memoryMB"`
+	DiskGB      int        `json:"diskGB"`
+	Autostart   bool       `json:"autostart"`
+	Firmware    VMFirmware `json:"firmware,omitempty"`
+	HasGraphics bool       `json:"hasGraphics"`
+	OwnedDisks  []string   `json:"ownedDisks"`
+	Disks       []VMDisk   `json:"disks,omitempty"`
+	NICs        []VMNIC    `json:"nics,omitempty"`
 }
 
 type VMPreflightFirmware struct {
 	UEFIAvailable bool `json:"uefiAvailable"`
 	BIOSAvailable bool `json:"biosAvailable"`
+	// Detected is the firmware create picks for this source when none is requested.
+	Detected VMFirmware `json:"detected,omitempty"`
 }
 
 type VMManagedPaths struct {
@@ -1605,16 +1592,9 @@ type UIConfig struct {
 	ViewModeDefault         TableCardViewMode               `json:"viewModeDefault"`
 }
 
-type DockerProxySettings struct {
-	BaseDomain   *string `json:"baseDomain,omitempty"`
-	CaddyEnabled bool    `json:"caddyEnabled"`
-	TLSEmail     *string `json:"tlsEmail,omitempty"`
-}
-
 type DockerSettings struct {
-	Folders                 []string            `json:"folders"`
-	RequireMountsForFolders bool                `json:"requireMountsForFolders"`
-	Proxy                   DockerProxySettings `json:"proxy"`
+	Folders                 []string `json:"folders"`
+	RequireMountsForFolders bool     `json:"requireMountsForFolders"`
 }
 
 type JobSettings struct {
