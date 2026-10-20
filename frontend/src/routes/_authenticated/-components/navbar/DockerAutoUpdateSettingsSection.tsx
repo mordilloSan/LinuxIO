@@ -83,7 +83,9 @@ const DockerAutoUpdateSettingsSection = ({
     (name) => currentOptions.container_names.includes(name),
   );
   const blockedReasons = currentOptions.container_names.flatMap((name) => {
-    if (currentOptions.mode !== "update") return [];
+    if (currentOptions.mode !== "update" || currentOptions.update_all) {
+      return [];
+    }
     const target = serverState?.containers.find(
       (container) => container.name === name,
     );
@@ -405,8 +407,24 @@ const DockerAutoUpdateSettingsSection = ({
           </div>
         </div>
 
+        <div style={{ alignItems: "center", display: "flex", gap: GAP_MD }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <AppTypography variant="body2">Update all containers</AppTypography>
+            <AppTypography color="text.secondary" variant="caption">
+              Update every eligible container, including ones created later
+            </AppTypography>
+          </div>
+          <AppSwitch
+            aria-label="Update all containers"
+            checked={currentOptions.update_all}
+            disabled={controlsDisabled}
+            onChange={(_, checked) => updateDraft("update_all", checked)}
+            size="small"
+          />
+        </div>
+
         <AppAutocomplete
-          disabled={controlsDisabled}
+          disabled={controlsDisabled || currentOptions.update_all}
           fullWidth
           helperText={
             currentOptions.mode === "update"

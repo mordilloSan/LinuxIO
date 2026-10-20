@@ -11,6 +11,7 @@ export const DEFAULT_AUTO_UPDATE_OPTIONS: DockerContainerAutoUpdateOptions = {
   mode: "update",
   revive_stopped: false,
   time: "04:00",
+  update_all: false,
   update_stopped: false,
 };
 

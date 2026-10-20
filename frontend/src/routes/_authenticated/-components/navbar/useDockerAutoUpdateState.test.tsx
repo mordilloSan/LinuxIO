@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
       mode: "update" as const,
       revive_stopped: false,
       time: "04:00",
+      update_all: false,
       update_stopped: false,
     },
     timer_active: false,

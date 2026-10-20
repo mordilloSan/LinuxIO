@@ -86,16 +86,7 @@ func runScheduledPass(ctx context.Context, opts apischema.DockerContainerAutoUpd
 		}
 	}
 
-	selected := make([]container.Summary, 0, len(opts.ContainerNames))
-	var runErrs []error
-	for _, name := range opts.ContainerNames {
-		summary, ok := targetByName[name]
-		if !ok {
-			runErrs = append(runErrs, fmt.Errorf("scheduled container %q no longer exists", name))
-			continue
-		}
-		selected = append(selected, summary)
-	}
+	selected, runErrs := scheduledUpdateSelection(opts, containers, targetByName)
 
 	checkTargets := running
 	if opts.IncludeStopped {
@@ -117,6 +108,31 @@ func runScheduledPass(ctx context.Context, opts apischema.DockerContainerAutoUpd
 		updateErr = operations.update(ctx, selected, containers, opts)
 	}
 	return errors.Join(append(runErrs, checkErr, updateErr)...)
+}
+
+func scheduledUpdateSelection(opts apischema.DockerContainerAutoUpdateOptions, containers []container.Summary, targetByName map[string]container.Summary) ([]container.Summary, []error) {
+	selected := make([]container.Summary, 0, len(opts.ContainerNames))
+	if opts.UpdateAll {
+		// Containers that cannot be updated safely are skipped, not failed.
+		replicas := composeReplicaCounts(containers)
+		for _, summary := range containers {
+			if eligible, _ := containerMutationEligibility(summary, replicas); eligible &&
+				(summary.State == container.StateRunning || opts.UpdateStopped) {
+				selected = append(selected, summary)
+			}
+		}
+		return selected, nil
+	}
+	var errs []error
+	for _, name := range opts.ContainerNames {
+		summary, ok := targetByName[name]
+		if !ok {
+			errs = append(errs, fmt.Errorf("scheduled container %q no longer exists", name))
+			continue
+		}
+		selected = append(selected, summary)
+	}
+	return selected, errs
 }
 
 func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers []container.Summary) error {

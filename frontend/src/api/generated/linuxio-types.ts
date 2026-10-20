@@ -1115,6 +1115,7 @@ export interface DockerContainerAutoUpdateOptions {
   mode: DockerContainerAutoUpdateMode;
   revive_stopped: boolean;
   time: string;
+  update_all: boolean;
   update_stopped: boolean;
 }
 

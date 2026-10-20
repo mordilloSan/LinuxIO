@@ -125,6 +125,34 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 	}
 }
 
+func TestRunScheduledPassUpdateAllSkipsIneligibleContainers(t *testing.T) {
+	compose := map[string]string{"com.docker.compose.project": "p", "com.docker.compose.service": "s"}
+	var updated []string
+	err := runScheduledPass(context.Background(), apischema.DockerContainerAutoUpdateOptions{
+		Mode:      "update",
+		UpdateAll: true,
+	}, scheduledPassOperations{
+		list: func(context.Context) ([]container.Summary, error) {
+			return []container.Summary{
+				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
+				{ID: "stopped-id", Names: []string{"/stopped"}, State: container.StateExited},
+				{ID: "rep1", Names: []string{"/p-s-1"}, State: container.StateRunning, Labels: compose},
+				{ID: "rep2", Names: []string{"/p-s-2"}, State: container.StateRunning, Labels: compose},
+			}, nil
+		},
+		check: func(context.Context, []container.Summary) error { return nil },
+		update: func(_ context.Context, summaries, _ []container.Summary, _ apischema.DockerContainerAutoUpdateOptions) error {
+			for _, summary := range summaries {
+				updated = append(updated, summary.ID)
+			}
+			return nil
+		},
+	})
+	if err != nil || !slices.Equal(updated, []string{"web-id"}) {
+		t.Fatalf("runScheduledPass = %v, updated %v", err, updated)
+	}
+}
+
 func TestScheduledComposeGroupsContinueAfterIndependentFailures(t *testing.T) {
 	withTempUpdateStatusPath(t)
 	state := newScheduledUpdateState(context.Background(), nil)

@@ -490,6 +490,7 @@ type DockerContainerAutoUpdateOptions struct {
 	Mode           DockerContainerAutoUpdateMode `json:"mode"`
 	ReviveStopped  bool                          `json:"revive_stopped"`
 	Time           string                        `json:"time"`
+	UpdateAll      bool                          `json:"update_all"`
 	UpdateStopped  bool                          `json:"update_stopped"`
 }
 
