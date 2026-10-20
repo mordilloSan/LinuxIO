@@ -598,9 +598,7 @@ describe("Virtual Machines page", () => {
   it("renders the VM section tabs", async () => {
     await renderVMPage();
 
-    expect(
-      screen.getByRole("tab", { name: /global dashboard/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /overview/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /networks/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /templates/i })).toBeInTheDocument();
     expect(

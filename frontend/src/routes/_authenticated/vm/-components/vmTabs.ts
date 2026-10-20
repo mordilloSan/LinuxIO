@@ -1,7 +1,7 @@
 import type { RoutedTab } from "@/components/tabbar";
 
 export const VM_TABS = [
-  { label: "Global dashboard", to: "/vm" },
+  { label: "Overview", to: "/vm" },
   { label: "Networks", to: "/vm/networks" },
   { label: "Templates", to: "/vm/images" },
   { label: "Disks", to: "/vm/disks" },

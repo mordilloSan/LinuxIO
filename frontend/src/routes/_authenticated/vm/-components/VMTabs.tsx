@@ -7,13 +7,10 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
-import { StatusMetric } from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
-import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 
 import PreflightSummary from "./PreflightSummary";
 import {
   formatAttachmentType,
-  formatMemory,
   normalizeState,
   stateChipColor,
 } from "./vmShared";
@@ -23,20 +20,6 @@ const tabPanelStyle: CSSProperties = {
   flexDirection: "column",
   gap: "var(--app-space-16)",
   minHeight: 0,
-};
-
-const cardGridStyle: CSSProperties = {
-  display: "grid",
-  gap: DASHBOARD_CARD_GAP,
-  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-};
-
-const gridTileStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--app-space-8)",
-  minWidth: 0,
-  padding: "var(--app-space-16)",
 };
 
 const preflightCardStyle: CSSProperties = {
@@ -81,65 +64,6 @@ export function VMPreflightCard({ preflight }: { preflight?: VMPreflight }) {
         </AppAlert>
       )}
     </FrostedCard>
-  );
-}
-
-export function VMDashboardTab({
-  preflight,
-  vms,
-}: {
-  preflight?: VMPreflight;
-  vms: VirtualMachine[];
-}) {
-  const running = vms.filter((vm) => vm.state === "running").length;
-  const paused = vms.filter((vm) => vm.state === "paused").length;
-  const totalMemoryMB = vms.reduce((sum, vm) => sum + vm.memoryMB, 0);
-  const totalDiskGB = vms.reduce((sum, vm) => sum + vm.diskGB, 0);
-
-  return (
-    <div style={tabPanelStyle}>
-      <div style={cardGridStyle}>
-        <FrostedCard hoverLift style={gridTileStyle}>
-          <StatusMetric
-            detail={`${running} running, ${paused} paused`}
-            icon="mdi:server"
-            label="Configured VMs"
-            value={vms.length}
-            variant="stat"
-          />
-        </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle}>
-          <StatusMetric
-            detail={
-              preflight?.defaultNetworkActive ? "default active" : "check"
-            }
-            icon="mdi:lan"
-            label="Default Network"
-            value={preflight?.defaultNetworkExists ? "Ready" : "Missing"}
-            variant="stat"
-          />
-        </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle}>
-          <StatusMetric
-            detail={preflight?.defaultPoolActive ? "default active" : "check"}
-            icon="mdi:database"
-            label="Default Pool"
-            value={preflight?.defaultPoolExists ? "Ready" : "Missing"}
-            variant="stat"
-          />
-        </FrostedCard>
-        <FrostedCard hoverLift style={gridTileStyle}>
-          <StatusMetric
-            detail={`${totalDiskGB} GB provisioned`}
-            icon="mdi:memory"
-            label="Assigned Memory"
-            value={formatMemory(totalMemoryMB)}
-            variant="stat"
-          />
-        </FrostedCard>
-      </div>
-      <VMPreflightCard preflight={preflight} />
-    </div>
   );
 }
 

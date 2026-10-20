@@ -12,7 +12,9 @@ import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import DashboardStatRows from "./DashboardStatRows";
 import NetworkGraph from "./NetworkGraph";
 
-const filterInterfaces = (interfaces: NetworkInterface[]): NetworkInterface[] =>
+export const filterInterfaces = (
+  interfaces: NetworkInterface[],
+): NetworkInterface[] =>
   interfaces.filter(
     (iface) =>
       !iface.name.startsWith("veth") &&
