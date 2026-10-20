@@ -104,7 +104,23 @@ func collectSourcePreflight(ctx context.Context, req apischema.VMPreflightReques
 		collectImagePresetPreflight(ctx, req, out)
 		return
 	}
+	if sourceType == vmSourceTypeImport {
+		collectImportPreflight(req, out)
+		return
+	}
 	collectISOPreflight(req, out)
+}
+
+func collectImportPreflight(req apischema.VMPreflightRequest, out *apischema.VMPreflight) {
+	if _, err := execLookPath("qemu-img"); err != nil {
+		out.Errors = append(out.Errors, "qemu-img is required to convert imported VM disks")
+	}
+	if req.ImportPath == nil || strings.TrimSpace(*req.ImportPath) == "" {
+		return
+	}
+	if _, err := validateImportDisk(*req.ImportPath); err != nil {
+		out.Errors = append(out.Errors, err.Error())
+	}
 }
 
 func collectImagePresetPreflight(ctx context.Context, req apischema.VMPreflightRequest, out *apischema.VMPreflight) {

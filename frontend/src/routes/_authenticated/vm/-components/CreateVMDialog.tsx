@@ -40,10 +40,12 @@ import {
   CLOUD_INIT_IMAGE_PRESETS,
   DEFAULT_MANAGED_CLOUD_PATH,
   DEFAULT_MANAGED_ISO_PATH,
+  DEFAULT_MANAGED_ROOT_PATH,
   IMAGE_PRESETS,
   VM_TOAST,
   folderFromISOPathText,
   isISOPath,
+  isImportDiskPath,
   parentDirectory,
 } from "./vmShared";
 
@@ -52,7 +54,7 @@ const createModeStyle = (isMobile: boolean): CSSProperties =>
     ? {
         display: "grid",
         gap: "var(--app-space-8)",
-        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
         marginBottom: "var(--app-space-12)",
       }
     : {
@@ -167,6 +169,7 @@ export default function CreateVMDialog({
   const [memoryMB, setMemoryMB] = useState("4096");
   const [diskGB, setDiskGB] = useState("32");
   const [isoPath, setISOPath] = useState("");
+  const [importPath, setImportPath] = useState("");
   const [start, setStart] = useState(true);
   const [createMode, setCreateMode] = useState<VMCreateMode>("iso");
   const [selectedPreset, setSelectedPreset] = useState<VMPresetID>("custom");
@@ -200,6 +203,7 @@ export default function CreateVMDialog({
   );
   const activeHostBridges = hostBridges.filter((candidate) => candidate.active);
   const usesISO = sourceType === "iso";
+  const usesImport = sourceType === "import";
   const usesCloudInit = Boolean(
     imagePresetId && CLOUD_INIT_IMAGE_PRESETS.has(imagePresetId),
   );
@@ -209,6 +213,7 @@ export default function CreateVMDialog({
   const preflight = useQuery({
     ...linuxio.virt.preflight({
       imagePresetId,
+      importPath: usesImport ? importPath.trim() || undefined : undefined,
       isoPath: usesISO ? isoPath || undefined : undefined,
       sourceType,
     }),
@@ -230,6 +235,8 @@ export default function CreateVMDialog({
     preflight.data?.managedPaths?.isos ?? DEFAULT_MANAGED_ISO_PATH;
   const managedCloudPath =
     preflight.data?.managedPaths?.cloudImages ?? DEFAULT_MANAGED_CLOUD_PATH;
+  const managedRootPath =
+    preflight.data?.managedPaths?.root ?? DEFAULT_MANAGED_ROOT_PATH;
 
   const applyPreset = (preset: ReadyImagePreset) => {
     setTemplateID("");
@@ -256,13 +263,13 @@ export default function CreateVMDialog({
       return;
     }
     setTemplateID("");
-    setCreateMode("iso");
+    setCreateMode(mode);
     setSelectedPreset("custom");
     setVCPUs("2");
     setMemoryMB("4096");
     setDiskGB("32");
     setStart(true);
-    setSourceType("iso");
+    setSourceType(mode);
     setImagePresetId(undefined);
     setNetwork("default");
   };
@@ -285,6 +292,8 @@ export default function CreateVMDialog({
   const trimmedISOPath = isoPath.trim();
   const isoPathProvided = trimmedISOPath.length > 0;
   const isoPathHasISOExtension = !isoPathProvided || isISOPath(trimmedISOPath);
+  const trimmedImportPath = importPath.trim();
+  const importPathValid = isImportDiskPath(trimmedImportPath);
   const fieldsValid =
     nameValid &&
     parsedVCPUs > 0 &&
@@ -293,6 +302,7 @@ export default function CreateVMDialog({
     (!templateID ||
       savedTemplates.some((template) => template.id === templateID)) &&
     (!usesISO || (isoPathProvided && isoPathHasISOExtension)) &&
+    (!usesImport || importPathValid) &&
     (!usesCloudInit || (cloudInitUsernameValid && cloudInitAuthProvided));
   const selectedNetwork = networks.find(
     (candidate) => candidate.name === network,
@@ -370,6 +380,9 @@ export default function CreateVMDialog({
     };
     if (usesISO) {
       request.isoPath = isoPath.trim();
+    }
+    if (usesImport) {
+      request.importPath = trimmedImportPath;
     }
     if (imagePresetId) {
       request.imagePresetId = imagePresetId;
@@ -457,6 +470,15 @@ export default function CreateVMDialog({
               variant={createMode === "image" ? "contained" : "outlined"}
             >
               Ready image
+            </AppButton>
+            <AppButton
+              aria-selected={createMode === "import"}
+              onClick={() => applyCreateMode("import")}
+              role="tab"
+              size="small"
+              variant={createMode === "import" ? "contained" : "outlined"}
+            >
+              Import disk
             </AppButton>
           </div>
           {createMode === "image" ? (
@@ -593,7 +615,11 @@ export default function CreateVMDialog({
               error={diskGB.length > 0 && parsedDiskGB < minimumDiskGB}
               fullWidth
               helperText={
-                minimumDiskGB > 1 ? `Minimum ${minimumDiskGB} GB` : undefined
+                usesImport
+                  ? "Imported disks grow to this size and are never shrunk"
+                  : minimumDiskGB > 1
+                    ? `Minimum ${minimumDiskGB} GB`
+                    : undefined
               }
               id="vm-create-disk"
               label="Disk GB"
@@ -679,6 +705,29 @@ export default function CreateVMDialog({
                 style={wideGridItemStyle}
                 required
                 value={isoPath}
+              />
+            ) : null}
+            {usesImport ? (
+              <PathPickerField
+                browsePath={`${managedRootPath}/`}
+                browseLabel="Browse disk images"
+                editable
+                error={trimmedImportPath.length > 0 && !importPathValid}
+                fileFilter={isImportDiskPath}
+                helperText={
+                  trimmedImportPath.length > 0 && !importPathValid
+                    ? "Select an .ova, .qcow2, .vmdk, .vdi, .img or .raw file"
+                    : "OVA appliances and disk images are converted to a new qcow2 disk; the source file is left untouched"
+                }
+                id="vm-create-import"
+                includeFiles
+                label="Disk image or OVA path"
+                onChange={setImportPath}
+                placeholder={`${managedRootPath}/appliance.ova`}
+                selectableTypes={["file"]}
+                style={wideGridItemStyle}
+                required
+                value={importPath}
               />
             ) : null}
             {usesCloudInit ? (

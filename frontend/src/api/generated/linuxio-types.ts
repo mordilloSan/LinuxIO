@@ -3036,6 +3036,7 @@ export interface VMCreateRequest {
   memoryMB: number;
   diskGB: number;
   isoPath?: string;
+  importPath?: string;
   sourceType?: VMSourceType;
   imagePresetId?: VMImagePresetID;
   templateId?: string;
@@ -3115,12 +3116,13 @@ export interface VMPreflightFirmware {
 
 export interface VMPreflightRequest {
   isoPath?: string;
+  importPath?: string;
   sourceType?: VMSourceType;
   imagePresetId?: VMImagePresetID;
   network?: string;
 }
 
-export type VMSourceType = "iso" | "imagePreset";
+export type VMSourceType = "iso" | "imagePreset" | "import";
 
 export interface VMTemplate {
   id: string;

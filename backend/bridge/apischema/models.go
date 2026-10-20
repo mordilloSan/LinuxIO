@@ -45,7 +45,7 @@ var StringEnums = map[string][]string{
 	"DockTileColors":            {"accent", "mono", "neutral", "vibrant"},
 	"ValidationIssueType":       {"error", "warning"},
 	"VMImagePresetID":           {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
-	"VMSourceType":              {"iso", "imagePreset"},
+	"VMSourceType":              {"iso", "imagePreset", "import"},
 	"NetworkBridgeHandoffState": {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
 }
 

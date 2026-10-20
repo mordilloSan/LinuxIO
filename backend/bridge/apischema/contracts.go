@@ -210,6 +210,7 @@ type VMCreateRequest struct {
 	MemoryMB          int             `json:"memoryMB"`
 	DiskGB            int             `json:"diskGB"`
 	ISOPath           string          `json:"isoPath,omitempty"`
+	ImportPath        string          `json:"importPath,omitempty"`
 	SourceType        VMSourceType    `json:"sourceType,omitempty"`
 	ImagePresetID     VMImagePresetID `json:"imagePresetId,omitempty"`
 	TemplateID        string          `json:"templateId,omitempty"`
@@ -237,6 +238,7 @@ type VMTemplateRequest struct {
 
 type VMPreflightRequest struct {
 	ISOPath       *string         `json:"isoPath,omitempty"`
+	ImportPath    *string         `json:"importPath,omitempty"`
 	SourceType    VMSourceType    `json:"sourceType,omitempty"`
 	ImagePresetID VMImagePresetID `json:"imagePresetId,omitempty"`
 	Network       string          `json:"network,omitempty"`

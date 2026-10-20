@@ -266,19 +266,19 @@ func validateTemplateDisk(ctx context.Context, path string) error {
 	}
 	version := binary.BigEndian.Uint32(header[4:8])
 	if string(header[:4]) != "QFI\xfb" || (version != 2 && version != 3) {
-		return fmt.Errorf("template is not a qcow2 image")
+		return fmt.Errorf("image is not a qcow2 image")
 	}
 	// Reject references to host files before allowing QEMU to open the image.
 	// Header layout: https://www.qemu.org/docs/master/interop/qcow2.html
 	if binary.BigEndian.Uint64(header[8:16]) != 0 {
-		return fmt.Errorf("template must not reference a backing file")
+		return fmt.Errorf("image must not reference a backing file")
 	}
 	if version == 3 {
 		if _, err := io.ReadFull(file, header[72:]); err != nil {
 			return fmt.Errorf("read qcow2 v3 header: %w", err)
 		}
 		if binary.BigEndian.Uint64(header[72:80])&(1<<2) != 0 {
-			return fmt.Errorf("template must not reference an external data file")
+			return fmt.Errorf("image must not reference an external data file")
 		}
 	}
 	return runTemplateQEMU(ctx, "check", "-f", "qcow2", path)

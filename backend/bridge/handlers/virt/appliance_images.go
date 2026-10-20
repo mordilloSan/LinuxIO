@@ -22,6 +22,7 @@ import (
 const (
 	vmSourceTypeISO          apischema.VMSourceType    = "iso"
 	vmSourceTypeImagePreset  apischema.VMSourceType    = "imagePreset"
+	vmSourceTypeImport       apischema.VMSourceType    = "import"
 	vmImagePresetHomeOS      apischema.VMImagePresetID = "home-assistant-os"
 	vmImagePresetDebian      apischema.VMImagePresetID = "debian-server"
 	vmImagePresetUbuntu      apischema.VMImagePresetID = "ubuntu-server"
@@ -114,7 +115,7 @@ func normalizedVMSourceType(sourceType apischema.VMSourceType) apischema.VMSourc
 
 func validateVMSourceType(sourceType apischema.VMSourceType) error {
 	switch normalizedVMSourceType(sourceType) {
-	case vmSourceTypeISO, vmSourceTypeImagePreset:
+	case vmSourceTypeISO, vmSourceTypeImagePreset, vmSourceTypeImport:
 		return nil
 	default:
 		return badRequestf("unsupported VM source type %q", sourceType)
@@ -162,19 +163,27 @@ func createManagedImageStorage(ctx context.Context, conn libvirtConn, pool libvi
 }
 
 func createManagedImageVolume(ctx context.Context, conn libvirtConn, pool libvirt.StoragePool, volumeName string, req apischema.VMCreateRequest, report vmCreateReporter) (libvirt.StorageVol, string, error) {
-	if err := ensureManagedVolumeAbsent(conn, pool, volumeName); err != nil {
-		return libvirt.StorageVol{}, "", err
-	}
 	preset, presetErr := imagePreset(req.ImagePresetID)
 	if presetErr != nil {
 		return libvirt.StorageVol{}, "", presetErr
+	}
+	return publishManagedDiskVolume(conn, pool, volumeName, report, func(volumePath string) error {
+		return importImagePresetDisk(ctx, preset, req.TemplateID, volumePath, req.DiskGB, report)
+	})
+}
+
+// publishManagedDiskVolume lets write create the qcow2 at the managed path,
+// then registers it with the default pool.
+func publishManagedDiskVolume(conn libvirtConn, pool libvirt.StoragePool, volumeName string, report vmCreateReporter, write func(volumePath string) error) (libvirt.StorageVol, string, error) {
+	if err := ensureManagedVolumeAbsent(conn, pool, volumeName); err != nil {
+		return libvirt.StorageVol{}, "", err
 	}
 	volumePath := filepath.Join(managedCloudPath, volumeName)
 	if _, statErr := os.Stat(volumePath); statErr == nil {
 		return libvirt.StorageVol{}, "", conflictf("managed volume path %q already exists", volumePath)
 	}
-	if importErr := importImagePresetDisk(ctx, preset, req.TemplateID, volumePath, req.DiskGB, report); importErr != nil {
-		return libvirt.StorageVol{}, "", importErr
+	if writeErr := write(volumePath); writeErr != nil {
+		return libvirt.StorageVol{}, "", writeErr
 	}
 	reportVMCreateProgress(report, "storage", "Refreshing default storage pool", volumePath, nil)
 	if refreshErr := conn.StoragePoolRefresh(pool, 0); refreshErr != nil {

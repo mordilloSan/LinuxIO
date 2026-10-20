@@ -206,16 +206,26 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 	if req.DiskGB <= 0 {
 		return badRequestf("diskGB must be greater than 0")
 	}
-	if sourceType == vmSourceTypeISO && req.ISOPath == "" {
-		return badRequestf("isoPath is required")
-	}
 	if req.TemplateID != "" && (sourceType != vmSourceTypeImagePreset || !validTemplateID.MatchString(req.TemplateID)) {
 		return badRequestf("templateId must identify a saved image template")
 	}
 	if err := validateVMNetworkName(req.Network); err != nil {
 		return err
 	}
-	if sourceType == vmSourceTypeImagePreset {
+	return validateCreateSource(req, sourceType)
+}
+
+func validateCreateSource(req apischema.VMCreateRequest, sourceType apischema.VMSourceType) error {
+	switch sourceType {
+	case vmSourceTypeISO:
+		if req.ISOPath == "" {
+			return badRequestf("isoPath is required")
+		}
+	case vmSourceTypeImport:
+		if strings.TrimSpace(req.ImportPath) == "" {
+			return badRequestf("importPath is required")
+		}
+	case vmSourceTypeImagePreset:
 		preset, err := imagePreset(req.ImagePresetID)
 		if err != nil {
 			return err
