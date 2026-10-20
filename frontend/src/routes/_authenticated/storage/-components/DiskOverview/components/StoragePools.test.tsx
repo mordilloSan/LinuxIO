@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BtrfsFilesystem } from "@/api";
 import { render } from "@/test/render";
 
+import type { DriveInfo } from "../types";
 import StoragePools from "./StoragePools";
 
 vi.mock("@tanstack/react-virtual", async () =>
@@ -80,8 +81,44 @@ const raid = filesystem(
 );
 const root = filesystem("uuid-root", "", ["/"], ["/dev/sda2"], "single");
 
+const drive = (
+  name: string,
+  model: string,
+  temperature?: number,
+): DriveInfo => ({
+  name,
+  model,
+  sizeBytes: 50 * GiB,
+  transport: "nvme",
+  smart:
+    temperature === undefined
+      ? undefined
+      : { temperature_celsius: temperature },
+});
+
+const drives = [
+  drive("nvme0n1", "Samsung 980", 38),
+  drive("nvme1n1", "WD Black", 72),
+  drive("sda", "Crucial MX500", 41),
+  drive("sdb", "Blank disk"),
+];
+
 const privileged = { auth: { privileged: true } };
 const capabilities = { btrfsAvailable: true };
+
+const renderPools = (
+  props: Partial<React.ComponentProps<typeof StoragePools>> = {},
+  options: Parameters<typeof render>[1] = { ...privileged, capabilities },
+) =>
+  render(
+    <StoragePools
+      drives={drives}
+      onInspectDrive={vi.fn()}
+      onOpenVolume={vi.fn()}
+      {...props}
+    />,
+    options,
+  );
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -90,10 +127,7 @@ beforeEach(() => {
 
 describe("StoragePools", () => {
   it("draws disks, pool and volumes for each btrfs filesystem", async () => {
-    render(<StoragePools onOpenVolume={vi.fn()} />, {
-      ...privileged,
-      capabilities,
-    });
+    renderPools();
 
     expect(
       await screen.findByRole("button", { name: "Pool tank" }),
@@ -101,21 +135,44 @@ describe("StoragePools", () => {
     expect(screen.getByRole("button", { name: "Pool /" })).toHaveTextContent(
       "Single",
     );
-    expect(screen.getAllByText("nvme0n1").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("nvme1n1").length).toBeGreaterThan(0);
+    expect(screen.getByText("nvme0n1")).toBeInTheDocument();
+    expect(screen.getByText("nvme1n1")).toBeInTheDocument();
     expect(screen.getAllByText("Allocated 60 GB")).toHaveLength(2);
     expect(
       screen.getByRole("button", { name: "Volume /mnt/tank/media" }),
     ).toHaveTextContent("Btrfs");
   });
 
+  it("shows each disk's temperature and links to its drive details", async () => {
+    const user = userEvent.setup();
+    const onInspectDrive = vi.fn();
+    renderPools({ onInspectDrive });
+
+    expect(await screen.findByText("38°C")).toBeInTheDocument();
+    expect(screen.getByText("72°C")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Drive details nvme1n1" }),
+    );
+    expect(onInspectDrive).toHaveBeenCalledWith("nvme1n1");
+  });
+
+  it("lists drives outside every pool, with their model", async () => {
+    const user = userEvent.setup();
+    const onInspectDrive = vi.fn();
+    renderPools({ onInspectDrive });
+
+    expect(await screen.findByText("Other disks")).toBeInTheDocument();
+    // sda backs the "/" pool, so only sdb is outside every pool.
+    expect(screen.getByText("Blank disk")).toBeInTheDocument();
+    expect(screen.queryByText("Crucial MX500")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Drive details sdb" }));
+    expect(onInspectDrive).toHaveBeenCalledWith("sdb");
+  });
+
   it("opens a volume", async () => {
     const user = userEvent.setup();
     const onOpenVolume = vi.fn();
-    render(<StoragePools onOpenVolume={onOpenVolume} />, {
-      ...privileged,
-      capabilities,
-    });
+    renderPools({ onOpenVolume });
 
     await user.click(
       await screen.findByRole("button", { name: "Volume /mnt/tank" }),
@@ -125,10 +182,7 @@ describe("StoragePools", () => {
 
   it("shows the details of the selected pool", async () => {
     const user = userEvent.setup();
-    render(<StoragePools onOpenVolume={vi.fn()} />, {
-      ...privileged,
-      capabilities,
-    });
+    renderPools();
 
     expect(await screen.findByText("Pool details · tank")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Pool /" }));
@@ -139,18 +193,47 @@ describe("StoragePools", () => {
     );
   });
 
-  it("renders nothing without btrfs or without privilege", () => {
-    const { container, unmount } = render(
-      <StoragePools onOpenVolume={vi.fn()} />,
+  it("still lists the drives without btrfs or without privilege", () => {
+    const { unmount } = renderPools(
+      {},
       { ...privileged, capabilities: { btrfsAvailable: false } },
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole("button", { name: /^Pool / })).toBeNull();
+    expect(screen.queryByText("Other disks")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Drive details nvme0n1" }),
+    ).toBeInTheDocument();
     unmount();
 
-    const second = render(<StoragePools onOpenVolume={vi.fn()} />, {
-      capabilities,
-    });
-    expect(second.container).toBeEmptyDOMElement();
+    renderPools({}, { capabilities });
+    expect(
+      screen.getByRole("button", { name: "Drive details sda" }),
+    ).toBeInTheDocument();
     expect(mocks.list).not.toHaveBeenCalled();
+  });
+
+  it("waits for the pools before listing drives, so none jump", async () => {
+    let resolve: (value: BtrfsFilesystem[]) => void = () => {};
+    mocks.list.mockReturnValue(
+      new Promise<BtrfsFilesystem[]>((done) => {
+        resolve = done;
+      }),
+    );
+    renderPools();
+    expect(screen.queryByText("Other disks")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Drive details nvme0n1" }),
+    ).not.toBeInTheDocument();
+
+    resolve([raid, root]);
+    expect(
+      await screen.findByRole("button", { name: "Pool tank" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Other disks")).toBeInTheDocument();
+  });
+
+  it("says when there are no drives at all", () => {
+    renderPools({ drives: [] }, { capabilities });
+    expect(screen.getByText("No drives found.")).toBeInTheDocument();
   });
 });

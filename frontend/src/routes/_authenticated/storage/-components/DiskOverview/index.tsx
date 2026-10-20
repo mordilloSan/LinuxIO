@@ -43,7 +43,7 @@ import {
   TabPanel,
 } from "./components";
 import type { DriveInfo, SmartTestProgressEvent } from "./types";
-import { parseSizeToBytes } from "./utils";
+import { findBackingDrive, parseSizeToBytes } from "./utils";
 
 const storageRouteApi = getRouteApi("/_authenticated/storage/");
 const STORAGE_TOAST_META = {
@@ -58,32 +58,6 @@ interface DriveDetailsProps {
   smartmontoolsAvailable: boolean;
   smartmontoolsReason: string;
 }
-
-const normalizeDeviceName = (device: string): string =>
-  device.replace(/^\/dev\//, "");
-
-const findBackingDrive = (
-  device: string,
-  drives: DriveInfo[],
-): DriveInfo | null => {
-  const normalizedDevice = normalizeDeviceName(device);
-  return (
-    drives.find((drive) => {
-      if (normalizedDevice === drive.name) {
-        return true;
-      }
-      if (normalizedDevice.startsWith(`${drive.name}p`)) {
-        return true;
-      }
-      const suffix = normalizedDevice.slice(drive.name.length);
-      return (
-        suffix.length > 0 &&
-        normalizedDevice.startsWith(drive.name) &&
-        /^\d+$/.test(suffix)
-      );
-    }) ?? null
-  );
-};
 
 const DriveDetails = ({
   drive,
@@ -450,7 +424,7 @@ const DiskOverview = () => {
   };
   return (
     <div>
-      {!selectedMountpoint && (
+      {expanded && !selectedMountpoint && (
         <>
           <AppTypography
             style={{
@@ -536,7 +510,11 @@ const DiskOverview = () => {
       )}
 
       {!expanded && !selectedMountpoint && (
-        <StoragePools onOpenVolume={handleOpenVolume} />
+        <StoragePools
+          drives={drives}
+          onInspectDrive={handleInspectDrive}
+          onOpenVolume={handleOpenVolume}
+        />
       )}
 
       {!expanded && (

@@ -41,16 +41,55 @@
   flex-direction: column;
   gap: var(--app-space-12);
 }
+.storage-pools__others {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--app-space-12);
+  margin-bottom: var(--app-space-24);
+}
+.storage-pools__others .storage-pools__card {
+  min-width: 0;
+  padding: var(--app-space-12) var(--app-space-16);
+  border: 1px solid transparent;
+  border-radius: var(--app-radius-lg);
+  background: var(--app-palette-background-paper);
+}
+/* The row itself stays flat; the shared button would paint its own hover box. */
+.storage-pools .storage-pools__disk--link:hover,
+.storage-pools__others .storage-pools__disk--link:hover {
+  background: none;
+}
+/* A disk card lights its border on hover, like the pool and volume cards. */
+.storage-pools .storage-pools__card:has(.storage-pools__disk--link:hover),
+.storage-pools__others .storage-pools__card:has(.storage-pools__disk--link:hover) {
+  border-color: var(--app-palette-primary-main);
+}
+.storage-pools .storage-pools__volume,
 .storage-pools .storage-pools__disk,
-.storage-pools .storage-pools__volume {
+.storage-pools__others .storage-pools__disk {
   display: flex;
   align-items: center;
   gap: var(--app-space-12);
   min-width: 0;
 }
-.storage-pools__disk > :nth-child(2),
-.storage-pools__volume > :nth-child(2) {
+.storage-pools .storage-pools__disk,
+.storage-pools__others .storage-pools__disk {
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  line-height: inherit;
+}
+.storage-pools .storage-pools__disk > :nth-child(2),
+.storage-pools__others .storage-pools__disk > :nth-child(2),
+.storage-pools .storage-pools__volume > :nth-child(2) {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
 }
 .storage-pools__icon {

@@ -99,3 +99,30 @@ export const getSmartString = (
   const result = getSmartValue(val, true);
   return result !== null ? String(result) : null;
 };
+
+export const normalizeDeviceName = (device: string): string =>
+  device.replace(/^\/dev\//, "");
+
+/** The physical drive a device or partition path lives on, if it is listed. */
+export const findBackingDrive = (
+  device: string,
+  drives: DriveInfo[],
+): DriveInfo | null => {
+  const normalizedDevice = normalizeDeviceName(device);
+  return (
+    drives.find((drive) => {
+      if (normalizedDevice === drive.name) {
+        return true;
+      }
+      if (normalizedDevice.startsWith(`${drive.name}p`)) {
+        return true;
+      }
+      const suffix = normalizedDevice.slice(drive.name.length);
+      return (
+        suffix.length > 0 &&
+        normalizedDevice.startsWith(drive.name) &&
+        /^\d+$/.test(suffix)
+      );
+    }) ?? null
+  );
+};

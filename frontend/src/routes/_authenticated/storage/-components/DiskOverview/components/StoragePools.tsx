@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
@@ -15,6 +15,12 @@ import { formatFileSize } from "@/utils/formaters";
 import BtrfsDevicesCard from "../../btrfs/BtrfsDevicesCard";
 import BtrfsSpaceCard from "../../btrfs/BtrfsSpaceCard";
 import { describePool } from "../storagePools";
+import type { DriveInfo } from "../types";
+import {
+  findBackingDrive,
+  getTemperature,
+  getTemperatureColor,
+} from "../utils";
 import "./storage-pools.css";
 
 /** A line from `count` evenly spaced exits on the right to one entry on the left. */
@@ -40,64 +46,145 @@ const Connector = ({ count = 1 }: { count?: number }) => {
   );
 };
 
+interface DiskRowProps {
+  caption?: string;
+  /** The physical drive behind this disk; without one the row is not a link. */
+  drive: DriveInfo | null;
+  missing?: boolean;
+  name: string;
+  onInspectDrive: (name: string) => void;
+  sizeBytes: number;
+}
+
+/** One disk: name, size and temperature, linking to the drive's details. */
+const DiskRow = ({
+  name,
+  caption,
+  sizeBytes,
+  missing,
+  drive,
+  onInspectDrive,
+}: DiskRowProps) => {
+  const temperature = getTemperature(drive?.smart);
+  const content: ReactNode = (
+    <>
+      <Icon
+        className="storage-pools__icon"
+        height={26}
+        icon="mdi:harddisk"
+        width={26}
+      />
+      <span>
+        <AppTypography noWrap variant="body2">
+          {name}
+        </AppTypography>
+        {caption && (
+          <AppTypography color="text.secondary" noWrap variant="caption">
+            {caption}
+          </AppTypography>
+        )}
+      </span>
+      {missing ? (
+        <AppChip color="error" label="Missing" size="small" variant="soft" />
+      ) : (
+        <AppTypography color="text.secondary" variant="caption">
+          {formatFileSize(sizeBytes)}
+        </AppTypography>
+      )}
+      {/* No tooltip here: a tooltip trigger inside the button eats its click. */}
+      {temperature !== null && (
+        <AppTypography
+          color={getTemperatureColor(temperature)}
+          fontWeight={600}
+          variant="caption"
+        >
+          {temperature}°C
+        </AppTypography>
+      )}
+    </>
+  );
+  if (!drive) return <div className="storage-pools__disk">{content}</div>;
+  return (
+    <AppButton
+      aria-label={`Drive details ${drive.name}`}
+      className="storage-pools__disk storage-pools__disk--link"
+      color="inherit"
+      onClick={() => onInspectDrive(drive.name)}
+    >
+      {content}
+    </AppButton>
+  );
+};
+
 interface StoragePoolsProps {
+  drives: DriveInfo[];
+  onInspectDrive: (name: string) => void;
   onOpenVolume: (mountpoint: string) => void;
 }
 
 /**
- * Disks -> pool -> volumes for every mounted btrfs filesystem, with the pool's
- * disk and RAID management below. Hidden without btrfs or without privilege.
+ * Every drive, with btrfs filesystems drawn as disks -> pool -> volumes and
+ * the selected pool's disk and RAID management below. Pools need btrfs and
+ * privilege; the drives themselves are always listed.
  */
-const StoragePools = ({ onOpenVolume }: StoragePoolsProps) => {
+const StoragePools = ({
+  drives,
+  onInspectDrive,
+  onOpenVolume,
+}: StoragePoolsProps) => {
   const { privileged } = useAuth();
   const { isEnabled } = useCapability("btrfsAvailable");
-  const { data: filesystems = [] } = useQuery({
+  const poolsEnabled = privileged && isEnabled;
+  const { data: filesystems = [], isPending } = useQuery({
     ...linuxio.storage.btrfs_list,
-    enabled: privileged && isEnabled,
+    enabled: poolsEnabled,
     refetchInterval: 10000,
   });
   const [selectedUuid, setSelectedUuid] = useState<string>();
 
-  if (filesystems.length === 0) return null;
-
+  const pools = filesystems.map((fs) => ({ fs, pool: describePool(fs) }));
+  const pooled = new Set(
+    pools.flatMap(({ pool }) =>
+      pool.disks.flatMap(
+        (disk) => findBackingDrive(disk.name, drives)?.name ?? [],
+      ),
+    ),
+  );
+  const others = drives.filter((drive) => !pooled.has(drive.name));
   const selected =
     filesystems.find((fs) => fs.uuid === selectedUuid) ?? filesystems[0];
+
+  // Until the pools load every drive would look pool-less, then jump into
+  // its pool; draw nothing rather than that flicker.
+  if (poolsEnabled && isPending) return null;
+
+  if (drives.length === 0 && pools.length === 0) {
+    return (
+      <AppTypography color="text.secondary" style={{ marginBottom: 16 }}>
+        No drives found.
+      </AppTypography>
+    );
+  }
 
   return (
     <>
       <AppTypography style={{ marginBottom: 8, fontWeight: 600 }} variant="h6">
         Storage space
       </AppTypography>
-      <div className="storage-pools">
-        {filesystems.map((fs) => {
-          const pool = describePool(fs);
-          return (
+      {pools.length > 0 && (
+        <div className="storage-pools">
+          {pools.map(({ pool }) => (
             <div className="storage-pools__stack" key={pool.uuid}>
               <div className="storage-pools__card storage-pools__disks">
                 {pool.disks.map((disk) => (
-                  <div className="storage-pools__disk" key={disk.key}>
-                    <Icon
-                      className="storage-pools__icon"
-                      height={26}
-                      icon="mdi:harddisk"
-                      width={26}
-                    />
-                    <AppTypography noWrap variant="body2">
-                      {disk.name}
-                    </AppTypography>
-                    {disk.missing ? (
-                      <AppChip
-                        color="error"
-                        label="Missing"
-                        size="small"
-                        variant="soft"
-                      />
-                    ) : (
-                      <AppTypography color="text.secondary" variant="caption">
-                        {formatFileSize(disk.sizeBytes)}
-                      </AppTypography>
-                    )}
-                  </div>
+                  <DiskRow
+                    drive={findBackingDrive(disk.name, drives)}
+                    key={disk.key}
+                    missing={disk.missing}
+                    name={disk.name}
+                    onInspectDrive={onInspectDrive}
+                    sizeBytes={disk.sizeBytes}
+                  />
                 ))}
               </div>
               <Connector />
@@ -167,24 +254,57 @@ const StoragePools = ({ onOpenVolume }: StoragePoolsProps) => {
                 ))}
               </div>
             </div>
-          );
-        })}
-      </div>
-      <AppTypography style={{ marginBottom: 8, fontWeight: 600 }} variant="h6">
-        Pool details · {describePool(selected).name}
-      </AppTypography>
-      <AppGrid
-        container
-        spacing={DASHBOARD_CARD_SPACING}
-        style={{ marginBottom: 16 }}
-      >
-        <AppGrid size={{ xs: 12, md: 7 }}>
-          <BtrfsDevicesCard filesystem={selected} key={selected.uuid} />
-        </AppGrid>
-        <AppGrid size={{ xs: 12, md: 5 }}>
-          <BtrfsSpaceCard filesystem={selected} />
-        </AppGrid>
-      </AppGrid>
+          ))}
+        </div>
+      )}
+      {others.length > 0 && (
+        <>
+          {pools.length > 0 && (
+            <AppTypography
+              color="text.secondary"
+              style={{ marginBottom: 8 }}
+              variant="subtitle2"
+            >
+              Other disks
+            </AppTypography>
+          )}
+          <div className="storage-pools__others">
+            {others.map((drive) => (
+              <div className="storage-pools__card" key={drive.name}>
+                <DiskRow
+                  caption={drive.model}
+                  drive={drive}
+                  name={drive.name}
+                  onInspectDrive={onInspectDrive}
+                  sizeBytes={drive.sizeBytes}
+                />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {selected && (
+        <>
+          <AppTypography
+            style={{ marginBottom: 8, fontWeight: 600 }}
+            variant="h6"
+          >
+            Pool details · {describePool(selected).name}
+          </AppTypography>
+          <AppGrid
+            container
+            spacing={DASHBOARD_CARD_SPACING}
+            style={{ marginBottom: 16 }}
+          >
+            <AppGrid size={{ xs: 12, md: 7 }}>
+              <BtrfsDevicesCard filesystem={selected} key={selected.uuid} />
+            </AppGrid>
+            <AppGrid size={{ xs: 12, md: 5 }}>
+              <BtrfsSpaceCard filesystem={selected} />
+            </AppGrid>
+          </AppGrid>
+        </>
+      )}
     </>
   );
 };
