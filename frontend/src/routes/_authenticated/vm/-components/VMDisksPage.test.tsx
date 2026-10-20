@@ -8,6 +8,8 @@ import VMDisksPage from "./VMDisksPage";
 const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   list: vi.fn(),
+  pools: vi.fn(),
+  vms: vi.fn(),
   disk: {
     name: "linuxio-teste.qcow2",
     path: "/var/lib/libvirt/images/linuxio/cloud-images/linuxio-teste.qcow2",
@@ -34,6 +36,8 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-unused-disks"],
           queryFn: () => mocks.list(),
         },
+        pools: { queryKey: ["test-pools"], queryFn: () => mocks.pools() },
+        list: { queryKey: ["test-vms"], queryFn: () => mocks.vms() },
       },
     },
   };
@@ -42,6 +46,45 @@ vi.mock("@/api", async (importOriginal) => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([mocks.disk]);
+  mocks.pools.mockResolvedValue([
+    {
+      active: true,
+      allocationBytes: 300 * 1024 ** 3,
+      availableBytes: 700 * 1024 ** 3,
+      capacityBytes: 1000 * 1024 ** 3,
+      name: "default",
+      path: "/var/lib/libvirt/images",
+      type: "dir",
+      volumes: [
+        {
+          allocationBytes: 17 * 1024 ** 3,
+          capacityBytes: 32 * 1024 ** 3,
+          name: "linuxio-ha.qcow2",
+          path: "/var/lib/libvirt/images/linuxio-ha.qcow2",
+        },
+      ],
+    },
+  ]);
+  mocks.vms.mockResolvedValue([
+    {
+      disks: [{ path: "/var/lib/libvirt/images/linuxio-ha.qcow2" }],
+      name: "ha",
+    },
+  ]);
+});
+
+describe("VM storage pools", () => {
+  it("shows each pool's usage and the VM behind each volume", async () => {
+    render(<VMDisksPage />);
+    const table = await screen.findByRole("table", { name: "default volumes" });
+    expect(within(table).getByText("linuxio-ha.qcow2")).toBeInTheDocument();
+    expect(within(table).getByText("ha")).toBeInTheDocument();
+    expect(within(table).getByText("17 GB")).toBeInTheDocument();
+    expect(screen.getByText(/300 GB used of 1000 GB/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "default usage" }),
+    ).toHaveAttribute("aria-valuenow", "30");
+  });
 });
 
 describe("VM unused disks", () => {

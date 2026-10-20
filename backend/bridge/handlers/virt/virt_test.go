@@ -1840,6 +1840,12 @@ type fakeConn struct {
 	storageVolLookupErr         error
 	storageVolPathLookupErr     error
 	undefineFlags               libvirt.DomainUndefineFlagsValues
+	domainStats                 []libvirt.DomainStatsRecord
+	domainStatsErr              error
+	pools                       []libvirt.StoragePool
+	poolXML                     map[string]string
+	poolInfo                    map[string][3]uint64
+	volumeInfo                  map[string][2]uint64
 }
 
 func newFakeConn() *fakeConn {
@@ -1937,6 +1943,35 @@ func writeFirmwareDescriptor(t *testing.T, dir, name, executable string, feature
 	}
 }
 
+func (f *fakeConn) ConnectGetAllDomainStats([]libvirt.Domain, uint32, uint32) ([]libvirt.DomainStatsRecord, error) {
+	return f.domainStats, f.domainStatsErr
+}
+func (f *fakeConn) ConnectListAllStoragePools(int32, libvirt.ConnectListAllStoragePoolsFlags) ([]libvirt.StoragePool, uint32, error) {
+	return f.pools, uint32(len(f.pools)), nil
+}
+func (f *fakeConn) StoragePoolGetInfo(pool libvirt.StoragePool) (uint8, uint64, uint64, uint64, error) {
+	info := f.poolInfo[pool.Name]
+	return uint8(libvirt.StoragePoolRunning), info[0], info[1], info[2], nil
+}
+func (f *fakeConn) StoragePoolGetXMLDesc(pool libvirt.StoragePool, _ libvirt.StorageXMLFlags) (string, error) {
+	return f.poolXML[pool.Name], nil
+}
+func (f *fakeConn) StoragePoolListAllVolumes(pool libvirt.StoragePool, _ int32, _ uint32) ([]libvirt.StorageVol, uint32, error) {
+	var out []libvirt.StorageVol
+	for _, vol := range f.volumesByName {
+		if vol.Pool == pool.Name {
+			out = append(out, vol)
+		}
+	}
+	return out, uint32(len(out)), nil
+}
+func (f *fakeConn) StorageVolGetInfo(vol libvirt.StorageVol) (int8, uint64, uint64, error) {
+	info := f.volumeInfo[vol.Name]
+	return 0, info[0], info[1], nil
+}
+func (f *fakeConn) StorageVolGetPath(vol libvirt.StorageVol) (string, error) {
+	return vol.Key, nil
+}
 func (f *fakeConn) ConnectListAllDomains(int32, libvirt.ConnectListAllDomainsFlags) ([]libvirt.Domain, uint32, error) {
 	out := make([]libvirt.Domain, 0, len(f.domains))
 	for _, domain := range f.domains {

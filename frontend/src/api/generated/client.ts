@@ -409,6 +409,7 @@ const linuxio = {
     get: defineCallWithRequest("virt.get"),
     list: defineCall("virt.list"),
     networks: defineCall("virt.networks"),
+    pools: defineCall("virt.pools"),
     preflight: defineCallWithRequest("virt.preflight"),
     reboot: defineCallWithRequest("virt.reboot"),
     resume: defineCallWithRequest("virt.resume"),

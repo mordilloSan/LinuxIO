@@ -9,6 +9,7 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
+import { formatThroughput } from "@/utils/formaters";
 
 import {
   VM_TOAST,
@@ -78,6 +79,20 @@ const tokenStyle: CSSProperties = {
 const wrappingCodeStyle: CSSProperties = {
   overflowWrap: "anywhere",
 };
+
+const formatRate = (bytesPerSec: number | undefined) =>
+  bytesPerSec === undefined ? "—" : formatThroughput(bytesPerSec);
+
+function StatItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={statItemStyle}>
+      <AppTypography color="text.secondary" component="span" variant="caption">
+        {label}
+      </AppTypography>
+      <strong style={{ display: "block", marginTop: 4 }}>{value}</strong>
+    </div>
+  );
+}
 
 /**
  * Renders one VM's detail, or the empty prompt when no machine is selected.
@@ -162,6 +177,30 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             {formatDisk(vm.diskGB)}
           </strong>
         </div>
+        {vm.metrics && (
+          <>
+            <StatItem
+              label="CPU usage"
+              value={
+                vm.metrics.cpuPercent === undefined
+                  ? "—"
+                  : `${vm.metrics.cpuPercent.toFixed(1)}%`
+              }
+            />
+            <StatItem
+              label="Memory used"
+              value={formatMemory(vm.metrics.memoryUsedMB)}
+            />
+            <StatItem
+              label="Network ↓ / ↑"
+              value={`${formatRate(vm.metrics.networkReceiveBytesPerSecond)} / ${formatRate(vm.metrics.networkSendBytesPerSecond)}`}
+            />
+            <StatItem
+              label="Disk read / write"
+              value={`${formatRate(vm.metrics.diskReadBytesPerSecond)} / ${formatRate(vm.metrics.diskWriteBytesPerSecond)}`}
+            />
+          </>
+        )}
         <div style={statItemStyle}>
           <AppTypography
             color="text.secondary"

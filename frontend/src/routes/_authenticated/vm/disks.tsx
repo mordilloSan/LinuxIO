@@ -7,6 +7,9 @@ import VMDisksPage from "./-components/VMDisksPage";
 
 export const Route = createFileRoute("/_authenticated/vm/disks")({
   loader: (loaderArgs) =>
-    loadRouteQueries(loaderArgs, [linuxio.virt.unused_disks]),
+    loadRouteQueries(loaderArgs, [
+      linuxio.virt.pools,
+      linuxio.virt.unused_disks,
+    ]),
   component: VMDisksPage,
 });

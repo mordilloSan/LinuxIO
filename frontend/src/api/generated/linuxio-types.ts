@@ -3093,6 +3093,15 @@ export interface VMManagedPaths {
   cloudImages: string;
 }
 
+export interface VMMetrics {
+  cpuPercent?: number;
+  memoryUsedMB: number;
+  networkReceiveBytesPerSecond?: number;
+  networkSendBytesPerSecond?: number;
+  diskReadBytesPerSecond?: number;
+  diskWriteBytesPerSecond?: number;
+}
+
 export interface VMNIC {
   mac?: string;
   model?: string;
@@ -3138,6 +3147,24 @@ export interface VMPreflightRequest {
 }
 
 export type VMSourceType = "iso" | "imagePreset" | "import";
+
+export interface VMStoragePool {
+  name: string;
+  type: string;
+  path?: string;
+  active: boolean;
+  capacityBytes: number;
+  allocationBytes: number;
+  availableBytes: number;
+  volumes: VMStorageVolume[];
+}
+
+export interface VMStorageVolume {
+  name: string;
+  path: string;
+  capacityBytes: number;
+  allocationBytes: number;
+}
 
 export interface VMTemplate {
   id: string;
@@ -3215,6 +3242,7 @@ export interface VirtualMachine {
   ownedDisks: string[];
   disks?: VMDisk[];
   nics?: VMNIC[];
+  metrics?: VMMetrics;
 }
 
 export interface VolumeGroup {
@@ -4440,6 +4468,7 @@ export interface LinuxIOSchema {
     };
     list: { input: []; request: void; result: VirtualMachine[] };
     networks: { input: []; request: void; result: VMNetwork[] };
+    pools: { input: []; request: void; result: VMStoragePool[] };
     preflight: {
       input: [request: VMPreflightRequest];
       request: VMPreflightRequest;
@@ -5090,6 +5119,7 @@ export interface LinuxIOCallSchema {
   "virt.get": { request: NameRequest; result: VirtualMachine };
   "virt.list": { request: void; result: VirtualMachine[] };
   "virt.networks": { request: void; result: VMNetwork[] };
+  "virt.pools": { request: void; result: VMStoragePool[] };
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };

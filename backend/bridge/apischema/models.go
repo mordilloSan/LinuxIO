@@ -1475,6 +1475,39 @@ type VirtualMachine struct {
 	OwnedDisks  []string   `json:"ownedDisks"`
 	Disks       []VMDisk   `json:"disks,omitempty"`
 	NICs        []VMNIC    `json:"nics,omitempty"`
+	// Metrics is set only for a VM libvirt reported live stats for.
+	Metrics *VMMetrics `json:"metrics,omitempty"`
+}
+
+// VMMetrics is one running VM's live usage. CPUPercent is relative to the
+// VM's vCPUs; per-second rates are nil until this bridge has two samples.
+type VMMetrics struct {
+	CPUPercent                   *float64 `json:"cpuPercent,omitempty"`
+	MemoryUsedMB                 int      `json:"memoryUsedMB"`
+	NetworkReceiveBytesPerSecond *float64 `json:"networkReceiveBytesPerSecond,omitempty"`
+	NetworkSendBytesPerSecond    *float64 `json:"networkSendBytesPerSecond,omitempty"`
+	DiskReadBytesPerSecond       *float64 `json:"diskReadBytesPerSecond,omitempty"`
+	DiskWriteBytesPerSecond      *float64 `json:"diskWriteBytesPerSecond,omitempty"`
+}
+
+// VMStoragePool is a libvirt storage pool with its volumes. Sizes are zero
+// while the pool is inactive, since libvirt only reports them for active pools.
+type VMStoragePool struct {
+	Name            string            `json:"name"`
+	Type            string            `json:"type"`
+	Path            string            `json:"path,omitempty"`
+	Active          bool              `json:"active"`
+	CapacityBytes   uint64            `json:"capacityBytes"`
+	AllocationBytes uint64            `json:"allocationBytes"`
+	AvailableBytes  uint64            `json:"availableBytes"`
+	Volumes         []VMStorageVolume `json:"volumes"`
+}
+
+type VMStorageVolume struct {
+	Name            string `json:"name"`
+	Path            string `json:"path"`
+	CapacityBytes   uint64 `json:"capacityBytes"`
+	AllocationBytes uint64 `json:"allocationBytes"`
 }
 
 type VMPreflightFirmware struct {
