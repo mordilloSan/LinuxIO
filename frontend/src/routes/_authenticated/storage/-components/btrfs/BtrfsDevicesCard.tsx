@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { TASK_TYPE_STORAGE_BTRFS_BALANCE } from "@/constants/backgroundTaskTypes";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { formatFileSize } from "@/utils/formaters";
@@ -110,20 +111,37 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   const columns: AppVirtualTableColumnDef<BtrfsDevice>[] = [
     {
       accessorKey: "path",
-      header: "Path",
-      cell: ({ row }) => (
-        <>
-          {row.original.path || `Device ${row.original.id}`}
-          {row.original.missing && (
-            <AppChip
-              color="error"
-              label="Missing"
-              size="small"
-              variant="soft"
+      header: "Disk",
+      cell: ({ row }) => {
+        const bad = row.original.missing || deviceErrorCount(row.original) > 0;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <StatusDot
+              color={
+                bad
+                  ? "var(--app-palette-error-main)"
+                  : "var(--app-palette-success-main)"
+              }
+              tooltip={bad ? "Needs attention" : "OK"}
             />
-          )}
-        </>
-      ),
+            <Icon
+              color="var(--app-palette-text-secondary)"
+              height={22}
+              icon="mdi:harddisk"
+              width={22}
+            />
+            {row.original.path || `Device ${row.original.id}`}
+            {row.original.missing && (
+              <AppChip
+                color="error"
+                label="Missing"
+                size="small"
+                variant="soft"
+              />
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "sizeBytes",
@@ -137,13 +155,24 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     },
     {
       accessorKey: "usedBytes",
-      header: "Used",
-      cell: ({ row }) => (
-        <AppTypography color="text.secondary" variant="caption">
-          {formatFileSize(row.original.usedBytes)}
-        </AppTypography>
-      ),
-      meta: { align: "right" },
+      header: "Usage",
+      cell: ({ row }) => {
+        const { sizeBytes, usedBytes } = row.original;
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <AppLinearProgress
+              aria-label={`${row.original.path || row.original.id} usage`}
+              value={sizeBytes > 0 ? (usedBytes / sizeBytes) * 100 : 0}
+              variant="determinate"
+            />
+            <AppTypography color="text.secondary" variant="caption">
+              {formatFileSize(usedBytes)} used ·{" "}
+              {formatFileSize(Math.max(sizeBytes - usedBytes, 0))} free
+            </AppTypography>
+          </div>
+        );
+      },
+      meta: { width: "260px" },
     },
     {
       id: "errors",
@@ -155,7 +184,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
             color={errors > 0 ? "error" : "text.secondary"}
             variant="caption"
           >
-            {errors}
+            {errors > 0 ? errors : "—"}
           </AppTypography>
         );
       },
@@ -188,6 +217,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     <FrostedCard>
       <AppCardContent>
         <CardIconHeader
+          iconTint
           icon={<Icon height={24} icon="mdi:harddisk" width={24} />}
           right={
             <div style={{ display: "flex", gap: 4 }}>
@@ -205,8 +235,8 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
               />
             </div>
           }
-          subtitle={`${filesystem.devices.length} device(s)`}
-          title="Devices"
+          subtitle={`${filesystem.devices.length} disk(s) in this filesystem`}
+          title="Disks"
         />
         {pending && (
           <div>
@@ -229,11 +259,11 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           </div>
         )}
         <AppVirtualTable
-          ariaLabel="Btrfs devices"
+          ariaLabel="Btrfs disks"
           columns={columns}
           data={filesystem.devices}
           density="compact"
-          emptyMessage="No devices found"
+          emptyMessage="No disks found"
           fillAvailable={false}
           getRowId={(device) => device.path || String(device.id)}
           maxHeight={320}

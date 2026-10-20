@@ -200,6 +200,7 @@ const BtrfsSettingsCard = ({ uuid, mountpoint }: BtrfsSettingsCardProps) => {
     <FrostedCard>
       <AppCardContent>
         <CardIconHeader
+          iconTint
           icon={<Icon height={24} icon="mdi:cog-outline" width={24} />}
           subtitle="Quotas, compression and maintenance timers"
           title="Settings"

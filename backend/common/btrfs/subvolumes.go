@@ -31,8 +31,8 @@ type BtrfsSubvolume struct {
 	IsSnapshot      bool       `json:"isSnapshot"`
 	CreatedAt       *time.Time `json:"createdAt"`
 	Mountpoint      *string    `json:"mountpoint"`
-	ReferencedBytes *uint64    `json:"referencedBytes"`
-	ExclusiveBytes  *uint64    `json:"exclusiveBytes"`
+	ReferencedBytes *uint64    `json:"referencedBytes,omitempty"`
+	ExclusiveBytes  *uint64    `json:"exclusiveBytes,omitempty"`
 	// MaxReferencedBytes is the qgroup size limit; nil when unlimited or
 	// quota data is unavailable.
 	MaxReferencedBytes *uint64 `json:"maxReferencedBytes,omitempty"`

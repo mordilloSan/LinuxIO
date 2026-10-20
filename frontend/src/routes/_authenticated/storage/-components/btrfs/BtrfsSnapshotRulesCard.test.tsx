@@ -84,8 +84,8 @@ const route = (name: string) => {
   return mutate;
 };
 
-const rowFor = async (path: string) =>
-  (await screen.findByText(path)).closest("[role=row]") as HTMLElement;
+// Each folder is a card named after its path.
+const rowFor = (path: string) => screen.findByRole("group", { name: path });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -101,23 +101,23 @@ describe("BtrfsSnapshotRulesCard", () => {
   it("summarises each rule and shows Off without one", async () => {
     render(<BtrfsSnapshotRulesCard uuid="uuid-1" />);
 
-    expect(within(await rowFor("@")).getByText("Off")).toBeInTheDocument();
-    const dataRow = await rowFor("data");
     expect(
-      within(dataRow).getByText("Every week on Monday at 04:00"),
+      within(await rowFor("@")).getByText("Not protected"),
     ).toBeInTheDocument();
-    expect(within(dataRow).getByText("0h · 3d · 2w · 1m")).toBeInTheDocument();
+    expect(
+      within(await rowFor("data")).getByText(
+        "Every week on Monday at 04:00 · keeps 0h · 3d · 2w · 1m",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText("linuxio-snapshots/@-1")).not.toBeInTheDocument();
-    expect(await screen.findByText("Timer enabled")).toBeInTheDocument();
+    expect(await screen.findByText("Timer running")).toBeInTheDocument();
   });
 
   it("creates a rule from the edit dialog", async () => {
     const user = userEvent.setup();
     render(<BtrfsSnapshotRulesCard uuid="uuid-1" />);
 
-    await user.click(
-      within(await rowFor("@")).getByRole("button", { name: "Edit" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Edit @" }));
     const dialog = await screen.findByRole("dialog");
     expect(
       within(dialog).queryByRole("button", { name: "Remove rule" }),
@@ -159,9 +159,7 @@ describe("BtrfsSnapshotRulesCard", () => {
     const user = userEvent.setup();
     render(<BtrfsSnapshotRulesCard uuid="uuid-1" />);
 
-    await user.click(
-      within(await rowFor("data")).getByRole("button", { name: "Edit" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Edit data" }));
     const dialog = await screen.findByRole("dialog");
     for (const name of ["Keep daily", "Keep weekly", "Keep monthly"]) {
       fireEvent.change(within(dialog).getByRole("spinbutton", { name }), {
@@ -195,9 +193,7 @@ describe("BtrfsSnapshotRulesCard", () => {
     const user = userEvent.setup();
     render(<BtrfsSnapshotRulesCard uuid="uuid-1" />);
 
-    await user.click(
-      within(await rowFor("data")).getByRole("button", { name: "Edit" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Edit data" }));
     await user.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
         name: "Remove rule",

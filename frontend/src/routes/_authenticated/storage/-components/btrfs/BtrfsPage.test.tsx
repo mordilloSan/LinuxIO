@@ -129,7 +129,7 @@ describe("BtrfsPage", () => {
     renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} />, {
       capabilities,
     });
-    expect(await screen.findByText("Health")).toBeInTheDocument();
+    expect(await screen.findByText("Healthy")).toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Filesystem" }),
     ).not.toBeInTheDocument();
@@ -141,14 +141,15 @@ describe("BtrfsPage", () => {
       <BtrfsPage selectedUuid="uuid-data" onSelect={vi.fn()} />,
       { capabilities },
     );
-    expect(await screen.findByText("Automatic snapshots")).toBeInTheDocument();
+    expect(await screen.findByText("Protected folders")).toBeInTheDocument();
+    expect(screen.getByText("History")).toBeInTheDocument();
+    expect(screen.getByText("Disks")).toBeInTheDocument();
     expect(screen.queryByText("Settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Subvolumes")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Advanced" }));
     expect(await screen.findByText("Settings")).toBeInTheDocument();
     expect(screen.getByText("Subvolumes")).toBeInTheDocument();
-    expect(screen.getByText("Devices")).toBeInTheDocument();
   });
 
   it("says when no btrfs filesystem is mounted", async () => {

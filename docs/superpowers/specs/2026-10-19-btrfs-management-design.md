@@ -73,13 +73,15 @@ filesystem show in the subvolume list, not the snapshot list.
   `storageTabs.ts`, loader-prefetched like `lvm.tsx`.
 - Selected filesystem is URL state: validated search param `fs=<uuid>`,
   defaulting to the first filesystem.
-- Page layout: a **Health** card (status, space used, integrity check) and a
-  **Snapshots** card (list, take, restore, delete, with the **Automatic
-  snapshots** rules embedded) are always visible. **Devices**, **Space**,
-  **Subvolumes**, **Replication** and **Settings** sit in a collapsed
-  **Advanced** section. The filesystem picker only appears with more than one
-  filesystem, and distro/container-runtime subvolumes are hidden by default.
-  All built from `components/ui` and `--app-*` variables.
+- Page layout: three stat tiles (**Health** with the integrity check,
+  **Space**, **Protection**), then **Disks** (status dot, usage bar per
+  disk), **Protected folders** (one card per subvolume with an on/off switch
+  for its snapshot rule) and **History** (snapshots as a day-grouped timeline
+  with Browse, Restore and Delete). **Space** details, **Subvolumes**,
+  **Replication** and **Settings** sit in a collapsed **Advanced** section.
+  The filesystem picker only appears with more than one filesystem, and
+  distro/container-runtime subvolumes are hidden by default. All built from
+  `components/ui` and `--app-*` variables.
 - The existing "Create subvolume" field and `BtrfsMaintenanceControls` move
   from `FilesystemCard` into the Btrfs tab's Subvolumes and Settings cards;
   the filesystem card keeps a single "Manage btrfs" link. No half-migrated

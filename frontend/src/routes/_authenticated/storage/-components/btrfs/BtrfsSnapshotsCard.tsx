@@ -14,31 +14,51 @@ import {
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualTable from "@/components/tables/AppVirtualTable";
-import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCardContent from "@/components/ui/AppCardContent";
-import AppChip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
-import AppDivider from "@/components/ui/AppDivider";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
+import StatusDot from "@/components/ui/StatusDot";
 import { TASK_TYPE_STORAGE_BTRFS_ROLLBACK } from "@/constants/backgroundTaskTypes";
 import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { formatDate, formatFileSize } from "@/utils/formaters";
 
 import BtrfsRollbackDialog from "./BtrfsRollbackDialog";
 import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
-import BtrfsSnapshotRulesCard from "./BtrfsSnapshotRulesCard";
 
 const ALL_SOURCES = "";
+
+const KINDS: Record<string, { label: string; color: string; detail: string }> =
+  {
+    manual: {
+      label: "Manual",
+      color: "var(--app-palette-primary-main)",
+      detail: "taken by you",
+    },
+    timeline: {
+      label: "Scheduled",
+      color: "var(--app-palette-text-secondary)",
+      detail: "automatic",
+    },
+    "pre-update": {
+      label: "Before update",
+      color: "var(--app-palette-warning-main)",
+      detail: "taken before an update",
+    },
+    "pre-rollback": {
+      label: "Before restore",
+      color: "var(--app-palette-info-main)",
+      detail: "taken before a restore",
+    },
+  };
 
 const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
   // Lazy: the route loader cannot know the selected filesystem's uuid.
@@ -54,6 +74,8 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
   const [source, setSource] = useState(ALL_SOURCES);
   // null: dialog closed; "": open with nothing picked yet.
   const [taking, setTaking] = useState<string | null>(null);
+  // Read once per mount: day headings only need to be right for the session.
+  const [today] = useState(() => new Date());
   const [deleting, setDeleting] = useState<BtrfsSnapshot | null>(null);
   // Held as a path so a rollback recovered after a reload resolves once the
   // list has loaded.
@@ -110,9 +132,6 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
     (snapshot) =>
       activeSource === ALL_SOURCES || snapshot.source === activeSource,
   );
-  const hasSizes = snapshots.some(
-    (snapshot) => snapshot.referencedBytes !== undefined,
-  );
   const rollingBack = data.find((snapshot) => snapshot.path === rollbackPath);
 
   const handleBrowse = (snapshot: BtrfsSnapshot) =>
@@ -142,70 +161,36 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
     setRollbackPath(snapshot.path);
   };
 
-  const columns: AppVirtualTableColumnDef<BtrfsSnapshot>[] = [
-    { accessorKey: "source", header: "Source" },
-    {
-      accessorKey: "createdAt",
-      header: "Taken",
-      cell: ({ row }) => (
-        <AppTypography color="text.secondary" variant="caption">
-          {formatDate(row.original.createdAt)}
-        </AppTypography>
-      ),
-    },
-    {
-      accessorKey: "kind",
-      header: "Kind",
-      cell: ({ row }) => (
-        <AppChip label={row.original.kind} size="small" variant="soft" />
-      ),
-    },
-    ...(hasSizes
-      ? [
-          {
-            id: "size",
-            header: "Size",
-            cell: ({ row }) => (
-              <AppTypography color="text.secondary" variant="caption">
-                {row.original.referencedBytes === undefined
-                  ? "-"
-                  : formatFileSize(row.original.referencedBytes)}
-              </AppTypography>
-            ),
-            meta: { align: "right" },
-          } satisfies AppVirtualTableColumnDef<BtrfsSnapshot>,
-        ]
-      : []),
-    {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <AppActionIconButton
-            icon="mdi:folder-open-outline"
-            label="Browse"
-            onClick={() => handleBrowse(row.original)}
-          />
-          <AppActionIconButton
-            icon="mdi:backup-restore"
-            label="Restore"
-            onClick={() => openRollback(row.original)}
-          />
-          <AppActionIconButton
-            icon="mdi:delete"
-            label="Delete"
-            onClick={() => setDeleting(row.original)}
-          />
-        </div>
-      ),
-      meta: { align: "right" },
-    },
-  ];
+  const dayLabel = (iso: string) => {
+    const date = new Date(iso);
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+    if (same(date, today)) return "Today";
+    if (same(date, yesterday)) return "Yesterday";
+    return date.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+  const timeLabel = (iso: string) =>
+    new Date(iso).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  const groups: { day: string; items: BtrfsSnapshot[] }[] = [];
+  for (const snapshot of snapshots) {
+    const day = dayLabel(snapshot.createdAt);
+    const group = groups.at(-1);
+    if (group?.day === day) group.items.push(snapshot);
+    else groups.push({ day, items: [snapshot] });
+  }
 
   return (
     <FrostedCard>
       <AppCardContent>
         <CardIconHeader
+          iconTint
           icon={<Icon height={24} icon="mdi:camera-burst" width={24} />}
           right={
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -217,7 +202,7 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
                   style={{ minWidth: 160 }}
                   value={activeSource}
                 >
-                  <option value={ALL_SOURCES}>All</option>
+                  <option value={ALL_SOURCES}>All folders</option>
                   {sources.map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -235,23 +220,119 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
               </AppButton>
             </div>
           }
-          subtitle="Go back to an earlier state, or fetch single files from it"
-          title="Snapshots"
+          subtitle="Every point you can go back to. Browse to fetch single files, Restore to go back entirely"
+          title="History"
         />
         {error && <AppAlert severity="error">{error.message}</AppAlert>}
-        <AppVirtualTable
-          ariaLabel="Btrfs snapshots"
-          columns={columns}
-          data={snapshots}
-          density="compact"
-          emptyMessage={isPending ? "Loading..." : "No snapshots yet"}
-          fillAvailable={false}
-          getRowId={(snapshot) => snapshot.path}
-          maxHeight={320}
-          variant="embedded"
-        />
-        <AppDivider style={{ margin: "var(--app-space-16) 0" }} />
-        <BtrfsSnapshotRulesCard uuid={uuid} />
+        {!isPending && snapshots.length === 0 && (
+          <AppTypography color="text.secondary" variant="body2">
+            No snapshots yet
+          </AppTypography>
+        )}
+        <ul
+          aria-label="Btrfs snapshots"
+          style={{ listStyle: "none", margin: 0, padding: 0 }}
+        >
+          {groups.map((group) => (
+            <li key={group.day} style={{ listStyle: "none" }}>
+              <AppTypography
+                color="text.secondary"
+                style={{
+                  display: "block",
+                  padding: "var(--app-space-8) 0 2px",
+                }}
+                variant="overline"
+              >
+                {group.day}
+              </AppTypography>
+              <ul
+                style={{
+                  borderLeft: "2px solid var(--app-palette-divider)",
+                  listStyle: "none",
+                  margin: 0,
+                  marginLeft: 5,
+                  padding: 0,
+                }}
+              >
+                {group.items.map((snapshot) => {
+                  const kind = KINDS[snapshot.kind];
+                  return (
+                    <li
+                      key={snapshot.path}
+                      style={{
+                        alignItems: "center",
+                        display: "flex",
+                        gap: 12,
+                        padding: "var(--app-space-8) 0",
+                      }}
+                    >
+                      <StatusDot
+                        color={
+                          kind?.color ?? "var(--app-palette-text-disabled)"
+                        }
+                        style={{
+                          boxShadow:
+                            "0 0 0 3px var(--app-palette-background-paper)",
+                          marginLeft: -6,
+                        }}
+                        tooltip={kind?.label ?? snapshot.kind}
+                      />
+                      <AppTypography
+                        fontWeight={600}
+                        style={{ width: 56, flexShrink: 0 }}
+                        variant="body2"
+                      >
+                        {timeLabel(snapshot.createdAt)}
+                      </AppTypography>
+                      <div
+                        style={{
+                          display: "flex",
+                          flex: 1,
+                          flexDirection: "column",
+                          minWidth: 0,
+                        }}
+                      >
+                        <AppTypography noWrap variant="body2">
+                          {kind?.label ?? snapshot.kind} snapshot of{" "}
+                          <strong>{snapshot.source}</strong>
+                        </AppTypography>
+                        <AppTypography color="text.secondary" variant="caption">
+                          {[
+                            snapshot.referencedBytes === undefined
+                              ? null
+                              : formatFileSize(snapshot.referencedBytes),
+                            kind?.detail ?? snapshot.kind,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </AppTypography>
+                      </div>
+                      <AppButton
+                        onClick={() => handleBrowse(snapshot)}
+                        size="small"
+                        variant="outlined"
+                      >
+                        Browse
+                      </AppButton>
+                      <AppButton
+                        onClick={() => openRollback(snapshot)}
+                        size="small"
+                        variant="outlined"
+                      >
+                        Restore
+                      </AppButton>
+                      <AppActionIconButton
+                        icon="mdi:delete"
+                        label="Delete"
+                        onClick={() => setDeleting(snapshot)}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
+        </ul>
       </AppCardContent>
 
       <GeneralDialog

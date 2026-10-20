@@ -12,6 +12,7 @@ const BtrfsSpaceCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => (
   <FrostedCard>
     <AppCardContent>
       <CardIconHeader
+        iconTint
         icon={<Icon height={24} icon="mdi:chart-donut" width={24} />}
         subtitle={`${formatFileSize(filesystem.usedBytes)} used of ${formatFileSize(filesystem.totalBytes)}`}
         title="Space"

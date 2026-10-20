@@ -198,6 +198,7 @@ const BtrfsReplicationCard = ({ uuid }: { uuid: string }) => {
     <FrostedCard>
       <AppCardContent>
         <CardIconHeader
+          iconTint
           icon={<Icon height={24} icon="mdi:backup-restore" width={24} />}
           right={
             <AppButton

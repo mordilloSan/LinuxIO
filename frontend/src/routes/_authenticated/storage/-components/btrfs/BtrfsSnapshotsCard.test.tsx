@@ -140,18 +140,23 @@ beforeEach(() => {
 
 const rows = async () => {
   await screen.findAllByRole("button", { name: "Browse" });
-  return within(screen.getByRole("table", { name: "Btrfs snapshots" }))
-    .getAllByRole("row")
-    .slice(1);
+  return screen
+    .getAllByRole("listitem")
+    .filter((item) => !item.querySelector("li"))
+    .filter(
+      (item) =>
+        within(item).queryAllByRole("button", { name: "Browse" }).length,
+    );
 };
 
 describe("BtrfsSnapshotsCard", () => {
-  it("renders the snapshot kinds as chips", async () => {
+  it("renders the snapshot kinds in words", async () => {
     render(<BtrfsSnapshotsCard uuid="uuid-1" />);
 
-    expect(await screen.findByText("manual")).toBeInTheDocument();
-    expect(screen.getByText("timeline")).toBeInTheDocument();
-    expect(screen.getByText("pre-update")).toBeInTheDocument();
+    expect(await screen.findByText(/Manual snapshot of/)).toBeInTheDocument();
+    expect(screen.getByText(/Scheduled snapshot of/)).toBeInTheDocument();
+    expect(screen.getByText(/Before update snapshot of/)).toBeInTheDocument();
+    expect(screen.getByText("taken before an update")).toBeInTheDocument();
     expect(mocks.snapshots).toHaveBeenCalledWith({ uuid: "uuid-1" });
   });
 
@@ -164,7 +169,7 @@ describe("BtrfsSnapshotsCard", () => {
     await user.click(screen.getByRole("option", { name: "data" }));
 
     expect(await rows()).toHaveLength(1);
-    expect(screen.queryByText("timeline")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Scheduled snapshot of/)).not.toBeInTheDocument();
   });
 
   it("browses a snapshot in the file browser", async () => {

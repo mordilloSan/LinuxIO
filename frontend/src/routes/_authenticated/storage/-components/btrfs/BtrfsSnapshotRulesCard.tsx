@@ -10,13 +10,12 @@ import {
   type BtrfsSubvolume,
 } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
+import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import AppVirtualTable from "@/components/tables/AppVirtualTable";
-import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import AppChip from "@/components/ui/AppChip";
+import AppCardContent from "@/components/ui/AppCardContent";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -161,111 +160,110 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
     );
   };
 
-  const columns: AppVirtualTableColumnDef<BtrfsSubvolume>[] = [
-    {
-      id: "enabled",
-      header: "On",
-      cell: ({ row }) => (
-        <AppSwitch
-          aria-label={`Automatic snapshots of ${row.original.path}`}
-          checked={ruleFor(row.original.path)?.enabled ?? false}
-          disabled={isSaving}
-          onChange={(_, enabled) => toggle(row.original, enabled)}
-          size="small"
-        />
-      ),
-    },
-    { accessorKey: "path", header: "Path" },
-    {
-      id: "schedule",
-      header: "Schedule",
-      cell: ({ row }) => {
-        const rule = ruleFor(row.original.path);
-        return rule?.enabled ? (
-          <AppTypography color="text.secondary" variant="caption">
-            {scheduleSummary(rule)}
-          </AppTypography>
-        ) : (
-          <AppChip label="Off" size="small" variant="soft" />
-        );
-      },
-    },
-    {
-      id: "keep",
-      header: "Keep",
-      cell: ({ row }) => {
-        const rule = ruleFor(row.original.path);
-        return (
-          <AppTypography color="text.secondary" variant="caption">
-            {!rule
-              ? "-"
-              : rule.beforeUpdates
-                ? `${keepSummary(rule.keep)} · before updates`
-                : keepSummary(rule.keep)}
-          </AppTypography>
-        );
-      },
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => (
-        <AppActionIconButton
-          icon="mdi:pencil"
-          label="Edit"
-          onClick={() => edit(row.original)}
-        />
-      ),
-      meta: { align: "right" },
-    },
-  ];
+  const summary = (rule: BtrfsSnapshotRule | undefined) => {
+    if (!rule?.enabled) return "Not protected";
+    const parts = [scheduleSummary(rule), `keeps ${keepSummary(rule.keep)}`];
+    if (rule.beforeUpdates) parts.push("before updates");
+    return parts.join(" · ");
+  };
 
   const error = subvolumesError ?? rulesError;
 
   return (
-    <>
-      <CardIconHeader
-        headingVariant="compact"
-        icon={<Icon height={20} icon="mdi:camera-timer" width={20} />}
-        right={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {rulesData && (
-              <AppChip
-                color={rulesData.timerEnabled ? "success" : "default"}
-                label={
-                  rulesData.timerEnabled ? "Timer enabled" : "Timer disabled"
-                }
-                size="small"
-                variant="soft"
+    <FrostedCard>
+      <AppCardContent>
+        <CardIconHeader
+          iconTint
+          icon={<Icon height={24} icon="mdi:shield-check-outline" width={24} />}
+          right={
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {rulesData && (
+                <AppTypography color="text.secondary" variant="caption">
+                  {rulesData.timerEnabled ? "Timer running" : "Timer off"}
+                </AppTypography>
+              )}
+              <AppActionIconButton
+                disabled={isRunning}
+                icon="mdi:play"
+                label="Run now"
+                onClick={() => runNow()}
               />
-            )}
-            <AppActionIconButton
-              disabled={isRunning}
-              icon="mdi:play"
-              label="Run now"
-              onClick={() => runNow()}
-            />
-          </div>
-        }
-        subtitle="Taken on a schedule and old ones removed automatically"
-        title="Automatic snapshots"
-      />
-      {error && <AppAlert severity="error">{error.message}</AppAlert>}
-      <AppVirtualTable
-        ariaLabel="Btrfs snapshot rules"
-        columns={columns}
-        data={subvolumes}
-        density="compact"
-        emptyMessage={
-          isPending
-            ? "Loading..."
-            : "Nothing to snapshot: this filesystem has no subvolumes of its own"
-        }
-        fillAvailable={false}
-        getRowId={(subvolume) => String(subvolume.id)}
-        maxHeight={320}
-        variant="embedded"
-      />
+            </div>
+          }
+          subtitle="Turn on automatic snapshots for a folder and LinuxIO keeps a history you can go back to"
+          title="Protected folders"
+        />
+        {error && <AppAlert severity="error">{error.message}</AppAlert>}
+        {!isPending && subvolumes.length === 0 && (
+          <AppTypography color="text.secondary" variant="body2">
+            Nothing to protect: this filesystem has no subvolumes of its own.
+          </AppTypography>
+        )}
+        <div
+          style={{
+            display: "grid",
+            gap: "var(--app-space-12)",
+            gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+          }}
+        >
+          {subvolumes.map((subvolume) => {
+            const rule = ruleFor(subvolume.path);
+            const on = rule?.enabled ?? false;
+            return (
+              <div
+                aria-label={subvolume.path}
+                key={subvolume.id}
+                role="group"
+                style={{
+                  alignItems: "center",
+                  border: `1px solid ${on ? "var(--app-palette-primary-main)" : "var(--app-palette-divider)"}`,
+                  borderRadius: "var(--app-radius-md, 12px)",
+                  display: "flex",
+                  gap: 12,
+                  padding: "var(--app-space-12) var(--app-space-16)",
+                }}
+              >
+                <Icon
+                  color={
+                    on
+                      ? "var(--app-palette-primary-main)"
+                      : "var(--app-palette-text-secondary)"
+                  }
+                  height={28}
+                  icon="mdi:folder-outline"
+                  width={28}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    flex: 1,
+                    flexDirection: "column",
+                    minWidth: 0,
+                  }}
+                >
+                  <AppTypography fontWeight={600} noWrap variant="body2">
+                    {subvolume.path}
+                  </AppTypography>
+                  <AppTypography color="text.secondary" variant="caption">
+                    {summary(rule)}
+                  </AppTypography>
+                </div>
+                <AppActionIconButton
+                  icon="mdi:pencil"
+                  label={`Edit ${subvolume.path}`}
+                  onClick={() => edit(subvolume)}
+                />
+                <AppSwitch
+                  aria-label={`Automatic snapshots of ${subvolume.path}`}
+                  checked={on}
+                  disabled={isSaving}
+                  onChange={(_, enabled) => toggle(subvolume, enabled)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </AppCardContent>
 
       <GeneralDialog
         fullWidth
@@ -414,7 +412,7 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
           </AppButton>
         </AppDialogActions>
       </GeneralDialog>
-    </>
+    </FrostedCard>
   );
 };
 

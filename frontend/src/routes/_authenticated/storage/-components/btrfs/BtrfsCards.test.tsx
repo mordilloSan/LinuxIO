@@ -5,7 +5,7 @@ import { render, screen } from "@/test/render";
 import { formatFileSize } from "@/utils/formaters";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
-import BtrfsHealthCard from "./BtrfsHealthCard";
+import { BtrfsHealthTile, BtrfsSpaceTile } from "./BtrfsOverviewTiles";
 import BtrfsSpaceCard from "./BtrfsSpaceCard";
 
 vi.mock("@tanstack/react-virtual", async () =>
@@ -57,25 +57,30 @@ const healthy = {
   devices: [filesystem.devices[0]],
 };
 
-describe("BtrfsHealthCard", () => {
+describe("BtrfsHealthTile", () => {
   it("shows Degraded when degraded without device errors", () => {
-    render(<BtrfsHealthCard filesystem={{ ...filesystem, devices: [] }} />);
+    render(<BtrfsHealthTile filesystem={{ ...filesystem, devices: [] }} />);
     expect(screen.getByText("Degraded")).toBeInTheDocument();
     expect(screen.getByText("Never scrubbed")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Check for errors" }),
     ).toBeEnabled();
-    expect(screen.getByText("30 GB used of 100 GB")).toBeInTheDocument();
+  });
+
+  it("shows used, total and free space", () => {
+    render(<BtrfsSpaceTile filesystem={healthy} />);
+    expect(screen.getByText("30 GB of 100 GB")).toBeInTheDocument();
+    expect(screen.getByText("70 GB free · 1 disk(s)")).toBeInTheDocument();
   });
 
   it("shows Errors when a device counter is non-zero", () => {
-    render(<BtrfsHealthCard filesystem={filesystem} />);
+    render(<BtrfsHealthTile filesystem={filesystem} />);
     expect(screen.getByText("Errors")).toBeInTheDocument();
   });
 
   it("shows Healthy and the finished scrub error count", () => {
     render(
-      <BtrfsHealthCard
+      <BtrfsHealthTile
         filesystem={{
           ...healthy,
           scrub: {
@@ -94,7 +99,7 @@ describe("BtrfsHealthCard", () => {
 
   it("shows scrub progress while running", () => {
     render(
-      <BtrfsHealthCard
+      <BtrfsHealthTile
         filesystem={{
           ...healthy,
           scrub: {
@@ -117,6 +122,7 @@ describe("BtrfsDevicesCard", () => {
     expect(screen.getByText("/dev/sda")).toBeInTheDocument();
     expect(screen.getByText("Missing")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("60 GB used · 40 GB free")).toBeInTheDocument();
   });
 
   it("keeps the last present device", () => {

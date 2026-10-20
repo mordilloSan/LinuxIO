@@ -257,6 +257,7 @@ const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
     <FrostedCard>
       <AppCardContent>
         <CardIconHeader
+          iconTint
           icon={<Icon height={24} icon="mdi:folder-multiple" width={24} />}
           right={
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
