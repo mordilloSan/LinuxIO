@@ -83,6 +83,19 @@ func TestImportDiskFileKeepsLargerImageAndEFIFirmware(t *testing.T) {
 	}
 }
 
+func TestImportDiskFileDetectsTerraMasterOVMF(t *testing.T) {
+	fakeImportCommands(t, "34359738368")
+	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
+
+	_, legacyBoot, err := importDiskFile(t.Context(), writeOVA(t, `<Envelope><VirtualSystem ovf:id="HomeAssistant" tnas:machine_type="q35" tnas:use_ovmf="true"/></Envelope>`), volumePath, 20, nil)
+	if err != nil {
+		t.Fatalf("importDiskFile: %v", err)
+	}
+	if legacyBoot {
+		t.Fatal("legacyBoot = true, want UEFI boot for tnas:use_ovmf")
+	}
+}
+
 func TestValidateImportDiskRejectsUnsupportedFile(t *testing.T) {
 	if _, err := validateImportDisk(tempFile(t, "notes.txt")); err == nil || !strings.Contains(err.Error(), ".ova") {
 		t.Fatalf("validateImportDisk error = %v, want unsupported extension rejection", err)

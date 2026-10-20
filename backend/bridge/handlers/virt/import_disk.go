@@ -29,9 +29,10 @@ var importDiskFormats = map[string]string{
 }
 
 // shortcut: a case-insensitive scan of the OVF for a firmware attribute set to
-// EFI covers VMware (vmw:key="firmware" vmw:value="efi") and VirtualBox
-// (<Firmware type="EFI"/>) exports; parse the OVF properly if other tools differ.
-var ovfEFIFirmware = regexp.MustCompile(`(?i)firmware[^>]*efi`)
+// EFI covers VMware (vmw:key="firmware" vmw:value="efi"), VirtualBox
+// (<Firmware type="EFI"/>) and TerraMaster TOS (tnas:use_ovmf="true") exports;
+// parse the OVF properly if other tools differ.
+var ovfEFIFirmware = regexp.MustCompile(`(?i)firmware[^>]*efi|use_ovmf="true"`)
 
 func validateImportDisk(rawPath string) (string, error) {
 	path := strings.TrimSpace(rawPath)
