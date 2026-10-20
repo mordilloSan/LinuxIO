@@ -709,7 +709,6 @@ export default function CreateVMDialog({
             ) : null}
             {usesImport ? (
               <PathPickerField
-                browsePath={`${managedRootPath}/`}
                 browseLabel="Browse disk images"
                 editable
                 error={trimmedImportPath.length > 0 && !importPathValid}
