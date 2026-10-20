@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -31,6 +31,39 @@ describe("Transcript", () => {
     expect(screen.getByText("ls -la").closest("pre")).not.toBeNull();
     expect(screen.getByText(/Before/).closest("pre")).toBeNull();
     expect(screen.getByText(/After/).closest("pre")).toBeNull();
+  });
+
+  it("shows a sent prompt's attachments as chips that open a preview", async () => {
+    render(
+      <Transcript
+        blocks={[
+          {
+            kind: "user",
+            id: "1",
+            text: "look",
+            attachments: [
+              {
+                id: "a",
+                kind: "image",
+                name: "shot.png",
+                mimeType: "image/png",
+                data: "YWJj",
+                previewUrl: "data:image/png;base64,YWJj",
+              },
+              { id: "b", kind: "text", text: "one\ntwo" },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+    expect(screen.getByText("2 lines")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open shot.png" }),
+    );
+    expect(
+      within(screen.getByRole("dialog")).getByAltText("shot.png"),
+    ).toBeInTheDocument();
   });
 
   it("labels the log with the label prop", () => {

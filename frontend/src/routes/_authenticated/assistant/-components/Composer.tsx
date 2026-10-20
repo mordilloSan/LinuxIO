@@ -12,7 +12,6 @@ import {
 
 import { call, linuxio } from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
-import AppChip from "@/components/ui/AppChip";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTextField from "@/components/ui/AppTextField";
@@ -21,12 +20,14 @@ import AppTypography from "@/components/ui/AppTypography";
 import PathPickerField from "@/components/ui/PathPickerField";
 
 import type { AssistantState, MessageDisplay } from "./assistant-store";
+import AttachmentChip from "./AttachmentChip";
 import {
   type Attachment,
-  attachmentName,
   buildPrompt,
   fileAttachment,
   imageAttachment,
+  isLongPaste,
+  textAttachment,
 } from "./attachments";
 import ConfigControls from "./ConfigControls";
 import ContextGauge from "./ContextGauge";
@@ -218,7 +219,7 @@ export default function Composer({
     if (running && !canSteer) return;
     const display = {
       text,
-      attachments: attachments.map(attachmentName),
+      attachments,
     };
     const blocks = buildPrompt(text, attachments);
     setDraft("");
@@ -298,9 +299,16 @@ export default function Composer({
 
   const onPaste = (event: ClipboardEvent) => {
     const files = imageFiles(event.clipboardData.files);
-    if (!canImages || files.length === 0) return;
-    event.preventDefault();
-    void addImages(files);
+    if (canImages && files.length > 0) {
+      event.preventDefault();
+      void addImages(files);
+      return;
+    }
+    const text = event.clipboardData.getData("text/plain");
+    if (isLongPaste(text)) {
+      event.preventDefault();
+      setAttachments((current) => [...current, textAttachment(text)]);
+    }
   };
 
   const onDragOver = (event: DragEvent) => {
@@ -325,28 +333,13 @@ export default function Composer({
     <div className="assistant__composer-stack">
       {attachments.length > 0 ? (
         <div className="assistant__attachments">
-          {attachments.map((attachment) =>
-            attachment.kind === "image" ? (
-              <div className="assistant__thumb" key={attachment.id}>
-                <img alt={attachment.name} src={attachment.previewUrl} />
-                <AppActionIconButton
-                  ariaLabel={`Remove ${attachment.name}`}
-                  className="assistant__thumb-remove"
-                  icon="mdi:close"
-                  iconSize={14}
-                  onClick={() => remove(attachment)}
-                />
-              </div>
-            ) : (
-              <AppChip
-                key={attachment.id}
-                label={attachmentName(attachment)}
-                onDelete={() => remove(attachment)}
-                size="small"
-                title={attachment.path}
-              />
-            ),
-          )}
+          {attachments.map((attachment) => (
+            <AttachmentChip
+              attachment={attachment}
+              key={attachment.id}
+              onRemove={() => remove(attachment)}
+            />
+          ))}
         </div>
       ) : null}
       {pickerOpen ? (

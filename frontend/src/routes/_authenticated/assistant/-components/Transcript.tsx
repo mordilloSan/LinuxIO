@@ -5,6 +5,8 @@ import { type ReactNode, useRef, useState } from "react";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 
+import AttachmentChip from "./AttachmentChip";
+import type { Attachment } from "./attachments";
 import DiffView from "./DiffView";
 import MarkdownBlock from "./MarkdownBlock";
 import type { ToolBlock, TranscriptBlock } from "./transcript";
@@ -121,8 +123,25 @@ function groupRows(blocks: TranscriptBlock[]): Row[] {
   return rows;
 }
 
-function UserBlock({ text }: { text: string }) {
-  return <div className="assistant-block assistant-block--user">{text}</div>;
+function UserBlock({
+  text,
+  attachments,
+}: {
+  text: string;
+  attachments: Attachment[];
+}) {
+  return (
+    <div className="assistant-block assistant-block--user">
+      {attachments.length > 0 ? (
+        <div className="assistant__attachments">
+          {attachments.map((attachment) => (
+            <AttachmentChip attachment={attachment} key={attachment.id} />
+          ))}
+        </div>
+      ) : null}
+      {text}
+    </div>
+  );
 }
 
 function AgentBlock({ text }: { text: string }) {
@@ -166,7 +185,7 @@ function PlanBlock({ entries }: { entries: acp.PlanEntry[] }) {
 function TranscriptRow({ block }: { block: TranscriptBlock }) {
   switch (block.kind) {
     case "user":
-      return <UserBlock text={block.text} />;
+      return <UserBlock attachments={block.attachments} text={block.text} />;
     case "agent":
       return <AgentBlock text={block.text} />;
     case "thought":

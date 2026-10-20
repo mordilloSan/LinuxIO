@@ -1,5 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
+import type { Attachment } from "./attachments";
+
 export type ToolBlock = {
   kind: "tool";
   id: string;
@@ -13,7 +15,7 @@ export type ToolBlock = {
 };
 
 export type TranscriptBlock =
-  | { kind: "user"; id: string; text: string; attachments: string[] }
+  | { kind: "user"; id: string; text: string; attachments: Attachment[] }
   | { kind: "agent"; id: string; text: string }
   | { kind: "thought"; id: string; text: string }
   | ToolBlock
@@ -45,7 +47,7 @@ function appendChunk(
 export function appendUserMessage(
   blocks: readonly TranscriptBlock[],
   text: string,
-  attachments: string[],
+  attachments: Attachment[],
 ): TranscriptBlock[] {
   return [...blocks, { kind: "user", id: newId(), text, attachments }];
 }

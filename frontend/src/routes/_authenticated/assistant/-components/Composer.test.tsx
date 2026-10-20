@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -115,7 +115,7 @@ describe("Composer", () => {
     const { onSend } = setup();
     const input = screen.getByLabelText("Message");
     fireEvent.paste(input, {
-      clipboardData: { files: [png()], types: ["Files"] },
+      clipboardData: { files: [png()], types: ["Files"], getData: () => "" },
     });
     expect(await screen.findByAltText("shot.png")).toBeInTheDocument();
     await userEvent.type(input, "look{Enter}");
@@ -124,14 +124,71 @@ describe("Composer", () => {
         { type: "image", data: "YWJj", mimeType: "image/png" },
         { type: "text", text: "look" },
       ],
-      { text: "look", attachments: ["shot.png"] },
+      {
+        text: "look",
+        attachments: [
+          expect.objectContaining({ kind: "image", name: "shot.png" }),
+        ],
+      },
     );
+  });
+
+  it("opens a pasted image in a dialog from its chip", async () => {
+    setup();
+    fireEvent.paste(screen.getByLabelText("Message"), {
+      clipboardData: { files: [png()], types: ["Files"], getData: () => "" },
+    });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Open shot.png" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByAltText("shot.png")).toBeInTheDocument();
+  });
+
+  it("turns a long paste into a text attachment sent before the typed text", async () => {
+    const { onSend } = setup();
+    const input = screen.getByLabelText("Message");
+    const pasted = Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n");
+    fireEvent.paste(input, {
+      clipboardData: { files: [], getData: () => pasted },
+    });
+    const chip = await screen.findByRole("button", {
+      name: "Open Pasted text",
+    });
+    expect(chip).toHaveTextContent("12 lines");
+    await userEvent.click(chip);
+    expect(
+      within(await screen.findByRole("dialog")).getByText(/line 11/),
+    ).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.type(input, "explain{Enter}");
+    expect(onSend).toHaveBeenCalledWith(
+      [
+        { type: "text", text: pasted },
+        { type: "text", text: "explain" },
+      ],
+      {
+        text: "explain",
+        attachments: [expect.objectContaining({ kind: "text", text: pasted })],
+      },
+    );
+  });
+
+  it("keeps a short paste in the prompt box", async () => {
+    setup();
+    const input = screen.getByLabelText("Message");
+    fireEvent.paste(input, {
+      clipboardData: { files: [], getData: () => "short" },
+    });
+    expect(
+      screen.queryByRole("button", { name: "Open Pasted text" }),
+    ).toBeNull();
   });
 
   it("ignores pasted images when the agent does not take images", async () => {
     setup({ canImages: false });
     fireEvent.paste(screen.getByLabelText("Message"), {
-      clipboardData: { files: [png()], types: ["Files"] },
+      clipboardData: { files: [png()], types: ["Files"], getData: () => "" },
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByAltText("shot.png")).not.toBeInTheDocument();
@@ -209,7 +266,15 @@ describe("Composer", () => {
         },
         { type: "text", text: "go" },
       ],
-      { text: "go", attachments: ["todo.txt"] },
+      {
+        text: "go",
+        attachments: [
+          expect.objectContaining({
+            kind: "file",
+            path: "/srv/notes/todo.txt",
+          }),
+        ],
+      },
     );
   });
 
@@ -274,7 +339,9 @@ describe("Composer", () => {
     const big = new File(["x"], "big.png", { type: "image/png" });
     Object.defineProperty(big, "size", { value: 6 * 1024 * 1024 });
     const input = screen.getByLabelText("Message");
-    fireEvent.paste(input, { clipboardData: { files: [big] } });
+    fireEvent.paste(input, {
+      clipboardData: { files: [big], getData: () => "" },
+    });
     expect(await screen.findByText(/5 MB image limit/)).toBeInTheDocument();
     await userEvent.type(input, "a");
     expect(screen.queryByText(/5 MB image limit/)).not.toBeInTheDocument();

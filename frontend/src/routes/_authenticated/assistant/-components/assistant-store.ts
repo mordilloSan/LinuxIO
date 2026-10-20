@@ -12,6 +12,7 @@ import {
   textBlock,
 } from "@/api/acp";
 
+import type { Attachment } from "./attachments";
 import {
   appendUserMessage,
   applySessionUpdate,
@@ -79,7 +80,7 @@ export interface AssistantState {
 /** What the user's message looks like in the transcript. */
 export interface MessageDisplay {
   text: string;
-  attachments: string[];
+  attachments: Attachment[];
 }
 
 // Per-chat agent state, cleared whenever the open chat changes.

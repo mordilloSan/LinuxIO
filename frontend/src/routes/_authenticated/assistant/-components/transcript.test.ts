@@ -133,10 +133,11 @@ describe("applySessionUpdate", () => {
   });
 
   it("appendUserMessage adds a user block with its attachments", () => {
-    expect(appendUserMessage([], "hi", ["a.txt"])[0]).toMatchObject({
+    const pasted = { id: "p", kind: "text" as const, text: "a" };
+    expect(appendUserMessage([], "hi", [pasted])[0]).toMatchObject({
       kind: "user",
       text: "hi",
-      attachments: ["a.txt"],
+      attachments: [pasted],
     });
   });
 

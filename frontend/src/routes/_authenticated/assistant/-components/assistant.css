@@ -518,24 +518,69 @@
   gap: var(--app-space-8);
 }
 
-.assistant__thumb {
-  position: relative;
-  width: 48px;
-  height: 48px;
+.assistant-block--user .assistant__attachments {
+  margin-bottom: var(--app-space-8);
 }
 
-.assistant__thumb img {
-  width: 100%;
-  height: 100%;
+/* An attachment reads like a collapsed tool row: thumbnail or icon, name,
+   and a dim detail (image size, line count), with the remove cross after. */
+.assistant__attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  padding-left: var(--app-space-8);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant__attachment .assistant__attachment-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-6);
+  min-width: 0;
+  padding: var(--app-space-4) 0;
+  color: inherit;
+  font: inherit;
+  text-transform: none;
+}
+
+.assistant__attachment .app-btn.assistant__attachment-open:hover {
+  background: none;
+}
+
+.assistant__attachment
+  .app-btn.assistant__attachment-open:hover
+  .assistant__attachment-name {
+  color: var(--app-palette-text-primary);
+}
+
+.assistant__attachment-thumb {
+  width: 20px;
+  height: 20px;
   object-fit: cover;
   border-radius: var(--app-radius-base);
 }
 
-.assistant__thumb .assistant__thumb-remove {
-  position: absolute;
-  top: calc(-1 * var(--app-space-4));
-  right: calc(-1 * var(--app-space-4));
-  background: var(--app-palette-background-paper);
+.assistant__attachment-name {
+  font-weight: 600;
+}
+
+.assistant__attachment-meta {
+  color: var(--app-palette-text-disabled);
+}
+
+.assistant__preview-image {
+  display: block;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.assistant__preview-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--app-font-mono);
 }
 
 /* Command names only, in the menu's standard row type; each description
