@@ -84,8 +84,8 @@ const route = (name: string) => {
   return mutate;
 };
 
-// Each folder is a card named after its path.
-const rowFor = (path: string) => screen.findByRole("group", { name: path });
+const rowFor = async (path: string) =>
+  (await screen.findByText(path)).closest("[role=row]") as HTMLElement;
 
 beforeEach(() => {
   vi.clearAllMocks();

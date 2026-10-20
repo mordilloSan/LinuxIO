@@ -11,7 +11,7 @@ import { render } from "@/test/render";
 import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
-import { BtrfsHealthTile } from "./BtrfsOverviewTiles";
+import BtrfsStatusStrip from "./BtrfsStatusStrip";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -331,9 +331,9 @@ describe("BtrfsDevicesCard actions", () => {
     });
   });
 
-  it("starts a scrub from the health card, or stops a running one", async () => {
+  it("starts a scrub from the status strip, or stops a running one", async () => {
     const user = userEvent.setup();
-    const { unmount } = render(<BtrfsHealthTile filesystem={filesystem(1)} />);
+    const { unmount } = render(<BtrfsStatusStrip filesystem={filesystem(1)} />);
     await user.click(screen.getByRole("button", { name: "Check for errors" }));
     expect(mocks.submit).toHaveBeenCalledWith("btrfs_scrub_start", {
       uuid: "uuid-1",
@@ -342,7 +342,7 @@ describe("BtrfsDevicesCard actions", () => {
 
     const running = filesystem(1);
     running.scrub.status = "running";
-    render(<BtrfsHealthTile filesystem={running} />);
+    render(<BtrfsStatusStrip filesystem={running} />);
     expect(
       screen.queryByRole("button", { name: "Check for errors" }),
     ).not.toBeInTheDocument();

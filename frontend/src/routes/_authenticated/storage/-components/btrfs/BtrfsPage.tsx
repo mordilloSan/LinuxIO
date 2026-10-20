@@ -10,17 +10,11 @@ import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useCapability } from "@/hooks/useCapabilities";
 
-import BtrfsDevicesCard from "./BtrfsDevicesCard";
-import {
-  BtrfsHealthTile,
-  BtrfsProtectionTile,
-  BtrfsSpaceTile,
-} from "./BtrfsOverviewTiles";
 import BtrfsReplicationCard from "./BtrfsReplicationCard";
 import BtrfsSettingsCard from "./BtrfsSettingsCard";
 import BtrfsSnapshotRulesCard from "./BtrfsSnapshotRulesCard";
 import BtrfsSnapshotsCard from "./BtrfsSnapshotsCard";
-import BtrfsSpaceCard from "./BtrfsSpaceCard";
+import BtrfsStatusStrip from "./BtrfsStatusStrip";
 import BtrfsSubvolumesCard from "./BtrfsSubvolumesCard";
 
 interface BtrfsPageProps {
@@ -66,23 +60,14 @@ const BtrfsFilesystems = ({ selectedUuid, onSelect }: BtrfsPageProps) => {
         </AppSelect>
       )}
       <AppGrid container spacing={2}>
-        <AppGrid size={{ xs: 12, md: 4 }}>
-          <BtrfsHealthTile filesystem={selected} key={selected.uuid} />
-        </AppGrid>
-        <AppGrid size={{ xs: 12, md: 4 }}>
-          <BtrfsSpaceTile filesystem={selected} />
-        </AppGrid>
-        <AppGrid size={{ xs: 12, md: 4 }}>
-          <BtrfsProtectionTile uuid={selected.uuid} />
-        </AppGrid>
         <AppGrid size={{ xs: 12 }}>
-          <BtrfsDevicesCard filesystem={selected} key={selected.uuid} />
-        </AppGrid>
-        <AppGrid size={{ xs: 12 }}>
-          <BtrfsSnapshotRulesCard uuid={selected.uuid} />
+          <BtrfsStatusStrip filesystem={selected} key={selected.uuid} />
         </AppGrid>
         <AppGrid size={{ xs: 12 }}>
           <BtrfsSnapshotsCard key={selected.uuid} uuid={selected.uuid} />
+        </AppGrid>
+        <AppGrid size={{ xs: 12 }}>
+          <BtrfsSnapshotRulesCard key={selected.uuid} uuid={selected.uuid} />
         </AppGrid>
         <AppGrid size={{ xs: 12 }}>
           <section>
@@ -94,9 +79,6 @@ const BtrfsFilesystems = ({ selectedUuid, onSelect }: BtrfsPageProps) => {
             />
             <AppCollapse in={advanced} unmountOnExit>
               <AppGrid container id="btrfs-advanced" spacing={2}>
-                <AppGrid size={{ xs: 12 }}>
-                  <BtrfsSpaceCard filesystem={selected} />
-                </AppGrid>
                 <AppGrid size={{ xs: 12 }}>
                   <BtrfsSubvolumesCard uuid={selected.uuid} />
                 </AppGrid>

@@ -5,8 +5,8 @@ import { render, screen } from "@/test/render";
 import { formatFileSize } from "@/utils/formaters";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
-import { BtrfsHealthTile, BtrfsSpaceTile } from "./BtrfsOverviewTiles";
 import BtrfsSpaceCard from "./BtrfsSpaceCard";
+import BtrfsStatusStrip from "./BtrfsStatusStrip";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -57,9 +57,9 @@ const healthy = {
   devices: [filesystem.devices[0]],
 };
 
-describe("BtrfsHealthTile", () => {
+describe("BtrfsStatusStrip", () => {
   it("shows Degraded when degraded without device errors", () => {
-    render(<BtrfsHealthTile filesystem={{ ...filesystem, devices: [] }} />);
+    render(<BtrfsStatusStrip filesystem={{ ...filesystem, devices: [] }} />);
     expect(screen.getByText("Degraded")).toBeInTheDocument();
     expect(screen.getByText("Never scrubbed")).toBeInTheDocument();
     expect(
@@ -67,20 +67,19 @@ describe("BtrfsHealthTile", () => {
     ).toBeEnabled();
   });
 
-  it("shows used, total and free space", () => {
-    render(<BtrfsSpaceTile filesystem={healthy} />);
-    expect(screen.getByText("30 GB of 100 GB")).toBeInTheDocument();
-    expect(screen.getByText("70 GB free · 1 disk(s)")).toBeInTheDocument();
+  it("shows used and total space", () => {
+    render(<BtrfsStatusStrip filesystem={healthy} />);
+    expect(screen.getByText("30 GB used of 100 GB")).toBeInTheDocument();
   });
 
   it("shows Errors when a device counter is non-zero", () => {
-    render(<BtrfsHealthTile filesystem={filesystem} />);
+    render(<BtrfsStatusStrip filesystem={filesystem} />);
     expect(screen.getByText("Errors")).toBeInTheDocument();
   });
 
   it("shows Healthy and the finished scrub error count", () => {
     render(
-      <BtrfsHealthTile
+      <BtrfsStatusStrip
         filesystem={{
           ...healthy,
           scrub: {
@@ -99,7 +98,7 @@ describe("BtrfsHealthTile", () => {
 
   it("shows scrub progress while running", () => {
     render(
-      <BtrfsHealthTile
+      <BtrfsStatusStrip
         filesystem={{
           ...healthy,
           scrub: {
