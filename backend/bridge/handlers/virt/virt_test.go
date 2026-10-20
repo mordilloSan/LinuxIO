@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -221,6 +222,7 @@ func TestValidateCreateRequestRejectsInvalidInput(t *testing.T) {
 		{name: "empty name", req: func() apischema.VMCreateRequest { r := valid; r.Name = ""; return r }()},
 		{name: "path traversal name", req: func() apischema.VMCreateRequest { r := valid; r.Name = "bad..vm"; return r }()},
 		{name: "zero vcpus", req: func() apischema.VMCreateRequest { r := valid; r.VCPUs = 0; return r }()},
+		{name: "more vcpus than host", req: func() apischema.VMCreateRequest { r := valid; r.VCPUs = runtime.NumCPU() + 1; return r }()},
 		{name: "too little memory", req: func() apischema.VMCreateRequest { r := valid; r.MemoryMB = 128; return r }()},
 		{name: "zero disk", req: func() apischema.VMCreateRequest { r := valid; r.DiskGB = 0; return r }()},
 		{name: "missing iso", req: func() apischema.VMCreateRequest { r := valid; r.ISOPath = ""; return r }()},

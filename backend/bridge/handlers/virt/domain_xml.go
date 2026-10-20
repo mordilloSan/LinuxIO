@@ -3,6 +3,7 @@ package virt
 import (
 	"encoding/xml"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"uuid"
 
@@ -199,6 +200,9 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 	}
 	if req.VCPUs <= 0 {
 		return badRequestf("vcpus must be greater than 0")
+	}
+	if req.VCPUs > runtime.NumCPU() {
+		return badRequestf("vcpus must not exceed the host's %d logical CPUs", runtime.NumCPU())
 	}
 	if req.MemoryMB < 256 {
 		return badRequestf("memoryMB must be at least 256")
