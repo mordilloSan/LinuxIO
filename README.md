@@ -7,7 +7,7 @@
 [![React](https://img.shields.io/badge/react-19.2.8-61dafb?logo=react&logoColor=white)](frontend/package.json)
 [![Platform](https://img.shields.io/badge/platform-linux-fcc624?logo=linux&logoColor=black)](README.md)
 
-<h1>Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="center" /></h1>
+<h1>Linux <img src="frontend/public/Logo.png" alt="i/O" height="32" align="absmiddle" /></h1>
 
 A modern web dashboard to manage your Linux system: Docker, WireGuard, updates, users, shares, sensors, and more, from one unified interface.
 
