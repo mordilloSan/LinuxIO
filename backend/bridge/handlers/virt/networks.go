@@ -3,6 +3,7 @@ package virt
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"libvirt.org/go/libvirtxml"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 )
 
 const (
@@ -24,16 +26,26 @@ const (
 
 var (
 	networkSysfsRoot = bridgeSysfsRoot
+	// dockerBridgeNames is swapped in tests; Docker is optional on the host.
+	dockerBridgeNames = docker.BridgeNames
 )
 
 // ListVMNetworks returns the default libvirt NAT network and existing host
-// bridges. Bridges used by any libvirt network are not selectable separately.
+// bridges. Bridges used by any libvirt network or owned by Docker are not
+// selectable separately.
 func ListVMNetworks(ctx context.Context) ([]apischema.VMNetwork, error) {
 	var out []apischema.VMNetwork
 	err := withLibvirtConn(ctx, func(conn libvirtConn) error {
 		libvirtNetworks, backingBridges, err := listLibvirtNetworks(ctx, conn)
 		if err != nil {
 			return err
+		}
+		dockerBridges, dockerErr := dockerBridgeNames(ctx)
+		if dockerErr != nil {
+			slog.Debug("docker bridges unavailable for VM network list", "error", dockerErr)
+		}
+		for name := range dockerBridges {
+			backingBridges[name] = struct{}{}
 		}
 		bridges, err := listHostBridges(ctx, backingBridges)
 		if err != nil {

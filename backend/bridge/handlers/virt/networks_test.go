@@ -21,8 +21,11 @@ func TestListVMNetworksEnumeratesAndDeduplicatesBridges(t *testing.T) {
 	makeBridgeFixture(t, root, "br-down", "down")
 	makeBridgeFixture(t, root, "virbr0", "up")
 	makeBridgeFixture(t, root, "br-isolated", "up")
+	makeBridgeFixture(t, root, "br-immich", "up")
+	makeBridgeFixture(t, root, "docker0", "up")
 	makeInterfaceFixture(t, root, "eth0")
 	withNetworkSysfsRoot(t, root)
+	withDockerBridges(t, map[string]struct{}{"br-immich": {}, "docker0": {}}, nil)
 
 	fake := newFakeConn()
 	fake.libvirtNetworks = []libvirt.Network{
@@ -52,8 +55,9 @@ func TestListVMNetworksEnumeratesAndDeduplicatesBridges(t *testing.T) {
 		t.Fatalf("default network = %#v", got[2])
 	}
 	for _, network := range got {
-		if network.Name == "br-isolated" || network.Name == "isolated" {
-			t.Fatalf("unsupported libvirt network exposed: %#v", got)
+		switch network.Name {
+		case "br-isolated", "isolated", "br-immich", "docker0":
+			t.Fatalf("unsupported network exposed: %#v", got)
 		}
 	}
 }
@@ -361,6 +365,13 @@ func TestListHostBridgesChecksContext(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("listHostBridges error = %v, want cancellation", err)
 	}
+}
+
+func withDockerBridges(t *testing.T, names map[string]struct{}, err error) {
+	t.Helper()
+	previous := dockerBridgeNames
+	dockerBridgeNames = func(context.Context) (map[string]struct{}, error) { return names, err }
+	t.Cleanup(func() { dockerBridgeNames = previous })
 }
 
 func withNetworkSysfsRoot(t *testing.T, root string) {
