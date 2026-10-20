@@ -9,12 +9,17 @@ import {
   logoutAssistant,
   probeAssistant,
 } from "@/api/acp/probe";
-import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppSelect from "@/components/ui/AppSelect";
-import AppTypography from "@/components/ui/AppTypography";
 import { useAssistantSettings, useConfig } from "@/hooks/useConfig";
+
+import { SettingsSectionShell } from "./SettingsSectionForm";
+import {
+  SectionCard,
+  SettingsNote,
+  StatusMetric,
+} from "./SettingsSectionPrimitives";
 
 export default function AssistantSettingsSection() {
   const { agent } = useAssistantSettings();
@@ -70,92 +75,137 @@ export default function AssistantSettingsSection() {
       );
   };
 
+  const loggedIn = probe?.status === "logged_in";
+  const statusLabel = probing
+    ? "Checking login…"
+    : loggedIn
+      ? "Logged in"
+      : probe?.status === "auth_required"
+        ? "Not logged in"
+        : "Unreachable";
+  const statusColor = loggedIn
+    ? "var(--app-palette-success-main)"
+    : probe?.status === "auth_required"
+      ? "var(--app-palette-warning-main)"
+      : probe?.status === "unknown"
+        ? "var(--app-palette-error-main)"
+        : undefined;
+
   return (
-    <FrostedCard>
-      <AppTypography variant="h6">Assistant</AppTypography>
-      <AppSelect
-        label="Agent"
-        onChange={(event) => {
-          const value = event.target.value;
-          updateConfig({
-            assistant: { agent: isAssistantAgentId(value) ? value : "" },
-          });
-        }}
-        value={agent}
+    <SettingsSectionShell
+      onRefresh={runProbe}
+      refreshAriaLabel="Check login again"
+      refreshDisabled={!agent}
+      refreshing={probing}
+      subtitle="Coding agent used by the assistant"
+      title="Assistant"
+    >
+      <SectionCard
+        icon="mdi:robot-outline"
+        subtitle="Agent CLI the assistant talks to"
+        title="Agent"
       >
-        <option value="">Not chosen</option>
-        {ASSISTANT_AGENTS.map((entry) => (
-          <option key={entry.id} value={entry.id}>
-            {entry.label}
-          </option>
-        ))}
-      </AppSelect>
+        <AppSelect
+          fullWidth
+          label="Agent"
+          onChange={(event) => {
+            const value = event.target.value;
+            updateConfig({
+              assistant: { agent: isAssistantAgentId(value) ? value : "" },
+            });
+          }}
+          value={agent}
+        >
+          <option value="">Not chosen</option>
+          {ASSISTANT_AGENTS.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.label}
+            </option>
+          ))}
+        </AppSelect>
+      </SectionCard>
 
       {agent ? (
-        <div>
-          {probing ? (
-            <AppTypography color="text.secondary">
-              Checking login…
-            </AppTypography>
-          ) : null}
-          {probe?.status === "logged_in" ? (
-            <>
-              <AppTypography>
-                Logged in
-                {probe.authStatus ? `: ${probe.authStatus.label}` : ""}
-              </AppTypography>
-              {probe.authStatus?.account?.email ? (
-                <AppTypography color="text.secondary" variant="caption">
-                  {probe.authStatus.account.email}
-                </AppTypography>
-              ) : null}
-              {probe.canLogout ? (
+        <SectionCard
+          icon="mdi:account-key-outline"
+          subtitle="Login state reported by the agent"
+          title="Login"
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--app-space-6)",
+            }}
+          >
+            <StatusMetric
+              detail={
+                probe?.status === "logged_in"
+                  ? probe.authStatus?.account?.email
+                  : undefined
+              }
+              label="Status"
+              statusColor={statusColor}
+              value={
+                probe?.status === "logged_in" && probe.authStatus
+                  ? `${statusLabel}: ${probe.authStatus.label}`
+                  : statusLabel
+              }
+            />
+            {probe?.status === "logged_in" && probe.canLogout ? (
+              <div>
                 <AppButton onClick={logOut} variant="outlined">
                   Log out
                 </AppButton>
-              ) : null}
-            </>
-          ) : null}
-          {probe?.status === "auth_required" ? (
-            <>
-              <AppTypography>Not logged in.</AppTypography>
-              {probe.authMethods.map((method) =>
-                "type" in method && method.type === "terminal" ? (
-                  <AppButton
-                    key={method.id}
-                    onClick={() => openLogin(method.args)}
-                    variant="contained"
+              </div>
+            ) : null}
+            {probe?.status === "auth_required" ? (
+              <>
+                {probe.authMethods.length > 0 ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "var(--app-space-6)",
+                    }}
                   >
-                    {method.name}
-                  </AppButton>
+                    {probe.authMethods.map((method) =>
+                      "type" in method && method.type === "terminal" ? (
+                        <AppButton
+                          key={method.id}
+                          onClick={() => openLogin(method.args)}
+                          variant="contained"
+                        >
+                          {method.name}
+                        </AppButton>
+                      ) : (
+                        <AppButton
+                          key={method.id}
+                          onClick={() => authenticate(method.id)}
+                          variant="outlined"
+                        >
+                          {method.name}
+                        </AppButton>
+                      ),
+                    )}
+                  </div>
                 ) : (
-                  <AppButton
-                    key={method.id}
-                    onClick={() => authenticate(method.id)}
-                    variant="outlined"
-                  >
-                    {method.name}
-                  </AppButton>
-                ),
-              )}
-              {probe.authMethods.length === 0 ? (
-                <AppTypography color="text.secondary" variant="caption">
-                  This agent did not advertise a login method. Log in from the
-                  Terminal page using the agent&apos;s own CLI.
-                </AppTypography>
-              ) : null}
-            </>
-          ) : null}
-          {probe?.status === "unknown" ? (
-            <AppAlert severity="error">
-              Could not reach the agent{probe.error ? `: ${probe.error}` : ""}.
-            </AppAlert>
-          ) : null}
-          {!probing ? (
-            <AppButton onClick={runProbe}>Check again</AppButton>
-          ) : null}
-        </div>
+                  <SettingsNote title="No login method advertised">
+                    Log in from the Terminal page using the agent&apos;s own
+                    CLI.
+                  </SettingsNote>
+                )}
+              </>
+            ) : null}
+            {probe?.status === "unknown" ? (
+              <AppAlert severity="error">
+                Could not reach the agent
+                {probe.error ? `: ${probe.error}` : ""}.
+              </AppAlert>
+            ) : null}
+          </div>
+        </SectionCard>
       ) : null}
-    </FrostedCard>
+    </SettingsSectionShell>
   );
 }
