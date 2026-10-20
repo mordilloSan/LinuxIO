@@ -2,10 +2,10 @@ import { useSuspenseQueries } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
 
 import {
+  CACHE_TTL_MS,
   linuxio,
   useCallMutation,
   type VMStoragePool,
-  type VMStorageVolume,
   type VMUnusedDisk,
   type VirtualMachine,
 } from "@/api";
@@ -15,7 +15,6 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
-import AppChip from "@/components/ui/AppChip";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -27,6 +26,7 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { formatFileSize } from "@/utils/formaters";
 import { getMutationErrorMessage } from "@/utils/mutations";
 
+import { EntityCard, KeyValues } from "./vmCards";
 import { VM_TOAST } from "./vmShared";
 
 const pageStyle: CSSProperties = {
@@ -41,122 +41,140 @@ const tableCardStyle: CSSProperties = {
   overflow: "hidden",
 };
 
-const poolHeaderStyle: CSSProperties = {
-  alignItems: "center",
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "var(--app-space-8)",
-  padding: "var(--app-space-12) var(--app-space-12) 0",
+type VMDiskRow = {
+  allocatedBytes: number;
+  id: string;
+  path: string;
+  sizeGB: number;
+  vmName: string;
 };
 
-const poolUsageStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  padding: "var(--app-space-8) var(--app-space-12)",
-};
-
-type VolumeRow = VMStorageVolume & { vmName: string };
-
-const volumeColumns: AppVirtualTableColumnDef<VolumeRow>[] = [
-  {
-    accessorKey: "name",
-    header: "Volume",
-    cell: ({ row }) => row.original.name,
-    meta: { width: "minmax(200px, 1fr)" },
-  },
+const vmDiskColumns: AppVirtualTableColumnDef<VMDiskRow>[] = [
   {
     accessorKey: "vmName",
-    header: "Used by",
-    cell: ({ row }) => row.original.vmName || "—",
-    meta: { width: "160px" },
+    header: "Name",
+    cell: ({ row }) => row.original.vmName,
+    meta: { width: "minmax(140px, 1fr)" },
   },
   {
-    accessorKey: "capacityBytes",
-    header: "Virtual size",
-    cell: ({ row }) => formatFileSize(row.original.capacityBytes, 1),
-    meta: { align: "right", width: "120px" },
+    accessorKey: "path",
+    header: "Disk",
+    cell: ({ row }) =>
+      row.original.path.slice(row.original.path.lastIndexOf("/") + 1),
+    meta: { width: "minmax(200px, 1.4fr)" },
   },
   {
-    accessorKey: "allocationBytes",
-    header: "Allocated",
-    cell: ({ row }) => formatFileSize(row.original.allocationBytes, 1),
-    meta: { align: "right", width: "120px" },
+    id: "usage",
+    header: "Usage",
+    cell: ({ row }) => {
+      const { allocatedBytes, sizeGB } = row.original;
+      const virtualBytes = sizeGB * 1024 ** 3;
+      if (!virtualBytes) return formatFileSize(allocatedBytes, 2);
+      const percent = ((allocatedBytes / virtualBytes) * 100).toFixed(1);
+      return `${formatFileSize(allocatedBytes, 2)} / ${formatFileSize(virtualBytes, 2)} (${percent}%)`;
+    },
+    meta: { width: "minmax(220px, 1fr)" },
   },
 ];
 
-function StoragePoolCard({
+const inPool = (pool: VMStoragePool, path: string) =>
+  Boolean(pool.path) && path.startsWith(`${pool.path}/`);
+
+export function StoragePoolCard({
+  hostname,
   pool,
   vms,
 }: {
+  hostname: string;
   pool: VMStoragePool;
   vms: VirtualMachine[];
 }) {
-  const rows = pool.volumes.map((volume) => ({
-    ...volume,
-    vmName:
-      vms.find((vm) => (vm.disks ?? []).some((d) => d.path === volume.path))
-        ?.name ?? "",
-  }));
+  const rows: VMDiskRow[] = vms.flatMap((vm) =>
+    (vm.disks ?? [])
+      .filter((disk) => disk.device !== "cdrom" && inPool(pool, disk.path))
+      .map((disk) => ({
+        allocatedBytes: disk.allocatedBytes ?? 0,
+        id: `${vm.name}-${disk.path}`,
+        path: disk.path,
+        sizeGB: disk.sizeGB ?? 0,
+        vmName: vm.name,
+      })),
+  );
+  const allocatedGB = rows.reduce((sum, row) => sum + row.sizeGB, 0);
   const usedPercent = pool.capacityBytes
     ? (pool.allocationBytes / pool.capacityBytes) * 100
     : 0;
   return (
-    <FrostedCard style={tableCardStyle}>
-      <div style={poolHeaderStyle}>
-        <AppTypography component="h2" variant="subtitle1">
-          {pool.name}
-        </AppTypography>
-        <AppChip label={pool.type} size="small" variant="soft" />
-        <AppChip
-          color={pool.active ? "success" : "warning"}
-          label={pool.active ? "active" : "inactive"}
-          size="small"
-          variant="soft"
-        />
-        <AppTypography color="text.secondary" noWrap variant="caption">
-          {pool.path}
-        </AppTypography>
-      </div>
-      {pool.active && (
-        <div style={poolUsageStyle}>
-          <AppTypography variant="body2">
-            {formatFileSize(pool.allocationBytes, 1)} used of{" "}
-            {formatFileSize(pool.capacityBytes, 1)} ·{" "}
-            {formatFileSize(pool.availableBytes, 1)} free
-          </AppTypography>
-          <AppLinearProgress
-            aria-label={`${pool.name} usage`}
-            value={Math.min(usedPercent, 100)}
-            variant="determinate"
-          />
-        </div>
-      )}
+    <EntityCard
+      icon="mdi:harddisk"
+      name={pool.name}
+      status={pool.active ? "Normal" : "Inactive"}
+      summary={
+        pool.active ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <AppTypography fontWeight={600} noWrap variant="body2">
+              Used / Total: {formatFileSize(pool.allocationBytes, 2)} /{" "}
+              {formatFileSize(pool.capacityBytes, 2)}
+            </AppTypography>
+            <AppLinearProgress
+              aria-label={`${pool.name} usage`}
+              value={Math.min(usedPercent, 100)}
+              variant="determinate"
+            />
+            <AppTypography color="text.secondary" variant="caption">
+              Usage: {usedPercent.toFixed(2)}%
+            </AppTypography>
+          </div>
+        ) : null
+      }
+      tone={pool.active ? "ok" : "muted"}
+    >
+      <KeyValues
+        items={[
+          ["Host", hostname],
+          ["Type", pool.type],
+          ["Path", pool.path ?? "-"],
+          [
+            "Total space",
+            pool.active ? formatFileSize(pool.capacityBytes, 2) : "-",
+          ],
+          [
+            "Free space",
+            pool.active ? formatFileSize(pool.availableBytes, 2) : "-",
+          ],
+          ["Allocated to virtual disks", `${allocatedGB} GB`],
+        ]}
+      />
+      <AppTypography component="h3" variant="subtitle2">
+        Virtual machine usage
+      </AppTypography>
       <AppVirtualTable
-        ariaLabel={`${pool.name} volumes`}
-        columns={volumeColumns}
+        ariaLabel={`${pool.name} virtual machine usage`}
+        columns={vmDiskColumns}
         data={rows}
-        emptyMessage={pool.active ? "No volumes." : "Pool is inactive."}
+        emptyMessage="No virtual machine disk lives in this pool."
         enableSorting={false}
         fillAvailable={false}
-        getRowId={(row) => row.path}
+        getRowId={(row) => row.id}
         maxHeight={300}
         variant="embedded"
       />
-    </FrostedCard>
+    </EntityCard>
   );
 }
 
 const VMDisksPage = () => {
   // The VM list is already polled by the /vm layout; it is only joined here
-  // to name the VM each volume belongs to.
-  const [{ data: pools }, { data: vms }, { data: disks }] = useSuspenseQueries({
-    queries: [
-      linuxio.virt.pools,
-      { ...linuxio.virt.list, refetchOnMount: false },
-      linuxio.virt.unused_disks,
-    ],
-  });
+  // to list each VM's disks under a pool.
+  const [{ data: pools }, { data: vms }, { data: host }, { data: disks }] =
+    useSuspenseQueries({
+      queries: [
+        linuxio.virt.pools,
+        { ...linuxio.virt.list, refetchOnMount: false },
+        { ...linuxio.system.get_host_info, staleTime: CACHE_TTL_MS.ONE_DAY },
+        linuxio.virt.unused_disks,
+      ],
+    });
   const toast = useScopedToast(VM_TOAST);
   const [deleting, setDeleting] = useState<VMUnusedDisk | null>(null);
   const remove = useCallMutation(linuxio.virt.unused_disk_delete, {
@@ -212,7 +230,12 @@ const VMDisksPage = () => {
   return (
     <div style={pageStyle}>
       {pools.map((pool) => (
-        <StoragePoolCard key={pool.name} pool={pool} vms={vms} />
+        <StoragePoolCard
+          hostname={host.hostname}
+          key={pool.name}
+          pool={pool}
+          vms={vms}
+        />
       ))}
       <AppTypography component="h2" variant="subtitle1">
         Unused disks

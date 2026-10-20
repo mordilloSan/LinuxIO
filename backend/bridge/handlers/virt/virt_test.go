@@ -1845,7 +1845,7 @@ type fakeConn struct {
 	pools                       []libvirt.StoragePool
 	poolXML                     map[string]string
 	poolInfo                    map[string][3]uint64
-	volumeInfo                  map[string][2]uint64
+	poolActiveByName            map[string]int32
 }
 
 func newFakeConn() *fakeConn {
@@ -1955,22 +1955,6 @@ func (f *fakeConn) StoragePoolGetInfo(pool libvirt.StoragePool) (uint8, uint64, 
 }
 func (f *fakeConn) StoragePoolGetXMLDesc(pool libvirt.StoragePool, _ libvirt.StorageXMLFlags) (string, error) {
 	return f.poolXML[pool.Name], nil
-}
-func (f *fakeConn) StoragePoolListAllVolumes(pool libvirt.StoragePool, _ int32, _ uint32) ([]libvirt.StorageVol, uint32, error) {
-	var out []libvirt.StorageVol
-	for _, vol := range f.volumesByName {
-		if vol.Pool == pool.Name {
-			out = append(out, vol)
-		}
-	}
-	return out, uint32(len(out)), nil
-}
-func (f *fakeConn) StorageVolGetInfo(vol libvirt.StorageVol) (int8, uint64, uint64, error) {
-	info := f.volumeInfo[vol.Name]
-	return 0, info[0], info[1], nil
-}
-func (f *fakeConn) StorageVolGetPath(vol libvirt.StorageVol) (string, error) {
-	return vol.Key, nil
 }
 func (f *fakeConn) ConnectListAllDomains(int32, libvirt.ConnectListAllDomainsFlags) ([]libvirt.Domain, uint32, error) {
 	out := make([]libvirt.Domain, 0, len(f.domains))
@@ -2138,7 +2122,10 @@ func (f *fakeConn) StoragePoolDefineXML(xmlDoc string, flags uint32) (libvirt.St
 	f.poolActive = 0
 	return libvirt.StoragePool{Name: pool.Name}, nil
 }
-func (f *fakeConn) StoragePoolIsActive(libvirt.StoragePool) (int32, error) {
+func (f *fakeConn) StoragePoolIsActive(pool libvirt.StoragePool) (int32, error) {
+	if active, ok := f.poolActiveByName[pool.Name]; ok {
+		return active, nil
+	}
 	return f.poolActive, nil
 }
 func (f *fakeConn) StoragePoolLookupByName(name string) (libvirt.StoragePool, error) {

@@ -15,7 +15,9 @@ func statsRecord(name string, cpuNS, rx, rd uint64) libvirt.DomainStatsRecord {
 		{Field: "cpu.time", Value: *libvirt.NewTypedParamValueUllong(cpuNS)},
 		{Field: "balloon.rss", Value: *libvirt.NewTypedParamValueUllong(512 * 1024)},
 		{Field: "net.count", Value: *libvirt.NewTypedParamValueUint(2)},
+		{Field: "net.0.name", Value: *libvirt.NewTypedParamValueString("vnet0")},
 		{Field: "net.0.rx.bytes", Value: *libvirt.NewTypedParamValueUllong(rx)},
+		{Field: "net.1.name", Value: *libvirt.NewTypedParamValueString("vnet1")},
 		{Field: "net.1.rx.bytes", Value: *libvirt.NewTypedParamValueUllong(rx)},
 		{Field: "block.count", Value: *libvirt.NewTypedParamValueUint(1)},
 		{Field: "block.0.rd.bytes", Value: *libvirt.NewTypedParamValueUllong(rd)},
@@ -29,7 +31,7 @@ func TestEnrichMetricsComputesRatesFromSecondSample(t *testing.T) {
 	statsNow = func() time.Time { return now }
 	t.Cleanup(func() { statsNow = time.Now })
 	domains := []libvirt.Domain{testDomain("vm"), testDomain("off")}
-	vms := []apischema.VirtualMachine{{Name: "vm", UUID: "uuid-vm", VCPUs: 2}, {Name: "off"}}
+	vms := []apischema.VirtualMachine{{Name: "vm", UUID: "uuid-vm", VCPUs: 2, NICs: []apischema.VMNIC{{Target: "vnet1"}, {Target: "vnet9"}}}, {Name: "off"}}
 
 	fake.domainStats = []libvirt.DomainStatsRecord{statsRecord("vm", 1e9, 1000, 0), {Dom: testDomain("off")}}
 	enrichMetrics(fake, domains, vms)
@@ -55,6 +57,12 @@ func TestEnrichMetricsComputesRatesFromSecondSample(t *testing.T) {
 	if got.DiskReadBytesPerSecond == nil || *got.DiskReadBytesPerSecond != 2048 {
 		t.Fatalf("DiskReadBytesPerSecond = %#v, want 2048", got.DiskReadBytesPerSecond)
 	}
+	if nic := vms[0].NICs[0]; nic.ReceiveBytesPerSecond == nil || *nic.ReceiveBytesPerSecond != 2000 || nic.SendBytesPerSecond == nil || *nic.SendBytesPerSecond != 0 {
+		t.Fatalf("NIC vnet1 rates = %#v, want 2000 rx / 0 tx", nic)
+	}
+	if nic := vms[0].NICs[1]; nic.ReceiveBytesPerSecond != nil {
+		t.Fatalf("NIC vnet9 (not in stats) rates = %#v, want none", nic)
+	}
 	if got.NetworkSendBytesPerSecond == nil || *got.NetworkSendBytesPerSecond != 0 {
 		t.Fatalf("NetworkSendBytesPerSecond = %#v, want 0", got.NetworkSendBytesPerSecond)
 	}
@@ -76,8 +84,7 @@ func TestListStoragePools(t *testing.T) {
 		"zeta":    `<pool type="dir"><name>zeta</name><target><path>/srv/zeta</path></target></pool>`,
 	}
 	fake.poolInfo = map[string][3]uint64{"default": {1000, 400, 600}}
-	fake.volumesByName["linuxio-a.qcow2"] = libvirt.StorageVol{Pool: "default", Name: "linuxio-a.qcow2", Key: "/var/lib/libvirt/images/linuxio-a.qcow2"}
-	fake.volumeInfo = map[string][2]uint64{"linuxio-a.qcow2": {300, 120}}
+	fake.poolActiveByName = map[string]int32{"default": 1, "zeta": 0}
 	withFakeLibvirt(t, fake)
 
 	pools, err := ListStoragePools(context.Background())
@@ -91,7 +98,7 @@ func TestListStoragePools(t *testing.T) {
 	if !got.Active || got.Type != "dir" || got.Path != "/var/lib/libvirt/images" || got.CapacityBytes != 1000 || got.AvailableBytes != 600 {
 		t.Fatalf("default pool = %#v", got)
 	}
-	if len(got.Volumes) != 1 || got.Volumes[0].Path != "/var/lib/libvirt/images/linuxio-a.qcow2" || got.Volumes[0].AllocationBytes != 120 {
-		t.Fatalf("volumes = %#v", got.Volumes)
+	if pools[1].Active || pools[1].CapacityBytes != 0 {
+		t.Fatalf("inactive pool = %#v, want no sizes", pools[1])
 	}
 }

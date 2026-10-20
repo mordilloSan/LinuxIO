@@ -10,24 +10,23 @@ import type {
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppButton from "@/components/ui/AppButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { filterInterfaces } from "@/routes/_authenticated/-dashboard/Network";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
-import { formatFileSize, formatThroughput } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formaters";
 
 import PreflightSummary from "./PreflightSummary";
+import { PillToggle, STATUS_COLOR, Throughput } from "./vmCards";
 import { normalizeState } from "./vmShared";
 
-const FILTERS = ["all", "host", "vm", "storage"] as const;
-type Filter = (typeof FILTERS)[number];
-const FILTER_LABEL: Record<Filter, string> = {
-  all: "All",
-  host: "Host",
-  vm: "Virtual machines",
-  storage: "Storage",
-};
+const FILTERS = [
+  { label: "All", value: "all" },
+  { label: "Host", value: "host" },
+  { label: "Virtual machines", value: "vm" },
+  { label: "Storage", value: "storage" },
+] as const;
+type Filter = (typeof FILTERS)[number]["value"];
 
 const pageStyle: CSSProperties = {
   display: "flex",
@@ -87,13 +86,6 @@ const metricHeadStyle: CSSProperties = {
 };
 
 const messageListStyle: CSSProperties = { margin: 0, paddingLeft: 18 };
-
-const STATUS_COLOR = {
-  error: "var(--app-palette-error-main)",
-  muted: "var(--app-palette-text-disabled)",
-  ok: "var(--app-palette-success-main)",
-  warning: "var(--app-palette-warning-main)",
-} as const;
 
 function healthOf(preflight?: VMPreflight) {
   if (!preflight)
@@ -209,21 +201,6 @@ function Metric({
         />
       )}
     </div>
-  );
-}
-
-function Throughput({ rx, tx }: { rx?: number; tx?: number }) {
-  const rate = (value: number | undefined) =>
-    value === undefined ? "-" : formatThroughput(value);
-  return (
-    <span style={{ display: "inline-flex", gap: "var(--app-space-12)" }}>
-      <span style={{ color: STATUS_COLOR.ok }}>
-        <Icon icon="mdi:arrow-down-bold" inline /> {rate(rx)}
-      </span>
-      <span style={{ color: "var(--app-palette-primary-main)" }}>
-        <Icon icon="mdi:arrow-up-bold" inline /> {rate(tx)}
-      </span>
-    </span>
   );
 }
 
@@ -375,23 +352,12 @@ export default function VMOverview({
         />
       </div>
 
-      <div
-        aria-label="Show"
-        role="group"
-        style={{ display: "flex", flexWrap: "wrap", gap: "var(--app-space-4)" }}
-      >
-        {FILTERS.map((kind) => (
-          <AppButton
-            aria-pressed={filter === kind}
-            key={kind}
-            onClick={() => setFilter(kind)}
-            size="small"
-            variant={filter === kind ? "contained" : "text"}
-          >
-            {FILTER_LABEL[kind]}
-          </AppButton>
-        ))}
-      </div>
+      <PillToggle
+        ariaLabel="Show"
+        onChange={setFilter}
+        options={FILTERS}
+        value={filter}
+      />
 
       <div
         aria-label="Virtualization overview"

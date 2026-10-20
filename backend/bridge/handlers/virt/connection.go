@@ -60,14 +60,11 @@ type libvirtConn interface {
 	StoragePoolGetInfo(libvirt.StoragePool) (uint8, uint64, uint64, uint64, error)
 	StoragePoolGetXMLDesc(libvirt.StoragePool, libvirt.StorageXMLFlags) (string, error)
 	StoragePoolIsActive(libvirt.StoragePool) (int32, error)
-	StoragePoolListAllVolumes(libvirt.StoragePool, int32, uint32) ([]libvirt.StorageVol, uint32, error)
 	StoragePoolLookupByName(string) (libvirt.StoragePool, error)
 	StoragePoolRefresh(libvirt.StoragePool, uint32) error
 	StoragePoolSetAutostart(libvirt.StoragePool, int32) error
 	StorageVolCreateXML(libvirt.StoragePool, string, libvirt.StorageVolCreateFlags) (libvirt.StorageVol, error)
 	StorageVolDelete(libvirt.StorageVol, libvirt.StorageVolDeleteFlags) error
-	StorageVolGetInfo(libvirt.StorageVol) (int8, uint64, uint64, error)
-	StorageVolGetPath(libvirt.StorageVol) (string, error)
 	StorageVolGetXMLDesc(libvirt.StorageVol, uint32) (string, error)
 	StorageVolLookupByName(libvirt.StoragePool, string) (libvirt.StorageVol, error)
 	StorageVolLookupByPath(string) (libvirt.StorageVol, error)

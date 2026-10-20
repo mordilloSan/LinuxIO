@@ -3,6 +3,7 @@ package virt
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	libvirt "github.com/digitalocean/go-libvirt"
@@ -88,6 +89,7 @@ func virtualMachineFromDomain(conn libvirtConn, domain libvirt.Domain) (apischem
 		return apischema.VirtualMachine{}, err
 	}
 	enrichVMNICLeaseAddresses(conn, &vm)
+	enrichDiskAllocation(&vm)
 	if vm.VCPUs == 0 || vm.MemoryMB == 0 {
 		_, maxMemKiB, memoryKiB, vcpus, _, infoErr := conn.DomainGetInfo(domain)
 		if infoErr == nil {
@@ -104,6 +106,15 @@ func virtualMachineFromDomain(conn libvirtConn, domain libvirt.Domain) (apischem
 		}
 	}
 	return vm, nil
+}
+
+// enrichDiskAllocation records how much space each image file really uses.
+func enrichDiskAllocation(vm *apischema.VirtualMachine) {
+	for idx := range vm.Disks {
+		if info, err := os.Stat(vm.Disks[idx].Path); err == nil && info.Mode().IsRegular() {
+			vm.Disks[idx].AllocatedBytes = allocatedBytes(info)
+		}
+	}
 }
 
 func enrichVMNICLeaseAddresses(conn libvirtConn, vm *apischema.VirtualMachine) {

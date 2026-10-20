@@ -1444,7 +1444,9 @@ type VMDisk struct {
 	Path       string `json:"path"`
 	VolumeName string `json:"volumeName,omitempty"`
 	SizeGB     int    `json:"sizeGB,omitempty"`
-	Owned      bool   `json:"owned"`
+	// AllocatedBytes is the space the image really uses on disk.
+	AllocatedBytes int64 `json:"allocatedBytes,omitempty"`
+	Owned          bool  `json:"owned"`
 }
 
 type VMNIC struct {
@@ -1453,6 +1455,10 @@ type VMNIC struct {
 	Network        string   `json:"network,omitempty"`
 	AttachmentType string   `json:"attachmentType,omitempty"`
 	IPAddresses    []string `json:"ipAddresses,omitempty"`
+	// Target is the host-side tap device while the VM runs.
+	Target                string   `json:"target,omitempty"`
+	ReceiveBytesPerSecond *float64 `json:"receiveBytesPerSecond,omitempty"`
+	SendBytesPerSecond    *float64 `json:"sendBytesPerSecond,omitempty"`
 }
 
 type VMNetwork struct {
@@ -1460,6 +1466,12 @@ type VMNetwork struct {
 	Type              string `json:"type"`
 	Active            bool   `json:"active"`
 	HasPhysicalUplink bool   `json:"hasPhysicalUplink,omitempty"`
+	// Bridge is the host interface backing the network.
+	Bridge string `json:"bridge,omitempty"`
+	// Uplink is the first physical NIC enslaved to the bridge, if any.
+	Uplink string `json:"uplink,omitempty"`
+	// Subnet is the NAT network's address and prefix, such as 192.168.122.1/24.
+	Subnet string `json:"subnet,omitempty"`
 }
 
 type VirtualMachine struct {
@@ -1490,24 +1502,16 @@ type VMMetrics struct {
 	DiskWriteBytesPerSecond      *float64 `json:"diskWriteBytesPerSecond,omitempty"`
 }
 
-// VMStoragePool is a libvirt storage pool with its volumes. Sizes are zero
-// while the pool is inactive, since libvirt only reports them for active pools.
+// VMStoragePool is a libvirt storage pool. Sizes are zero while the pool is
+// inactive, since libvirt only reports them for active pools.
 type VMStoragePool struct {
-	Name            string            `json:"name"`
-	Type            string            `json:"type"`
-	Path            string            `json:"path,omitempty"`
-	Active          bool              `json:"active"`
-	CapacityBytes   uint64            `json:"capacityBytes"`
-	AllocationBytes uint64            `json:"allocationBytes"`
-	AvailableBytes  uint64            `json:"availableBytes"`
-	Volumes         []VMStorageVolume `json:"volumes"`
-}
-
-type VMStorageVolume struct {
 	Name            string `json:"name"`
-	Path            string `json:"path"`
+	Type            string `json:"type"`
+	Path            string `json:"path,omitempty"`
+	Active          bool   `json:"active"`
 	CapacityBytes   uint64 `json:"capacityBytes"`
 	AllocationBytes uint64 `json:"allocationBytes"`
+	AvailableBytes  uint64 `json:"availableBytes"`
 }
 
 type VMPreflightFirmware struct {

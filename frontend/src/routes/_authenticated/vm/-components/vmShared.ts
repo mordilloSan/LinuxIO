@@ -110,19 +110,6 @@ export function vmIPAddresses(vm: VirtualMachine): string[] {
   return (vm.nics ?? []).flatMap((nic) => nic.ipAddresses ?? []);
 }
 
-export function formatAttachmentType(type: string | undefined): string {
-  switch (type) {
-    case "nat":
-      return "NAT";
-    case "bridge":
-      return "Bridge";
-    case "network":
-      return "Network";
-    default:
-      return "Unknown";
-  }
-}
-
 export function normalizeState(state: string): string {
   return state ? state.replaceAll("_", " ") : "unknown";
 }

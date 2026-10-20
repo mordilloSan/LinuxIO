@@ -231,12 +231,15 @@ describe("targeted route query ownership", () => {
     );
     for (const [relativePath, observerCount] of childObserverCounts) {
       const child = readRouteSource(relativePath);
-      // The overview polls host-side queries (pools, live snapshot) on its
-      // own cadence; the VM list and preflight still ride the parent's.
+      // The overview and networks tabs poll host-side queries (pools, live
+      // snapshot) on their own cadence; VM list and preflight ride the parent's.
       expect(child).not.toMatch(
         /virt\.(list|preflight\(\{\}\))[^}]*refetchInterval/,
       );
-      if (relativePath !== "vm/-components/VMDashboardPage.tsx") {
+      if (
+        relativePath !== "vm/-components/VMDashboardPage.tsx" &&
+        relativePath !== "vm/-components/VMNetworksPage.tsx"
+      ) {
         expect(child).not.toContain("refetchInterval");
       }
       expect(child.match(/refetchOnMount: false/g)).toHaveLength(observerCount);

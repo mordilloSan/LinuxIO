@@ -60,7 +60,6 @@ const pools = [
     name: "default",
     path: "/var/lib/libvirt/images",
     type: "dir",
-    volumes: [],
   },
 ];
 

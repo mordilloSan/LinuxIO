@@ -1,37 +1,16 @@
 import type { CSSProperties } from "react";
 
-import type { VMNetwork, VMPreflight, VirtualMachine } from "@/api";
+import type { VMPreflight } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppVirtualTable from "@/components/tables/AppVirtualTable";
-import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppChip from "@/components/ui/AppChip";
-import AppTypography from "@/components/ui/AppTypography";
 
 import PreflightSummary from "./PreflightSummary";
-import {
-  formatAttachmentType,
-  normalizeState,
-  stateChipColor,
-} from "./vmShared";
-
-const tabPanelStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--app-space-16)",
-  minHeight: 0,
-};
 
 const preflightCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "var(--app-space-8)",
   padding: "var(--app-space-12)",
-};
-
-const tableCardStyle: CSSProperties = {
-  minWidth: 0,
-  overflow: "hidden",
 };
 
 const messageListStyle: CSSProperties = {
@@ -64,180 +43,5 @@ export function VMPreflightCard({ preflight }: { preflight?: VMPreflight }) {
         </AppAlert>
       )}
     </FrostedCard>
-  );
-}
-
-type VMNetworkRow = {
-  attachmentType: string;
-  id: string;
-  ips: string[];
-  mac: string;
-  model: string;
-  network: string;
-  state: string;
-  vmName: string;
-};
-
-const vmNetworkColumns: AppVirtualTableColumnDef<VMNetworkRow>[] = [
-  {
-    accessorKey: "vmName",
-    header: "VM",
-    cell: ({ row }) => row.original.vmName,
-    meta: { width: "minmax(150px, 1fr)" },
-  },
-  {
-    accessorKey: "state",
-    header: "State",
-    cell: ({ row }) => (
-      <AppChip
-        color={stateChipColor(row.original.state)}
-        label={normalizeState(row.original.state)}
-        size="small"
-        variant="soft"
-      />
-    ),
-    meta: { width: "120px" },
-  },
-  {
-    accessorKey: "attachmentType",
-    header: "Attachment",
-    cell: ({ row }) => row.original.attachmentType,
-    meta: { width: "120px" },
-  },
-  {
-    accessorKey: "network",
-    header: "Network",
-    cell: ({ row }) => row.original.network,
-    meta: { width: "160px" },
-  },
-  {
-    id: "ipAddresses",
-    header: "IP",
-    cell: ({ row }) => {
-      if (row.original.ips.length === 0) {
-        return (
-          <span style={{ color: "var(--app-palette-text-secondary)" }}>
-            Unavailable
-          </span>
-        );
-      }
-      return row.original.ips.join(", ");
-    },
-    meta: { width: "220px" },
-  },
-  {
-    accessorKey: "mac",
-    header: "MAC",
-    cell: ({ row }) => row.original.mac,
-    meta: { width: "170px" },
-  },
-];
-
-type HostNetworkRow = VMNetwork & { vmCount: number };
-
-const hostNetworkColumns: AppVirtualTableColumnDef<HostNetworkRow>[] = [
-  {
-    accessorKey: "name",
-    header: "Network",
-    cell: ({ row }) => row.original.name,
-    meta: { width: "minmax(150px, 1fr)" },
-  },
-  {
-    accessorKey: "type",
-    header: "Type",
-    cell: ({ row }) => (row.original.type === "bridge" ? "Bridge" : "NAT"),
-    meta: { width: "120px" },
-  },
-  {
-    accessorKey: "active",
-    header: "State",
-    cell: ({ row }) => (
-      <AppChip
-        color={row.original.active ? "success" : "warning"}
-        label={row.original.active ? "active" : "inactive"}
-        size="small"
-        variant="soft"
-      />
-    ),
-    meta: { width: "120px" },
-  },
-  {
-    id: "uplink",
-    header: "Uplink",
-    cell: ({ row }) => {
-      if (row.original.type !== "bridge") return "Host NAT";
-      return row.original.hasPhysicalUplink ? "Physical NIC" : "None";
-    },
-    meta: { width: "160px" },
-  },
-  {
-    accessorKey: "vmCount",
-    header: "VMs",
-    cell: ({ row }) => row.original.vmCount,
-    meta: { width: "80px" },
-  },
-];
-
-export function VMNetworksTab({
-  networks,
-  vms,
-}: {
-  networks: VMNetwork[];
-  vms: VirtualMachine[];
-}) {
-  const networkRows = networks.map((network) => ({
-    ...network,
-    vmCount: vms.filter((vm) =>
-      (vm.nics ?? []).some((nic) => nic.network === network.name),
-    ).length,
-  }));
-  const rows = vms.flatMap((vm) =>
-    (vm.nics ?? []).map((nic, index) => ({
-      attachmentType: formatAttachmentType(nic.attachmentType),
-      id: `${vm.name}-${nic.mac || index}`,
-      ips: nic.ipAddresses ?? [],
-      mac: nic.mac || "-",
-      model: nic.model || "virtio",
-      network: nic.network || "network",
-      state: vm.state,
-      vmName: vm.name,
-    })),
-  );
-
-  return (
-    <div style={tabPanelStyle}>
-      <AppTypography component="h2" variant="subtitle1">
-        Host networks
-      </AppTypography>
-      <FrostedCard style={tableCardStyle}>
-        <AppVirtualTable
-          ariaLabel="Host networks"
-          columns={hostNetworkColumns}
-          data={networkRows}
-          emptyMessage="No libvirt networks or host bridges."
-          enableSorting={false}
-          fillAvailable={false}
-          getRowId={(row) => `${row.type}-${row.name}`}
-          maxHeight={400}
-          variant="embedded"
-        />
-      </FrostedCard>
-      <AppTypography component="h2" variant="subtitle1">
-        VM interfaces
-      </AppTypography>
-      <FrostedCard style={tableCardStyle}>
-        <AppVirtualTable
-          ariaLabel="Virtual machine networks"
-          columns={vmNetworkColumns}
-          data={rows}
-          emptyMessage="No virtual network interfaces."
-          enableSorting={false}
-          fillAvailable={false}
-          getRowId={(row) => row.id}
-          maxHeight={400}
-          variant="embedded"
-        />
-      </FrostedCard>
-    </div>
   );
 }

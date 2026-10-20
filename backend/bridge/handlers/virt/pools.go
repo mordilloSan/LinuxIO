@@ -37,7 +37,7 @@ func ListStoragePools(ctx context.Context) ([]apischema.VMStoragePool, error) {
 }
 
 func storagePoolFromLibvirt(conn libvirtConn, pool libvirt.StoragePool) (apischema.VMStoragePool, error) {
-	out := apischema.VMStoragePool{Name: pool.Name, Volumes: []apischema.VMStorageVolume{}}
+	out := apischema.VMStoragePool{Name: pool.Name}
 	xmlDoc, err := conn.StoragePoolGetXMLDesc(pool, 0)
 	if err != nil {
 		return out, err
@@ -59,23 +59,5 @@ func storagePoolFromLibvirt(conn libvirtConn, pool libvirt.StoragePool) (apische
 		return out, nil
 	}
 	_, out.CapacityBytes, out.AllocationBytes, out.AvailableBytes, err = conn.StoragePoolGetInfo(pool)
-	if err != nil {
-		return out, err
-	}
-	volumes, _, err := conn.StoragePoolListAllVolumes(pool, 1, 0)
-	if err != nil {
-		return out, err
-	}
-	for _, volume := range volumes {
-		item := apischema.VMStorageVolume{Name: volume.Name}
-		if _, item.CapacityBytes, item.AllocationBytes, err = conn.StorageVolGetInfo(volume); err != nil {
-			return out, fmt.Errorf("volume %s: %w", volume.Name, err)
-		}
-		if item.Path, err = conn.StorageVolGetPath(volume); err != nil {
-			return out, fmt.Errorf("volume %s: %w", volume.Name, err)
-		}
-		out.Volumes = append(out.Volumes, item)
-	}
-	slices.SortFunc(out.Volumes, func(a, b apischema.VMStorageVolume) int { return strings.Compare(a.Name, b.Name) })
-	return out, nil
+	return out, err
 }

@@ -3071,6 +3071,7 @@ export interface VMDisk {
   path: string;
   volumeName?: string;
   sizeGB?: number;
+  allocatedBytes?: number;
   owned: boolean;
 }
 
@@ -3108,6 +3109,9 @@ export interface VMNIC {
   network?: string;
   attachmentType?: string;
   ipAddresses?: string[];
+  target?: string;
+  receiveBytesPerSecond?: number;
+  sendBytesPerSecond?: number;
 }
 
 export interface VMNetwork {
@@ -3115,6 +3119,9 @@ export interface VMNetwork {
   type: string;
   active: boolean;
   hasPhysicalUplink?: boolean;
+  bridge?: string;
+  uplink?: string;
+  subnet?: string;
 }
 
 export interface VMPreflight {
@@ -3156,14 +3163,6 @@ export interface VMStoragePool {
   capacityBytes: number;
   allocationBytes: number;
   availableBytes: number;
-  volumes: VMStorageVolume[];
-}
-
-export interface VMStorageVolume {
-  name: string;
-  path: string;
-  capacityBytes: number;
-  allocationBytes: number;
 }
 
 export interface VMTemplate {

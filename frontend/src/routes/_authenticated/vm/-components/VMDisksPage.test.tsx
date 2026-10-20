@@ -39,6 +39,13 @@ vi.mock("@/api", async (importOriginal) => {
         pools: { queryKey: ["test-pools"], queryFn: () => mocks.pools() },
         list: { queryKey: ["test-vms"], queryFn: () => mocks.vms() },
       },
+      system: {
+        ...actual.linuxio.system,
+        get_host_info: {
+          queryKey: ["test-host"],
+          queryFn: () => Promise.resolve({ hostname: "TNAS" }),
+        },
+      },
     },
   };
 });
@@ -55,35 +62,49 @@ beforeEach(() => {
       name: "default",
       path: "/var/lib/libvirt/images",
       type: "dir",
-      volumes: [
-        {
-          allocationBytes: 17 * 1024 ** 3,
-          capacityBytes: 32 * 1024 ** 3,
-          name: "linuxio-ha.qcow2",
-          path: "/var/lib/libvirt/images/linuxio-ha.qcow2",
-        },
-      ],
     },
   ]);
   mocks.vms.mockResolvedValue([
     {
-      disks: [{ path: "/var/lib/libvirt/images/linuxio-ha.qcow2" }],
+      disks: [
+        {
+          allocatedBytes: 17 * 1024 ** 3,
+          device: "disk",
+          path: "/var/lib/libvirt/images/linuxio/cloud-images/linuxio-ha.qcow2",
+          sizeGB: 32,
+        },
+        { device: "cdrom", path: "/var/lib/libvirt/images/installer.iso" },
+        { device: "disk", path: "/srv/elsewhere.qcow2", sizeGB: 8 },
+      ],
       name: "ha",
     },
   ]);
 });
 
 describe("VM storage pools", () => {
-  it("shows each pool's usage and the VM behind each volume", async () => {
+  it("shows each pool's usage and the VM disks it holds", async () => {
     render(<VMDisksPage />);
-    const table = await screen.findByRole("table", { name: "default volumes" });
-    expect(within(table).getByText("linuxio-ha.qcow2")).toBeInTheDocument();
-    expect(within(table).getByText("ha")).toBeInTheDocument();
-    expect(within(table).getByText("17 GB")).toBeInTheDocument();
-    expect(screen.getByText(/300 GB used of 1000 GB/)).toBeInTheDocument();
+    const card = await screen.findByRole("region", { name: "default" });
+    expect(within(card).getByText("Normal")).toBeInTheDocument();
     expect(
-      screen.getByRole("progressbar", { name: "default usage" }),
+      within(card).getByText("Used / Total: 300 GB / 1000 GB"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("progressbar", { name: "default usage" }),
     ).toHaveAttribute("aria-valuenow", "30");
+    expect(within(card).getByText("TNAS")).toBeInTheDocument();
+    expect(within(card).getByText("700 GB")).toBeInTheDocument();
+    // Only the VM disk under the pool path counts, not the ISO or outside disks.
+    expect(within(card).getByText("32 GB")).toBeInTheDocument();
+    const table = within(card).getByRole("table", {
+      name: "default virtual machine usage",
+    });
+    expect(within(table).getByText("ha")).toBeInTheDocument();
+    expect(within(table).getByText("linuxio-ha.qcow2")).toBeInTheDocument();
+    expect(
+      within(table).getByText("17 GB / 32 GB (53.1%)"),
+    ).toBeInTheDocument();
+    expect(within(table).queryByText("installer.iso")).not.toBeInTheDocument();
   });
 });
 

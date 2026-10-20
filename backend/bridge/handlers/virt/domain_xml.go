@@ -366,6 +366,9 @@ func mapNIC(nic libvirtxml.DomainInterface) apischema.VMNIC {
 	if nic.Model != nil {
 		out.Model = nic.Model.Type
 	}
+	if nic.Target != nil {
+		out.Target = nic.Target.Dev
+	}
 	if nic.Source != nil && nic.Source.Network != nil {
 		out.Network = nic.Source.Network.Network
 		out.AttachmentType = "network"
