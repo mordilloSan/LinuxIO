@@ -1,6 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import { Icon } from "@iconify/react";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
@@ -184,10 +184,13 @@ export default function Transcript({
   blocks,
   sessionId,
   label = "Conversation",
+  children,
 }: {
   blocks: TranscriptBlock[];
   sessionId?: string | null;
   label?: string;
+  /** Shown in place of the rows while the conversation is empty. */
+  children?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFollowBottom(ref, sessionId);
@@ -198,13 +201,15 @@ export default function Transcript({
       aria-label={label}
       ref={ref}
     >
-      {groupRows(blocks).map((row) =>
-        "tools" in row ? (
-          <ToolGroupRow key={row.key} tools={row.tools} />
-        ) : (
-          <TranscriptRow key={row.key} block={row.block} />
-        ),
-      )}
+      {blocks.length === 0
+        ? children
+        : groupRows(blocks).map((row) =>
+            "tools" in row ? (
+              <ToolGroupRow key={row.key} tools={row.tools} />
+            ) : (
+              <TranscriptRow key={row.key} block={row.block} />
+            ),
+          )}
     </div>
   );
 }

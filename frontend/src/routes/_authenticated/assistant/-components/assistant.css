@@ -103,6 +103,18 @@
   padding: var(--app-space-12);
 }
 
+/* A new chat: nothing to read yet, so say so in the middle of the space. */
+.assistant__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--app-space-4);
+  text-align: center;
+  color: var(--app-palette-primary-main);
+}
+
 .assistant-block {
   overflow-wrap: anywhere;
 }

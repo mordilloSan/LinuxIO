@@ -200,6 +200,47 @@ describe("ModelMenu", () => {
     expect(onChange).toHaveBeenCalledWith("fast", "on");
   });
 
+  it("hides the agent's Default entries and shows what they stand for", async () => {
+    setup({
+      model: {
+        ...model,
+        currentValue: "default",
+        options: [
+          {
+            value: "default",
+            name: "Default (recommended)",
+            description: "Opus 5.5",
+          },
+          { value: "opus", name: "Opus 5.5", description: "Most capable" },
+          { value: "sonnet", name: "Sonnet 5.5" },
+        ],
+      },
+      effort: {
+        ...effort,
+        currentValue: "default",
+        options: [
+          { value: "default", name: "Default" },
+          { value: "low", name: "Low" },
+          { value: "medium", name: "Medium" },
+          { value: "high", name: "High" },
+        ],
+      },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Model: Opus 5.5 Medium" }),
+    );
+    const menu = await screen.findByRole("menu", { name: "Model" });
+    expect(
+      within(menu).queryByRole("menuitem", { name: /Default/ }),
+    ).toBeNull();
+    expect(
+      within(menu).getByRole("menuitem", { name: /Opus 5\.5/ }),
+    ).toHaveClass("app-menu__item--selected");
+    const slider = within(menu).getByRole("slider", { name: "Effort" });
+    expect(slider).toHaveAttribute("max", "2");
+    expect(slider).toHaveAttribute("aria-valuetext", "Medium");
+  });
+
   it("works with only an effort option", () => {
     setup({ model: undefined });
     expect(

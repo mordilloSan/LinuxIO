@@ -267,6 +267,20 @@ describe("AssistantPage", () => {
     expect(newSession).toHaveBeenCalled();
   });
 
+  it("shows an empty state for a new chat until the first block arrives", async () => {
+    render(<AssistantPage agent="claude" />);
+    setState({ status: "ready", sessionId: "s", blocks: [] });
+    expect(await screen.findByText("New chat")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ask Claude Code anything about this host."),
+    ).toBeInTheDocument();
+    setState({
+      blocks: [{ kind: "user", id: "1", text: "hi", attachments: [] }],
+    });
+    expect(await screen.findByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("New chat")).toBeNull();
+  });
+
   it("renders transcript blocks, a permission card, and answers it", async () => {
     const resolve = vi.fn();
     render(<AssistantPage agent="claude" />);
