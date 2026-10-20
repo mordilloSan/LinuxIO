@@ -42,7 +42,10 @@ const NetworkHeader = ({
 
       return {
         names: filtered.map((iface) => iface.name),
-        online: Boolean(current?.ipv4?.length),
+        // Link state, not address: a NIC enslaved to a VM bridge carries no
+        // IPv4 itself. Carrier false catches an unplugged cable the state
+        // field still reports as up.
+        online: current?.state === 100 && current.carrier !== false,
         selectedName: current?.name ?? "",
       };
     },
