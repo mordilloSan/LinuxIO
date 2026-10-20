@@ -73,15 +73,20 @@ filesystem show in the subvolume list, not the snapshot list.
   `storageTabs.ts`, loader-prefetched like `lvm.tsx`.
 - Selected filesystem is URL state: validated search param `fs=<uuid>`,
   defaulting to the first filesystem.
-- Page layout: three stat tiles (**Health** with the integrity check,
-  **Space**, **Protection**), then **Disks** (status dot, usage bar per
-  disk), **Protected folders** (one card per subvolume with an on/off switch
-  for its snapshot rule) and **History** (snapshots as a day-grouped timeline
-  with Browse, Restore and Delete). **Space** details, **Subvolumes**,
-  **Replication** and **Settings** sit in a collapsed **Advanced** section.
-  The filesystem picker only appears with more than one filesystem, and
-  distro/container-runtime subvolumes are hidden by default. All built from
-  `components/ui` and `--app-*` variables.
+- Btrfs tab layout (snapshots only): a status strip (health dot, space bar,
+  "Check for errors"), **Snapshots** (flat rows: kind dot, age, what, size
+  when quotas are on, Browse/Restore/Delete), **Automatic snapshots** (one
+  switch per folder, schedule summary, edit) and a collapsed **Advanced**
+  section with **Subvolumes**, **Replication** and **Settings**. The
+  filesystem picker only appears with more than one filesystem, and
+  distro/container-runtime subvolumes are hidden by default.
+- Disks tab (`/storage`) gains a **Storage space** flow above Filesystems:
+  disks -> pool -> volumes for each mounted btrfs filesystem (pool = the
+  filesystem with its data profile, allocated and free space; volumes = its
+  mount points), plus **Pool details** for the selected pool: the **Disks**
+  card (add, replace, remove, change RAID profile) and the **Space**
+  allocation breakdown. Shown only with the `btrfs` capability and privilege.
+  All built from `components/ui` and `--app-*` variables.
 - The existing "Create subvolume" field and `BtrfsMaintenanceControls` move
   from `FilesystemCard` into the Btrfs tab's Subvolumes and Settings cards;
   the filesystem card keeps a single "Manage btrfs" link. No half-migrated

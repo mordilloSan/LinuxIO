@@ -1,0 +1,133 @@
+.storage-pools {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-16);
+  margin-bottom: var(--app-space-24);
+}
+.storage-pools__stack {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) 56px minmax(0, 1.1fr) 64px minmax(0, 1.4fr);
+  align-items: stretch;
+}
+.storage-pools .storage-pools__card {
+  min-width: 0;
+  padding: var(--app-space-12) var(--app-space-16);
+  border: 1px solid transparent;
+  border-radius: var(--app-radius-lg);
+  background: var(--app-palette-background-paper);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  min-width: 0;
+  line-height: inherit;
+}
+.storage-pools button.storage-pools__card {
+  cursor: pointer;
+}
+.storage-pools button.storage-pools__card:hover {
+  border-color: var(--app-palette-primary-main);
+}
+.storage-pools .storage-pools__card[aria-pressed="true"] {
+  border-color: var(--app-palette-primary-main);
+}
+.storage-pools .storage-pools__disks,
+.storage-pools .storage-pools__pool {
+  align-self: center;
+}
+.storage-pools .storage-pools__disks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+}
+.storage-pools .storage-pools__disk,
+.storage-pools .storage-pools__volume {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-12);
+  min-width: 0;
+}
+.storage-pools__disk > :nth-child(2),
+.storage-pools__volume > :nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.storage-pools__icon {
+  flex-shrink: 0;
+  color: var(--app-palette-text-secondary);
+}
+.storage-pools .storage-pools__pool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--app-space-4);
+  text-align: center;
+}
+.storage-pools__pool .storage-pools__icon {
+  color: var(--app-palette-primary-main);
+}
+.storage-pools__volumes {
+  display: flex;
+  flex-direction: column;
+}
+.storage-pools__slot {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  padding-block: var(--app-space-4);
+}
+.storage-pools .storage-pools__slot > .storage-pools__card {
+  width: 100%;
+  box-sizing: border-box;
+}
+.storage-pools__link {
+  position: relative;
+  min-height: 24px;
+}
+.storage-pools__link svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.storage-pools__link path {
+  fill: none;
+  stroke: var(--app-palette-text-disabled);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.storage-pools__dot {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--app-palette-text-disabled);
+  transform: translate(-50%, -50%);
+}
+.storage-pools__arrow {
+  position: absolute;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-block: 4px solid transparent;
+  border-left: 7px solid var(--app-palette-text-disabled);
+  transform: translateY(-50%);
+}
+@container (max-width: 780px) {
+  .storage-pools__stack {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--app-space-12);
+  }
+  .storage-pools__link {
+    display: none;
+  }
+  .storage-pools .storage-pools__disks,
+  .storage-pools .storage-pools__pool {
+    align-self: stretch;
+  }
+}

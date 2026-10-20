@@ -39,6 +39,7 @@ import {
   PowerStatesTab,
   SelfTestsTab,
   SmartAttributesTab,
+  StoragePools,
   TabPanel,
 } from "./components";
 import type { DriveInfo, SmartTestProgressEvent } from "./types";
@@ -422,6 +423,12 @@ const DiskOverview = () => {
       }),
     });
   };
+  const handleOpenVolume = (mountpoint: string) => {
+    void navigate({
+      to: "/storage",
+      search: (previous) => ({ ...previous, fs: mountpoint }),
+    });
+  };
   const handleBrowseFilesystem = (mountpoint: string) => {
     void navigate({
       to: "/filebrowser/$",
@@ -526,6 +533,10 @@ const DiskOverview = () => {
             </AnimatePresence>
           </AppGrid>
         </>
+      )}
+
+      {!expanded && !selectedMountpoint && (
+        <StoragePools onOpenVolume={handleOpenVolume} />
       )}
 
       {!expanded && (
