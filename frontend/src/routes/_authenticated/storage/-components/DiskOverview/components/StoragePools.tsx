@@ -237,8 +237,7 @@ const StoragePools = ({
 
   const { poolStacks, driveStacks, sourceStacks, idleDrives } =
     buildStorageLayout(btrfs, filesystems, drives, nfsMounts);
-  const selected =
-    poolStacks.find(({ fs }) => fs.uuid === selectedUuid) ?? poolStacks[0];
+  const selected = poolStacks.find(({ fs }) => fs.uuid === selectedUuid);
 
   // Until the pools load, btrfs volumes would sit under their drives and then
   // jump into their pool; draw nothing rather than that flicker.
@@ -278,7 +277,11 @@ const StoragePools = ({
               aria-pressed={pool.uuid === selected?.pool.uuid}
               className="storage-pools__card storage-pools__pool"
               color="inherit"
-              onClick={() => setSelectedUuid(pool.uuid)}
+              onClick={() =>
+                setSelectedUuid(
+                  pool.uuid === selectedUuid ? undefined : pool.uuid,
+                )
+              }
             >
               <Icon
                 className="storage-pools__icon"

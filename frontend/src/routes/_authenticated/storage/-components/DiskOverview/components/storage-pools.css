@@ -15,7 +15,7 @@
 .storage-pools .storage-pools__card {
   min-width: 0;
   padding: var(--app-space-12) var(--app-space-16);
-  border: 1px solid transparent;
+  border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-lg);
   background: var(--app-palette-background-paper);
   color: inherit;
@@ -28,7 +28,11 @@
   cursor: pointer;
 }
 .storage-pools button.storage-pools__card:hover {
-  border-color: var(--app-palette-primary-main);
+  background-color: var(--app-palette-background-paper);
+  background-image: linear-gradient(
+    var(--app-palette-action-hover),
+    var(--app-palette-action-hover)
+  );
 }
 .storage-pools .storage-pools__card[aria-pressed="true"] {
   border-color: var(--app-palette-primary-main);
@@ -51,7 +55,7 @@
 .storage-pools__others .storage-pools__card {
   min-width: 0;
   padding: var(--app-space-12) var(--app-space-16);
-  border: 1px solid transparent;
+  border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-lg);
   background: var(--app-palette-background-paper);
 }
@@ -60,10 +64,13 @@
 .storage-pools__others .storage-pools__disk--link:hover {
   background: none;
 }
-/* A disk card lights its border on hover, like the pool and volume cards. */
+/* A disk card tints its background on hover, like the pool and volume cards. */
 .storage-pools .storage-pools__card:has(.storage-pools__disk--link:hover),
 .storage-pools__others .storage-pools__card:has(.storage-pools__disk--link:hover) {
-  border-color: var(--app-palette-primary-main);
+  background-image: linear-gradient(
+    var(--app-palette-action-hover),
+    var(--app-palette-action-hover)
+  );
 }
 .storage-pools .storage-pools__volume,
 .storage-pools .storage-pools__disk,

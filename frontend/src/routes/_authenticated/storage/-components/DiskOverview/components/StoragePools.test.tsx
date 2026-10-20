@@ -240,12 +240,15 @@ describe("StoragePools", () => {
     const user = userEvent.setup();
     renderPools();
 
-    expect(await screen.findByText("Details · tank")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "tank" });
+    expect(screen.queryByText(/^Details · /)).toBeNull();
     await user.click(screen.getByRole("button", { name: "Storage pool 2" }));
     expect(screen.getByText("Details · Storage pool 2")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Storage pool 2" }),
     ).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Storage pool 2" }));
+    expect(screen.queryByText(/^Details · /)).toBeNull();
   });
 
   it("still lists the drives without btrfs or without privilege", () => {
