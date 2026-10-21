@@ -3,10 +3,10 @@ package storage
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/disk"
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
@@ -62,10 +62,8 @@ func UnmountFilesystem(ctx context.Context, mountpoint string) (apischema.Storag
 		return apischema.StorageMountResult{Success: unmounted.Success, Warning: unmounted.Warning}, nil
 	}
 
-	cmd := exec.CommandContext(ctx, "umount", mountpoint)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return apischema.StorageMountResult{}, fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
+	if err := unix.Unmount(mountpoint, 0); err != nil {
+		return apischema.StorageMountResult{}, fmt.Errorf("umount %s: %w", mountpoint, err)
 	}
 
 	return mountResult(mountpoint, ""), nil

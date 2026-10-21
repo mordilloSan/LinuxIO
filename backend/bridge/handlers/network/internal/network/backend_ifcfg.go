@@ -154,8 +154,10 @@ func (b *ifcfgBackend) runIfup(ctx context.Context) error {
 	if err == nil {
 		return nil
 	}
-	if _, fallbackErr := b.env.Runner.Run(ctx, "systemctl", "restart", "network"); fallbackErr == nil {
-		return nil
+	if b.env.RestartUnit != nil {
+		if fallbackErr := b.env.RestartUnit(ctx, "network.service"); fallbackErr == nil {
+			return nil
+		}
 	}
 	return utils.CommandOutputError("ifup", []string{b.iface}, output, err)
 }

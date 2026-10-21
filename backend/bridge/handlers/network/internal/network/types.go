@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
@@ -65,14 +66,18 @@ type CommandRunner interface {
 }
 
 type Environment struct {
-	NetplanDir          string
-	NMConnectionDir     string
-	NetworkdDir         string
-	IfupdownMain        string
-	IfupdownDir         string
-	IfcfgDir            string
-	Runner              CommandRunner
-	NetplanCall         func(ctx context.Context, method string) error
+	NetplanDir      string
+	NMConnectionDir string
+	NetworkdDir     string
+	IfupdownMain    string
+	IfupdownDir     string
+	IfcfgDir        string
+	Runner          CommandRunner
+	NetplanCall     func(ctx context.Context, method string) error
+	// NetworkdCall invokes an org.freedesktop.network1.Manager method; iface
+	// is the link argument for ReconfigureLink and empty for Reload.
+	NetworkdCall        func(ctx context.Context, method, iface string) error
+	RestartUnit         func(ctx context.Context, unit string) error
 	WriteFile           func(path string, data []byte, mode fs.FileMode, ownership ...int) error
 	RemoveFile          func(path string) error
 	ReadFile            func(path string) ([]byte, error)
@@ -135,6 +140,8 @@ func DefaultEnvironment() Environment {
 		IfcfgDir:        "/etc/sysconfig/network-scripts",
 		Runner:          ExecRunner{},
 		NetplanCall:     callNetplan,
+		NetworkdCall:    callNetworkd,
+		RestartUnit:     systemd.RestartUnit,
 		WriteFile:       utils.WriteFileAtomic,
 		RemoveFile:      os.Remove,
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"strings"
 	"syscall"
 	"testing"
@@ -79,7 +78,7 @@ func TestIsNonLoginShellRecognizesDebianAndRHELPaths(t *testing.T) {
 func TestGetProcessSummaryErrorKeepsTopAsArray(t *testing.T) {
 	summary := getProcessSummary(context.Background(), "__linuxio_missing_process_owner__")
 	if summary.Error == "" {
-		t.Skip("ps accepted the synthetic account name on this system")
+		t.Skip("the synthetic account name exists on this system")
 	}
 	if summary.Top == nil {
 		t.Fatal("getProcessSummary() returned a nil Top slice on error")
@@ -131,7 +130,7 @@ func TestGetHomeHealthOmitsUnknownOwnership(t *testing.T) {
 
 func TestGetProcessSummaryNoRowsIsNotAnError(t *testing.T) {
 	summary := getProcessSummary(context.Background(), "nobody")
-	if strings.Contains(summary.Error, "does not exist") {
+	if strings.Contains(summary.Error, "unknown user") {
 		t.Skip("nobody account is not available on this system")
 	}
 	if summary.Count > 0 {
@@ -199,17 +198,5 @@ func TestSessionFromLogindSkipsManagerClass(t *testing.T) {
 	props := map[string]godbus.Variant{"Class": godbus.MakeVariant("manager")}
 	if _, ok := sessionFromLogind(props, time.Now()); ok {
 		t.Fatal("sessionFromLogind() ok = true, want false")
-	}
-}
-
-func TestIsEmptyProcessListExit(t *testing.T) {
-	if !isEmptyProcessListExit(nil, &exec.ExitError{}) {
-		t.Fatal("isEmptyProcessListExit() = false, want true for empty ps output and empty stderr")
-	}
-	if isEmptyProcessListExit([]byte("123 bash 0.0 0.1\n"), &exec.ExitError{}) {
-		t.Fatal("isEmptyProcessListExit() = true, want false when ps output contains rows")
-	}
-	if isEmptyProcessListExit(nil, &exec.ExitError{Stderr: []byte("user name does not exist")}) {
-		t.Fatal("isEmptyProcessListExit() = true, want false when ps reports stderr")
 	}
 }

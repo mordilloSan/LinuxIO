@@ -60,6 +60,14 @@ func testEnv(t *testing.T) (Environment, *fakeRunner, string) {
 			_, err := runner.Run(ctx, "netplan-dbus", method)
 			return err
 		},
+		NetworkdCall: func(ctx context.Context, method, iface string) error {
+			_, err := runner.Run(ctx, "networkd", method, iface)
+			return err
+		},
+		RestartUnit: func(ctx context.Context, unit string) error {
+			_, err := runner.Run(ctx, "systemd", "RestartUnit", unit)
+			return err
+		},
 		WriteFile: func(path string, data []byte, mode fs.FileMode, _ ...int) error {
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return err

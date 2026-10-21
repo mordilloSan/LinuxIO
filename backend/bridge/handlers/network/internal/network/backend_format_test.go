@@ -264,7 +264,7 @@ DNS=2001:4860:4860::8888
 			t.Fatalf("expected %q in networkd file:\n%s", want, body)
 		}
 	}
-	requireCalls(t, runner, "networkctl reload", "networkctl reconfigure eth0")
+	requireCalls(t, runner, "networkd Reload", "networkd ReconfigureLink eth0")
 }
 
 func TestIfupdownSetIPv4ManualRewritesBlockAndRunsIfdownIfup(t *testing.T) {
