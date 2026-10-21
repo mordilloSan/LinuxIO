@@ -86,10 +86,20 @@ const filesystem = (deviceCount: number): BtrfsFilesystem => ({
     sizeBytes: 100 * GiB,
     usedBytes: 10 * GiB,
     missing: false,
+    physicalBytes: 0,
+    growable: false,
     errors: noErrors,
   })),
-  scrub: { status: "none", errorCount: 0, bytesScrubbed: 0, percent: 0 },
+  scrub: {
+    status: "none",
+    errorCount: 0,
+    uncorrectableErrors: 0,
+    correctedErrors: 0,
+    bytesScrubbed: 0,
+    percent: 0,
+  },
   degraded: false,
+  lowMetadataSpace: false,
 });
 
 const blockDevice = (
@@ -351,6 +361,26 @@ describe("BtrfsDevicesCard actions", () => {
     await user.click(screen.getByRole("button", { name: "Stop check" }));
     expect(route("btrfs_scrub_cancel")).toHaveBeenCalledWith({
       uuid: "uuid-1",
+    });
+  });
+
+  it("offers to grow a device whose disk is bigger than the filesystem's view", async () => {
+    const user = userEvent.setup();
+    const fs = filesystem(2);
+    fs.devices[1] = {
+      ...fs.devices[1],
+      physicalBytes: 200 * GiB,
+      growable: true,
+    };
+    render(<BtrfsDevicesCard filesystem={fs} />);
+
+    expect(
+      screen.getAllByRole("button", { name: "Grow to disk size" }),
+    ).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Grow to disk size" }));
+    expect(mocks.mutations["storage.btrfs_device_grow"]).toHaveBeenCalledWith({
+      uuid: "uuid-1",
+      deviceId: 2,
     });
   });
 });

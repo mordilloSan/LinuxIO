@@ -534,11 +534,19 @@ type BtrfsDeviceReplaceRequest struct {
 }
 
 // BtrfsBalanceRequest converts to the given profiles; a nil profile is left
-// as it is, and both nil balances without converting.
+// as it is. DataUsage limits the balance to data chunks used at most that
+// percent, which reclaims unallocated space. With nothing set everything is
+// balanced.
 type BtrfsBalanceRequest struct {
 	UUID            string  `json:"uuid"`
 	DataProfile     *string `json:"dataProfile,omitempty"`
 	MetadataProfile *string `json:"metadataProfile,omitempty"`
+	DataUsage       *int    `json:"dataUsage,omitempty"`
+}
+
+type BtrfsLabelRequest struct {
+	UUID  string `json:"uuid"`
+	Label string `json:"label"`
 }
 
 // BtrfsPoolCreateRequest formats Devices as one btrfs filesystem, mounts it

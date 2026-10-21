@@ -223,20 +223,10 @@ func handleBtrfsPoolsOffline(ctx context.Context, _ apischema.NoRequest) ([]btrf
 	return listOfflinePools(ctx)
 }
 
-// listOfflinePools finds the unmounted btrfs filesystems among the block
-// devices that probe as btrfs and attaches their fstab mountpoints.
+// listOfflinePools finds the unmounted btrfs filesystems by their
+// superblocks and attaches their fstab mountpoints.
 func listOfflinePools(ctx context.Context) ([]btrfs.BtrfsOfflinePool, error) {
-	devices, err := ListBlockDevices(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var candidates []string
-	for _, d := range devices {
-		if d.FSType == "btrfs" {
-			candidates = append(candidates, d.Path)
-		}
-	}
-	pools, err := btrfs.FindOfflinePools(ctx, candidates)
+	pools, err := btrfs.FindOfflinePools(ctx, btrfs.BlockDevices())
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +235,24 @@ func listOfflinePools(ctx context.Context) ([]btrfs.BtrfsOfflinePool, error) {
 		pools[i].Mountpoint = fstabMountpointFor(fstab, pools[i].UUID)
 	}
 	return pools, nil
+}
+
+func handleBtrfsDeviceGrow(ctx context.Context, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {
+	slog.Info("growing btrfs device", "uuid", req.UUID, "device", req.DeviceID)
+	if err := btrfs.GrowDevice(ctx, req.UUID, req.DeviceID); err != nil {
+		slog.Error("btrfs device grow failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
+		return btrfs.BtrfsFilesystem{}, err
+	}
+	return btrfs.FindFilesystem(ctx, req.UUID)
+}
+
+func handleBtrfsSetLabel(ctx context.Context, req apischema.BtrfsLabelRequest) (btrfs.BtrfsFilesystem, error) {
+	slog.Info("relabeling btrfs filesystem", "uuid", req.UUID, "label", req.Label)
+	if err := btrfs.SetLabel(ctx, req.UUID, req.Label); err != nil {
+		slog.Error("btrfs relabel failed", "uuid", req.UUID, "error", err)
+		return btrfs.BtrfsFilesystem{}, err
+	}
+	return btrfs.FindFilesystem(ctx, req.UUID)
 }
 
 func findOfflinePool(ctx context.Context, uuid string) (btrfs.BtrfsOfflinePool, error) {

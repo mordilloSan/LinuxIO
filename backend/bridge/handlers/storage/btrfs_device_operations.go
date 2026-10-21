@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
@@ -24,9 +23,6 @@ func (p BtrfsOpProgress) ProgressEnvelope() bridgetasks.TaskProgress {
 	pct := int(p.Percent)
 	return bridgetasks.TaskProgress{Percentage: &pct, Phase: p.Op, Message: p.Message, Detail: p}
 }
-
-// btrfsPollInterval is a variable so tests can poll quickly.
-var btrfsPollInterval = 2 * time.Second
 
 var btrfsDeviceRoutes = btrfsDeviceBindings().Routes()
 
@@ -86,26 +82,10 @@ func checkBtrfsDeviceFree(devices []apischema.StorageBlockDevice, filesystems []
 	return nil
 }
 
-// pollBtrfsOp waits one interval before each poll, since the btrfs start
-// commands return before the kernel reports the operation, and reports
-// progress until poll says it is no longer running.
-func pollBtrfsOp(ctx context.Context, report func(bridgetasks.ProgressDetail), op, label string, poll func(context.Context) (running bool, percent float64, err error)) error {
-	ticker := time.NewTicker(btrfsPollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
-		running, pct, err := poll(ctx)
-		if err != nil {
-			return err
-		}
-		if !running {
-			return nil
-		}
-		report(BtrfsOpProgress{Op: op, Percent: pct, Message: fmt.Sprintf("%s: %.1f%% complete", label, pct)})
+// progressReporter reports one operation's percentage through the task.
+func progressReporter(task *bridgetasks.Task, op, label string) func(float64) {
+	return func(pct float64) {
+		task.ReportProgress(BtrfsOpProgress{Op: op, Percent: pct, Message: fmt.Sprintf("%s: %.1f%% complete", label, pct)})
 	}
 }
 
@@ -121,19 +101,13 @@ func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgetasks.Task, req a
 }
 
 func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgetasks.Task, req apischema.BtrfsDeviceReplaceRequest) (btrfs.BtrfsFilesystem, error) {
-	// `replace start -f` overwrites any signature, so the target must be blank.
+	// The kernel copies onto the target without checking it, so it must be blank.
 	if err := ensureBtrfsDeviceFree(ctx, req.NewDevice, false); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
 	slog.Info("replacing btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
-	if err := btrfs.ReplaceStart(ctx, req.UUID, req.DeviceID, req.NewDevice); err != nil {
-		slog.Error("btrfs replace start failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
-	}
 	task.ReportProgress(BtrfsOpProgress{Op: "replace", Message: fmt.Sprintf("Replacing device %d with %s", req.DeviceID, req.NewDevice)})
-	if err := pollBtrfsOp(ctx, task.ReportProgress, "replace", "Replacing", func(ctx context.Context) (bool, float64, error) {
-		return btrfs.ReplaceStatus(ctx, req.UUID)
-	}); err != nil {
+	if err := btrfs.Replace(ctx, req.UUID, req.DeviceID, req.NewDevice, progressReporter(task, "replace", "Replacing")); err != nil {
 		slog.Error("btrfs replace failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
 		return btrfs.BtrfsFilesystem{}, err
 	}
@@ -142,20 +116,23 @@ func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgetasks.Task, req 
 		slog.Error("btrfs replace failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
 		return btrfs.BtrfsFilesystem{}, err
 	}
+	// A bigger replacement disk is grown into right away.
+	if i := slices.IndexFunc(fs.Devices, func(d btrfs.BtrfsDevice) bool { return d.ID == req.DeviceID }); i >= 0 && fs.Devices[i].Growable {
+		if err := btrfs.GrowDevice(ctx, req.UUID, req.DeviceID); err != nil {
+			slog.Warn("btrfs grow after replace failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
+		} else if grown, err := btrfs.FindFilesystem(ctx, req.UUID); err == nil {
+			fs = grown
+		}
+	}
 	slog.Info("replaced btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
 	return fs, nil
 }
 
 func runBtrfsBalanceTask(ctx context.Context, task *bridgetasks.Task, req apischema.BtrfsBalanceRequest) (btrfs.BtrfsFilesystem, error) {
-	slog.Info("balancing btrfs filesystem", "uuid", req.UUID, "data", profileOrKeep(req.DataProfile), "metadata", profileOrKeep(req.MetadataProfile))
-	if err := btrfs.BalanceStart(ctx, req.UUID, req.DataProfile, req.MetadataProfile); err != nil {
-		slog.Error("btrfs balance start failed", "uuid", req.UUID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
-	}
+	slog.Info("balancing btrfs filesystem", "uuid", req.UUID, "data", profileOrKeep(req.DataProfile), "metadata", profileOrKeep(req.MetadataProfile), "dataUsage", req.DataUsage)
 	task.ReportProgress(BtrfsOpProgress{Op: "balance", Message: "Balance started"})
-	if err := pollBtrfsOp(ctx, task.ReportProgress, "balance", "Balancing", func(ctx context.Context) (bool, float64, error) {
-		return btrfs.BalanceStatus(ctx, req.UUID)
-	}); err != nil {
+	opts := btrfs.BalanceOptions{DataProfile: req.DataProfile, MetadataProfile: req.MetadataProfile, DataUsageMax: req.DataUsage}
+	if err := btrfs.Balance(ctx, req.UUID, opts, progressReporter(task, "balance", "Balancing")); err != nil {
 		slog.Error("btrfs balance failed", "uuid", req.UUID, "error", err)
 		return btrfs.BtrfsFilesystem{}, err
 	}
@@ -170,27 +147,14 @@ func runBtrfsBalanceTask(ctx context.Context, task *bridgetasks.Task, req apisch
 
 func runBtrfsScrubTask(ctx context.Context, task *bridgetasks.Task, req apischema.UUIDRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Info("scrubbing btrfs filesystem", "uuid", req.UUID)
-	if err := btrfs.ScrubStart(ctx, req.UUID); err != nil {
-		slog.Error("btrfs scrub start failed", "uuid", req.UUID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
-	}
 	task.ReportProgress(BtrfsOpProgress{Op: "scrub", Message: "Scrub started"})
-	if err := pollBtrfsOp(ctx, task.ReportProgress, "scrub", "Scrubbing", func(ctx context.Context) (bool, float64, error) {
-		s, err := btrfs.ScrubStatus(ctx, req.UUID)
-		switch {
-		case err != nil:
-			return false, 0, err
-		case s.Status == "running":
-			return true, s.Percent, nil
-		case s.Status == "finished":
-			return false, 100, nil
-		}
-		return false, 0, fmt.Errorf("scrub ended with status %s", s.Status)
-	}); err != nil {
-		slog.Error("btrfs scrub failed", "uuid", req.UUID, "error", err)
+	report := progressReporter(task, "scrub", "Scrubbing")
+	status, err := btrfs.Scrub(ctx, req.UUID, func(s btrfs.BtrfsScrubStatus) { report(s.Percent) })
+	if err != nil {
+		slog.Error("btrfs scrub failed", "uuid", req.UUID, "status", status.Status, "error", err)
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	slog.Info("scrubbed btrfs filesystem", "uuid", req.UUID)
+	slog.Info("scrubbed btrfs filesystem", "uuid", req.UUID, "errors", status.ErrorCount, "uncorrectable", status.UncorrectableErrors)
 	return btrfs.FindFilesystem(ctx, req.UUID)
 }
 

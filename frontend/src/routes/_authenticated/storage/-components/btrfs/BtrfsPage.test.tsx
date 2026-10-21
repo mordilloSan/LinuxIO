@@ -83,6 +83,7 @@ const filesystem = (
   devices: [],
   scrub: {} as BtrfsFilesystem["scrub"],
   degraded: false,
+  lowMetadataSpace: false,
 });
 
 const data = filesystem("uuid-data", "data", "/mnt/data");
@@ -181,6 +182,7 @@ describe("BtrfsPage", () => {
       {
         ...data,
         degraded: true,
+        lowMetadataSpace: false,
         devices: [{ missing: true, errors: {} } as never],
         totalBytes: 100 * 1024 ** 3,
         usedBytes: 30 * 1024 ** 3,

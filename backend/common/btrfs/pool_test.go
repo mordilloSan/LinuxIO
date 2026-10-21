@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -37,18 +36,6 @@ func stubControlIoctl(t *testing.T, err error) *[]string {
 	}
 	t.Cleanup(func() { controlIoctl = old })
 	return &calls
-}
-
-func TestKernelLayout(t *testing.T) {
-	if size := unsafe.Sizeof(volArgs{}); size != 4096 {
-		t.Fatalf("sizeof btrfs_ioctl_vol_args = %d, want 4096", size)
-	}
-	// _IOW(0x94, nr, 4096): write bit, size, magic, number.
-	for nr, req := range map[uintptr]uintptr{4: iocScanDev, 5: iocForgetDev} {
-		if want := 1<<30 | 4096<<16 | 0x94<<8 | nr; req != want {
-			t.Errorf("ioctl %d = %#x, want %#x", nr, req, want)
-		}
-	}
 }
 
 func TestParseSuperblock(t *testing.T) {
@@ -215,5 +202,24 @@ func TestFindOfflinePools(t *testing.T) {
 	want := []BtrfsOfflinePool{{UUID: "pool-uuid", Label: "tank", NumDevices: 3, Devices: []string{"/dev/sdb", "/dev/sdc"}, TotalBytes: 300}}
 	if !reflect.DeepEqual(pools, want) {
 		t.Fatalf("got %+v, want %+v", pools, want)
+	}
+}
+
+func TestBlockDevicesSkipsEmptyAndVirtual(t *testing.T) {
+	dir := t.TempDir()
+	for name, size := range map[string]string{"sda": "1000", "sda1": "500", "ram0": "10", "zram0": "10", "sr0": "10", "sdb": "0", "loop0": "20", "dm-0": "30"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, "size"), []byte(size+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := sysBlockDir
+	sysBlockDir = dir
+	t.Cleanup(func() { sysBlockDir = old })
+	got := BlockDevices()
+	if want := []string{"/dev/dm-0", "/dev/loop0", "/dev/sda", "/dev/sda1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
 }

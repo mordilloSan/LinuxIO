@@ -381,6 +381,8 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "storage.btrfs_balance_cancel": BTRFS_DEVICE_KEYS,
   "storage.btrfs_scrub_start": BTRFS_DEVICE_KEYS,
   "storage.btrfs_scrub_cancel": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_device_grow": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_set_label": BTRFS_DEVICE_KEYS,
   "storage.btrfs_pool_create": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_destroy": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_mount": BTRFS_POOL_KEYS,

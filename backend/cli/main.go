@@ -64,6 +64,8 @@ func runCLI(args []string) int {
 		return runAlert(ctx, cmdArgs)
 	case "btrfs-snapshot":
 		return runBtrfsSnapshot(ctx, cmdArgs)
+	case "btrfs-health":
+		return runBtrfsHealth(ctx, cmdArgs)
 	case "version":
 		showVersion(cmdArgs)
 		return 0
@@ -91,6 +93,7 @@ Commands:
   verbose     Manage verbose logging [enable|disable|status]
   alert raise|resolve|auto-update   Record or clear an alert (used by systemd hooks; needs sudo)
   btrfs-snapshot run|pre-update        Take scheduled btrfs snapshots (used by the systemd timer; needs root)
+  btrfs-health run                     Check btrfs pools and update their alerts (used by the systemd timer; needs root)
   version     Show version information [--self]
   help        Show this help message
 

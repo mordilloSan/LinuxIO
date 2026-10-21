@@ -3,9 +3,11 @@
 The **Storage → Btrfs** tab (`/storage/btrfs`) manages btrfs filesystems:
 health, subvolumes, snapshots with rollback, automatic snapshots, devices and
 profiles, replication to another filesystem or host, quotas and compression.
-It drives `btrfs-progs` and standard system tools; there is no daemon and no
-new binary beyond the existing `linuxio` CLI. Everything is on demand or runs
-from one systemd timer.
+Devices, profiles, balance, scrub, pools, space and health are read and
+driven through the kernel's btrfs ioctls; `btrfs-progs` is used only where
+there is no kernel interface (`mkfs.btrfs`, `send`/`receive`, subvolume and
+quota listing). There is no daemon and no new binary beyond the existing
+`linuxio` CLI. Everything is on demand or runs from two systemd timers.
 
 ## Capability and privileges
 
@@ -19,13 +21,26 @@ Docker's btrfs storage-driver subvolumes are hidden from every list.
 ## Filesystem health
 
 Each filesystem card shows its devices, allocation, profiles and per-device
-error counters. A missing device or a non-zero counter raises an error alert
-`btrfs/health-<uuid>` whenever the list is loaded, and resolves it when the
-condition clears. Incomplete health data neither raises nor resolves. A
-device the mounted `btrfs filesystem show` omits (it only prints `*** Some
-devices missing`) is listed from `btrfs device stats` as a missing device with
-an empty path, so it can be removed or replaced.
-Scrub start/cancel is on the same card; see [Devices](#devices-and-profiles).
+error counters. A device the kernel knows but cannot find is listed as missing
+with an empty path, so it can be removed or replaced. The health banner leads
+with the worst condition and the one action that fixes it: **Replace missing
+disk** on a degraded pool, **Reclaim space** when metadata is nearly full.
+
+Alerts are updated whenever the list is loaded and, independently of the
+browser, by `linuxio-btrfs-health.timer`, which runs `linuxio btrfs-health
+run` two minutes after boot and every ten minutes. The bridge installs and
+enables the timer the first time an administrator lists filesystems.
+
+| Alert | Severity | Raised when | Resolved when |
+|---|---|---|---|
+| `btrfs/health-<uuid>` | error | a device reports errors or is missing | the counters are zero and no device is missing |
+| `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
+| `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
+| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing) | the pool is mounted |
+
+Incomplete health data neither raises nor resolves; alerts of pools that no
+longer exist are dropped by the timer. Scrub start/cancel is on the banner;
+see [Devices](#devices-and-profiles).
 
 ## Top-level access
 
@@ -168,13 +183,16 @@ the primary superblock at 64 KiB.
 |---|---|
 | Add device | Free devices only. A device with partitions or holders is refused even with **Force**; Force wipes a foreign filesystem signature. |
 | Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined. |
-| Replace device | Replaces one member with a free device. |
-| Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Runs in the background; the outcome is verified against the resulting allocation. |
-| Scrub | Start and cancel. |
+| Replace device | Replaces one member with a free device. A bigger replacement disk is grown into automatically. |
+| Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
+| Rename | Sets the filesystem label from the pool details. |
+| Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. The outcome is verified against the resulting allocation. |
+| Reclaim space | A balance of data chunks at most 50% full, which turns slack into unallocated space. |
+| Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`; scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. |
 
-Cancelling the task interrupts a device remove. Balance, replace and scrub are
-kernel operations that continue if the browser task is cancelled; reopen the
-page to re-attach to a running balance.
+Remove, replace, balance and scrub are blocking kernel calls run inside the
+task, so progress comes from the kernel and cancelling the task cancels the
+operation. A balance or scrub started elsewhere is still shown as running.
 
 ## Replication
 
@@ -237,14 +255,18 @@ key fails the job.
 | `/etc/linuxio/btrfs-replication/known_hosts` | root | Trusted target host keys |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio btrfs-snapshot run` |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
+| `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio btrfs-health run` |
+| `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
+| `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
-| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
+| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
 
 ## Not implemented
 
 - `raid5` and `raid6` profiles, refused on purpose.
 - Partitioning disks before creating a pool.
+- Subvolume and quota listing without `btrfs-progs`.
 - Booting into snapshots from GRUB.
 - Hooking `apt` or `dnf` run by hand.
 - Docker's btrfs storage-driver subvolumes, hidden from lists.

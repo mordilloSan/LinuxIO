@@ -2,48 +2,13 @@ package btrfs
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
-
-const threeDeviceShow = "Label: 'data'  uuid: " + dataUUID + "\n" +
-	"\tdevid    1 size 100 used 50 path /dev/sda1\n" +
-	"\tdevid    2 size 100 used 50 path /dev/sdb1\n" +
-	"\tdevid    3 size 100 used 50 path /dev/sdc1\n"
-
-// stubDeviceBtrfs mounts dataUUID at /data, serves the inventory reads with
-// show as the `filesystem show` output, and records every other invocation.
-func stubDeviceBtrfs(t *testing.T, show string) *[][]string {
-	t.Helper()
-	return stubDeviceBtrfsUsage(t, show, fixture(t, "fi_usage_6.6.txt"))
-}
-
-// stubDeviceBtrfsUsage is stubDeviceBtrfs with usage as the `filesystem
-// usage` output.
-func stubDeviceBtrfsUsage(t *testing.T, show, usage string) *[][]string {
-	t.Helper()
-	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
-	var calls [][]string
-	old := runBtrfs
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		switch strings.Join(args[:2], " ") {
-		case "filesystem usage":
-			return usage, nil
-		case "filesystem show":
-			return show, nil
-		case "device stats":
-			return fixture(t, "device_stats.txt"), nil
-		case "scrub status":
-			return fixture(t, "scrub_status.txt"), nil
-		}
-		calls = append(calls, args)
-		return "", nil
-	}
-	t.Cleanup(func() { runBtrfs = old })
-	return &calls
-}
 
 func TestValidateProfilesRejectsRaid56(t *testing.T) {
 	for _, p := range []string{"raid5", "RAID6"} {
@@ -76,8 +41,17 @@ func TestValidateProfilesNeedsDevices(t *testing.T) {
 	}
 }
 
+// threeDiskKernel adds a third raid1 member to raid1Kernel.
+func threeDiskKernel() *fakeKernel {
+	k := raid1Kernel()
+	k.maxID = 3
+	k.devices[3] = &fakeDevice{path: "/dev/sdc1", total: 100 << 30, used: 51 << 30, physical: 100 << 30}
+	return k
+}
+
 func TestRemoveDeviceRefusesBelowMinimum(t *testing.T) {
-	calls := stubDeviceBtrfs(t, fixture(t, "fi_show.txt")) // 2 devices, data raid1
+	k := raid1Kernel() // 2 devices, raid1
+	stubKernel(t, k)
 	err := RemoveDevice(context.Background(), dataUUID, 1)
 	if err == nil || !strings.Contains(err.Error(), "raid1") {
 		t.Fatalf("err = %v, want refusal naming raid1", err)
@@ -85,182 +59,296 @@ func TestRemoveDeviceRefusesBelowMinimum(t *testing.T) {
 	if err := RemoveDevice(context.Background(), dataUUID, 9); err == nil || !strings.Contains(err.Error(), "device 9 not found") {
 		t.Fatalf("missing id: err = %v", err)
 	}
-	if len(*calls) != 0 {
-		t.Fatalf("mutating calls after refusal: %v", *calls)
+	if calls := k.Calls(); len(calls) != 0 {
+		t.Fatalf("mutating calls after refusal: %v", calls)
 	}
 }
 
 // A missing device does not count towards the raid1 minimum: removing one of
 // the two present devices of a degraded three-device raid1 is refused.
 func TestRemoveDeviceIgnoresMissingDevices(t *testing.T) {
-	degraded := "Label: 'data'  uuid: " + dataUUID + "\n" +
-		"\tdevid    1 size 100 used 50 path /dev/sda1\n" +
-		"\tdevid    2 size 100 used 50 path /dev/sdb1\n" +
-		"\tdevid    3 size 0 used 0 path /dev/sdc1 MISSING\n"
-	calls := stubDeviceBtrfs(t, degraded)
+	k := threeDiskKernel()
+	k.devices[3].path = ""
+	stubKernel(t, k)
 	if err := RemoveDevice(context.Background(), dataUUID, 1); err == nil || !strings.Contains(err.Error(), "raid1") {
 		t.Fatalf("err = %v, want refusal naming raid1", err)
 	}
-	if len(*calls) != 0 {
-		t.Fatalf("mutating calls after refusal: %v", *calls)
+	if calls := k.Calls(); len(calls) != 0 {
+		t.Fatalf("mutating calls after refusal: %v", calls)
 	}
 }
 
 func TestRemoveDeviceRefusesUnknownProfiles(t *testing.T) {
-	raid5Usage := "Overall:\n    Device size:\t\t300\n    Device unallocated:\t\t100\n    Used:\t\t50\n\n" +
-		"Data,RAID5: Size:100, Used:50 (50.00%)\n\nMetadata,RAID1: Size:10, Used:5 (50.00%)\n"
-	for _, c := range []struct{ name, usage, want string }{
-		{"usage failed", "", "cannot determine current profiles of " + dataUUID},
-		{"raid5", raid5Usage, "cannot determine minimum devices for profile raid5"},
+	for _, c := range []struct {
+		name string
+		edit func(*fakeKernel)
+		want string
+	}{
+		{"space info failed", func(k *fakeKernel) { k.fail = map[uintptr]error{iocSpaceInfo: unix.EIO} }, "cannot determine current profiles of " + dataUUID},
+		{"raid5", func(k *fakeKernel) { k.spaces[0].Flags = bgData | bgRaid5 }, "cannot determine minimum devices for profile raid5"},
 	} {
-		calls := stubDeviceBtrfsUsage(t, threeDeviceShow, c.usage)
+		k := threeDiskKernel()
+		c.edit(k)
+		stubKernel(t, k)
 		if err := RemoveDevice(context.Background(), dataUUID, 2); err == nil || err.Error() != c.want {
 			t.Fatalf("%s: err = %v, want %q", c.name, err, c.want)
 		}
-		if len(*calls) != 0 {
-			t.Fatalf("%s: mutating calls after refusal: %v", c.name, *calls)
+		if calls := k.Calls(); len(calls) != 0 {
+			t.Fatalf("%s: mutating calls after refusal: %v", c.name, calls)
 		}
 	}
 }
 
 func TestRemoveDeviceRuns(t *testing.T) {
-	calls := stubDeviceBtrfs(t, threeDeviceShow)
+	k := threeDiskKernel()
+	stubKernel(t, k)
 	if err := RemoveDevice(context.Background(), dataUUID, 2); err != nil {
 		t.Fatalf("RemoveDevice: %v", err)
 	}
-	if want := [][]string{{"device", "remove", "2", "/data"}}; !reflect.DeepEqual(*calls, want) {
-		t.Fatalf("calls = %v, want %v", *calls, want)
+	if want := []string{"RM_DEV 2 flags=8"}; !reflect.DeepEqual(k.Calls(), want) {
+		t.Fatalf("calls = %v, want %v", k.Calls(), want)
 	}
 }
 
-func TestDeviceCommandsArgv(t *testing.T) {
-	ctx := context.Background()
-	steps := []struct {
-		name string
-		run  func() error
-		want []string
-	}{
-		{"add", func() error { return AddDevice(ctx, dataUUID, "/dev/sdd", false) }, []string{"device", "add", "/dev/sdd", "/data"}},
-		{"add force", func() error { return AddDevice(ctx, dataUUID, "/dev/sdd", true) }, []string{"device", "add", "-f", "/dev/sdd", "/data"}},
-		{"replace", func() error { return ReplaceStart(ctx, dataUUID, 1, "/dev/sdd") }, []string{"replace", "start", "-f", "1", "/dev/sdd", "/data"}},
-		{"balance convert", func() error { return BalanceStart(ctx, dataUUID, new("raid1"), new("raid1")) }, []string{"balance", "start", "--background", "-dconvert=raid1", "-mconvert=raid1", "/data"}},
-		{"balance full", func() error { return BalanceStart(ctx, dataUUID, nil, nil) }, []string{"balance", "start", "--background", "--full-balance", "/data"}},
-		{"balance cancel", func() error { return BalanceCancel(ctx, dataUUID) }, []string{"balance", "cancel", "/data"}},
-		{"scrub start", func() error { return ScrubStart(ctx, dataUUID) }, []string{"scrub", "start", "/data"}},
-		{"scrub cancel", func() error { return ScrubCancel(ctx, dataUUID) }, []string{"scrub", "cancel", "/data"}},
+func TestAddDeviceWipesOnlyWithForce(t *testing.T) {
+	k := raid1Kernel()
+	stubKernel(t, k)
+	var wiped []string
+	old := wipeDeviceEdges
+	wipeDeviceEdges = func(device string) error {
+		wiped = append(wiped, device)
+		return nil
 	}
-	for _, s := range steps {
-		calls := stubDeviceBtrfs(t, threeDeviceShow)
-		if err := s.run(); err != nil {
-			t.Fatalf("%s: %v", s.name, err)
-		}
-		if want := [][]string{s.want}; !reflect.DeepEqual(*calls, want) {
-			t.Fatalf("%s: calls = %v, want %v", s.name, *calls, want)
-		}
-	}
-}
+	t.Cleanup(func() { wipeDeviceEdges = old })
 
-func TestDeviceCommandsRefuseBeforeRunning(t *testing.T) {
-	ctx := context.Background()
-	calls := stubDeviceBtrfs(t, fixture(t, "fi_show.txt")) // 2 devices
-	if err := BalanceStart(ctx, dataUUID, new("raid10"), nil); err == nil || err.Error() != "profile raid10 needs at least 4 devices" {
-		t.Fatalf("balance: err = %v", err)
+	if err := AddDevice(context.Background(), dataUUID, "/dev/sdd", false); err != nil {
+		t.Fatal(err)
 	}
-	if err := ReplaceStart(ctx, dataUUID, 7, "/dev/sdd"); err == nil {
-		t.Fatal("replace of unknown device id succeeded")
+	if err := AddDevice(context.Background(), dataUUID, "/dev/sde", true); err != nil {
+		t.Fatal(err)
 	}
-	if err := AddDevice(ctx, rootUUID, "/dev/sdd", false); err == nil || err.Error() != "btrfs filesystem "+rootUUID+" not found" {
+	if want := []string{"ADD_DEV /dev/sdd", "ADD_DEV /dev/sde"}; !reflect.DeepEqual(k.Calls(), want) || !reflect.DeepEqual(wiped, []string{"/dev/sde"}) {
+		t.Fatalf("calls = %v, wiped = %v", k.Calls(), wiped)
+	}
+	if err := AddDevice(context.Background(), rootUUID, "/dev/sdd", false); err == nil || err.Error() != "btrfs filesystem "+rootUUID+" not found" {
 		t.Fatalf("add to unknown fs: err = %v", err)
 	}
-	if len(*calls) != 0 {
-		t.Fatalf("mutating calls after refusal: %v", *calls)
+}
+
+func TestReplaceReportsProgressAndChecksResult(t *testing.T) {
+	k := raid1Kernel()
+	k.replaceStatus = func() (uint64, uint64) { return replaceStateStarted, 500 }
+	seen := make(chan struct{})
+	k.replaceStart = func(a *devReplaceArgs) error {
+		<-seen // finish only after progress was reported
+		return nil
+	}
+	stubKernel(t, k)
+
+	var mu sync.Mutex
+	var once sync.Once
+	var reported []float64
+	err := Replace(context.Background(), dataUUID, 1, "/dev/sdd", func(p float64) {
+		mu.Lock()
+		reported = append(reported, p)
+		mu.Unlock()
+		once.Do(func() { close(seen) })
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"REPLACE_START 1 /dev/sdd"}) {
+		t.Fatalf("calls = %v", calls)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reported) == 0 || reported[0] != 50 {
+		t.Fatalf("reported = %v", reported)
+	}
+
+	k.replaceStart = func(a *devReplaceArgs) error {
+		a.Result = 2
+		return nil
+	}
+	if err := Replace(context.Background(), dataUUID, 1, "/dev/sdd", func(float64) {}); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("refused start: err = %v", err)
+	}
+	if err := Replace(context.Background(), dataUUID, 7, "/dev/sdd", func(float64) {}); err == nil || !strings.Contains(err.Error(), "device 7 not found") {
+		t.Fatalf("unknown device: err = %v", err)
 	}
 }
 
-func TestParseBalanceStatusRunning(t *testing.T) {
-	running, pct, err := parseBalanceStatus(fixture(t, "balance_status.txt"))
-	if err != nil || !running || pct != 30 {
-		t.Fatalf("running=%v pct=%v err=%v, want true 30", running, pct, err)
+func TestReplaceCancelsWithContext(t *testing.T) {
+	k := raid1Kernel()
+	started := make(chan struct{})
+	k.replaceStart = func(*devReplaceArgs) error {
+		close(started)
+		<-k.cancelled
+		return unix.ECANCELED
 	}
-	running, pct, err = parseBalanceStatus("No balance found on '/data'")
-	if err != nil || running || pct != 0 {
-		t.Fatalf("none: running=%v pct=%v err=%v", running, pct, err)
+	stubKernel(t, k)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-started
+		cancel()
+	}()
+	err := Replace(ctx, dataUUID, 1, "/dev/sdd", func(float64) {})
+	if err == nil || !strings.Contains(err.Error(), "canceled") {
+		t.Fatalf("err = %v", err)
 	}
-	if _, _, err := parseBalanceStatus("Balance on '/data' is paused\n3 out of about 10 chunks balanced (12 considered),  70% left"); err == nil {
-		t.Fatal("paused balance parsed without error")
-	}
-	if _, _, err := parseBalanceStatus("garbage"); err == nil {
-		t.Fatal("garbage parsed without error")
-	}
-}
-
-// btrfs balance status exits 1 while a balance runs.
-func TestBalanceStatusToleratesRunningExitCode(t *testing.T) {
-	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
-	old := runBtrfs
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		return fixture(t, "balance_status.txt"), errors.New("btrfs balance status: exit status 1")
-	}
-	t.Cleanup(func() { runBtrfs = old })
-	running, pct, err := BalanceStatus(context.Background(), dataUUID)
-	if err != nil || !running || pct != 30 {
-		t.Fatalf("running=%v pct=%v err=%v", running, pct, err)
+	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"REPLACE_START 1 /dev/sdd", "REPLACE_CANCEL"}) {
+		t.Fatalf("calls = %v", calls)
 	}
 }
 
-func TestParseReplaceStatus(t *testing.T) {
-	running, pct, err := parseReplaceStatus("12.3% done, 0 write errs, 0 uncorr. read errs")
-	if err != nil || !running || pct != 12.3 {
-		t.Fatalf("running: running=%v pct=%v err=%v", running, pct, err)
+func TestBalanceArgs(t *testing.T) {
+	cases := []struct {
+		name string
+		opts BalanceOptions
+		want func(*testing.T, balanceArgs)
+	}{
+		{"convert both", BalanceOptions{DataProfile: new("raid1"), MetadataProfile: new("raid1c3")}, func(t *testing.T, a balanceArgs) {
+			if a.Flags != balanceData|balanceMetadata|balanceSystem || a.Data.Flags != balanceArgsConvert || a.Data.Target != bgRaid1 ||
+				a.Meta.Target != bgRaid1c3 || a.Sys != a.Meta {
+				t.Errorf("args = %+v", a)
+			}
+		}},
+		{"single uses the extended bit", BalanceOptions{DataProfile: new("single")}, func(t *testing.T, a balanceArgs) {
+			if a.Flags != balanceData || a.Data.Target != bgSingle || a.Meta.Flags != 0 {
+				t.Errorf("args = %+v", a)
+			}
+		}},
+		{"usage filter", BalanceOptions{DataUsageMax: new(50)}, func(t *testing.T, a balanceArgs) {
+			if a.Flags != balanceData || a.Data.Flags != balanceArgsUsage || a.Data.Usage != 50 {
+				t.Errorf("args = %+v", a)
+			}
+		}},
+		{"full", BalanceOptions{}, func(t *testing.T, a balanceArgs) {
+			if a.Flags != balanceData|balanceMetadata|balanceSystem || a.Data.Flags != 0 || a.Meta.Flags != 0 {
+				t.Errorf("args = %+v", a)
+			}
+		}},
 	}
-	running, pct, err = parseReplaceStatus(fixture(t, "replace_status.txt"))
-	if err != nil || running || pct != 100 {
-		t.Fatalf("finished: running=%v pct=%v err=%v", running, pct, err)
-	}
-	if _, _, err := parseReplaceStatus("Started on 19.Oct 10:15:00, canceled on 19.Oct 10:20:00 at 12.3%, 0 write errs, 0 uncorr. read errs"); err == nil {
-		t.Fatal("canceled replace parsed without error")
+	for _, c := range cases {
+		k := threeDiskKernel()
+		var got balanceArgs
+		k.balance = func(a *balanceArgs) error {
+			got = *a
+			return nil
+		}
+		stubKernel(t, k)
+		if err := Balance(context.Background(), dataUUID, c.opts, func(float64) {}); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		c.want(t, got)
 	}
 }
 
-// The start commands fork before the kernel call, so a refused or canceled
-// operation looks finished; the refreshed filesystem must show the outcome.
+func TestBalanceRefusesBeforeRunning(t *testing.T) {
+	k := raid1Kernel()
+	stubKernel(t, k)
+	if err := Balance(context.Background(), dataUUID, BalanceOptions{DataProfile: new("raid10")}, func(float64) {}); err == nil || err.Error() != "profile raid10 needs at least 4 devices" {
+		t.Fatalf("err = %v", err)
+	}
+	if err := Balance(context.Background(), dataUUID, BalanceOptions{DataUsageMax: new(120)}, func(float64) {}); err == nil || !strings.Contains(err.Error(), "percentage") {
+		t.Fatalf("err = %v", err)
+	}
+	if calls := k.Calls(); len(calls) != 0 {
+		t.Fatalf("calls after refusal: %v", calls)
+	}
+}
+
+func TestBalanceCancelsWithContextAndReportsProgress(t *testing.T) {
+	k := raid1Kernel()
+	k.balanceProgress = func() (balanceArgs, error) {
+		return balanceArgs{State: balanceStateRunning, Stat: balanceProgress{Expected: 200, Completed: 50}}, nil
+	}
+	k.balance = func(*balanceArgs) error {
+		<-k.cancelled
+		return unix.ECANCELED
+	}
+	stubKernel(t, k)
+	ctx, cancel := context.WithCancel(context.Background())
+	var mu sync.Mutex
+	var reported []float64
+	err := Balance(ctx, dataUUID, BalanceOptions{}, func(p float64) {
+		mu.Lock()
+		reported = append(reported, p)
+		mu.Unlock()
+		cancel() // once progress has been seen, cancel
+	})
+	if err == nil || err.Error() != "balance canceled" {
+		t.Fatalf("err = %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reported) == 0 || reported[0] != 25 {
+		t.Fatalf("reported = %v", reported)
+	}
+	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"BALANCE flags=7", "BALANCE_CTL 2"}) {
+		t.Fatalf("calls = %v", calls)
+	}
+}
+
+func TestBalanceProgressAndCancel(t *testing.T) {
+	k := raid1Kernel()
+	stubKernel(t, k)
+	if running, _, err := balanceProgressOf("/data"); err != nil || running {
+		t.Fatalf("no balance: running=%v err=%v", running, err)
+	}
+	k.balanceProgress = func() (balanceArgs, error) {
+		return balanceArgs{State: balanceStateRunning | balanceStatePauseReq}, nil
+	}
+	if _, _, err := balanceProgressOf("/data"); err == nil || err.Error() != "balance is paused" {
+		t.Fatalf("paused: err = %v", err)
+	}
+	k.fail = map[uintptr]error{iocBalanceCtl: unix.ENOTCONN}
+	if err := BalanceCancel(context.Background(), dataUUID); err == nil || err.Error() != "no balance is running" {
+		t.Fatalf("cancel: err = %v", err)
+	}
+}
+
 func TestBalanceResultRequiresConvertedProfiles(t *testing.T) {
-	ctx := context.Background()
-	calls := stubDeviceBtrfs(t, threeDeviceShow) // data raid1, metadata dup
-	if _, err := BalanceResult(ctx, dataUUID, new("single"), nil); err == nil ||
-		err.Error() != "balance ended without converting data to single (canceled or failed; see dmesg)" {
-		t.Fatalf("stale data: err = %v", err)
+	k := raid1Kernel() // data raid1, metadata raid1
+	stubKernel(t, k)
+	if _, err := BalanceResult(context.Background(), dataUUID, new("raid1"), nil); err != nil {
+		t.Fatalf("converted: %v", err)
 	}
-	if _, err := BalanceResult(ctx, dataUUID, nil, new("raid1")); err == nil ||
-		err.Error() != "balance ended without converting metadata to raid1 (canceled or failed; see dmesg)" {
-		t.Fatalf("stale metadata: err = %v", err)
+	if _, err := BalanceResult(context.Background(), dataUUID, new("single"), nil); err == nil || !strings.Contains(err.Error(), "without converting data to single") {
+		t.Fatalf("stale: err = %v", err)
 	}
-	if fs, err := BalanceResult(ctx, dataUUID, new("raid1"), new("dup")); err != nil || fs.UUID != dataUUID {
-		t.Fatalf("converted: fs=%+v err=%v", fs, err)
-	}
-	if _, err := BalanceResult(ctx, dataUUID, nil, nil); err != nil {
-		t.Fatalf("full balance: err = %v", err)
-	}
-	stubDeviceBtrfsUsage(t, threeDeviceShow, "")
-	if _, err := BalanceResult(ctx, dataUUID, new("raid1"), nil); err == nil {
-		t.Fatal("unknown allocation reported as converted")
-	}
-	if len(*calls) != 0 {
-		t.Fatalf("unexpected calls: %v", *calls)
+	if _, err := BalanceResult(context.Background(), dataUUID, nil, new("dup")); err == nil || !strings.Contains(err.Error(), "metadata to dup") {
+		t.Fatalf("metadata: err = %v", err)
 	}
 }
 
 func TestReplaceResultRequiresNewDevice(t *testing.T) {
-	ctx := context.Background()
-	calls := stubDeviceBtrfs(t, threeDeviceShow)
-	if _, err := ReplaceResult(ctx, dataUUID, 1, "/dev/sdd"); err == nil ||
-		err.Error() != "replace ended without installing /dev/sdd (canceled or failed; see dmesg)" {
-		t.Fatalf("old path: err = %v", err)
+	k := raid1Kernel()
+	stubKernel(t, k)
+	if _, err := ReplaceResult(context.Background(), dataUUID, 2, "/dev/sdb1"); err != nil {
+		t.Fatalf("installed: %v", err)
 	}
-	if fs, err := ReplaceResult(ctx, dataUUID, 3, "/dev/sdc1"); err != nil || fs.UUID != dataUUID {
-		t.Fatalf("installed: fs=%+v err=%v", fs, err)
+	if _, err := ReplaceResult(context.Background(), dataUUID, 2, "/dev/sdd"); err == nil || !strings.Contains(err.Error(), "without installing /dev/sdd") {
+		t.Fatalf("not installed: err = %v", err)
 	}
-	if len(*calls) != 0 {
-		t.Fatalf("unexpected calls: %v", *calls)
+}
+
+func TestGrowDeviceAndSetLabel(t *testing.T) {
+	k := raid1Kernel()
+	stubKernel(t, k)
+	if err := GrowDevice(context.Background(), dataUUID, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := GrowDevice(context.Background(), dataUUID, 9); err == nil {
+		t.Fatal("grow of unknown device succeeded")
+	}
+	if err := SetLabel(context.Background(), dataUUID, "tank"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetLabel(context.Background(), dataUUID, "a/b"); err == nil {
+		t.Fatal("bad label accepted")
+	}
+	if want := []string{"RESIZE 2:max", "SET_FSLABEL tank"}; !reflect.DeepEqual(k.Calls(), want) {
+		t.Fatalf("calls = %v, want %v", k.Calls(), want)
 	}
 }

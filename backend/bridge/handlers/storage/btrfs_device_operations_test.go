@@ -1,16 +1,14 @@
 package storage
 
 import (
-	"context"
-	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
+
+const testBtrfsUUID = "9a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d"
 
 func TestCheckBtrfsDeviceFree(t *testing.T) {
 	devices := []apischema.StorageBlockDevice{
@@ -43,49 +41,5 @@ func TestCheckBtrfsDeviceFree(t *testing.T) {
 		if c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)) {
 			t.Errorf("%s force=%v: err = %v, want %q", c.device, c.force, err, c.wantErr)
 		}
-	}
-}
-
-func fastBtrfsPoll(t *testing.T) {
-	t.Helper()
-	old := btrfsPollInterval
-	btrfsPollInterval = time.Millisecond
-	t.Cleanup(func() { btrfsPollInterval = old })
-}
-
-func TestPollBtrfsOpReportsUntilDone(t *testing.T) {
-	fastBtrfsPoll(t)
-	polls := 0
-	var reported []BtrfsOpProgress
-	err := pollBtrfsOp(context.Background(), func(p bridgetasks.ProgressDetail) {
-		if op, ok := p.(BtrfsOpProgress); ok {
-			reported = append(reported, op)
-		}
-	}, "balance", "Balancing", func(context.Context) (bool, float64, error) {
-		polls++
-		return polls < 3, float64(polls * 10), nil
-	})
-	if err != nil || polls != 3 || len(reported) != 2 || reported[1].Percent != 20 || reported[1].Op != "balance" {
-		t.Fatalf("err=%v polls=%d reported=%+v", err, polls, reported)
-	}
-}
-
-func TestPollBtrfsOpStopsOnErrorAndCancel(t *testing.T) {
-	// The default interval keeps the ticker from racing the canceled ctx.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := pollBtrfsOp(ctx, func(bridgetasks.ProgressDetail) {}, "scrub", "Scrubbing", func(context.Context) (bool, float64, error) {
-		t.Fatal("polled after cancel")
-		return true, 0, nil
-	}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("err = %v, want canceled", err)
-	}
-
-	fastBtrfsPoll(t)
-	boom := errors.New("boom")
-	if err := pollBtrfsOp(context.Background(), func(bridgetasks.ProgressDetail) {}, "scrub", "Scrubbing", func(context.Context) (bool, float64, error) {
-		return false, 0, boom
-	}); !errors.Is(err, boom) {
-		t.Fatalf("err = %v, want boom", err)
 	}
 }

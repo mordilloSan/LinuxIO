@@ -46,6 +46,8 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       "balance_cancel",
       "scrub_start",
       "scrub_cancel",
+      "device_grow",
+      "set_label",
     ]) {
       expect(OPERATION_QUERY_INVALIDATIONS[`storage.btrfs_${action}`]).toEqual([
         ["linuxio", "storage", "btrfs_list"],

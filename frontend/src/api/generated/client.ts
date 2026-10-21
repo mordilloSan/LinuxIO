@@ -244,6 +244,7 @@ const linuxio = {
     }),
     btrfs_balance_cancel: defineCallWithRequest("storage.btrfs_balance_cancel"),
     btrfs_device_add: defineCallWithRequest("storage.btrfs_device_add"),
+    btrfs_device_grow: defineCallWithRequest("storage.btrfs_device_grow"),
     btrfs_device_remove: createTaskEndpoint("storage", "btrfs_device_remove", {
       kind: "object",
     }),
@@ -282,6 +283,7 @@ const linuxio = {
     btrfs_set_compression: defineCallWithRequest(
       "storage.btrfs_set_compression",
     ),
+    btrfs_set_label: defineCallWithRequest("storage.btrfs_set_label"),
     btrfs_set_quotas: defineCallWithRequest("storage.btrfs_set_quotas"),
     btrfs_settings: defineCallWithRequest("storage.btrfs_settings"),
     btrfs_snapshot_create: defineCallWithRequest(

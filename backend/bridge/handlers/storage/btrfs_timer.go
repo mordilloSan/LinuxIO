@@ -1,12 +1,15 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 
 	godbus "github.com/godbus/dbus/v5"
 
@@ -42,7 +45,56 @@ var (
 		unitPath:  filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotServiceName),
 		timerPath: filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotTimerName),
 	}
+	defaultBtrfsHealthPaths = btrfsTimerPaths{
+		unitPath:  filepath.Join(btrfs.SnapshotUnitDir, btrfs.HealthServiceName),
+		timerPath: filepath.Join(btrfs.SnapshotUnitDir, btrfs.HealthTimerName),
+	}
+	healthTimerOnce sync.Once
 )
+
+// ensureBtrfsHealthTimerOnce installs the health timer the first time a root
+// bridge lists filesystems, so every host with btrfs gets checked without
+// anyone visiting the snapshot settings.
+func ensureBtrfsHealthTimerOnce(ctx context.Context) {
+	if os.Geteuid() != 0 {
+		return
+	}
+	healthTimerOnce.Do(func() {
+		if err := ensureBtrfsHealthTimer(ctx, defaultBtrfsTimerOps, defaultBtrfsHealthPaths); err != nil {
+			slog.Warn("failed to install btrfs health timer", "error", err)
+		}
+	})
+}
+
+// ensureBtrfsHealthTimer writes the health units when their content changed
+// and keeps the timer enabled and running.
+func ensureBtrfsHealthTimer(ctx context.Context, ops btrfsTimerOps, paths btrfsTimerPaths) error {
+	changed := false
+	for _, unit := range []struct {
+		path    string
+		content []byte
+	}{{paths.unitPath, btrfs.RenderHealthUnit()}, {paths.timerPath, btrfs.RenderHealthTimer()}} {
+		if current, err := os.ReadFile(unit.path); err == nil && bytes.Equal(current, unit.content) {
+			continue
+		}
+		if err := utils.WriteFileAtomic(unit.path, unit.content, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", unit.path, err)
+		}
+		changed = true
+	}
+	if changed {
+		if err := ops.daemonReload(ctx); err != nil {
+			return fmt.Errorf("reload systemd: %w", err)
+		}
+	}
+	if err := ops.enableUnit(ctx, btrfs.HealthTimerName); err != nil {
+		return fmt.Errorf("enable %s: %w", btrfs.HealthTimerName, err)
+	}
+	if err := ops.startUnit(ctx, btrfs.HealthTimerName); err != nil {
+		return fmt.Errorf("start %s: %w", btrfs.HealthTimerName, err)
+	}
+	return nil
+}
 
 // syncBtrfsTimer writes the snapshot units and runs the timer only while
 // some rule or replication job is enabled: the timer's run does both.

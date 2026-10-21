@@ -87,10 +87,20 @@ const filesystem = (
     sizeBytes: 50 * GiB,
     usedBytes: 10 * GiB,
     missing: false,
+    physicalBytes: 0,
+    growable: false,
     errors: noErrors,
   })),
-  scrub: { status: "none", errorCount: 0, bytesScrubbed: 0, percent: 0 },
+  scrub: {
+    status: "none",
+    errorCount: 0,
+    uncorrectableErrors: 0,
+    correctedErrors: 0,
+    bytesScrubbed: 0,
+    percent: 0,
+  },
   degraded: false,
+  lowMetadataSpace: false,
 });
 
 const raid = filesystem(
@@ -361,6 +371,23 @@ describe("StoragePools", () => {
     await user.click(within(dialog).getByRole("button", { name: "Destroy" }));
     expect(mocks.mutations["storage.btrfs_pool_destroy"]).toHaveBeenCalledWith(
       { uuid: "uuid-raid" },
+      expect.anything(),
+    );
+  });
+
+  it("renames the selected pool", async () => {
+    const user = userEvent.setup();
+    renderPools();
+
+    await user.click(await screen.findByRole("button", { name: "tank" }));
+    await user.click(screen.getByRole("button", { name: "Rename pool" }));
+    const name = screen.getByLabelText("Name");
+    expect(name).toHaveValue("tank");
+    await user.clear(name);
+    await user.type(name, "media");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(mocks.mutations["storage.btrfs_set_label"]).toHaveBeenCalledWith(
+      { uuid: "uuid-raid", label: "media" },
       expect.anything(),
     );
   });

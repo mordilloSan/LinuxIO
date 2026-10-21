@@ -4,15 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
+	"os"
 	"slices"
-	"strconv"
 	"strings"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // AllowedProfiles are the block-group profiles LinuxIO converts to; raid5
 // and raid6 are deliberately absent.
 var AllowedProfiles = []string{"single", "dup", "raid0", "raid1", "raid1c3", "raid1c4", "raid10"}
+
+// progressInterval is how often blocking operations report; a variable so
+// tests can poll quickly.
+var progressInterval = 2 * time.Second
 
 // MinDevices returns how many devices profile needs, or 0 when unknown.
 func MinDevices(profile string) int {
@@ -82,18 +89,59 @@ func hasDevice(fs BtrfsFilesystem, id int) bool {
 	return slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id })
 }
 
-// AddDevice adds device to the filesystem; force overwrites an existing
-// signature. Callers check that device is free.
+// deviceName fills a vol_args name, refusing paths the struct cannot hold.
+func deviceName(args *volArgs, device string) error {
+	if len(device) >= len(args.Name) {
+		return fmt.Errorf("device path too long: %s", device)
+	}
+	copy(args.Name[:], device)
+	return nil
+}
+
+// edgeWipeBytes is how much of each end of a device is zeroed before it
+// joins a filesystem with force: it covers every known signature and
+// partition table, as mkfs.btrfs does.
+const edgeWipeBytes = 2 << 20
+
+// wipeDeviceEdges zeroes the first and last edgeWipeBytes of device; a var
+// so tests can stub it.
+var wipeDeviceEdges = func(device string) error {
+	size, err := blockDeviceSize(device)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	n := min(size, edgeWipeBytes)
+	zeros := make([]byte, n)
+	for _, off := range []uint64{0, size - n} {
+		if _, err := f.WriteAt(zeros, int64(off)); err != nil {
+			return fmt.Errorf("wipe %s: %w", device, err)
+		}
+	}
+	return f.Sync()
+}
+
+// AddDevice adds device to the filesystem; force first wipes the
+// signatures on it. Callers check that device is free.
 func AddDevice(ctx context.Context, uuid, device string, force bool) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
 	}
-	args := []string{"device", "add"}
-	if force {
-		args = append(args, "-f")
+	var args volArgs
+	if err := deviceName(&args, device); err != nil {
+		return err
 	}
-	if _, err := runBtrfs(ctx, append(args, device, fs.Mountpoints[0].Mountpoint)...); err != nil {
+	if force {
+		if err := wipeDeviceEdges(device); err != nil {
+			return err
+		}
+	}
+	if err := fsIoctl(fs.Mountpoints[0].Mountpoint, iocAddDev, unsafe.Pointer(&args)); err != nil {
 		return fmt.Errorf("add device %s: %w", device, err)
 	}
 	return nil
@@ -109,7 +157,7 @@ func RemoveDevice(ctx context.Context, uuid string, id int) error {
 	if !hasDevice(fs, id) {
 		return fmt.Errorf("device %d not found in filesystem %s", id, uuid)
 	}
-	// Fail closed: inventory only logs a failed `filesystem usage`, leaving
+	// Fail closed: inventory only logs a failed space read, leaving
 	// Allocation empty, and an unknown profile has no known minimum.
 	seen := map[string]bool{}
 	for _, a := range fs.Allocation {
@@ -136,15 +184,40 @@ func RemoveDevice(ctx context.Context, uuid string, id int) error {
 			return fmt.Errorf("cannot remove device %d: %s profile %s needs at least %d devices", id, a.Kind, a.Profile, n)
 		}
 	}
-	if _, err := runBtrfs(ctx, "device", "remove", strconv.Itoa(id), fs.Mountpoints[0].Mountpoint); err != nil {
+	args := volArgsV2{Flags: devSpecByID}
+	putU64(args.Name[:], 0, uint64(id))
+	if err := fsIoctl(fs.Mountpoints[0].Mountpoint, iocRmDevV2, unsafe.Pointer(&args)); err != nil {
 		return fmt.Errorf("remove device %d: %w", id, err)
 	}
 	return nil
 }
 
-// ReplaceStart starts replacing device id with newDevice in the background.
+// waitOp waits for a blocking kernel operation running in another
+// goroutine, reporting its progress every interval and canceling it when
+// ctx ends; the operation's own error is returned.
+func waitOp(ctx context.Context, done <-chan error, cancel func(), poll func() (percent float64, running bool), report func(float64)) error {
+	ticker := time.NewTicker(progressInterval)
+	defer ticker.Stop()
+	ctxDone := ctx.Done()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-ctxDone:
+			ctxDone = nil // cancel once, then wait for the operation to return
+			cancel()
+		case <-ticker.C:
+			if pct, running := poll(); running {
+				report(pct)
+			}
+		}
+	}
+}
+
+// Replace copies device id onto newDevice and makes it the member in its
+// place, reporting progress until done; canceling ctx cancels the replace.
 // Callers check that newDevice is free.
-func ReplaceStart(ctx context.Context, uuid string, id int, newDevice string) error {
+func Replace(ctx context.Context, uuid string, id int, newDevice string, report func(float64)) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
@@ -152,87 +225,118 @@ func ReplaceStart(ctx context.Context, uuid string, id int, newDevice string) er
 	if !hasDevice(fs, id) {
 		return fmt.Errorf("device %d not found in filesystem %s", id, uuid)
 	}
-	if _, err := runBtrfs(ctx, "replace", "start", "-f", strconv.Itoa(id), newDevice, fs.Mountpoints[0].Mountpoint); err != nil {
-		return fmt.Errorf("start replace of device %d: %w", id, err)
+	mnt := fs.Mountpoints[0].Mountpoint
+	args := devReplaceArgs{Cmd: replaceCmdStart}
+	if len(newDevice) >= 1024 {
+		return fmt.Errorf("device path too long: %s", newDevice)
+	}
+	putU64(args.Params[:], replaceSrcDevID, uint64(id))
+	copy(args.Params[replaceTgtDevName:], newDevice)
+	done := make(chan error, 1)
+	go func() {
+		ioctlErr := fsIoctl(mnt, iocDevReplace, unsafe.Pointer(&args))
+		if ioctlErr == nil {
+			if msg, refused := replaceResults[args.Result]; refused {
+				ioctlErr = errors.New(msg)
+			}
+		}
+		done <- ioctlErr
+	}()
+	err = waitOp(ctx, done, func() {
+		cancel := devReplaceArgs{Cmd: replaceCmdCancel}
+		_ = fsIoctl(mnt, iocDevReplace, unsafe.Pointer(&cancel))
+	}, func() (float64, bool) {
+		status := devReplaceArgs{Cmd: replaceCmdStatus}
+		if fsIoctl(mnt, iocDevReplace, unsafe.Pointer(&status)) != nil || getU64(status.Params[:], replaceStatusState) != replaceStateStarted {
+			return 0, false
+		}
+		return float64(getU64(status.Params[:], replaceStatusPerMill)) / 10, true
+	}, report)
+	if err != nil {
+		if errors.Is(err, unix.ECANCELED) {
+			return fmt.Errorf("replace of device %d canceled", id)
+		}
+		return fmt.Errorf("replace device %d: %w", id, err)
 	}
 	return nil
 }
 
-// ReplaceResult returns the refreshed filesystem once a replace stopped
-// running. `replace start` daemonizes before the kernel call, so a refused or
-// canceled replace exits 0; only the device list shows whether it happened.
+// ReplaceResult returns the refreshed filesystem once a replace ended,
+// checking that newDevice took the slot.
 func ReplaceResult(ctx context.Context, uuid string, id int, newDevice string) (BtrfsFilesystem, error) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return BtrfsFilesystem{}, err
 	}
 	if !slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id && d.Path == newDevice }) {
-		return BtrfsFilesystem{}, fmt.Errorf("replace ended without installing %s (canceled or failed; see dmesg)", newDevice)
+		return BtrfsFilesystem{}, fmt.Errorf("replace ended without installing %s (see dmesg)", newDevice)
 	}
 	return fs, nil
 }
 
-// ReplaceStatus reports whether a replace is running and its progress. A
-// replace that ended without finishing is an error.
-func ReplaceStatus(ctx context.Context, uuid string) (running bool, percent float64, err error) {
-	mnt, err := mountpointFor(ctx, uuid)
-	if err != nil {
-		return false, 0, err
-	}
-	out, err := runBtrfs(ctx, "replace", "status", "-1", mnt)
-	if err != nil {
-		return false, 0, fmt.Errorf("replace status: %w", err)
-	}
-	return parseReplaceStatus(out)
+// BalanceOptions selects what a balance rewrites: a nil profile keeps the
+// current one, DataUsageMax limits data to chunks used at most that percent
+// (which frees unallocated space), and no option at all balances everything.
+type BalanceOptions struct {
+	DataProfile     *string
+	MetadataProfile *string
+	DataUsageMax    *int
 }
 
-var replaceDone = regexp.MustCompile(`([\d.]+)% done`)
-
-// parseReplaceStatus parses `btrfs replace status -1`.
-func parseReplaceStatus(out string) (running bool, percent float64, err error) {
-	if m := replaceDone.FindStringSubmatch(out); m != nil {
-		pct, err := strconv.ParseFloat(m[1], 64)
-		if err != nil {
-			return false, 0, fmt.Errorf("parse replace progress %q: %w", m[0], err)
-		}
-		return true, pct, nil
-	}
-	if strings.Contains(out, "finished on") {
-		return false, 100, nil
-	}
-	return false, 0, fmt.Errorf("replace did not finish: %s", strings.TrimSpace(out))
-}
-
-// BalanceStart validates the requested profiles and starts a balance in the
-// background, converting to them; with both nil it balances everything.
-func BalanceStart(ctx context.Context, uuid string, data, meta *string) error {
+// Balance runs a balance to completion, reporting progress; canceling ctx
+// cancels it. Converting metadata converts system chunks with it, as
+// btrfs-progs does.
+func Balance(ctx context.Context, uuid string, opts BalanceOptions, report func(float64)) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
 	}
-	if err := ValidateProfiles(data, meta, len(fs.Devices)); err != nil {
+	if err = ValidateProfiles(opts.DataProfile, opts.MetadataProfile, len(fs.Devices)); err != nil {
 		return err
 	}
-	args := []string{"balance", "start", "--background"}
-	if data != nil {
-		args = append(args, "-dconvert="+*data)
+	if opts.DataUsageMax != nil && (*opts.DataUsageMax < 0 || *opts.DataUsageMax > 100) {
+		return fmt.Errorf("usage filter %d is not a percentage", *opts.DataUsageMax)
 	}
-	if meta != nil {
-		args = append(args, "-mconvert="+*meta)
+	var args balanceArgs
+	if opts.DataProfile != nil {
+		args.Flags |= balanceData
+		args.Data.Flags |= balanceArgsConvert
+		args.Data.Target = profileFlags[*opts.DataProfile]
 	}
-	if data == nil && meta == nil {
-		// Skips the 10 s warning delay btrfs-progs adds before a filterless balance.
-		args = append(args, "--full-balance")
+	if opts.MetadataProfile != nil {
+		args.Flags |= balanceMetadata | balanceSystem
+		args.Meta.Flags |= balanceArgsConvert
+		args.Meta.Target = profileFlags[*opts.MetadataProfile]
+		args.Sys = args.Meta
 	}
-	if _, err := runBtrfs(ctx, append(args, fs.Mountpoints[0].Mountpoint)...); err != nil {
-		return fmt.Errorf("start balance: %w", err)
+	if opts.DataUsageMax != nil {
+		args.Flags |= balanceData
+		args.Data.Flags |= balanceArgsUsage
+		args.Data.Usage = uint64(*opts.DataUsageMax)
+	}
+	if args.Flags == 0 {
+		args.Flags = balanceData | balanceMetadata | balanceSystem
+	}
+	mnt := fs.Mountpoints[0].Mountpoint
+	done := make(chan error, 1)
+	go func() { done <- fsIoctl(mnt, iocBalanceV2, unsafe.Pointer(&args)) }()
+	err = waitOp(ctx, done, func() { _ = balanceCancel(mnt) }, func() (float64, bool) {
+		running, pct, progressErr := balanceProgressOf(mnt)
+		return pct, progressErr == nil && running
+	}, report)
+	switch {
+	case errors.Is(err, unix.ECANCELED):
+		return errors.New("balance canceled")
+	case errors.Is(err, unix.EINPROGRESS):
+		return errors.New("a balance is already running")
+	case err != nil:
+		return fmt.Errorf("balance: %w", err)
 	}
 	return nil
 }
 
-// BalanceResult returns the refreshed filesystem once a balance stopped
-// running. `balance start --background` forks before the kernel call, so a
-// refused or canceled conversion exits 0; only the profiles show the outcome.
+// BalanceResult returns the refreshed filesystem once a balance ended,
+// checking that the requested profiles are now the only ones.
 func BalanceResult(ctx context.Context, uuid string, data, meta *string) (BtrfsFilesystem, error) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
@@ -248,81 +352,81 @@ func BalanceResult(ctx context.Context, uuid string, data, meta *string) (BtrfsF
 		present := slices.ContainsFunc(fs.Allocation, func(a BtrfsAllocation) bool { return a.Kind == want.kind })
 		stale := slices.ContainsFunc(fs.Allocation, func(a BtrfsAllocation) bool { return a.Kind == want.kind && a.Profile != *want.target })
 		if !present || stale {
-			return BtrfsFilesystem{}, fmt.Errorf("balance ended without converting %s to %s (canceled or failed; see dmesg)", want.kind, *want.target)
+			return BtrfsFilesystem{}, fmt.Errorf("balance ended without converting %s to %s (see dmesg)", want.kind, *want.target)
 		}
 	}
 	return fs, nil
 }
 
-// BalanceStatus reports whether a balance is running and its progress.
-func BalanceStatus(ctx context.Context, uuid string) (running bool, percent float64, err error) {
-	mnt, err := mountpointFor(ctx, uuid)
-	if err != nil {
-		return false, 0, err
+// balanceProgressOf reports the kernel's balance state on a mountpoint.
+func balanceProgressOf(mnt string) (running bool, percent float64, err error) {
+	var args balanceArgs
+	if err := fsIoctl(mnt, iocBalanceProgress, unsafe.Pointer(&args)); err != nil {
+		if errors.Is(err, unix.ENOTCONN) {
+			return false, 0, nil
+		}
+		return false, 0, fmt.Errorf("balance progress: %w", err)
 	}
-	// `balance status` exits 1 while a balance is running or paused, so the
-	// output decides and the exit error only counts when there is none.
-	out, err := runBtrfs(ctx, "balance", "status", mnt)
-	if err != nil && out == "" {
-		return false, 0, fmt.Errorf("balance status: %w", err)
+	if args.State&balanceStatePauseReq != 0 {
+		return false, 0, errors.New("balance is paused")
 	}
-	return parseBalanceStatus(out)
+	if args.Stat.Expected > 0 {
+		percent = min(100, float64(args.Stat.Completed)*100/float64(args.Stat.Expected))
+	}
+	return args.State&balanceStateRunning != 0, percent, nil
 }
 
-var balanceLeft = regexp.MustCompile(`(\d+)% left`)
-
-// parseBalanceStatus parses `btrfs balance status`; percent is complete.
-func parseBalanceStatus(out string) (running bool, percent float64, err error) {
-	switch {
-	case strings.Contains(out, "No balance found"):
-		return false, 0, nil
-	case strings.Contains(out, "is paused"):
-		return false, 0, errors.New("balance is paused")
-	case !strings.Contains(out, "is running"):
-		return false, 0, fmt.Errorf("unexpected balance status %q", strings.TrimSpace(out))
+func balanceCancel(mnt string) error {
+	cmd := int32(balanceCtlCancel)
+	if err := fsIoctl(mnt, iocBalanceCtl, unsafe.Pointer(&cmd)); err != nil {
+		if errors.Is(err, unix.ENOTCONN) {
+			return errors.New("no balance is running")
+		}
+		return fmt.Errorf("cancel balance: %w", err)
 	}
-	if m := balanceLeft.FindStringSubmatch(out); m != nil {
-		left, _ := strconv.Atoi(m[1])
-		percent = float64(100 - left)
-	}
-	return true, percent, nil
+	return nil
 }
 
 // BalanceCancel cancels the running balance.
 func BalanceCancel(ctx context.Context, uuid string) error {
-	return runOnMount(ctx, uuid, "cancel balance", "balance", "cancel")
-}
-
-// ScrubStart starts a scrub in the background.
-func ScrubStart(ctx context.Context, uuid string) error {
-	return runOnMount(ctx, uuid, "start scrub", "scrub", "start")
-}
-
-// ScrubCancel cancels the running scrub.
-func ScrubCancel(ctx context.Context, uuid string) error {
-	return runOnMount(ctx, uuid, "cancel scrub", "scrub", "cancel")
-}
-
-// ScrubStatus returns the current scrub state.
-func ScrubStatus(ctx context.Context, uuid string) (BtrfsScrubStatus, error) {
-	mnt, err := mountpointFor(ctx, uuid)
-	if err != nil {
-		return BtrfsScrubStatus{}, err
-	}
-	out, err := runBtrfs(ctx, "scrub", "status", "--raw", mnt)
-	if err != nil {
-		return BtrfsScrubStatus{}, fmt.Errorf("scrub status: %w", err)
-	}
-	return parseScrubStatus(out)
-}
-
-func runOnMount(ctx context.Context, uuid, what string, args ...string) error {
 	mnt, err := mountpointFor(ctx, uuid)
 	if err != nil {
 		return err
 	}
-	if _, err := runBtrfs(ctx, append(args, mnt)...); err != nil {
-		return fmt.Errorf("%s: %w", what, err)
+	return balanceCancel(mnt)
+}
+
+// GrowDevice resizes device id to the whole block device, as after
+// replacing it with a bigger disk.
+func GrowDevice(ctx context.Context, uuid string, id int) error {
+	fs, err := FindFilesystem(ctx, uuid)
+	if err != nil {
+		return err
+	}
+	if !hasDevice(fs, id) {
+		return fmt.Errorf("device %d not found in filesystem %s", id, uuid)
+	}
+	var args volArgs
+	copy(args.Name[:], fmt.Sprintf("%d:max", id))
+	if err := fsIoctl(fs.Mountpoints[0].Mountpoint, iocResize, unsafe.Pointer(&args)); err != nil {
+		return fmt.Errorf("grow device %d: %w", id, err)
+	}
+	return nil
+}
+
+// SetLabel renames the filesystem.
+func SetLabel(ctx context.Context, uuid, label string) error {
+	if err := ValidateLabel(label); err != nil {
+		return err
+	}
+	mnt, err := mountpointFor(ctx, uuid)
+	if err != nil {
+		return err
+	}
+	var buf [labelSize]byte
+	copy(buf[:], label)
+	if err := fsIoctl(mnt, iocSetFSLabel, unsafe.Pointer(&buf)); err != nil {
+		return fmt.Errorf("set label: %w", err)
 	}
 	return nil
 }

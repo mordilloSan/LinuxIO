@@ -264,6 +264,7 @@ export interface BtrfsBalanceRequest {
   uuid: string;
   dataProfile?: string;
   metadataProfile?: string;
+  dataUsage?: number;
 }
 
 export interface BtrfsCompression {
@@ -287,6 +288,8 @@ export interface BtrfsDevice {
   usedBytes: number;
   missing: boolean;
   errors: BtrfsDeviceErrors;
+  physicalBytes: number;
+  growable: boolean;
 }
 
 export interface BtrfsDeviceAddRequest {
@@ -325,6 +328,7 @@ export interface BtrfsFilesystem {
   devices: BtrfsDevice[];
   scrub: BtrfsScrubStatus;
   degraded: boolean;
+  lowMetadataSpace: boolean;
 }
 
 export interface BtrfsJobIDRequest {
@@ -336,6 +340,11 @@ export interface BtrfsKeep {
   daily: number;
   weekly: number;
   monthly: number;
+}
+
+export interface BtrfsLabelRequest {
+  uuid: string;
+  label: string;
 }
 
 export interface BtrfsMaintenanceRequest {
@@ -461,6 +470,8 @@ export interface BtrfsScrubStatus {
   startedAt?: string;
   finishedAt?: string;
   errorCount: number;
+  uncorrectableErrors: number;
+  correctedErrors: number;
   bytesScrubbed: number;
   percent: number;
 }
@@ -4088,6 +4099,11 @@ export interface LinuxIOSchema {
       request: BtrfsDeviceAddRequest;
       result: BtrfsFilesystem;
     };
+    btrfs_device_grow: {
+      input: [request: BtrfsDeviceRequest];
+      request: BtrfsDeviceRequest;
+      result: BtrfsFilesystem;
+    };
     btrfs_device_remove: {
       input: [request: BtrfsDeviceRequest];
       request: BtrfsDeviceRequest;
@@ -4172,6 +4188,11 @@ export interface LinuxIOSchema {
       input: [request: BtrfsCompressionRequest];
       request: BtrfsCompressionRequest;
       result: BtrfsSettings;
+    };
+    btrfs_set_label: {
+      input: [request: BtrfsLabelRequest];
+      request: BtrfsLabelRequest;
+      result: BtrfsFilesystem;
     };
     btrfs_set_quotas: {
       input: [request: BtrfsQuotaRequest];
@@ -4965,6 +4986,10 @@ export interface LinuxIOCallSchema {
     request: BtrfsDeviceAddRequest;
     result: BtrfsFilesystem;
   };
+  "storage.btrfs_device_grow": {
+    request: BtrfsDeviceRequest;
+    result: BtrfsFilesystem;
+  };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
   "storage.btrfs_pool_create": {
     request: BtrfsPoolCreateRequest;
@@ -5007,6 +5032,10 @@ export interface LinuxIOCallSchema {
   "storage.btrfs_set_compression": {
     request: BtrfsCompressionRequest;
     result: BtrfsSettings;
+  };
+  "storage.btrfs_set_label": {
+    request: BtrfsLabelRequest;
+    result: BtrfsFilesystem;
   };
   "storage.btrfs_set_quotas": {
     request: BtrfsQuotaRequest;

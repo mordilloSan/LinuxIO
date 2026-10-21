@@ -8,24 +8,20 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"runtime"
+	"path/filepath"
 	"strings"
 	"unicode"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
-// Kernel constants from linux/btrfs.h and linux/btrfs_tree.h.
+// Superblock constants from linux/btrfs_tree.h.
 const (
 	controlDevice = "/dev/btrfs-control"
-	// _IOW(BTRFS_IOCTL_MAGIC 0x94, nr, struct btrfs_ioctl_vol_args) for nr 4 and 5.
-	iocScanDev   = 0x50009404
-	iocForgetDev = 0x50009405
-	superOffset  = 65536 // BTRFS_SUPER_INFO_OFFSET: the primary superblock
-	superSize    = 4096  // BTRFS_SUPER_INFO_SIZE
-	superMagic   = 0x4D5F53665248425F
-	labelSize    = 256 // BTRFS_LABEL_SIZE, including the terminating NUL
+	superOffset   = 65536 // BTRFS_SUPER_INFO_OFFSET: the primary superblock
+	superSize     = 4096  // BTRFS_SUPER_INFO_SIZE
+	superMagic    = 0x4D5F53665248425F
+	labelSize     = 256 // BTRFS_LABEL_SIZE, including the terminating NUL
 
 	// Field offsets in struct btrfs_super_block.
 	superFSID       = 32
@@ -36,34 +32,32 @@ const (
 	superLabel      = 299
 )
 
-// volArgs mirrors struct btrfs_ioctl_vol_args.
-type volArgs struct {
-	Fd   int64
-	Name [4088]byte
-}
+// sysBlockDir lists the host's block devices; a var so tests can point it
+// at a fixture tree.
+var sysBlockDir = "/sys/class/block"
 
-// controlIoctl sends one device path to /dev/btrfs-control; a var so tests
-// can record calls.
-var controlIoctl = func(req uintptr, device string) error {
-	var args volArgs
-	if len(device) >= len(args.Name) {
-		return fmt.Errorf("device path too long: %s", device)
-	}
-	copy(args.Name[:], device)
-	f, err := os.OpenFile(controlDevice, os.O_RDWR, 0)
+// BlockDevices returns the /dev path of every block device with a size,
+// skipping RAM, floppy and optical devices whose superblocks are not worth
+// reading.
+func BlockDevices() []string {
+	entries, err := os.ReadDir(sysBlockDir)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("%s is missing; is the btrfs kernel module loaded? (%w)", controlDevice, err)
+		slog.Warn("list block devices", "error", err)
+		return nil
+	}
+	var paths []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, "ram") || strings.HasPrefix(name, "zram") || strings.HasPrefix(name, "sr") || strings.HasPrefix(name, "fd") {
+			continue
 		}
-		return err
+		size, err := os.ReadFile(filepath.Join(sysBlockDir, name, "size"))
+		if err != nil || strings.TrimSpace(string(size)) == "0" {
+			continue
+		}
+		paths = append(paths, "/dev/"+name)
 	}
-	defer f.Close()
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), req, uintptr(unsafe.Pointer(&args)))
-	runtime.KeepAlive(&args)
-	if errno != 0 {
-		return errno
-	}
-	return nil
+	return paths
 }
 
 // RegisterDevice makes the kernel read device's superblock, as udev does

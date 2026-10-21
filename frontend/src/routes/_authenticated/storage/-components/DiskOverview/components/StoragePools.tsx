@@ -10,6 +10,7 @@ import {
 } from "@/api";
 import { driveIcon } from "@/components/cards/DriveCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import {
@@ -19,6 +20,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
+import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import useAuth from "@/hooks/useAuth";
@@ -219,7 +221,8 @@ const Volumes = ({
 
 type PoolDialog =
   | { kind: "create" }
-  | { kind: "destroy"; uuid: string; name: string; disks: string[] };
+  | { kind: "destroy"; uuid: string; name: string; disks: string[] }
+  | { kind: "rename"; uuid: string; label: string };
 
 interface StoragePoolsProps {
   drives: DriveInfo[];
@@ -269,6 +272,10 @@ const StoragePools = ({
   const { mutate: destroyPool, isPending: isDestroying } = useCallMutation(
     linuxio.storage.btrfs_pool_destroy,
     { success: "Pool destroyed", error: "Failed to destroy pool" },
+  );
+  const { mutate: renamePool, isPending: isRenaming } = useCallMutation(
+    linuxio.storage.btrfs_set_label,
+    { success: "Pool renamed", error: "Failed to rename pool" },
   );
 
   const {
@@ -537,9 +544,22 @@ const StoragePools = ({
               marginBottom: 8,
             }}
           >
-            <AppTypography style={{ fontWeight: 600 }} variant="h6">
-              Details · {selected.pool.name}
-            </AppTypography>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <AppTypography style={{ fontWeight: 600 }} variant="h6">
+                Details · {selected.pool.name}
+              </AppTypography>
+              <AppActionIconButton
+                icon="mdi:pencil"
+                label="Rename pool"
+                onClick={() =>
+                  setDialog({
+                    kind: "rename",
+                    uuid: selected.fs.uuid,
+                    label: selected.fs.label,
+                  })
+                }
+              />
+            </div>
             <AppButton
               color="error"
               onClick={() =>
@@ -586,6 +606,37 @@ const StoragePools = ({
             fs.devices.map(({ path }) => path),
           )}
         />
+      )}
+      {dialog?.kind === "rename" && (
+        <GeneralDialog fullWidth maxWidth="sm" onClose={closeDialog} open>
+          <AppDialogTitle>Rename pool</AppDialogTitle>
+          <AppDialogContent>
+            <AppTextField
+              autoFocus
+              fullWidth
+              label="Name"
+              onChange={(event) =>
+                setDialog({ ...dialog, label: event.target.value })
+              }
+              value={dialog.label}
+            />
+          </AppDialogContent>
+          <AppDialogActions>
+            <AppButton onClick={closeDialog}>Cancel</AppButton>
+            <AppButton
+              disabled={isRenaming || dialog.label.trim() === ""}
+              onClick={() =>
+                renamePool(
+                  { uuid: dialog.uuid, label: dialog.label.trim() },
+                  { onSuccess: closeDialog },
+                )
+              }
+              variant="contained"
+            >
+              Rename
+            </AppButton>
+          </AppDialogActions>
+        </GeneralDialog>
       )}
       <GeneralDialog
         fullWidth

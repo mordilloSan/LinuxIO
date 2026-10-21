@@ -67,6 +67,14 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     linuxio.storage.btrfs_balance_cancel,
     { error: "Failed to cancel balance", toast: BTRFS_TOAST_META },
   );
+  const { mutate: growDevice, isPending: isGrowing } = useCallMutation(
+    linuxio.storage.btrfs_device_grow,
+    {
+      success: "Device grown to its disk size",
+      error: "Failed to grow device",
+      toast: BTRFS_TOAST_META,
+    },
+  );
   const taskConfig = (success: string, error: string) => ({
     onProgress: (taskProgress: TaskProgress<BtrfsOpProgress>) =>
       setProgress(taskProgress.detail ?? null),
@@ -195,6 +203,14 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       header: "Actions",
       cell: ({ row }) => (
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          {row.original.growable && (
+            <AppActionIconButton
+              disabled={pending || isGrowing}
+              icon="mdi:arrow-expand-horizontal"
+              label="Grow to disk size"
+              onClick={() => growDevice({ uuid, deviceId: row.original.id })}
+            />
+          )}
           <AppActionIconButton
             disabled={pending}
             icon="mdi:swap-horizontal"
