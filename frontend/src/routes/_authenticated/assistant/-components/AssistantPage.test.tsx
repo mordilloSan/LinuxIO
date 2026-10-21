@@ -36,9 +36,12 @@ const setState = assistantStore._patch;
 describe("AssistantPage", () => {
   it("asks to pick an agent when none is configured", () => {
     render(<AssistantPage agent={null} />);
-    expect(
-      screen.getByText(/choose an agent in settings/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/no agent is set up/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Choose an agent" }));
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/settings",
+      search: { tab: "assistant" },
+    });
     expect(connectSpy).not.toHaveBeenCalled();
   });
 
@@ -126,7 +129,7 @@ describe("AssistantPage", () => {
       expect(deleteSession).not.toHaveBeenCalled();
       expect(screen.queryByRole("menu", { name: "Previous chats" })).toBeNull();
       await userEvent.click(
-        await screen.findByRole("button", { name: "Delete" }),
+        await screen.findByRole("button", { name: "Delete chat" }),
       );
       expect(deleteSession).toHaveBeenCalledWith("s1");
     });
@@ -428,9 +431,10 @@ describe("AssistantPage", () => {
       await screen.findByRole("button", { name: "Delete Initial greeting" }),
     );
     const dialog = await screen.findByRole("dialog");
-    fireEvent.keyDown(within(dialog).getByRole("button", { name: "Delete" }), {
-      key: "Escape",
-    });
+    fireEvent.keyDown(
+      within(dialog).getByRole("button", { name: "Delete chat" }),
+      { key: "Escape" },
+    );
     expect(stop).not.toHaveBeenCalled();
   });
 

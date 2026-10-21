@@ -4,7 +4,6 @@
   gap: var(--app-space-8);
   height: 100%;
   min-height: 0;
-  outline: none;
 }
 
 .assistant__actions {
@@ -100,7 +99,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--app-space-12);
-  padding: var(--app-space-12);
+  /* The conversation shares the prompt's column: past 768px the gutters grow
+     so a line of prose stays readable on a wide screen. */
+  padding: var(--app-space-12) max(var(--app-space-12), calc((60% - 768px) / 2));
 }
 
 /* A new chat: nothing to read yet, so say so in the middle of the space. */
@@ -133,8 +134,8 @@
   padding: var(--app-space-8) var(--app-space-12);
   border: 2px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
-  /* A shade below the page, not a filled chip. */
-  background: color-mix(in srgb, var(--app-palette-background-default) 88%, grey);
+  /* A shade off the page, not a filled chip. */
+  background: var(--app-palette-action-hover);
 }
 
 /* Answers read as prose: a touch of leading, and bold that stands out from
@@ -350,7 +351,8 @@
   align-self: flex-start;
   max-width: 100%;
   border: 1px solid var(--app-palette-divider);
-  border-radius: var(--app-radius-md);
+  /* The rows inside are radius-md at an 8px inset. */
+  border-radius: var(--app-radius-card);
 }
 
 .assistant-tool-group:has(.assistant-tool-group__rows) {
@@ -369,35 +371,11 @@
   font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
-.assistant-tool-group__dot {
-  width: 8px;
-  height: 8px;
+/* The state is a shape, not a colour: a spinner, a check or an alert. */
+.assistant-tool-group__state {
+  display: inline-flex;
   flex-shrink: 0;
-  border-radius: 50%;
-}
-
-.assistant-tool-group__dot--done {
-  background: var(--app-palette-success-main);
-}
-
-.assistant-tool-group__dot--failed {
-  background: var(--app-palette-error-main);
-}
-
-.assistant-tool-group__dot--active {
-  background: var(--app-palette-primary-main);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .assistant-tool-group__dot--active {
-    animation: assistant-pulse 1.2s ease-in-out infinite;
-  }
-}
-
-@keyframes assistant-pulse {
-  50% {
-    opacity: 0.35;
-  }
+  color: var(--app-palette-text-secondary);
 }
 
 .assistant-tool-group__rows {
@@ -435,6 +413,7 @@
   display: flex;
   align-items: center;
   gap: var(--app-space-8);
+  font-variant-numeric: tabular-nums;
 }
 
 /* The box owns the border; the text field and the bar sit inside it. */
@@ -500,7 +479,6 @@
 .assistant__bar-group--config {
   flex: 1;
   flex-wrap: wrap;
-  min-width: 0;
 }
 
 .assistant__bar-switch {
@@ -567,7 +545,7 @@
 }
 
 .assistant__attachment-meta {
-  color: var(--app-palette-text-disabled);
+  color: var(--app-palette-text-secondary);
 }
 
 .assistant__preview-image {
@@ -606,35 +584,18 @@
   height: 24px;
   padding: 0 var(--app-space-8);
   border-radius: var(--app-radius-pill);
-  background-color: var(--app-palette-action-hover);
-  color: var(--app-palette-text-secondary);
   font: inherit;
   /* The page scales --app-font-size-body with the chat font size; the chip
      is a fixed 24px control, so it keeps the theme's base size. */
   font-size: 0.75rem;
 }
 
-.app-icon-btn.assistant__pill:hover:not(:disabled),
-.app-icon-btn.assistant__pill:focus-visible {
-  color: var(--app-palette-text-primary);
-}
-
 /* Two tones, like the Claude chip: the model reads first, the effort after. */
 .assistant__pill-major {
-  color: var(--app-palette-text-secondary);
+  color: var(--app-palette-text-primary);
 }
 
 .assistant__pill-minor {
-  color: var(--app-palette-text-disabled);
-}
-
-.app-icon-btn.assistant__pill:hover:not(:disabled) .assistant__pill-major,
-.app-icon-btn.assistant__pill:focus-visible .assistant__pill-major {
-  color: var(--app-palette-text-primary);
-}
-
-.app-icon-btn.assistant__pill:hover:not(:disabled) .assistant__pill-minor,
-.app-icon-btn.assistant__pill:focus-visible .assistant__pill-minor {
   color: var(--app-palette-text-secondary);
 }
 
@@ -734,28 +695,17 @@
   padding-block: 4px;
 }
 
-/* The current choice carries the accent: a tinted row and an accent check,
-   in both the model and the mode menus. */
+/* The current choice is a tinted row with a check, in both the model and the
+   mode menus. */
 .assistant__model-menu .app-menu__item--selected,
 .assistant__mode-menu .app-menu__item--selected {
   background: color-mix(in srgb, var(--app-palette-primary-main), transparent 84%);
 }
 
-.assistant__model-menu .app-menu__item--selected .app-menu__item-end,
-.assistant__mode-menu .app-menu__item--selected .app-menu__item-end,
-.assistant__mode-menu .app-menu__item--selected .app-menu__item-start {
-  color: var(--app-palette-primary-main);
-}
-
-.assistant__model-menu .app-menu__item--selected .assistant__mode-name,
-.assistant__mode-menu .app-menu__item--selected .assistant__mode-name {
-  color: var(--app-palette-primary-main);
-}
-
 .assistant__menu-subheader {
   padding: 4px 10px 2px;
   font-size: calc(var(--app-font-size-body) * 0.85);
-  color: var(--app-palette-text-disabled);
+  color: var(--app-palette-text-secondary);
 }
 
 /* Model settings and effort stay in view at the bottom of the menu while the
@@ -780,10 +730,6 @@
   gap: var(--app-space-12);
   padding: 6px 10px 10px;
   font-size: var(--app-font-size-body);
-}
-
-.assistant__extra-value {
-  color: var(--app-palette-primary-main);
 }
 
 /* A switch drawn in CSS: the whole row is the control. */
@@ -818,10 +764,6 @@
 .assistant__toggle--on::after {
   background: var(--app-palette-primary-contrast-text);
   transform: translateX(12px);
-}
-
-.assistant__effort-value {
-  color: var(--app-palette-primary-main);
 }
 
 /* A short track of dots with a round thumb, drawn over a native range input
@@ -945,7 +887,8 @@
 .assistant__permission-command {
   margin: 0;
   padding: var(--app-space-8) var(--app-space-12);
-  border-radius: var(--app-radius-md);
+  /* The card is radius-card at a 12px inset. */
+  border-radius: var(--app-radius-base);
   background: var(--app-palette-background-default);
   color: var(--app-palette-text-primary);
   font-family: var(--app-font-mono);
@@ -1001,7 +944,6 @@
 .app-btn.assistant__permission-option:focus .assistant__permission-key,
 .app-btn.assistant__permission-option:hover .assistant__permission-key {
   border-color: var(--app-palette-primary-main);
-  color: var(--app-palette-primary-main);
 }
 
 .assistant__permission-label {
@@ -1010,6 +952,6 @@
 }
 
 .assistant__permission-esc {
-  color: var(--app-palette-text-disabled);
+  color: var(--app-palette-text-secondary);
   font-size: calc(var(--app-font-size-body) * 0.85);
 }

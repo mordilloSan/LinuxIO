@@ -37,7 +37,8 @@ export default function ContextGauge({
 
   return (
     <AppTooltip title={text}>
-      <span className="assistant__gauge-wrap">
+      {/* Focusable so the numbers open for keyboard users too. */}
+      <span className="assistant__gauge-wrap app-focus-ring" tabIndex={0}>
         <svg
           aria-label={text}
           className={`assistant__gauge assistant__gauge--${level(fraction)}`}

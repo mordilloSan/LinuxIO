@@ -40,7 +40,7 @@ export default function AttachmentChip({
     attachment.kind === "image"
       ? size
       : text !== null
-        ? `${lineCount(text)} lines`
+        ? `${lineCount(text)} ${lineCount(text) === 1 ? "line" : "lines"}`
         : null;
   const canOpen = attachment.kind === "image" || text !== null;
   const body = (

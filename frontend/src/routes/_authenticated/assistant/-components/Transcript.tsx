@@ -3,6 +3,7 @@ import { Icon } from "@iconify/react";
 import { type ReactNode, useRef, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 
 import AttachmentChip from "./AttachmentChip";
@@ -50,7 +51,8 @@ function ToolRow({ block }: { block: ToolBlock }) {
   );
 }
 
-const DOT_LABEL = { active: "running", failed: "failed", done: "done" };
+const STATE_LABEL = { active: "running", failed: "failed", done: "done" };
+const STATE_ICON = { failed: "mdi:alert-circle-outline", done: "mdi:check" };
 
 const isActive = (block: ToolBlock) =>
   block.status === "pending" || block.status === "in_progress";
@@ -70,11 +72,17 @@ function ToolGroupRow({ tools }: { tools: ToolBlock[] }) {
         onClick={() => setOpen(!open)}
       >
         <span
-          aria-label={DOT_LABEL[state]}
-          className={`assistant-tool-group__dot assistant-tool-group__dot--${state}`}
+          aria-label={STATE_LABEL[state]}
+          className={`assistant-tool-group__state assistant-tool-group__state--${state}`}
           role="img"
-          title={DOT_LABEL[state]}
-        />
+          title={STATE_LABEL[state]}
+        >
+          {state === "active" ? (
+            <AppCircularProgress size={12} />
+          ) : (
+            <Icon icon={STATE_ICON[state]} width={14} />
+          )}
+        </span>
         <AppTypography variant="caption">
           {tools.length} tool calls
         </AppTypography>

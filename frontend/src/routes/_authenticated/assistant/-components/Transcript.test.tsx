@@ -118,7 +118,7 @@ describe("Transcript", () => {
       );
       expect(screen.getByText("· 1 failed")).toBeInTheDocument();
       expect(
-        container.querySelector(".assistant-tool-group__dot--failed"),
+        container.querySelector(".assistant-tool-group__state--failed"),
       ).not.toBeNull();
       expect(screen.getByRole("img", { name: "failed" })).toHaveAttribute(
         "title",
@@ -131,7 +131,7 @@ describe("Transcript", () => {
         <Transcript blocks={[tool("a"), tool("b", "in_progress")]} />,
       );
       expect(
-        container.querySelector(".assistant-tool-group__dot--active"),
+        container.querySelector(".assistant-tool-group__state--active"),
       ).not.toBeNull();
     });
 
@@ -140,7 +140,7 @@ describe("Transcript", () => {
         <Transcript blocks={[tool("a"), tool("b")]} />,
       );
       expect(
-        container.querySelector(".assistant-tool-group__dot--done"),
+        container.querySelector(".assistant-tool-group__state--done"),
       ).not.toBeNull();
     });
 
