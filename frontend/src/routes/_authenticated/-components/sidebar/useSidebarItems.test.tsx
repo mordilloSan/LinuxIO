@@ -103,6 +103,7 @@ describe("useSidebarItems", () => {
       "Network",
       "Updates",
       "Services",
+      "Logs",
       "Storage",
       "Docker",
       "Accounts",

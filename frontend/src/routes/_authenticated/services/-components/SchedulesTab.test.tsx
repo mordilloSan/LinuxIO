@@ -173,7 +173,7 @@ describe("SchedulesTab interactions", () => {
       request: { id: "backup", invocation_id: status.invocation_id },
     });
     expect(mocks.navigate).toHaveBeenCalledWith({
-      to: "/services/logs",
+      to: "/logs",
       search: { unit: status.unit_name },
     });
   });

@@ -16,6 +16,7 @@ import { Route as AuthenticatedAccountsRouteRouteImport } from './routes/_authen
 import { Route as AuthenticatedAssistantRouteRouteImport } from './routes/_authenticated/assistant/route'
 import { Route as AuthenticatedDockerRouteRouteImport } from './routes/_authenticated/docker/route'
 import { Route as AuthenticatedHardwareRouteRouteImport } from './routes/_authenticated/hardware/route'
+import { Route as AuthenticatedLogsRouteRouteImport } from './routes/_authenticated/logs/route'
 import { Route as AuthenticatedNetworkRouteRouteImport } from './routes/_authenticated/network/route'
 import { Route as AuthenticatedServicesRouteRouteImport } from './routes/_authenticated/services/route'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
@@ -38,8 +39,6 @@ import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedNetworkWireguardRouteImport } from './routes/_authenticated/network/wireguard'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
 import { Route as AuthenticatedServicesHtopRouteImport } from './routes/_authenticated/services/htop'
-import { Route as AuthenticatedServicesLogsRouteImport } from './routes/_authenticated/services/logs'
-import { Route as AuthenticatedServicesProcessesRouteImport } from './routes/_authenticated/services/processes'
 import { Route as AuthenticatedServicesProgramsRouteImport } from './routes/_authenticated/services/programs'
 import { Route as AuthenticatedServicesSchedulesRouteImport } from './routes/_authenticated/services/schedules'
 import { Route as AuthenticatedServicesSocketsRouteImport } from './routes/_authenticated/services/sockets'
@@ -99,6 +98,11 @@ const AuthenticatedHardwareRouteRoute =
     path: '/hardware',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedLogsRouteRoute = AuthenticatedLogsRouteRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedNetworkRouteRoute =
   AuthenticatedNetworkRouteRouteImport.update({
     id: '/network',
@@ -229,18 +233,6 @@ const AuthenticatedServicesHtopRoute =
     path: '/htop',
     getParentRoute: () => AuthenticatedServicesRouteRoute,
   } as any)
-const AuthenticatedServicesLogsRoute =
-  AuthenticatedServicesLogsRouteImport.update({
-    id: '/logs',
-    path: '/logs',
-    getParentRoute: () => AuthenticatedServicesRouteRoute,
-  } as any)
-const AuthenticatedServicesProcessesRoute =
-  AuthenticatedServicesProcessesRouteImport.update({
-    id: '/processes',
-    path: '/processes',
-    getParentRoute: () => AuthenticatedServicesRouteRoute,
-  } as any)
 const AuthenticatedServicesProgramsRoute =
   AuthenticatedServicesProgramsRouteImport.update({
     id: '/programs',
@@ -364,6 +356,7 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AuthenticatedAssistantRouteRoute
   '/docker': typeof AuthenticatedDockerRouteRouteWithChildren
   '/hardware': typeof AuthenticatedHardwareRouteRoute
+  '/logs': typeof AuthenticatedLogsRouteRoute
   '/network': typeof AuthenticatedNetworkRouteRouteWithChildren
   '/services': typeof AuthenticatedServicesRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRoute
@@ -383,8 +376,6 @@ export interface FileRoutesByFullPath {
   '/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
   '/network/wireguard': typeof AuthenticatedNetworkWireguardRoute
   '/services/htop': typeof AuthenticatedServicesHtopRoute
-  '/services/logs': typeof AuthenticatedServicesLogsRoute
-  '/services/processes': typeof AuthenticatedServicesProcessesRoute
   '/services/programs': typeof AuthenticatedServicesProgramsRoute
   '/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
@@ -413,6 +404,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRouteRoute
   '/assistant': typeof AuthenticatedAssistantRouteRoute
   '/hardware': typeof AuthenticatedHardwareRouteRoute
+  '/logs': typeof AuthenticatedLogsRouteRoute
   '/settings': typeof AuthenticatedSettingsRouteRoute
   '/terminal': typeof AuthenticatedTerminalRouteRoute
   '/': typeof AuthenticatedIndexRoute
@@ -427,8 +419,6 @@ export interface FileRoutesByTo {
   '/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
   '/network/wireguard': typeof AuthenticatedNetworkWireguardRoute
   '/services/htop': typeof AuthenticatedServicesHtopRoute
-  '/services/logs': typeof AuthenticatedServicesLogsRoute
-  '/services/processes': typeof AuthenticatedServicesProcessesRoute
   '/services/programs': typeof AuthenticatedServicesProgramsRoute
   '/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/services/sockets': typeof AuthenticatedServicesSocketsRoute
@@ -461,6 +451,7 @@ export interface FileRoutesById {
   '/_authenticated/assistant': typeof AuthenticatedAssistantRouteRoute
   '/_authenticated/docker': typeof AuthenticatedDockerRouteRouteWithChildren
   '/_authenticated/hardware': typeof AuthenticatedHardwareRouteRoute
+  '/_authenticated/logs': typeof AuthenticatedLogsRouteRoute
   '/_authenticated/network': typeof AuthenticatedNetworkRouteRouteWithChildren
   '/_authenticated/services': typeof AuthenticatedServicesRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRoute
@@ -481,8 +472,6 @@ export interface FileRoutesById {
   '/_authenticated/filebrowser/$': typeof AuthenticatedFilebrowserSplatRoute
   '/_authenticated/network/wireguard': typeof AuthenticatedNetworkWireguardRoute
   '/_authenticated/services/htop': typeof AuthenticatedServicesHtopRoute
-  '/_authenticated/services/logs': typeof AuthenticatedServicesLogsRoute
-  '/_authenticated/services/processes': typeof AuthenticatedServicesProcessesRoute
   '/_authenticated/services/programs': typeof AuthenticatedServicesProgramsRoute
   '/_authenticated/services/schedules': typeof AuthenticatedServicesSchedulesRoute
   '/_authenticated/services/sockets': typeof AuthenticatedServicesSocketsRoute
@@ -516,6 +505,7 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/docker'
     | '/hardware'
+    | '/logs'
     | '/network'
     | '/services'
     | '/settings'
@@ -535,8 +525,6 @@ export interface FileRouteTypes {
     | '/filebrowser/$'
     | '/network/wireguard'
     | '/services/htop'
-    | '/services/logs'
-    | '/services/processes'
     | '/services/programs'
     | '/services/schedules'
     | '/services/sockets'
@@ -565,6 +553,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/assistant'
     | '/hardware'
+    | '/logs'
     | '/settings'
     | '/terminal'
     | '/'
@@ -579,8 +568,6 @@ export interface FileRouteTypes {
     | '/filebrowser/$'
     | '/network/wireguard'
     | '/services/htop'
-    | '/services/logs'
-    | '/services/processes'
     | '/services/programs'
     | '/services/schedules'
     | '/services/sockets'
@@ -612,6 +599,7 @@ export interface FileRouteTypes {
     | '/_authenticated/assistant'
     | '/_authenticated/docker'
     | '/_authenticated/hardware'
+    | '/_authenticated/logs'
     | '/_authenticated/network'
     | '/_authenticated/services'
     | '/_authenticated/settings'
@@ -632,8 +620,6 @@ export interface FileRouteTypes {
     | '/_authenticated/filebrowser/$'
     | '/_authenticated/network/wireguard'
     | '/_authenticated/services/htop'
-    | '/_authenticated/services/logs'
-    | '/_authenticated/services/processes'
     | '/_authenticated/services/programs'
     | '/_authenticated/services/schedules'
     | '/_authenticated/services/sockets'
@@ -713,6 +699,13 @@ declare module '@tanstack/react-router' {
       path: '/hardware'
       fullPath: '/hardware'
       preLoaderRoute: typeof AuthenticatedHardwareRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/logs': {
+      id: '/_authenticated/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof AuthenticatedLogsRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/network': {
@@ -867,20 +860,6 @@ declare module '@tanstack/react-router' {
       path: '/htop'
       fullPath: '/services/htop'
       preLoaderRoute: typeof AuthenticatedServicesHtopRouteImport
-      parentRoute: typeof AuthenticatedServicesRouteRoute
-    }
-    '/_authenticated/services/logs': {
-      id: '/_authenticated/services/logs'
-      path: '/logs'
-      fullPath: '/services/logs'
-      preLoaderRoute: typeof AuthenticatedServicesLogsRouteImport
-      parentRoute: typeof AuthenticatedServicesRouteRoute
-    }
-    '/_authenticated/services/processes': {
-      id: '/_authenticated/services/processes'
-      path: '/processes'
-      fullPath: '/services/processes'
-      preLoaderRoute: typeof AuthenticatedServicesProcessesRouteImport
       parentRoute: typeof AuthenticatedServicesRouteRoute
     }
     '/_authenticated/services/programs': {
@@ -1088,8 +1067,6 @@ const AuthenticatedNetworkRouteRouteWithChildren =
 
 interface AuthenticatedServicesRouteRouteChildren {
   AuthenticatedServicesHtopRoute: typeof AuthenticatedServicesHtopRoute
-  AuthenticatedServicesLogsRoute: typeof AuthenticatedServicesLogsRoute
-  AuthenticatedServicesProcessesRoute: typeof AuthenticatedServicesProcessesRoute
   AuthenticatedServicesProgramsRoute: typeof AuthenticatedServicesProgramsRoute
   AuthenticatedServicesSchedulesRoute: typeof AuthenticatedServicesSchedulesRoute
   AuthenticatedServicesSocketsRoute: typeof AuthenticatedServicesSocketsRoute
@@ -1100,8 +1077,6 @@ interface AuthenticatedServicesRouteRouteChildren {
 const AuthenticatedServicesRouteRouteChildren: AuthenticatedServicesRouteRouteChildren =
   {
     AuthenticatedServicesHtopRoute: AuthenticatedServicesHtopRoute,
-    AuthenticatedServicesLogsRoute: AuthenticatedServicesLogsRoute,
-    AuthenticatedServicesProcessesRoute: AuthenticatedServicesProcessesRoute,
     AuthenticatedServicesProgramsRoute: AuthenticatedServicesProgramsRoute,
     AuthenticatedServicesSchedulesRoute: AuthenticatedServicesSchedulesRoute,
     AuthenticatedServicesSocketsRoute: AuthenticatedServicesSocketsRoute,
@@ -1197,6 +1172,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAssistantRouteRoute: typeof AuthenticatedAssistantRouteRoute
   AuthenticatedDockerRouteRoute: typeof AuthenticatedDockerRouteRouteWithChildren
   AuthenticatedHardwareRouteRoute: typeof AuthenticatedHardwareRouteRoute
+  AuthenticatedLogsRouteRoute: typeof AuthenticatedLogsRouteRoute
   AuthenticatedNetworkRouteRoute: typeof AuthenticatedNetworkRouteRouteWithChildren
   AuthenticatedServicesRouteRoute: typeof AuthenticatedServicesRouteRouteWithChildren
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRoute
@@ -1213,6 +1189,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAssistantRouteRoute: AuthenticatedAssistantRouteRoute,
   AuthenticatedDockerRouteRoute: AuthenticatedDockerRouteRouteWithChildren,
   AuthenticatedHardwareRouteRoute: AuthenticatedHardwareRouteRoute,
+  AuthenticatedLogsRouteRoute: AuthenticatedLogsRouteRoute,
   AuthenticatedNetworkRouteRoute: AuthenticatedNetworkRouteRouteWithChildren,
   AuthenticatedServicesRouteRoute: AuthenticatedServicesRouteRouteWithChildren,
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRoute,

@@ -201,9 +201,7 @@ describe("targeted route query ownership", () => {
   });
 
   it("enables the logs service query only for status-backed filters", () => {
-    const logs = readRouteSource(
-      "services/-components/logs/GeneralLogsPage.tsx",
-    );
+    const logs = readRouteSource("logs/-components/GeneralLogsPage.tsx");
 
     expect(logs).toMatch(
       /\.\.\.linuxio\.systemd\.list_services,\s*enabled: unitStatusNeedsServices,/,

@@ -5,8 +5,8 @@ import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
-import { PROCESS_REFRESH_INTERVAL_MS } from "./ProcessesTab";
 import ProcessVirtualTable from "./ProcessVirtualTable";
+import { PROCESS_REFRESH_INTERVAL_MS } from "./ProgramsTab";
 
 import "./htop.css";
 

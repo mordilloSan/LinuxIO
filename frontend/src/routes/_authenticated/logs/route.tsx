@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { FileTextIcon } from "@/icons/svg";
 import { loadRouteTransport } from "@/routes/-loader";
 
-import GeneralLogsPage from "./-components/logs/GeneralLogsPage";
+import GeneralLogsPage from "./-components/GeneralLogsPage";
 
 const managedServiceUnit = /^[A-Za-z0-9:_.@%-]+\.service$/;
 const invocationID = /^[0-9a-f]{32}$/;
@@ -38,9 +39,16 @@ function LogsRoute() {
   );
 }
 
-export const Route = createFileRoute("/_authenticated/services/logs")({
+export const Route = createFileRoute("/_authenticated/logs")({
   validateSearch: optionalManagedLogScope,
   loader: ({ abortController, context }) =>
     loadRouteTransport(context, abortController.signal),
   component: LogsRoute,
+  staticData: {
+    navigation: {
+      icon: FileTextIcon,
+      position: 35,
+      title: "Logs",
+    },
+  },
 });

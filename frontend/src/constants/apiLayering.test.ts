@@ -156,7 +156,7 @@ describe("API layering guard", () => {
         "docker.logs.follow_all",
       ],
       [
-        "routes/_authenticated/services/-components/logs/GeneralLogsPage.tsx",
+        "routes/_authenticated/logs/-components/GeneralLogsPage.tsx",
         "logs.general.follow",
       ],
       ["components/cards/UnitLogsCard.tsx", "logs.service.follow"],

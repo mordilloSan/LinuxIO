@@ -33,6 +33,7 @@
 
 .htop-header__summary {
   gap: var(--app-space-12);
+  container-type: inline-size;
 }
 
 .htop-header__stats {
@@ -49,6 +50,13 @@
 .htop-header__stats dd {
   margin: 0;
   font-weight: 600;
+}
+
+/* Wide enough for tasks, load average and uptime to share one line. */
+@container (min-width: 760px) {
+  .htop-header__stats {
+    grid-template-columns: repeat(3, max-content minmax(max-content, 1fr));
+  }
 }
 
 .htop-meter {

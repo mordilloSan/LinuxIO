@@ -25,6 +25,7 @@ const VIBRANT_GRADIENTS: Record<string, TileGradient> = {
   "/docker": ["#57a8ff", "#1d63ed"],
   "/filebrowser/$": ["#ffd968", "#f2a93b"],
   "/hardware": ["#6f8fb8", "#3c5a80"],
+  "/logs": ["#aab4c2", "#6b7686"],
   "/network": ["#3fd4e0", "#0aa3b5"],
   "/services": ["#b57af2", "#7c3fd6"],
   "/settings": ["#c3ccd8", "#5f6a78"],

@@ -46,7 +46,7 @@ describe("generated application router", () => {
 
   it("rejects malformed log scopes instead of opening unfiltered history", () => {
     const validate =
-      router.routesById["/_authenticated/services/logs"].options.validateSearch;
+      router.routesById["/_authenticated/logs"].options.validateSearch;
     if (typeof validate !== "function")
       throw new Error("Missing log search validation");
     for (const search of [
@@ -84,14 +84,13 @@ describe("generated application router", () => {
         "/docker/volumes",
         "/filebrowser/$",
         "/hardware",
+        "/logs",
         "/network",
         "/network/",
         "/network/wireguard",
         "/services",
         "/services/",
         "/services/htop",
-        "/services/logs",
-        "/services/processes",
         "/services/programs",
         "/services/schedules",
         "/services/sockets",
@@ -166,6 +165,7 @@ describe("generated application router", () => {
       "Network",
       "Updates",
       "Services",
+      "Logs",
       "Storage",
       "Docker",
       "VMs",

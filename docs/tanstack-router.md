@@ -555,7 +555,7 @@ the immediate duplicate request, while the `BACKGROUND` policy still
 revalidates stale or invalidated listings on a later navigation without hiding
 the cached directory.
 
-Transport only — `services/logs.tsx` and `terminal/route.tsx`:
+Transport only — `logs/route.tsx` and `terminal/route.tsx`:
 
 ```ts
 loader: ({ abortController, context }) =>
@@ -608,12 +608,12 @@ inherits its ancestor's.
 | `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | `volume` | — |
 | `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
+| `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | `unit`, `invocationId` | — |
 | `/network` | `network/route.tsx` | — | — | — | — |
 | `/network/` | `network/index.tsx` | `loadRouteQueries` ×1 | — | `iface`, `handoffOperationId` | — |
 | `/network/wireguard` | `network/wireguard.tsx` | `loadRouteQueries` ×1 | — | `iface` | `requireAccess` wireguard, privileged |
 | `/services` | `services/route.tsx` | — | — | — | — |
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
-| `/services/logs` | `services/logs.tsx` | `loadRouteTransport` | — | `unit`, `invocationId` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
 | `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | — | — |
@@ -790,9 +790,9 @@ export function useSidebarItems(): SidebarItem[] {
 
 Current `position` ladder — pick a gap, and leave room:
 
-| 0 | 10 | 20 | 30 | 40 | 50 | 55 | 60 | 90 | 100 | 110 | 115 | 120 |
-|---|----|----|----|----|----|----|----|----|-----|-----|-----|-----|
-| Dashboard | Network | Updates | Services | Storage | Docker | VMs | Accounts | Hardware | Navigator | Terminal | Assistant | Settings |
+| 0 | 10 | 20 | 30 | 35 | 40 | 50 | 55 | 60 | 90 | 100 | 110 | 115 | 120 |
+|---|----|----|----|----|----|----|----|----|----|-----|-----|-----|-----|
+| Dashboard | Network | Updates | Services | Logs | Storage | Docker | VMs | Accounts | Hardware | Navigator | Terminal | Assistant | Settings |
 
 ## Page Tabs Are Child Routes
 
