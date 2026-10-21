@@ -99,9 +99,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--app-space-12);
-  /* The conversation shares the prompt's column: past 768px the gutters grow
-     so a line of prose stays readable on a wide screen. */
-  padding: var(--app-space-12) max(var(--app-space-12), calc((60% - 768px) / 2));
+  padding: var(--app-space-12);
 }
 
 /* A new chat: nothing to read yet, so say so in the middle of the space. */
@@ -116,7 +114,9 @@
   color: var(--app-palette-primary-main);
 }
 
+/* Messages and tool calls cap their width at the prompt's 768px. */
 .assistant-block {
+  max-width: 768px;
   overflow-wrap: anywhere;
 }
 
@@ -129,7 +129,7 @@
    the answer around it. */
 .assistant-block--user {
   align-self: flex-end;
-  max-width: 80%;
+  max-width: min(80%, 768px);
   margin-block: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
   border: 2px solid var(--app-palette-divider);
@@ -322,67 +322,187 @@
   background: color-mix(in srgb, var(--app-palette-error-main), transparent 80%);
 }
 
+/* Tool calls read as a timeline, like the IDE: a marker on a rail, what the
+   tool does, then its input and output. Capped at the prompt's 768px. */
+.assistant-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-16);
+  max-width: min(100%, 768px);
+}
+
 .assistant-tool {
-  align-self: flex-start;
-  max-width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-6);
+  min-width: 0;
+  padding-inline-start: var(--app-space-20);
+}
+
+/* The rail runs from each marker down to the next one. */
+.assistant-tool:not(:last-child)::before {
+  position: absolute;
+  inset-inline-start: 3.5px;
+  top: calc(0.8em + 8px);
+  bottom: calc(-1 * var(--app-space-16));
+  width: 1px;
+  background: var(--app-palette-divider);
+  content: "";
+}
+
+.assistant-tool > .assistant-tool-state {
+  position: absolute;
+  inset-inline-start: 0;
+  top: calc(0.8em - 4px);
+}
+
+/* Running spins, failed is an alert, done is a dot. */
+.assistant-tool-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+}
+
+.assistant-tool-state--done::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--app-palette-success-main);
+  content: "";
+}
+
+.assistant-tool-state--failed {
+  color: var(--app-palette-error-main);
+}
+
+.assistant-tool__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--app-space-8);
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.assistant-tool__kind {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.assistant-tool__detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-palette-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-tool__io {
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
+  overflow: hidden;
+  font-family: var(--app-font-mono);
+  font-size: calc(var(--app-font-size-body) * 0.92);
+}
+
+.assistant-tool__io-row {
+  display: grid;
+  grid-template-columns: 3em minmax(0, 1fr);
+  gap: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
 }
 
-.assistant-tool[open] {
-  align-self: stretch;
+.assistant-tool__io-row--out {
+  border-top: 1px solid var(--app-palette-divider);
+  background: var(--app-palette-background-default);
 }
 
-.assistant-tool__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--app-space-8);
-  cursor: pointer;
+.assistant-tool__io-row:first-child {
+  border-top: none;
 }
 
-.assistant-tool__title {
-  font-family: var(--app-font-mono);
+.assistant-tool__io-label {
+  color: var(--app-palette-text-secondary);
+  font-size: 0.85em;
+  line-height: 1.75;
+}
+
+.assistant-tool__io-cell {
+  min-width: 0;
+}
+
+.assistant-tool .assistant-tool__in,
+.assistant-tool .assistant-tool__out {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+  line-height: 1.5;
+}
+
+.assistant-tool .assistant-tool__in {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Long output shows its first lines and fades out; a button opens the rest. */
+.assistant-tool__out--clipped {
+  max-height: calc(8 * 1.5em);
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black 60%, transparent);
+}
+
+.app-btn.assistant-tool__more {
+  margin-top: var(--app-space-4);
+  padding-inline: 0;
+  color: var(--app-palette-text-secondary);
+  font: inherit;
+  font-family: var(--app-font-family);
+  text-transform: none;
 }
 
 /* A collapsed group hugs its label; it only spans the column once opened,
    because the rows inside need the room. */
 .assistant-tool-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--app-space-8);
   align-self: flex-start;
-  max-width: 100%;
-  border: 1px solid var(--app-palette-divider);
-  /* The rows inside are radius-md at an 8px inset. */
-  border-radius: var(--app-radius-card);
+  max-width: min(100%, 768px);
 }
 
-.assistant-tool-group:has(.assistant-tool-group__rows) {
+.assistant-tool-group:has(.assistant-tool-list) {
   align-self: stretch;
 }
 
-.assistant-tool-group .assistant-tool-group__header {
-  width: 100%;
+.assistant-tool-group > .assistant-tool-list {
+  align-self: stretch;
+}
+
+.assistant-tool-group .assistant-tool-group__header,
+.app-btn.assistant-tool-group__collapse {
   justify-content: flex-start;
   gap: var(--app-space-8);
+  padding-inline: var(--app-space-4);
+  margin-inline-start: calc(-1 * var(--app-space-4));
+  color: var(--app-palette-text-secondary);
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.app-btn.assistant-tool-group__collapse {
+  padding-inline-start: calc(var(--app-space-20) + var(--app-space-4));
+  font: inherit;
 }
 
 /* Captions in tool rows follow the chat font size, not the theme's fixed caption. */
-.assistant-tool-group__header .app-typo--caption,
-.assistant-tool__summary .app-typo--caption {
-  font-size: calc(var(--app-font-size-body) * 0.85);
-}
-
-/* The state is a shape, not a colour: a spinner, a check or an alert. */
-.assistant-tool-group__state {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--app-palette-text-secondary);
-}
-
-.assistant-tool-group__rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--app-space-8);
-  padding: 0 var(--app-space-8) var(--app-space-8);
+.assistant-tool-group__header .app-typo--caption {
+  font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
 .assistant__composer {

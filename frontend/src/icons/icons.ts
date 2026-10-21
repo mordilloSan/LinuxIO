@@ -45,7 +45,7 @@ addCollection({
   },
 });
 
-// mdi - 191 icons
+// mdi - 193 icons
 addCollection({
   prefix: "mdi",
   width: 24,
@@ -98,6 +98,9 @@ addCollection({
     },
     "arrow-down-bold": {
       body: '<path fill="currentColor" d="M9 4h6v8h4.84L12 19.84L4.16 12H9z"/>',
+    },
+    "arrow-expand-horizontal": {
+      body: '<path fill="currentColor" d="M9 11h6V8l4 4l-4 4v-3H9v3l-4-4l4-4zm-7 9V4h2v16zm18 0V4h2v16z"/>',
     },
     "arrow-up": {
       body: '<path fill="currentColor" d="M13 20h-2V8l-5.5 5.5l-1.42-1.42L12 4.16l7.92 7.92l-1.42 1.42L13 8z"/>',
@@ -539,6 +542,9 @@ addCollection({
     },
     "shield-crown": {
       body: '<path fill="currentColor" d="m12 1l9 4v6c0 5.55-3.84 10.74-9 12c-5.16-1.26-9-6.45-9-12V5zm4 13H8v1.5c0 .27.19.46.47.5h6.96c.31 0 .52-.16.57-.41zm1-6l-2.67 2.67L12 8.34l-2.33 2.33L7 8l1 5h8z"/>',
+    },
+    "shield-half-full": {
+      body: '<path fill="currentColor" d="M21 11c0 5.55-3.84 10.74-9 12c-5.16-1.26-9-6.45-9-12V5l9-4l9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12z"/>',
     },
     "shield-key-outline": {
       body: '<path fill="currentColor" d="M21 11c0 5.55-3.84 10.74-9 12c-5.16-1.26-9-6.45-9-12V5l9-4l9 4zm-9 10c3.75-1 7-5.46 7-9.78V6.3l-7-3.12L5 6.3v4.92C5 15.54 8.25 20 12 21m0-15a3 3 0 0 1 3 3c0 1.31-.83 2.42-2 2.83V14h2v2h-2v2h-2v-6.17A2.99 2.99 0 0 1 9 9a3 3 0 0 1 3-3m0 2a1 1 0 0 0-1 1a1 1 0 0 0 1 1a1 1 0 0 0 1-1a1 1 0 0 0-1-1"/>',

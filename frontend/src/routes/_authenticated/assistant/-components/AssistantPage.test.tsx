@@ -312,8 +312,9 @@ describe("AssistantPage", () => {
       },
     });
     expect(await screen.findByText("list files")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /1 tool call/ }));
     expect(
-      screen.getByText("ls -la", { selector: ".assistant-tool__title" }),
+      screen.getByText("ls -la", { selector: ".assistant-tool__detail" }),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Allow once" }));
     expect(resolve).toHaveBeenCalledWith({
