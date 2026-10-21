@@ -51,6 +51,7 @@ quiet_targets := \
 	test-indexer-systemd-integration \
 	test-updater \
 	test-docker-update-integration \
+	test-btrfs-integration \
 	analyze \
 	bundle-metrics \
 	compiler-coverage \
@@ -555,7 +556,7 @@ update-go-deps: ensure-go
 	$(GO_CMD_ENV) "$(GO_BIN)" mod tidy
 
 # Separate lint/tsc targets that include all prerequisites (delegate to -only variants)
-.PHONY: lint tsc lint-ci golint test check-actions check-systemd check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend test-go deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
+.PHONY: lint tsc lint-ci golint test check-actions check-systemd check-frontend check-backend test-frontend test-frontend-ci setup-frontend-browser test-frontend-browser test-frontend-only test-auth test-auth-protocol test-auth-pam test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration test-btrfs-integration lint-only lint-ci-only tsc-only tsc-ci golint-only test-backend test-go deadcode deadcode-only ci-frontend-deps update-frontend-screenshots
 check-actions:
 	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint is required" >&2; exit 1; }
 	@actionlint
@@ -911,6 +912,15 @@ test-updater: ensure-go
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
 	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run TestInstallScriptDryRunWithSystemdSandbox -count=1 -v
+
+test-btrfs-integration: ensure-go
+	@echo "🧪 Running btrfs kernel integration test on loop devices (needs sudo)..."
+	@cd "$(backend_dir)" && \
+	  sudo env \
+	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
+	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
+	    LINUXIO_RUN_BTRFS_INTEGRATION=1 \
+	    "$(GO_BIN)" test ./common/btrfs -run '^TestBtrfsIntegration$$' -count=1 -v
 
 test-installation-scripts:
 	@echo ""
@@ -1538,6 +1548,7 @@ help:
 	@$(PRINTC) "$(COLOR_GREEN)    make test-indexer-systemd-integration$(COLOR_RESET) Run the opt-in disposable-host indexer smoke test"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-updater     $(COLOR_RESET) Run the root-only updater systemd dry-run integration test"
 	@$(PRINTC) "$(COLOR_GREEN)    make test-docker-update-integration$(COLOR_RESET) Run the opt-in real Docker/Compose update test"
+	@$(PRINTC) "$(COLOR_GREEN)    make test-btrfs-integration$(COLOR_RESET) Run the root-only btrfs kernel test on loop devices"
 	@$(PRINTC) "$(COLOR_GREEN)    make <target>-quiet   $(COLOR_RESET) Run a validation target with compact output and a saved full log"
 	@$(PRINTC) "$(COLOR_GREEN)    make bundle-metrics   $(COLOR_RESET) Report frontend bundle sizes after a Vite build (informational)"
 	@$(PRINTC) "$(COLOR_GREEN)    make compiler-coverage$(COLOR_RESET) Report React Compiler memoization coverage (informational)"

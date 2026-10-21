@@ -3,12 +3,11 @@ package btrfs
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
-	"slices"
-	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -16,40 +15,70 @@ const (
 	dataUUID = "9a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d"
 )
 
-func TestParseFindmnt(t *testing.T) {
-	data, err := os.ReadFile("testdata/findmnt.json")
-	if err != nil {
-		t.Fatal(err)
+const mountinfo = "44 1 0:34 /@ / rw,relatime shared:1 - btrfs /dev/nvme0n1p2 rw,ssd,space_cache=v2,subvolid=256,subvol=/@\n" +
+	"33 44 0:28 / /run rw,nosuid,nodev shared:13 - tmpfs tmpfs rw,size=4062144k\n" +
+	"90 44 0:34 /@/www /var/www rw,relatime shared:1 - btrfs /dev/nvme0n1p2 rw,ssd,space_cache=v2,subvolid=256,subvol=/@\n" +
+	"95 44 0:40 / /data rw,noatime shared:20 - btrfs /dev/sdb1 rw,subvolid=5,subvol=/\n" +
+	"96 44 0:40 /my\\040share /mnt/my\\040share rw,noatime - btrfs /dev/sdb1 rw,subvolid=5,subvol=/\n" +
+	"garbage line\n"
+
+func TestParseMountinfo(t *testing.T) {
+	uuidOf := func(device string) string {
+		return map[string]string{"/dev/nvme0n1p2": rootUUID, "/dev/sdb1": dataUUID}[device]
 	}
-	got, err := parseFindmnt(data)
-	if err != nil {
-		t.Fatalf("parseFindmnt: %v", err)
-	}
+	got := parseMountinfo(mountinfo, uuidOf)
+	rootOpts := []string{"rw", "relatime", "rw", "ssd", "space_cache=v2", "subvolid=256", "subvol=/@"}
 	want := []Mount{
-		{
-			Mountpoint: "/", Device: "/dev/nvme0n1p2", UUID: rootUUID, Subvol: "@", SubvolID: 256, SubPath: "@",
-			Options: []string{"rw", "relatime", "ssd", "space_cache=v2", "subvolid=256", "subvol=/@"},
-		},
-		{
-			Mountpoint: "/var/www", Device: "/dev/nvme0n1p2", UUID: rootUUID, Subvol: "@", SubvolID: 256, SubPath: "@/www",
-			Options: []string{"rw", "relatime", "ssd", "space_cache=v2", "subvolid=256", "subvol=/@"},
-		},
-		{
-			Mountpoint: "/data", Device: "/dev/sdb1", UUID: dataUUID, Subvol: "", SubvolID: 5,
-			Options: []string{"rw", "noatime", "subvolid=5", "subvol=/"},
-		},
+		{Mountpoint: "/", Device: "/dev/nvme0n1p2", UUID: rootUUID, Subvol: "@", SubvolID: 256, SubPath: "@", Options: rootOpts},
+		{Mountpoint: "/var/www", Device: "/dev/nvme0n1p2", UUID: rootUUID, Subvol: "@", SubvolID: 256, SubPath: "@/www", Options: rootOpts},
+		{Mountpoint: "/data", Device: "/dev/sdb1", UUID: dataUUID, SubvolID: 5, Options: []string{"rw", "noatime", "rw", "subvolid=5", "subvol=/"}},
+		{Mountpoint: "/mnt/my share", Device: "/dev/sdb1", UUID: dataUUID, SubvolID: 5, SubPath: "my share", Options: []string{"rw", "noatime", "rw", "subvolid=5", "subvol=/"}},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("parseFindmnt =\n%+v\nwant\n%+v", got, want)
+		t.Fatalf("parseMountinfo =\n%+v\nwant\n%+v", got, want)
+	}
+	if got := parseMountinfo("", uuidOf); len(got) != 0 {
+		t.Fatalf("empty = %v", got)
 	}
 }
 
-func TestParseFindmntInvalid(t *testing.T) {
-	if _, err := parseFindmnt([]byte("not json")); err == nil {
-		t.Fatal("expected error for invalid JSON")
+func TestListMountsResolvesUUIDsFromSysfs(t *testing.T) {
+	dir := t.TempDir()
+	// The second member of a two-disk pool is mounted; sysfs lists both.
+	for _, member := range []string{"sdb1", "sdc1"} {
+		if err := os.MkdirAll(filepath.Join(dir, "sys", dataUUID, "devices", member), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "sys", "features"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	info := filepath.Join(dir, "mountinfo")
+	if err := os.WriteFile(info, []byte("95 44 0:40 / /data rw,noatime - btrfs /dev/sdc1 rw,subvolid=5,subvol=/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldInfo, oldSys, oldEval := mountinfoPath, sysFSBtrfs, evalSymlinks
+	mountinfoPath, sysFSBtrfs = info, filepath.Join(dir, "sys")
+	evalSymlinks = func(p string) (string, error) { return p, nil }
+	t.Cleanup(func() { mountinfoPath, sysFSBtrfs, evalSymlinks = oldInfo, oldSys, oldEval })
+
+	got, err := ListMounts(context.Background())
+	if err != nil || len(got) != 1 || got[0].UUID != dataUUID || got[0].Mountpoint != "/data" {
+		t.Fatalf("got %+v err=%v", got, err)
 	}
 }
 
+func TestSplitMountOptions(t *testing.T) {
+	flags, data := splitMountOptions([]string{"rw", "noatime", "nodev", "defaults", "space_cache=v2", "subvol=/data", ""})
+	if flags != unix.MS_NOATIME|unix.MS_NODEV || data != "space_cache=v2,subvol=/data" {
+		t.Fatalf("flags=%#x data=%q", flags, data)
+	}
+	if flags, data := splitMountOptions(nil); flags != 0 || data != "" {
+		t.Fatalf("empty: flags=%#x data=%q", flags, data)
+	}
+}
+
+// stubMounts serves the given mounts.
 func stubMounts(t *testing.T, mounts []Mount) {
 	t.Helper()
 	old := listMounts
@@ -57,38 +86,35 @@ func stubMounts(t *testing.T, mounts []Mount) {
 	t.Cleanup(func() { listMounts = old })
 }
 
-// stubExec records invocations and replaces the command with a no-op.
-func stubExec(t *testing.T) *[][]string {
+// stubMountFS records mount calls instead of mounting.
+func stubMountFS(t *testing.T, err error) *[]string {
 	t.Helper()
-	var calls [][]string
-	old := execCommand
-	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		calls = append(calls, append([]string{name}, args...))
-		return exec.CommandContext(ctx, "true")
+	var calls []string
+	old := mountFS
+	mountFS = func(source, target, fstype string, flags uintptr, data string) error {
+		calls = append(calls, source+" "+target+" "+fstype+" "+data)
+		return err
 	}
-	t.Cleanup(func() { execCommand = old })
+	t.Cleanup(func() { mountFS = old })
 	return &calls
 }
 
 func TestTopLevelReusesExistingMount(t *testing.T) {
 	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
-	calls := stubExec(t)
+	calls := stubMountFS(t, nil)
 
 	dir, err := TopLevel(context.Background(), dataUUID)
-	if err != nil {
-		t.Fatalf("TopLevel: %v", err)
-	}
-	if dir != "/data" {
-		t.Fatalf("dir = %q, want /data", dir)
+	if err != nil || dir != "/data" {
+		t.Fatalf("dir = %q, err = %v", dir, err)
 	}
 	if len(*calls) != 0 {
-		t.Fatalf("unexpected commands: %v", *calls)
+		t.Fatalf("unexpected mounts: %v", *calls)
 	}
 }
 
 func TestTopLevelMountsWhenMissing(t *testing.T) {
-	stubMounts(t, nil)
-	calls := stubExec(t)
+	stubMounts(t, []Mount{{Mountpoint: "/", Device: "/dev/sda2", UUID: rootUUID, Subvol: "@", SubvolID: 256}})
+	calls := stubMountFS(t, nil)
 	oldDir := TopLevelDir
 	TopLevelDir = t.TempDir()
 	t.Cleanup(func() { TopLevelDir = oldDir })
@@ -104,79 +130,26 @@ func TestTopLevelMountsWhenMissing(t *testing.T) {
 	if info, err := os.Stat(top); err != nil || !info.IsDir() {
 		t.Fatalf("top-level dir not created: %v", err)
 	}
-	if len(*calls) != 1 {
-		t.Fatalf("calls = %v, want one mount", *calls)
+	if want := []string{"/dev/sda2 " + top + " btrfs subvolid=5"}; !reflect.DeepEqual(*calls, want) {
+		t.Fatalf("mounts = %v, want %v", *calls, want)
 	}
-	call := (*calls)[0]
-	if got := strings.Join(call[1:], " "); got != "-t btrfs -o subvolid=5,noatime UUID="+rootUUID+" "+top {
-		t.Fatalf("mount args = %v", call)
-	}
-}
 
-func TestParseFindmntFlattensTree(t *testing.T) {
-	data, err := os.ReadFile("testdata/findmnt_tree.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := parseFindmnt(data)
-	if err != nil {
-		t.Fatalf("parseFindmnt: %v", err)
-	}
-	if len(got) != 2 || got[1].Mountpoint != "/home" || got[1].Subvol != "@home" || got[1].SubvolID != 257 {
-		t.Fatalf("nested mount missing: %+v", got)
-	}
-}
-
-// stubFindmnt replaces findmnt with a shell script and records its args.
-func stubFindmnt(t *testing.T, script string) *[]string {
-	t.Helper()
-	if _, err := findCommand("findmnt"); err != nil {
-		t.Skip("findmnt not installed")
-	}
-	var args []string
-	old := execCommand
-	execCommand = func(ctx context.Context, _ string, a ...string) *exec.Cmd {
-		args = a
-		return exec.CommandContext(ctx, "sh", "-c", script)
-	}
-	t.Cleanup(func() { execCommand = old })
-	return &args
-}
-
-func TestListMountsUsesFlatOutput(t *testing.T) {
-	args := stubFindmnt(t, `echo '{"filesystems":[]}'`)
-	if _, err := ListMounts(context.Background()); err != nil {
-		t.Fatalf("ListMounts: %v", err)
-	}
-	if !slices.Contains(*args, "--list") {
-		t.Fatalf("findmnt args %v lack --list", *args)
-	}
-}
-
-func TestListMountsNoMatchIsEmpty(t *testing.T) {
-	stubFindmnt(t, "exit 1")
-	mounts, err := ListMounts(context.Background())
-	if err != nil || len(mounts) != 0 {
-		t.Fatalf("ListMounts = %v, %v; want empty, nil", mounts, err)
-	}
-}
-
-func TestListMountsKeepsRealErrors(t *testing.T) {
-	stubFindmnt(t, "echo 'findmnt: bad option' >&2; exit 1")
-	if _, err := ListMounts(context.Background()); err == nil {
-		t.Fatal("expected error when findmnt writes to stderr")
+	// An unmounted filesystem has no device to mount from.
+	stubMounts(t, nil)
+	if _, err := TopLevel(context.Background(), rootUUID); err == nil {
+		t.Fatal("TopLevel of an unmounted filesystem succeeded")
 	}
 }
 
 func TestTopLevelRejectsBadUUID(t *testing.T) {
 	stubMounts(t, nil)
-	calls := stubExec(t)
+	calls := stubMountFS(t, nil)
 	for _, uuid := range []string{"", "../..", "a/b", "/abs"} {
 		if _, err := TopLevel(context.Background(), uuid); err == nil {
 			t.Errorf("TopLevel(%q) succeeded, want error", uuid)
 		}
 	}
 	if len(*calls) != 0 {
-		t.Fatalf("unexpected commands: %v", *calls)
+		t.Fatalf("unexpected mounts: %v", *calls)
 	}
 }

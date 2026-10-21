@@ -239,58 +239,54 @@ func onTarget(remote []BtrfsSnapshot, snap BtrfsSnapshot) bool {
 	return false
 }
 
-// sendReceive pipes `btrfs send [-p parent] snap` into a local or ssh
-// `btrfs receive`, copying in this goroutine, and returns the bytes sent.
+// sendReceive streams the kernel's send of snap, incremental from parent
+// when set, into a local or ssh `btrfs receive`, copying in this goroutine,
+// and returns the bytes sent. Receive has no kernel interface, so it stays a
+// btrfs-progs command.
 func sendReceive(ctx context.Context, job BtrfsReplicationJob, snap, parent string, progress func(int64)) (int64, error) {
-	btrfsPath, err := findCommand("btrfs")
-	if err != nil {
-		return 0, fmt.Errorf("btrfs: %w", err)
-	}
-	sendArgs := []string{"send"}
-	if parent != "" {
-		sendArgs = append(sendArgs, "-p", parent)
-	}
-	send := execCommand(ctx, btrfsPath, append(sendArgs, snap)...)
-	recvName, recvArgs := btrfsPath, []string{"receive", job.Target.Path}
+	recvName, recvArgs := "btrfs", []string{"receive", job.Target.Path}
 	if job.Target.Kind == TargetSSH {
-		if recvName, err = findCommand("ssh"); err != nil {
-			return 0, fmt.Errorf("ssh: %w", err)
-		}
-		recvArgs = append(SSHArgs(job), "btrfs", "receive", shellQuote(job.Target.Path))
+		recvName, recvArgs = "ssh", append(SSHArgs(job), "btrfs", "receive", shellQuote(job.Target.Path))
 	}
-	recv := execCommand(ctx, recvName, recvArgs...)
-	var sendErr, recvErr tailBuffer
-	send.Env = append(os.Environ(), "LC_ALL=C")
-	recv.Env = send.Env
-	send.Stderr, recv.Stderr = &sendErr, &recvErr
-
-	stdout, err := send.StdoutPipe()
+	recvPath, err := findCommand(recvName)
 	if err != nil {
-		return 0, fmt.Errorf("btrfs send: %w", err)
+		return 0, fmt.Errorf("%s: %w", recvName, err)
 	}
-	if err = send.Start(); err != nil {
-		return 0, fmt.Errorf("btrfs send: %w", err)
-	}
+	recv := execCommand(ctx, recvPath, recvArgs...)
+	var recvErr tailBuffer
+	recv.Env = append(os.Environ(), "LC_ALL=C")
+	recv.Stderr = &recvErr
 	stdin, err := recv.StdinPipe()
 	if err == nil {
 		err = recv.Start()
 	}
 	if err != nil {
-		// Closing the read end makes send exit on a broken pipe.
-		_ = stdout.Close()
-		_ = send.Wait()
 		return 0, fmt.Errorf("btrfs receive: %w", err)
 	}
-	counter := &countingReader{r: stdout, progress: progress}
+	r, w, err := os.Pipe()
+	if err != nil {
+		_ = stdin.Close()
+		_ = recv.Wait()
+		return 0, fmt.Errorf("send pipe: %w", err)
+	}
+	sendDone := make(chan error, 1)
+	go func() {
+		sendErr := sendStream(snap, parent, w)
+		_ = w.Close()
+		sendDone <- sendErr
+	}()
+	// Closing the read end on cancel unblocks the copy and fails the
+	// kernel's next write with EPIPE, which ends the send.
+	stop := context.AfterFunc(ctx, func() { _ = r.Close() })
+	counter := &countingReader{r: r, progress: progress}
 	_, copyErr := io.Copy(stdin, counter)
-	// After a failed copy send may still be writing; closing both ends lets
-	// each process see EOF or a broken pipe and exit before the waits.
+	stop()
 	closeErr := stdin.Close()
-	_ = stdout.Close()
-	sendWait, recvWait := send.Wait(), recv.Wait()
-	if err := cmp.Or(sendWait, recvWait, copyErr, closeErr); err != nil {
-		return counter.n, fmt.Errorf("replicate %s to %s: %w (send: %s; receive: %s)", snap, job.Target.Path, err,
-			strings.TrimSpace(string(sendErr.b)), strings.TrimSpace(string(recvErr.b)))
+	_ = r.Close()
+	sendErr, recvWait := <-sendDone, recv.Wait()
+	if err := cmp.Or(ctx.Err(), sendErr, recvWait, copyErr, closeErr); err != nil {
+		return counter.n, fmt.Errorf("replicate %s to %s: %w (receive: %s)", snap, job.Target.Path, err,
+			strings.TrimSpace(string(recvErr.b)))
 	}
 	return counter.n, nil
 }

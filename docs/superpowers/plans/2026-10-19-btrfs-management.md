@@ -1,5 +1,7 @@
 # Btrfs Management Implementation Plan
 
+> **Historical.** This document describes the first, `btrfs-progs`-parsing design. The implementation now uses the kernel's ioctls instead; [docs/btrfs.md](../../btrfs.md) is the current reference.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Full btrfs management from the Storage → Btrfs tab: health, subvolumes, snapshots with rollback, scheduled snapshots, device/RAID changes, send/receive replication, quotas and compression.

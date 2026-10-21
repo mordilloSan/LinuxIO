@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -23,6 +24,19 @@ func superblock(uuid [16]byte, label string, devid, numDevices, totalBytes uint6
 	binary.LittleEndian.PutUint64(b[superDevID:], devid)
 	copy(b[superLabel:], label)
 	return b
+}
+
+// stubExec records invocations and replaces the command with a no-op.
+func stubExec(t *testing.T) *[][]string {
+	t.Helper()
+	var calls [][]string
+	old := execCommand
+	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{name}, args...))
+		return exec.CommandContext(ctx, "true")
+	}
+	t.Cleanup(func() { execCommand = old })
+	return &calls
 }
 
 // stubControlIoctl records control-device ioctls instead of issuing them.

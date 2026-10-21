@@ -118,6 +118,10 @@ func (k *fakeKernel) mutate(req uintptr, arg unsafe.Pointer) error {
 		k.log("SET_FSLABEL %s", k.label)
 	case iocScrub:
 		a := (*scrubArgs)(arg)
+		if a.Start != 0 || a.End != ^uint64(0) {
+			// The real kernel scrubs nothing outside the range and still succeeds.
+			return fmt.Errorf("scrub range %d-%d does not cover device %d", a.Start, a.End, a.DevID)
+		}
 		k.log("SCRUB %d", a.DevID)
 		if k.scrub != nil {
 			p, err := k.scrub(a.DevID)

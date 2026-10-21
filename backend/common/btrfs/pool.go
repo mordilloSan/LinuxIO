@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -92,7 +93,9 @@ func ReadSuperblock(device string) (Superblock, error) {
 	}
 	defer f.Close()
 	buf := make([]byte, superSize)
-	if _, err = f.ReadAt(buf, superOffset); err != nil {
+	if _, err = f.ReadAt(buf, superOffset); errors.Is(err, io.EOF) {
+		return Superblock{}, fmt.Errorf("%s: %w", device, errNotBtrfs) // smaller than a superblock
+	} else if err != nil {
 		return Superblock{}, fmt.Errorf("read superblock of %s: %w", device, err)
 	}
 	sb, err := parseSuperblock(buf)
@@ -251,6 +254,9 @@ func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflineP
 	pools := make([]BtrfsOfflinePool, 0)
 	for _, device := range candidates {
 		sb, err := readSuperblock(device)
+		if errors.Is(err, errNotBtrfs) {
+			continue // most devices are not btrfs; that is not worth a log line
+		}
 		if err != nil {
 			slog.Warn("btrfs superblock", "device", device, "error", err)
 			continue

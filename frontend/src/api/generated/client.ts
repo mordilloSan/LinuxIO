@@ -26,9 +26,12 @@ const linuxio = {
   },
   alerts: {
     dismiss: defineCallWithRequest("alerts.dismiss"),
+    get_notifications: defineCall("alerts.get_notifications"),
     list: defineCall("alerts.list"),
     mark_all_seen: defineCall("alerts.mark_all_seen"),
     mark_seen: defineCallWithRequest("alerts.mark_seen"),
+    set_notifications: defineCallWithRequest("alerts.set_notifications"),
+    test_notifications: defineCall("alerts.test_notifications"),
   },
   config: {
     get: defineCall("config.get"),

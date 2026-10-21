@@ -18,7 +18,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
-import { PROFILE_MIN_DEVICES } from "./btrfsShared";
+import { PROFILE_MIN_DEVICES, usableBytes } from "./btrfsShared";
 
 interface BtrfsCreatePoolDialogProps {
   isPending?: boolean;
@@ -47,6 +47,7 @@ const BtrfsCreatePoolDialog = ({
   const [metadataProfile, setMetadataProfile] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [force, setForce] = useState(false);
+  const [partition, setPartition] = useState(false);
 
   const all = data?.devices ?? [];
   const partitioned = new Set(all.flatMap((entry) => entry.parents));
@@ -68,6 +69,10 @@ const BtrfsCreatePoolDialog = ({
     profiles.includes(profile) ? profile : defaultProfile(kind, devices.length);
   const dataValue = chosen(dataProfile, "data");
   const metadataValue = chosen(metadataProfile, "metadata");
+  const sizes = devices.map(
+    (path) => free.find((entry) => entry.path === path)?.sizeBytes ?? 0,
+  );
+  const usable = usableBytes(dataValue, sizes);
   const name = label.trim();
   const target = mountpoint ?? `/mnt/${name}`;
   const valid = name !== "" && devices.length > 0 && target.startsWith("/");
@@ -124,6 +129,13 @@ const BtrfsCreatePoolDialog = ({
             value={target}
           />
           {profileSelect("Data profile", dataValue, setDataProfile)}
+          {devices.length > 0 && (
+            <AppTypography color="text.secondary" variant="caption">
+              {`About ${formatFileSize(usable)} usable for data from ${formatFileSize(
+                sizes.reduce((sum, size) => sum + size, 0),
+              )} of disks.`}
+            </AppTypography>
+          )}
           {profileSelect("Metadata profile", metadataValue, setMetadataProfile)}
           <div>
             <AppTypography variant="subtitle2">Disks</AppTypography>
@@ -160,6 +172,15 @@ const BtrfsCreatePoolDialog = ({
             }
             label="Force (wipe existing filesystem signatures)"
           />
+          <AppFormControlLabel
+            control={
+              <AppSwitch
+                checked={partition}
+                onChange={(_, checked) => setPartition(checked)}
+              />
+            }
+            label="Partition the disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
+          />
         </div>
       </AppDialogContent>
       <AppDialogActions>
@@ -174,6 +195,7 @@ const BtrfsCreatePoolDialog = ({
               metadataProfile: metadataValue,
               devices,
               force,
+              partition,
             })
           }
           variant="contained"

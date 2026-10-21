@@ -30,7 +30,11 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
-import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
+import {
+  BTRFS_TOAST_META,
+  defaultRule,
+  isSystemSubvolume,
+} from "./btrfsShared";
 
 const EVERY_OPTIONS = [
   { value: "hourly", label: "Hourly", summary: "Every hour" },
@@ -51,20 +55,6 @@ const KEEP_FIELDS = [
 
 const keepSummary = (keep: BtrfsKeep) =>
   KEEP_FIELDS.map(({ key, unit }) => `${keep[key]}${unit}`).join(" · ");
-
-// Hourly snapshots kept for a day, then daily, weekly and monthly ones: the
-// rule the switch turns on, and the dialog's starting point. 03:00 Sunday
-// only matters once the cadence is changed to daily or weekly.
-const defaultRule = (uuid: string, path: string): BtrfsSnapshotRule => ({
-  uuid,
-  path,
-  enabled: false,
-  every: "hourly",
-  hour: 3,
-  weekday: 0,
-  keep: { hourly: 24, daily: 7, weekly: 4, monthly: 6 },
-  beforeUpdates: false,
-});
 
 const WEEKDAYS = [
   "Sunday",

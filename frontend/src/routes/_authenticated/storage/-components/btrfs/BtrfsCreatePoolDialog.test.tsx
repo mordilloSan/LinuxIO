@@ -114,6 +114,7 @@ describe("BtrfsCreatePoolDialog", () => {
       metadataProfile: "raid1",
       devices: ["/dev/sdb", "/dev/sdc"],
       force: false,
+      partition: false,
     });
   });
 

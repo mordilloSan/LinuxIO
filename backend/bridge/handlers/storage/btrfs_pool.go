@@ -37,13 +37,25 @@ func handleBtrfsPoolCreate(ctx context.Context, req apischema.BtrfsPoolCreateReq
 	if entries, readErr := os.ReadDir(req.Mountpoint); readErr == nil && len(entries) > 0 {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mountpoint %s is not empty", req.Mountpoint)
 	}
-	slog.Info("creating btrfs pool", "label", req.Label, "devices", req.Devices, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force)
-	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, req.Devices, req.Force)
+	slog.Info("creating btrfs pool", "label", req.Label, "devices", req.Devices, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force, "partition", req.Partition)
+	members := req.Devices
+	if req.Partition {
+		members = make([]string, 0, len(req.Devices))
+		for _, d := range req.Devices {
+			part, partErr := btrfs.PartitionDisk(ctx, d)
+			if partErr != nil {
+				slog.Error("btrfs pool partitioning failed", "device", d, "error", partErr)
+				return btrfs.BtrfsFilesystem{}, partErr
+			}
+			members = append(members, part)
+		}
+	}
+	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force)
 	if err != nil {
 		slog.Error("btrfs pool create failed", "label", req.Label, "error", err)
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	if err := btrfs.MountPool(req.Devices[0], req.Mountpoint, false); err != nil {
+	if err := btrfs.MountPool(members[0], req.Mountpoint, false); err != nil {
 		slog.Error("btrfs pool mount failed", "uuid", uuid, "error", err)
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s was created but not mounted: %w", uuid, err)
 	}

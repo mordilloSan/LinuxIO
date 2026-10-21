@@ -1,5 +1,7 @@
 # Btrfs management — design
 
+> **Historical.** This document describes the first, `btrfs-progs`-parsing design. The implementation now uses the kernel's ioctls instead; [docs/btrfs.md](../../btrfs.md) is the current reference.
+
 Status: draft for review. Approved 2026-10-19 decisions: LinuxIO-native automatic
 snapshots (no snapper), full root rollback with reboot, replication to local and
 SSH targets.

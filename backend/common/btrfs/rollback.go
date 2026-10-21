@@ -8,9 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Rollback step operations, in the order a plan runs them.
@@ -155,10 +156,10 @@ func ExecuteRollback(ctx context.Context, uuid string, plan RollbackPlan, report
 			}
 		case err == nil:
 		case step.Op == opSnapshotRW:
-			removeRestore(ctx, top, step.To)
+			removeRestore(top, step.To)
 			return res, err
 		case !renamed:
-			removeRestore(ctx, top, restore)
+			removeRestore(top, restore)
 			return res, err
 		case step.Op == opRename && step.To == plan.Source:
 			// The new subvolume could not take source's name: put the old one back.
@@ -206,18 +207,16 @@ func checkRollbackTargetsFree(top string, plan RollbackPlan) error {
 }
 
 // removeRestore deletes the temporary restore copy, if it was created. It is
-// best effort: the caller is already returning the error that matters. It
-// runs even when ctx is cancelled, bounded by a minute.
-func removeRestore(ctx context.Context, top, restore string) {
+// best effort: the caller is already returning the error that matters. The
+// delete is one ioctl, so a cancelled task does not stop it.
+func removeRestore(top, restore string) {
 	if restore == "" {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
-	defer cancel()
 	if _, err := os.Lstat(filepath.Join(top, restore)); err != nil {
 		return
 	}
-	_, _ = runBtrfs(ctx, "subvolume", "delete", filepath.Join(top, restore))
+	_ = subvolOps.destroy(filepath.Join(top, restore))
 }
 
 // mountShows reports whether mountpoint now mounts the subvolume at source.
@@ -238,11 +237,11 @@ func runRollbackStep(ctx context.Context, uuid, top string, step RollbackStep) e
 		if err := os.MkdirAll(filepath.Join(top, filepath.Dir(step.To)), 0o755); err != nil {
 			return fmt.Errorf("create snapshot directory for %q: %w", step.From, err)
 		}
-		if _, err := runBtrfs(ctx, "subvolume", "snapshot", "-r", filepath.Join(top, step.From), filepath.Join(top, step.To)); err != nil {
+		if err := subvolOps.snapshot(filepath.Join(top, step.From), filepath.Join(top, step.To), true); err != nil {
 			return fmt.Errorf("snapshot subvolume %q: %w", step.From, err)
 		}
 	case opSnapshotRW:
-		if _, err := runBtrfs(ctx, "subvolume", "snapshot", filepath.Join(top, step.From), filepath.Join(top, step.To)); err != nil {
+		if err := subvolOps.snapshot(filepath.Join(top, step.From), filepath.Join(top, step.To), false); err != nil {
 			return fmt.Errorf("copy %q to %q: %w", step.From, step.To, err)
 		}
 	case opRename:
@@ -254,23 +253,39 @@ func runRollbackStep(ctx context.Context, uuid, top string, step RollbackStep) e
 		if err != nil {
 			return err
 		}
-		if _, err := runBtrfs(ctx, "subvolume", "set-default", strconv.Itoa(sv.ID), top); err != nil {
+		if err := subvolOps.setDefault(top, sv.ID); err != nil {
 			return fmt.Errorf("set default subvolume %q: %w", step.To, err)
 		}
 	case opDelete:
 		return deleteUnmounted(ctx, uuid, step.From)
 	case opRemount:
-		if _, err := runCommand(ctx, "umount", step.From); err != nil {
-			if strings.Contains(err.Error(), "target is busy") {
-				return fmt.Errorf("%w: %w", errBusy, err)
-			}
-			return fmt.Errorf("unmount %s: %w", step.From, err)
-		}
-		if _, err := runCommand(ctx, "mount", "-t", "btrfs", "-o", step.To, "UUID="+uuid, step.From); err != nil {
-			return fmt.Errorf("mount %s: %w", step.From, err)
-		}
+		return remountStep(ctx, uuid, step)
 	default:
 		return fmt.Errorf("unknown rollback step %q", step.Op)
+	}
+	return nil
+}
+
+// remountStep unmounts step.From and mounts the filesystem there again with
+// the options in step.To, which now select the restored subvolume.
+func remountStep(ctx context.Context, uuid string, step RollbackStep) error {
+	mounts, err := listMounts(ctx)
+	if err != nil {
+		return fmt.Errorf("list btrfs mounts: %w", err)
+	}
+	device, err := deviceOf(mounts, uuid)
+	if err != nil {
+		return err
+	}
+	if err := unmountFS(step.From, 0); err != nil {
+		if errors.Is(err, unix.EBUSY) {
+			return fmt.Errorf("%w: unmount %s: %w", errBusy, step.From, err)
+		}
+		return fmt.Errorf("unmount %s: %w", step.From, err)
+	}
+	flags, data := splitMountOptions(strings.Split(step.To, ","))
+	if err := mountFS(device, step.From, "btrfs", flags, data); err != nil {
+		return fmt.Errorf("mount %s: %w", step.From, err)
 	}
 	return nil
 }

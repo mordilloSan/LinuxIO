@@ -22,12 +22,10 @@ func useTempAlerts(t *testing.T) {
 func TestRunSkipsMissingFilesystem(t *testing.T) {
 	useTempAlerts(t)
 	stubMounts(t, []Mount{{Mountpoint: "/other", UUID: dataUUID, SubvolID: 5}})
-	old := runBtrfs
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
+	stubSubvolOps(t, func(args []string) error {
 		t.Errorf("unexpected btrfs %v", args)
-		return "", nil
-	}
-	t.Cleanup(func() { runBtrfs = old })
+		return nil
+	})
 
 	rules := []BtrfsSnapshotRule{
 		{UUID: rootUUID, Path: "data/Photos", Enabled: true, Every: EveryHourly},
@@ -59,31 +57,23 @@ func TestRunSkipsMissingFilesystem(t *testing.T) {
 
 // stubRunnerBtrfs serves a subvolume listing that grows on snapshot and
 // shrinks on delete, recording every mutation.
-func stubRunnerBtrfs(t *testing.T, top string, rows []string) *[][]string {
+func stubRunnerBtrfs(t *testing.T, top string, rows []subvolumeRow) *[][]string {
 	t.Helper()
 	var calls [][]string
-	old := runBtrfs
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
+	stubSubvolumes(t, nil, 256, &calls)
+	readSubvolumes = func(string) ([]subvolumeRow, int, error) { return append(fixtureRows(), rows...), 256, nil }
+	stubSubvolOps(t, func(args []string) error {
 		joined := strings.Join(args, " ")
 		switch {
-		case strings.HasPrefix(joined, "subvolume list -a -p -u -q -R "):
-			return readFixture(t, "subvol_list.txt") + strings.Join(rows, ""), nil
-		case strings.HasPrefix(joined, "subvolume list -a "):
-			return "", nil
-		case strings.HasPrefix(joined, "qgroup show "):
-			return "", nil // quotas on, no data
-		case strings.HasPrefix(joined, "subvolume get-default "):
-			return "ID 256 gen 1 top level 5 path @", nil
 		case strings.HasPrefix(joined, "subvolume snapshot -r "):
-			rows = append(rows, snapshotRow(100+len(calls), strings.TrimPrefix(args[4], top+"/")))
+			rows = append(rows, snapshotSubvolume(100+len(calls), strings.TrimPrefix(args[4], top+"/")))
 		case strings.HasPrefix(joined, "subvolume delete "):
 			rel := strings.TrimPrefix(args[2], top+"/")
-			rows = slices.DeleteFunc(rows, func(r string) bool { return strings.HasSuffix(r, "<FS_TREE>/"+rel+"\n") })
+			rows = slices.DeleteFunc(rows, func(r subvolumeRow) bool { return r.Path == rel })
 		}
 		calls = append(calls, args)
-		return "", nil
-	}
-	t.Cleanup(func() { runBtrfs = old })
+		return nil
+	})
 	return &calls
 }
 
@@ -95,11 +85,11 @@ func TestRunTakesDueOnly(t *testing.T) {
 	snap := func(source string, ago time.Duration) string {
 		return SnapshotPath(source, now.Add(-ago), KindTimeline)
 	}
-	rows := []string{
-		snapshotRow(1, snap("@", 4*time.Hour)),
-		snapshotRow(2, snap("@", 3*time.Hour)),
-		snapshotRow(3, snap("@", 2*time.Hour)),
-		snapshotRow(4, snap("@home", time.Hour)),
+	rows := []subvolumeRow{
+		snapshotSubvolume(1, snap("@", 4*time.Hour)),
+		snapshotSubvolume(2, snap("@", 3*time.Hour)),
+		snapshotSubvolume(3, snap("@", 2*time.Hour)),
+		snapshotSubvolume(4, snap("@home", time.Hour)),
 	}
 	calls := stubRunnerBtrfs(t, top, rows)
 
@@ -151,12 +141,12 @@ func TestRunPreUpdateDisabledRuleKeepsTimeline(t *testing.T) {
 	top := t.TempDir()
 	stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
 	now := snapshotTime
-	var rows []string
+	var rows []subvolumeRow
 	for i := range 4 {
-		rows = append(rows, snapshotRow(10+i, SnapshotPath("@", now.Add(-time.Duration(i+1)*time.Hour), KindTimeline)))
+		rows = append(rows, snapshotSubvolume(10+i, SnapshotPath("@", now.Add(-time.Duration(i+1)*time.Hour), KindTimeline)))
 	}
 	for i := range 3 {
-		rows = append(rows, snapshotRow(20+i, SnapshotPath("@", now.Add(-time.Duration(i+1)*24*time.Hour), KindPreUpdate)))
+		rows = append(rows, snapshotSubvolume(20+i, SnapshotPath("@", now.Add(-time.Duration(i+1)*24*time.Hour), KindPreUpdate)))
 	}
 	calls := stubRunnerBtrfs(t, top, rows)
 

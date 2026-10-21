@@ -127,3 +127,52 @@ func TestLowMetadataSpace(t *testing.T) {
 		}
 	}
 }
+
+// TestInventoryOnHost reads every mounted btrfs filesystem through the real
+// kernel. Mount listing and the info, stats and space ioctls need no
+// privilege, so this checks the struct layouts on any host with btrfs.
+func TestInventoryOnHost(t *testing.T) {
+	mounts, err := ListMounts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mounts) == 0 {
+		t.Skip("no btrfs filesystem mounted")
+	}
+	for _, m := range mounts {
+		if m.UUID == "" || m.Device == "" {
+			t.Fatalf("mount without uuid or device: %+v", m)
+		}
+	}
+	filesystems, err := ListFilesystems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fs := range filesystems {
+		checkHostFilesystem(t, fs)
+		t.Logf("%s %q: %d devices, %d/%d bytes, %+v", fs.UUID, fs.Label, len(fs.Devices), fs.UsedBytes, fs.TotalBytes, fs.Allocation)
+	}
+}
+
+// checkHostFilesystem asserts what any healthy mounted filesystem shows.
+func checkHostFilesystem(t *testing.T, fs BtrfsFilesystem) {
+	t.Helper()
+	if len(fs.Devices) == 0 || fs.TotalBytes == 0 || fs.UsedBytes == 0 {
+		t.Fatalf("%s: devices=%+v total=%d used=%d", fs.UUID, fs.Devices, fs.TotalBytes, fs.UsedBytes)
+	}
+	kinds := map[string]bool{}
+	for _, a := range fs.Allocation {
+		if MinDevices(a.Profile) == 0 && a.Profile != "raid5" && a.Profile != "raid6" {
+			t.Fatalf("%s: unknown profile in %+v", fs.UUID, a)
+		}
+		kinds[a.Kind] = true
+	}
+	if !(kinds["data"] && kinds["metadata"]) && !kinds["data+metadata"] {
+		t.Fatalf("%s: allocation %+v", fs.UUID, fs.Allocation)
+	}
+	for _, d := range fs.Devices {
+		if !d.Missing && (d.Path == "" || d.SizeBytes == 0) {
+			t.Fatalf("%s: device %+v", fs.UUID, d)
+		}
+	}
+}

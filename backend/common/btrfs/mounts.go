@@ -2,14 +2,14 @@ package btrfs
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // TopLevelDir is where TopLevel mounts filesystems that have no top-level mount.
@@ -26,53 +26,86 @@ type Mount struct {
 	Subvol     string   `json:"subvol"` // path without leading slash; "" for the top level
 	SubvolID   int      `json:"subvolId"`
 	Options    []string `json:"options"`
-	// SubPath is the filesystem path the mount shows, from findmnt's source
-	// brackets without the leading slash: Subvol for a subvolume mount, a
-	// path inside it (@/www) for a bind mount, "" when none is printed.
+	// SubPath is the filesystem path the mount shows, from mountinfo's root
+	// field without the leading slash: Subvol for a subvolume mount, a path
+	// inside it (@/www) for a bind mount, "" for the top level.
 	SubPath string `json:"subPath,omitempty"`
 }
 
 // listMounts is a variable so tests can stub mount discovery.
 var listMounts = ListMounts
 
-// ListMounts returns the mounted btrfs filesystems reported by findmnt.
-func ListMounts(ctx context.Context) ([]Mount, error) {
-	out, err := runCommand(ctx, "findmnt", "--json", "--list", "-t", "btrfs", "-o", "TARGET,SOURCE,UUID,OPTIONS")
+// mountinfoPath and sysFSBtrfs are vars so tests can point them at fixtures.
+var (
+	mountinfoPath = "/proc/self/mountinfo"
+	sysFSBtrfs    = "/sys/fs/btrfs"
+)
+
+// unmountFS is unix.Unmount, a var so tests can stub it.
+var unmountFS = unix.Unmount
+
+// ListMounts returns the mounted btrfs filesystems from /proc/self/mountinfo.
+func ListMounts(context.Context) ([]Mount, error) {
+	data, err := os.ReadFile(mountinfoPath)
 	if err != nil {
-		// findmnt exits 1 with no output when nothing matches.
-		var exitErr *exec.ExitError
-		if out == "" && errors.As(err, &exitErr) {
-			return nil, nil
+		return nil, fmt.Errorf("read %s: %w", mountinfoPath, err)
+	}
+	return parseMountinfo(string(data), deviceUUIDs()), nil
+}
+
+// evalSymlinks is a variable so tests can stub path canonicalisation.
+var evalSymlinks = filepath.EvalSymlinks
+
+func canonicalPath(p string) string {
+	if resolved, err := evalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
+}
+
+// deviceUUIDs maps devices to filesystem UUIDs from the kernel's own list
+// of every mounted filesystem's members, /sys/fs/btrfs/<uuid>/devices/<name>,
+// which needs no privilege; a device not listed there has its superblock read.
+func deviceUUIDs() func(device string) string {
+	byName := map[string]string{}
+	filesystems, _ := os.ReadDir(sysFSBtrfs)
+	for _, fs := range filesystems {
+		members, err := os.ReadDir(filepath.Join(sysFSBtrfs, fs.Name(), "devices"))
+		if err != nil {
+			continue // features/ and other non-filesystem entries
 		}
-		return nil, err
+		for _, m := range members {
+			byName[m.Name()] = fs.Name()
+		}
 	}
-	return parseFindmnt([]byte(out))
+	return func(device string) string {
+		if uuid, ok := byName[filepath.Base(canonicalPath(device))]; ok {
+			return uuid
+		}
+		if sb, err := readSuperblock(device); err == nil {
+			return sb.UUID
+		}
+		return ""
+	}
 }
 
-type findmntEntry struct {
-	Target   string         `json:"target"`
-	Source   string         `json:"source"`
-	UUID     string         `json:"uuid"`
-	Options  string         `json:"options"`
-	Children []findmntEntry `json:"children"`
-}
-
-// parseFindmnt accepts flat or tree findmnt JSON; tree children are flattened.
-func parseFindmnt(data []byte) ([]Mount, error) {
-	var doc struct {
-		Filesystems []findmntEntry `json:"filesystems"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("parse findmnt output: %w", err)
-	}
-	return appendMounts(make([]Mount, 0, len(doc.Filesystems)), doc.Filesystems), nil
-}
-
-func appendMounts(mounts []Mount, entries []findmntEntry) []Mount {
-	for _, fs := range entries {
-		device, bracket, _ := strings.Cut(fs.Source, "[")
-		m := Mount{Mountpoint: fs.Target, Device: device, UUID: fs.UUID, Options: strings.Split(fs.Options, ","),
-			SubPath: strings.TrimPrefix(strings.TrimSuffix(bracket, "]"), "/")}
+// parseMountinfo keeps the btrfs lines of mountinfo. Each line is
+// "id parent maj:min root mountpoint vfsopts [optional...] - fstype source
+// superopts", with spaces in paths escaped as \040.
+func parseMountinfo(text string, uuidOf func(string) string) []Mount {
+	mounts := []Mount{}
+	for line := range strings.Lines(text) {
+		fields := strings.Fields(line)
+		sep := slices.Index(fields, "-")
+		if sep < 6 || len(fields) < sep+4 || fields[sep+1] != "btrfs" {
+			continue
+		}
+		device := unescapeMountinfo(fields[sep+2])
+		m := Mount{
+			Mountpoint: unescapeMountinfo(fields[4]), Device: device, UUID: uuidOf(device),
+			SubPath: strings.TrimPrefix(unescapeMountinfo(fields[3]), "/"),
+			Options: append(strings.Split(fields[5], ","), strings.Split(fields[sep+3], ",")...),
+		}
 		for _, opt := range m.Options {
 			switch key, val, _ := strings.Cut(opt, "="); key {
 			case "subvol":
@@ -82,9 +115,59 @@ func appendMounts(mounts []Mount, entries []findmntEntry) []Mount {
 			}
 		}
 		mounts = append(mounts, m)
-		mounts = appendMounts(mounts, fs.Children)
 	}
 	return mounts
+}
+
+// unescapeMountinfo decodes the \ooo octal escapes mountinfo uses.
+func unescapeMountinfo(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if n, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(n))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// vfsMountFlags are the options mount(2) takes as flags rather than in the
+// data string the filesystem parses.
+var vfsMountFlags = map[string]uintptr{
+	"ro": unix.MS_RDONLY, "nosuid": unix.MS_NOSUID, "nodev": unix.MS_NODEV, "noexec": unix.MS_NOEXEC,
+	"sync": unix.MS_SYNCHRONOUS, "dirsync": unix.MS_DIRSYNC, "noatime": unix.MS_NOATIME, "nodiratime": unix.MS_NODIRATIME,
+	"relatime": unix.MS_RELATIME, "strictatime": unix.MS_STRICTATIME, "lazytime": unix.MS_LAZYTIME, "mand": unix.MS_MANDLOCK,
+}
+
+// splitMountOptions separates mount flags from filesystem options; "rw" and
+// "defaults" add nothing.
+func splitMountOptions(options []string) (flags uintptr, data string) {
+	var fsOptions []string
+	for _, o := range options {
+		if f, ok := vfsMountFlags[o]; ok {
+			flags |= f
+		} else if o != "" && o != "rw" && o != "defaults" {
+			fsOptions = append(fsOptions, o)
+		}
+	}
+	return flags, strings.Join(fsOptions, ",")
+}
+
+// deviceOf returns a member device of the mounted filesystem.
+func deviceOf(mounts []Mount, uuid string) (string, error) {
+	for _, m := range mounts {
+		if m.UUID == uuid && m.Device != "" {
+			return m.Device, nil
+		}
+	}
+	return "", fmt.Errorf("btrfs filesystem %s is not mounted", uuid)
 }
 
 // TopLevel returns a mountpoint of the filesystem's top-level subvolume,
@@ -102,12 +185,16 @@ func TopLevel(ctx context.Context, uuid string) (string, error) {
 			return m.Mountpoint, nil
 		}
 	}
+	device, err := deviceOf(mounts, uuid)
+	if err != nil {
+		return "", err
+	}
 	dir := filepath.Join(TopLevelDir, uuid)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create top-level mount dir: %w", err)
 	}
-	if _, err := runCommand(ctx, "mount", "-t", "btrfs", "-o", "subvolid=5,noatime", "UUID="+uuid, dir); err != nil {
-		return "", err
+	if err := mountFS(device, dir, "btrfs", unix.MS_NOATIME, "subvolid=5"); err != nil {
+		return "", fmt.Errorf("mount top level of %s: %w", uuid, err)
 	}
 	return dir, nil
 }

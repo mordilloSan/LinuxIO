@@ -551,7 +551,9 @@ type BtrfsLabelRequest struct {
 
 // BtrfsPoolCreateRequest formats Devices as one btrfs filesystem, mounts it
 // at Mountpoint and records it in /etc/fstab. Force overwrites foreign
-// filesystem signatures on the devices.
+// filesystem signatures on the devices. Partition first gives each disk a
+// GPT with one partition that leaves room for a slightly smaller
+// replacement disk, and builds the pool from the partitions.
 type BtrfsPoolCreateRequest struct {
 	Label           string   `json:"label"`
 	Mountpoint      string   `json:"mountpoint"`
@@ -559,6 +561,7 @@ type BtrfsPoolCreateRequest struct {
 	MetadataProfile string   `json:"metadataProfile"`
 	Devices         []string `json:"devices"`
 	Force           bool     `json:"force"`
+	Partition       bool     `json:"partition"`
 }
 
 // BtrfsPoolMountRequest mounts an unmounted pool at its fstab mountpoint, or

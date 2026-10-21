@@ -113,7 +113,7 @@ func CreateSnapshot(ctx context.Context, uuid, source string, kind SnapshotKind,
 	if err = os.MkdirAll(filepath.Join(top, SnapshotRoot, EscapeSource(source)), 0o755); err != nil {
 		return BtrfsSnapshot{}, fmt.Errorf("create snapshot directory for %q: %w", source, err)
 	}
-	if _, err = runBtrfs(ctx, "subvolume", "snapshot", "-r", filepath.Join(top, source), filepath.Join(top, dest)); err != nil {
+	if err = subvolOps.snapshot(filepath.Join(top, source), filepath.Join(top, dest), true); err != nil {
 		return BtrfsSnapshot{}, fmt.Errorf("snapshot subvolume %q: %w", source, err)
 	}
 	created, err := requireSubvolume(ctx, uuid, dest)

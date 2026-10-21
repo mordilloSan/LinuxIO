@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,24 +32,23 @@ type replStub struct {
 	order     []string   // target-side steps in order: create, receive, delete
 }
 
-func stubReplication(t *testing.T, local, target []string) *replStub {
+func stubReplication(t *testing.T, local []subvolumeRow, target []string) *replStub {
 	t.Helper()
 	s := &replStub{top: t.TempDir(), target: target, show: "backup\n\tName: \t\t\tbackup\n\tSubvolume ID: \t\t256\n"}
 	stubMounts(t, []Mount{{Mountpoint: s.top, UUID: rootUUID, SubvolID: 5}})
+	stubSubvolumes(t, local, 256, &s.mutations)
 	bin := t.TempDir()
 	for _, name := range []string{"btrfs", "ssh"} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	oldBtrfs, oldExec, oldSearch, oldDir := runBtrfs, execCommand, searchDirs, ReplicationDir
+	oldBtrfs, oldExec, oldSearch, oldDir, oldSend := runBtrfs, execCommand, searchDirs, ReplicationDir, sendStream
 	searchDirs = append(slices.Clone(oldSearch), bin)
 	ReplicationDir = filepath.Join(t.TempDir(), "btrfs-replication")
 	runBtrfs = func(_ context.Context, args ...string) (string, error) {
 		joined := strings.Join(args, " ")
 		switch {
-		case strings.HasPrefix(joined, "subvolume list -a -p -u -q -R "):
-			return strings.Join(local, ""), nil
 		case strings.HasPrefix(joined, "subvolume list -o -p -u -q -R "):
 			return strings.Join(s.target, ""), nil
 		case strings.HasPrefix(joined, "subvolume show "):
@@ -61,22 +61,23 @@ func stubReplication(t *testing.T, local, target []string) *replStub {
 			s.mutations = append(s.mutations, args)
 			s.order = append(s.order, joined)
 			return "", nil
-		case strings.HasPrefix(joined, "subvolume list -a "):
-			return "", nil
-		case strings.HasPrefix(joined, "qgroup show "):
-			return "", nil // quotas on, no data
-		case strings.HasPrefix(joined, "subvolume get-default "):
-			return "ID 256 gen 1 top level 5 path @", nil
 		}
 		s.mutations = append(s.mutations, args)
 		s.order = append(s.order, joined)
 		return "", nil
 	}
+	sendStream = func(snap, parent string, w *os.File) error {
+		args := []string{"btrfs", "send", snap}
+		if parent != "" {
+			args = []string{"btrfs", "send", "-p", parent, snap}
+		}
+		s.calls = append(s.calls, args)
+		_, err := io.WriteString(w, replPayload)
+		return err
+	}
 	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		s.calls = append(s.calls, append([]string{filepath.Base(name)}, args...))
 		switch {
-		case slices.Contains(args, "send"):
-			return exec.CommandContext(ctx, "sh", "-c", `printf '%s' "$1"`, "send", replPayload)
 		case slices.Contains(args, "receive"):
 			s.order = append(s.order, "receive")
 			if s.onReceive != "" {
@@ -90,7 +91,9 @@ func stubReplication(t *testing.T, local, target []string) *replStub {
 		}
 		return exec.CommandContext(ctx, "true")
 	}
-	t.Cleanup(func() { runBtrfs, execCommand, searchDirs, ReplicationDir = oldBtrfs, oldExec, oldSearch, oldDir })
+	t.Cleanup(func() {
+		runBtrfs, execCommand, searchDirs, ReplicationDir, sendStream = oldBtrfs, oldExec, oldSearch, oldDir, oldSend
+	})
 	return s
 }
 
@@ -122,7 +125,7 @@ func TestReplicateFullWhenNoParent(t *testing.T) {
 	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
 	t2 := SnapshotPath("@home", replAt(2), KindManual)
 	t3 := SnapshotPath("@home", replAt(3), KindPreUpdate)
-	s := stubReplication(t, []string{snapshotRow(1, t1), snapshotRow(2, t2), snapshotRow(3, t3)}, nil)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1), snapshotSubvolume(2, t2), snapshotSubvolume(3, t3)}, nil)
 	job := BtrfsReplicationJob{
 		ID: "11111111-2222-4333-8444-555555555555", UUID: rootUUID, Path: "@home", After: AfterTimeline, Enabled: true,
 		Target: BtrfsReplicationTarget{Kind: TargetLocal, Path: "/mnt/backup"},
@@ -132,10 +135,11 @@ func TestReplicateFullWhenNoParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Replicate: %v", err)
 	}
-	// Timeline jobs also send manual snapshots; pre-update ones never.
+	// Timeline jobs also send manual snapshots; pre-update ones never. The
+	// receive starts first so the kernel's send has a reader.
 	wantCalls := [][]string{
-		{"btrfs", "send", filepath.Join(s.top, t2)},
 		{"btrfs", "receive", "/mnt/backup"},
+		{"btrfs", "send", filepath.Join(s.top, t2)},
 	}
 	if !reflect.DeepEqual(s.calls, wantCalls) {
 		t.Fatalf("calls =\n%q\nwant\n%q", s.calls, wantCalls)
@@ -159,7 +163,7 @@ func TestReplicateIncremental(t *testing.T) {
 	// although as the oldest it would be pruned first if it counted.
 	t0 := SnapshotPath("@home", replAt(0), KindTimeline)
 	s := stubReplication(t,
-		[]string{snapshotRow(1, t1), snapshotRow(2, t2), snapshotRow(3, t3)},
+		[]subvolumeRow{snapshotSubvolume(1, t1), snapshotSubvolume(2, t2), snapshotSubvolume(3, t3)},
 		[]string{targetRow(9, filepath.Base(t0), "-"), targetRow(1, filepath.Base(t1), localUUID(1)), targetRow(2, filepath.Base(t2), localUUID(2))})
 	s.onReceive = targetRow(3, filepath.Base(t3), localUUID(3))
 	job := BtrfsReplicationJob{
@@ -198,7 +202,7 @@ func TestReplicateUpToDate(t *testing.T) {
 	t1 := SnapshotPath("@home", replAt(1), KindManual)
 	t2 := SnapshotPath("@home", replAt(2), KindTimeline)
 	s := stubReplication(t,
-		[]string{snapshotRow(1, t1), snapshotRow(2, t2)},
+		[]subvolumeRow{snapshotSubvolume(1, t1), snapshotSubvolume(2, t2)},
 		[]string{targetRow(2, filepath.Base(t2), localUUID(2))})
 	job := BtrfsReplicationJob{
 		ID: "11111111-2222-4333-8444-555555555555", UUID: rootUUID, Path: "@home", After: AfterTimeline, Enabled: true,
@@ -280,7 +284,7 @@ func TestEnsureTargetReadsSubvolumeID(t *testing.T) {
 
 func TestReplicateCreatesMissingTarget(t *testing.T) {
 	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
-	s := stubReplication(t, []string{snapshotRow(1, t1)}, nil)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, nil)
 	s.showErr = errors.New("not a subvolume")
 	target := filepath.Join(t.TempDir(), "missing")
 	job := BtrfsReplicationJob{
@@ -297,7 +301,7 @@ func TestReplicateCreatesMissingTarget(t *testing.T) {
 
 func TestReplicateRejectsNonSubvolumeTarget(t *testing.T) {
 	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
-	s := stubReplication(t, []string{snapshotRow(1, t1)}, nil)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, nil)
 	s.showErr = errors.New("not a subvolume")
 	target := t.TempDir() // exists, but `subvolume show` fails
 	job := BtrfsReplicationJob{
@@ -315,12 +319,13 @@ func TestReplicateRejectsNonSubvolumeTarget(t *testing.T) {
 
 func TestReplicateFailureRemovesPartialCopy(t *testing.T) {
 	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
-	s := stubReplication(t, []string{snapshotRow(1, t1)}, nil)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, nil)
+	sendStream = func(_, _ string, w *os.File) error {
+		_, _ = io.WriteString(w, replPayload)
+		return errors.New("send went wrong")
+	}
 	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		s.calls = append(s.calls, append([]string{filepath.Base(name)}, args...))
-		if slices.Contains(args, "send") {
-			return exec.CommandContext(ctx, "sh", "-c", `printf '%s' "$1"; echo 'send went wrong' >&2`, "send", replPayload)
-		}
 		// The failed receive leaves a subvolume without a received_uuid.
 		s.target = append(s.target, targetRow(1, filepath.Base(t1), "-"))
 		return exec.CommandContext(ctx, "sh", "-c", "cat >/dev/null; echo 'no space left' >&2; exit 1")

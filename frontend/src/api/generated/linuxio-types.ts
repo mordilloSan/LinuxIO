@@ -386,6 +386,7 @@ export interface BtrfsPoolCreateRequest {
   metadataProfile: string;
   devices: string[];
   force: boolean;
+  partition: boolean;
 }
 
 export interface BtrfsPoolMountRequest {
@@ -2310,6 +2311,18 @@ export interface NetworkInterface {
   type: string;
 }
 
+export interface NotificationSettings {
+  minSeverity: string;
+  webhookUrl: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUsername: string;
+  smtpPassword?: string;
+  emailFrom: string;
+  emailTo: string[];
+  smtpPasswordSet: boolean;
+}
+
 export interface OfflineUpdatesResponse {
   status?: string;
   error?: string;
@@ -3431,6 +3444,11 @@ export interface LinuxIOSchema {
       request: AlertDismissRequest;
       result: AlertList;
     };
+    get_notifications: {
+      input: [];
+      request: void;
+      result: NotificationSettings;
+    };
     list: { input: []; request: void; result: AlertList };
     mark_all_seen: { input: []; request: void; result: AlertList };
     mark_seen: {
@@ -3438,6 +3456,12 @@ export interface LinuxIOSchema {
       request: AlertIDsRequest;
       result: AlertList;
     };
+    set_notifications: {
+      input: [request: NotificationSettings];
+      request: NotificationSettings;
+      result: NotificationSettings;
+    };
+    test_notifications: { input: []; request: void; result: SuccessResponse };
   };
 
   config: {
@@ -4669,9 +4693,15 @@ export interface LinuxIOCallSchema {
   };
   "accounts.unlock_user": { request: UsernameRequest; result: void };
   "alerts.dismiss": { request: AlertDismissRequest; result: AlertList };
+  "alerts.get_notifications": { request: void; result: NotificationSettings };
   "alerts.list": { request: void; result: AlertList };
   "alerts.mark_all_seen": { request: void; result: AlertList };
   "alerts.mark_seen": { request: AlertIDsRequest; result: AlertList };
+  "alerts.set_notifications": {
+    request: NotificationSettings;
+    result: NotificationSettings;
+  };
+  "alerts.test_notifications": { request: void; result: SuccessResponse };
   "config.get": { request: void; result: AppConfig };
   "config.get_ui": { request: void; result: UIConfig };
   "config.set": { request: ConfigSetPayload; result: ConfigSetResult };

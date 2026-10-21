@@ -200,6 +200,8 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "alerts.mark_seen": [],
   "alerts.mark_all_seen": [],
   "alerts.dismiss": [],
+  "alerts.set_notifications": [endpointQueryPrefix("alerts.get_notifications")],
+  "alerts.test_notifications": [],
 
   "network.set_ipv4": [
     endpointQueryPrefix("network.get_network_info"),

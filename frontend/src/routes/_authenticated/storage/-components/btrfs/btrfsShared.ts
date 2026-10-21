@@ -1,3 +1,5 @@
+import type { BtrfsSnapshotRule } from "@/api";
+
 export const BTRFS_TOAST_META = {
   label: "Open Btrfs",
   to: "/storage/btrfs",
@@ -33,4 +35,60 @@ export const PROFILE_MIN_DEVICES: Record<string, number> = {
   raid1c3: 3,
   raid1c4: 4,
   raid10: 4,
+};
+
+// Hourly snapshots kept for a day, then daily, weekly and monthly ones: the
+// rule the switch turns on, and the dialog's starting point. 03:00 Sunday
+// only matters once the cadence is changed to daily or weekly.
+export const defaultRule = (uuid: string, path: string): BtrfsSnapshotRule => ({
+  uuid,
+  path,
+  enabled: false,
+  every: "hourly",
+  hour: 3,
+  weekday: 0,
+  keep: { hourly: 24, daily: 7, weekly: 4, monthly: 6 },
+  beforeUpdates: false,
+});
+
+// Copies kept of each block and the fewest devices a chunk spans, per profile.
+const PROFILE_LAYOUT: Record<string, { copies: number; stripe: number }> = {
+  single: { copies: 1, stripe: 1 },
+  dup: { copies: 2, stripe: 1 },
+  raid0: { copies: 1, stripe: 2 },
+  raid1: { copies: 2, stripe: 2 },
+  raid1c3: { copies: 3, stripe: 3 },
+  raid1c4: { copies: 4, stripe: 4 },
+  raid10: { copies: 2, stripe: 4 },
+};
+
+/**
+ * Data a profile can hold on disks of the given sizes, filled the way btrfs
+ * allocates: each step takes the disks with the most free space, so mixed
+ * sizes are counted right. Metadata overhead is ignored.
+ */
+export const usableBytes = (profile: string, sizes: number[]): number => {
+  const layout = PROFILE_LAYOUT[profile];
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  if (!layout || sizes.length < layout.stripe) return 0;
+  if (profile === "single") return total;
+  if (profile === "dup") return total / 2;
+  const free = [...sizes];
+  const step = total / 2000;
+  let usable = 0;
+  for (;;) {
+    free.sort((a, b) => b - a);
+    const ready = free.filter((f) => f >= step).length;
+    // raid0 and raid10 stripe over every disk with space, raid10 in pairs;
+    // the mirrored profiles write each copy to a different disk.
+    const width =
+      profile === "raid0"
+        ? ready
+        : profile === "raid10"
+          ? ready - (ready % 2)
+          : layout.copies;
+    if (ready < layout.stripe || width < layout.stripe) return usable;
+    for (let i = 0; i < width; i++) free[i] -= step;
+    usable += (width / layout.copies) * step;
+  }
 };

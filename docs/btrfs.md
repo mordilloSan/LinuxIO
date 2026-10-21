@@ -3,11 +3,19 @@
 The **Storage → Btrfs** tab (`/storage/btrfs`) manages btrfs filesystems:
 health, subvolumes, snapshots with rollback, automatic snapshots, devices and
 profiles, replication to another filesystem or host, quotas and compression.
-Devices, profiles, balance, scrub, pools, space and health are read and
-driven through the kernel's btrfs ioctls; `btrfs-progs` is used only where
-there is no kernel interface (`mkfs.btrfs`, `send`/`receive`, subvolume and
-quota listing). There is no daemon and no new binary beyond the existing
-`linuxio` CLI. Everything is on demand or runs from two systemd timers.
+Everything on the host is read and driven through the kernel's btrfs ioctls,
+`mount(2)`, `/proc/self/mountinfo` and the disks' superblocks: devices,
+profiles, balance, scrub, space, health, pools and partition tables,
+subvolume and quota listing, subvolume create, delete, snapshot and default,
+read-only flags, compression properties, quotas and limits, and the send side
+of replication. `btrfs-progs` is used only where the kernel has no interface:
+`mkfs.btrfs`, `btrfs receive`, and the commands a replication job runs on its
+target, which may be another host. There is no daemon and no new binary
+beyond the existing `linuxio` CLI. Everything is on demand or runs from two
+systemd timers.
+
+`make test-btrfs-integration` runs every one of these operations against the
+real kernel on loop devices; it needs sudo.
 
 ## Capability and privileges
 
@@ -159,8 +167,21 @@ registers the disks with the kernel, mounts the pool and records it in
 `/etc/fstab` as `UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail 0 0`.
 A disk with partitions, holders or a mount is refused; a foreign filesystem
 signature needs **Force**. The mount point must be an unused, empty path
-outside the system directories. Disks are used whole; LinuxIO does not
-partition them.
+outside the system directories. The dialog estimates the usable data space
+for the chosen profile and disks, allocated the way btrfs does, so mixed disk
+sizes are counted right; metadata overhead is not included.
+
+Disks are used whole unless **Partition the disks** is on. Then each disk
+gets a GPT, written natively, with one Linux partition from 1 MiB that stops
+1 GiB before the end, and the pool is built from the partitions. That slack
+lets a replacement disk of the same nominal size that is a few sectors
+smaller still take a member's place.
+
+A shared folder can be created on a pool from **Shares → Add Folder Share →
+New folder on a pool**: it creates a subvolume under the pool's top-level
+mount, optionally limits its size (turning quotas on) and adds the default
+automatic snapshot rule, then shares it over SMB and/or NFS. Only pools with
+a permanent top-level mount are offered.
 
 `nofail` keeps a pool with a missing disk from blocking boot. Such a pool is
 not mounted, since btrfs refuses that without `degraded`, so the overview
@@ -174,8 +195,9 @@ and zeroes the btrfs superblock magic on each disk; everything on the pool is
 lost. A pool holding `/`, `/boot` or another protected mount is refused.
 
 Apart from `mkfs.btrfs`, pools use no command: disks are registered with the
-`BTRFS_IOC_SCAN_DEV` ioctl, mounted with `mount(2)` and discovered by reading
-the primary superblock at 64 KiB.
+`BTRFS_IOC_SCAN_DEV` ioctl, mounted with `mount(2)`, partitioned by writing
+the GPT and asking the kernel to re-read it, and discovered by reading the
+primary superblock at 64 KiB.
 
 ## Devices and profiles
 
@@ -202,6 +224,8 @@ snapshots and from the job's own **Run now**.
 
 - **Local** target: a btrfs subvolume path on a **different** filesystem.
 - **SSH** target: host, user, port and an absolute path on the remote.
+- The snapshot is streamed with the kernel's send ioctl into
+  `btrfs receive`, locally or over SSH; receive has no kernel interface.
 - A missing target path is created with `btrfs subvolume create`.
 - The target is dedicated to the job and not shared with any other job or
   host; two jobs, enabled or not, may not name the same one. Only direct
@@ -230,18 +254,20 @@ key fails the job.
 
 ## Quotas and compression
 
-- **Quotas** toggle runs `btrfs quota enable|disable`. With quotas on,
-  subvolume and snapshot sizes are shown and limits apply
-  (`btrfs qgroup limit`).
+- **Quotas** toggle enables or disables qgroups with the quota ioctl. With
+  quotas on, subvolume and snapshot sizes are read from the quota tree and
+  limits apply (the qgroup limit ioctl). btrfs has no per-user quotas; a
+  size limit applies to a subvolume, such as a shared folder.
 - **Compression (filesystem-wide)**: btrfs applies the compress option to every
   mount of a filesystem, so there is one setting per filesystem, read from its
   first mount. It is applied with
-  `mount -o remount,compress[-force]=<alg>[:<level>]` on that mount and
+  a `mount(2)` remount with `compress[-force]=<alg>[:<level>]` on that mount and
   persisted into every existing `/etc/fstab` entry of the filesystem (matched
   by mountpoint or `UUID=` source); only the options field is rewritten, and
   comments and dump/pass fields are preserved. **Off** persists as removal of
   the option. "Persisted in fstab" means every such entry carries it.
-- **Compression per subvolume** uses `btrfs property set ... compression`.
+- **Compression per subvolume** sets the `btrfs.compression` extended
+  attribute, which is that property.
 
 ## Files written on the host
 
@@ -265,8 +291,8 @@ key fails the job.
 ## Not implemented
 
 - `raid5` and `raid6` profiles, refused on purpose.
-- Partitioning disks before creating a pool.
-- Subvolume and quota listing without `btrfs-progs`.
+- Encryption under a pool. It needs `cryptsetup` (LUKS), and LinuxIO adds no
+  binaries for btrfs.
 - Booting into snapshots from GRUB.
 - Hooking `apt` or `dnf` run by hand.
 - Docker's btrfs storage-driver subvolumes, hidden from lists.

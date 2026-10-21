@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import {
   useCallback,
   useMemo,
@@ -36,11 +36,13 @@ import {
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppPopover from "@/components/ui/AppPopover";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import PathPickerField from "@/components/ui/PathPickerField";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
@@ -53,6 +55,12 @@ import {
   DeleteNFSShareDialog,
   DeleteSambaShareDialog,
 } from "./DeleteShareDialogs";
+import PoolFolderFields, {
+  poolFolderError,
+  sharePools,
+  type PoolFolder,
+} from "./PoolFolderFields";
+import { defaultRule } from "../btrfs/btrfsShared";
 
 type ShareGroup = {
   id: string;
@@ -101,6 +109,13 @@ const nfsOptionLabels: { key: keyof ClientOptions; label: string }[] = [
   { key: "insecure", label: "Insecure" },
   { key: "crossmnt", label: "Crossmnt" },
 ];
+
+const emptyPoolFolder: PoolFolder = {
+  uuid: "",
+  name: "",
+  limitGiB: "",
+  snapshots: true,
+};
 
 const protocolSectionStyle: CSSProperties = {
   display: "flex",
@@ -496,7 +511,28 @@ const FolderShareDialog = ({
       : { ...defaultNFSOptions },
   );
   const [validationError, setValidationError] = useState<string | null>(null);
+  // A new share can also be a new subvolume on a pool, created first.
+  const { privileged } = useAuth();
+  const { isEnabled: btrfsEnabled } = useCapability("btrfsAvailable");
+  const { data: filesystems = [] } = useQuery({
+    ...linuxio.storage.btrfs_list,
+    enabled: !group && privileged && btrfsEnabled,
+  });
+  const pools = sharePools(filesystems);
+  const [onPool, setOnPool] = useState(false);
+  const [folder, setFolder] = useState<PoolFolder>(emptyPoolFolder);
+  const creatingOnPool = !group && onPool && pools.length > 0;
+  const poolMount = pools.find((p) => p.uuid === folder.uuid)?.mountpoint;
+  const targetPath = creatingOnPool
+    ? `${poolMount ?? ""}/${folder.name}`
+    : path;
 
+  const subvolumeCreate = useCallMutation(
+    linuxio.storage.btrfs_subvolume_create,
+  );
+  const quotasSet = useCallMutation(linuxio.storage.btrfs_set_quotas);
+  const limitSet = useCallMutation(linuxio.storage.btrfs_qgroup_limit);
+  const ruleSet = useCallMutation(linuxio.storage.btrfs_snapshot_rule_set);
   const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
   const sambaUpdate = useCallMutation(linuxio.shares.update_samba_share);
   const sambaDelete = useCallMutation(linuxio.shares.delete_samba_share);
@@ -505,6 +541,10 @@ const FolderShareDialog = ({
   const nfsDelete = useCallMutation(linuxio.shares.delete_nfs_share);
 
   const isPending =
+    subvolumeCreate.isPending ||
+    quotasSet.isPending ||
+    limitSet.isPending ||
+    ruleSet.isPending ||
     sambaCreate.isPending ||
     sambaUpdate.isPending ||
     sambaDelete.isPending ||
@@ -527,16 +567,23 @@ const FolderShareDialog = ({
       setSambaPublic(false);
       setNFSClients("*");
       setNFSOptions({ ...defaultNFSOptions });
+      setOnPool(false);
+      setFolder(emptyPoolFolder);
     }
     setValidationError(null);
     onClose();
   };
 
   const handleSave = async () => {
-    const normalizedPath = normalizeSharePath(path.trim());
+    const normalizedPath = normalizeSharePath(targetPath.trim());
     const resolvedName = sambaName.trim() || inferShareName(normalizedPath);
     const parsedNFSClients = parseNFSClients(nfsClients, nfsOptions);
+    const folderError = creatingOnPool ? poolFolderError(folder) : null;
 
+    if (folderError) {
+      setValidationError(folderError);
+      return;
+    }
     if (!normalizedPath) {
       setValidationError("Folder path is required");
       return;
@@ -568,6 +615,26 @@ const FolderShareDialog = ({
     let changedAny = false;
 
     try {
+      if (creatingOnPool) {
+        const { uuid, name } = folder;
+        await subvolumeCreate.mutateAsync({ uuid, path: name });
+        changedAny = true;
+        const limit = folder.limitGiB.trim();
+        if (limit !== "") {
+          await quotasSet.mutateAsync({ uuid, enabled: true });
+          await limitSet.mutateAsync({
+            uuid,
+            path: name,
+            maxReferencedBytes: Math.round(Number(limit) * 1024 ** 3),
+          });
+        }
+        if (folder.snapshots) {
+          await ruleSet.mutateAsync({
+            rule: { ...defaultRule(uuid, name), enabled: true },
+          });
+        }
+      }
+
       if (effectiveSambaEnabled) {
         const sambaProperties = buildFolderSambaProperties(
           normalizedPath,
@@ -655,11 +722,32 @@ const FolderShareDialog = ({
               value={group.path}
             />
           ) : (
-            <PathPickerField
-              label="Folder Path"
-              onChange={setPath}
-              value={path}
-            />
+            <>
+              {pools.length > 0 && (
+                <AppSelect
+                  fullWidth
+                  label="Location"
+                  onChange={(event) => setOnPool(event.target.value === "pool")}
+                  value={onPool ? "pool" : "path"}
+                >
+                  <option value="path">Existing folder</option>
+                  <option value="pool">New folder on a pool</option>
+                </AppSelect>
+              )}
+              {creatingOnPool ? (
+                <PoolFolderFields
+                  folder={folder}
+                  onChange={setFolder}
+                  pools={pools}
+                />
+              ) : (
+                <PathPickerField
+                  label="Folder Path"
+                  onChange={setPath}
+                  value={path}
+                />
+              )}
+            </>
           )}
 
           <div style={protocolSectionStyle}>
@@ -683,7 +771,7 @@ const FolderShareDialog = ({
                   fullWidth
                   label="Share Name"
                   onChange={(event) => setSambaName(event.target.value)}
-                  placeholder={inferShareName(path)}
+                  placeholder={inferShareName(targetPath)}
                   size="small"
                   value={sambaName}
                 />

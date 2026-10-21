@@ -11,6 +11,7 @@ export const SETTINGS_TABS = [
   { label: "Assistant", value: "assistant" },
   { label: "Indexer", value: "indexer" },
   { label: "Monitoring", value: "monitoring" },
+  { label: "Notifications", value: "notifications" },
   { label: "Power", value: "power" },
 ] as const;
 
@@ -20,6 +21,7 @@ export type SettingsTab = (typeof SETTINGS_TABS)[number]["value"];
 export const PRIVILEGED_SETTINGS_TABS: readonly SettingsTab[] = [
   "indexer",
   "monitoring",
+  "notifications",
   "power",
 ];
 

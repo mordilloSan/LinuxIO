@@ -50,7 +50,8 @@ func Scrub(ctx context.Context, uuid string, report func(BtrfsScrubStatus)) (Btr
 		}
 		pending++
 		go func(id int) {
-			args := scrubArgs{DevID: uint64(id)}
+			// The kernel scrubs only [Start, End]; the whole device, as btrfs-progs asks.
+			args := scrubArgs{DevID: uint64(id), End: ^uint64(0)}
 			err := fsIoctl(mnt, iocScrub, unsafe.Pointer(&args))
 			results <- result{args.Progress, err}
 		}(d.ID)

@@ -38,12 +38,15 @@ type BtrfsSubvolume struct {
 	MaxReferencedBytes *uint64 `json:"maxReferencedBytes,omitempty"`
 }
 
-// subvolumeRow is one parsed line of `btrfs subvolume list`. Fields the
-// chosen list flags do not print stay zero.
+// subvolumeRow is one subvolume as read from the root tree, or one parsed
+// line of `btrfs subvolume list` for a replication target, where only the
+// fields the list flags print are set.
 type subvolumeRow struct {
 	ID, ParentID                   int
 	UUID, ParentUUID, ReceivedUUID string
 	OTime, Path                    string
+	ReadOnly                       bool
+	CreatedAt                      *time.Time
 }
 
 var (
@@ -52,7 +55,6 @@ var (
 	subvolumeLine = regexp.MustCompile(`^ID (\d+) gen \d+(?: cgen \d+)?(?: parent (\d+))? top level \d+` +
 		`(?: otime (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d|-))?` +
 		`(?: parent_uuid (\S+) +received_uuid (\S+) +uuid (\S+))? +path (.+)$`)
-	defaultSubvolumeLine = regexp.MustCompile(`^ID (\d+)`)
 )
 
 // parseSubvolumeList parses `btrfs subvolume list -a` output of any flag
@@ -111,29 +113,6 @@ func isSnapshotPath(p string) bool {
 	return strings.HasPrefix(p, SnapshotRoot+"/")
 }
 
-// listRows runs `btrfs subvolume list -a <flags> <top>` and parses it.
-func listRows(ctx context.Context, top, what string, flags ...string) ([]subvolumeRow, error) {
-	args := append([]string{"subvolume", "list", "-a"}, flags...)
-	out, err := runBtrfs(ctx, append(args, top)...)
-	if err != nil {
-		return nil, fmt.Errorf("list subvolumes (%s): %w", what, err)
-	}
-	return parseSubvolumeList(out)
-}
-
-// defaultSubvolumeID returns the id of the filesystem's default subvolume.
-func defaultSubvolumeID(ctx context.Context, top string) (int, error) {
-	out, err := runBtrfs(ctx, "subvolume", "get-default", top)
-	if err != nil {
-		return 0, fmt.Errorf("get default subvolume: %w", err)
-	}
-	m := defaultSubvolumeLine.FindStringSubmatch(out)
-	if m == nil {
-		return 0, fmt.Errorf("get default subvolume: unexpected output %q", out)
-	}
-	return strconv.Atoi(m[1])
-}
-
 // ListSubvolumes returns the subvolumes of the filesystem sorted by path,
 // excluding Docker's btrfs-driver layers.
 func ListSubvolumes(ctx context.Context, uuid string) ([]BtrfsSubvolume, error) {
@@ -141,36 +120,13 @@ func ListSubvolumes(ctx context.Context, uuid string) ([]BtrfsSubvolume, error) 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := listRows(ctx, top, "details", "-p", "-u", "-q", "-R")
-	if err != nil {
-		return nil, err
-	}
-	roRows, err := listRows(ctx, top, "read-only", "-r")
-	if err != nil {
-		return nil, err
-	}
-	snapRows, err := listRows(ctx, top, "snapshots", "-s")
-	if err != nil {
-		return nil, err
-	}
-	defaultID, err := defaultSubvolumeID(ctx, top)
+	rows, defaultID, err := readSubvolumes(top)
 	if err != nil {
 		return nil, err
 	}
 	mounts, err := listMounts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list btrfs mounts: %w", err)
-	}
-
-	readOnly := map[int]bool{}
-	for _, r := range roRows {
-		readOnly[r.ID] = true
-	}
-	created := map[int]*time.Time{}
-	for _, r := range snapRows {
-		if t, err := time.ParseInLocation(time.DateTime, r.OTime, time.Local); err == nil {
-			created[r.ID] = &t
-		}
 	}
 
 	subvols := make([]BtrfsSubvolume, 0, len(rows))
@@ -181,13 +137,13 @@ func ListSubvolumes(ctx context.Context, uuid string) ([]BtrfsSubvolume, error) 
 		subvols = append(subvols, BtrfsSubvolume{
 			ID: r.ID, ParentID: r.ParentID, Path: r.Path,
 			UUID: r.UUID, ParentUUID: r.ParentUUID, ReceivedUUID: r.ReceivedUUID,
-			ReadOnly: readOnly[r.ID], IsDefault: r.ID == defaultID,
-			IsSnapshot: isSnapshotPath(r.Path), CreatedAt: created[r.ID],
+			ReadOnly: r.ReadOnly, IsDefault: r.ID == defaultID,
+			IsSnapshot: isSnapshotPath(r.Path), CreatedAt: r.CreatedAt,
 			Mountpoint: mountpointOf(mounts, uuid, r.Path),
 		})
 	}
-	// One qgroup show serves both cases: "quotas not enabled" just means no sizes.
-	switch usage, err := qgroupShow(ctx, top); {
+	// Disabled quotas just mean no sizes.
+	switch usage, err := readQgroups(top); {
 	case err == nil:
 		for i := range subvols {
 			if u, ok := usage[subvols[i].ID]; ok {
@@ -247,7 +203,7 @@ func CreateSubvolume(ctx context.Context, uuid, path string) (BtrfsSubvolume, er
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if _, err := runBtrfs(ctx, "subvolume", "create", filepath.Join(top, path)); err != nil {
+	if err := subvolOps.create(filepath.Join(top, path)); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("create subvolume %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)
@@ -292,7 +248,7 @@ func deleteUnmounted(ctx context.Context, uuid, path string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := runBtrfs(ctx, "subvolume", "delete", filepath.Join(top, path)); err != nil {
+	if err := subvolOps.destroy(filepath.Join(top, path)); err != nil {
 		return fmt.Errorf("delete subvolume %q: %w", path, err)
 	}
 	return nil
@@ -310,7 +266,7 @@ func SetSubvolumeReadOnly(ctx context.Context, uuid, path string, ro bool) (Btrf
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if _, err := runBtrfs(ctx, "property", "set", "-ts", filepath.Join(top, path), "ro", strconv.FormatBool(ro)); err != nil {
+	if err := subvolOps.readOnly(filepath.Join(top, path), ro); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("set read-only on %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)
@@ -329,7 +285,7 @@ func SetDefaultSubvolume(ctx context.Context, uuid, path string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := runBtrfs(ctx, "subvolume", "set-default", strconv.Itoa(sv.ID), top); err != nil {
+	if err := subvolOps.setDefault(top, sv.ID); err != nil {
 		return fmt.Errorf("set default subvolume %q: %w", path, err)
 	}
 	return nil
