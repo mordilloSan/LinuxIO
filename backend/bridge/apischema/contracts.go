@@ -541,6 +541,26 @@ type BtrfsBalanceRequest struct {
 	MetadataProfile *string `json:"metadataProfile,omitempty"`
 }
 
+// BtrfsPoolCreateRequest formats Devices as one btrfs filesystem, mounts it
+// at Mountpoint and records it in /etc/fstab. Force overwrites foreign
+// filesystem signatures on the devices.
+type BtrfsPoolCreateRequest struct {
+	Label           string   `json:"label"`
+	Mountpoint      string   `json:"mountpoint"`
+	DataProfile     string   `json:"dataProfile"`
+	MetadataProfile string   `json:"metadataProfile"`
+	Devices         []string `json:"devices"`
+	Force           bool     `json:"force"`
+}
+
+// BtrfsPoolMountRequest mounts an unmounted pool at its fstab mountpoint, or
+// at /mnt/<label> which is then recorded in /etc/fstab; Degraded allows a
+// pool with missing devices.
+type BtrfsPoolMountRequest struct {
+	UUID     string `json:"uuid"`
+	Degraded bool   `json:"degraded"`
+}
+
 type MountpointRemoveFstabRequest struct {
 	Mountpoint  string `json:"mountpoint"`
 	RemoveFstab string `json:"removeFstab"`

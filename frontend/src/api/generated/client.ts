@@ -253,6 +253,10 @@ const linuxio = {
       { kind: "object" },
     ),
     btrfs_list: defineCall("storage.btrfs_list"),
+    btrfs_pool_create: defineCallWithRequest("storage.btrfs_pool_create"),
+    btrfs_pool_destroy: defineCallWithRequest("storage.btrfs_pool_destroy"),
+    btrfs_pool_mount: defineCallWithRequest("storage.btrfs_pool_mount"),
+    btrfs_pools_offline: defineCall("storage.btrfs_pools_offline"),
     btrfs_qgroup_limit: defineCallWithRequest("storage.btrfs_qgroup_limit"),
     btrfs_replication_job_delete: defineCallWithRequest(
       "storage.btrfs_replication_job_delete",

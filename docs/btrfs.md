@@ -134,6 +134,34 @@ never its timeline:
 
 Manual `apt` or `dnf` runs are not hooked.
 
+## Pools
+
+A pool is one btrfs filesystem over one or more whole disks. **Create pool**
+on the Storage overview formats free disks with `mkfs.btrfs`, with the data
+and metadata profiles chosen from `single`, `dup`, `raid0`, `raid1`,
+`raid1c3`, `raid1c4` and `raid10` (`raid5` and `raid6` are refused),
+registers the disks with the kernel, mounts the pool and records it in
+`/etc/fstab` as `UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail 0 0`.
+A disk with partitions, holders or a mount is refused; a foreign filesystem
+signature needs **Force**. The mount point must be an unused, empty path
+outside the system directories. Disks are used whole; LinuxIO does not
+partition them.
+
+`nofail` keeps a pool with a missing disk from blocking boot. Such a pool is
+not mounted, since btrfs refuses that without `degraded`, so the overview
+lists it from the disks' superblocks as an unmounted pool with its missing
+disk count. **Mount** mounts a complete pool and **Mount degraded** one with
+missing disks, so its data stays reachable until the disk is replaced. A pool
+without an fstab entry is mounted at `/mnt/<label>` and recorded.
+
+**Destroy pool** unmounts every mount of the pool, removes its fstab entries
+and zeroes the btrfs superblock magic on each disk; everything on the pool is
+lost. A pool holding `/`, `/boot` or another protected mount is refused.
+
+Apart from `mkfs.btrfs`, pools use no command: disks are registered with the
+`BTRFS_IOC_SCAN_DEV` ioctl, mounted with `mount(2)` and discovered by reading
+the primary superblock at 64 KiB.
+
 ## Devices and profiles
 
 | Action | Behaviour |
@@ -210,12 +238,13 @@ key fails the job.
 | `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio btrfs-snapshot run` |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
-| `/etc/fstab` | root | Compression options, only for existing entries |
+| `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
 | `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
 
 ## Not implemented
 
 - `raid5` and `raid6` profiles, refused on purpose.
+- Partitioning disks before creating a pool.
 - Booting into snapshots from GRUB.
 - Hooking `apt` or `dnf` run by hand.
 - Docker's btrfs storage-driver subvolumes, hidden from lists.

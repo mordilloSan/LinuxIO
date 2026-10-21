@@ -22,3 +22,15 @@ export const isSystemSubvolume = (path: string) =>
       path.endsWith(`/${system}`) ||
       path.includes(`/${system}/`),
   );
+
+// Mirrors btrfs.AllowedProfiles and btrfs.MinDevices; raid5/raid6 are never
+// offered.
+export const PROFILE_MIN_DEVICES: Record<string, number> = {
+  single: 1,
+  dup: 1,
+  raid0: 2,
+  raid1: 2,
+  raid1c3: 3,
+  raid1c4: 4,
+  raid10: 4,
+};

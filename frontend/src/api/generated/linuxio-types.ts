@@ -355,10 +355,33 @@ export interface BtrfsMaintenanceTask {
   mountpoints: string[];
 }
 
+export interface BtrfsOfflinePool {
+  uuid: string;
+  label: string;
+  numDevices: number;
+  devices: string[];
+  totalBytes: number;
+  mountpoint: string;
+}
+
 export interface BtrfsOpProgress {
   op: string;
   percent: number;
   message: string;
+}
+
+export interface BtrfsPoolCreateRequest {
+  label: string;
+  mountpoint: string;
+  dataProfile: string;
+  metadataProfile: string;
+  devices: string[];
+  force: boolean;
+}
+
+export interface BtrfsPoolMountRequest {
+  uuid: string;
+  degraded: boolean;
 }
 
 export interface BtrfsQgroupLimitRequest {
@@ -4078,6 +4101,26 @@ export interface LinuxIOSchema {
       progress: TaskProgress<BtrfsOpProgress>;
     };
     btrfs_list: { input: []; request: void; result: BtrfsFilesystem[] };
+    btrfs_pool_create: {
+      input: [request: BtrfsPoolCreateRequest];
+      request: BtrfsPoolCreateRequest;
+      result: BtrfsFilesystem;
+    };
+    btrfs_pool_destroy: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: SuccessResponse;
+    };
+    btrfs_pool_mount: {
+      input: [request: BtrfsPoolMountRequest];
+      request: BtrfsPoolMountRequest;
+      result: BtrfsFilesystem;
+    };
+    btrfs_pools_offline: {
+      input: [];
+      request: void;
+      result: BtrfsOfflinePool[];
+    };
     btrfs_qgroup_limit: {
       input: [request: BtrfsQgroupLimitRequest];
       request: BtrfsQgroupLimitRequest;
@@ -4923,6 +4966,19 @@ export interface LinuxIOCallSchema {
     result: BtrfsFilesystem;
   };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
+  "storage.btrfs_pool_create": {
+    request: BtrfsPoolCreateRequest;
+    result: BtrfsFilesystem;
+  };
+  "storage.btrfs_pool_destroy": {
+    request: UUIDRequest;
+    result: SuccessResponse;
+  };
+  "storage.btrfs_pool_mount": {
+    request: BtrfsPoolMountRequest;
+    result: BtrfsFilesystem;
+  };
+  "storage.btrfs_pools_offline": { request: void; result: BtrfsOfflinePool[] };
   "storage.btrfs_qgroup_limit": {
     request: BtrfsQgroupLimitRequest;
     result: BtrfsSubvolume;

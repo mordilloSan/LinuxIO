@@ -54,6 +54,17 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       ]);
     }
   });
+  it("refreshes the btrfs inventory, unmounted pools and live filesystems after pool actions", () => {
+    for (const action of ["pool_create", "pool_destroy", "pool_mount"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`storage.btrfs_${action}`]).toEqual([
+        ["linuxio", "storage", "btrfs_list"],
+        ["linuxio", "storage", "get_topology"],
+        ["linuxio", "storage", "get_drive_info"],
+        ["linuxio", "storage", "btrfs_pools_offline"],
+        ["linuxio", "monitoring", "get_live"],
+      ]);
+    }
+  });
   it("refreshes btrfs settings and subvolume sizes after quota and compression changes", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["storage.btrfs_set_quotas"]).toEqual([
       ["linuxio", "storage", "btrfs_settings"],

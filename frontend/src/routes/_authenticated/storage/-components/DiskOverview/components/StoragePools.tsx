@@ -2,10 +2,22 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
-import { linuxio, type FilesystemInfo, type NFSMount } from "@/api";
+import {
+  linuxio,
+  useCallMutation,
+  type FilesystemInfo,
+  type NFSMount,
+} from "@/api";
 import { driveIcon } from "@/components/cards/DriveCard";
+import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
+import {
+  AppDialogActions,
+  AppDialogContent,
+  AppDialogContentText,
+  AppDialogTitle,
+} from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
@@ -14,6 +26,7 @@ import { useCapability } from "@/hooks/useCapabilities";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formaters";
 
+import BtrfsCreatePoolDialog from "../../btrfs/BtrfsCreatePoolDialog";
 import BtrfsDevicesCard from "../../btrfs/BtrfsDevicesCard";
 import BtrfsSpaceCard from "../../btrfs/BtrfsSpaceCard";
 import { buildStorageLayout, fsTypeLabel } from "../storagePools";
@@ -204,6 +217,10 @@ const Volumes = ({
   </div>
 );
 
+type PoolDialog =
+  | { kind: "create" }
+  | { kind: "destroy"; uuid: string; name: string; disks: string[] };
+
 interface StoragePoolsProps {
   drives: DriveInfo[];
   filesystems: FilesystemInfo[];
@@ -233,10 +250,42 @@ const StoragePools = ({
     enabled: poolsEnabled,
     refetchInterval: 10000,
   });
+  const { data: offline = [] } = useQuery({
+    ...linuxio.storage.btrfs_pools_offline,
+    enabled: poolsEnabled,
+    refetchInterval: 10000,
+  });
   const [selectedUuid, setSelectedUuid] = useState<string>();
+  const [dialog, setDialog] = useState<PoolDialog | null>(null);
+  const closeDialog = () => setDialog(null);
+  const { mutate: createPool, isPending: isCreating } = useCallMutation(
+    linuxio.storage.btrfs_pool_create,
+    { success: "Pool created", error: "Failed to create pool" },
+  );
+  const { mutate: mountPool, isPending: isMounting } = useCallMutation(
+    linuxio.storage.btrfs_pool_mount,
+    { success: "Pool mounted", error: "Failed to mount pool" },
+  );
+  const { mutate: destroyPool, isPending: isDestroying } = useCallMutation(
+    linuxio.storage.btrfs_pool_destroy,
+    { success: "Pool destroyed", error: "Failed to destroy pool" },
+  );
 
-  const { poolStacks, driveStacks, sourceStacks, idleDrives } =
-    buildStorageLayout(btrfs, filesystems, drives, nfsMounts);
+  const {
+    poolStacks,
+    driveStacks,
+    sourceStacks,
+    idleDrives: unpooled,
+  } = buildStorageLayout(btrfs, filesystems, drives, nfsMounts);
+  // Disks of an unmounted pool are drawn under it, not as idle.
+  const offlineDrives = new Set(
+    offline.flatMap((pool) =>
+      pool.devices.map(
+        (path) => findBackingDrive(path.replace(/^\/dev\//, ""), drives)?.name,
+      ),
+    ),
+  );
+  const idleDrives = unpooled.filter((drive) => !offlineDrives.has(drive.name));
   const selected = poolStacks.find(({ fs }) => fs.uuid === selectedUuid);
 
   // Until the pools load, btrfs volumes would sit under their drives and then
@@ -253,9 +302,27 @@ const StoragePools = ({
 
   return (
     <>
-      <AppTypography style={{ marginBottom: 8, fontWeight: 600 }} variant="h6">
-        Storage space
-      </AppTypography>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 8,
+        }}
+      >
+        <AppTypography style={{ fontWeight: 600 }} variant="h6">
+          Storage space
+        </AppTypography>
+        {poolsEnabled && (
+          <AppButton
+            onClick={() => setDialog({ kind: "create" })}
+            size="small"
+            variant="outlined"
+          >
+            Create pool
+          </AppButton>
+        )}
+      </div>
       <div className="storage-pools">
         {driveStacks.map(({ drive, volumes }) => (
           <div className="storage-pools__stack" key={drive.name}>
@@ -330,6 +397,87 @@ const StoragePools = ({
             )}
           </div>
         ))}
+        {offline.map((pool) => {
+          const missing = pool.numDevices - pool.devices.length;
+          const name = pool.label || pool.uuid;
+          return (
+            <div className="storage-pools__stack" key={pool.uuid}>
+              <div className="storage-pools__card storage-pools__disks">
+                {pool.devices.map((path) => {
+                  const diskName = path.replace(/^\/dev\//, "");
+                  const drive = findBackingDrive(diskName, drives);
+                  return (
+                    <DiskRow
+                      drive={drive}
+                      key={path}
+                      name={diskName}
+                      onInspectDrive={onInspectDrive}
+                      sizeBytes={drive?.sizeBytes ?? 0}
+                    />
+                  );
+                })}
+                {missing > 0 && (
+                  <DiskRow
+                    drive={null}
+                    missing
+                    name={`${missing} missing disk${missing > 1 ? "s" : ""}`}
+                    onInspectDrive={onInspectDrive}
+                    sizeBytes={0}
+                  />
+                )}
+              </div>
+              <Connector />
+              <div className="storage-pools__card storage-pools__pool">
+                <Icon
+                  className="storage-pools__icon"
+                  height={36}
+                  icon="mdi:database-off-outline"
+                  width={36}
+                />
+                <AppTypography fontWeight={600} noWrap variant="body2">
+                  {name}
+                </AppTypography>
+                <AppChip
+                  color={missing > 0 ? "error" : "warning"}
+                  label={missing > 0 ? "Degraded" : "Not mounted"}
+                  size="small"
+                  variant="soft"
+                />
+                <AppTypography color="text.secondary" variant="caption">
+                  {pool.mountpoint
+                    ? `fstab: ${pool.mountpoint}`
+                    : "Not in /etc/fstab"}
+                </AppTypography>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <AppButton
+                    disabled={isMounting}
+                    onClick={() =>
+                      mountPool({ uuid: pool.uuid, degraded: missing > 0 })
+                    }
+                    size="small"
+                    variant="outlined"
+                  >
+                    {missing > 0 ? "Mount degraded" : "Mount"}
+                  </AppButton>
+                  <AppButton
+                    color="error"
+                    onClick={() =>
+                      setDialog({
+                        kind: "destroy",
+                        uuid: pool.uuid,
+                        name,
+                        disks: pool.devices,
+                      })
+                    }
+                    size="small"
+                  >
+                    Destroy
+                  </AppButton>
+                </div>
+              </div>
+            </div>
+          );
+        })}
         {sourceStacks.map(({ key, label, network, volumes }) => (
           <div className="storage-pools__stack" key={key}>
             <div className="storage-pools__card storage-pools__disks">
@@ -381,12 +529,35 @@ const StoragePools = ({
       )}
       {selected && (
         <>
-          <AppTypography
-            style={{ marginBottom: 8, fontWeight: 600 }}
-            variant="h6"
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
           >
-            Details · {selected.pool.name}
-          </AppTypography>
+            <AppTypography style={{ fontWeight: 600 }} variant="h6">
+              Details · {selected.pool.name}
+            </AppTypography>
+            <AppButton
+              color="error"
+              onClick={() =>
+                setDialog({
+                  kind: "destroy",
+                  uuid: selected.fs.uuid,
+                  name: selected.pool.name,
+                  disks: selected.fs.devices
+                    .map(({ path }) => path)
+                    .filter(Boolean),
+                })
+              }
+              size="small"
+              variant="outlined"
+            >
+              Destroy pool
+            </AppButton>
+          </div>
           <AppGrid
             container
             spacing={DASHBOARD_CARD_SPACING}
@@ -404,6 +575,54 @@ const StoragePools = ({
           </AppGrid>
         </>
       )}
+      {dialog?.kind === "create" && (
+        <BtrfsCreatePoolDialog
+          isPending={isCreating}
+          onClose={closeDialog}
+          onConfirm={(request) =>
+            createPool(request, { onSuccess: closeDialog })
+          }
+          pooledDevices={btrfs.flatMap((fs) =>
+            fs.devices.map(({ path }) => path),
+          )}
+        />
+      )}
+      <GeneralDialog
+        fullWidth
+        maxWidth="sm"
+        onClose={closeDialog}
+        open={dialog?.kind === "destroy"}
+      >
+        <AppDialogTitle>Destroy pool</AppDialogTitle>
+        <AppDialogContent>
+          <AppDialogContentText>
+            {dialog?.kind === "destroy" &&
+              `Destroy ${dialog.name}? It is unmounted, removed from /etc/fstab and the btrfs signature is erased from ${dialog.disks.join(", ")}. Everything on it is lost.`}
+          </AppDialogContentText>
+        </AppDialogContent>
+        <AppDialogActions>
+          <AppButton onClick={closeDialog}>Cancel</AppButton>
+          <AppButton
+            color="error"
+            disabled={isDestroying}
+            onClick={() => {
+              if (dialog?.kind !== "destroy") return;
+              destroyPool(
+                { uuid: dialog.uuid },
+                {
+                  onSuccess: () => {
+                    closeDialog();
+                    setSelectedUuid(undefined);
+                  },
+                },
+              );
+            }}
+            variant="contained"
+          >
+            Destroy
+          </AppButton>
+        </AppDialogActions>
+      </GeneralDialog>
     </>
   );
 };

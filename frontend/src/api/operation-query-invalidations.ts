@@ -72,6 +72,12 @@ const BTRFS_DEVICE_KEYS = [
   endpointQueryPrefix("storage.get_topology"),
   endpointQueryPrefix("storage.get_drive_info"),
 ];
+// Pools change what is mounted, so the live filesystem list refreshes too.
+const BTRFS_POOL_KEYS = [
+  ...BTRFS_DEVICE_KEYS,
+  endpointQueryPrefix("storage.btrfs_pools_offline"),
+  endpointQueryPrefix("monitoring.get_live"),
+];
 
 const VM_KEYS = [
   endpointQueryPrefix("virt.list"),
@@ -375,6 +381,9 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "storage.btrfs_balance_cancel": BTRFS_DEVICE_KEYS,
   "storage.btrfs_scrub_start": BTRFS_DEVICE_KEYS,
   "storage.btrfs_scrub_cancel": BTRFS_DEVICE_KEYS,
+  "storage.btrfs_pool_create": BTRFS_POOL_KEYS,
+  "storage.btrfs_pool_destroy": BTRFS_POOL_KEYS,
+  "storage.btrfs_pool_mount": BTRFS_POOL_KEYS,
   "storage.set_btrfs_maintenance": [
     endpointQueryPrefix("storage.get_btrfs_maintenance"),
   ],
