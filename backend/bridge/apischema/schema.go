@@ -6,7 +6,7 @@ import (
 	"net"
 	"strings"
 
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 // RouteSpec is the Go-side contract for one LinuxIO API route.

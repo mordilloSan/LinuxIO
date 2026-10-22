@@ -124,7 +124,7 @@ func (d *daemon) handleReindexContext(ctx context.Context, w http.ResponseWriter
 	}
 
 	// Normalize the path
-	normalizedPath := indexing.NormalizeIndexPath(path)
+	normalizedPath := api.NormalizePath(path)
 
 	if !d.tryLockIndex() {
 		http.Error(w, "indexer already running", http.StatusConflict)
@@ -316,7 +316,7 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	relPath := indexing.NormalizeIndexPath(payload.Path)
+	relPath := api.NormalizePath(payload.Path)
 	if relPath == "/" {
 		http.Error(w, "path must not be root; use /reindex", http.StatusBadRequest)
 		return
@@ -391,7 +391,7 @@ func (d *daemon) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	relPath := indexing.NormalizeIndexPath(path)
+	relPath := api.NormalizePath(path)
 	if relPath == "/" {
 		http.Error(w, "path must not be root; use /reindex to reconcile the index", http.StatusBadRequest)
 		return
@@ -474,5 +474,5 @@ func queryPathOrRoot(path string) (string, bool) {
 	if !indexing.ValidateRelativePath(path) {
 		return "", false
 	}
-	return indexing.NormalizeIndexPath(path), true
+	return api.NormalizePath(path), true
 }

@@ -3,6 +3,7 @@
 package api
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -153,4 +154,18 @@ type WorkErrorEvent struct {
 	OperationID string `json:"operation_id"`
 	Path        string `json:"path"`
 	Message     string `json:"message"`
+}
+
+// NormalizePath is the canonical index path both the daemon and the bridge
+// use: cleaned (so ".." cannot escape the root), absolute, no trailing slash,
+// and "/" for the root.
+func NormalizePath(p string) string {
+	if p == "" || p == "/" {
+		return "/"
+	}
+	cleaned := filepath.Clean("/" + strings.Trim(p, "/"))
+	if cleaned == "" || cleaned == "." {
+		return "/"
+	}
+	return cleaned
 }

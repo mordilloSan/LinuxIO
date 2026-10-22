@@ -13,7 +13,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func main() {
@@ -434,7 +434,7 @@ func (r *tsRenderer) addDefinition(t reflect.Type) {
 	if _, exists := r.defs[t.Name()]; exists {
 		return
 	}
-	if t.PkgPath() == "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge" && t.Name() == "TaskProgress" {
+	if t.PkgPath() == "github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc" && t.Name() == "TaskProgress" {
 		r.defs[t.Name()] = `export interface TaskProgress<TDetail = unknown> {
   percentage?: number;
   phase?: string;

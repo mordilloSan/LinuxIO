@@ -13,7 +13,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -53,7 +53,7 @@ func (j standaloneUpdateJournal) write(tx standaloneUpdateTransaction) error {
 	if err != nil {
 		return fmt.Errorf("marshal standalone update transaction: %w", err)
 	}
-	if err := utils.WriteFileAtomic(j.path, append(data, '\n'), 0o600); err != nil {
+	if err := atomicfile.Write(j.path, append(data, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write standalone update transaction: %w", err)
 	}
 	return nil

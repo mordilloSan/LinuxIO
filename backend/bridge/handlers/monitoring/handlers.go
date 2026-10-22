@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 

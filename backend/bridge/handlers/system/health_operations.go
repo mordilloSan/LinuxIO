@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*apischema.SystemHealthSummary, error) {
@@ -91,12 +90,12 @@ func applyHealthDismissals(ctx context.Context, username string, store *config.U
 }
 
 func hasDismissibleHealthSignal(summary *apischema.SystemHealthSummary) bool {
-	return (summary.UncleanShutdown && utils.StringValue(summary.UncleanShutdownBootID) != "") ||
+	return (summary.UncleanShutdown && apischema.StringValue(summary.UncleanShutdownBootID) != "") ||
 		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
 }
 
 func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismissals *config.PersistedDismissals) {
-	bootID := utils.StringValue(summary.UncleanShutdownBootID)
+	bootID := apischema.StringValue(summary.UncleanShutdownBootID)
 	if !summary.UncleanShutdown || bootID == "" {
 		return
 	}

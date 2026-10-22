@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 // ScrubRecordPath stores the last scrub LinuxIO ran on each filesystem,
@@ -152,7 +152,7 @@ func saveScrubRecord(uuid string, s BtrfsScrubStatus) {
 		err = os.MkdirAll(filepath.Dir(ScrubRecordPath), 0o755)
 	}
 	if err == nil {
-		err = utils.WriteFileAtomic(ScrubRecordPath, data, 0o644)
+		err = atomicfile.Write(ScrubRecordPath, data, 0o644)
 	}
 	if err != nil {
 		slog.Warn("btrfs scrub records", "path", ScrubRecordPath, "error", err)

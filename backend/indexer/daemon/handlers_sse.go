@@ -217,9 +217,9 @@ func (d *daemon) attachStatusSSEIfActive(w http.ResponseWriter, r *http.Request)
 	expectedID := strings.TrimSpace(r.URL.Query().Get("operation_id"))
 	expectedOperation := strings.TrimSpace(r.URL.Query().Get("operation"))
 	_, pathProvided := r.URL.Query()["path"]
-	expectedPath := indexing.NormalizeIndexPath(r.URL.Query().Get("path"))
+	expectedPath := api.NormalizePath(r.URL.Query().Get("path"))
 	if expectedID == "" || expectedID != broadcaster.OperationID() ||
-		expectedOperation != broadcaster.Operation() || !pathProvided || expectedPath != indexing.NormalizeIndexPath(broadcaster.Path()) {
+		expectedOperation != broadcaster.Operation() || !pathProvided || expectedPath != api.NormalizePath(broadcaster.Path()) {
 		return false
 	}
 

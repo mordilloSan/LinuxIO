@@ -17,9 +17,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // uploadBatchFile is one manifest entry of a batch upload: where the file
@@ -40,7 +39,7 @@ type uploadBatchFile struct {
 // a file that cannot be written is recorded in failures and its remaining
 // stream bytes are discarded so the rest of the batch still lands.
 type uploadBatchTransferTask struct {
-	task        *bridgetasks.Task
+	task        *bridgeipc.Task
 	destination string
 	files       []uploadBatchFile
 	directories []string
@@ -114,7 +113,7 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 	if len(req.Files) == 0 && len(req.Directories) == 0 {
 		return "", nil, nil, 0, fmt.Errorf("empty manifest")
 	}
-	destination := utils.CleanAbsPath(req.Destination)
+	destination := fsroot.CleanAbsPath(req.Destination)
 
 	files := make([]uploadBatchFile, 0, len(req.Files))
 	var total int64
@@ -154,15 +153,15 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 	return destination, files, directories, total, nil
 }
 
-func runUploadBatchTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadBatchRequest, owner uploadOwner) (any, error) {
+func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadBatchRequest, owner uploadOwner) (any, error) {
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	if err != nil {
-		return nil, bridgetasks.NewError(err.Error(), 400)
+		return nil, bridgeipc.NewError(err.Error(), 400)
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, bridgetasks.NewError("failed to access filesystem", 500)
+		return nil, bridgeipc.NewError("failed to access filesystem", 500)
 	}
 	destination, destErr := resolveBatchDestinationDir(root, destination)
 	closeErr := root.Close()
@@ -191,7 +190,7 @@ func runUploadBatchTask(ctx context.Context, task *bridgetasks.Task, req apische
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func (t *uploadBatchTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
+func (t *uploadBatchTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
@@ -575,7 +574,7 @@ func (t *uploadBatchTransferTask) markWaiting() {
 
 func (t *uploadBatchTransferTask) fail(stream net.Conn, message string, code int, err error) error {
 	t.cleanupPartial()
-	taskErr := bridgetasks.NewError(message, code)
+	taskErr := bridgeipc.NewError(message, code)
 	if stream != nil {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
 	}

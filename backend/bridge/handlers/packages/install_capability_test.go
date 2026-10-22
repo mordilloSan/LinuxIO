@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
-	registry := bridgetask.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	task, err := registry.Create("system.install_capability", nil)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
@@ -44,7 +44,7 @@ func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
 	}
 }
 
-func lastInstallProgress(t *testing.T, task *bridgetask.Task) InstallCapabilityProgress {
+func lastInstallProgress(t *testing.T, task *bridgeipc.Task) InstallCapabilityProgress {
 	t.Helper()
 	progress := task.Snapshot().Progress
 	if progress == nil {
@@ -277,7 +277,7 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 		return true, ""
 	}
 
-	registry := bridgetask.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	task, err := registry.Create("system.install_capability", nil)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
@@ -337,12 +337,12 @@ func TestInstallOptionalCapabilityPackageUsesGenericFallbackWarning(t *testing.T
 	}
 }
 
-func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgetask.TaskEvent) {
+func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgeipc.TaskEvent) {
 	t.Helper()
 	var lastPercentage *int
 	warningOutput := false
 	for _, event := range replay {
-		progress, ok := event.Progress.(bridgetask.TaskProgress)
+		progress, ok := event.Progress.(bridgeipc.TaskProgress)
 		if !ok {
 			continue
 		}

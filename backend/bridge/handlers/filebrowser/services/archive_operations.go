@@ -20,7 +20,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 func closeWithLog(name string, closer io.Closer) {
@@ -53,7 +52,7 @@ func ComputeArchiveSize(ctx context.Context, fileList []string) (int64, error) {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
-		realPath := utils.CleanAbsPath(fname)
+		realPath := fsroot.CleanAbsPath(fname)
 		stat, resolvedPath, err := statWithSymlinkResolution(root, realPath)
 		if err != nil {
 			return 0, err
@@ -103,7 +102,7 @@ func estimateDirSize(ctx context.Context, root *fsroot.FSRoot, path string) (int
 }
 
 func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, string, error) {
-	cleanPath := utils.CleanAbsPath(path)
+	cleanPath := fsroot.CleanAbsPath(path)
 
 	info, err := root.Root.Stat(relPath(cleanPath))
 	if err == nil {
@@ -117,7 +116,7 @@ func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, s
 	if resolveErr != nil {
 		return nil, cleanPath, resolveErr
 	}
-	resolved = utils.CleanAbsPath(resolved)
+	resolved = fsroot.CleanAbsPath(resolved)
 	info, statErr := root.Root.Stat(relPath(resolved))
 	if statErr != nil {
 		return nil, cleanPath, statErr
@@ -134,7 +133,7 @@ func ComputeExtractSize(archivePath string) (int64, error) {
 	}
 	defer root.Close()
 
-	archivePath = utils.CleanAbsPath(archivePath)
+	archivePath = fsroot.CleanAbsPath(archivePath)
 	lowerName := strings.ToLower(archivePath)
 
 	switch {
@@ -223,8 +222,8 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 	}
 	defer root.Close()
 
-	tmpDirPath = utils.CleanAbsPath(tmpDirPath)
-	skipPath = utils.CleanAbsPath(skipPath)
+	tmpDirPath = fsroot.CleanAbsPath(tmpDirPath)
+	skipPath = fsroot.CleanAbsPath(skipPath)
 
 	// Check for cancellation before creating file
 	if opts.IsCancelled() {
@@ -290,8 +289,8 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 	}
 	defer root.Close()
 
-	tmpDirPath = utils.CleanAbsPath(tmpDirPath)
-	skipPath = utils.CleanAbsPath(skipPath)
+	tmpDirPath = fsroot.CleanAbsPath(tmpDirPath)
+	skipPath = fsroot.CleanAbsPath(skipPath)
 
 	// Check for cancellation before creating file
 	if opts.IsCancelled() {
@@ -368,8 +367,8 @@ func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallback
 	}
 	defer root.Close()
 
-	archivePath = utils.CleanAbsPath(archivePath)
-	destination = utils.CleanAbsPath(destination)
+	archivePath = fsroot.CleanAbsPath(archivePath)
+	destination = fsroot.CleanAbsPath(destination)
 
 	if err := root.Root.MkdirAll(relPath(destination), PermDir); err != nil {
 		return err
@@ -644,7 +643,7 @@ func archiveEntryTarget(destination, name string) (targetPath, rel string, err e
 
 // addFile adds a file or directory to an archive (zip or tar.gz)
 func addFile(root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *ipc.OperationCallbacks, skipPath string) error {
-	realPath := utils.CleanAbsPath(path)
+	realPath := fsroot.CleanAbsPath(path)
 
 	if skipPath != "" && filepath.Clean(realPath) == filepath.Clean(skipPath) {
 		return nil
@@ -676,7 +675,7 @@ func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter 
 			return ipc.ErrAborted
 		}
 
-		filePath := utils.CleanAbsPath("/" + strings.TrimPrefix(walkRel, "/"))
+		filePath := fsroot.CleanAbsPath("/" + strings.TrimPrefix(walkRel, "/"))
 		if shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath) {
 			if entry.IsDir() && skipPath != "" && filepath.Clean(filePath) == filepath.Clean(skipPath) {
 				return fs.SkipDir
@@ -749,7 +748,7 @@ func addArchiveDirectoryEntry(entry fs.DirEntry, relArchivePath string, tarWrite
 
 // addSingleFile adds a single file to an archive
 func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *ipc.OperationCallbacks) error {
-	openPath := utils.CleanAbsPath(realPath)
+	openPath := fsroot.CleanAbsPath(realPath)
 	if _, resolvedPath, err := statWithSymlinkResolution(root, openPath); err == nil {
 		openPath = resolvedPath
 	}

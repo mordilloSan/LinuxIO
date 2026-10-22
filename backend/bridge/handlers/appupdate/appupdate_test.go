@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -156,7 +156,7 @@ func TestExecuteAppUpdateRelaysOutputBeforeRestart(t *testing.T) {
 	task := newSessionUpdateTask(t)
 	events, unsubscribe := task.Subscribe(8)
 	defer unsubscribe()
-	if !task.Start(func(ctx context.Context, runningTask *bridge.Task, _ any) (any, error) {
+	if !task.Start(func(ctx context.Context, runningTask *bridgeipc.Task, _ any) (any, error) {
 		return executeAppUpdate(ctx, testRuntime(), runningTask, testRunID, "v2.3.4")
 	}) {
 		t.Fatal("failed to start update Task")
@@ -204,14 +204,14 @@ func recordSuccessfulRestart(t *testing.T, statusPath string, restarted chan<- s
 	}
 }
 
-func waitForCompletedUpdateTask(t *testing.T, task *bridge.Task) {
+func waitForCompletedUpdateTask(t *testing.T, task *bridgeipc.Task) {
 	t.Helper()
 	select {
 	case <-task.Done():
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for update Task")
 	}
-	if snapshot := task.Snapshot(); snapshot.State != bridge.TaskStateCompleted {
+	if snapshot := task.Snapshot(); snapshot.State != bridgeipc.TaskStateCompleted {
 		t.Fatalf("Task snapshot = %+v", snapshot)
 	}
 }
@@ -227,7 +227,7 @@ func waitForRestart(t *testing.T, restarted <-chan string) string {
 	}
 }
 
-func taskOutput(events <-chan bridge.TaskEvent) string {
+func taskOutput(events <-chan bridgeipc.TaskEvent) string {
 	var output strings.Builder
 	for len(events) > 0 {
 		event := <-events
@@ -336,9 +336,9 @@ func configurePipedUpdateTest(t *testing.T, statusPath string) func() {
 	}
 }
 
-func newSessionUpdateTask(t *testing.T) *bridge.Task {
+func newSessionUpdateTask(t *testing.T) *bridgeipc.Task {
 	t.Helper()
-	task, err := bridge.NewTaskService().CreateForOwner(routeAppUpdate, nil, bridge.TaskOwner{
+	task, err := bridgeipc.NewTaskService().CreateForOwner(routeAppUpdate, nil, bridgeipc.TaskOwner{
 		SessionID: "session-a",
 		Username:  "alice",
 		UID:       1000,

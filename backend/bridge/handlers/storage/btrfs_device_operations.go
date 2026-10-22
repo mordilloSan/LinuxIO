@@ -8,8 +8,8 @@ import (
 	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // BtrfsOpProgress reports a running device, balance or scrub operation.
@@ -19,27 +19,27 @@ type BtrfsOpProgress struct {
 	Message string  `json:"message"`
 }
 
-func (p BtrfsOpProgress) ProgressEnvelope() bridgetasks.TaskProgress {
+func (p BtrfsOpProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	pct := int(p.Percent)
-	return bridgetasks.TaskProgress{Percentage: &pct, Phase: p.Op, Message: p.Message, Detail: p}
+	return bridgeipc.TaskProgress{Percentage: &pct, Phase: p.Op, Message: p.Message, Detail: p}
 }
 
 var btrfsDeviceRoutes = btrfsDeviceBindings().Routes()
 
 func btrfsDeviceBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.BtrfsDeviceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_remove", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsDeviceRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.UUID, strconv.Itoa(req.DeviceID)}, Label: "Removing btrfs device"}
-		})).Run(runBtrfsDeviceRemoveTask, bridgetasks.TaskSingletonSystem),
-		apischema.TaskRunner[apischema.BtrfsDeviceReplaceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_replace", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsDeviceReplaceRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.UUID, strconv.Itoa(req.DeviceID)}, Label: "Replacing btrfs device"}
-		})).Run(runBtrfsDeviceReplaceTask, bridgetasks.TaskSingletonSystem),
-		apischema.TaskRunner[apischema.BtrfsBalanceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_balance", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsBalanceRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.UUID, "balance"}, Label: "Balancing btrfs filesystem"}
-		})).Run(runBtrfsBalanceTask, bridgetasks.TaskSingletonSystem),
-		apischema.TaskRunner[apischema.UUIDRequest, btrfs.BtrfsFilesystem]("storage.btrfs_scrub_start", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.UUIDRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.UUID, "scrub"}, Label: "Scrubbing btrfs filesystem"}
-		})).Run(runBtrfsScrubTask, bridgetasks.TaskSingletonSystem),
+		apischema.TaskRunner[apischema.BtrfsDeviceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_remove", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsDeviceRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.UUID, strconv.Itoa(req.DeviceID)}, Label: "Removing btrfs device"}
+		})).Run(runBtrfsDeviceRemoveTask, bridgeipc.TaskSingletonSystem),
+		apischema.TaskRunner[apischema.BtrfsDeviceReplaceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_replace", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsDeviceReplaceRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.UUID, strconv.Itoa(req.DeviceID)}, Label: "Replacing btrfs device"}
+		})).Run(runBtrfsDeviceReplaceTask, bridgeipc.TaskSingletonSystem),
+		apischema.TaskRunner[apischema.BtrfsBalanceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_balance", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsBalanceRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.UUID, "balance"}, Label: "Balancing btrfs filesystem"}
+		})).Run(runBtrfsBalanceTask, bridgeipc.TaskSingletonSystem),
+		apischema.TaskRunner[apischema.UUIDRequest, btrfs.BtrfsFilesystem]("storage.btrfs_scrub_start", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.UUIDRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.UUID, "scrub"}, Label: "Scrubbing btrfs filesystem"}
+		})).Run(runBtrfsScrubTask, bridgeipc.TaskSingletonSystem),
 	)
 }
 
@@ -83,13 +83,13 @@ func checkBtrfsDeviceFree(devices []apischema.StorageBlockDevice, filesystems []
 }
 
 // progressReporter reports one operation's percentage through the task.
-func progressReporter(task *bridgetasks.Task, op, label string) func(float64) {
+func progressReporter(task *bridgeipc.Task, op, label string) func(float64) {
 	return func(pct float64) {
 		task.ReportProgress(BtrfsOpProgress{Op: op, Percent: pct, Message: fmt.Sprintf("%s: %.1f%% complete", label, pct)})
 	}
 }
 
-func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgetasks.Task, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {
+func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Info("removing btrfs device", "uuid", req.UUID, "device", req.DeviceID)
 	task.ReportProgress(BtrfsOpProgress{Op: "remove", Message: fmt.Sprintf("Moving data off device %d", req.DeviceID)})
 	if err := btrfs.RemoveDevice(ctx, req.UUID, req.DeviceID); err != nil {
@@ -100,7 +100,7 @@ func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgetasks.Task, req a
 	return btrfs.FindFilesystem(ctx, req.UUID)
 }
 
-func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgetasks.Task, req apischema.BtrfsDeviceReplaceRequest) (btrfs.BtrfsFilesystem, error) {
+func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsDeviceReplaceRequest) (btrfs.BtrfsFilesystem, error) {
 	// The kernel copies onto the target without checking it, so it must be blank.
 	if err := ensureBtrfsDeviceFree(ctx, req.NewDevice, false); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
@@ -128,7 +128,7 @@ func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgetasks.Task, req 
 	return fs, nil
 }
 
-func runBtrfsBalanceTask(ctx context.Context, task *bridgetasks.Task, req apischema.BtrfsBalanceRequest) (btrfs.BtrfsFilesystem, error) {
+func runBtrfsBalanceTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsBalanceRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Info("balancing btrfs filesystem", "uuid", req.UUID, "data", profileOrKeep(req.DataProfile), "metadata", profileOrKeep(req.MetadataProfile), "dataUsage", req.DataUsage)
 	task.ReportProgress(BtrfsOpProgress{Op: "balance", Message: "Balance started"})
 	opts := btrfs.BalanceOptions{DataProfile: req.DataProfile, MetadataProfile: req.MetadataProfile, DataUsageMax: req.DataUsage}
@@ -145,7 +145,7 @@ func runBtrfsBalanceTask(ctx context.Context, task *bridgetasks.Task, req apisch
 	return fs, nil
 }
 
-func runBtrfsScrubTask(ctx context.Context, task *bridgetasks.Task, req apischema.UUIDRequest) (btrfs.BtrfsFilesystem, error) {
+func runBtrfsScrubTask(ctx context.Context, task *bridgeipc.Task, req apischema.UUIDRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Info("scrubbing btrfs filesystem", "uuid", req.UUID)
 	task.ReportProgress(BtrfsOpProgress{Op: "scrub", Message: "Scrub started"})
 	report := progressReporter(task, "scrub", "Scrubbing")

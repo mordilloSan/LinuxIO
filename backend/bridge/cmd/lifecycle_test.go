@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 type shutdownTestConn struct {

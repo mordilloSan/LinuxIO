@@ -1,4 +1,4 @@
-package utils
+package atomicfile
 
 import (
 	"os"
@@ -11,8 +11,8 @@ func TestWriteFileAtomicSetsFileOwnership(t *testing.T) {
 	path := t.TempDir() + "/state.yaml"
 	uid, gid := os.Getuid(), os.Getgid()
 
-	if err := WriteFileAtomic(path, []byte("state: ready\n"), 0o640, uid, gid); err != nil {
-		t.Fatalf("WriteFileAtomic: %v", err)
+	if err := Write(path, []byte("state: ready\n"), 0o640, uid, gid); err != nil {
+		t.Fatalf("Write: %v", err)
 	}
 
 	info, err := os.Stat(path)
@@ -48,9 +48,9 @@ func TestWriteFileAtomicRejectsInvalidOwnership(t *testing.T) {
 		{name: "negative gid", uid: os.Getuid(), gid: -1, want: "gid -1 is invalid"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := WriteFileAtomic(path, []byte("state: ready\n"), 0o640, test.uid, test.gid)
+			err := Write(path, []byte("state: ready\n"), 0o640, test.uid, test.gid)
 			if err == nil {
-				t.Fatal("WriteFileAtomic succeeded with invalid ownership")
+				t.Fatal("Write succeeded with invalid ownership")
 			}
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %q, want substring %q", err, test.want)
@@ -64,8 +64,8 @@ func TestWriteFileAtomicRejectsInvalidOwnership(t *testing.T) {
 
 func TestWriteFileAtomicRejectsIncompleteOwnership(t *testing.T) {
 	path := t.TempDir() + "/state.yaml"
-	if err := WriteFileAtomic(path, []byte("state: ready\n"), 0o640, os.Getuid()); err == nil {
-		t.Fatal("WriteFileAtomic succeeded with incomplete ownership")
+	if err := Write(path, []byte("state: ready\n"), 0o640, os.Getuid()); err == nil {
+		t.Fatal("Write succeeded with incomplete ownership")
 	}
 	if _, err := os.Lstat(path); !os.IsNotExist(err) {
 		t.Fatalf("target exists after rejected ownership: %v", err)

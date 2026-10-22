@@ -1,4 +1,4 @@
-package utils
+package atomicfile
 
 import (
 	"errors"
@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 )
 
-// WriteFileAtomic writes data to path atomically: a temp file in the same
+// Write writes data to path atomically: a temp file in the same
 // directory is written, fsynced, chmod-ed, closed, then renamed over path.
 // The parent directory is fsynced after the rename so the rename itself
 // survives a crash. The destination is validated upfront; refusing to clobber
 // symlinks, directories, or special files. An optional uid and gid assign
 // ownership to the temporary inode before it is written.
-func WriteFileAtomic(path string, data []byte, mode fs.FileMode, ownership ...int) error {
+func Write(path string, data []byte, mode fs.FileMode, ownership ...int) error {
 	if len(ownership) != 0 && len(ownership) != 2 {
 		return errors.New("file ownership requires both uid and gid")
 	}

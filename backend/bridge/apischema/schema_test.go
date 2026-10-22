@@ -12,7 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	dockerhandler "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestRoutesAreUniqueAndComplete(t *testing.T) {

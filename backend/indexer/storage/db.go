@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/indexing"
 )
 
@@ -675,7 +676,7 @@ func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, index
 		return nil
 	}
 	if stopPath != "" {
-		stopPath = indexing.NormalizeIndexPath(stopPath)
+		stopPath = indexerapi.NormalizePath(stopPath)
 	}
 
 	currentPath := parentDirKey(childPath)

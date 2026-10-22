@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 func handleGetRsyncSSH(ctx context.Context, req apischema.RsyncSSHRequest) (apischema.RsyncSSHStatus, error) {
@@ -25,7 +24,7 @@ func handleGetRsyncSSH(ctx context.Context, req apischema.RsyncSSHRequest) (apis
 	}
 	status := apischema.RsyncSSHStatus{Available: err == nil, Port: req.Port}
 	if err != nil {
-		status.Error = utils.OptionalString(fmt.Sprintf("SSH did not respond on local port %d. Check the SSH service and its listening address in Services. This check does not test access from the NAS.", req.Port))
+		status.Error = apischema.Optional(fmt.Sprintf("SSH did not respond on local port %d. Check the SSH service and its listening address in Services. This check does not test access from the NAS.", req.Port))
 	}
 	return status, nil
 }

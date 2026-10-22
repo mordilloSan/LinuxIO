@@ -14,8 +14,8 @@ import (
 	"uuid"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const maxSchedules = 100
@@ -117,7 +117,7 @@ func (s store) save(def apischema.ScheduleDefinition) error {
 	if err := secureDirectory(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return utils.WriteFileAtomic(path, data, 0o600)
+	return atomicfile.Write(path, data, 0o600)
 }
 
 func (s store) definitions(ctx context.Context) ([]apischema.ScheduleDefinition, error) {

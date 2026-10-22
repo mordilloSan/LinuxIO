@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/indexing"
 )
 
@@ -221,7 +222,7 @@ func removedContributionForPath(ctx context.Context, db dbExecutor, indexID int6
 		WHERE index_id = ? AND relative_path = ?;
 	`, indexID, path).Scan(&typ, &size, &contribution)
 	if errors.Is(err, sql.ErrNoRows) {
-		target := indexing.NormalizeIndexPath(path)
+		target := indexerapi.NormalizePath(path)
 		lo, childLo, hi := subtreeBounds(target)
 		err = db.QueryRowContext(ensureContext(ctx), `
 			SELECT COALESCE(SUM(CASE WHEN entry.type = 'directory' THEN entry.size ELSE entry.size_contribution END), 0)

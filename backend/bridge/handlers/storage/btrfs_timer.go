@@ -12,9 +12,9 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type btrfsTimerOps struct {
@@ -74,10 +74,10 @@ func ensureBtrfsHealthTimer(ctx context.Context, ops btrfsTimerOps) error {
 // syncBtrfsTimer writes the snapshot units and runs the timer only while
 // some rule or replication job is enabled: the timer's run does both.
 func syncBtrfsTimer(ctx context.Context, ops btrfsTimerOps, paths btrfsTimerPaths, rules []btrfs.BtrfsSnapshotRule, jobs []btrfs.BtrfsReplicationJob) error {
-	if err := utils.WriteFileAtomic(paths.unitPath, btrfs.RenderUnit(), 0o644); err != nil {
+	if err := atomicfile.Write(paths.unitPath, btrfs.RenderUnit(), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", paths.unitPath, err)
 	}
-	if err := utils.WriteFileAtomic(paths.timerPath, btrfs.RenderTimer(), 0o644); err != nil {
+	if err := atomicfile.Write(paths.timerPath, btrfs.RenderTimer(), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", paths.timerPath, err)
 	}
 	if err := ops.daemonReload(ctx); err != nil {

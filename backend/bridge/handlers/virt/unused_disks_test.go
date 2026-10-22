@@ -10,7 +10,7 @@ import (
 
 	libvirt "github.com/digitalocean/go-libvirt"
 
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestManagedDiskVMName(t *testing.T) {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/shirou/gopsutil/v4/disk"
 
-	commonutils "github.com/mordilloSan/LinuxIO/backend/common/utils"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 )
@@ -110,7 +109,7 @@ func trackedFilesystemStats(stats map[string]*system.FsStats, mountpoint string)
 
 func filesystemInfoFromTracked(stats *system.FsStats, partition disk.PartitionStat) monitoringapi.FilesystemInfo {
 	readOnly := hasReadOnlyOpt(partition.Opts)
-	return monitoringapi.FilesystemInfo{Device: partition.Device, Mountpoint: partition.Mountpoint, FSType: partition.Fstype, ReadOnly: &readOnly, Total: stats.TotalBytes, Used: stats.UsedBytes, Free: stats.FreeBytes, UsedPercent: stats.UsedPercent, InodesTotal: commonutils.OptionalUint64(stats.InodesTotal), InodesUsed: commonutils.OptionalUint64(stats.InodesUsed), InodesFree: commonutils.OptionalUint64(stats.InodesFree), InodesUsedPercent: commonutils.OptionalFloat64(stats.InodesUsedPercent)}
+	return monitoringapi.FilesystemInfo{Device: partition.Device, Mountpoint: partition.Mountpoint, FSType: partition.Fstype, ReadOnly: &readOnly, Total: stats.TotalBytes, Used: stats.UsedBytes, Free: stats.FreeBytes, UsedPercent: stats.UsedPercent, InodesTotal: optional(stats.InodesTotal), InodesUsed: optional(stats.InodesUsed), InodesFree: optional(stats.InodesFree), InodesUsedPercent: optional(stats.InodesUsedPercent)}
 }
 
 func filesystemInfoFromUsage(partition disk.PartitionStat, usage *disk.UsageStat) monitoringapi.FilesystemInfo {
@@ -118,8 +117,8 @@ func filesystemInfoFromUsage(partition disk.PartitionStat, usage *disk.UsageStat
 	return monitoringapi.FilesystemInfo{
 		Device: partition.Device, Mountpoint: partition.Mountpoint, FSType: partition.Fstype, ReadOnly: &readOnly,
 		Total: usage.Total, Used: usage.Used, Free: usage.Free, UsedPercent: usage.UsedPercent,
-		InodesTotal: commonutils.OptionalUint64(usage.InodesTotal), InodesUsed: commonutils.OptionalUint64(usage.InodesUsed),
-		InodesFree: commonutils.OptionalUint64(usage.InodesFree), InodesUsedPercent: commonutils.OptionalFloat64(usage.InodesUsedPercent),
+		InodesTotal: optional(usage.InodesTotal), InodesUsed: optional(usage.InodesUsed),
+		InodesFree: optional(usage.InodesFree), InodesUsedPercent: optional(usage.InodesUsedPercent),
 	}
 }
 
@@ -139,4 +138,13 @@ func isPseudoFS(partition disk.PartitionStat) bool {
 		// is not under /dev.
 		return false
 	}
+}
+
+// optional omits zero inode counters from the wire payload.
+func optional[T comparable](value T) *T {
+	var zero T
+	if value == zero {
+		return nil
+	}
+	return &value
 }

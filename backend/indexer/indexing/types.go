@@ -24,21 +24,6 @@ type IndexEntry struct {
 	SizeContribution int64
 }
 
-// NormalizeIndexPath returns the canonical relative path representation used throughout the index:
-// always leading "/", no trailing "/" (except for root which stays "/").
-// It also cleans the path to prevent path traversal attacks (e.g., "/../../../etc").
-func NormalizeIndexPath(p string) string {
-	if p == "" || p == "/" {
-		return "/"
-	}
-	// Clean the path to resolve ".." and "." sequences, preventing path traversal
-	cleaned := filepath.Clean("/" + strings.Trim(p, "/"))
-	if cleaned == "" || cleaned == "." {
-		return "/"
-	}
-	return cleaned
-}
-
 // ValidateRelativePath checks if a path is safe (doesn't escape the root via traversal).
 // Only ".." path segments are rejected; names that merely contain consecutive
 // dots (e.g. "notes..txt") are valid.

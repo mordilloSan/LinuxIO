@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 func SortItems(items []ItemInfo) {
@@ -36,7 +35,7 @@ func lessName(left, right string) bool {
 // symlinks using an already open root and reports the resolved path and
 // whether it is a directory.
 func ResolveSymlinksAt(ctx context.Context, root *fsroot.FSRoot, path string) (string, bool, error) {
-	cleanPath := utils.CleanAbsPath(path)
+	cleanPath := fsroot.CleanAbsPath(path)
 	visited := make(map[string]struct{})
 
 	for {
@@ -64,7 +63,7 @@ func ResolveSymlinksAt(ctx context.Context, root *fsroot.FSRoot, path string) (s
 			}
 
 			if filepath.IsAbs(target) {
-				cleanPath = utils.CleanAbsPath(target)
+				cleanPath = fsroot.CleanAbsPath(target)
 			} else {
 				cleanPath = filepath.Clean(filepath.Join(filepath.Dir(cleanPath), target))
 			}

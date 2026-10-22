@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -81,7 +81,7 @@ func serveScript(script string) http.HandlerFunc {
 func TestInstallCapabilityRunsDockerScriptBeforeServiceActions(t *testing.T) {
 	order := withDockerInstall(t, false, serveScript("echo \"script=$0\"\necho installing docker\n"))
 
-	registry := bridgetask.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	task, err := registry.Create("system.install_capability", nil)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
@@ -102,7 +102,7 @@ func TestInstallCapabilityRunsDockerScriptBeforeServiceActions(t *testing.T) {
 	defer unsubscribe()
 	var stdout, status strings.Builder
 	for _, event := range replay {
-		progress, ok := event.Progress.(bridgetask.TaskProgress)
+		progress, ok := event.Progress.(bridgeipc.TaskProgress)
 		if !ok {
 			continue
 		}

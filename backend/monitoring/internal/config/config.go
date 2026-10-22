@@ -16,7 +16,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/app"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/defaults"
@@ -214,7 +214,7 @@ func Save(path string, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
 	}
-	if err := utils.WriteFileAtomic(path, data, 0o644); err != nil {
+	if err := atomicfile.Write(path, data, 0o644); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil

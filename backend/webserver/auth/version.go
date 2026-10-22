@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/iolimit"
 	ver "github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -96,7 +96,7 @@ func fetchLatestRelease(ctx context.Context) (version string, releaseURL string)
 		return "", ""
 	}
 
-	body, err := utils.ReadAllLimited(resp.Body, maxGitHubReleaseBodyBytes)
+	body, err := iolimit.ReadAll(resp.Body, maxGitHubReleaseBodyBytes)
 	if err != nil {
 		slog.Debug("failed to read latest release response body", "error", err)
 		return "", ""

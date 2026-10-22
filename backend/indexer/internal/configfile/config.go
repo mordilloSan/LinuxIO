@@ -13,7 +13,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -142,7 +142,7 @@ func Save(path string, cfg Config) error {
 	if path == "" || path == "-" {
 		return fmt.Errorf("config file path is disabled")
 	}
-	if err := utils.WriteFileAtomic(path, data, 0o644); err != nil {
+	if err := atomicfile.Write(path, data, 0o644); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil

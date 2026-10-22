@@ -102,7 +102,7 @@ func(context.Context) ([]gopsnet.InterfaceStat, error)
 
 ## Logging
 
-Request lifecycle logging is centralized in `backend/common/ipc/bridge`. The router logs the route, mode, user, outcome, duration, and error at debug level.
+Request lifecycle logging is centralized in `backend/bridge/internal/bridgeipc`. The router logs the route, mode, user, outcome, duration, and error at debug level.
 
 Handler adapters do not log. Route operation functions do not emit `"... requested"` logs either; they validate typed request fields and call domain functions.
 
@@ -155,7 +155,7 @@ Handler packages should name files after the domain operation they implement, no
 
 | Location | Allowed naming | Avoid |
 |----------|----------------|-------|
-| `backend/common/ipc/bridge` | Framework terms such as `tasks.go`, `task_primitives.go`, `router.go` | Domain-specific handler code |
+| `backend/bridge/internal/bridgeipc` | Framework terms such as `tasks.go`, `task_primitives.go`, `router.go` | Domain-specific handler code |
 | `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `log_follow_operation.go`, `terminal_session.go`, `smart_test_operation.go` | Generic `tasks.go`, `stream.go`, `rpc.go`, `handler.go` |
 
 Use `operation` for Task-backed mutations or long-running work, `follow` for

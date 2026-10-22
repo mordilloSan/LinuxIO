@@ -27,12 +27,10 @@ var allowedHandlerEdges = map[string]map[string]string{
 	"virt": {"docker": "excludes Docker-owned bridges from VM bridge candidates"},
 }
 
-// shortcut: two binaries still link handler packages, drop these once the API
-// generator moves beside the bridge and the Docker update engine leaves
-// handlers/docker.
+// shortcut: the root docker-update worker still links handlers/docker, drop
+// this once the Docker update engine leaves the handler package.
 var handlerImportersOutsideBridge = map[string]string{
-	"common/tools/linuxio-api-gen": "bridge/handlers",
-	"docker-update":                "bridge/handlers/docker",
+	"docker-update": "bridge/handlers/docker",
 }
 
 // TestImportBoundaries keeps the layering docs/bridge_handler_patterns.md
@@ -90,7 +88,7 @@ func importViolation(pkg, dep string) string {
 	case strings.HasPrefix(dep, "bridge/handlers"):
 		return handlerImportViolation(pkg, dep)
 	case strings.HasPrefix(pkg, "common/"):
-		if strings.HasPrefix(dep, "common/") || handlerImportersOutsideBridge[pkg] != "" && dep == "bridge/apischema" {
+		if strings.HasPrefix(dep, "common/") {
 			return ""
 		}
 		return "common never imports a process tree"
@@ -121,8 +119,10 @@ func importViolation(pkg, dep string) string {
 
 func handlerImportViolation(pkg, dep string) string {
 	switch {
-	case pkg == "bridge/handlers", pkg == "bridge/cmd" && dep == "bridge/handlers", handlerImportersOutsideBridge[pkg] == dep:
+	case pkg == "bridge/handlers", handlerImportersOutsideBridge[pkg] == dep:
 		return ""
+	case dep == "bridge/handlers" && (pkg == "bridge/cmd" || pkg == "bridge/internal/apigen"):
+		return "" // the composition root and the contract generator read the registry
 	case !strings.HasPrefix(pkg, "bridge/handlers/"):
 		return "handler packages are leaves; nothing outside bridge/handlers imports them"
 	}

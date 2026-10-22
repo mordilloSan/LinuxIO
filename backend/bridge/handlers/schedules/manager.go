@@ -13,7 +13,7 @@ import (
 	"uuid"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 type manager struct {
@@ -123,13 +123,13 @@ func (m manager) apply(ctx context.Context, def apischema.ScheduleDefinition, ac
 	if err != nil {
 		return err
 	}
-	if err := utils.WriteFileAtomic(m.store.scriptPath(def), []byte(def.Options.Script), 0o440, os.Geteuid(), gid); err != nil {
+	if err := atomicfile.Write(m.store.scriptPath(def), []byte(def.Options.Script), 0o440, os.Geteuid(), gid); err != nil {
 		return fmt.Errorf("save managed script: %w", err)
 	}
-	if err := utils.WriteFileAtomic(filepath.Join(m.store.unitDir, serviceName(def.ID)), m.store.renderService(def, account), 0o644); err != nil {
+	if err := atomicfile.Write(filepath.Join(m.store.unitDir, serviceName(def.ID)), m.store.renderService(def, account), 0o644); err != nil {
 		return err
 	}
-	if err := utils.WriteFileAtomic(filepath.Join(m.store.unitDir, timerName(def.ID)), renderTimer(def), 0o644); err != nil {
+	if err := atomicfile.Write(filepath.Join(m.store.unitDir, timerName(def.ID)), renderTimer(def), 0o644); err != nil {
 		return err
 	}
 	if err := m.host.reload(ctx); err != nil {

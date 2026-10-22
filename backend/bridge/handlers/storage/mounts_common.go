@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 // Shared validation patterns for network-mount sources and local paths, used by
@@ -430,7 +430,7 @@ func (s *managedMountStore) save(entries map[string]managedMountEntry) error {
 	}
 	data = append(data, '\n')
 
-	return utils.WriteFileAtomic(s.path, data, 0o644)
+	return atomicfile.Write(s.path, data, 0o644)
 }
 
 func (s *managedMountStore) upsert(entry managedMountEntry) error {

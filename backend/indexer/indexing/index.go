@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 var (
@@ -154,7 +156,7 @@ func (idx *Index) StartIndexingFromPath(ctx context.Context, relativePath string
 	slog.Info("starting partial reindex", "path", relativePath)
 
 	// Normalize the path
-	normalizedPath := NormalizeIndexPath(relativePath)
+	normalizedPath := indexerapi.NormalizePath(relativePath)
 
 	err := idx.indexDirectory(ctx, normalizedPath)
 	if err != nil {

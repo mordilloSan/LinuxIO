@@ -19,9 +19,9 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type unitState struct {
@@ -112,7 +112,7 @@ func validateCalendar(ctx context.Context, expression string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return utils.CommandOutputError("systemd-analyze", args, output, err)
+	return hostcmd.OutputError("systemd-analyze", args, output, err)
 }
 
 func normalizeOptions(ctx context.Context, options apischema.ScheduleOptions, host hostOps) (apischema.ScheduleOptions, *user.User, error) {

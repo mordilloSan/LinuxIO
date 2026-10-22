@@ -15,7 +15,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -141,7 +140,7 @@ func getStatus(session dbusclient.SystemSession) apischema.PowerStatus {
 
 	tunedState, err := dbusclient.Tuned.BusNameState(session.Context())
 	if err != nil {
-		status.Error = utils.OptionalString(err.Error())
+		status.Error = apischema.Optional(err.Error())
 		return status
 	}
 
@@ -180,7 +179,7 @@ func getStatus(session dbusclient.SystemSession) apischema.PowerStatus {
 
 	profiles, err := readProfiles(session)
 	if err != nil {
-		status.Error = utils.OptionalString(err.Error())
+		status.Error = apischema.Optional(err.Error())
 	} else {
 		status.Profiles = profiles
 	}
@@ -188,7 +187,7 @@ func getStatus(session dbusclient.SystemSession) apischema.PowerStatus {
 	if active, err := activeProfile(session); err == nil {
 		status.ActiveProfile = active
 	} else if status.Error == nil {
-		status.Error = utils.OptionalString(err.Error())
+		status.Error = apischema.Optional(err.Error())
 	}
 
 	if recommended, err := recommendedProfile(session); err == nil {
@@ -374,7 +373,7 @@ func profilesFromRecords(records []tunedProfileRecord) []apischema.TunedProfile 
 	for _, record := range records {
 		profiles = append(profiles, apischema.TunedProfile{
 			Name:        record.Name,
-			Description: utils.OptionalString(record.Description),
+			Description: apischema.Optional(record.Description),
 		})
 	}
 	return profiles

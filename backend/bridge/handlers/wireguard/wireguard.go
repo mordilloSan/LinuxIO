@@ -20,8 +20,8 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // --- Handler Implementations ---
@@ -267,7 +267,7 @@ func runWGQuick(ctx context.Context, action, name string) (string, error) {
 	cmd := rootCommand(ctx, wgQuickPath, action, name)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), utils.CommandOutputError("wg-quick", []string{action, name}, out, err)
+		return string(out), hostcmd.OutputError("wg-quick", []string{action, name}, out, err)
 	}
 	return string(out), nil
 }

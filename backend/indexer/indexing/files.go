@@ -8,6 +8,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 // EntryFromFileInfo builds the canonical mutation payload from the filesystem.
@@ -23,7 +25,7 @@ func EntryFromFileInfo(path string, info os.FileInfo) IndexEntry {
 		key = fileKey
 	}
 	return IndexEntry{
-		RelativePath: NormalizeIndexPath(path),
+		RelativePath: indexerapi.NormalizePath(path),
 		Name:         info.Name(),
 		Size:         size,
 		ModTime:      info.ModTime().In(time.UTC),

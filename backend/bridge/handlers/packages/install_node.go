@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -29,7 +29,7 @@ const nvmInstallNodeScript = `. "$HOME/.nvm/nvm.sh" && nvm install --lts && nvm 
 // as the session user, never as root. nvm adds itself to the user's
 // ~/.bashrc, which is where the node capability's login-shell probe and the
 // Assistant's agent spawn both pick it up.
-func installNodeForUser(ctx context.Context, task *bridgetask.Task, user session.User) error {
+func installNodeForUser(ctx context.Context, task *bridgeipc.Task, user session.User) error {
 	if user.Username == "" {
 		return fmt.Errorf("no session user to install Node.js for")
 	}

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"runtime/debug"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
 )
 
 type responseRecorder struct {
@@ -134,7 +136,7 @@ func authorizeTransportMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "indexer connection transport unavailable", http.StatusForbidden)
 			return
 		}
-		uid, ok := peerUIDFromRequest(r)
+		uid, ok := peercred.RequestUID(r)
 		if !ok || uid != 0 {
 			http.Error(w, "this operation requires root privileges; run with sudo", http.StatusForbidden)
 			return

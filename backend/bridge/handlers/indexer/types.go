@@ -2,7 +2,7 @@
 // filesystem indexer service over its unix socket.
 package indexer
 
-import bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+import "github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 
 // IndexerProgress represents progress for indexer operations.
 type IndexerProgress struct {
@@ -19,12 +19,12 @@ type IndexerProgress struct {
 	Phase        string `json:"phase,omitempty"`
 }
 
-func (p IndexerProgress) ProgressEnvelope() bridgetask.TaskProgress {
+func (p IndexerProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	phase := p.Phase
 	if phase == "" {
 		phase = p.State
 	}
-	return bridgetask.TaskProgress{
+	return bridgeipc.TaskProgress{
 		Phase:   phase,
 		Message: p.Message,
 		Detail:  p,

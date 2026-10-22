@@ -10,7 +10,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/loginhistory"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 var healthFetchPreviousUncleanBoot = loginhistory.FetchPreviousUncleanBoot
@@ -50,7 +49,7 @@ func FetchSystemHealthSummary(ctx context.Context, username string, privileged b
 
 	if unclean, bootID, err := DetectUncleanShutdown(ctx); err == nil {
 		summary.UncleanShutdown = unclean
-		summary.UncleanShutdownBootID = utils.OptionalString(bootID)
+		summary.UncleanShutdownBootID = apischema.Optional(bootID)
 	}
 
 	return summary, nil
@@ -72,8 +71,8 @@ func FetchLastSuccessfulLogin(parent context.Context, username string) (*apische
 
 	return &apischema.SystemLastLogin{
 		Username: login.Username,
-		Terminal: utils.OptionalString(login.Terminal),
-		Source:   utils.OptionalString(login.Source),
+		Terminal: apischema.Optional(login.Terminal),
+		Source:   apischema.Optional(login.Source),
 		Time:     login.Time,
 	}, nil
 }
@@ -95,7 +94,7 @@ func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string
 	latestEvent := systemLoginEventFromLogin(batch.Latest)
 	alert := &apischema.SystemFailedLoginAlert{
 		ID:            failedLoginAlertID("system", boundaryUsername, batch.Latest.ID),
-		Scope:         utils.OptionalString("system"),
+		Scope:         apischema.Optional("system"),
 		Username:      batch.Latest.Username,
 		Count:         batch.Count,
 		LatestEventID: batch.Latest.ID,

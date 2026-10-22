@@ -12,7 +12,6 @@ import (
 
 	"github.com/shirou/gopsutil/v4/disk"
 
-	commonutils "github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/utils"
 )
@@ -413,7 +412,12 @@ func (m *fsManager) setFilesystemMetadata(partitions []disk.PartitionStat) {
 }
 
 func hasReadOnlyOpt(options []string) bool {
-	return commonutils.HasReadOnlyOpt(options)
+	for _, o := range options {
+		if strings.TrimSpace(o) == "ro" {
+			return true
+		}
+	}
+	return false
 }
 
 func diskCounterNames(counters map[string]disk.IOCountersStat) []string {

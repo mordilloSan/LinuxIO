@@ -1,4 +1,4 @@
-package bridge
+package bridgeipc
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/goroutinelabel"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/goroutinelabel"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )

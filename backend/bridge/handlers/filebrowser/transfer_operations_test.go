@@ -15,7 +15,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -51,7 +51,7 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 	root, err := fsroot.Open()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = root.Close() })
-	task, err := bridgetasks.NewTaskService().Create(routeUpload, apischema.FileUploadRequest{TargetPath: link, Size: "3"})
+	task, err := bridgeipc.NewTaskService().Create(routeUpload, apischema.FileUploadRequest{TargetPath: link, Size: "3"})
 	require.NoError(t, err)
 	transfer := &uploadTransferTask{task: task, ctx: context.Background(), path: link, expectedSize: 3, expectedVersion: opened.Version}
 	require.NoError(t, transfer.prepare(root))
@@ -108,18 +108,18 @@ func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	registry := bridgetasks.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	req := apischema.FileUploadRequest{TargetPath: target, Size: "3"}
 	task, err := registry.Create(routeUpload, req)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgetasks.Task, _ any) (any, error) {
+	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, uploadOwner{})
 	})
 
 	snapshot := waitTaskDone(t, task)
-	if snapshot.State != bridgetasks.TaskStateFailed {
+	if snapshot.State != bridgeipc.TaskStateFailed {
 		t.Fatalf("task state = %q, want failed", snapshot.State)
 	}
 	if snapshot.Error == nil || snapshot.Error.Code != 409 {
@@ -137,14 +137,14 @@ func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	registry := bridgetasks.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	overwrite := true
 	req := apischema.FileUploadRequest{TargetPath: target, Size: "3", Overwrite: &overwrite}
 	task, err := registry.Create(routeUpload, req)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgetasks.Task, _ any) (any, error) {
+	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, uploadOwner{})
 	})
 
@@ -159,7 +159,7 @@ func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
 	}
 	task.Cancel()
 	snapshot := waitTaskDone(t, task)
-	if snapshot.State != bridgetasks.TaskStateCanceled {
+	if snapshot.State != bridgeipc.TaskStateCanceled {
 		t.Fatalf("task state = %q, want canceled", snapshot.State)
 	}
 }
@@ -182,13 +182,13 @@ func TestArchiveTaskRegistersTransferBeforeSlowStartup(t *testing.T) {
 	}
 	defer release()
 
-	registry := bridgetasks.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	req := apischema.FileArchiveRequest{Format: "zip", Paths: []string{dir}}
 	task, err := registry.Create(routeArchive, req)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgetasks.Task, _ any) (any, error) {
+	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runArchiveTask(ctx, j, nil, req)
 	})
 
@@ -214,13 +214,13 @@ func TestArchiveTaskRegistersTransferBeforeSlowStartup(t *testing.T) {
 	}
 
 	snapshot := waitTaskDone(t, task)
-	if snapshot.State != bridgetasks.TaskStateCanceled {
+	if snapshot.State != bridgeipc.TaskStateCanceled {
 		t.Fatalf("task state = %q, want canceled", snapshot.State)
 	}
 }
 
 func TestArchiveDownloadProgressIncludesArtifactName(t *testing.T) {
-	registry := bridgetasks.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	task, err := registry.Create(routeArchive, apischema.FileArchiveRequest{
 		Format: "zip",
 		Paths:  []string{"/photos"},

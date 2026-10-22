@@ -20,7 +20,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 var validNetworkMode = regexp.MustCompile(`^(none|host|bridge|service:.+|container:.+)$`)
@@ -1270,7 +1270,7 @@ var composeFileNamePriority = []string{
 
 // findComposeFileCandidates finds at most one canonical compose file per stack directory.
 func findComposeFileCandidates(ctx context.Context, basePath string) ([]composeFileCandidate, error) {
-	normPath := utils.NormalizeIndexerPath(basePath)
+	normPath := indexerapi.NormalizePath(basePath)
 
 	var candidates []composeFileCandidate
 	seenPaths := make(map[string]struct{})

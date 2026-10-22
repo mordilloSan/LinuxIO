@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // ReplicationDir holds the replication SSH key pair and known_hosts. Tests
@@ -170,7 +170,7 @@ func TrustHost(ctx context.Context, keys []string) error {
 		for _, line := range lines {
 			out.WriteString(line + "\n")
 		}
-		if err := utils.WriteFileAtomic(path, []byte(out.String()), 0o600); err != nil {
+		if err := atomicfile.Write(path, []byte(out.String()), 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 		return nil

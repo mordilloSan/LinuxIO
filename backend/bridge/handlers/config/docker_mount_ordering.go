@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const dockerMountOrderingDropInPath = "/etc/systemd/system/docker.service.d/linuxio-require-mounts.conf"
@@ -27,7 +27,7 @@ func syncDockerServiceMountOrdering(ctx context.Context, docker bridgeconfig.Doc
 	if err := ensureSystemdDropInDir(filepath.Dir(dockerMountOrderingDropInPath)); err != nil {
 		return err
 	}
-	if err := utils.WriteFileAtomic(dockerMountOrderingDropInPath, []byte(content), 0o644); err != nil {
+	if err := atomicfile.Write(dockerMountOrderingDropInPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write docker service drop-in: %w", err)
 	}
 	return systemdapi.DaemonReload(ctx)

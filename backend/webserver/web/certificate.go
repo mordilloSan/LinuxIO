@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 const (
@@ -172,11 +172,11 @@ func certificateNeedsRenewal(certificate tls.Certificate, now time.Time) (bool, 
 
 func persistCertificatePair(dir string, generated encodedCertificate) error {
 	keyPath := filepath.Join(dir, managedPrivateKeyFilename)
-	if err := utils.WriteFileAtomic(keyPath, generated.privateKeyPEM, 0o600); err != nil {
+	if err := atomicfile.Write(keyPath, generated.privateKeyPEM, 0o600); err != nil {
 		return fmt.Errorf("write managed TLS private key: %w", err)
 	}
 	certificatePath := filepath.Join(dir, managedCertificateFilename)
-	if err := utils.WriteFileAtomic(certificatePath, generated.certificatePEM, 0o644); err != nil {
+	if err := atomicfile.Write(certificatePath, generated.certificatePEM, 0o644); err != nil {
 		return fmt.Errorf("write managed TLS certificate: %w", err)
 	}
 	return nil

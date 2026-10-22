@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -146,7 +146,7 @@ func write(doc Document) error {
 	if err != nil {
 		return fmt.Errorf("marshal alerts: %w", err)
 	}
-	if err := utils.WriteFileAtomic(Path, append(data, '\n'), 0o600); err != nil {
+	if err := atomicfile.Write(Path, append(data, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", Path, err)
 	}
 	return nil

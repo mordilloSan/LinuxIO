@@ -19,9 +19,9 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const rsyncUnit = "linuxio-rsync.service"
@@ -114,9 +114,9 @@ func rsyncSSHState(active bool) (bool, *string) {
 	target, err := os.Readlink(rsyncSystemConfigFile)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		return false, utils.OptionalString(rsyncSystemConfigFile + " is missing; save the module again to create it")
+		return false, apischema.Optional(rsyncSystemConfigFile + " is missing; save the module again to create it")
 	case err != nil || target != rsyncConfigFile:
-		return false, utils.OptionalString(rsyncSystemConfigFile + " is not managed by LinuxIO, so TOS's encryption mode reads that file instead of this module")
+		return false, apischema.Optional(rsyncSystemConfigFile + " is not managed by LinuxIO, so TOS's encryption mode reads that file instead of this module")
 	case !active:
 		return false, nil
 	}
@@ -277,11 +277,11 @@ func checkRsyncPort(ctx context.Context, port int) error {
 }
 
 func writeRsyncFiles(config apischema.RsyncConfig, secret, binary string) error {
-	if err := utils.WriteFileAtomic(rsyncSecretsFile, []byte(config.Username+":"+secret+"\n"), 0o600); err != nil {
+	if err := atomicfile.Write(rsyncSecretsFile, []byte(config.Username+":"+secret+"\n"), 0o600); err != nil {
 		return fmt.Errorf("save rsync credentials: %w", err)
 	}
 	// The configuration holds no secrets; the SSH account TOS logs in with must read it.
-	if err := utils.WriteFileAtomic(rsyncConfigFile, []byte(rsyncConfigText(config)), 0o644); err != nil {
+	if err := atomicfile.Write(rsyncConfigFile, []byte(rsyncConfigText(config)), 0o644); err != nil {
 		return fmt.Errorf("save rsync configuration: %w", err)
 	}
 	if err := linkRsyncSystemConfig(); err != nil {
@@ -300,7 +300,7 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 `, binary, rsyncConfigFile)
-	if err := utils.WriteFileAtomic(rsyncUnitFile, []byte(unit), 0o644); err != nil {
+	if err := atomicfile.Write(rsyncUnitFile, []byte(unit), 0o644); err != nil {
 		return fmt.Errorf("save rsync service: %w", err)
 	}
 	return nil

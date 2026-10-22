@@ -73,8 +73,8 @@ For request routes:
 | `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
 | `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
 | `backend/bridge/apischema/schema.go` | Contract helpers, route policy, and typed registration adapters. |
-| `backend/common/ipc/bridge/request_decoder.go` | Shared strict request decoder for normal contracts and the reserved Task service. |
-| `backend/common/tools/linuxio-api-gen` | Generator for frontend client/types/route metadata. |
+| `backend/bridge/internal/bridgeipc/request_decoder.go` | Shared strict request decoder for normal contracts and the reserved Task service. |
+| `backend/bridge/internal/apigen` | Generator for frontend client/types/route metadata. |
 | `frontend/src/api/generated/client.ts` | Generated concrete `linuxio` object. Calls are TanStack descriptors or descriptor factories; Tasks use their separate lifecycle factory. |
 | `frontend/src/api/generated/linuxio-types.ts` | Generated API models and schema types. |
 | `frontend/src/api/generated/route-metadata.ts` | Generated route modes and sparse retry-safe Call policy. |
@@ -663,13 +663,13 @@ supported external API would be versioned and documented separately.
 
 ### 1. Keep Reflection Generator-Only
 
-Goal: `reflect` is allowed in `backend/common/tools/linuxio-api-gen`, but not in runtime dispatch.
+Goal: `reflect` is allowed in `backend/bridge/internal/apigen`, but not in runtime dispatch.
 
 Current acceptable uses:
 
 | File | Reason |
 |------|--------|
-| `backend/common/tools/linuxio-api-gen/main.go` | Reflects Go structs into generated TypeScript. |
+| `backend/bridge/internal/apigen/main.go` | Reflects Go structs into generated TypeScript. |
 | `backend/bridge/apischema/contracts.go` | Stores `reflect.Type` metadata for the generator through `TypeSpec`. |
 | `*_test.go` files | Test comparison/introspection only. |
 

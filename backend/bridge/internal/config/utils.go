@@ -13,8 +13,8 @@ import (
 
 	"github.com/goccy/go-yaml"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 // fileOwnership describes the ownership that applies to runtime artifacts.
@@ -110,9 +110,9 @@ func (o fileOwnership) ensureFile(path string) error {
 
 func (o fileOwnership) writeAtomic(path string, data []byte, mode fs.FileMode) error {
 	if o.enforce {
-		return utils.WriteFileAtomic(path, data, mode, o.uid, o.gid)
+		return atomicfile.Write(path, data, mode, o.uid, o.gid)
 	}
-	return utils.WriteFileAtomic(path, data, mode)
+	return atomicfile.Write(path, data, mode)
 }
 
 func (o fileOwnership) lockOptions() []filelock.Option {

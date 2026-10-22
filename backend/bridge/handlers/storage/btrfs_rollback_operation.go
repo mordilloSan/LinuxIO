@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // BtrfsRollbackProgress reports the rollback step about to run.
@@ -20,25 +20,25 @@ type BtrfsRollbackProgress struct {
 	Message string `json:"message"`
 }
 
-func (p BtrfsRollbackProgress) ProgressEnvelope() bridgetasks.TaskProgress {
+func (p BtrfsRollbackProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	pct := 0
 	if p.Total > 0 {
 		pct = p.Step * 100 / p.Total
 	}
-	return bridgetasks.TaskProgress{Percentage: &pct, Phase: "rollback", Message: p.Message, Detail: p}
+	return bridgeipc.TaskProgress{Percentage: &pct, Phase: "rollback", Message: p.Message, Detail: p}
 }
 
 var btrfsRollbackRoutes = btrfsRollbackBindings().Routes()
 
 func btrfsRollbackBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.BtrfsSnapshotRequest, btrfs.BtrfsRollbackResult]("storage.btrfs_snapshot_rollback", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsRollbackProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsSnapshotRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.UUID, req.SnapshotPath}, Label: "Rolling back btrfs subvolume"}
-		})).Run(runBtrfsRollbackTask, bridgetasks.TaskSingletonSystem),
+		apischema.TaskRunner[apischema.BtrfsSnapshotRequest, btrfs.BtrfsRollbackResult]("storage.btrfs_snapshot_rollback", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsRollbackProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsSnapshotRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.UUID, req.SnapshotPath}, Label: "Rolling back btrfs subvolume"}
+		})).Run(runBtrfsRollbackTask, bridgeipc.TaskSingletonSystem),
 	)
 }
 
-func runBtrfsRollbackTask(ctx context.Context, task *bridgetasks.Task, req apischema.BtrfsSnapshotRequest) (btrfs.BtrfsRollbackResult, error) {
+func runBtrfsRollbackTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsSnapshotRequest) (btrfs.BtrfsRollbackResult, error) {
 	source, _, _, ok := btrfs.ParseSnapshotPath(req.SnapshotPath)
 	if !ok {
 		return btrfs.BtrfsRollbackResult{}, fmt.Errorf("not a linuxio snapshot path: %q", req.SnapshotPath)
@@ -115,7 +115,7 @@ func checkRollbackPinned(source string, mounts []btrfs.Mount) error {
 			continue
 		}
 		if entry, ok := fstab[m.Mountpoint]; ok && hasSubvolIDOption(entry.options) {
-			return bridgetasks.NewError(fmt.Sprintf("%s is mounted with subvolid= in /etc/fstab; replace it with subvol=/%s before rolling back", m.Mountpoint, source), 400)
+			return bridgeipc.NewError(fmt.Sprintf("%s is mounted with subvolid= in /etc/fstab; replace it with subvol=/%s before rolling back", m.Mountpoint, source), 400)
 		}
 		if m.Mountpoint != "/" {
 			continue
@@ -126,7 +126,7 @@ func checkRollbackPinned(source string, mounts []btrfs.Mount) error {
 		}
 		for field := range strings.FieldsSeq(string(cmdline)) {
 			if flags, ok := strings.CutPrefix(field, "rootflags="); ok && hasSubvolIDOption(flags) {
-				return bridgetasks.NewError(fmt.Sprintf("/ is mounted with subvolid= in the kernel rootflags; replace it with subvol=/%s before rolling back", source), 400)
+				return bridgeipc.NewError(fmt.Sprintf("/ is mounted with subvolid= in the kernel rootflags; replace it with subvol=/%s before rolling back", source), 400)
 			}
 		}
 	}

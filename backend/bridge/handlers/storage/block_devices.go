@@ -14,7 +14,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/hostcmd"
 )
 
 func GetTopology(ctx context.Context) (apischema.StorageTopologyInventory, error) {
@@ -67,7 +67,7 @@ func ListBlockDevices(ctx context.Context) ([]apischema.StorageBlockDevice, erro
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			out = exitErr.Stderr
 		}
-		return nil, utils.CommandOutputError("lsblk", args, out, err)
+		return nil, hostcmd.OutputError("lsblk", args, out, err)
 	}
 	return parseBlockDevices(out)
 }

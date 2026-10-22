@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/indexing/iteminfo"
 )
 
@@ -55,7 +56,7 @@ func (idx *Index) indexDirectory(ctx context.Context, adjustedPath string) error
 	}
 
 	idx.mu.Lock()
-	dirKey := NormalizeIndexPath(adjustedPath)
+	dirKey := indexerapi.NormalizePath(adjustedPath)
 	idx.dirMetadata[dirKey] = DirMetadata{
 		Size:    dirFileInfo.Size,
 		ModTime: dirFileInfo.ModTime,
@@ -100,7 +101,7 @@ func (idx *Index) GetDirInfo(ctx context.Context, dirInfo *os.File, stat os.File
 	idx.mu.Unlock()
 	totalSize := int64(dirSize)
 	dirHidden := isHidden(stat)
-	normalizedDir := NormalizeIndexPath(adjustedPath)
+	normalizedDir := indexerapi.NormalizePath(adjustedPath)
 
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
@@ -175,7 +176,7 @@ func (idx *Index) indexChildDirectory(ctx context.Context, dirPath string) (int6
 		return 0, err
 	}
 
-	dirMapKey := NormalizeIndexPath(dirPath)
+	dirMapKey := indexerapi.NormalizePath(dirPath)
 	var size int64
 	idx.mu.Lock()
 	if meta, exists := idx.dirMetadata[dirMapKey]; exists {

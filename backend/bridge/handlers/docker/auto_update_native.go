@@ -15,8 +15,8 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -104,7 +104,7 @@ func getContainerAutoUpdate(ctx context.Context, store containerAutoUpdateStore,
 	return apischema.DockerContainerAutoUpdateState{
 		Available:             available,
 		Containers:            targets,
-		Error:                 utils.OptionalString(joinErrorMessages(installErr, readErr, timerErr, activeErr)),
+		Error:                 apischema.Optional(joinErrorMessages(installErr, readErr, timerErr, activeErr)),
 		MissingContainerNames: missing,
 		Options:               opts,
 		TimerActive:           timerActive,
@@ -190,13 +190,13 @@ func (s containerAutoUpdateStore) writeOptions(opts apischema.DockerContainerAut
 		return err
 	}
 
-	if err := utils.WriteFileAtomic(s.configPath, configBytes, 0o600); err != nil {
+	if err := atomicfile.Write(s.configPath, configBytes, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", s.configPath, err)
 	}
-	if err := utils.WriteFileAtomic(s.unitPath, renderDockerUpdateUnit(), 0o644); err != nil {
+	if err := atomicfile.Write(s.unitPath, renderDockerUpdateUnit(), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", s.unitPath, err)
 	}
-	if err := utils.WriteFileAtomic(s.timerPath, timerBytes, 0o644); err != nil {
+	if err := atomicfile.Write(s.timerPath, timerBytes, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", s.timerPath, err)
 	}
 	return nil

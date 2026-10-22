@@ -19,7 +19,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 var (
@@ -28,14 +27,14 @@ var (
 )
 
 func relPath(p string) string {
-	return fsroot.ToRel(utils.CleanAbsPath(p))
+	return fsroot.ToRel(fsroot.CleanAbsPath(p))
 }
 
 // CopyFileWithCallbacks copies a file or directory with progress callbacks.
 // It handles both files and directories, copying recursively as needed.
 func CopyFileWithCallbacks(source, dest string, overwrite bool, opts *ipc.OperationCallbacks) error {
-	source = utils.CleanAbsPath(source)
-	dest = utils.CleanAbsPath(dest)
+	source = fsroot.CleanAbsPath(source)
+	dest = fsroot.CleanAbsPath(dest)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -144,7 +143,7 @@ func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) er
 		targetPath = filepath.Join(filepath.Dir(source), targetPath)
 	}
 
-	if utils.CleanAbsPath(targetPath) == utils.CleanAbsPath(dest) {
+	if fsroot.CleanAbsPath(targetPath) == fsroot.CleanAbsPath(dest) {
 		return fmt.Errorf("cannot copy symlink %q onto its target %q", source, dest)
 	}
 	return nil
@@ -342,7 +341,7 @@ func getXattr(f *os.File, name string) ([]byte, error) {
 // ComputeCopySize calculates the total size of files to be copied.
 // For directories, it recursively sums the sizes of all contained files.
 func ComputeCopySize(path string) (int64, error) {
-	path = utils.CleanAbsPath(path)
+	path = fsroot.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -397,8 +396,8 @@ type MoveFileOptions struct {
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy with callbacks is used as a fallback, followed by deletion of the source.
 func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) error {
-	src = utils.CleanAbsPath(src)
-	dst = utils.CleanAbsPath(dst)
+	src = fsroot.CleanAbsPath(src)
+	dst = fsroot.CleanAbsPath(dst)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -475,7 +474,7 @@ type DeleteOptions struct {
 // CountEntries counts the entries an operation over absPath touches: absPath
 // itself plus, when recursive, all of its descendants (files and directories).
 func CountEntries(ctx context.Context, absPath string, recursive bool) (int64, error) {
-	absPath = utils.CleanAbsPath(absPath)
+	absPath = fsroot.CleanAbsPath(absPath)
 	root, err := fsroot.Open()
 	if err != nil {
 		return 0, err
@@ -507,7 +506,7 @@ func TopLevelEntryCountWithin(absPath string, maxEntries int) (bool, error) {
 
 // DeleteFilesWithProgress removes a file or directory while reporting item-count progress.
 func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
-	absPath = utils.CleanAbsPath(absPath)
+	absPath = fsroot.CleanAbsPath(absPath)
 	root, err := fsroot.Open()
 	if err != nil {
 		return 0, err
@@ -664,7 +663,7 @@ func nonPrintableRuneRatio(content string) float64 {
 
 // ChangePermissionsCtx changes permissions and reports processed entries when requested.
 func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, cb func(processed int64)) error {
-	path = utils.CleanAbsPath(path)
+	path = fsroot.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -700,7 +699,7 @@ func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, re
 
 // ChangeOwnershipCtx changes ownership and reports processed entries when requested.
 func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, cb func(processed int64)) error {
-	path = utils.CleanAbsPath(path)
+	path = fsroot.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
 	if err != nil {
@@ -814,8 +813,8 @@ func countRecursiveEntries(ctx context.Context, root *fsroot.FSRoot, path string
 // validateMoveDestination validates that a move operation is safe
 func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	// Clean and normalize paths
-	src = utils.CleanAbsPath(src)
-	dst = utils.CleanAbsPath(dst)
+	src = fsroot.CleanAbsPath(src)
+	dst = fsroot.CleanAbsPath(dst)
 
 	if src == dst {
 		return fmt.Errorf("source and destination are the same")

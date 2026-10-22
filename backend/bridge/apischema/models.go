@@ -1,7 +1,7 @@
 package apischema
 
 import (
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"

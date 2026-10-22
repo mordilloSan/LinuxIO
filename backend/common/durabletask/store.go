@@ -18,8 +18,9 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/iolimit"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -312,7 +313,7 @@ func (s *Store) WriteArtifact(id, name string, data []byte, mode fs.FileMode) (s
 	if err != nil {
 		return "", err
 	}
-	if err := utils.WriteFileAtomic(path, data, mode); err != nil {
+	if err := atomicfile.Write(path, data, mode); err != nil {
 		return "", fmt.Errorf("write durable operation artifact: %w", err)
 	}
 	return path, nil
@@ -452,7 +453,7 @@ func (s *Store) writeRecord(record Record) error {
 		return fmt.Errorf("durable operation %s exceeds %d bytes", record.ID, maxRecordBytes)
 	}
 	data = append(data, '\n')
-	if err := utils.WriteFileAtomic(s.recordPath(record.ID), data, 0o600); err != nil {
+	if err := atomicfile.Write(s.recordPath(record.ID), data, 0o600); err != nil {
 		return fmt.Errorf("persist durable operation %s: %w", record.ID, err)
 	}
 	return nil
@@ -670,7 +671,7 @@ func readRegularFile(root, name string, limit int64) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return utils.ReadAllLimited(file, limit)
+	return iolimit.ReadAll(file, limit)
 }
 
 func recordIDFromName(name string) (string, bool) {

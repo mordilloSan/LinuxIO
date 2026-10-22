@@ -10,7 +10,7 @@ import (
 
 	ini "gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/hostcmd"
 )
 
 type nmConnectionBackend struct {
@@ -173,7 +173,7 @@ func (b *nmConnectionBackend) Enable(ctx context.Context) error {
 	}
 	targetArgs := b.connectionTargetArgs()
 	output, err := b.env.Runner.Run(ctx, "nmcli", append([]string{"connection", "up"}, targetArgs...)...)
-	return utils.CommandOutputError("nmcli", append([]string{"connection", "up"}, targetArgs...), output, err)
+	return hostcmd.OutputError("nmcli", append([]string{"connection", "up"}, targetArgs...), output, err)
 }
 
 func (b *nmConnectionBackend) Disable(ctx context.Context) error {
@@ -186,7 +186,7 @@ func (b *nmConnectionBackend) Disable(ctx context.Context) error {
 	if fallbackErr == nil {
 		return nil
 	}
-	return utils.CommandOutputError("nmcli", []string{"device", "disconnect", b.iface}, output, err)
+	return hostcmd.OutputError("nmcli", []string{"device", "disconnect", b.iface}, output, err)
 }
 
 func (b *nmConnectionBackend) update(ctx context.Context, updateFn func(cfg *ini.File) error) error {
@@ -221,13 +221,13 @@ func (b *nmConnectionBackend) reloadAndReapply(ctx context.Context) error {
 	if fallbackErr == nil {
 		return nil
 	}
-	return utils.CommandOutputError("nmcli", []string{"device", "reapply", b.iface}, output, err)
+	return hostcmd.OutputError("nmcli", []string{"device", "reapply", b.iface}, output, err)
 }
 
 func (b *nmConnectionBackend) loadConnection(ctx context.Context) error {
 	args := []string{"connection", "load", b.path}
 	output, err := b.env.Runner.Run(ctx, "nmcli", args...)
-	return utils.CommandOutputError("nmcli", args, output, err)
+	return hostcmd.OutputError("nmcli", args, output, err)
 }
 
 func (b *nmConnectionBackend) connectionTargetArgs() []string {

@@ -8,10 +8,10 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
-func lastFileProgress(t *testing.T, task *bridgetasks.Task) FileProgress {
+func lastFileProgress(t *testing.T, task *bridgeipc.Task) FileProgress {
 	t.Helper()
 	snapshot := task.Snapshot()
 	if snapshot.Progress == nil {
@@ -28,7 +28,7 @@ func lastFileProgress(t *testing.T, task *bridgetasks.Task) FileProgress {
 // reportable with no denominator and has to pick the denominator up mid-flight
 // rather than capturing it once at construction.
 func TestTaskPhaseCallbacksReportIndeterminateUntilSizeLands(t *testing.T) {
-	registry := bridgetasks.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	req := apischema.FileCompressRequest{TargetPath: "/tmp/x.zip", Format: "zip", Paths: []string{"/tmp"}}
 	task, err := registry.Create("filebrowser.compress", req)
 	if err != nil {
@@ -67,7 +67,7 @@ func TestTaskPhaseCallbacksReportIndeterminateUntilSizeLands(t *testing.T) {
 // A total that is known to be zero is not the same as one that has not been
 // computed yet: the first has nothing to report against and stays silent.
 func TestTaskPhaseCallbacksStaySilentForKnownZeroTotal(t *testing.T) {
-	registry := bridgetasks.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	req := apischema.FileCompressRequest{TargetPath: "/tmp/x.zip", Format: "zip", Paths: []string{"/tmp"}}
 	task, err := registry.Create("filebrowser.compress", req)
 	if err != nil {

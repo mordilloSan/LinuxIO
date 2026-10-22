@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 // NotificationSettings are where new alerts are delivered besides the UI: a JSON
@@ -101,7 +101,7 @@ func SaveNotifications(n NotificationSettings) (NotificationSettings, error) {
 	if err != nil {
 		return NotificationSettings{}, fmt.Errorf("marshal notifications: %w", err)
 	}
-	if err := utils.WriteFileAtomic(notificationsPath(), append(data, '\n'), 0o600); err != nil {
+	if err := atomicfile.Write(notificationsPath(), append(data, '\n'), 0o600); err != nil {
 		return NotificationSettings{}, fmt.Errorf("write %s: %w", notificationsPath(), err)
 	}
 	return n.View(), nil

@@ -19,9 +19,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	indexer "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -175,7 +174,7 @@ func existsBatch(ctx context.Context, req apischema.BatchPathRequest) (apischema
 		if err := ctx.Err(); err != nil {
 			return response, err
 		}
-		path := utils.CleanAbsPath(raw)
+		path := fsroot.CleanAbsPath(raw)
 		info, statErr := root.Root.Lstat(fsroot.ToRel(path))
 		if statErr != nil {
 			continue
@@ -195,7 +194,7 @@ func deleteTargetIsDir(path string) (bool, error) {
 	}
 	defer root.Close()
 
-	cleanPath := utils.CleanAbsPath(path)
+	cleanPath := fsroot.CleanAbsPath(path)
 	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
 	if err != nil {
 		return false, err
@@ -283,7 +282,7 @@ func parseResourcePostRequest(req apischema.FileResourcePostRequest) (resourcePo
 		return resourcePostRequest{}, fmt.Errorf("bad_request:invalid path encoding")
 	}
 
-	cleanPath := utils.CleanAbsPath(path)
+	cleanPath := fsroot.CleanAbsPath(path)
 	if cleanPath == "/" {
 		return resourcePostRequest{}, fmt.Errorf("bad_request:cannot create root")
 	}
@@ -409,7 +408,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	if strings.HasSuffix(req.dst, "/") && !strings.HasSuffix(req.realDest, "/") {
 		req.realDest += "/"
 	}
-	req.realSrc = utils.CleanAbsPath(req.src)
+	req.realSrc = fsroot.CleanAbsPath(req.src)
 
 	srcInfo, err := root.Root.Lstat(fsroot.ToRel(req.realSrc))
 	if err != nil {
@@ -843,7 +842,7 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischem
 
 	basePath := "/" // default to root
 	if req.BasePath != nil && *req.BasePath != "" {
-		basePath = utils.NormalizeIndexerPath(*req.BasePath)
+		basePath = indexerapi.NormalizePath(*req.BasePath)
 	}
 
 	results, err := searchInIndexer(ctx, req.Query, limit, basePath)

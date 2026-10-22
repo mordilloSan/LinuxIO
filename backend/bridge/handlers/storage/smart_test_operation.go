@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 type SmartTestProgress struct {
@@ -19,8 +19,8 @@ type SmartTestProgress struct {
 	Percentage *int   `json:"percentage,omitempty"`
 }
 
-func (p SmartTestProgress) ProgressEnvelope() bridgetasks.TaskProgress {
-	return bridgetasks.TaskProgress{
+func (p SmartTestProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{
 		Percentage: p.Percentage,
 		Phase:      p.Status,
 		Message:    p.Message,
@@ -41,13 +41,13 @@ var smartTestRoutes = smartTestBindings().Routes()
 
 func smartTestBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.DeviceTestTypeRequest, SmartTestResult]("storage.run_smart_test", apischema.SessionTask(), apischema.WithTaskProgress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgetasks.TaskMetadata {
-			return bridgetasks.TaskMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
-		})).Run(runSmartTestTask, bridgetasks.TaskDefault),
+		apischema.TaskRunner[apischema.DeviceTestTypeRequest, SmartTestResult]("storage.run_smart_test", apischema.SessionTask(), apischema.WithTaskProgress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
+		})).Run(runSmartTestTask, bridgeipc.TaskDefault),
 	)
 }
 
-func RegisterTaskRoutes(router *bridgetasks.Router) {
+func RegisterTaskRoutes(router *bridgeipc.Router) {
 	smartTestBindings().Register(router)
 	btrfsRollbackBindings().Register(router)
 	btrfsDeviceBindings().Register(router)
@@ -64,7 +64,7 @@ func pollInterval(testType string) time.Duration {
 	return 15 * time.Second
 }
 
-func runSmartTestTask(ctx context.Context, task *bridgetasks.Task, req apischema.DeviceTestTypeRequest) (SmartTestResult, error) {
+func runSmartTestTask(ctx context.Context, task *bridgeipc.Task, req apischema.DeviceTestTypeRequest) (SmartTestResult, error) {
 	state := smartTestTaskState{
 		task:     task,
 		device:   req.Device,
@@ -73,7 +73,7 @@ func runSmartTestTask(ctx context.Context, task *bridgetasks.Task, req apischema
 	state.reportStart()
 
 	if _, err := RunSmartTest(ctx, req.Device, req.TestType); err != nil {
-		return SmartTestResult{}, bridgetasks.NewError(err.Error(), 500)
+		return SmartTestResult{}, bridgeipc.NewError(err.Error(), 500)
 	}
 
 	state.pollInitial(ctx)
@@ -81,7 +81,7 @@ func runSmartTestTask(ctx context.Context, task *bridgetasks.Task, req apischema
 }
 
 type smartTestTaskState struct {
-	task            *bridgetasks.Task
+	task            *bridgeipc.Task
 	device          string
 	testType        string
 	seenInProgress  bool
@@ -151,7 +151,7 @@ func (s *smartTestTaskState) poll(ctx context.Context) (SmartTestResult, bool, e
 	if s.completed(st) {
 		return s.result(st), true, nil
 	}
-	return SmartTestResult{}, false, bridgetasks.NewError(st.Message, 500)
+	return SmartTestResult{}, false, bridgeipc.NewError(st.Message, 500)
 }
 
 func (s *smartTestTaskState) handlePollError(ctx context.Context, err error) error {
@@ -160,7 +160,7 @@ func (s *smartTestTaskState) handlePollError(ctx context.Context, err error) err
 	}
 	s.consecutiveErrs++
 	if s.consecutiveErrs >= 3 {
-		return bridgetasks.NewError(err.Error(), 500)
+		return bridgeipc.NewError(err.Error(), 500)
 	}
 	return nil
 }

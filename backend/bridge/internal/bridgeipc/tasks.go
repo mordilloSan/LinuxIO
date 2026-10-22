@@ -1,4 +1,4 @@
-package bridge
+package bridgeipc
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/goroutinelabel"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/goroutinelabel"
 )
 
 type TaskState string

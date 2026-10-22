@@ -17,8 +17,8 @@ import (
 	"github.com/moby/moby/api/types/image"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -198,7 +198,7 @@ func writeUpdateStatusFile(statuses []imageUpdateStatus) error {
 		return fmt.Errorf("marshal Docker update status: %w", err)
 	}
 	data = append(data, '\n')
-	if err := utils.WriteFileAtomic(updateStatusPath, data, 0o644); err != nil {
+	if err := atomicfile.Write(updateStatusPath, data, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", updateStatusPath, err)
 	}
 	return nil
@@ -296,13 +296,13 @@ func applyContainerUpdateStatus(info *apischema.ContainerInfo, snap updateStatus
 func setContainerUpdateStatus(info *apischema.ContainerInfo, status imageUpdateStatus) {
 	checkState := status.CheckState
 	info.UpdateCheckState = new(checkState)
-	info.UpdateCheckReason = utils.OptionalString(status.CheckReason)
+	info.UpdateCheckReason = apischema.Optional(status.CheckReason)
 	info.UpdateAvailable = nil
 	if checkState != apischema.DockerUpdateCheckStateUncheckable {
 		info.UpdateAvailable = new(status.UpdateAvailable)
 	}
 	info.UpdateCheckedAt = new(status.CheckedAt.UnixMilli())
-	info.UpdateError = utils.OptionalString(status.Err)
+	info.UpdateError = apischema.Optional(status.Err)
 }
 
 func containerInfoPrimaryName(info apischema.ContainerInfo) string {

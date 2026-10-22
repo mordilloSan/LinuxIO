@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/goroutinelabel"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/goroutinelabel"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )

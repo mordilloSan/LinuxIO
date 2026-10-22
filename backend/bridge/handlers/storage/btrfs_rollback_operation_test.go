@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func stubRollbackPinFiles(t *testing.T, fstab, cmdline string) {
@@ -35,7 +35,7 @@ func TestCheckRollbackPinnedRefusesFstabSubvolID(t *testing.T) {
 		t.Fatalf("@ is pinned by path only, got %v", err)
 	}
 	err := checkRollbackPinned("@home", mounts)
-	var taskErr *bridgetasks.Error
+	var taskErr *bridgeipc.Error
 	if !errors.As(err, &taskErr) || taskErr.Code != 400 || !strings.Contains(err.Error(), "/home is mounted with subvolid= in /etc/fstab; replace it with subvol=/@home") {
 		t.Fatalf("err = %v, want a 400 naming /home", err)
 	}
@@ -44,7 +44,7 @@ func TestCheckRollbackPinnedRefusesFstabSubvolID(t *testing.T) {
 func TestCheckRollbackPinnedRefusesRootflagsSubvolID(t *testing.T) {
 	stubRollbackPinFiles(t, "UUID=x / btrfs subvol=/@ 0 0\n", "BOOT_IMAGE=/vmlinuz root=UUID=x ro rootflags=subvol=@,subvolid=256 quiet\n")
 	err := checkRollbackPinned("@", []btrfs.Mount{{Mountpoint: "/", Subvol: "@", SubvolID: 256}})
-	var taskErr *bridgetasks.Error
+	var taskErr *bridgeipc.Error
 	if !errors.As(err, &taskErr) || taskErr.Code != 400 || !strings.Contains(err.Error(), "rootflags") {
 		t.Fatalf("err = %v, want a 400 naming rootflags", err)
 	}

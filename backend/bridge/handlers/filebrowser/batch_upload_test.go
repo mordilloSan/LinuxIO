@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
@@ -67,19 +67,19 @@ func TestParseUploadBatchRequestValidation(t *testing.T) {
 
 // startUploadBatchTask runs runUploadBatchTask on a fresh registry task and
 // returns the task. The runner parks until a data stream drives it.
-func startUploadBatchTask(t *testing.T, req apischema.FileUploadBatchRequest) *bridgetasks.Task {
+func startUploadBatchTask(t *testing.T, req apischema.FileUploadBatchRequest) *bridgeipc.Task {
 	t.Helper()
 	return startUploadBatchTaskAs(t, req, uploadOwner{})
 }
 
-func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, owner uploadOwner) *bridgetasks.Task {
+func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, owner uploadOwner) *bridgeipc.Task {
 	t.Helper()
-	registry := bridgetasks.NewTaskService()
+	registry := bridgeipc.NewTaskService()
 	task, err := registry.Create(routeUploadBatch, req)
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgetasks.Task, _ any) (any, error) {
+	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadBatchTask(ctx, j, req, owner)
 	})
 	return task
@@ -88,7 +88,7 @@ func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, 
 // attachUploadBatchStream connects a client pipe to the task's data attacher
 // and drains server frames in the background. It returns the client conn, a
 // channel of received result frames, and a channel with the attacher's error.
-func attachUploadBatchStream(t *testing.T, task *bridgetasks.Task, offset string) (net.Conn, <-chan ipc.ResultFrame, <-chan error) {
+func attachUploadBatchStream(t *testing.T, task *bridgeipc.Task, offset string) (net.Conn, <-chan ipc.ResultFrame, <-chan error) {
 	t.Helper()
 	serverConn, clientConn := net.Pipe()
 	t.Cleanup(func() {
@@ -98,7 +98,7 @@ func attachUploadBatchStream(t *testing.T, task *bridgetasks.Task, offset string
 
 	attachErr := make(chan error, 1)
 	go func() {
-		req := bridgetasks.TaskDataAttachRequest{}
+		req := bridgeipc.TaskDataAttachRequest{}
 		if offset != "" {
 			req.Offset = &offset
 		}
@@ -138,7 +138,7 @@ func waitResult(t *testing.T, results <-chan ipc.ResultFrame) ipc.ResultFrame {
 	return ipc.ResultFrame{}
 }
 
-func waitTaskDone(t *testing.T, task *bridgetasks.Task) bridgetasks.TaskSnapshot {
+func waitTaskDone(t *testing.T, task *bridgeipc.Task) bridgeipc.TaskSnapshot {
 	t.Helper()
 	select {
 	case <-task.Done():
@@ -218,7 +218,7 @@ func TestUploadBatchSingleStreamLandsAllFiles(t *testing.T) {
 	}
 
 	snapshot := waitTaskDone(t, task)
-	if snapshot.State != bridgetasks.TaskStateCompleted {
+	if snapshot.State != bridgeipc.TaskStateCompleted {
 		t.Fatalf("task state = %q", snapshot.State)
 	}
 
@@ -498,7 +498,7 @@ func TestUploadBatchRejectsExcessBytes(t *testing.T) {
 	}
 
 	snapshot := waitTaskDone(t, task)
-	if snapshot.State != bridgetasks.TaskStateFailed {
+	if snapshot.State != bridgeipc.TaskStateFailed {
 		t.Fatalf("task state = %q, want failed", snapshot.State)
 	}
 }
@@ -513,7 +513,7 @@ func TestUploadBatchMissingDestinationFailsTask(t *testing.T) {
 
 	task := startUploadBatchTask(t, req)
 	snapshot := waitTaskDone(t, task)
-	if snapshot.State != bridgetasks.TaskStateFailed {
+	if snapshot.State != bridgeipc.TaskStateFailed {
 		t.Fatalf("task state = %q, want failed", snapshot.State)
 	}
 	if snapshot.Error == nil || snapshot.Error.Code != 404 {

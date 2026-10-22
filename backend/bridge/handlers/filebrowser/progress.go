@@ -3,7 +3,7 @@ package filebrowser
 import (
 	"time"
 
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 const (
@@ -75,8 +75,8 @@ type FileProgress struct {
 	Indeterminate bool `json:"indeterminate,omitempty"`
 }
 
-func (p FileProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+func (p FileProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
 }
 
 // BatchUploadProgress reports aggregate byte progress for a batch upload plus
@@ -92,8 +92,8 @@ type BatchUploadProgress struct {
 	FilesTotal int    `json:"filesTotal"`
 }
 
-func (p BatchUploadProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+func (p BatchUploadProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
 }
 
 // CountProgress represents item-count progress for batch tasks. When the
@@ -107,8 +107,8 @@ type CountProgress struct {
 	Indeterminate bool   `json:"indeterminate,omitempty"`
 }
 
-func (p CountProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	envelope := bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
+func (p CountProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	envelope := bridgeipc.TaskProgress{Phase: p.Phase, Detail: p}
 	if !p.Indeterminate {
 		envelope.Percentage = &p.Pct
 	}

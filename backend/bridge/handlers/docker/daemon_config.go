@@ -12,8 +12,8 @@ import (
 	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const dockerDaemonConfigPath = "/etc/docker/daemon.json"
@@ -55,7 +55,7 @@ func setDaemonConfig(ctx context.Context, path string, req apischema.DockerDaemo
 		if err != nil {
 			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("encode docker daemon config: %w", err)
 		}
-		if err := utils.WriteFileAtomic(path, append(data, '\n'), 0o644); err != nil {
+		if err := atomicfile.Write(path, append(data, '\n'), 0o644); err != nil {
 			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("write docker daemon config: %w", err)
 		}
 	}

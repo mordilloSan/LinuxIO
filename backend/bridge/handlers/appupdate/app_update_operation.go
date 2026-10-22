@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -249,5 +249,5 @@ func writeStatusFile(runID string, ownerUID uint32, status string, exitCode *int
 		return err
 	}
 
-	return utils.WriteFileAtomic(updateStatusPath, append(data, '\n'), 0o644)
+	return atomicfile.Write(updateStatusPath, append(data, '\n'), 0o644)
 }

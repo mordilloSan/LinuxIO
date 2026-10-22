@@ -5,43 +5,20 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/configfile"
 )
 
 type connectionKindContextKey struct{}
 
-type peerCredContextKey struct{}
-
-type peerCred struct {
-	uid uint32
-	gid uint32
-}
-
 func unixConnContext(ctx context.Context, c net.Conn) context.Context {
 	ctx = context.WithValue(ctx, connectionKindContextKey{}, true)
-	if uc, ok := c.(*net.UnixConn); ok {
-		if cred, err := readUnixPeerCred(uc); err == nil {
-			ctx = withPeerCred(ctx, cred)
-		}
-	}
-	return ctx
-}
-
-func withPeerCred(ctx context.Context, cred peerCred) context.Context {
-	return context.WithValue(ctx, peerCredContextKey{}, cred)
+	return peercred.ConnContext(ctx, c)
 }
 
 func requestFromUnixSocket(r *http.Request) bool {
 	unix, _ := r.Context().Value(connectionKindContextKey{}).(bool)
 	return unix
-}
-
-func peerUIDFromRequest(r *http.Request) (uint32, bool) {
-	cred, ok := r.Context().Value(peerCredContextKey{}).(peerCred)
-	if !ok {
-		return 0, false
-	}
-	return cred.uid, true
 }
 
 func daemonConfigToFileConfig(cfg DaemonConfig) (configfile.Config, error) {

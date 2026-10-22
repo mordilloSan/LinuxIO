@@ -17,7 +17,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const containerMetricsTimeout = 2 * time.Second
@@ -86,7 +85,7 @@ func containerInfoFromSummary(
 	info := apischema.ContainerInfo{
 		Created:         ctr.Created,
 		HostConfig:      containerHostConfigFromSummary(ctr),
-		Icon:            utils.OptionalString(iconIdentifier),
+		Icon:            apischema.Optional(iconIdentifier),
 		ID:              ctr.ID,
 		Image:           ctr.Image,
 		Labels:          ctr.Labels,
@@ -97,13 +96,13 @@ func containerInfoFromSummary(
 		Ports:           containerPortsFromSummary(ctr.Ports),
 		State:           string(ctr.State),
 		Status:          ctr.Status,
-		URL:             utils.OptionalString(resolvedURL),
+		URL:             apischema.Optional(resolvedURL),
 	}
 	return info
 }
 
 func containerHostConfigFromSummary(ctr container.Summary) *apischema.ContainerHostConfig {
-	networkMode := utils.OptionalString(ctr.HostConfig.NetworkMode)
+	networkMode := apischema.Optional(ctr.HostConfig.NetworkMode)
 	if networkMode == nil {
 		return nil
 	}
@@ -133,7 +132,7 @@ func containerEndpointsFromSDK(endpoints map[string]*network.EndpointSettings) m
 			Gateway:           addrString(endpoint.Gateway),
 			GlobalIPv6Address: optionalAddrString(endpoint.GlobalIPv6Address),
 			IPAddress:         addrString(endpoint.IPAddress),
-			MACAddress:        utils.OptionalString(endpoint.MacAddress.String()),
+			MACAddress:        apischema.Optional(endpoint.MacAddress.String()),
 		}
 	}
 	return result
@@ -149,7 +148,7 @@ func containerPortsFromSummary(ports []container.PortSummary) []apischema.Contai
 		result = append(result, apischema.ContainerPort{
 			IP:          optionalAddrString(port.IP),
 			PrivatePort: int(port.PrivatePort),
-			PublicPort:  utils.OptionalInt(int(port.PublicPort)),
+			PublicPort:  apischema.Optional(int(port.PublicPort)),
 			Type:        port.Type,
 		})
 	}
@@ -272,7 +271,7 @@ func addrString(value netip.Addr) string {
 }
 
 func optionalAddrString(value netip.Addr) *string {
-	return utils.OptionalString(addrString(value))
+	return apischema.Optional(addrString(value))
 }
 
 type containerInspector interface {

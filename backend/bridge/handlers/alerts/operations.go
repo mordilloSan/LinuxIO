@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	store "github.com/mordilloSan/LinuxIO/backend/common/alerts"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func uidKey(uid uint32) string { return strconv.FormatUint(uint64(uid), 10) }

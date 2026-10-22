@@ -18,8 +18,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
-	bridgetasks "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -47,7 +47,7 @@ type uploadOwner struct {
 }
 
 type uploadTransferTask struct {
-	task            *bridgetasks.Task
+	task            *bridgeipc.Task
 	ctx             context.Context
 	path            string
 	expectedSize    int64
@@ -67,7 +67,7 @@ type uploadTransferTask struct {
 }
 
 type archiveTransferTask struct {
-	task        *bridgetasks.Task
+	task        *bridgeipc.Task
 	format      string
 	paths       []string
 	archive     string
@@ -145,7 +145,7 @@ func awaitTransferOutcome(ctx context.Context, done <-chan transferOutcome, acti
 		case <-timer.C:
 			slog.Warn("transfer abandoned by client; cancelling task", "idle_timeout", transferIdleTimeout)
 			cancel()
-			return nil, bridgetasks.NewError("transfer abandoned: client idle", 408)
+			return nil, bridgeipc.NewError("transfer abandoned: client idle", 408)
 		}
 	}
 }
@@ -219,13 +219,13 @@ func notifyUploadedFile(path string) {
 	})
 }
 
-func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.FileUploadRequest, owner uploadOwner) (any, error) {
+func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest, owner uploadOwner) (any, error) {
 	path, expectedSize, overwrite, expectedVersion, err := parseUploadRequest(req)
 	if err != nil {
-		return nil, bridgetasks.NewError(err.Error(), 400)
+		return nil, bridgeipc.NewError(err.Error(), 400)
 	}
 	if expectedVersion != "" && expectedSize >= services.MaxTextFileBytes {
-		return nil, bridgetasks.NewError("editor save exceeds the maximum text file size", 400)
+		return nil, bridgeipc.NewError("editor save exceeds the maximum text file size", 400)
 	}
 
 	// Uploads never overwrite unless explicitly told to: fail the conflict
@@ -233,14 +233,14 @@ func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.Fi
 	if !overwrite {
 		root, rootErr := fsroot.Open()
 		if rootErr != nil {
-			return nil, bridgetasks.NewError("failed to access filesystem", 500)
+			return nil, bridgeipc.NewError("failed to access filesystem", 500)
 		}
 		_, statErr := root.Root.Stat(fsroot.ToRel(filepath.Clean(path)))
 		if closeErr := root.Close(); closeErr != nil {
 			slog.Debug("failed to close filesystem root", "error", closeErr)
 		}
 		if statErr == nil {
-			return nil, bridgetasks.NewError("destination already exists", 409)
+			return nil, bridgeipc.NewError("destination already exists", 409)
 		}
 	}
 
@@ -261,15 +261,15 @@ func runUploadTask(ctx context.Context, task *bridgetasks.Task, req apischema.Fi
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func runArchiveTask(ctx context.Context, task *bridgetasks.Task, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
+func runArchiveTask(ctx context.Context, task *bridgeipc.Task, store *config.UserStore, req apischema.FileArchiveRequest) (any, error) {
 	if req.Format == "" || len(req.Paths) == 0 {
-		return nil, bridgetasks.NewError("missing format or paths", 400)
+		return nil, bridgeipc.NewError("missing format or paths", 400)
 	}
 
 	paths := append([]string(nil), req.Paths...)
 	extension, err := archiveExtension(req.Format)
 	if err != nil {
-		return nil, bridgetasks.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
+		return nil, bridgeipc.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
 	}
 	// Register before any slow work. The client opens its data stream as soon
 	// as the start reply carries the task id, and attachFileTransferData only
@@ -362,8 +362,8 @@ func runArchiveTask(ctx context.Context, task *bridgetasks.Task, store *config.U
 	return awaitTransferOutcome(ctx, transfer.done, transfer.activity, transfer.cancel)
 }
 
-func attachFileTransferData(ctx context.Context, task *bridgetasks.Task, stream net.Conn, request any) error {
-	req, ok := request.(bridgetasks.TaskDataAttachRequest)
+func attachFileTransferData(ctx context.Context, task *bridgeipc.Task, stream net.Conn, request any) error {
+	req, ok := request.(bridgeipc.TaskDataAttachRequest)
 	if !ok {
 		return ipc.WriteResultErrorAndClose(stream, 0, "invalid transfer request", 400)
 	}
@@ -405,7 +405,7 @@ func waitForFileTransferTask(ctx context.Context, taskID string) (any, bool) {
 	}
 }
 
-func parseTransferOffset(req bridgetasks.TaskDataAttachRequest) (int64, error) {
+func parseTransferOffset(req bridgeipc.TaskDataAttachRequest) (int64, error) {
 	if req.Offset == nil || *req.Offset == "" {
 		return 0, nil
 	}
@@ -455,7 +455,7 @@ func newArchiveTaskCallbacks(ctx context.Context, transfer *archiveTransferTask,
 	}
 }
 
-func (t *uploadTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
+func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
@@ -733,7 +733,7 @@ func (t *uploadTransferTask) markWaiting() {
 
 func (t *uploadTransferTask) fail(stream net.Conn, message string, code int, err error) error {
 	t.cleanupPartial()
-	taskErr := bridgetasks.NewError(message, code)
+	taskErr := bridgeipc.NewError(message, code)
 	if stream != nil {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
 	}
@@ -780,7 +780,7 @@ func (t *uploadTransferTask) finish(result any, err error) {
 	})
 }
 
-func (t *archiveTransferTask) attach(stream net.Conn, req bridgetasks.TaskDataAttachRequest) error {
+func (t *archiveTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttachRequest) error {
 	offset, err := parseTransferOffset(req)
 	if err != nil {
 		return ipc.WriteResultErrorAndClose(stream, 0, err.Error(), 400)
@@ -970,7 +970,7 @@ func (t *archiveTransferTask) setReadyError(err error) {
 }
 
 func (t *archiveTransferTask) fail(stream net.Conn, message string, code int, err error) error {
-	taskErr := bridgetasks.NewError(message, code)
+	taskErr := bridgeipc.NewError(message, code)
 	if stream != nil {
 		logWriteErr("error+close", ipc.WriteResultErrorAndClose(stream, 0, message, code))
 	}

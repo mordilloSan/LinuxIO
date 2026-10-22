@@ -10,9 +10,9 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 const bridgeHandoffRoute = "network.bridge_handoff"

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func FetchConfig(ctx context.Context) (apischema.MonitoringConfig, error) {

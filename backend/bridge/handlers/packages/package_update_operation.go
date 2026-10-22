@@ -9,23 +9,23 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 var packageUpdateRoutes = packageUpdateBindings().Routes()
 
 func packageUpdateBindings() apischema.BindingSet {
-	policy := bridgetask.TaskSingletonSystem
+	policy := bridgeipc.TaskSingletonSystem
 	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgetask.TaskMetadata {
-			return bridgetask.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
+		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
 		})).Run(runPackageUpdateTask, policy),
 	)
 }
 
-func RegisterTaskRoutes(router *bridgetask.Router) {
+func RegisterTaskRoutes(router *bridgeipc.Router) {
 	packageUpdateBindings().Register(router)
 }
 
@@ -42,7 +42,7 @@ type PkgUpdateProgress struct {
 	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
 }
 
-func (p PkgUpdateProgress) ProgressEnvelope() bridgetask.TaskProgress {
+func (p PkgUpdateProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	var percentage *int
 	progressPercentage := p.Percentage
 	if progressPercentage == nil {
@@ -56,7 +56,7 @@ func (p PkgUpdateProgress) ProgressEnvelope() bridgetask.TaskProgress {
 	if message == "" {
 		message = p.Status
 	}
-	return bridgetask.TaskProgress{
+	return bridgeipc.TaskProgress{
 		Percentage: percentage,
 		Phase:      p.Type,
 		Message:    message,
@@ -70,7 +70,7 @@ type PackageUpdateResult struct {
 
 type pkgUpdateReporter func(*PkgUpdateProgress) error
 
-func taskPkgUpdateReporter(task *bridgetask.Task) pkgUpdateReporter {
+func taskPkgUpdateReporter(task *bridgeipc.Task) pkgUpdateReporter {
 	return func(p *PkgUpdateProgress) error {
 		task.ReportProgress(*p)
 		return nil
@@ -183,9 +183,9 @@ func isRealWorkStatus(status uint32) bool {
 	return realWorkStatuses[status]
 }
 
-func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apischema.PackageUpdateRequest) (PackageUpdateResult, error) {
+func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apischema.PackageUpdateRequest) (PackageUpdateResult, error) {
 	if len(req.PackageIDs) == 0 {
-		return PackageUpdateResult{}, bridgetask.NewError("no packages specified", 400)
+		return PackageUpdateResult{}, bridgeipc.NewError("no packages specified", 400)
 	}
 	report := taskPkgUpdateReporter(task)
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
@@ -207,7 +207,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apisch
 		if ctx.Err() != nil {
 			return PackageUpdateResult{}, context.Canceled
 		}
-		return PackageUpdateResult{}, bridgetask.NewError(err.Error(), 500)
+		return PackageUpdateResult{}, bridgeipc.NewError(err.Error(), 500)
 	}
 
 	result := PackageUpdateResult{Updated: len(req.PackageIDs)}

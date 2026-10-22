@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/transientunit"
 	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 const testDockerOperationID = "00000000-0000-4000-8000-000000000011"

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type InterfaceConfig struct {
@@ -142,7 +142,7 @@ func DefaultEnvironment() Environment {
 		NetplanCall:     callNetplan,
 		NetworkdCall:    callNetworkd,
 		RestartUnit:     systemd.RestartUnit,
-		WriteFile:       utils.WriteFileAtomic,
+		WriteFile:       atomicfile.Write,
 		RemoveFile:      os.Remove,
 	}
 }

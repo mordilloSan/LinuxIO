@@ -10,8 +10,8 @@ import (
 	"slices"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type (
@@ -66,9 +66,9 @@ func systemHost() backendHost {
 	return backendHost{
 		readFile:         os.ReadFile,
 		glob:             filepath.Glob,
-		writeFileAtomic:  utils.WriteFileAtomic,
+		writeFileAtomic:  atomicfile.Write,
 		removeFile:       os.Remove,
-		fileExists:       utils.FileExists,
+		fileExists:       fileExists,
 		getUnitFileState: systemd.GetUnitFileState,
 		enableUnit:       systemd.EnableUnit,
 		disableUnit:      systemd.DisableUnit,
@@ -186,4 +186,9 @@ func timerEnabled(ctx context.Context, host backendHost, name string) (bool, err
 		return false, err
 	}
 	return state == "enabled" || state == "enabled-runtime" || state == "linked" || state == "linked-runtime", nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

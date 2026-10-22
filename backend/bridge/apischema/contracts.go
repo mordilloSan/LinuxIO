@@ -3,8 +3,8 @@ package apischema
 import (
 	"reflect"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 // TypeSpec is a route payload type reflected into generated TypeScript.

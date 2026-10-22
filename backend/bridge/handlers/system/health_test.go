@@ -11,7 +11,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 func TestDetectUncleanShutdownUsesPreviousUncleanBoot(t *testing.T) {
@@ -85,7 +84,7 @@ func TestApplyFailedLoginAlertDismissal(t *testing.T) {
 	summary := &apischema.SystemHealthSummary{
 		FailedLoginAlert: &apischema.SystemFailedLoginAlert{
 			ID:            alertID,
-			Scope:         utils.OptionalString("user"),
+			Scope:         apischema.Optional("user"),
 			Username:      "miguel",
 			Count:         2,
 			LatestEventID: "login_abc",
@@ -102,7 +101,7 @@ func TestApplyFailedLoginAlertDismissalKeepsNewAlert(t *testing.T) {
 	summary := &apischema.SystemHealthSummary{
 		FailedLoginAlert: &apischema.SystemFailedLoginAlert{
 			ID:            alertID,
-			Scope:         utils.OptionalString("user"),
+			Scope:         apischema.Optional("user"),
 			Username:      "miguel",
 			Count:         2,
 			LatestEventID: "login_abc",

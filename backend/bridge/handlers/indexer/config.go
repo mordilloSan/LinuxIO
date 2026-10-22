@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 

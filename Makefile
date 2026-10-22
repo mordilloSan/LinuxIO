@@ -1476,7 +1476,7 @@ build-nocheck: generate build-vite build-bridge _build-binaries
 fastbuild: generate build-bridge _build-binaries
 
 generate: ensure-go ensure-node setup
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./common/tools/linuxio-api-gen
+	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./bridge/internal/apigen
 
 clean:
 	@rm -f "$(cli_binary)" "$(backend_binary)" "$(bridge_binary)" "$(auth_binary)" "$(docker_update_binary)" "$(indexer_binary)" "$(monitoring_binary)" || true

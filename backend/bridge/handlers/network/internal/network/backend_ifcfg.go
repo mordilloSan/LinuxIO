@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/hostcmd"
 )
 
 type ifcfgBackend struct {
@@ -159,12 +159,12 @@ func (b *ifcfgBackend) runIfup(ctx context.Context) error {
 			return nil
 		}
 	}
-	return utils.CommandOutputError("ifup", []string{b.iface}, output, err)
+	return hostcmd.OutputError("ifup", []string{b.iface}, output, err)
 }
 
 func (b *ifcfgBackend) runIfdown(ctx context.Context) error {
 	output, err := b.env.Runner.Run(ctx, "ifdown", b.iface)
-	return utils.CommandOutputError("ifdown", []string{b.iface}, output, err)
+	return hostcmd.OutputError("ifdown", []string{b.iface}, output, err)
 }
 
 type keyValueDoc struct {
