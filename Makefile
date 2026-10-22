@@ -1497,7 +1497,7 @@ localinstall:
 	@echo "📦 Installing LinuxIO from local build..."
 	@sudo "$(packaging_scripts_dir)/localinstall.sh"
 
-reinstall: uninstall fastbuild localinstall
+reinstall: fastbuild localinstall
 	@echo ""
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "  WARNING: Quick & dirty build - no tests executed!"
@@ -1578,7 +1578,7 @@ help:
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Install / Uninstall$(COLOR_RESET)"
 	@$(PRINTC) "$(COLOR_RED)    make localinstall     $(COLOR_RESET) Install from local build"
-	@$(PRINTC) "$(COLOR_RED)    make reinstall        $(COLOR_RESET) Uninstall + fastbuild + install"
+	@$(PRINTC) "$(COLOR_RED)    make reinstall        $(COLOR_RESET) Fastbuild + install (no uninstall)"
 	@$(PRINTC) "$(COLOR_RED)    make uninstall        $(COLOR_RESET) Remove LinuxIO installation"
 	@$(PRINTC) ""
 	@$(PRINTC) "$(COLOR_CYAN)  Run / Clean$(COLOR_RESET)"
