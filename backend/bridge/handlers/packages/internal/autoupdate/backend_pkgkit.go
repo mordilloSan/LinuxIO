@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 type pkgkitBackend struct{}

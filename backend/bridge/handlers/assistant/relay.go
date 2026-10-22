@@ -1,3 +1,5 @@
+// Package assistant spawns an Agent Client Protocol agent as the session
+// user and relays its stdio to the browser. The bridge never parses ACP.
 package assistant
 
 import (
@@ -8,15 +10,15 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -65,43 +67,32 @@ type relay struct {
 // line with the exit code and stderr tail.
 func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.Conn, req apischema.AssistantOpenRequest) error {
 	sess := rt.Session
-	agent, ok := LookupAgent(req.Agent)
+	agent, ok := acpagents.Lookup(req.Agent)
 	if !ok {
 		closeStream(stream)
 		return fmt.Errorf("assistant: unknown agent %q", req.Agent)
-	}
-	home, err := bridgeconfig.Homedir(sess.User.Username)
-	if err != nil {
-		closeStream(stream)
-		return fmt.Errorf("assistant: resolve home directory: %w", err)
 	}
 
 	// The agent runs on the PATH the user's interactive login shell produces
 	// (nvm-style installs live there), but is exec'd directly rather than
 	// through `bash -i`, whose job-control warnings would land in stderr.
-	userPath, err := UserPath(ctx, sess.User)
+	userPath, err := usercmd.Path(ctx, sess.User)
 	if err != nil {
 		closeStream(stream)
 		return fmt.Errorf("assistant: %w", err)
 	}
-	binary, err := lookPathIn(userPath, agent.Command)
+	binary, err := usercmd.LookPathIn(userPath, agent.Command)
 	if err != nil {
 		closeStream(stream)
 		return fmt.Errorf("assistant: %s: %w", req.Agent, err)
 	}
-	cmd := exec.CommandContext(ctx, binary, agent.Args...)
-	cmd.Dir = home
-	cmd.Env = append(os.Environ(),
-		"PATH="+userPath,
-		"HOME="+home,
-		"USER="+sess.User.Username,
-		"LOGNAME="+sess.User.Username,
-	)
-	sysAttr := &syscall.SysProcAttr{Setsid: true}
-	if os.Geteuid() == 0 {
-		sysAttr.Credential = &syscall.Credential{Uid: sess.User.UID, Gid: sess.User.GID}
+	cmd, err := usercmd.Command(ctx, sess.User, binary, agent.Args...)
+	if err != nil {
+		closeStream(stream)
+		return fmt.Errorf("assistant: %w", err)
 	}
-	cmd.SysProcAttr = sysAttr
+	cmd.Env = append(cmd.Env, "PATH="+userPath)
+	home := cmd.Dir
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/loginhistory"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 

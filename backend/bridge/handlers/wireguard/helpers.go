@@ -19,7 +19,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gopkg.in/ini.v1"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // validInterfaceName matches valid WireGuard interface names (alphanumeric, underscore, hyphen)

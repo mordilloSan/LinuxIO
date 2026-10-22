@@ -18,10 +18,10 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 

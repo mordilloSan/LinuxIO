@@ -132,6 +132,23 @@ the `tasks` handler family, while the router's `TaskService` registers and owns
 their implementations. Domain packages must not register routes in that
 namespace.
 
+## Where Shared Code Lives
+
+Handler families are leaves. They import `apischema`, `bridge/internal/*`,
+`common/*` and the daemon `api` packages, never each other, except for the
+composition edges listed with a reason in
+`backend/bridge/handlers/import_boundary_test.go` (capability probes, the
+indexer client, logind logoff). Code two families need is a library:
+
+| Needed by | Home | Examples |
+|-----------|------|----------|
+| Several bridge families only | `backend/bridge/internal/<name>` | `usercmd`, `acpagents`, `loginhistory`, `transientunit` |
+| The bridge and another binary (CLI, workers, daemons) | `backend/common/<name>` | `systemd`, `dbusclient`, `btrfs`, `alerts` |
+
+The same test keeps `backend/common` from importing a process tree, the
+webserver on `common` only, and the bridge reaching the daemons only through
+`indexer/api` and `monitoring/api`.
+
 ## File Naming
 
 Handler packages should name files after the domain operation they implement, not after IPC mechanics.

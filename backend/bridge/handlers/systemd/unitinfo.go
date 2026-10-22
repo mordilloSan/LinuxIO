@@ -7,7 +7,8 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 var commonUnitInfoProps = []string{
@@ -26,7 +27,7 @@ func GetUnitInfo(ctx context.Context, unitName string) (apischema.UnitInfo, erro
 	var info map[string]any
 	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
 		info = make(map[string]any)
-		unitPath, err := getUnitObjectPath(session, unitName)
+		unitPath, err := systemd.UnitObjectPath(session, unitName)
 		if err != nil {
 			return populateUnitFileInfo(session, unitName, info, err)
 		}
@@ -205,22 +206,6 @@ func findUnitFileRecord(
 	}
 
 	return unitFileRecord{}, false, nil
-}
-
-func getUnitObjectPath(
-	session dbusclient.SystemSession,
-	unitName string,
-) (dbusclient.ObjectPath, error) {
-	var unitPath dbusclient.ObjectPath
-	if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{unitName}, &unitPath); err == nil {
-		return unitPath, nil
-	}
-
-	if err := session.CallStore(dbusclient.SystemdManagerIface+".LoadUnit", dbusclient.CallPolicy{}, []any{unitName}, &unitPath); err != nil {
-		return "", err
-	}
-
-	return unitPath, nil
 }
 
 func enrichServiceUnitInfo(session dbusclient.SystemSession, unit dbusclient.BusObject, info map[string]any) {

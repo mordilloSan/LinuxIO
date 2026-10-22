@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
 	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -18,7 +18,7 @@ const nodeComponent = "node"
 
 var (
 	nvmInstallScriptURL   = "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh"
-	capabilityUserCommand = assistant.UserCommand
+	capabilityUserCommand = usercmd.Command
 )
 
 // nvmInstallNodeScript loads the freshly installed nvm and installs the

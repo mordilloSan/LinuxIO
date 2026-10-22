@@ -15,7 +15,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )

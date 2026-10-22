@@ -1,5 +1,3 @@
-//go:generate go run ./gen_utmp_layout.go
-
 package loginhistory
 
 import (

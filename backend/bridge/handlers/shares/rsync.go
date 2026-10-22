@@ -19,8 +19,8 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 

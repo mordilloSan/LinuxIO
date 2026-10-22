@@ -1104,8 +1104,9 @@ deadcode-only:
 		production_status="$$(cat "$$scan_dir/production.status")"; \
 		if [ $$production_status -eq 0 ]; then \
 			production_out="$$(printf '%s\n' "$$production_out" | grep -Ev \
-				-e '^bridge/internal/dbusclient/testdbus/' \
+				-e '^common/dbusclient/testdbus/' \
 				-e '^common/peercred/peercred\.go:[0-9]+:[0-9]+: unreachable func: WithCredForTest$$' \
+				-e '^bridge/internal/acpagents/acpagents\.go:[0-9]+:[0-9]+: unreachable func: Override$$' \
 				-e '^monitoring/internal/store/storetest/sample\.go:[0-9]+:[0-9]+: unreachable func: SampleCombinedData$$' || true)"; \
 		fi; \
 		if [ $$test_status -ne 0 ] || [ $$production_status -ne 0 ]; then \

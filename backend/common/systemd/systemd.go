@@ -1,3 +1,6 @@
+// Package systemd is the unit-control facade over the system D-Bus manager.
+// It is shared by the bridge handlers, bridge internals and the linuxio CLI;
+// the systemd.* route handlers live in backend/bridge/handlers/systemd.
 package systemd
 
 import (
@@ -5,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 var managerIface = dbusclient.SystemdManager.Interface(dbusclient.SystemdManagerIface)
@@ -148,6 +151,21 @@ func GetActiveState(ctx context.Context, name string) (string, error) {
 		return "", err
 	}
 	return state, nil
+}
+
+// UnitObjectPath resolves a unit's object path, loading the unit when it is
+// not loaded yet.
+func UnitObjectPath(session dbusclient.SystemSession, unitName string) (dbusclient.ObjectPath, error) {
+	var unitPath dbusclient.ObjectPath
+	if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{unitName}, &unitPath); err == nil {
+		return unitPath, nil
+	}
+
+	if err := session.CallStore(dbusclient.SystemdManagerIface+".LoadUnit", dbusclient.CallPolicy{}, []any{unitName}, &unitPath); err != nil {
+		return "", err
+	}
+
+	return unitPath, nil
 }
 
 type UnitStatus struct {

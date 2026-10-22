@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
 	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 

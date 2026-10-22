@@ -1,4 +1,4 @@
-package assistant
+package usercmd
 
 import (
 	"context"
@@ -13,34 +13,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-func TestLookupAgentKnowsTheThreeAgents(t *testing.T) {
-	for _, id := range []string{"claude", "gemini", "codex"} {
-		agent, ok := LookupAgent(id)
-		require.True(t, ok, id)
-		require.Equal(t, "npx", agent.Command, id)
-		require.NotEmpty(t, agent.Args, id)
-	}
-	_, ok := LookupAgent("opencode")
-	require.False(t, ok)
-	require.ElementsMatch(t, []string{"claude", "codex", "gemini"}, AgentIDs())
-}
-
 func TestLoginShellArgvPassesArgumentsPositionally(t *testing.T) {
-	argv := LoginShellArgv(Agent{Command: "npx", Args: []string{"pkg", "--acp"}}, []string{"--cli", "auth login"})
+	argv := LoginShellArgv("npx", []string{"pkg", "--acp"}, []string{"--cli", "auth login"})
 	require.Len(t, argv, 10)
 	require.Contains(t, []string{"bash", "sh"}, argv[0])
 	// Interactive AND login: ~/.bashrc returns early for non-interactive
 	// shells, and that is where nvm-style version managers put themselves.
 	require.Equal(t, []string{"-i", "-l", "-c", `exec "$0" "$@"`, "npx", "pkg", "--acp", "--cli", "auth login"}, argv[1:])
-}
-
-func TestOverrideAgentRestores(t *testing.T) {
-	restore := OverrideAgent("fake", Agent{Command: "/bin/true"})
-	_, ok := LookupAgent("fake")
-	require.True(t, ok)
-	restore()
-	_, ok = LookupAgent("fake")
-	require.False(t, ok)
 }
 
 func TestProbeLoginShellFindsCommandsOnTheUsersPath(t *testing.T) {
@@ -56,7 +35,7 @@ func TestProbeLoginShellFindsCommandsOnTheUsersPath(t *testing.T) {
 	}
 	me := session.User{Username: u.Username, UID: uint32(uid), GID: uint32(gid)}
 
-	path, err := UserPath(context.Background(), me)
+	path, err := Path(context.Background(), me)
 	require.NoError(t, err)
 	require.Contains(t, path, "/usr/bin")
 
@@ -75,15 +54,15 @@ func TestLookPathIn(t *testing.T) {
 	script := filepath.Join(dir, "tool")
 	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\n"), 0o700))
 
-	found, err := lookPathIn(dir+":/nonexistent", "tool")
+	found, err := LookPathIn(dir+":/nonexistent", "tool")
 	require.NoError(t, err)
 	require.Equal(t, script, found)
 
-	_, err = lookPathIn("/nonexistent", "tool")
+	_, err = LookPathIn("/nonexistent", "tool")
 	require.Error(t, err)
 
 	// A command given with a slash is used as is, like exec.LookPath.
-	found, err = lookPathIn("/nonexistent", script)
+	found, err = LookPathIn("/nonexistent", script)
 	require.NoError(t, err)
 	require.Equal(t, script, found)
 }

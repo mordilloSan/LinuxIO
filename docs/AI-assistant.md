@@ -47,7 +47,7 @@ websocket ends the agent process.
 | `gemini` | `npx @google/gemini-cli --acp` |
 | `codex` | `npx @agentclientprotocol/codex-acp` |
 
-The table is `agents` in `backend/bridge/handlers/assistant/agents.go`. The
+The table is `agents` in `backend/bridge/internal/acpagents`, which the config handler and the Terminal agent login also use. The
 commands come from the ACP registry. The browser only ever sends an agent id;
 it never supplies a command, and unknown ids are rejected before anything
 spawns. Settings: `config.get` returns `assistant.agent`; `config.set`

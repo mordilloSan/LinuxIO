@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 const monitoringServiceName = "linuxio-monitoring.service"

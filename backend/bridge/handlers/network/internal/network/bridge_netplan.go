@@ -10,7 +10,7 @@ import (
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 const (

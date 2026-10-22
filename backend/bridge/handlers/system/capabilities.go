@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
@@ -207,7 +207,7 @@ var capabilityRegistry = []CapabilitySpec{
 		// asks that same shell: nvm-style installs live under the home
 		// directory and never appear on the bridge's PATH.
 		DetectAsUser: func(ctx context.Context, u session.User) (bool, string) {
-			if err := assistant.ProbeLoginShell(ctx, u, "npx"); err != nil {
+			if err := usercmd.ProbeLoginShell(ctx, u, "npx"); err != nil {
 				return false, err.Error()
 			}
 			return true, ""

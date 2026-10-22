@@ -10,8 +10,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/user"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -20,8 +18,9 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -55,8 +54,12 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 		return err
 	}
 
-	// Look up user for environment setup
-	u, err := user.LookupId(strconv.FormatUint(uint64(sess.User.UID), 10))
+	shellPath := usercmd.LoginShell()
+	argv := []string{shellPath, "-i", "-l"}
+	if req.Agent != "" {
+		argv = usercmd.LoginShellArgv(loginAgent.Command, loginAgent.Args, req.Args)
+	}
+	cmd, err := usercmd.Command(ctx, sess.User, argv[0], argv[1:]...)
 	if err != nil {
 		slog.Error("failed to look up terminal user", "user", sess.User.Username, "error", err)
 		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
@@ -65,47 +68,20 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 		}
 		return fmt.Errorf("lookup user: %w", err)
 	}
-
-	// Build environment
-	env := append(os.Environ(),
-		"HOME="+u.HomeDir,
-		"USER="+sess.User.Username,
-		"LOGNAME="+sess.User.Username,
+	cmd.Env = append(cmd.Env,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-		"HISTFILE="+u.HomeDir+"/.bash_history",
+		"HISTFILE="+cmd.Dir+"/.bash_history",
+		"SHELL="+shellPath,
 	)
-
-	// Prefer bash, fall back to sh
-	shellPath := "bash"
-	if _, lookErr := exec.LookPath(shellPath); lookErr != nil {
-		shellPath = "sh"
-	}
-
-	var cmd *exec.Cmd
 	if req.Agent != "" {
-		argv := assistant.LoginShellArgv(loginAgent, req.Args)
-		cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
 		// CLI login flows print the URL and prompt for a code instead of
 		// trying to open a browser on the server.
-		env = append(env, "NO_BROWSER=1")
-	} else {
-		cmd = exec.CommandContext(ctx, shellPath, "-i", "-l")
+		cmd.Env = append(cmd.Env, "NO_BROWSER=1")
 	}
-	cmd.Dir = u.HomeDir
-	env = append(env, "SHELL="+shellPath)
-	cmd.Env = env
-
-	sysAttr := &syscall.SysProcAttr{Setsid: true, Setctty: true}
-
-	// Drop privileges if running as root
-	if os.Geteuid() == 0 {
-		sysAttr.Credential = &syscall.Credential{
-			Uid: sess.User.UID,
-			Gid: sess.User.GID,
-		}
-	}
-	cmd.SysProcAttr = sysAttr
+	// usercmd already starts a new session and drops privileges when the
+	// bridge runs as root; the PTY must also become the controlling terminal.
+	cmd.SysProcAttr.Setctty = true
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -161,16 +137,16 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 
 // lookupLoginAgent resolves the requested agent id; an empty id means the
 // plain login shell. An unknown id closes the stream and returns an error.
-func lookupLoginAgent(stream net.Conn, id string) (assistant.Agent, error) {
+func lookupLoginAgent(stream net.Conn, id string) (acpagents.Agent, error) {
 	if id == "" {
-		return assistant.Agent{}, nil
+		return acpagents.Agent{}, nil
 	}
-	agent, ok := assistant.LookupAgent(id)
+	agent, ok := acpagents.Lookup(id)
 	if !ok {
 		if closeErr := ipc.WriteStreamClose(stream, 1); closeErr != nil {
 			slog.Debug("failed to write terminal stream close frame", "error", closeErr)
 		}
-		return assistant.Agent{}, fmt.Errorf("terminal: unknown agent %q", id)
+		return acpagents.Agent{}, fmt.Errorf("terminal: unknown agent %q", id)
 	}
 	return agent, nil
 }

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -106,7 +106,7 @@ func TestHandleTerminalSessionRunsAgentLoginCommand(t *testing.T) {
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf 'LOGIN %s %s\\n' \"$1\" \"$NO_BROWSER\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(assistant.OverrideAgent("fake", assistant.Agent{Command: script}))
+	t.Cleanup(acpagents.Override("fake", acpagents.Agent{Command: script}))
 
 	rt := runtime.Runtime{Session: &session.Session{
 		SessionID: "terminal-login-test",
