@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule LinuxIO btrfs health checks
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Unit=linuxio-btrfs-health.service
+
+[Install]
+WantedBy=linuxio.target

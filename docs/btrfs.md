@@ -36,8 +36,10 @@ disk** on a degraded pool, **Reclaim space** when metadata is nearly full.
 
 Alerts are updated whenever the list is loaded and, independently of the
 browser, by `linuxio-btrfs-health.timer`, which runs `linuxio btrfs-health
-run` two minutes after boot and every ten minutes. The bridge installs and
-enables the timer the first time an administrator lists filesystems.
+run` two minutes after boot and every ten minutes. The units ship with the
+package; the installer enables the timer when the host has a btrfs
+filesystem, and the bridge enables it the first time an administrator lists
+filesystems, covering pools created after install.
 
 | Alert | Severity | Raised when | Resolved when |
 |---|---|---|---|

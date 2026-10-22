@@ -1,0 +1,8 @@
+[Unit]
+Description=LinuxIO btrfs health check
+Documentation=https://github.com/mordilloSan/LinuxIO
+PartOf=linuxio.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/linuxio btrfs-health run

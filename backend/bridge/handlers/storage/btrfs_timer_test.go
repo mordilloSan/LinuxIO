@@ -118,26 +118,10 @@ func TestBtrfsTimerEnabledReadsUnitFileState(t *testing.T) {
 	}
 }
 
-func TestEnsureBtrfsHealthTimerWritesOnceAndKeepsRunning(t *testing.T) {
+func TestEnsureBtrfsHealthTimerEnablesAndStarts(t *testing.T) {
 	rec := &recordingBtrfsTimerOps{}
-	dir := t.TempDir()
-	paths := btrfsTimerPaths{unitPath: filepath.Join(dir, btrfs.HealthServiceName), timerPath: filepath.Join(dir, btrfs.HealthTimerName)}
-	if err := ensureBtrfsHealthTimer(context.Background(), rec.ops(), paths); err != nil {
+	if err := ensureBtrfsHealthTimer(context.Background(), rec.ops()); err != nil {
 		t.Fatalf("ensureBtrfsHealthTimer: %v", err)
-	}
-	for path, want := range map[string][]byte{paths.unitPath: btrfs.RenderHealthUnit(), paths.timerPath: btrfs.RenderHealthTimer()} {
-		if got, err := os.ReadFile(path); err != nil || string(got) != string(want) {
-			t.Errorf("%s = %q, %v; want %q", path, got, err, want)
-		}
-	}
-	want := []string{"reload", "enable:" + btrfs.HealthTimerName, "start:" + btrfs.HealthTimerName}
-	if !reflect.DeepEqual(rec.calls, want) {
-		t.Fatalf("calls = %v, want %v", rec.calls, want)
-	}
-	// Unchanged units skip the reload.
-	rec.calls = nil
-	if err := ensureBtrfsHealthTimer(context.Background(), rec.ops(), paths); err != nil {
-		t.Fatalf("second ensure: %v", err)
 	}
 	if want := []string{"enable:" + btrfs.HealthTimerName, "start:" + btrfs.HealthTimerName}; !reflect.DeepEqual(rec.calls, want) {
 		t.Fatalf("calls = %v, want %v", rec.calls, want)

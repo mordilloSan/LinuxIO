@@ -22,6 +22,7 @@ readonly DATA_DIR="/var/lib/linuxio"
 readonly DOC_DIR="/usr/share/linuxio/doc"
 readonly STAGING="/tmp/linuxio-install-$$"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
+readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
 readonly MINIMUM_MONITORING_RELEASE="v0.28.0"
 ENABLE_INDEXER_TIMER=0
 # Recovery-asset policy: a versioned install downloads immutable release
@@ -90,6 +91,8 @@ release_systemd_units() {
 		linuxio-indexer.service \
 		linuxio-indexer-index.service \
 		linuxio-indexer-index.timer \
+		linuxio-btrfs-health.service \
+		linuxio-btrfs-health.timer \
 		linuxio-monitoring.service
 }
 
@@ -666,6 +669,14 @@ enable_services() {
 		Show 0 "Enabled linuxio-monitoring.service"
 	else
 		Show 3 "Failed to enable linuxio-monitoring.service"
+	fi
+	# Pools created later get the timer when an admin lists btrfs filesystems.
+	if lsblk -nro FSTYPE 2>/dev/null | grep -qx btrfs; then
+		if systemctl enable "$BTRFS_HEALTH_TIMER_UNIT_NAME" >/dev/null 2>&1; then
+			Show 0 "Enabled ${BTRFS_HEALTH_TIMER_UNIT_NAME}"
+		else
+			Show 3 "Failed to enable ${BTRFS_HEALTH_TIMER_UNIT_NAME}"
+		fi
 	fi
 	# The control-plane restart (here or deferred to the caller) does not cover
 	# the monitoring daemon, so move it onto the installed binary now.
