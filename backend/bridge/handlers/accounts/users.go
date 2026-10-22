@@ -2,12 +2,15 @@ package accounts
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,6 +19,7 @@ import (
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
+	"github.com/shirou/gopsutil/v4/process"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
@@ -483,63 +487,47 @@ func getSSHAccess(user apischema.AccountUser) apischema.AccountSSHAccess {
 }
 
 func getProcessSummary(ctx context.Context, username string) apischema.AccountProcessSummary {
-	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	summary := apischema.AccountProcessSummary{Top: []apischema.AccountUserProcess{}}
-	output, err := exec.CommandContext(
-		cmdCtx,
-		"ps",
-		"-u",
-		username,
-		"-o",
-		"pid=,comm=,pcpu=,pmem=",
-		"--sort=-pcpu",
-	).Output()
+	account, err := user.Lookup(username)
 	if err != nil {
-		if isEmptyProcessListExit(output, err) {
-			return summary
-		}
-		summary.Error = processSummaryError(err)
+		summary.Error = err.Error()
+		return summary
+	}
+	uid, err := strconv.ParseUint(account.Uid, 10, 32)
+	if err != nil {
+		summary.Error = err.Error()
+		return summary
+	}
+	procs, err := process.ProcessesWithContext(ctx)
+	if err != nil {
+		summary.Error = err.Error()
 		return summary
 	}
 
-	for line := range strings.SplitSeq(string(output), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 4 {
+	for _, proc := range procs {
+		// Like ps -u, match on the effective UID; processes that exit mid-scan are skipped.
+		uids, err := proc.UidsWithContext(ctx)
+		if err != nil || len(uids) < 2 || uint64(uids[1]) != uid {
 			continue
 		}
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil {
-			continue
-		}
-		cpu, _ := strconv.ParseFloat(fields[2], 64)
-		mem, _ := strconv.ParseFloat(fields[3], 64)
+		name, _ := proc.NameWithContext(ctx)
+		cpu, _ := proc.CPUPercentWithContext(ctx)
+		mem, _ := proc.MemoryPercentWithContext(ctx)
 		summary.Count++
 		summary.Top = append(summary.Top, apischema.AccountUserProcess{
-			PID:     pid,
-			Command: fields[1],
-			CPU:     cpu,
-			Memory:  mem,
+			PID:     int(proc.Pid),
+			Command: name,
+			CPU:     math.Round(cpu*10) / 10,
+			Memory:  math.Round(float64(mem)*10) / 10,
 		})
 	}
+	slices.SortFunc(summary.Top, func(a, b apischema.AccountUserProcess) int {
+		return cmp.Compare(b.CPU, a.CPU)
+	})
 	return summary
-}
-
-func isEmptyProcessListExit(output []byte, err error) bool {
-	var exitErr *exec.ExitError
-	return errors.As(err, &exitErr) &&
-		strings.TrimSpace(string(output)) == "" &&
-		strings.TrimSpace(string(exitErr.Stderr)) == ""
-}
-
-func processSummaryError(err error) string {
-	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-		if stderr := strings.TrimSpace(string(exitErr.Stderr)); stderr != "" {
-			return stderr
-		}
-	}
-	return err.Error()
 }
 
 func countAuthorizedKeys(path string) (int, error) {

@@ -161,6 +161,11 @@ Runs the filesystem indexer.
 Schedules periodic filesystem indexing through
 .BR linuxio-indexer-index.service .
 .TP
+.B linuxio-btrfs-health.timer
+Checks btrfs pools every ten minutes through
+.BR linuxio-btrfs-health.service .
+Enabled when btrfs is present.
+.TP
 .B linuxio-monitoring.service
 Runs the monitoring daemon that samples host metrics and keeps their history.
 .SH EXAMPLES

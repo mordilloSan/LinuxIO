@@ -290,10 +290,11 @@ test("chats with a fake ACP agent and approves a permission", async ({
   await expect(page.getByText("2 tool calls")).toBeVisible();
   await page.getByText("2 tool calls").click();
   await expect(page.getByText("uptime")).toBeVisible();
-  await expect(page.getByText("execute · completed")).toHaveCount(2);
-
-  await page.locator(".assistant-tool__title", { hasText: "df -h" }).click();
+  await expect(page.getByRole("img", { name: "done" })).toHaveCount(3);
+  // Each call shows its output under OUT once the group is open.
   await expect(page.getByText("/dev/sda1  50G  20G  30G  40% /")).toBeVisible();
+  await page.getByRole("button", { name: "Collapse" }).click();
+  await expect(page.getByText("uptime")).toBeHidden();
 
   // A side question forks the chat; the fork must be resumed before it answers.
   await page.getByLabel("Message", { exact: true }).fill("/btw is it healthy?");

@@ -174,9 +174,11 @@ describe("targeted route query ownership", () => {
   });
 
   it("loads WireGuard network data only inside the create workflow", () => {
-    const page = readRouteSource("wireguard/-components/WireguardPage.tsx");
+    const page = readRouteSource(
+      "network/-components/wireguard/WireguardPage.tsx",
+    );
     const createButton = readRouteSource(
-      "wireguard/-components/CreateInterfaceButton.tsx",
+      "network/-components/wireguard/CreateInterfaceButton.tsx",
     );
 
     expect(page.match(/linuxio\.wireguard\.list_interfaces/g)).toHaveLength(1);

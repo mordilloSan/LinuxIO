@@ -10,7 +10,7 @@ function StorageLayout() {
   const { privileged } = useAuth();
   const tabs: readonly RoutedTab[] = privileged
     ? STORAGE_TABS
-    : STORAGE_TABS.filter((tab) => tab.to !== "/storage/btrfs");
+    : STORAGE_TABS.filter((tab) => tab.to !== "/storage/snapshots");
   return (
     <RoutedTabLayout tabs={tabs}>
       <Outlet />

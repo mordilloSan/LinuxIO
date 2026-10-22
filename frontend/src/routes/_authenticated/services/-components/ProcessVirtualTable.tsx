@@ -7,8 +7,6 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formaters";
 
-import type { ProcessView } from "./processData";
-
 const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 
 const processColumns: AppVirtualTableColumnDef<Process>[] = [
@@ -141,8 +139,8 @@ const ProgramTable = ({ data }: { data: Program[] }) => {
 };
 
 type ProcessVirtualTableProps =
-  | { data: Process[]; mode: Extract<ProcessView, "processes"> }
-  | { data: Program[]; mode: Extract<ProcessView, "programs"> };
+  | { data: Process[]; mode: "processes" }
+  | { data: Program[]; mode: "programs" };
 
 const ProcessVirtualTable = (props: ProcessVirtualTableProps) =>
   props.mode === "processes" ? (

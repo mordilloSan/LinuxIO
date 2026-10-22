@@ -18,7 +18,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { useCapability } from "@/hooks/useCapabilities";
 
-import { BTRFS_TOAST_META } from "./btrfsShared";
+import { BTRFS_POOL_TOAST_META } from "./btrfsShared";
 
 const ALGORITHMS = [
   { value: "none", label: "Off" },
@@ -68,7 +68,7 @@ const CompressionControl = ({
     {
       success: "Compression updated",
       error: "Failed to update compression",
-      toast: BTRFS_TOAST_META,
+      toast: BTRFS_POOL_TOAST_META,
     },
   );
 
@@ -179,7 +179,7 @@ const BtrfsSettingsCard = ({ uuid, mountpoint }: BtrfsSettingsCardProps) => {
     {
       success: "Quota setting updated",
       error: "Failed to update quotas",
-      toast: BTRFS_TOAST_META,
+      toast: BTRFS_POOL_TOAST_META,
     },
   );
 
@@ -192,7 +192,7 @@ const BtrfsSettingsCard = ({ uuid, mountpoint }: BtrfsSettingsCardProps) => {
     useCallMutation(linuxio.storage.set_btrfs_maintenance, {
       success: "Btrfs maintenance schedule updated",
       error: "Failed to update btrfs maintenance schedule",
-      toast: BTRFS_TOAST_META,
+      toast: BTRFS_POOL_TOAST_META,
     });
 
   return (

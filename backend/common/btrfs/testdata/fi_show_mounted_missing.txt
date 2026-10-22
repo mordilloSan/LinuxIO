@@ -1,5 +1,0 @@
-Label: 'data'  uuid: 9a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d
-	Total devices 2 FS bytes used 42949672960
-	devid    1 size 107374182400 used 55834574848 path /dev/sda1
-	*** Some devices missing
-

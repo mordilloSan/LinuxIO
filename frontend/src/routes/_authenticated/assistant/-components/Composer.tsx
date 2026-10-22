@@ -348,7 +348,7 @@ export default function Composer({
           label="Attach a file"
           onChange={(path) => void pickFile(path)}
           onPickerClose={() => setPickerOpen(false)}
-          placeholder="Click to choose a file"
+          placeholder="Choose a file"
           selectableTypes={["file"]}
           value=""
         />
@@ -371,7 +371,7 @@ export default function Composer({
             multiline
             onChange={(event) => changeDraft(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Ask the agent to look at something on this server"
+            placeholder="Ask about this server"
             ref={inputRef}
             rows={1}
             value={draft}

@@ -172,6 +172,9 @@ const VMList = () => {
               role="listitem"
               style={{
                 cursor: pendingAction ? "progress" : "context-menu",
+                // Flex blockifies the inline icon so its baseline descent
+                // doesn't overflow the cell and add a scrollbar.
+                display: "flex",
                 height: 36,
                 position: "relative",
                 width: 36,

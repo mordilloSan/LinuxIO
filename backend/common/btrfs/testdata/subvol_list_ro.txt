@@ -1,2 +1,0 @@
-ID 301 gen 12100 top level 5 path <FS_TREE>/linuxio-snapshots/@-2026-10-19
-ID 302 gen 12200 top level 5 path <FS_TREE>/data

@@ -4,7 +4,6 @@
   gap: var(--app-space-8);
   height: 100%;
   min-height: 0;
-  outline: none;
 }
 
 .assistant__actions {
@@ -115,7 +114,9 @@
   color: var(--app-palette-primary-main);
 }
 
+/* Messages and tool calls cap their width at the prompt's 768px. */
 .assistant-block {
+  max-width: 768px;
   overflow-wrap: anywhere;
 }
 
@@ -128,13 +129,13 @@
    the answer around it. */
 .assistant-block--user {
   align-self: flex-end;
-  max-width: 80%;
+  max-width: min(80%, 768px);
   margin-block: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
   border: 2px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
-  /* A shade below the page, not a filled chip. */
-  background: color-mix(in srgb, var(--app-palette-background-default) 88%, grey);
+  /* A shade off the page, not a filled chip. */
+  background: var(--app-palette-action-hover);
 }
 
 /* Answers read as prose: a touch of leading, and bold that stands out from
@@ -321,90 +322,187 @@
   background: color-mix(in srgb, var(--app-palette-error-main), transparent 80%);
 }
 
+/* Tool calls read as a timeline, like the IDE: a marker on a rail, what the
+   tool does, then its input and output. Capped at the prompt's 768px. */
+.assistant-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-16);
+  max-width: min(100%, 768px);
+}
+
 .assistant-tool {
-  align-self: flex-start;
-  max-width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-6);
+  min-width: 0;
+  padding-inline-start: var(--app-space-20);
+}
+
+/* The rail runs from each marker down to the next one. */
+.assistant-tool:not(:last-child)::before {
+  position: absolute;
+  inset-inline-start: 3.5px;
+  top: calc(0.8em + 8px);
+  bottom: calc(-1 * var(--app-space-16));
+  width: 1px;
+  background: var(--app-palette-divider);
+  content: "";
+}
+
+.assistant-tool > .assistant-tool-state {
+  position: absolute;
+  inset-inline-start: 0;
+  top: calc(0.8em - 4px);
+}
+
+/* Running spins, failed is an alert, done is a dot. */
+.assistant-tool-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+}
+
+.assistant-tool-state--done::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--app-palette-success-main);
+  content: "";
+}
+
+.assistant-tool-state--failed {
+  color: var(--app-palette-error-main);
+}
+
+.assistant-tool__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--app-space-8);
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.assistant-tool__kind {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.assistant-tool__detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-palette-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-tool__io {
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
+  overflow: hidden;
+  font-family: var(--app-font-mono);
+  font-size: calc(var(--app-font-size-body) * 0.92);
+}
+
+.assistant-tool__io-row {
+  display: grid;
+  grid-template-columns: 3em minmax(0, 1fr);
+  gap: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
 }
 
-.assistant-tool[open] {
-  align-self: stretch;
+.assistant-tool__io-row--out {
+  border-top: 1px solid var(--app-palette-divider);
+  background: var(--app-palette-background-default);
 }
 
-.assistant-tool__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--app-space-8);
-  cursor: pointer;
+.assistant-tool__io-row:first-child {
+  border-top: none;
 }
 
-.assistant-tool__title {
-  font-family: var(--app-font-mono);
+.assistant-tool__io-label {
+  color: var(--app-palette-text-secondary);
+  font-size: 0.85em;
+  line-height: 1.75;
+}
+
+.assistant-tool__io-cell {
+  min-width: 0;
+}
+
+.assistant-tool .assistant-tool__in,
+.assistant-tool .assistant-tool__out {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+  line-height: 1.5;
+}
+
+.assistant-tool .assistant-tool__in {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Long output shows its first lines and fades out; a button opens the rest. */
+.assistant-tool__out--clipped {
+  max-height: calc(8 * 1.5em);
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black 60%, transparent);
+}
+
+.app-btn.assistant-tool__more {
+  margin-top: var(--app-space-4);
+  padding-inline: 0;
+  color: var(--app-palette-text-secondary);
+  font: inherit;
+  font-family: var(--app-font-family);
+  text-transform: none;
 }
 
 /* A collapsed group hugs its label; it only spans the column once opened,
    because the rows inside need the room. */
 .assistant-tool-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--app-space-8);
   align-self: flex-start;
-  max-width: 100%;
-  border: 1px solid var(--app-palette-divider);
-  border-radius: var(--app-radius-md);
+  max-width: min(100%, 768px);
 }
 
-.assistant-tool-group:has(.assistant-tool-group__rows) {
+.assistant-tool-group:has(.assistant-tool-list) {
   align-self: stretch;
 }
 
-.assistant-tool-group .assistant-tool-group__header {
-  width: 100%;
+.assistant-tool-group > .assistant-tool-list {
+  align-self: stretch;
+}
+
+.assistant-tool-group .assistant-tool-group__header,
+.app-btn.assistant-tool-group__collapse {
   justify-content: flex-start;
   gap: var(--app-space-8);
+  padding-inline: var(--app-space-4);
+  margin-inline-start: calc(-1 * var(--app-space-4));
+  color: var(--app-palette-text-secondary);
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.app-btn.assistant-tool-group__collapse {
+  padding-inline-start: calc(var(--app-space-20) + var(--app-space-4));
+  font: inherit;
 }
 
 /* Captions in tool rows follow the chat font size, not the theme's fixed caption. */
-.assistant-tool-group__header .app-typo--caption,
-.assistant-tool__summary .app-typo--caption {
-  font-size: calc(var(--app-font-size-body) * 0.85);
-}
-
-.assistant-tool-group__dot {
-  width: 8px;
-  height: 8px;
-  flex-shrink: 0;
-  border-radius: 50%;
-}
-
-.assistant-tool-group__dot--done {
-  background: var(--app-palette-success-main);
-}
-
-.assistant-tool-group__dot--failed {
-  background: var(--app-palette-error-main);
-}
-
-.assistant-tool-group__dot--active {
-  background: var(--app-palette-primary-main);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .assistant-tool-group__dot--active {
-    animation: assistant-pulse 1.2s ease-in-out infinite;
-  }
-}
-
-@keyframes assistant-pulse {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.assistant-tool-group__rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--app-space-8);
-  padding: 0 var(--app-space-8) var(--app-space-8);
+.assistant-tool-group__header .app-typo--caption {
+  font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
 .assistant__composer {
@@ -435,6 +533,7 @@
   display: flex;
   align-items: center;
   gap: var(--app-space-8);
+  font-variant-numeric: tabular-nums;
 }
 
 /* The box owns the border; the text field and the bar sit inside it. */
@@ -500,7 +599,6 @@
 .assistant__bar-group--config {
   flex: 1;
   flex-wrap: wrap;
-  min-width: 0;
 }
 
 .assistant__bar-switch {
@@ -567,7 +665,7 @@
 }
 
 .assistant__attachment-meta {
-  color: var(--app-palette-text-disabled);
+  color: var(--app-palette-text-secondary);
 }
 
 .assistant__preview-image {
@@ -606,35 +704,18 @@
   height: 24px;
   padding: 0 var(--app-space-8);
   border-radius: var(--app-radius-pill);
-  background-color: var(--app-palette-action-hover);
-  color: var(--app-palette-text-secondary);
   font: inherit;
   /* The page scales --app-font-size-body with the chat font size; the chip
      is a fixed 24px control, so it keeps the theme's base size. */
   font-size: 0.75rem;
 }
 
-.app-icon-btn.assistant__pill:hover:not(:disabled),
-.app-icon-btn.assistant__pill:focus-visible {
-  color: var(--app-palette-text-primary);
-}
-
 /* Two tones, like the Claude chip: the model reads first, the effort after. */
 .assistant__pill-major {
-  color: var(--app-palette-text-secondary);
+  color: var(--app-palette-text-primary);
 }
 
 .assistant__pill-minor {
-  color: var(--app-palette-text-disabled);
-}
-
-.app-icon-btn.assistant__pill:hover:not(:disabled) .assistant__pill-major,
-.app-icon-btn.assistant__pill:focus-visible .assistant__pill-major {
-  color: var(--app-palette-text-primary);
-}
-
-.app-icon-btn.assistant__pill:hover:not(:disabled) .assistant__pill-minor,
-.app-icon-btn.assistant__pill:focus-visible .assistant__pill-minor {
   color: var(--app-palette-text-secondary);
 }
 
@@ -734,28 +815,17 @@
   padding-block: 4px;
 }
 
-/* The current choice carries the accent: a tinted row and an accent check,
-   in both the model and the mode menus. */
+/* The current choice is a tinted row with a check, in both the model and the
+   mode menus. */
 .assistant__model-menu .app-menu__item--selected,
 .assistant__mode-menu .app-menu__item--selected {
   background: color-mix(in srgb, var(--app-palette-primary-main), transparent 84%);
 }
 
-.assistant__model-menu .app-menu__item--selected .app-menu__item-end,
-.assistant__mode-menu .app-menu__item--selected .app-menu__item-end,
-.assistant__mode-menu .app-menu__item--selected .app-menu__item-start {
-  color: var(--app-palette-primary-main);
-}
-
-.assistant__model-menu .app-menu__item--selected .assistant__mode-name,
-.assistant__mode-menu .app-menu__item--selected .assistant__mode-name {
-  color: var(--app-palette-primary-main);
-}
-
 .assistant__menu-subheader {
   padding: 4px 10px 2px;
   font-size: calc(var(--app-font-size-body) * 0.85);
-  color: var(--app-palette-text-disabled);
+  color: var(--app-palette-text-secondary);
 }
 
 /* Model settings and effort stay in view at the bottom of the menu while the
@@ -780,10 +850,6 @@
   gap: var(--app-space-12);
   padding: 6px 10px 10px;
   font-size: var(--app-font-size-body);
-}
-
-.assistant__extra-value {
-  color: var(--app-palette-primary-main);
 }
 
 /* A switch drawn in CSS: the whole row is the control. */
@@ -818,10 +884,6 @@
 .assistant__toggle--on::after {
   background: var(--app-palette-primary-contrast-text);
   transform: translateX(12px);
-}
-
-.assistant__effort-value {
-  color: var(--app-palette-primary-main);
 }
 
 /* A short track of dots with a round thumb, drawn over a native range input
@@ -945,7 +1007,8 @@
 .assistant__permission-command {
   margin: 0;
   padding: var(--app-space-8) var(--app-space-12);
-  border-radius: var(--app-radius-md);
+  /* The card is radius-card at a 12px inset. */
+  border-radius: var(--app-radius-base);
   background: var(--app-palette-background-default);
   color: var(--app-palette-text-primary);
   font-family: var(--app-font-mono);
@@ -1001,7 +1064,6 @@
 .app-btn.assistant__permission-option:focus .assistant__permission-key,
 .app-btn.assistant__permission-option:hover .assistant__permission-key {
   border-color: var(--app-palette-primary-main);
-  color: var(--app-palette-primary-main);
 }
 
 .assistant__permission-label {
@@ -1010,6 +1072,6 @@
 }
 
 .assistant__permission-esc {
-  color: var(--app-palette-text-disabled);
+  color: var(--app-palette-text-secondary);
   font-size: calc(var(--app-font-size-body) * 0.85);
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func readFixture(t *testing.T, name string) string {
@@ -52,31 +54,82 @@ func TestParseSubvolumeList(t *testing.T) {
 	}
 }
 
-// stubSubvolumeBtrfs serves the fixtures for list/get-default and records
-// every other btrfs invocation.
-func stubSubvolumeBtrfs(t *testing.T, defaultOut string) *[][]string {
+// stubSubvolumes serves rows and the default subvolume id from the root
+// tree, quotas on with no data, and records read-only and compression
+// changes into calls.
+func stubSubvolumes(t *testing.T, rows []subvolumeRow, defaultID int, calls *[][]string) {
 	t.Helper()
-	var calls [][]string
-	old := runBtrfs
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		joined := strings.Join(args, " ")
-		switch {
-		case strings.HasPrefix(joined, "subvolume list -a -p -u -q -R "):
-			return readFixture(t, "subvol_list.txt"), nil
-		case strings.HasPrefix(joined, "subvolume list -a -r "):
-			return readFixture(t, "subvol_list_ro.txt"), nil
-		case strings.HasPrefix(joined, "subvolume list -a -s "):
-			return readFixture(t, "subvol_list_snap.txt"), nil
-		case strings.HasPrefix(joined, "qgroup show "):
-			return "", nil // quotas on, no data
-		case strings.HasPrefix(joined, "subvolume get-default "):
-			return defaultOut, nil
+	oldRead, oldQgroups := readSubvolumes, readQgroups
+	readSubvolumes = func(string) ([]subvolumeRow, int, error) { return rows, defaultID, nil }
+	readQgroups = func(string) (map[int]QgroupUsage, error) { return map[int]QgroupUsage{}, nil }
+	t.Cleanup(func() { readSubvolumes, readQgroups = oldRead, oldQgroups })
+	stubSubvolOps(t, func(args []string) error {
+		*calls = append(*calls, args)
+		return nil
+	})
+}
+
+// stubSubvolOps hands every subvolume and quota mutation to record, in the
+// words of the btrfs command it replaced; record's error is the result.
+func stubSubvolOps(t *testing.T, record func(args []string) error) {
+	t.Helper()
+	old := subvolOps
+	t.Cleanup(func() { subvolOps = old })
+	subvolOps.create = func(p string) error { return record([]string{"subvolume", "create", p}) }
+	subvolOps.snapshot = func(src, dst string, ro bool) error {
+		if ro {
+			return record([]string{"subvolume", "snapshot", "-r", src, dst})
 		}
-		calls = append(calls, args)
-		return "", nil
+		return record([]string{"subvolume", "snapshot", src, dst})
 	}
-	t.Cleanup(func() { runBtrfs = old })
-	return &calls
+	subvolOps.destroy = func(p string) error { return record([]string{"subvolume", "delete", p}) }
+	subvolOps.setDefault = func(top string, id int) error {
+		return record([]string{"subvolume", "set-default", strconv.Itoa(id), top})
+	}
+	subvolOps.readOnly = func(p string, ro bool) error { return record([]string{"ro", p, strconv.FormatBool(ro)}) }
+	subvolOps.compression = func(p, v string) error { return record([]string{"xattr", p, "btrfs.compression", v}) }
+	subvolOps.quota = func(top string, enable bool) error {
+		if enable {
+			return record([]string{"quota", "enable", top})
+		}
+		return record([]string{"quota", "disable", top})
+	}
+	subvolOps.limit = func(p string, max *uint64) error {
+		if max == nil {
+			return record([]string{"qgroup", "limit", "none", p})
+		}
+		return record([]string{"qgroup", "limit", strconv.FormatUint(*max, 10), p})
+	}
+}
+
+// stubQgroups serves qgroup usage, or the error, for every filesystem.
+func stubQgroups(t *testing.T, usage map[int]QgroupUsage, err error) {
+	t.Helper()
+	old := readQgroups
+	readQgroups = func(string) (map[int]QgroupUsage, error) { return usage, err }
+	t.Cleanup(func() { readQgroups = old })
+}
+
+// fixtureRows is a root filesystem with a home subvolume, a Docker layer, a
+// LinuxIO snapshot of @ and a read-only data subvolume.
+func fixtureRows() []subvolumeRow {
+	snapAt := time.Date(2026, 10, 19, 10, 15, 0, 0, time.Local)
+	return []subvolumeRow{
+		{ID: 256, ParentID: 5, Path: "@", UUID: localUUID(1)},
+		{ID: 257, ParentID: 5, Path: "@home", UUID: localUUID(2)},
+		{ID: 300, ParentID: 256, Path: "@/var/lib/docker/btrfs/subvolumes/abc", UUID: localUUID(3)},
+		{ID: 301, ParentID: 5, Path: "linuxio-snapshots/@-2026-10-19", UUID: localUUID(4), ParentUUID: localUUID(1), ReadOnly: true, CreatedAt: &snapAt},
+		{ID: 302, ParentID: 5, Path: "data", UUID: localUUID(5), ReadOnly: true},
+	}
+}
+
+// stubSubvolumeBtrfs serves fixtureRows with the given default subvolume and
+// records every mutation.
+func stubSubvolumeBtrfs(t *testing.T, defaultID int) *[][]string {
+	t.Helper()
+	calls := &[][]string{}
+	stubSubvolumes(t, fixtureRows(), defaultID, calls)
+	return calls
 }
 
 var subvolMounts = []Mount{
@@ -88,7 +141,7 @@ var subvolMounts = []Mount{
 
 func TestListSubvolumesMarksReadOnlyAndSnapshots(t *testing.T) {
 	stubMounts(t, subvolMounts)
-	stubSubvolumeBtrfs(t, "ID 256 gen 12345 top level 5 path @")
+	stubSubvolumeBtrfs(t, 256)
 
 	got, err := ListSubvolumes(context.Background(), rootUUID)
 	if err != nil {
@@ -132,7 +185,7 @@ func TestValidateSubvolumePathRejects(t *testing.T) {
 
 func TestDeleteSubvolumeRefusesDefault(t *testing.T) {
 	stubMounts(t, subvolMounts)
-	calls := stubSubvolumeBtrfs(t, "ID 302 gen 12200 top level 5 path data")
+	calls := stubSubvolumeBtrfs(t, 302)
 
 	err := DeleteSubvolume(context.Background(), rootUUID, "data")
 	if err == nil || !strings.Contains(err.Error(), "default") {
@@ -145,7 +198,7 @@ func TestDeleteSubvolumeRefusesDefault(t *testing.T) {
 
 func TestDeleteSubvolumeRefusals(t *testing.T) {
 	stubMounts(t, append([]Mount{{Mountpoint: "/mnt/data/x", UUID: rootUUID, Subvol: "data/x", SubvolID: 400}}, subvolMounts...))
-	calls := stubSubvolumeBtrfs(t, "ID 256 gen 12345 top level 5 path @")
+	calls := stubSubvolumeBtrfs(t, 256)
 	ctx := context.Background()
 
 	for path, want := range map[string]string{
@@ -168,7 +221,7 @@ func TestDeleteSubvolumeRefusals(t *testing.T) {
 
 func TestSubvolumeMutationsRunBtrfs(t *testing.T) {
 	stubMounts(t, subvolMounts)
-	calls := stubSubvolumeBtrfs(t, "ID 256 gen 12345 top level 5 path @")
+	calls := stubSubvolumeBtrfs(t, 256)
 	ctx := context.Background()
 
 	if _, err := SetSubvolumeReadOnly(ctx, rootUUID, "@home", true); err != nil {
@@ -184,7 +237,7 @@ func TestSubvolumeMutationsRunBtrfs(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := [][]string{
-		{"property", "set", "-ts", "/mnt/top/@home", "ro", "true"},
+		{"ro", "/mnt/top/@home", "true"},
 		{"subvolume", "set-default", "257", "/mnt/top"},
 		{"subvolume", "create", "/mnt/top/data"},
 		{"subvolume", "delete", "/mnt/top/data"},

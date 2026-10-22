@@ -140,6 +140,29 @@
     0 9.6px 22.4px -9.6px rgba(0, 0, 0, 0.5);
 }
 
+/* Hold-to-reorder (useSortableNavItem): the held tile fills a ring for as
+   long as the hold takes, authored ×1.6 like the focus ring above, and layout
+   mode trades the pointer for a grab hand. */
+.app-dock__item--reorder-pending .app-dock__tile {
+  outline: 3.2px solid var(--reorder-hold-color);
+  outline-offset: 1.6px;
+  animation: reorder-hold-row var(--reorder-hold-ms) ease-out forwards;
+}
+
+.app-dock__list--reordering .app-dock-link {
+  cursor: grab;
+}
+
+.app-dock__list--reordering .app-dock-link:active {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-dock__item--reorder-pending .app-dock__tile {
+    animation: none;
+  }
+}
+
 /* Hover labels need evidence of live pointer movement over the dock in this
    window activation: Chromium restores :hover when the window comes back
    without firing the pointermove that drives magnification, and a label under

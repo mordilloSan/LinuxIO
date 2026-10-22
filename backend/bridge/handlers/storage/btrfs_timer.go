@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 
 	godbus "github.com/godbus/dbus/v5"
 
@@ -42,7 +44,32 @@ var (
 		unitPath:  filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotServiceName),
 		timerPath: filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotTimerName),
 	}
+	healthTimerOnce sync.Once
 )
+
+// ensureBtrfsHealthTimerOnce enables the packaged health timer the first time
+// a root bridge lists filesystems, covering pools created after install.
+func ensureBtrfsHealthTimerOnce(ctx context.Context) {
+	if os.Geteuid() != 0 {
+		return
+	}
+	healthTimerOnce.Do(func() {
+		if err := ensureBtrfsHealthTimer(ctx, defaultBtrfsTimerOps); err != nil {
+			slog.Warn("failed to enable btrfs health timer", "error", err)
+		}
+	})
+}
+
+// ensureBtrfsHealthTimer keeps the health timer enabled and running.
+func ensureBtrfsHealthTimer(ctx context.Context, ops btrfsTimerOps) error {
+	if err := ops.enableUnit(ctx, btrfs.HealthTimerName); err != nil {
+		return fmt.Errorf("enable %s: %w", btrfs.HealthTimerName, err)
+	}
+	if err := ops.startUnit(ctx, btrfs.HealthTimerName); err != nil {
+		return fmt.Errorf("start %s: %w", btrfs.HealthTimerName, err)
+	}
+	return nil
+}
 
 // syncBtrfsTimer writes the snapshot units and runs the timer only while
 // some rule or replication job is enabled: the timer's run does both.

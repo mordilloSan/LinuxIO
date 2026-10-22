@@ -22,6 +22,7 @@ host's own mail. This design sits between the two: a store, but a file.
 |---|---|---|
 | `/var/lib/linuxio/alerts.json` | `root:root` `0600` | All alert records |
 | `/var/lib/linuxio/alerts.json.lock` | `root:root` `0600` | `filelock` sidecar |
+| `/var/lib/linuxio/notifications.json` | `root:root` `0600` | Delivery settings, including the SMTP password; see [Delivery](#delivery) |
 
 The file is written with the same pattern as `docker-update-status.json`:
 take the lock, read, modify, write atomically. The shared package is
@@ -71,7 +72,7 @@ incomplete checks leave the record alone.
 |---|---|---|---|
 | Automatic updates | `ExecStopPost=` drop-in on the provider's upgrade service, running `linuxio alert auto-update` | A run that matches the configured policy: failed, installed packages, or always | Never; each run is a new occurrence of the one `auto-update/run` record |
 | Docker update outcome | `linuxio-docker-update` worker, already root | A scheduled update fails or the replacement container is not healthy. One record per container name | The next successful update of that container |
-| Btrfs health | `storage.btrfs_list` bridge route, when the Btrfs tab loads | `btrfs/health-<uuid>`: a missing device or non-zero device error counters | The next list that shows a healthy filesystem |
+| Btrfs health | `linuxio btrfs-health run` every ten minutes, and the `storage.btrfs_list` bridge route | `btrfs/health-<uuid>`, `btrfs/scrub-<uuid>`, `btrfs/space-<uuid>`, `btrfs/offline-<uuid>`; see [Btrfs management](./btrfs.md#filesystem-health) | The next check that shows the condition cleared, or the pool gone |
 | Btrfs snapshots | `linuxio btrfs-snapshot` (hourly timer, pre-update hook, Run now) | `btrfs/snapshot-<uuid8>-<path>`: a failed snapshot or an unmounted filesystem | The next successful run for that rule |
 | Btrfs replication | `linuxio btrfs-snapshot run` and Run now | `btrfs/replication-<job id>`: a failed replication run | The next successful run of that job |
 
@@ -138,6 +139,9 @@ can replace its cache without a second round trip.
 | `alerts.mark_seen` | `{ ids }` | `AlertList` |
 | `alerts.mark_all_seen` | none | `AlertList` |
 | `alerts.dismiss` | `{ id }` | `AlertList` |
+| `alerts.get_notifications` | none | `NotificationSettings` without the password |
+| `alerts.set_notifications` | `NotificationSettings` | the saved settings |
+| `alerts.test_notifications` | none | success, or the delivery error |
 
 `AlertList` is `{ alerts, unseen }`. `alerts` excludes dismissed records.
 `seen` on each alert is for the calling UID.
@@ -145,6 +149,34 @@ can replace its cache without a second round trip.
 There is no watch Channel. The navbar query refetches on window focus and on
 an interval; mutations replace the cache from their result. Add `alerts.watch`
 only if that latency turns out to matter.
+
+## Delivery
+
+**Settings → Notifications** sends alerts beyond the bell, with no extra
+binary: Go's HTTP client and SMTP client do the sending.
+
+- **Send alerts** picks the least severe alert delivered: errors only,
+  warnings and errors, or everything. Off delivers nothing.
+- **Webhook**: one JSON `POST` per alert with `host`, `source`, `severity`,
+  `title`, `message`, `link` and `time`, plus `text` and `content` holding a
+  one-line summary so Slack- and Discord-style webhooks accept it as is. A
+  status of 300 or above is a failure.
+- **Email**: SMTP with implicit TLS on port 465, otherwise STARTTLS when the
+  server offers it. A password is only sent over TLS (Go's `PlainAuth`
+  refuses otherwise). Header fields are folded to one line, so alert text
+  cannot add headers. Addresses are validated on save.
+
+An alert is delivered when `Raise` creates it or records a new occurrence,
+after the store is written; re-observing the same occurrence sends nothing.
+Each delivery is bounded to 15 seconds and its failure is logged, never
+returned, since the alert is already recorded. The password is never sent
+back to the browser: the API reports `smtpPasswordSet`, and a save with an
+empty password keeps the stored one unless the username was cleared.
+**Send test** delivers a test alert through the saved channels whatever the
+minimum severity.
+
+The settings file sits beside `alerts.json`, so tests that point the store
+at a temporary directory never read a host's real delivery settings.
 
 ## Navbar
 
@@ -155,10 +187,9 @@ unseen count.
 
 ## Not in this slice
 
-- Alerts configuration file, settings card, per-source minimum severity.
-  Two sources do not need a toggle matrix; the auto-update policy lives in
-  its own settings.
-- External delivery, matchers, digests, test-send.
+- Per-source minimum severity. The auto-update policy lives in its own
+  settings.
+- Matchers, digests, push services other than webhooks.
 - `alerts.restore`, `alerts.mark_unseen`, resolved history.
 - Storage, scheduled-task, unit-failure, and release-check sources.
 - Alerts raised by unprivileged sessions.

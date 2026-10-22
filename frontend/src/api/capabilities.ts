@@ -165,7 +165,7 @@ export const CAPABILITIES = [
     reasonUnknown: "NFS client utilities availability is still being checked.",
     reasonUnavailable: "NFS client utilities are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open shares", to: "/shares" },
+    route: { label: "Open shares", to: "/storage/shares" },
   },
   {
     wire: "nfs_server",
@@ -178,7 +178,7 @@ export const CAPABILITIES = [
     reasonUnknown: "NFS server utilities availability is still being checked.",
     reasonUnavailable: "NFS server utilities are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open shares", to: "/shares" },
+    route: { label: "Open shares", to: "/storage/shares" },
   },
   {
     wire: "samba_client",
@@ -191,7 +191,7 @@ export const CAPABILITIES = [
     reasonUnknown: "SMB client utilities availability is still being checked.",
     reasonUnavailable: "SMB client utilities are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open shares", to: "/shares" },
+    route: { label: "Open shares", to: "/storage/shares" },
   },
   {
     wire: "samba_server",
@@ -204,7 +204,7 @@ export const CAPABILITIES = [
     reasonUnknown: "Samba server availability is still being checked.",
     reasonUnavailable: "Samba server is unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open shares", to: "/shares" },
+    route: { label: "Open shares", to: "/storage/shares" },
   },
   {
     wire: "rsync",
@@ -218,7 +218,7 @@ export const CAPABILITIES = [
     reasonUnknown: "rsync availability is still being checked.",
     reasonUnavailable: "rsync is not installed.",
     installable: { requiresPackageKit: true },
-    route: { label: "Set up rsync", to: "/shares/rsync" },
+    route: { label: "Set up rsync", to: "/storage/rsync" },
   },
   {
     wire: "node",
@@ -269,7 +269,7 @@ export const CAPABILITIES = [
     reasonUnknown: "WireGuard tools availability is still being checked.",
     reasonUnavailable: "WireGuard tools are unavailable.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open WireGuard", to: "/wireguard" },
+    route: { label: "Open WireGuard", to: "/network/wireguard" },
   },
   {
     wire: "btrfs_maintenance",
@@ -296,7 +296,7 @@ export const CAPABILITIES = [
     reasonUnknown: "btrfs-progs availability is still being checked.",
     reasonUnavailable: "btrfs-progs is not installed.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open Btrfs", to: "/storage/btrfs" },
+    route: { label: "Open snapshots", to: "/storage/snapshots" },
   },
 ] as const satisfies readonly CapabilityDef[];
 

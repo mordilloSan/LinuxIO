@@ -303,7 +303,7 @@ const hookContracts: HookContract[] = [
 
   // WireGuard list polling, query-free card, and shared selected observers.
   {
-    file: "routes/_authenticated/wireguard/-components/InterfaceClients.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/InterfaceClients.tsx",
     name: "InterfaceClients",
     hooks: { useQuery: 2 },
   },
@@ -396,16 +396,16 @@ const hookContracts: HookContract[] = [
   // Active mount-list view polling (NFS and SMB share one generic list) and
   // the selected card cache observer.
   {
-    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
     name: "ProtocolMountList",
   },
   {
-    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
     name: "MountCardGrid",
     hooks: { useSuspenseQuery: 1 },
   },
   {
-    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
     name: "MountTable",
     hooks: { useSuspenseQuery: 1 },
   },
@@ -525,7 +525,7 @@ const selectContracts: SelectContract[] = [
     select: "selectNetworkInterface",
   },
   {
-    file: "routes/_authenticated/wireguard/-components/InterfaceClients.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/InterfaceClients.tsx",
     name: "InterfaceClients",
     hook: "useQuery",
     select: "selectPeerIdentities",
@@ -549,7 +549,7 @@ const selectContracts: SelectContract[] = [
     select: "selectGroup",
   },
   {
-    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
     name: "MountCardGrid",
     hook: "useSuspenseQuery",
     select: "selectMountIdentities",
@@ -620,7 +620,7 @@ const edgeContracts: EdgeContract[] = [
     renders: ["FrostedCard", "NetworkInterfaceCardContent"],
   },
   {
-    file: "routes/_authenticated/wireguard/-components/InterfaceClients.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/InterfaceClients.tsx",
     name: "InterfaceClients",
     renders: ["WireguardPeerCard"],
   },
@@ -670,12 +670,12 @@ const edgeContracts: EdgeContract[] = [
     renders: ["UnitLogsCard"],
   },
   {
-    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
     name: "ProtocolMountList",
     renders: ["MountCardGrid", "MountTable"],
   },
   {
-    file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+    file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
     name: "MountCardGrid",
     renders: ["MountCard"],
   },
@@ -816,7 +816,7 @@ describe("card query ownership", () => {
         name: "ContainerList",
       },
       {
-        file: "routes/_authenticated/wireguard/-components/InterfaceClients.tsx",
+        file: "routes/_authenticated/network/-components/wireguard/InterfaceClients.tsx",
         name: "InterfaceClients",
       },
       {
@@ -837,11 +837,11 @@ describe("card query ownership", () => {
         name: "NetworkTrafficHistoryLive",
       },
       {
-        file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+        file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
         name: "MountCardGrid",
       },
       {
-        file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+        file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
         name: "MountTable",
       },
       {
@@ -891,7 +891,7 @@ describe("card query ownership", () => {
         excludes: ["...iface", "rx_speed", "tx_speed"],
       },
       {
-        file: "routes/_authenticated/wireguard/-components/InterfaceClients.tsx",
+        file: "routes/_authenticated/network/-components/wireguard/InterfaceClients.tsx",
         name: "selectPeerIdentities",
         includes: ["name: peer.name"],
         excludes: ["...peer", "rx_bytes", "tx_bytes", "last_handshake_unix"],
@@ -907,7 +907,7 @@ describe("card query ownership", () => {
         excludes: ["...group"],
       },
       {
-        file: "routes/_authenticated/shares/-components/ProtocolMountList.tsx",
+        file: "routes/_authenticated/storage/-components/shares/ProtocolMountList.tsx",
         name: "selectMountIdentities",
         includes: ["mount.mountpoint"],
         excludes: ["...mount", "usedPct", "mounted", "source"],

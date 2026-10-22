@@ -21,6 +21,13 @@ export type TranscriptBlock =
   | ToolBlock
   | { kind: "plan"; id: string; entries: acp.PlanEntry[] };
 
+/** A non-blank string field of an agent's untyped tool input, if it has one. */
+export const stringField = (value: unknown, key: string) => {
+  if (typeof value !== "object" || value === null) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "string" && field.trim() ? field : null;
+};
+
 let nextId = 0;
 const newId = () => `b${++nextId}`;
 

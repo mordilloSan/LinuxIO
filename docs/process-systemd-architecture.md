@@ -68,6 +68,8 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 │  └─ linuxio-indexer.service        runs the managed daemon; exits when idle
 ├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
 │  └─ linuxio-indexer-index.service asks the daemon for a full index
+├─ linuxio-btrfs-health.timer       every 10 min; enabled only on hosts with btrfs
+│  └─ linuxio-btrfs-health.service  runs `linuxio btrfs-health run`; root
 ├─ linuxio-monitoring.service        runs `linuxio-monitoring run`; root; owns
 │                                    /run/linuxio/monitoring/{api,control}.sock
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group

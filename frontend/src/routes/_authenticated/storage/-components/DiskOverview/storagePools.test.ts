@@ -40,6 +40,8 @@ const filesystem = (overrides: Partial<BtrfsFilesystem>): BtrfsFilesystem => ({
       sizeBytes: 50 * GiB,
       usedBytes: GiB,
       missing: false,
+      physicalBytes: 0,
+      growable: false,
       errors: noErrors,
     },
     {
@@ -48,11 +50,21 @@ const filesystem = (overrides: Partial<BtrfsFilesystem>): BtrfsFilesystem => ({
       sizeBytes: 0,
       usedBytes: 0,
       missing: true,
+      physicalBytes: 0,
+      growable: false,
       errors: noErrors,
     },
   ],
-  scrub: { status: "none", errorCount: 0, bytesScrubbed: 0, percent: 0 },
+  scrub: {
+    status: "none",
+    errorCount: 0,
+    uncorrectableErrors: 0,
+    correctedErrors: 0,
+    bytesScrubbed: 0,
+    percent: 0,
+  },
   degraded: false,
+  lowMetadataSpace: false,
   ...overrides,
 });
 

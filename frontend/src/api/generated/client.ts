@@ -26,9 +26,12 @@ const linuxio = {
   },
   alerts: {
     dismiss: defineCallWithRequest("alerts.dismiss"),
+    get_notifications: defineCall("alerts.get_notifications"),
     list: defineCall("alerts.list"),
     mark_all_seen: defineCall("alerts.mark_all_seen"),
     mark_seen: defineCallWithRequest("alerts.mark_seen"),
+    set_notifications: defineCallWithRequest("alerts.set_notifications"),
+    test_notifications: defineCall("alerts.test_notifications"),
   },
   config: {
     get: defineCall("config.get"),
@@ -244,6 +247,7 @@ const linuxio = {
     }),
     btrfs_balance_cancel: defineCallWithRequest("storage.btrfs_balance_cancel"),
     btrfs_device_add: defineCallWithRequest("storage.btrfs_device_add"),
+    btrfs_device_grow: defineCallWithRequest("storage.btrfs_device_grow"),
     btrfs_device_remove: createTaskEndpoint("storage", "btrfs_device_remove", {
       kind: "object",
     }),
@@ -253,6 +257,10 @@ const linuxio = {
       { kind: "object" },
     ),
     btrfs_list: defineCall("storage.btrfs_list"),
+    btrfs_pool_create: defineCallWithRequest("storage.btrfs_pool_create"),
+    btrfs_pool_destroy: defineCallWithRequest("storage.btrfs_pool_destroy"),
+    btrfs_pool_mount: defineCallWithRequest("storage.btrfs_pool_mount"),
+    btrfs_pools_offline: defineCall("storage.btrfs_pools_offline"),
     btrfs_qgroup_limit: defineCallWithRequest("storage.btrfs_qgroup_limit"),
     btrfs_replication_job_delete: defineCallWithRequest(
       "storage.btrfs_replication_job_delete",
@@ -278,6 +286,7 @@ const linuxio = {
     btrfs_set_compression: defineCallWithRequest(
       "storage.btrfs_set_compression",
     ),
+    btrfs_set_label: defineCallWithRequest("storage.btrfs_set_label"),
     btrfs_set_quotas: defineCallWithRequest("storage.btrfs_set_quotas"),
     btrfs_settings: defineCallWithRequest("storage.btrfs_settings"),
     btrfs_snapshot_create: defineCallWithRequest(

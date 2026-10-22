@@ -15,7 +15,6 @@ import (
 	"github.com/vishvananda/netns"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const (
@@ -756,12 +755,11 @@ func waitForBridge(ctx context.Context, env Environment, bridge, member string) 
 	}, fmt.Errorf("bridge %s was not created with member %s", bridge, member))
 }
 
-func runNetworkctl(ctx context.Context, env Environment, args ...string) error {
-	if env.Runner == nil {
-		return fmt.Errorf("network command runner is unavailable")
+func callNetworkdManager(ctx context.Context, env Environment, method, iface string) error {
+	if env.NetworkdCall == nil {
+		return fmt.Errorf("systemd-networkd D-Bus access is unavailable")
 	}
-	output, err := env.Runner.Run(ctx, "networkctl", args...)
-	return utils.CommandOutputError("networkctl", args, output, err)
+	return env.NetworkdCall(ctx, method, iface)
 }
 
 func removeRuntimeBridge(ctx context.Context, env Environment, name string) error {

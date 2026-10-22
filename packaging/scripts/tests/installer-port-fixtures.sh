@@ -218,7 +218,10 @@ for installer in "$LOCAL_INSTALLER" "$RELEASE_INSTALLER"; do
 	if grep -Fq 'indexer.json' "$installer"; then
 		fail "${installer} still references removed indexer.json"
 	fi
-	for unit in linuxio-indexer.socket linuxio-indexer.service linuxio-indexer-index.service linuxio-indexer-index.timer; do
+	assert_line linuxio-btrfs-health.service "$unit_list" "${installer} unit list"
+	assert_line linuxio-btrfs-health.timer "$unit_list" "${installer} unit list"
+	grep -Fq 'systemctl enable "$BTRFS_HEALTH_TIMER_UNIT_NAME"' "$installer" || fail "${installer} does not enable the btrfs health timer"
+	for unit in linuxio-indexer.socket linuxio-indexer.service linuxio-indexer-index.service linuxio-indexer-index.timer linuxio-btrfs-health.service linuxio-btrfs-health.timer; do
 		grep -Fq "$unit" "$installer" || fail "${installer} does not install ${unit}"
 		grep -Fqx 'PartOf=linuxio.target' "${REPO_ROOT}/packaging/systemd/${unit}" || fail "${unit} is not part of linuxio.target"
 	done

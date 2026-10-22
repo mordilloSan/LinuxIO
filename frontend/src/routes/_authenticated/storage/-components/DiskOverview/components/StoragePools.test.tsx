@@ -1,9 +1,15 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BtrfsFilesystem, FilesystemInfo, NFSMount } from "@/api";
-import { render } from "@/test/render";
+import type {
+  BtrfsFilesystem,
+  BtrfsOfflinePool,
+  FilesystemInfo,
+  NFSMount,
+} from "@/api";
+import { renderWithTanStackRouter } from "@/test/render";
 
 import type { DriveInfo } from "../types";
 import StoragePools from "./StoragePools";
@@ -12,7 +18,11 @@ vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
 );
 
-const mocks = vi.hoisted(() => ({ list: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  list: vi.fn(),
+  mutations: {} as Record<string, ReturnType<typeof vi.fn> | undefined>,
+  offline: vi.fn(),
+}));
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
@@ -20,6 +30,10 @@ vi.mock("@/api", async (importOriginal) => {
     ...actual,
     call: (route: string) =>
       route === "tasks.list" ? Promise.resolve([]) : Promise.reject(),
+    useCallMutation: (endpoint: { route: string }) => ({
+      isPending: false,
+      mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
+    }),
     linuxio: {
       ...actual.linuxio,
       storage: {
@@ -27,6 +41,14 @@ vi.mock("@/api", async (importOriginal) => {
         btrfs_list: {
           queryKey: ["test-btrfs-list"],
           queryFn: () => mocks.list(),
+        },
+        btrfs_pools_offline: {
+          queryKey: ["test-btrfs-pools-offline"],
+          queryFn: () => mocks.offline(),
+        },
+        get_topology: {
+          queryKey: ["test-get-topology"],
+          queryFn: () => Promise.resolve({ devices: [], mounts: [] }),
         },
       },
     },
@@ -66,10 +88,20 @@ const filesystem = (
     sizeBytes: 50 * GiB,
     usedBytes: 10 * GiB,
     missing: false,
+    physicalBytes: 0,
+    growable: false,
     errors: noErrors,
   })),
-  scrub: { status: "none", errorCount: 0, bytesScrubbed: 0, percent: 0 },
+  scrub: {
+    status: "none",
+    errorCount: 0,
+    uncorrectableErrors: 0,
+    correctedErrors: 0,
+    bytesScrubbed: 0,
+    percent: 0,
+  },
   degraded: false,
+  lowMetadataSpace: false,
 });
 
 const raid = filesystem(
@@ -127,25 +159,46 @@ const filesystems = [
 const privileged = { auth: { privileged: true } };
 const capabilities = { btrfsAvailable: true };
 
-const renderPools = (
-  props: Partial<React.ComponentProps<typeof StoragePools>> = {},
-  options: Parameters<typeof render>[1] = { ...privileged, capabilities },
-) =>
-  render(
+type PoolsProps = Partial<React.ComponentProps<typeof StoragePools>>;
+
+// Holds the selected pool the way the route's search params do.
+const Pools = (props: PoolsProps) => {
+  const [pool, setPool] = useState<string>();
+  return (
     <StoragePools
       drives={drives}
       filesystems={filesystems}
       nfsMounts={[]}
       onInspectDrive={vi.fn()}
       onOpenVolume={vi.fn()}
+      onSelectPool={setPool}
+      selectedPool={pool}
       {...props}
-    />,
-    options,
+    />
   );
+};
+
+const renderPools = (
+  props: PoolsProps = {},
+  options: Parameters<typeof renderWithTanStackRouter>[1] = {
+    ...privileged,
+    capabilities,
+  },
+) => renderWithTanStackRouter(<Pools {...props} />, options);
+
+const cold: BtrfsOfflinePool = {
+  uuid: "uuid-cold",
+  label: "cold",
+  numDevices: 2,
+  devices: ["/dev/sdb"],
+  totalBytes: 100 * GiB,
+  mountpoint: "/mnt/cold",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([raid, root]);
+  mocks.offline.mockResolvedValue([]);
 });
 
 describe("StoragePools", () => {
@@ -259,16 +312,36 @@ describe("StoragePools", () => {
     expect(screen.queryByText(/^Details · /)).toBeNull();
   });
 
-  it("still lists the drives without btrfs or without privilege", () => {
+  it("shows the health and settings of the selected pool", async () => {
+    const user = userEvent.setup();
+    renderPools();
+
+    await user.click(await screen.findByRole("button", { name: "tank" }));
+    expect(screen.getByRole("heading", { name: "Healthy" })).toBeVisible();
+    expect(screen.getByText("Never checked for errors")).toBeVisible();
+    expect(screen.getByText("Settings")).toBeVisible();
+  });
+
+  it("opens the pool named by the URL and reports a new choice", async () => {
+    const user = userEvent.setup();
+    const onSelectPool = vi.fn();
+    renderPools({ onSelectPool, selectedPool: "uuid-raid" });
+
+    expect(await screen.findByText("Details · tank")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Storage pool 2" }));
+    expect(onSelectPool).toHaveBeenCalledWith("uuid-root");
+  });
+
+  it("still lists the drives without btrfs or without privilege", async () => {
     const { unmount } = renderPools(
       {},
       { ...privileged, capabilities: { btrfsAvailable: false } },
     );
-    expect(screen.queryByRole("button", { name: "tank" })).toBeNull();
     // Without pools the btrfs volumes hang off their drives instead.
     expect(
-      screen.getByRole("button", { name: "Volume /mnt/tank" }),
+      await screen.findByRole("button", { name: "Volume /mnt/tank" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "tank" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Drive details nvme0n1" }),
     ).toBeInTheDocument();
@@ -276,7 +349,7 @@ describe("StoragePools", () => {
 
     renderPools({}, { capabilities });
     expect(
-      screen.getByRole("button", { name: "Drive details sda" }),
+      await screen.findByRole("button", { name: "Drive details sda" }),
     ).toBeInTheDocument();
     expect(mocks.list).not.toHaveBeenCalled();
   });
@@ -301,8 +374,72 @@ describe("StoragePools", () => {
     expect(screen.getByText("Disks without volumes")).toBeInTheDocument();
   });
 
-  it("says when there are no drives or volumes at all", () => {
+  it("lists an unmounted pool with its missing disks and mounts it degraded", async () => {
+    const user = userEvent.setup();
+    mocks.offline.mockResolvedValue([cold]);
+    renderPools();
+
+    expect(await screen.findByText("cold")).toBeInTheDocument();
+    expect(screen.getByText("Degraded")).toBeInTheDocument();
+    expect(screen.getByText("1 missing disk")).toBeInTheDocument();
+    expect(screen.getByText("fstab: /mnt/cold")).toBeInTheDocument();
+    // sdb belongs to the cold pool now, so it is no longer idle.
+    expect(screen.queryByText("Disks without volumes")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Mount degraded" }));
+    expect(mocks.mutations["storage.btrfs_pool_mount"]).toHaveBeenCalledWith({
+      uuid: "uuid-cold",
+      degraded: true,
+    });
+  });
+
+  it("destroys the selected pool after confirmation", async () => {
+    const user = userEvent.setup();
+    renderPools();
+
+    await user.click(await screen.findByRole("button", { name: "tank" }));
+    await user.click(screen.getByRole("button", { name: "Destroy pool" }));
+    const dialog = screen.getByRole("dialog", { name: "Destroy pool" });
+    expect(dialog).toHaveTextContent("/dev/nvme0n1, /dev/nvme1n1");
+    await user.click(within(dialog).getByRole("button", { name: "Destroy" }));
+    expect(mocks.mutations["storage.btrfs_pool_destroy"]).toHaveBeenCalledWith(
+      { uuid: "uuid-raid" },
+      expect.anything(),
+    );
+  });
+
+  it("renames the selected pool", async () => {
+    const user = userEvent.setup();
+    renderPools();
+
+    await user.click(await screen.findByRole("button", { name: "tank" }));
+    await user.click(screen.getByRole("button", { name: "Rename pool" }));
+    const name = screen.getByLabelText("Name");
+    expect(name).toHaveValue("tank");
+    await user.clear(name);
+    await user.type(name, "media");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(mocks.mutations["storage.btrfs_set_label"]).toHaveBeenCalledWith(
+      { uuid: "uuid-raid", label: "media" },
+      expect.anything(),
+    );
+  });
+
+  it("opens the create pool dialog for privileged users with btrfs", async () => {
+    const user = userEvent.setup();
+    renderPools();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Create pool" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Create pool" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says when there are no drives or volumes at all", async () => {
     renderPools({ drives: [], filesystems: [] }, { capabilities });
-    expect(screen.getByText("No drives or volumes found.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No drives or volumes found."),
+    ).toBeInTheDocument();
   });
 });

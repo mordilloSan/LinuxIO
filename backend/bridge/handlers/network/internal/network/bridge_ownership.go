@@ -7,6 +7,7 @@ import (
 	"time"
 
 	godbus "github.com/godbus/dbus/v5"
+	"github.com/vishvananda/netlink"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
 )
@@ -98,6 +99,28 @@ func readNetworkManagerDevice(session dbusclient.SystemSession, iface string) (n
 		}, true, nil
 	}
 	return networkManagerDeviceInfo{}, false, nil
+}
+
+// callNetworkd is what networkctl reload and reconfigure do: a method call on
+// the systemd-networkd manager object.
+func callNetworkd(ctx context.Context, method, iface string) error {
+	var args []any
+	if iface != "" {
+		link, err := netlink.LinkByName(iface)
+		if err != nil {
+			return fmt.Errorf("resolve link %s: %w", iface, err)
+		}
+		args = append(args, int32(link.Attrs().Index))
+	}
+	return dbusclient.UseSystemBusWithOptions(ctx, dbusclient.SystemBusOptions{
+		Subsystem: "networkd",
+		Timeout:   30 * time.Second,
+	}, func(ctx context.Context, conn *godbus.Conn) error {
+		if err := conn.Object(networkdBusName, godbus.ObjectPath(networkdPath)).CallWithContext(ctx, networkdManagerIface+"."+method, 0, args...).Err; err != nil {
+			return fmt.Errorf("systemd-networkd %s: %w", method, err)
+		}
+		return nil
+	})
 }
 
 func networkdOwnsInterface(session dbusclient.SystemSession, iface string) (bool, error) {

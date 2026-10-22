@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import {
   linuxio,
@@ -15,8 +15,9 @@ import AppTypography from "@/components/ui/AppTypography";
 import { STATUS_COLOR } from "@/routes/_authenticated/vm/-components/vmCards";
 import { formatDate } from "@/utils/formaters";
 
+import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import { deviceErrorCount } from "./BtrfsDevicesCard";
-import { BTRFS_TOAST_META } from "./btrfsShared";
+import { BTRFS_POOL_TOAST_META } from "./btrfsShared";
 
 const bannerStyle: CSSProperties = {
   alignItems: "center",
@@ -26,6 +27,9 @@ const bannerStyle: CSSProperties = {
   padding: "var(--app-space-16)",
 };
 
+// Balance data chunks at most this full to turn slack into unallocated space.
+const RECLAIM_USAGE = 50;
+
 const scrubSummary = (scrub: BtrfsScrubStatus) => {
   switch (scrub.status) {
     case "none":
@@ -33,24 +37,56 @@ const scrubSummary = (scrub: BtrfsScrubStatus) => {
     case "running":
       return `Checking for errors · ${scrub.percent}%`;
     default:
-      return `Last check: ${formatDate(scrub.finishedAt)}, ${scrub.errorCount} errors`;
+      return `Last check: ${formatDate(scrub.finishedAt)}, ${scrub.errorCount} errors${
+        scrub.uncorrectableErrors > 0
+          ? ` (${scrub.uncorrectableErrors} uncorrectable)`
+          : ""
+      }`;
   }
 };
 
-const healthOf = (filesystem: BtrfsFilesystem, name: string) => {
+interface Health {
+  action?: "replace" | "reclaim";
+  color: string;
+  icon: string;
+  text: string;
+  title: string;
+}
+
+/** The worst condition first: it is the one to act on. */
+const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
   if (filesystem.devices.some((d) => deviceErrorCount(d) > 0))
     return {
       color: STATUS_COLOR.error,
       icon: "mdi:shield-alert",
-      text: `A device of ${name} has reported errors. Check its disks on the Disks tab.`,
+      text: `A device of ${name} has reported errors. Check its disks below.`,
       title: "Errors",
     };
   if (filesystem.degraded)
     return {
+      action: "replace",
       color: STATUS_COLOR.warning,
       icon: "mdi:shield-alert-outline",
       text: `${name} is running without one of its devices. Replace it before another one fails.`,
       title: "Degraded",
+    };
+  if (
+    filesystem.scrub.status !== "running" &&
+    filesystem.scrub.uncorrectableErrors > 0
+  )
+    return {
+      color: STATUS_COLOR.error,
+      icon: "mdi:shield-alert",
+      text: `The last check of ${name} found ${filesystem.scrub.uncorrectableErrors} uncorrectable errors. Restore the affected files from a snapshot or backup.`,
+      title: "Data errors",
+    };
+  if (filesystem.lowMetadataSpace)
+    return {
+      action: "reclaim",
+      color: STATUS_COLOR.warning,
+      icon: "mdi:shield-half-full",
+      text: `${name} is nearly out of metadata space, so writes will start failing. Reclaim space by balancing lightly used data chunks.`,
+      title: "Low space",
     };
   return {
     color: STATUS_COLOR.ok,
@@ -60,27 +96,38 @@ const healthOf = (filesystem: BtrfsFilesystem, name: string) => {
   };
 };
 
-/** Health of the selected filesystem, its last error check and a button to run one. */
+/** Health of the selected filesystem, its last error check and the one action that fixes the current problem. */
 const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   const { uuid } = filesystem;
+  const [replacing, setReplacing] = useState(false);
   const mountpoint = filesystem.mountpoints[0]?.mountpoint;
   const name = filesystem.label
     ? `${filesystem.label}${mountpoint ? ` at ${mountpoint}` : ""}`
     : `The filesystem${mountpoint ? ` at ${mountpoint}` : ""}`;
   const health = healthOf(filesystem, name);
   const scrubRunning = filesystem.scrub.status === "running";
+  const missing = filesystem.devices.find((d) => d.missing);
 
+  const taskConfig = (success: string, error: string) => ({
+    success,
+    error,
+    toast: BTRFS_POOL_TOAST_META,
+  });
   const scrub = linuxio.storage.btrfs_scrub_start.useTaskStreamAction<
     BtrfsFilesystem,
     TaskProgress<BtrfsOpProgress>
-  >({
-    success: "Check finished",
-    error: "Failed to check filesystem",
-    toast: BTRFS_TOAST_META,
-  });
+  >(taskConfig("Check finished", "Failed to check filesystem"));
+  const replace = linuxio.storage.btrfs_device_replace.useTaskStreamAction<
+    BtrfsFilesystem,
+    TaskProgress<BtrfsOpProgress>
+  >(taskConfig("Device replaced", "Failed to replace device"));
+  const reclaim = linuxio.storage.btrfs_balance.useTaskStreamAction<
+    BtrfsFilesystem,
+    TaskProgress<BtrfsOpProgress>
+  >(taskConfig("Space reclaimed", "Failed to reclaim space"));
   const { mutate: cancelScrub } = useCallMutation(
     linuxio.storage.btrfs_scrub_cancel,
-    { error: "Failed to stop the check", toast: BTRFS_TOAST_META },
+    { error: "Failed to stop the check", toast: BTRFS_POOL_TOAST_META },
   );
 
   return (
@@ -100,6 +147,26 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           {scrubSummary(filesystem.scrub)}
         </AppTypography>
       </div>
+      {health.action === "replace" && missing && (
+        <AppButton
+          disabled={replace.isPending}
+          onClick={() => setReplacing(true)}
+          size="small"
+          variant="contained"
+        >
+          {replace.isPending ? "Replacing…" : "Replace missing disk"}
+        </AppButton>
+      )}
+      {health.action === "reclaim" && (
+        <AppButton
+          disabled={reclaim.isPending}
+          onClick={() => reclaim.mutate({ uuid, dataUsage: RECLAIM_USAGE })}
+          size="small"
+          variant="contained"
+        >
+          {reclaim.isPending ? "Reclaiming…" : "Reclaim space"}
+        </AppButton>
+      )}
       {scrubRunning ? (
         <AppButton
           onClick={() => cancelScrub({ uuid })}
@@ -117,6 +184,19 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
         >
           Check for errors
         </AppButton>
+      )}
+      {replacing && missing && (
+        <BtrfsAddDeviceDialog
+          confirmLabel="Replace"
+          filesystemDevices={filesystem.devices.map(({ path }) => path)}
+          label="New device"
+          onClose={() => setReplacing(false)}
+          onConfirm={(newDevice) => {
+            setReplacing(false);
+            replace.mutate({ uuid, deviceId: missing.id, newDevice });
+          }}
+          title="Replace missing disk"
+        />
       )}
     </FrostedCard>
   );

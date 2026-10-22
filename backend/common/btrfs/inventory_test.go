@@ -2,246 +2,177 @@ package btrfs
 
 import (
 	"context"
-	"errors"
-	"os"
 	"reflect"
-	"strings"
 	"testing"
-	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-func fixture(t *testing.T, name string) string {
-	t.Helper()
-	data, err := os.ReadFile("testdata/" + name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
-}
+func TestListFilesystemsReadsKernel(t *testing.T) {
+	k := raid1Kernel()
+	k.devices[2].stats = [5]uint64{5, 0, 0, 0, 1}
+	k.devices[2].physical = 200 << 30 // replaced by a bigger disk, not grown yet
+	stubKernel(t, k)
 
-func checkUsage(t *testing.T, name string) {
-	t.Helper()
-	total, unalloc, used, alloc, err := parseFilesystemUsage(fixture(t, name))
-	if err != nil {
-		t.Fatalf("parseFilesystemUsage: %v", err)
+	got, err := ListFilesystems(context.Background())
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %+v err=%v", got, err)
 	}
-	if total != 214748364800 || unalloc != 105193144320 || used != 86973104128 {
-		t.Fatalf("total/unalloc/used = %d/%d/%d", total, unalloc, used)
+	fs := got[0]
+	wantDevices := []BtrfsDevice{
+		{ID: 1, Path: "/dev/sda1", SizeBytes: 100 << 30, UsedBytes: 51 << 30, PhysicalBytes: 100 << 30},
+		{ID: 2, Path: "/dev/sdb1", SizeBytes: 100 << 30, UsedBytes: 51 << 30, PhysicalBytes: 200 << 30, Growable: true, Errors: BtrfsDeviceErrors{Write: 5, Generation: 1}},
 	}
-	want := []BtrfsAllocation{
-		{Kind: "data", Profile: "raid1", TotalBytes: 53687091200, UsedBytes: 42949672960},
-		{Kind: "metadata", Profile: "dup", TotalBytes: 1073741824, UsedBytes: 536870912},
-		{Kind: "system", Profile: "single", TotalBytes: 33554432, UsedBytes: 16384},
+	if fs.Label != "data" || !reflect.DeepEqual(fs.Devices, wantDevices) {
+		t.Fatalf("label=%q devices=%+v", fs.Label, fs.Devices)
 	}
-	if !reflect.DeepEqual(alloc, want) {
-		t.Fatalf("alloc = %+v, want %+v", alloc, want)
+	wantAlloc := []BtrfsAllocation{
+		{Kind: "data", Profile: "raid1", TotalBytes: 50 << 30, UsedBytes: 40 << 30},
+		{Kind: "metadata", Profile: "raid1", TotalBytes: 1 << 30, UsedBytes: 512 << 20},
+		{Kind: "system", Profile: "raid1", TotalBytes: 32 << 20, UsedBytes: 16 << 10},
 	}
-}
-
-func TestParseFilesystemUsage516(t *testing.T) { checkUsage(t, "fi_usage_5.16.txt") }
-func TestParseFilesystemUsage66(t *testing.T)  { checkUsage(t, "fi_usage_6.6.txt") }
-
-func TestParseFilesystemUsageInvalid(t *testing.T) {
-	if _, _, _, _, err := parseFilesystemUsage("garbage"); err == nil {
-		t.Fatal("expected error")
+	if !reflect.DeepEqual(fs.Allocation, wantAlloc) {
+		t.Fatalf("allocation = %+v", fs.Allocation)
 	}
-}
-
-func TestParseFilesystemShowMissingDevice(t *testing.T) {
-	label, devices, missing, err := parseFilesystemShow(fixture(t, "fi_show.txt"))
-	if err != nil {
-		t.Fatalf("parseFilesystemShow: %v", err)
+	// Raw: every raid1 byte is stored twice.
+	if fs.TotalBytes != 200<<30 || fs.UnallocatedBytes != 98<<30 || fs.UsedBytes != 2*(40<<30+512<<20+16<<10) {
+		t.Fatalf("total/unallocated/used = %d/%d/%d", fs.TotalBytes, fs.UnallocatedBytes, fs.UsedBytes)
 	}
-	if label != "data" || !missing {
-		t.Fatalf("label=%q missing=%v", label, missing)
-	}
-	want := []BtrfsDevice{
-		{ID: 1, Path: "/dev/sda1", SizeBytes: 107374182400, UsedBytes: 55834574848},
-		{ID: 2, Path: "/dev/sdb", Missing: true},
-	}
-	if !reflect.DeepEqual(devices, want) {
-		t.Fatalf("devices = %+v, want %+v", devices, want)
+	if fs.Degraded || !fs.HealthKnown || fs.LowMetadataSpace || fs.Scrub.Status != "none" {
+		t.Fatalf("degraded=%v known=%v low=%v scrub=%+v", fs.Degraded, fs.HealthKnown, fs.LowMetadataSpace, fs.Scrub)
 	}
 }
 
-func TestParseFilesystemShowMissingEmptyPath(t *testing.T) {
-	_, devices, missing, err := parseFilesystemShow("Label: none  uuid: " + dataUUID + "\n\tdevid    1 size 10 used 5 path /dev/sdb1\n\tdevid    2 size 0 used 0 path  MISSING\n")
-	if err != nil || !missing || len(devices) != 2 || devices[1].Path != "" || !devices[1].Missing || devices[0].Missing {
-		t.Fatalf("devices=%+v missing=%v err=%v", devices, missing, err)
+func TestListFilesystemsMissingDevice(t *testing.T) {
+	k := raid1Kernel()
+	k.devices[2].path = ""
+	k.devices[2].stats = [5]uint64{5, 0, 0, 0, 0}
+	stubKernel(t, k)
+
+	got, err := ListFilesystems(context.Background())
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %+v err=%v", got, err)
+	}
+	fs := got[0]
+	if !fs.Degraded || len(fs.Devices) != 2 || !fs.Devices[1].Missing || fs.Devices[1].Errors.Write != 5 || fs.Devices[1].PhysicalBytes != 0 {
+		t.Fatalf("degraded=%v devices=%+v", fs.Degraded, fs.Devices)
+	}
+	// The missing device's size still counts; its slot is skipped by scrub progress.
+	if fs.TotalBytes != 200<<30 || fs.Scrub.Status != "none" {
+		t.Fatalf("total=%d scrub=%+v", fs.TotalBytes, fs.Scrub)
 	}
 }
 
-func TestParseFilesystemShowOmittedMissingDevice(t *testing.T) {
-	_, devices, missing, err := parseFilesystemShow("Label: none  uuid: " + dataUUID + "\n\tdevid    1 size 10 used 5 path /dev/sdb1\n\n*** Some devices missing\n")
-	if err != nil || !missing || len(devices) != 1 || devices[0].Missing {
-		t.Fatalf("devices=%+v missing=%v err=%v", devices, missing, err)
+func TestListFilesystemsHealthUnknownWhenStatsFail(t *testing.T) {
+	k := raid1Kernel()
+	k.fail = map[uintptr]error{iocGetDevStats: unix.EIO}
+	stubKernel(t, k)
+	got, err := ListFilesystems(context.Background())
+	if err != nil || len(got) != 1 || got[0].HealthKnown || len(got[0].Devices) != 2 {
+		t.Fatalf("got=%+v err=%v", got, err)
 	}
 }
 
-func TestAttachDeviceStatsMatchesCanonicalPathAndDevid(t *testing.T) {
-	old := evalSymlinks
-	evalSymlinks = func(p string) (string, error) {
-		if p == "/dev/mapper/cryptdata" {
-			return "/dev/dm-0", nil
-		}
-		return p, nil
-	}
-	t.Cleanup(func() { evalSymlinks = old })
-
-	devices := []BtrfsDevice{
-		{ID: 1, Path: "/dev/mapper/cryptdata"},
-		{ID: 2, Path: "/dev/sdb1"},
-		{ID: 3, Path: ""},
-	}
-	devices = attachDeviceStats(devices, map[string]BtrfsDeviceErrors{
-		"/dev/dm-0": {Corruption: 4},
-		"devid:3":   {Read: 1},
-	})
-	if devices[0].Errors.Corruption != 4 || devices[1].Errors != (BtrfsDeviceErrors{}) || devices[2].Errors.Read != 1 {
-		t.Fatalf("devices = %+v", devices)
-	}
-}
-
-func TestParseFilesystemShowNoLabel(t *testing.T) {
-	label, _, missing, err := parseFilesystemShow("Label: none  uuid: " + dataUUID + "\n\tdevid    1 size 10 used 5 path /dev/sdb1\n")
-	if err != nil || label != "" || missing {
-		t.Fatalf("label=%q missing=%v err=%v", label, missing, err)
-	}
-}
-
-func TestParseDeviceStats(t *testing.T) {
-	got, err := parseDeviceStats(fixture(t, "device_stats.txt"))
-	if err != nil {
-		t.Fatalf("parseDeviceStats: %v", err)
-	}
-	want := map[string]BtrfsDeviceErrors{
-		"/dev/sda1": {Read: 2, Corruption: 3},
-		"devid:2":   {Write: 5, Generation: 1},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("stats = %+v, want %+v", got, want)
-	}
-}
-
-func TestParseScrubStatusFinished(t *testing.T) {
-	got, err := parseScrubStatus(fixture(t, "scrub_status.txt"))
-	if err != nil {
-		t.Fatalf("parseScrubStatus: %v", err)
-	}
-	start := time.Date(2026, time.October, 18, 3, 0, 1, 0, time.Local)
-	end := start.Add(42*time.Minute + 13*time.Second)
-	want := BtrfsScrubStatus{Status: "finished", StartedAt: &start, FinishedAt: &end, ErrorCount: 3, BytesScrubbed: 42949672960, Percent: 100}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("scrub = %+v, want %+v", got, want)
-	}
-}
-
-func TestParseScrubStatusRunning(t *testing.T) {
-	got, err := parseScrubStatus(fixture(t, "scrub_status_running.txt"))
-	if err != nil {
-		t.Fatalf("parseScrubStatus: %v", err)
-	}
-	if got.Status != "running" || got.FinishedAt != nil || got.StartedAt == nil ||
-		got.Percent != 13.97 || got.BytesScrubbed != 7503290368 || got.ErrorCount != 0 {
-		t.Fatalf("scrub = %+v", got)
-	}
-}
-
-func TestParseScrubStatusNone(t *testing.T) {
-	got, err := parseScrubStatus(fixture(t, "scrub_status_none.txt"))
-	if err != nil || got.Status != "none" || got.StartedAt != nil {
-		t.Fatalf("scrub = %+v err=%v", got, err)
-	}
-}
-
-func TestListFilesystemsToleratesCommandFailure(t *testing.T) {
+func TestListFilesystemsToleratesFailure(t *testing.T) {
+	k := raid1Kernel()
+	k.fail = map[uintptr]error{iocFSInfo: unix.EPERM}
+	stubKernel(t, k)
 	stubMounts(t, []Mount{
 		{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5},
 		{Mountpoint: "/data/sub", UUID: dataUUID, SubvolID: 256},
 		{Mountpoint: "/", UUID: rootUUID, SubvolID: 256},
 	})
-	old := runBtrfs
-	t.Cleanup(func() { runBtrfs = old })
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		if args[len(args)-1] != "/data" {
-			return "", errors.New("boom")
-		}
-		switch strings.Join(args[:2], " ") {
-		case "filesystem usage":
-			return fixture(t, "fi_usage_6.6.txt"), nil
-		case "filesystem show":
-			return fixture(t, "fi_show.txt"), nil
-		case "device stats":
-			return fixture(t, "device_stats.txt"), nil
-		}
-		return "", errors.New("scrub failed")
-	}
-
 	got, err := ListFilesystems(context.Background())
-	if err != nil {
-		t.Fatalf("ListFilesystems: %v", err)
+	if err != nil || len(got) != 2 || got[0].UUID != dataUUID || got[1].UUID != rootUUID {
+		t.Fatalf("got=%+v err=%v", got, err)
 	}
-	if len(got) != 2 || got[0].UUID != dataUUID || got[1].UUID != rootUUID {
-		t.Fatalf("filesystems = %+v", got)
-	}
-	data := got[0]
-	if len(data.Mountpoints) != 2 || data.Label != "data" || !data.Degraded || data.TotalBytes != 214748364800 ||
-		data.Scrub.Status != "none" || len(data.Devices) != 2 ||
-		data.Devices[0].Errors.Corruption != 3 || data.Devices[1].Errors.Write != 5 {
-		t.Fatalf("data filesystem = %+v", data)
-	}
-	if !data.HealthKnown || got[1].HealthKnown {
-		t.Fatalf("HealthKnown = %v/%v, want true/false", data.HealthKnown, got[1].HealthKnown)
-	}
-	if root := got[1]; root.TotalBytes != 0 || root.Scrub.Status != "none" || len(root.Mountpoints) != 1 {
-		t.Fatalf("root filesystem = %+v", root)
+	if fs := got[0]; len(fs.Mountpoints) != 2 || fs.HealthKnown || len(fs.Devices) != 0 || fs.Scrub.Status != "none" {
+		t.Fatalf("filesystem after failed fs info = %+v", fs)
 	}
 }
 
-// A mounted filesystem's `filesystem show` omits a missing device and only
-// prints "*** Some devices missing"; `device stats` still names it by devid,
-// so it is listed as a missing device that remove/replace can target.
-func TestListFilesystemsAddsMissingDeviceFromStats(t *testing.T) {
-	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
-	old := runBtrfs
-	t.Cleanup(func() { runBtrfs = old })
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		switch strings.Join(args[:2], " ") {
-		case "filesystem show":
-			return fixture(t, "fi_show_mounted_missing.txt"), nil
-		case "device stats":
-			return fixture(t, "device_stats.txt"), nil
-		}
-		return "", errors.New("unused")
-	}
+func TestScrubStatusRunning(t *testing.T) {
+	k := raid1Kernel()
+	k.devices[1].running = &scrubProgress{DataBytesScrubbed: 10 << 30, CsumErrors: 2, UncorrectableErrors: 1, CorrectedErrors: 1}
+	stubKernel(t, k)
 	got, err := ListFilesystems(context.Background())
 	if err != nil || len(got) != 1 {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
-	want := []BtrfsDevice{
-		{ID: 1, Path: "/dev/sda1", SizeBytes: 107374182400, UsedBytes: 55834574848, Errors: BtrfsDeviceErrors{Read: 2, Corruption: 3}},
-		{ID: 2, Path: "", Missing: true, Errors: BtrfsDeviceErrors{Write: 5, Generation: 1}},
-	}
-	if fs := got[0]; !fs.Degraded || !reflect.DeepEqual(fs.Devices, want) {
-		t.Fatalf("degraded=%v devices=%+v, want %+v", fs.Degraded, fs.Devices, want)
+	s := got[0].Scrub
+	if s.Status != "running" || s.BytesScrubbed != 10<<30 || s.ErrorCount != 2 || s.UncorrectableErrors != 1 || s.CorrectedErrors != 1 || s.Percent <= 12 || s.Percent >= 13 {
+		t.Fatalf("scrub = %+v", s)
 	}
 }
 
-func TestListFilesystemsHealthUnknownWhenStatsFail(t *testing.T) {
-	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
-	old := runBtrfs
-	t.Cleanup(func() { runBtrfs = old })
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		switch strings.Join(args[:2], " ") {
-		case "filesystem show":
-			return fixture(t, "fi_show.txt"), nil
-		case "device stats":
-			return "", errors.New("boom")
-		}
-		return "", errors.New("unused")
+func TestLowMetadataSpace(t *testing.T) {
+	meta := func(used, total uint64) []BtrfsAllocation {
+		return []BtrfsAllocation{{Kind: "data", TotalBytes: 100, UsedBytes: 100}, {Kind: "metadata", TotalBytes: total, UsedBytes: used}}
 	}
-	got, err := ListFilesystems(context.Background())
-	if err != nil || len(got) != 1 || got[0].HealthKnown {
-		t.Fatalf("got=%+v err=%v", got, err)
+	cases := []struct {
+		name        string
+		alloc       []BtrfsAllocation
+		unallocated uint64
+		want        bool
+	}{
+		{"metadata full, nothing left", meta(95, 100), 0, true},
+		{"metadata full but space to grow", meta(95, 100), 2 << 30, false},
+		{"metadata fine", meta(50, 100), 0, false},
+		{"mixed block groups", []BtrfsAllocation{{Kind: "data+metadata", TotalBytes: 100, UsedBytes: 91}}, 0, true},
+		{"only data full", []BtrfsAllocation{{Kind: "data", TotalBytes: 100, UsedBytes: 100}}, 0, false},
+	}
+	for _, c := range cases {
+		if got := lowMetadataSpace(c.alloc, c.unallocated); got != c.want {
+			t.Errorf("%s: got %v", c.name, got)
+		}
+	}
+}
+
+// TestInventoryOnHost reads every mounted btrfs filesystem through the real
+// kernel. Mount listing and the info, stats and space ioctls need no
+// privilege, so this checks the struct layouts on any host with btrfs.
+func TestInventoryOnHost(t *testing.T) {
+	mounts, err := ListMounts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mounts) == 0 {
+		t.Skip("no btrfs filesystem mounted")
+	}
+	for _, m := range mounts {
+		if m.UUID == "" || m.Device == "" {
+			t.Fatalf("mount without uuid or device: %+v", m)
+		}
+	}
+	filesystems, err := ListFilesystems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fs := range filesystems {
+		checkHostFilesystem(t, fs)
+		t.Logf("%s %q: %d devices, %d/%d bytes, %+v", fs.UUID, fs.Label, len(fs.Devices), fs.UsedBytes, fs.TotalBytes, fs.Allocation)
+	}
+}
+
+// checkHostFilesystem asserts what any healthy mounted filesystem shows.
+func checkHostFilesystem(t *testing.T, fs BtrfsFilesystem) {
+	t.Helper()
+	if len(fs.Devices) == 0 || fs.TotalBytes == 0 || fs.UsedBytes == 0 {
+		t.Fatalf("%s: devices=%+v total=%d used=%d", fs.UUID, fs.Devices, fs.TotalBytes, fs.UsedBytes)
+	}
+	kinds := map[string]bool{}
+	for _, a := range fs.Allocation {
+		if MinDevices(a.Profile) == 0 && a.Profile != "raid5" && a.Profile != "raid6" {
+			t.Fatalf("%s: unknown profile in %+v", fs.UUID, a)
+		}
+		kinds[a.Kind] = true
+	}
+	if !(kinds["data"] && kinds["metadata"]) && !kinds["data+metadata"] {
+		t.Fatalf("%s: allocation %+v", fs.UUID, fs.Allocation)
+	}
+	for _, d := range fs.Devices {
+		if !d.Missing && (d.Path == "" || d.SizeBytes == 0) {
+			t.Fatalf("%s: device %+v", fs.UUID, d)
+		}
 	}
 }

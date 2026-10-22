@@ -38,6 +38,7 @@ export default function SidePanel({ side }: { side: SideSession }) {
         </AppTypography>
         <AppActionIconButton
           ariaLabel="Discard side question"
+          color="var(--app-palette-error-main)"
           icon="mdi:delete-outline"
           onClick={() => void assistantStore.discardSide()}
           tooltip={false}

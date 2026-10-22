@@ -2,7 +2,6 @@ package btrfs
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -47,7 +46,7 @@ func TestParseSnapshotPathRejectsForeign(t *testing.T) {
 
 func TestDeleteSnapshotRefusesNonSnapshotPath(t *testing.T) {
 	stubMounts(t, subvolMounts)
-	calls := stubSubvolumeBtrfs(t, "ID 256 gen 12345 top level 5 path @")
+	calls := stubSubvolumeBtrfs(t, 256)
 
 	for _, p := range []string{"@", "data", "linuxio-snapshots/@-2026-10-19", "../etc"} {
 		err := DeleteSnapshot(context.Background(), rootUUID, p)
@@ -63,44 +62,27 @@ func TestDeleteSnapshotRefusesNonSnapshotPath(t *testing.T) {
 const snapSource = "@home"
 
 // stubSnapshotTop mounts the top level at a temp dir and serves a subvolume
-// listing containing the snapshot the test expects to be created or deleted.
-func stubSnapshotTop(t *testing.T, extraRows string) (top string, calls *[][]string) {
+// listing containing the snapshots the test expects to be created or deleted.
+func stubSnapshotTop(t *testing.T, extra ...subvolumeRow) (top string, calls *[][]string) {
 	t.Helper()
 	top = t.TempDir()
 	stubMounts(t, []Mount{
 		{Mountpoint: top, UUID: rootUUID, SubvolID: 5},
 		{Mountpoint: "/home", UUID: rootUUID, Subvol: "@home", SubvolID: 257},
 	})
-	var recorded [][]string
-	old := runBtrfs
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		joined := strings.Join(args, " ")
-		switch {
-		case strings.HasPrefix(joined, "subvolume list -a -p -u -q -R "):
-			return readFixture(t, "subvol_list.txt") + extraRows, nil
-		case strings.HasPrefix(joined, "subvolume list -a -r "):
-			return readFixture(t, "subvol_list_ro.txt") + extraRows, nil
-		case strings.HasPrefix(joined, "subvolume list -a -s "):
-			return readFixture(t, "subvol_list_snap.txt"), nil
-		case strings.HasPrefix(joined, "qgroup show "):
-			return "", nil // quotas on, no data
-		case strings.HasPrefix(joined, "subvolume get-default "):
-			return "ID 256 gen 1 top level 5 path @", nil
-		}
-		recorded = append(recorded, args)
-		return "", nil
-	}
-	t.Cleanup(func() { runBtrfs = old })
-	return top, &recorded
+	recorded := &[][]string{}
+	stubSubvolumes(t, append(fixtureRows(), extra...), 256, recorded)
+	return top, recorded
 }
 
-func snapshotRow(id int, path string) string {
-	return fmt.Sprintf("ID %d gen 1 parent 5 top level 5 parent_uuid - received_uuid - uuid 6b2c1f0e-1111-4a2b-8c3d-%012d path <FS_TREE>/%s\n", 900+id, id, path)
+// snapshotSubvolume is a read-only subvolume row at path, as a snapshot is.
+func snapshotSubvolume(id int, path string) subvolumeRow {
+	return subvolumeRow{ID: 900 + id, ParentID: 5, Path: path, UUID: localUUID(id), ReadOnly: true}
 }
 
 func TestCreateSnapshotRunsReadOnlySnapshotAtTopLevelPath(t *testing.T) {
 	dest := SnapshotPath(snapSource, snapshotTime, KindManual)
-	top, calls := stubSnapshotTop(t, snapshotRow(1, dest))
+	top, calls := stubSnapshotTop(t, snapshotSubvolume(1, dest))
 
 	snap, err := CreateSnapshot(context.Background(), rootUUID, snapSource, KindManual, snapshotTime)
 	if err != nil {
@@ -119,7 +101,7 @@ func TestCreateSnapshotRunsReadOnlySnapshotAtTopLevelPath(t *testing.T) {
 }
 
 func TestCreateSnapshotRefusals(t *testing.T) {
-	_, calls := stubSnapshotTop(t, "")
+	_, calls := stubSnapshotTop(t)
 	for source, wantErr := range map[string]string{
 		"linuxio-snapshots/@-2026-10-19": "reserved",
 		"missing":                        "not found",
@@ -141,7 +123,7 @@ func TestListSnapshotsFiltersSortsAndIgnoresForeign(t *testing.T) {
 	older := SnapshotPath("@", snapshotTime.Add(-time.Hour), KindTimeline)
 	newer := SnapshotPath("@", snapshotTime, KindManual)
 	other := SnapshotPath("data/photos", snapshotTime.Add(time.Hour), KindPreUpdate)
-	stubSnapshotTop(t, snapshotRow(1, older)+snapshotRow(2, newer)+snapshotRow(3, other)+snapshotRow(4, "linuxio-snapshots/foreign"))
+	stubSnapshotTop(t, snapshotSubvolume(1, older), snapshotSubvolume(2, newer), snapshotSubvolume(3, other), snapshotSubvolume(4, "linuxio-snapshots/foreign"))
 
 	got, err := ListSnapshots(context.Background(), rootUUID, nil)
 	if err != nil {
@@ -167,7 +149,7 @@ func TestListSnapshotsFiltersSortsAndIgnoresForeign(t *testing.T) {
 
 func TestDeleteSnapshotDeletesAndIsIdempotent(t *testing.T) {
 	path := SnapshotPath("@", snapshotTime, KindManual)
-	top, calls := stubSnapshotTop(t, snapshotRow(1, path))
+	top, calls := stubSnapshotTop(t, snapshotSubvolume(1, path))
 
 	if err := DeleteSnapshot(context.Background(), rootUUID, path); err != nil {
 		t.Fatalf("DeleteSnapshot: %v", err)
@@ -177,7 +159,7 @@ func TestDeleteSnapshotDeletesAndIsIdempotent(t *testing.T) {
 	}
 
 	// Not in the listing: already gone, nothing to run.
-	_, calls = stubSnapshotTop(t, "")
+	_, calls = stubSnapshotTop(t)
 	if err := DeleteSnapshot(context.Background(), rootUUID, path); err != nil || len(*calls) != 0 {
 		t.Fatalf("missing snapshot: err = %v, calls = %v", err, *calls)
 	}
@@ -185,7 +167,7 @@ func TestDeleteSnapshotDeletesAndIsIdempotent(t *testing.T) {
 
 func TestDeleteSnapshotRefusesMounted(t *testing.T) {
 	path := SnapshotPath("@", snapshotTime, KindManual)
-	top, calls := stubSnapshotTop(t, snapshotRow(1, path))
+	top, calls := stubSnapshotTop(t, snapshotSubvolume(1, path))
 	stubMounts(t, []Mount{
 		{Mountpoint: top, UUID: rootUUID, SubvolID: 5},
 		{Mountpoint: "/mnt/snap", UUID: rootUUID, Subvol: path, SubvolID: 400},

@@ -1,0 +1,328 @@
+import { getRouteApi } from "@tanstack/react-router";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
+
+import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
+import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
+import type { WireguardInterfaceAction } from "@/components/cards/WireguardInterfaceCard";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+import AppGrid from "@/components/ui/AppGrid";
+import AppTypography from "@/components/ui/AppTypography";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { useScopedToast } from "@/hooks/useScopedToast";
+import {
+  CARD_GRID_SIZE_STANDARD,
+  EASING_DECELERATE,
+  EASING_STANDARD,
+  TRANSITION_DURATION_FAST_MS,
+  TRANSITION_DURATION_STANDARD_MS,
+} from "@/theme/constants";
+
+import AddPeerDialog from "./AddPeerDialog";
+import EditInterfaceDialog from "./EditInterfaceDialog";
+import InterfaceDetails from "./InterfaceClients";
+
+const WIREGUARD_TOAST_META = {
+  label: "Open WireGuard",
+  to: "/network/wireguard",
+} as const;
+
+interface WireGuardDashboardProps {
+  interfaces: WireGuardInterface[];
+}
+
+const getWireguardInterfaceId = (iface: WireGuardInterface) => iface.name;
+const wireguardRouteApi = getRouteApi("/_authenticated/network/wireguard");
+
+const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
+  const toast = useScopedToast(WIREGUARD_TOAST_META);
+  // Selection lives in ?iface= so it deep-links and survives reloads, like
+  // the network page.
+  const selectedInterface = wireguardRouteApi.useSearch({
+    select: (search) =>
+      typeof search.iface === "string" ? search.iface : null,
+  });
+  const navigate = wireguardRouteApi.useNavigate();
+  const setSelectedInterface = useCallback(
+    (name: string | null) => {
+      void navigate({
+        to: ".",
+        search: (previous) => ({ ...previous, iface: name ?? undefined }),
+      });
+    },
+    [navigate],
+  );
+  const [pendingActions, setPendingActions] = useState<
+    ReadonlyMap<string, WireguardInterfaceAction>
+  >(() => new Map());
+  // Interface the add-peer dialog is open for.
+  const [addPeerTarget, setAddPeerTarget] = useState<string | null>(null);
+  // Interface the edit dialog is open for; the dialog reads the live list
+  // entry so a refetch while editing never resurrects stale values on reopen.
+  const [editTarget, setEditTarget] = useState<string | null>(null);
+  const editingInterface = interfaces.find(
+    (iface) => iface.name === editTarget,
+  );
+  const selectedCardRef = useRef<HTMLDivElement>(null!);
+  const interfaceDetailsRef = useRef<HTMLDivElement | null>(null);
+
+  const interfaceActionConfig = (verb: string, fallback: string) => ({
+    success: (_result: void, variables: { name: string }) =>
+      toast.success(`WireGuard interface "${variables.name}" ${verb}`),
+    error: fallback,
+    toast: WIREGUARD_TOAST_META,
+  });
+
+  // Mutations
+  const removeInterface = useCallMutation(linuxio.wireguard.remove_interface, {
+    success: (_result, variables) => {
+      toast.success(`WireGuard interface '${variables.name}' deleted`);
+      setSelectedInterface(null);
+    },
+    error: "Failed to remove WireGuard interface",
+    toast: WIREGUARD_TOAST_META,
+  });
+
+  const addPeer = useCallMutation(linuxio.wireguard.add_peer, {
+    success: (_result, variables) =>
+      toast.success(`Peer added to '${variables.interfaceName}'`),
+    error: "Failed to add peer",
+    toast: WIREGUARD_TOAST_META,
+  });
+
+  const upInterface = useCallMutation(
+    linuxio.wireguard.up_interface,
+    interfaceActionConfig("turned on.", "Failed to bring interface up"),
+  );
+
+  const downInterface = useCallMutation(
+    linuxio.wireguard.down_interface,
+    interfaceActionConfig("turned off.", "Failed to bring interface down"),
+  );
+
+  const enableInterface = useCallMutation(
+    linuxio.wireguard.enable_interface,
+    interfaceActionConfig(
+      "enabled for boot persistence.",
+      "Failed to enable boot persistence",
+    ),
+  );
+
+  const disableInterface = useCallMutation(
+    linuxio.wireguard.disable_interface,
+    interfaceActionConfig(
+      "disabled for boot persistence.",
+      "Failed to disable boot persistence",
+    ),
+  );
+
+  const handleClickOutside = useEffectEvent(
+    (event: MouseEvent | KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        document.querySelector(OVERLAY_ROOT_SELECTOR)
+      )
+        return;
+      if (event.type === "mousedown") {
+        const mouseEvent = event as MouseEvent;
+        if (
+          selectedCardRef.current &&
+          !selectedCardRef.current.contains(mouseEvent.target as Node) &&
+          interfaceDetailsRef.current &&
+          !interfaceDetailsRef.current.contains(mouseEvent.target as Node)
+        ) {
+          setSelectedInterface(null);
+        }
+      } else if (event.type === "keydown") {
+        const keyboardEvent = event as KeyboardEvent;
+        if (keyboardEvent.key === "Escape" || keyboardEvent.key === "Esc") {
+          setSelectedInterface(null);
+          event.preventDefault();
+        }
+      }
+    },
+  );
+
+  const hasSelectedInterface = Boolean(selectedInterface);
+
+  useEffect(() => {
+    if (hasSelectedInterface) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleClickOutside);
+    };
+  }, [hasSelectedInterface]);
+
+  const runInterfaceAction = (
+    interfaceName: string,
+    action: WireguardInterfaceAction,
+    run: () => Promise<unknown>,
+  ) => {
+    if (pendingActions.has(interfaceName)) return;
+
+    setPendingActions((current) => new Map(current).set(interfaceName, action));
+    void run()
+      .catch(() => undefined)
+      .finally(() => {
+        setPendingActions((current) => {
+          if (current.get(interfaceName) !== action) return current;
+          const next = new Map(current);
+          next.delete(interfaceName);
+          return next;
+        });
+      });
+  };
+
+  const handleDelete = (interfaceName: string) => {
+    runInterfaceAction(interfaceName, "delete", () =>
+      removeInterface.mutateAsync({ name: interfaceName }),
+    );
+  };
+
+  const handleAddPeer = (interfaceName: string) => {
+    setAddPeerTarget(interfaceName);
+  };
+
+  const handleCreatePeer = (name: string) => {
+    const interfaceName = addPeerTarget;
+    setAddPeerTarget(null);
+    if (!interfaceName) return;
+    runInterfaceAction(interfaceName, "add-peer", () =>
+      addPeer.mutateAsync({ interfaceName, name: name || undefined }),
+    );
+  };
+
+  const handleToggleInterface = (
+    interfaceName: string,
+    status: "up" | "down",
+  ) => {
+    runInterfaceAction(interfaceName, status, () =>
+      status === "up"
+        ? upInterface.mutateAsync({ name: interfaceName })
+        : downInterface.mutateAsync({ name: interfaceName }),
+    );
+  };
+
+  const handleToggleBootPersistence = (
+    interfaceName: string,
+    isEnabled: boolean,
+  ) => {
+    const action = isEnabled ? "disable" : "enable";
+    runInterfaceAction(interfaceName, action, () =>
+      isEnabled
+        ? disableInterface.mutateAsync({ name: interfaceName })
+        : enableInterface.mutateAsync({ name: interfaceName }),
+    );
+  };
+
+  const surface = useReorderableSurface({
+    getId: getWireguardInterfaceId,
+    items: interfaces,
+    surface: "wireguard.interfaces",
+  });
+
+  const handleSelectInterface = (iface: WireGuardInterface) => {
+    setSelectedInterface(iface.name === selectedInterface ? null : iface.name);
+  };
+
+  return (
+    <>
+      {interfaces.length > 0 ? (
+        <>
+          <ReorderableCardGrid
+            fillAvailable={false}
+            getId={getWireguardInterfaceId}
+            renderItem={(iface) => (
+              <WireguardInterfaceCard
+                handleAddPeer={handleAddPeer}
+                handleDelete={handleDelete}
+                handleEdit={setEditTarget}
+                handleSelectInterface={handleSelectInterface}
+                handleToggleBootPersistence={handleToggleBootPersistence}
+                handleToggleInterface={handleToggleInterface}
+                iface={iface}
+                pendingAction={pendingActions.get(iface.name)}
+                selectedCardRef={
+                  iface.name === selectedInterface ? selectedCardRef : null
+                }
+                selectedInterface={selectedInterface}
+              />
+            )}
+            size={CARD_GRID_SIZE_STANDARD}
+            surface={surface}
+          />
+          <AnimatePresence initial={false}>
+            {selectedInterface && (
+              <AppGrid container spacing={3}>
+                <AppGrid size={{ xs: 12 }}>
+                  <motion.div
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{
+                      opacity: 0,
+                      y: -12,
+                      transition: {
+                        duration: TRANSITION_DURATION_FAST_MS / 1000,
+                        ease: EASING_DECELERATE,
+                      },
+                    }}
+                    initial={{ opacity: 0, y: 12 }}
+                    layout
+                    transition={{
+                      duration: TRANSITION_DURATION_STANDARD_MS / 1000,
+                      ease: EASING_STANDARD,
+                    }}
+                  >
+                    <div
+                      style={{
+                        marginTop: "var(--app-space-16)",
+                        marginBottom: "var(--app-space-8)",
+                      }}
+                    >
+                      <AppTypography gutterBottom variant="h5">
+                        Clients for {selectedInterface}
+                      </AppTypography>
+                    </div>
+                    <div ref={interfaceDetailsRef}>
+                      <InterfaceDetails params={{ id: selectedInterface }} />
+                    </div>
+                  </motion.div>
+                </AppGrid>
+              </AppGrid>
+            )}
+          </AnimatePresence>
+        </>
+      ) : (
+        <AppTypography color="text.secondary">
+          No interfaces found
+        </AppTypography>
+      )}
+      {editingInterface && (
+        <EditInterfaceDialog
+          iface={editingInterface}
+          key={editingInterface.name}
+          onClose={() => setEditTarget(null)}
+          open
+        />
+      )}
+      <AddPeerDialog
+        interfaceName={addPeerTarget ?? ""}
+        loading={false}
+        onClose={() => setAddPeerTarget(null)}
+        onCreate={handleCreatePeer}
+        open={addPeerTarget !== null}
+      />
+    </>
+  );
+};
+
+export default WireGuardDashboard;

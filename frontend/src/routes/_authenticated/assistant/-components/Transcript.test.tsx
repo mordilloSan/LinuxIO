@@ -73,7 +73,7 @@ describe("Transcript", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders a diff view for edit tool calls", () => {
+  it("renders a diff view for edit tool calls once opened", async () => {
     const { container } = render(
       <Transcript
         blocks={[
@@ -91,12 +91,50 @@ describe("Transcript", () => {
         ]}
       />,
     );
+    expect(container.querySelector(".assistant-diff__add")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /1 tool call/ }));
     expect(container.querySelector(".assistant-diff__add")).toHaveTextContent(
       "+y",
     );
     expect(container.querySelector(".assistant-diff__del")).toHaveTextContent(
       "-x",
     );
+  });
+
+  it("shows a tool's input and output, clipping long output", async () => {
+    const output = `\`\`\`console\n${Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n")}\n\`\`\``;
+    render(
+      <Transcript
+        blocks={[
+          {
+            kind: "tool",
+            id: "t1",
+            toolCallId: "t1",
+            title: "ls -la",
+            toolKind: "execute",
+            status: "completed",
+            rawInput: { command: "ls -la", description: "List files" },
+            content: [
+              { type: "content", content: { type: "text", text: output } },
+            ],
+          },
+        ]}
+      />,
+    );
+    // A lone call is a closed group of one, like any other run.
+    expect(screen.queryByText("IN")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /1 tool call/ }));
+    expect(screen.getByText("Run")).toBeInTheDocument();
+    expect(screen.getByText("List files")).toBeInTheDocument();
+    expect(screen.getByText("IN")).toBeInTheDocument();
+    expect(screen.queryByText(/```/)).toBeNull();
+    expect(screen.getByText("ls -la")).toHaveClass("assistant-tool__in");
+    const out = screen.getByText(/line 0/);
+    expect(out).toHaveClass("assistant-tool__out--clipped");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Show all 12 lines" }),
+    );
+    expect(out).not.toHaveClass("assistant-tool__out--clipped");
   });
 
   describe("grouped tool calls", () => {
@@ -108,8 +146,11 @@ describe("Transcript", () => {
       for (const id of ["a", "b", "c"]) {
         expect(screen.getByText(`cmd ${id}`)).toBeInTheDocument();
       }
-      await userEvent.click(screen.getByText("3 tool calls"));
+      await userEvent.click(screen.getByRole("button", { name: "Collapse" }));
       expect(screen.queryByText("cmd a")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /3 tool calls/ }),
+      ).toHaveFocus();
     });
 
     it("shows a failed count and a failed dot when any tool failed", () => {
@@ -118,7 +159,7 @@ describe("Transcript", () => {
       );
       expect(screen.getByText("· 1 failed")).toBeInTheDocument();
       expect(
-        container.querySelector(".assistant-tool-group__dot--failed"),
+        container.querySelector(".assistant-tool-state--failed"),
       ).not.toBeNull();
       expect(screen.getByRole("img", { name: "failed" })).toHaveAttribute(
         "title",
@@ -131,7 +172,7 @@ describe("Transcript", () => {
         <Transcript blocks={[tool("a"), tool("b", "in_progress")]} />,
       );
       expect(
-        container.querySelector(".assistant-tool-group__dot--active"),
+        container.querySelector(".assistant-tool-state--active"),
       ).not.toBeNull();
     });
 
@@ -140,14 +181,15 @@ describe("Transcript", () => {
         <Transcript blocks={[tool("a"), tool("b")]} />,
       );
       expect(
-        container.querySelector(".assistant-tool-group__dot--done"),
+        container.querySelector(".assistant-tool-state--done"),
       ).not.toBeNull();
     });
 
-    it("keeps a single tool as a plain row", () => {
+    it("collapses a single tool into a group of one", async () => {
       render(<Transcript blocks={[tool("a")]} />);
+      expect(screen.queryByText("cmd a")).toBeNull();
+      await userEvent.click(screen.getByText("1 tool call"));
       expect(screen.getByText("cmd a")).toBeInTheDocument();
-      expect(screen.queryByText(/tool calls?$/)).toBeNull();
     });
 
     it("makes two groups when an agent block separates the tools", () => {

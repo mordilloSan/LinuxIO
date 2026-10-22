@@ -264,6 +264,7 @@ export interface BtrfsBalanceRequest {
   uuid: string;
   dataProfile?: string;
   metadataProfile?: string;
+  dataUsage?: number;
 }
 
 export interface BtrfsCompression {
@@ -287,6 +288,8 @@ export interface BtrfsDevice {
   usedBytes: number;
   missing: boolean;
   errors: BtrfsDeviceErrors;
+  physicalBytes: number;
+  growable: boolean;
 }
 
 export interface BtrfsDeviceAddRequest {
@@ -325,6 +328,7 @@ export interface BtrfsFilesystem {
   devices: BtrfsDevice[];
   scrub: BtrfsScrubStatus;
   degraded: boolean;
+  lowMetadataSpace: boolean;
 }
 
 export interface BtrfsJobIDRequest {
@@ -336,6 +340,11 @@ export interface BtrfsKeep {
   daily: number;
   weekly: number;
   monthly: number;
+}
+
+export interface BtrfsLabelRequest {
+  uuid: string;
+  label: string;
 }
 
 export interface BtrfsMaintenanceRequest {
@@ -355,10 +364,34 @@ export interface BtrfsMaintenanceTask {
   mountpoints: string[];
 }
 
+export interface BtrfsOfflinePool {
+  uuid: string;
+  label: string;
+  numDevices: number;
+  devices: string[];
+  totalBytes: number;
+  mountpoint: string;
+}
+
 export interface BtrfsOpProgress {
   op: string;
   percent: number;
   message: string;
+}
+
+export interface BtrfsPoolCreateRequest {
+  label: string;
+  mountpoint: string;
+  dataProfile: string;
+  metadataProfile: string;
+  devices: string[];
+  force: boolean;
+  partition: boolean;
+}
+
+export interface BtrfsPoolMountRequest {
+  uuid: string;
+  degraded: boolean;
 }
 
 export interface BtrfsQgroupLimitRequest {
@@ -438,6 +471,8 @@ export interface BtrfsScrubStatus {
   startedAt?: string;
   finishedAt?: string;
   errorCount: number;
+  uncorrectableErrors: number;
+  correctedErrors: number;
   bytesScrubbed: number;
   percent: number;
 }
@@ -2276,6 +2311,18 @@ export interface NetworkInterface {
   type: string;
 }
 
+export interface NotificationSettings {
+  minSeverity: string;
+  webhookUrl: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUsername: string;
+  smtpPassword?: string;
+  emailFrom: string;
+  emailTo: string[];
+  smtpPasswordSet: boolean;
+}
+
 export interface OfflineUpdatesResponse {
   status?: string;
   error?: string;
@@ -3397,6 +3444,11 @@ export interface LinuxIOSchema {
       request: AlertDismissRequest;
       result: AlertList;
     };
+    get_notifications: {
+      input: [];
+      request: void;
+      result: NotificationSettings;
+    };
     list: { input: []; request: void; result: AlertList };
     mark_all_seen: { input: []; request: void; result: AlertList };
     mark_seen: {
@@ -3404,6 +3456,12 @@ export interface LinuxIOSchema {
       request: AlertIDsRequest;
       result: AlertList;
     };
+    set_notifications: {
+      input: [request: NotificationSettings];
+      request: NotificationSettings;
+      result: NotificationSettings;
+    };
+    test_notifications: { input: []; request: void; result: SuccessResponse };
   };
 
   config: {
@@ -4065,6 +4123,11 @@ export interface LinuxIOSchema {
       request: BtrfsDeviceAddRequest;
       result: BtrfsFilesystem;
     };
+    btrfs_device_grow: {
+      input: [request: BtrfsDeviceRequest];
+      request: BtrfsDeviceRequest;
+      result: BtrfsFilesystem;
+    };
     btrfs_device_remove: {
       input: [request: BtrfsDeviceRequest];
       request: BtrfsDeviceRequest;
@@ -4078,6 +4141,26 @@ export interface LinuxIOSchema {
       progress: TaskProgress<BtrfsOpProgress>;
     };
     btrfs_list: { input: []; request: void; result: BtrfsFilesystem[] };
+    btrfs_pool_create: {
+      input: [request: BtrfsPoolCreateRequest];
+      request: BtrfsPoolCreateRequest;
+      result: BtrfsFilesystem;
+    };
+    btrfs_pool_destroy: {
+      input: [uuid: string];
+      request: UUIDRequest;
+      result: SuccessResponse;
+    };
+    btrfs_pool_mount: {
+      input: [request: BtrfsPoolMountRequest];
+      request: BtrfsPoolMountRequest;
+      result: BtrfsFilesystem;
+    };
+    btrfs_pools_offline: {
+      input: [];
+      request: void;
+      result: BtrfsOfflinePool[];
+    };
     btrfs_qgroup_limit: {
       input: [request: BtrfsQgroupLimitRequest];
       request: BtrfsQgroupLimitRequest;
@@ -4129,6 +4212,11 @@ export interface LinuxIOSchema {
       input: [request: BtrfsCompressionRequest];
       request: BtrfsCompressionRequest;
       result: BtrfsSettings;
+    };
+    btrfs_set_label: {
+      input: [request: BtrfsLabelRequest];
+      request: BtrfsLabelRequest;
+      result: BtrfsFilesystem;
     };
     btrfs_set_quotas: {
       input: [request: BtrfsQuotaRequest];
@@ -4605,9 +4693,15 @@ export interface LinuxIOCallSchema {
   };
   "accounts.unlock_user": { request: UsernameRequest; result: void };
   "alerts.dismiss": { request: AlertDismissRequest; result: AlertList };
+  "alerts.get_notifications": { request: void; result: NotificationSettings };
   "alerts.list": { request: void; result: AlertList };
   "alerts.mark_all_seen": { request: void; result: AlertList };
   "alerts.mark_seen": { request: AlertIDsRequest; result: AlertList };
+  "alerts.set_notifications": {
+    request: NotificationSettings;
+    result: NotificationSettings;
+  };
+  "alerts.test_notifications": { request: void; result: SuccessResponse };
   "config.get": { request: void; result: AppConfig };
   "config.get_ui": { request: void; result: UIConfig };
   "config.set": { request: ConfigSetPayload; result: ConfigSetResult };
@@ -4922,7 +5016,24 @@ export interface LinuxIOCallSchema {
     request: BtrfsDeviceAddRequest;
     result: BtrfsFilesystem;
   };
+  "storage.btrfs_device_grow": {
+    request: BtrfsDeviceRequest;
+    result: BtrfsFilesystem;
+  };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
+  "storage.btrfs_pool_create": {
+    request: BtrfsPoolCreateRequest;
+    result: BtrfsFilesystem;
+  };
+  "storage.btrfs_pool_destroy": {
+    request: UUIDRequest;
+    result: SuccessResponse;
+  };
+  "storage.btrfs_pool_mount": {
+    request: BtrfsPoolMountRequest;
+    result: BtrfsFilesystem;
+  };
+  "storage.btrfs_pools_offline": { request: void; result: BtrfsOfflinePool[] };
   "storage.btrfs_qgroup_limit": {
     request: BtrfsQgroupLimitRequest;
     result: BtrfsSubvolume;
@@ -4951,6 +5062,10 @@ export interface LinuxIOCallSchema {
   "storage.btrfs_set_compression": {
     request: BtrfsCompressionRequest;
     result: BtrfsSettings;
+  };
+  "storage.btrfs_set_label": {
+    request: BtrfsLabelRequest;
+    result: BtrfsFilesystem;
   };
   "storage.btrfs_set_quotas": {
     request: BtrfsQuotaRequest;

@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { BtrfsFilesystem } from "@/api";
@@ -36,6 +37,8 @@ const filesystem: BtrfsFilesystem = {
       sizeBytes: 100 * 1024 ** 3,
       usedBytes: 60 * 1024 ** 3,
       missing: false,
+      physicalBytes: 0,
+      growable: false,
       errors: noErrors,
     },
     {
@@ -44,16 +47,27 @@ const filesystem: BtrfsFilesystem = {
       sizeBytes: 0,
       usedBytes: 0,
       missing: true,
+      physicalBytes: 0,
+      growable: false,
       errors: { ...noErrors, read: 2, corruption: 1 },
     },
   ],
-  scrub: { status: "none", errorCount: 0, bytesScrubbed: 0, percent: 0 },
+  scrub: {
+    status: "none",
+    errorCount: 0,
+    uncorrectableErrors: 0,
+    correctedErrors: 0,
+    bytesScrubbed: 0,
+    percent: 0,
+  },
   degraded: true,
+  lowMetadataSpace: false,
 };
 
 const healthy = {
   ...filesystem,
   degraded: false,
+  lowMetadataSpace: false,
   devices: [filesystem.devices[0]],
 };
 
@@ -95,6 +109,8 @@ describe("BtrfsHealthBanner", () => {
             status: "finished",
             finishedAt: "2026-10-01T10:00:00Z",
             errorCount: 7,
+            uncorrectableErrors: 0,
+            correctedErrors: 0,
             bytesScrubbed: 1,
             percent: 100,
           },
@@ -105,6 +121,56 @@ describe("BtrfsHealthBanner", () => {
     expect(screen.getByText(/Last check: .*, 7 errors/)).toBeInTheDocument();
   });
 
+  it("offers to replace the missing disk when degraded", async () => {
+    const user = userEvent.setup();
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...filesystem,
+          devices: filesystem.devices.map((d) => ({ ...d, errors: noErrors })),
+        }}
+      />,
+    );
+    expect(screen.getByText("Degraded")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Replace missing disk" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Replace missing disk" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reports uncorrectable scrub errors ahead of a healthy state", () => {
+    render(
+      <BtrfsHealthBanner
+        filesystem={{
+          ...healthy,
+          scrub: {
+            status: "finished",
+            finishedAt: "2026-10-01T10:00:00Z",
+            errorCount: 3,
+            uncorrectableErrors: 2,
+            correctedErrors: 1,
+            bytesScrubbed: 1,
+            percent: 100,
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Data errors")).toBeInTheDocument();
+    expect(
+      screen.getByText(/3 errors \(2 uncorrectable\)/),
+    ).toBeInTheDocument();
+  });
+
+  it("offers to reclaim space when metadata is nearly full", () => {
+    render(
+      <BtrfsHealthBanner filesystem={{ ...healthy, lowMetadataSpace: true }} />,
+    );
+    expect(screen.getByText("Low space")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reclaim space" })).toBeEnabled();
+  });
+
   it("shows scrub progress while running", () => {
     render(
       <BtrfsHealthBanner
@@ -113,6 +179,8 @@ describe("BtrfsHealthBanner", () => {
           scrub: {
             status: "running",
             errorCount: 0,
+            uncorrectableErrors: 0,
+            correctedErrors: 0,
             bytesScrubbed: 1,
             percent: 42,
           },

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // BtrfsSettings is the quota state and compression of a filesystem.
@@ -63,51 +65,6 @@ func ParseCompressOption(opt string) (algorithm string, level *int, force, ok bo
 	return algorithm, level, key == "compress-force", true
 }
 
-// qgroupShow runs `btrfs qgroup show` on the top-level mount and returns
-// errQuotasDisabled when quotas are off.
-func qgroupShow(ctx context.Context, top string) (map[int]QgroupUsage, error) {
-	out, err := runBtrfs(ctx, "qgroup", "show", "--raw", "-r", top)
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "quotas not enabled") {
-			return nil, errQuotasDisabled
-		}
-		return nil, fmt.Errorf("show qgroups: %w", err)
-	}
-	return parseQgroupShow(out)
-}
-
-// parseQgroupShow parses `btrfs qgroup show --raw -r`, keyed by subvolume ID.
-// Higher-level qgroups (1/…) are skipped.
-func parseQgroupShow(out string) (map[int]QgroupUsage, error) {
-	usage := map[int]QgroupUsage{}
-	for line := range strings.SplitSeq(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 || !strings.HasPrefix(fields[0], "0/") {
-			continue
-		}
-		id, err := strconv.Atoi(strings.TrimPrefix(fields[0], "0/"))
-		if err != nil {
-			return nil, fmt.Errorf("parse qgroup show: invalid qgroupid %q", fields[0])
-		}
-		var u QgroupUsage
-		if u.Referenced, err = strconv.ParseUint(fields[1], 10, 64); err != nil {
-			return nil, fmt.Errorf("parse qgroup show: invalid size in %q", line)
-		}
-		if u.Exclusive, err = strconv.ParseUint(fields[2], 10, 64); err != nil {
-			return nil, fmt.Errorf("parse qgroup show: invalid size in %q", line)
-		}
-		if len(fields) > 3 && fields[3] != "none" {
-			limit, err := strconv.ParseUint(fields[3], 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("parse qgroup show: invalid limit in %q", line)
-			}
-			u.MaxReferenced = &limit
-		}
-		usage[id] = u
-	}
-	return usage, nil
-}
-
 // GetSettings reports whether quotas are enabled and the compression option
 // of the filesystem's first user mount.
 func GetSettings(ctx context.Context, uuid string) (BtrfsSettings, error) {
@@ -116,7 +73,7 @@ func GetSettings(ctx context.Context, uuid string) (BtrfsSettings, error) {
 		return BtrfsSettings{}, err
 	}
 	settings := BtrfsSettings{UUID: uuid, Compression: BtrfsCompression{Algorithm: "none"}}
-	_, err = qgroupShow(ctx, top)
+	_, err = readQgroups(top)
 	if err != nil && !errors.Is(err, errQuotasDisabled) {
 		return BtrfsSettings{}, err
 	}
@@ -152,12 +109,11 @@ func SetQuotas(ctx context.Context, uuid string, enabled bool) error {
 	if err != nil {
 		return err
 	}
-	verb := "disable"
-	if enabled {
-		verb = "enable"
-	}
-	if _, err := runBtrfs(ctx, "quota", verb, top); err != nil {
-		return fmt.Errorf("%s quotas: %w", verb, err)
+	if err := subvolOps.quota(top, enabled); err != nil {
+		if enabled {
+			return fmt.Errorf("enable quotas: %w", err)
+		}
+		return fmt.Errorf("disable quotas: %w", err)
 	}
 	return nil
 }
@@ -178,11 +134,7 @@ func SetQgroupLimit(ctx context.Context, uuid, path string, max *uint64) (BtrfsS
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	limit := "none"
-	if max != nil {
-		limit = strconv.FormatUint(*max, 10)
-	}
-	if _, err := runBtrfs(ctx, "qgroup", "limit", limit, filepath.Join(top, path)); err != nil {
+	if err := subvolOps.limit(filepath.Join(top, path), max); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("set size limit on %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)
@@ -218,7 +170,10 @@ func SetCompression(ctx context.Context, uuid, algorithm string, level *int, for
 			option += ":" + strconv.Itoa(*level)
 		}
 	}
-	if _, err := runCommand(ctx, "mount", "-o", "remount,"+option, mount.Mountpoint); err != nil {
+	// A remount resets the mount flags it is not given, so the current ones
+	// are repeated; the data string only needs the option that changes.
+	flags, _ := splitMountOptions(mount.Options)
+	if err := mountFS("", mount.Mountpoint, "", unix.MS_REMOUNT|flags, option); err != nil {
 		return "", fmt.Errorf("remount %s with %s: %w", mount.Mountpoint, option, err)
 	}
 	return option, nil
@@ -244,7 +199,7 @@ func SetSubvolumeCompression(ctx context.Context, uuid, path, algorithm string) 
 	if algorithm == "none" {
 		value = ""
 	}
-	if _, err := runBtrfs(ctx, "property", "set", filepath.Join(top, path), "compression", value); err != nil {
+	if err := subvolOps.compression(filepath.Join(top, path), value); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("set compression on %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)

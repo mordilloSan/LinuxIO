@@ -46,6 +46,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly LINUXIO_SOCKET_NAME="linuxio-webserver.socket"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
+readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
 readonly LINUXIO_PORT_MIN=8090
 readonly LINUXIO_PORT_MAX=8099
 readonly DOC_DIR="/usr/share/linuxio/doc"
@@ -75,6 +76,8 @@ linuxio_systemd_units() {
 		linuxio-indexer.service \
 		linuxio-indexer-index.service \
 		linuxio-indexer-index.timer \
+		linuxio-btrfs-health.service \
+		linuxio-btrfs-health.timer \
 		linuxio-monitoring.service
 }
 
@@ -429,6 +432,10 @@ main() {
 		systemctl enable "$INDEXER_TIMER_UNIT_NAME" >/dev/null 2>&1
 	fi
 	systemctl enable linuxio-monitoring.service >/dev/null 2>&1
+	# Pools created later get the timer when an admin lists btrfs filesystems.
+	if lsblk -nro FSTYPE 2>/dev/null | grep -qx btrfs; then
+		systemctl enable "$BTRFS_HEALTH_TIMER_UNIT_NAME" >/dev/null 2>&1
+	fi
 	Show 0 "Services enabled"
 
 	Show 2 "Restarting LinuxIO..."

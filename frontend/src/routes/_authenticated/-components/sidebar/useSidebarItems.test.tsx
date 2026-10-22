@@ -84,7 +84,6 @@ describe("useSidebarItems", () => {
     expect(titles).toContain("Dashboard");
     expect(titles).not.toContain("Docker");
     expect(titles).not.toContain("Hardware");
-    expect(titles).not.toContain("Wireguard");
   });
 
   it("keeps sidebar items in configured order when access allows them", () => {
@@ -108,8 +107,6 @@ describe("useSidebarItems", () => {
       "Storage",
       "Docker",
       "Accounts",
-      "Shares",
-      "Wireguard",
       "Hardware",
       "Navigator",
       "Terminal",

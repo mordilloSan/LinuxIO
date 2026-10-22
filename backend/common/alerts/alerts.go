@@ -153,12 +153,14 @@ func write(doc Document) error {
 }
 
 // Raise records an observation. The same occurrence id only refreshes
-// last_observed_at; a new one is a material change.
+// last_observed_at; a new one is a material change, which is also delivered
+// to the configured notification channels after the store is written.
 func Raise(ctx context.Context, obs Observation) error {
 	if err := obs.validate(); err != nil {
 		return err
 	}
-	return update(ctx, func(doc *Document) error {
+	var changed *Alert
+	err := update(ctx, func(doc *Document) error {
 		t := now()
 		id := ID(obs.Source, obs.Key)
 		for i := range doc.Alerts {
@@ -175,6 +177,7 @@ func Raise(ctx context.Context, obs Observation) error {
 			a.OccurrenceCount++
 			a.LastOccurrence, a.LastObservedAt = t, t
 			a.DismissedAt = nil
+			changed = new(*a)
 			return nil
 		}
 		if len(doc.Alerts) >= maxAlerts {
@@ -186,8 +189,13 @@ func Raise(ctx context.Context, obs Observation) error {
 			OccurrenceID: obs.OccurrenceID, OccurrenceCount: 1,
 			FirstOccurrence: t, LastOccurrence: t, LastObservedAt: t,
 		})
+		changed = new(doc.Alerts[len(doc.Alerts)-1])
 		return nil
 	})
+	if err == nil && changed != nil {
+		notify(ctx, *changed)
+	}
+	return err
 }
 
 // Resolve removes the record. Resolving an absent alert is not an error.

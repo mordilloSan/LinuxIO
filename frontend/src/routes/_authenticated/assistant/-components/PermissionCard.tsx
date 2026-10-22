@@ -5,6 +5,7 @@ import { type KeyboardEvent, useEffect, useRef } from "react";
 import AppButton from "@/components/ui/AppButton";
 
 import DiffView from "./DiffView";
+import { stringField } from "./transcript";
 
 const KIND_COPY: Record<string, { icon: string; question: string }> = {
   execute: { icon: "mdi:console", question: "Run this command?" },
@@ -19,12 +20,6 @@ const KIND_COPY: Record<string, { icon: string; question: string }> = {
 const FALLBACK = { icon: "mdi:shield-key-outline", question: "Allow this?" };
 
 const OPTION_SELECTOR = "[data-permission-option]";
-
-const stringField = (value: unknown, key: string) => {
-  if (typeof value !== "object" || value === null) return null;
-  const field = (value as Record<string, unknown>)[key];
-  return typeof field === "string" && field.trim() ? field : null;
-};
 
 /**
  * The agent asking before it acts, laid out like the Claude app: what it wants

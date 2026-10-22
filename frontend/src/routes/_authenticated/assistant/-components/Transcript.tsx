@@ -3,64 +3,163 @@ import { Icon } from "@iconify/react";
 import { type ReactNode, useRef, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
+import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 
 import AttachmentChip from "./AttachmentChip";
 import type { Attachment } from "./attachments";
 import DiffView from "./DiffView";
 import MarkdownBlock from "./MarkdownBlock";
-import type { ToolBlock, TranscriptBlock } from "./transcript";
+import {
+  stringField,
+  type ToolBlock,
+  type TranscriptBlock,
+} from "./transcript";
 import { useFollowBottom } from "./useFollowBottom";
 
+const KIND_LABEL: Record<string, string> = {
+  read: "Read",
+  edit: "Edit",
+  delete: "Delete",
+  move: "Move",
+  search: "Search",
+  execute: "Run",
+  think: "Think",
+  fetch: "Fetch",
+  switch_mode: "Mode",
+};
+
+type ToolState = "active" | "failed" | "done";
+
+const STATE_LABEL = { active: "running", failed: "failed", done: "done" };
+
+const toolState = (status: string): ToolState =>
+  status === "failed"
+    ? "failed"
+    : status === "pending" || status === "in_progress"
+      ? "active"
+      : "done";
+
+/** Running spins, failed is an alert, done is a dot: the shape carries it. */
+function StateMarker({ state }: { state: ToolState }) {
+  return (
+    <span
+      aria-label={STATE_LABEL[state]}
+      className={`assistant-tool-state assistant-tool-state--${state}`}
+      role="img"
+      title={STATE_LABEL[state]}
+    >
+      {state === "active" ? <AppCircularProgress size={10} /> : null}
+      {state === "failed" ? <Icon icon="mdi:alert-circle" width={12} /> : null}
+    </span>
+  );
+}
+
+// Output longer than this starts clipped behind a fade.
+const CLIP_LINES = 8;
+
+function ToolOutput({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const lines = text.split("\n").length;
+  const long = lines > CLIP_LINES;
+  return (
+    <div className="assistant-tool__io-row assistant-tool__io-row--out">
+      <span className="assistant-tool__io-label">OUT</span>
+      <div className="assistant-tool__io-cell">
+        <pre
+          className={
+            long && !expanded
+              ? "assistant-tool__out assistant-tool__out--clipped"
+              : "assistant-tool__out"
+          }
+        >
+          {text}
+        </pre>
+        {long ? (
+          <AppButton
+            className="assistant-tool__more"
+            color="inherit"
+            onClick={() => setExpanded(!expanded)}
+            size="small"
+          >
+            {expanded ? "Show less" : `Show all ${lines} lines`}
+          </AppButton>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** One tool call: what it does, then its input and output, like the IDE. */
 function ToolRow({ block }: { block: ToolBlock }) {
-  const output = block.content
+  const command = stringField(block.rawInput, "command");
+  const hasInput =
+    typeof block.rawInput === "object" &&
+    block.rawInput !== null &&
+    Object.keys(block.rawInput).length > 0;
+  const input =
+    command ?? (hasInput ? JSON.stringify(block.rawInput, null, 2) : null);
+  const description = stringField(block.rawInput, "description");
+  const detail = description ?? (block.title !== command ? block.title : null);
+  const diffs = block.content.flatMap((c) => (c.type === "diff" ? [c] : []));
+  const text = block.content
     .map((c) =>
       c.type === "content" && c.content.type === "text" ? c.content.text : "",
     )
     .filter(Boolean)
-    .join("\n");
+    .join("\n")
+    // Agents often wrap output in a Markdown fence; the box already reads as code.
+    .replace(/^```[^\n]*\n([\s\S]*?)\n?```\s*$/, "$1");
+  const output =
+    text ||
+    (block.rawOutput !== undefined && diffs.length === 0
+      ? JSON.stringify(block.rawOutput, null, 2)
+      : "");
   return (
-    <details className="assistant-tool">
-      <summary className="assistant-tool__summary">
-        <AppTypography color="text.secondary" variant="caption">
-          {block.toolKind} · {block.status}
-        </AppTypography>
-        <span className="assistant-tool__title">{block.title}</span>
-      </summary>
-      {block.rawInput !== undefined ? (
-        <pre>{JSON.stringify(block.rawInput, null, 2)}</pre>
+    <div className="assistant-tool">
+      <StateMarker state={toolState(block.status)} />
+      <div className="assistant-tool__head">
+        <span className="assistant-tool__kind">
+          {KIND_LABEL[block.toolKind] ?? "Tool"}
+        </span>
+        {detail ? (
+          <span className="assistant-tool__detail">{detail}</span>
+        ) : null}
+      </div>
+      {input || output ? (
+        <div className="assistant-tool__io">
+          {input ? (
+            <div className="assistant-tool__io-row">
+              <span className="assistant-tool__io-label">IN</span>
+              <pre className="assistant-tool__in">{input}</pre>
+            </div>
+          ) : null}
+          {output ? <ToolOutput text={output} /> : null}
+        </div>
       ) : null}
-      {block.content.map((c, index) =>
-        c.type === "diff" ? (
-          <DiffView
-            key={index}
-            newText={c.newText}
-            oldText={c.oldText}
-            path={c.path}
-          />
-        ) : null,
-      )}
-      {output ? <pre>{output}</pre> : null}
-      {block.rawOutput !== undefined &&
-      !output &&
-      !block.content.some((c) => c.type === "diff") ? (
-        <pre>{JSON.stringify(block.rawOutput, null, 2)}</pre>
-      ) : null}
-    </details>
+      {diffs.map((diff) => (
+        <DiffView
+          key={diff.path}
+          newText={diff.newText}
+          oldText={diff.oldText}
+          path={diff.path}
+        />
+      ))}
+    </div>
   );
 }
-
-const DOT_LABEL = { active: "running", failed: "failed", done: "done" };
-
-const isActive = (block: ToolBlock) =>
-  block.status === "pending" || block.status === "in_progress";
 
 /** A run of consecutive tool calls; the rows keep their block references. */
 function ToolGroupRow({ tools }: { tools: ToolBlock[] }) {
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLButtonElement>(null);
   const failed = tools.filter((tool) => tool.status === "failed").length;
-  const state =
-    failed > 0 ? "failed" : tools.some(isActive) ? "active" : "done";
+  const state: ToolState =
+    failed > 0
+      ? "failed"
+      : tools.some((tool) => toolState(tool.status) === "active")
+        ? "active"
+        : "done";
   return (
     <div className="assistant-tool-group">
       <AppButton
@@ -68,15 +167,11 @@ function ToolGroupRow({ tools }: { tools: ToolBlock[] }) {
         className="assistant-tool-group__header"
         color="inherit"
         onClick={() => setOpen(!open)}
+        ref={headerRef}
       >
-        <span
-          aria-label={DOT_LABEL[state]}
-          className={`assistant-tool-group__dot assistant-tool-group__dot--${state}`}
-          role="img"
-          title={DOT_LABEL[state]}
-        />
+        <StateMarker state={state} />
         <AppTypography variant="caption">
-          {tools.length} tool calls
+          {tools.length} {tools.length === 1 ? "tool call" : "tool calls"}
         </AppTypography>
         {failed > 0 ? (
           <AppTypography color="error" variant="caption">
@@ -86,11 +181,25 @@ function ToolGroupRow({ tools }: { tools: ToolBlock[] }) {
         <Icon icon={open ? "mdi:chevron-up" : "mdi:chevron-down"} width={18} />
       </AppButton>
       {open ? (
-        <div className="assistant-tool-group__rows">
-          {tools.map((tool) => (
-            <ToolRow key={tool.id} block={tool} />
-          ))}
-        </div>
+        <>
+          <div className="assistant-tool-list">
+            {tools.map((tool) => (
+              <ToolRow key={tool.id} block={tool} />
+            ))}
+          </div>
+          <AppButton
+            className="assistant-tool-group__collapse"
+            color="inherit"
+            onClick={() => {
+              setOpen(false);
+              headerRef.current?.focus();
+            }}
+            size="small"
+          >
+            Collapse
+            <Icon icon="mdi:chevron-up" width={18} />
+          </AppButton>
+        </>
       ) : null}
     </div>
   );
@@ -100,13 +209,12 @@ type Row =
   | { key: string; block: TranscriptBlock }
   | { key: string; tools: ToolBlock[] };
 
-/** Runs of 2+ consecutive tool blocks become one group keyed by the first call. */
+/** Every run of consecutive tool blocks becomes one group keyed by the first call. */
 function groupRows(blocks: TranscriptBlock[]): Row[] {
   const rows: Row[] = [];
   let run: ToolBlock[] = [];
   const flush = () => {
-    if (run.length === 1) rows.push({ key: run[0].id, block: run[0] });
-    else if (run.length > 1) {
+    if (run.length > 0) {
       rows.push({ key: `group:${run[0].toolCallId}`, tools: run });
     }
     run = [];
@@ -190,8 +298,6 @@ function TranscriptRow({ block }: { block: TranscriptBlock }) {
       return <AgentBlock text={block.text} />;
     case "thought":
       return <ThoughtBlock text={block.text} />;
-    case "tool":
-      return <ToolRow block={block} />;
     case "plan":
       return <PlanBlock entries={block.entries} />;
     default:

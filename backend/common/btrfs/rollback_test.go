@@ -2,14 +2,16 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -114,52 +116,52 @@ func TestRollbackPlanRejectsSnapshotSource(t *testing.T) {
 }
 
 // stubRollback mounts the top level at a temp dir with the given extra
-// mounts, lists "@" (now id 400) and "data", records mutating btrfs calls and
-// renames, and runs umount/mount through script (a shell snippet per command).
+// mounts, lists "@" (now id 400) and "data", records mutating btrfs calls,
+// renames, mounts and unmounts; fail makes "umount" or "mount" return it.
 type rollbackStub struct {
 	top       string
 	btrfs     [][]string
 	renames   [][]string
 	cmds      [][]string
 	renameErr map[int]error // by rename call index
+	// fail, when set, sees each mutation first; its error fails it unrecorded.
+	fail func(args []string) error
 }
 
-func stubRollback(t *testing.T, mounts []Mount, script map[string]string) *rollbackStub {
+func stubRollback(t *testing.T, mounts []Mount, fail map[string]error) *rollbackStub {
 	t.Helper()
 	s := &rollbackStub{top: t.TempDir()}
-	stubMounts(t, append([]Mount{{Mountpoint: s.top, UUID: rootUUID, SubvolID: 5}}, mounts...))
+	stubMounts(t, append([]Mount{{Mountpoint: s.top, Device: "/dev/root", UUID: rootUUID, SubvolID: 5}}, mounts...))
+	stubSubvolumes(t, []subvolumeRow{
+		{ID: 400, ParentID: 5, Path: "@", UUID: localUUID(400)},
+		{ID: 302, ParentID: 5, Path: "data", UUID: localUUID(302)},
+		{ID: 244, ParentID: 5, Path: rollbackOld, UUID: localUUID(244)},
+	}, 256, &s.btrfs)
 
-	oldBtrfs := runBtrfs
-	runBtrfs = func(_ context.Context, args ...string) (string, error) {
-		joined := strings.Join(args, " ")
-		switch {
-		case strings.HasPrefix(joined, "subvolume list -a -p -u -q -R "):
-			return snapshotRow(-500, "@") + snapshotRow(-598, "data") + snapshotRow(-656, rollbackOld), nil
-		case strings.HasPrefix(joined, "subvolume list -a "):
-			return "", nil
-		case strings.HasPrefix(joined, "qgroup show "):
-			return "", nil // quotas on, no data
-		case strings.HasPrefix(joined, "subvolume get-default "):
-			return "ID 256 gen 1 top level 5 path " + rollbackOld, nil
+	stubSubvolOps(t, func(args []string) error {
+		if s.fail != nil {
+			if err := s.fail(args); err != nil {
+				return err
+			}
 		}
 		s.btrfs = append(s.btrfs, args)
-		return "", nil
-	}
+		return nil
+	})
 	oldRename := renamePath
 	renamePath = func(from, to string) error {
 		s.renames = append(s.renames, []string{from, to})
 		return s.renameErr[len(s.renames)-1]
 	}
-	oldExec := execCommand
-	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		base := filepath.Base(name)
-		s.cmds = append(s.cmds, append([]string{base}, args...))
-		if body, ok := script[base]; ok {
-			return exec.CommandContext(ctx, "sh", "-c", body)
-		}
-		return exec.CommandContext(ctx, "true")
+	oldUnmount, oldMount := unmountFS, mountFS
+	unmountFS = func(target string, _ int) error {
+		s.cmds = append(s.cmds, []string{"umount", target})
+		return fail["umount"]
 	}
-	t.Cleanup(func() { runBtrfs, renamePath, execCommand = oldBtrfs, oldRename, oldExec })
+	mountFS = func(source, target, _ string, _ uintptr, data string) error {
+		s.cmds = append(s.cmds, []string{"mount", source, target, data})
+		return fail["mount"]
+	}
+	t.Cleanup(func() { renamePath, unmountFS, mountFS = oldRename, oldUnmount, oldMount })
 	return s
 }
 
@@ -214,7 +216,7 @@ func TestRollbackPlanExecuteRemountsAndDeletes(t *testing.T) {
 	}
 	want := [][]string{
 		{"umount", "/srv/data"},
-		{"mount", "-t", "btrfs", "-o", dataMountOpts, "UUID=" + rootUUID, "/srv/data"},
+		{"mount", "/dev/root", "/srv/data", "space_cache=v2,subvol=/data"},
 	}
 	if !reflect.DeepEqual(s.cmds, want) {
 		t.Fatalf("commands = %v, want %v", s.cmds, want)
@@ -242,7 +244,7 @@ func TestRollbackPlanExecuteRemountVerifiesMount(t *testing.T) {
 	s := stubRollback(t, nil, nil)
 	// After the remount findmnt still shows the old subvolume at /srv/data.
 	stubMounts(t, []Mount{
-		{Mountpoint: s.top, UUID: rootUUID, SubvolID: 5},
+		{Mountpoint: s.top, Device: "/dev/root", UUID: rootUUID, SubvolID: 5},
 		{Mountpoint: "/srv/data", UUID: rootUUID, Subvol: dataOld, SubvolID: 302},
 	})
 	plan, _ := PlanRollback("data", dataSnap, dataMounts, 5, 302, snapshotTime)
@@ -260,7 +262,7 @@ func TestRollbackPlanExecuteRemountVerifiesMount(t *testing.T) {
 }
 
 func TestRollbackPlanBusyMountKeepsOld(t *testing.T) {
-	s := stubRollback(t, dataMounts, map[string]string{"umount": "echo 'umount: /srv/data: target is busy.' >&2; exit 32"})
+	s := stubRollback(t, dataMounts, map[string]error{"umount": unix.EBUSY})
 	plan, err := PlanRollback("data", dataSnap, dataMounts, 5, 302, snapshotTime)
 	if err != nil {
 		t.Fatalf("PlanRollback: %v", err)
@@ -287,7 +289,7 @@ func TestRollbackPlanBusyMountKeepsOld(t *testing.T) {
 }
 
 func TestRollbackPlanExecuteMountFailureNamesMountpointAndOldPath(t *testing.T) {
-	stubRollback(t, dataMounts, map[string]string{"mount": "echo 'mount: /srv/data: wrong fs type.' >&2; exit 32"})
+	stubRollback(t, dataMounts, map[string]error{"mount": errors.New("wrong fs type")})
 	plan, _ := PlanRollback("data", dataSnap, dataMounts, 5, 302, snapshotTime)
 	_, err := ExecuteRollback(context.Background(), rootUUID, plan, func(int, string) {})
 	if err == nil || !strings.Contains(err.Error(), "after renaming data to "+dataOld) || !strings.Contains(err.Error(), "mount /srv/data") {
@@ -300,29 +302,24 @@ func TestRollbackPlanExecuteFailuresBeforeRenameAreClean(t *testing.T) {
 
 	// The read-write copy fails: nothing is renamed.
 	s := stubRollback(t, nil, nil)
-	oldBtrfs := runBtrfs
-	runBtrfs = func(ctx context.Context, args ...string) (string, error) {
+	s.fail = func(args []string) error {
 		if len(args) == 4 && args[1] == "snapshot" {
-			return "", exec.ErrNotFound
+			return os.ErrPermission
 		}
-		return oldBtrfs(ctx, args...)
+		return nil
 	}
 	_, err := ExecuteRollback(context.Background(), rootUUID, plan, func(int, string) {})
 	if err == nil || strings.Contains(err.Error(), "after renaming") || len(s.renames) != 0 {
 		t.Fatalf("copy failure: err = %v, renames = %v", err, s.renames)
 	}
-	runBtrfs = oldBtrfs
 
 	// Renaming the source fails: the restore copy is deleted again.
 	s = stubRollback(t, nil, nil)
-	oldBtrfs = runBtrfs
-	runBtrfs = func(ctx context.Context, args ...string) (string, error) {
+	s.fail = func(args []string) error {
 		if len(args) == 4 && args[1] == "snapshot" {
-			if mkErr := os.Mkdir(args[3], 0o755); mkErr != nil {
-				return "", mkErr
-			}
+			return os.Mkdir(args[3], 0o755)
 		}
-		return oldBtrfs(ctx, args...)
+		return nil
 	}
 	s.renameErr = map[int]error{0: os.ErrPermission}
 	_, err = ExecuteRollback(context.Background(), rootUUID, plan, func(int, string) {})
@@ -421,12 +418,11 @@ func TestRollbackExecuteSetDefaultFailureKeepsRestoredState(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := stubRollback(t, nil, nil)
-	oldBtrfs := runBtrfs
-	runBtrfs = func(ctx context.Context, args ...string) (string, error) {
+	s.fail = func(args []string) error {
 		if len(args) > 1 && args[1] == "set-default" {
-			return "", os.ErrPermission
+			return os.ErrPermission
 		}
-		return oldBtrfs(ctx, args...)
+		return nil
 	}
 	res, err := ExecuteRollback(context.Background(), rootUUID, plan, func(int, string) {})
 	if err == nil || !strings.Contains(err.Error(), "rollback restored data but could not set it as the default subvolume") {

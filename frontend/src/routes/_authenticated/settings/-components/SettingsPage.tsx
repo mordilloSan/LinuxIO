@@ -16,6 +16,7 @@ import DockerSettingsSection from "@/routes/_authenticated/-components/navbar/Do
 import IndexerSettingsSection from "@/routes/_authenticated/-components/navbar/IndexerSettingsSection";
 import MonitoringSettingsSection from "@/routes/_authenticated/-components/navbar/MonitoringSettingsSection";
 import NavbarCustomizer from "@/routes/_authenticated/-components/navbar/NavbarCustomizer";
+import NotificationSettingsSection from "@/routes/_authenticated/-components/navbar/NotificationSettingsSection";
 import PowerSettingsSection from "@/routes/_authenticated/-components/navbar/PowerSettingsSection";
 import ThemeColorsSection from "@/routes/_authenticated/-components/navbar/ThemeColorsSection";
 import UpdateSettings, {
@@ -307,6 +308,9 @@ const SettingsPage = () => {
             {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
             {effectiveTab === "monitoring" ? (
               <MonitoringSettingsSection />
+            ) : null}
+            {effectiveTab === "notifications" ? (
+              <NotificationSettingsSection />
             ) : null}
             {effectiveTab === "power" ? <PowerSettingsSection /> : null}
           </ErrorBoundary>

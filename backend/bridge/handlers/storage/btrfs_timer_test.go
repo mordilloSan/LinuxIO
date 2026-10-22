@@ -117,3 +117,13 @@ func TestBtrfsTimerEnabledReadsUnitFileState(t *testing.T) {
 		}
 	}
 }
+
+func TestEnsureBtrfsHealthTimerEnablesAndStarts(t *testing.T) {
+	rec := &recordingBtrfsTimerOps{}
+	if err := ensureBtrfsHealthTimer(context.Background(), rec.ops()); err != nil {
+		t.Fatalf("ensureBtrfsHealthTimer: %v", err)
+	}
+	if want := []string{"enable:" + btrfs.HealthTimerName, "start:" + btrfs.HealthTimerName}; !reflect.DeepEqual(rec.calls, want) {
+		t.Fatalf("calls = %v, want %v", rec.calls, want)
+	}
+}

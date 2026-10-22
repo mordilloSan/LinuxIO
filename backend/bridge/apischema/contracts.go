@@ -534,11 +534,42 @@ type BtrfsDeviceReplaceRequest struct {
 }
 
 // BtrfsBalanceRequest converts to the given profiles; a nil profile is left
-// as it is, and both nil balances without converting.
+// as it is. DataUsage limits the balance to data chunks used at most that
+// percent, which reclaims unallocated space. With nothing set everything is
+// balanced.
 type BtrfsBalanceRequest struct {
 	UUID            string  `json:"uuid"`
 	DataProfile     *string `json:"dataProfile,omitempty"`
 	MetadataProfile *string `json:"metadataProfile,omitempty"`
+	DataUsage       *int    `json:"dataUsage,omitempty"`
+}
+
+type BtrfsLabelRequest struct {
+	UUID  string `json:"uuid"`
+	Label string `json:"label"`
+}
+
+// BtrfsPoolCreateRequest formats Devices as one btrfs filesystem, mounts it
+// at Mountpoint and records it in /etc/fstab. Force overwrites foreign
+// filesystem signatures on the devices. Partition first gives each disk a
+// GPT with one partition that leaves room for a slightly smaller
+// replacement disk, and builds the pool from the partitions.
+type BtrfsPoolCreateRequest struct {
+	Label           string   `json:"label"`
+	Mountpoint      string   `json:"mountpoint"`
+	DataProfile     string   `json:"dataProfile"`
+	MetadataProfile string   `json:"metadataProfile"`
+	Devices         []string `json:"devices"`
+	Force           bool     `json:"force"`
+	Partition       bool     `json:"partition"`
+}
+
+// BtrfsPoolMountRequest mounts an unmounted pool at its fstab mountpoint, or
+// at /mnt/<label> which is then recorded in /etc/fstab; Degraded allows a
+// pool with missing devices.
+type BtrfsPoolMountRequest struct {
+	UUID     string `json:"uuid"`
+	Degraded bool   `json:"degraded"`
 }
 
 type MountpointRemoveFstabRequest struct {

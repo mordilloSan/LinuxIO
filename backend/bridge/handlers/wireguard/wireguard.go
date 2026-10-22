@@ -1,12 +1,12 @@
 package wireguard
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -272,34 +272,127 @@ func runWGQuick(ctx context.Context, action, name string) (string, error) {
 	return string(out), nil
 }
 
+// syncWireGuardConfig is wg syncconf over wgctrl: the interface keys and
+// peers from the config file are applied and peers missing from it are
+// removed, so unchanged peers keep their sessions and counters.
 func syncWireGuardConfig(ctx context.Context, name string) (string, error) {
-	wgQuickPath, err := exec.LookPath("wg-quick")
+	cfg, err := ParseWireGuardConfig(configPath(name))
 	if err != nil {
-		return "", fmt.Errorf("wg-quick not found: %w", err)
+		return "", err
+	}
+	client, err := wgctrl.New()
+	if err != nil {
+		return "", fmt.Errorf("open wgctrl: %w", err)
+	}
+	defer client.Close()
+
+	dev, err := client.Device(name)
+	if err != nil {
+		return "", fmt.Errorf("read device %s: %w", name, err)
+	}
+	deviceCfg, err := syncDeviceConfig(ctx, cfg, dev.Peers)
+	if err != nil {
+		return "", err
+	}
+	if err := client.ConfigureDevice(name, deviceCfg); err != nil {
+		return "", fmt.Errorf("configure %s: %w", name, err)
+	}
+	return "", nil
+}
+
+func syncDeviceConfig(ctx context.Context, cfg WireGuardConfig, current []wgtypes.Peer) (wgtypes.Config, error) {
+	privateKey, err := wgtypes.ParseKey(cfg.PrivateKey)
+	if err != nil {
+		return wgtypes.Config{}, fmt.Errorf("parse private key: %w", err)
+	}
+	out := wgtypes.Config{PrivateKey: &privateKey}
+	if cfg.ListenPort > 0 {
+		out.ListenPort = &cfg.ListenPort
 	}
 
-	stripCmd := rootCommand(ctx, wgQuickPath, "strip", name)
-	var stripErr bytes.Buffer
-	stripCmd.Stderr = &stripErr
-	stripped, err := stripCmd.Output()
-	if err != nil {
-		out := stripped
-		out = append(out, stripErr.Bytes()...)
-		return string(out), utils.CommandOutputError("wg-quick", []string{"strip", name}, out, err)
+	wanted := make(map[wgtypes.Key]bool, len(cfg.Peers))
+	for _, peer := range cfg.Peers {
+		pc, err := peerDeviceConfig(ctx, peer)
+		if err != nil {
+			return wgtypes.Config{}, err
+		}
+		wanted[pc.PublicKey] = true
+		out.Peers = append(out.Peers, pc)
 	}
+	for _, peer := range current {
+		if !wanted[peer.PublicKey] {
+			out.Peers = append(out.Peers, wgtypes.PeerConfig{PublicKey: peer.PublicKey, Remove: true})
+		}
+	}
+	return out, nil
+}
 
-	wgPath, err := exec.LookPath("wg")
+func peerDeviceConfig(ctx context.Context, peer PeerConfig) (wgtypes.PeerConfig, error) {
+	publicKey, err := wgtypes.ParseKey(peer.PublicKey)
 	if err != nil {
-		return "", fmt.Errorf("wg not found: %w", err)
+		return wgtypes.PeerConfig{}, fmt.Errorf("parse peer public key: %w", err)
 	}
+	pc := wgtypes.PeerConfig{PublicKey: publicKey, ReplaceAllowedIPs: true}
+	if peer.PresharedKey != "" {
+		psk, err := wgtypes.ParseKey(peer.PresharedKey)
+		if err != nil {
+			return wgtypes.PeerConfig{}, fmt.Errorf("parse preshared key for %s: %w", peer.PublicKey, err)
+		}
+		pc.PresharedKey = &psk
+	}
+	for _, allowed := range peer.AllowedIPs {
+		ipNet, err := parseAllowedIP(allowed)
+		if err != nil {
+			return wgtypes.PeerConfig{}, fmt.Errorf("parse allowed IP %q for %s: %w", allowed, peer.PublicKey, err)
+		}
+		pc.AllowedIPs = append(pc.AllowedIPs, ipNet)
+	}
+	if peer.Endpoint != "" {
+		endpoint, err := resolveEndpoint(ctx, peer.Endpoint)
+		if err != nil {
+			return wgtypes.PeerConfig{}, fmt.Errorf("resolve endpoint %q for %s: %w", peer.Endpoint, peer.PublicKey, err)
+		}
+		pc.Endpoint = endpoint
+	}
+	if peer.PersistentKeepalive > 0 {
+		keepalive := time.Duration(peer.PersistentKeepalive) * time.Second
+		pc.PersistentKeepaliveInterval = &keepalive
+	}
+	return pc, nil
+}
 
-	cmd := rootCommand(ctx, wgPath, "syncconf", name, "/dev/stdin")
-	cmd.Stdin = bytes.NewReader(stripped)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out), utils.CommandOutputError("wg", []string{"syncconf", name, "/dev/stdin"}, out, err)
+// parseAllowedIP accepts a CIDR or, like wg, a bare address as a host route.
+func parseAllowedIP(value string) (net.IPNet, error) {
+	if _, ipNet, err := net.ParseCIDR(value); err == nil {
+		return *ipNet, nil
 	}
-	return string(out), nil
+	ip := net.ParseIP(value)
+	if ip == nil {
+		return net.IPNet{}, fmt.Errorf("invalid address")
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return net.IPNet{IP: v4, Mask: net.CIDRMask(32, 32)}, nil
+	}
+	return net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}, nil
+}
+
+func resolveEndpoint(ctx context.Context, endpoint string) (*net.UDPAddr, error) {
+	host, portText, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	port, err := net.DefaultResolver.LookupPort(ctx, "udp", portText)
+	if err != nil {
+		return nil, err
+	}
+	addrs, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return nil, err
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("no addresses for %s", host)
+	}
+	return &net.UDPAddr{IP: addrs[0].AsSlice(), Port: port}, nil
 }
 
 func rootCommand(ctx context.Context, path string, args ...string) *exec.Cmd {

@@ -13,7 +13,7 @@ import { createRoot } from "react-dom/client";
 
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import { Route as LogsRoute } from "@/routes/_authenticated/logs/route";
-import { Route as NetworkRoute } from "@/routes/_authenticated/network/route";
+import { Route as NetworkRoute } from "@/routes/_authenticated/network/index";
 import { Route as StorageRoute } from "@/routes/_authenticated/storage/index";
 import { Route as VMRoute } from "@/routes/_authenticated/vm/route";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
@@ -26,9 +26,9 @@ import "@/icons/icons";
 import "@/icons/shell";
 import "@/theme/variables.css";
 
-import ProcessesFixtureLayout, {
-  ProcessesFixtureTab,
-} from "./routes/ProcessesPage";
+import ProgramsFixtureLayout, {
+  ProgramsFixtureTab,
+} from "./routes/ProgramsPage";
 
 installTabNavigationIntent();
 
@@ -132,7 +132,7 @@ const authenticatedRoute = createRoute({
 const networkHandoffRoute = createRoute({
   component: NetworkHandoffPage,
   getParentRoute: () => authenticatedRoute,
-  path: "network",
+  path: "network/",
   validateSearch: NetworkRoute.options.validateSearch,
 });
 const volumesRoute = createRoute({
@@ -302,20 +302,14 @@ const validateProcessFixtureSearch = (search: Record<string, unknown>) => ({
       ? search.filter
       : undefined,
 });
-const processesLayoutRoute = createRoute({
-  component: ProcessesFixtureLayout,
+const programsLayoutRoute = createRoute({
+  component: ProgramsFixtureLayout,
   getParentRoute: () => rootRoute,
   path: "services",
 });
-const processesRoute = createRoute({
-  component: ProcessesFixtureTab,
-  getParentRoute: () => processesLayoutRoute,
-  path: "processes",
-  validateSearch: validateProcessFixtureSearch,
-});
 const programsRoute = createRoute({
-  component: ProcessesFixtureTab,
-  getParentRoute: () => processesLayoutRoute,
+  component: ProgramsFixtureTab,
+  getParentRoute: () => programsLayoutRoute,
   path: "programs",
   validateSearch: validateProcessFixtureSearch,
 });
@@ -350,7 +344,7 @@ const backgroundTasksRoute = createRoute({
 const rsyncRoute = createRoute({
   component: RsyncPage,
   getParentRoute: () => rootRoute,
-  path: "/shares/rsync",
+  path: "/storage/rsync",
 });
 const rsyncLightRoute = createRoute({
   component: RsyncPage,
@@ -392,7 +386,7 @@ const routeTree = rootRoute.addChildren([
   storageDisksRoute,
   storageTopologyRoute,
   lightStorageTopologyRoute,
-  processesLayoutRoute.addChildren([processesRoute, programsRoute]),
+  programsLayoutRoute.addChildren([programsRoute]),
 ]);
 const router = createRouter({
   defaultNotFoundComponent: NotFoundRoute,

@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import ProcessesTab from "./-components/ProcessesTab";
+import ProgramsTab from "./-components/ProgramsTab";
 
 export const Route = createFileRoute("/_authenticated/services/programs")({
   validateSearch: (search) => ({ ...optionalString(search, "filter") }),
@@ -17,7 +17,7 @@ function ProgramsRoute() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   return (
-    <ProcessesTab
+    <ProgramsTab
       filter={search.filter ?? ""}
       onFilterChange={(filter) =>
         void navigate({
@@ -25,7 +25,6 @@ function ProgramsRoute() {
           search: (previous) => ({ ...previous, filter: filter || undefined }),
         })
       }
-      view="programs"
     />
   );
 }

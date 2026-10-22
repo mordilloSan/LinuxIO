@@ -36,6 +36,9 @@ func run(ctx context.Context, args ...string) (string, error) {
 	return runCommand(ctx, "btrfs", args...)
 }
 
+// runBtrfs is a variable so tests can stub the btrfs command.
+var runBtrfs = run
+
 func runCommand(ctx context.Context, name string, args ...string) (string, error) {
 	return runCommandInput(ctx, "", name, args...)
 }

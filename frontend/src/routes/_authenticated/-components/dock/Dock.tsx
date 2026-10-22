@@ -1,8 +1,14 @@
+import { DndContext } from "@dnd-kit/core";
+import {
+  horizontalListSortingStrategy,
+  SortableContext,
+} from "@dnd-kit/sortable";
 import type { CSSProperties } from "react";
 
 import type { ConfigDockAccentGradient, DockTileColors } from "@/api";
 import { useConfigValue } from "@/hooks/useConfig";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppTheme } from "@/theme";
 import { fromHsl, lighten, toHsl } from "@/utils/color";
 
@@ -12,7 +18,9 @@ import {
   DockMagnificationProvider,
   useDockPointerLiveness,
 } from "./useDockMagnification";
+import type { SidebarItem } from "../sidebar/types";
 import { useSidebarItems } from "../sidebar/useSidebarItems";
+import "@/components/reorder/reorder.css";
 import "./dock.css";
 
 /* Fixed per-route gradients (top → bottom), macOS-app-icon style. Routes
@@ -29,7 +37,6 @@ const VIBRANT_GRADIENTS: Record<string, TileGradient> = {
   "/network": ["#3fd4e0", "#0aa3b5"],
   "/services": ["#b57af2", "#7c3fd6"],
   "/settings": ["#c3ccd8", "#5f6a78"],
-  "/shares": ["#7f96f7", "#4356d6"],
   "/storage": ["#ff9f5a", "#ee6c1d"],
   "/terminal": ["#43494f", "#17191c"],
   "/updates": ["#63de74", "#22a83a"],
@@ -95,9 +102,17 @@ const gradientFor = (
   }
 };
 
+const getNavItemId = (item: SidebarItem) => item.to;
+
 const Dock = () => {
-  const items = useSidebarItems();
   const canNavigate = useUpdateCanNavigate();
+  const surface = useReorderableSurface({
+    disabled: !canNavigate,
+    getId: getNavItemId,
+    items: useSidebarItems(),
+    surface: "navigation.dock",
+  });
+  const { items } = surface;
   const theme = useAppTheme();
   const [dockTileColors] = useConfigValue("dockTileColors");
   const [dockAccentGradient] = useConfigValue("dockAccentGradient");
@@ -117,9 +132,12 @@ const Dock = () => {
     <nav
       aria-label="Primary navigation"
       className="app-dock"
-      onPointerDown={onPointerDown}
+      /* Magnification measures tile centres lazily and would keep stale ones
+         across a rearrangement, so layout mode parks it at rest; the reset
+         also marks the layout for a fresh measure once the mode closes. */
+      onPointerDown={surface.editMode ? onPointerLeave : onPointerDown}
       onPointerLeave={onPointerLeave}
-      onPointerMove={onPointerMove}
+      onPointerMove={surface.editMode ? onPointerLeave : onPointerMove}
       ref={navRef}
       style={
         activeGradient
@@ -130,23 +148,38 @@ const Dock = () => {
           : undefined
       }
     >
-      <ul className="app-dock__list">
-        {items.map((page, index) => (
-          <DockItem
-            {...page}
-            disabled={!canNavigate}
-            gradient={gradientFor(
-              palette,
-              accent,
-              dockAccentGradient,
-              page.to,
-              index,
-              items.length,
-            )}
-            key={page.title}
-          />
-        ))}
-      </ul>
+      <DndContext {...surface.dndContextProps}>
+        <SortableContext
+          items={surface.ids}
+          strategy={horizontalListSortingStrategy}
+        >
+          <ul
+            className={
+              surface.editMode
+                ? "app-dock__list app-dock__list--reordering"
+                : "app-dock__list"
+            }
+          >
+            {items.map((page, index) => (
+              <DockItem
+                {...page}
+                disabled={!canNavigate}
+                editMode={surface.editMode}
+                gradient={gradientFor(
+                  palette,
+                  accent,
+                  dockAccentGradient,
+                  page.to,
+                  index,
+                  items.length,
+                )}
+                key={page.title}
+                pending={surface.pendingId === page.to}
+              />
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
     </nav>
   );
 };

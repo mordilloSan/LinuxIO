@@ -46,11 +46,24 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       "balance_cancel",
       "scrub_start",
       "scrub_cancel",
+      "device_grow",
+      "set_label",
     ]) {
       expect(OPERATION_QUERY_INVALIDATIONS[`storage.btrfs_${action}`]).toEqual([
         ["linuxio", "storage", "btrfs_list"],
         ["linuxio", "storage", "get_topology"],
         ["linuxio", "storage", "get_drive_info"],
+      ]);
+    }
+  });
+  it("refreshes the btrfs inventory, unmounted pools and live filesystems after pool actions", () => {
+    for (const action of ["pool_create", "pool_destroy", "pool_mount"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`storage.btrfs_${action}`]).toEqual([
+        ["linuxio", "storage", "btrfs_list"],
+        ["linuxio", "storage", "get_topology"],
+        ["linuxio", "storage", "get_drive_info"],
+        ["linuxio", "storage", "btrfs_pools_offline"],
+        ["linuxio", "monitoring", "get_live"],
       ]);
     }
   });

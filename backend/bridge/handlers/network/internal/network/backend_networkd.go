@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	ini "gopkg.in/ini.v1"
-
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 type networkdBackend struct {
@@ -118,16 +116,11 @@ func (b *networkdBackend) Enable(ctx context.Context) error {
 	if err := b.reloadAndReconfigure(ctx); err != nil {
 		return err
 	}
-	output, err := b.env.Runner.Run(ctx, "networkctl", "up", b.iface)
-	if err != nil {
-		return utils.CommandOutputError("networkctl", []string{"up", b.iface}, output, err)
-	}
-	return nil
+	return setLinkUp(ctx, b.iface)
 }
 
 func (b *networkdBackend) Disable(ctx context.Context) error {
-	output, err := b.env.Runner.Run(ctx, "networkctl", "down", b.iface)
-	return utils.CommandOutputError("networkctl", []string{"down", b.iface}, output, err)
+	return setLinkDown(ctx, b.iface)
 }
 
 func (b *networkdBackend) update(ctx context.Context, updateFn func(cfg *ini.File) error) error {
@@ -154,12 +147,10 @@ func (b *networkdBackend) update(ctx context.Context, updateFn func(cfg *ini.Fil
 }
 
 func (b *networkdBackend) reloadAndReconfigure(ctx context.Context) error {
-	output, err := b.env.Runner.Run(ctx, "networkctl", "reload")
-	if err != nil {
-		return utils.CommandOutputError("networkctl", []string{"reload"}, output, err)
+	if err := callNetworkdManager(ctx, b.env, "Reload", ""); err != nil {
+		return err
 	}
-	output, err = b.env.Runner.Run(ctx, "networkctl", "reconfigure", b.iface)
-	return utils.CommandOutputError("networkctl", []string{"reconfigure", b.iface}, output, err)
+	return callNetworkdManager(ctx, b.env, "ReconfigureLink", b.iface)
 }
 
 func networkdMatchesInterface(cfg *ini.File, iface string) bool {

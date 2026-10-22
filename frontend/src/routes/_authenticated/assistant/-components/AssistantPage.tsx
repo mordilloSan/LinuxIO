@@ -116,8 +116,19 @@ export default function AssistantPage({
 
   if (!agent) {
     return (
-      <AppAlert severity="info">
-        Choose an agent in Settings → Assistant to start a conversation.
+      <AppAlert
+        severity="info"
+        action={
+          <AppButton
+            onClick={() =>
+              void navigate({ to: "/settings", search: { tab: "assistant" } })
+            }
+          >
+            Choose an agent
+          </AppButton>
+        }
+      >
+        No agent is set up yet. Choose one to start a conversation.
       </AppAlert>
     );
   }
@@ -228,7 +239,7 @@ export default function AssistantPage({
         )}
       </AppMenu>
       <ConfirmDialog
-        confirmText="Delete"
+        confirmText="Delete chat"
         destructive
         message={`Delete "${deleteTarget?.label ?? ""}"? This cannot be undone.`}
         onClose={() => setDeleteTarget(null)}
@@ -276,7 +287,7 @@ export default function AssistantPage({
                   ) : null,
                 )}
                 <AppButton onClick={() => void assistantStore.restart()}>
-                  I have logged in
+                  Reconnect
                 </AppButton>
               </div>
             </AppAlert>

@@ -2,14 +2,16 @@ package btrfs
 
 import "github.com/mordilloSan/LinuxIO/backend/common/version"
 
-// Systemd units that run timeline snapshots hourly via the linuxio CLI.
+// Systemd units that run timeline snapshots hourly via the linuxio CLI. The
+// health timer is packaged in packaging/systemd and only enabled here.
 const (
 	SnapshotServiceName = "linuxio-btrfs-snapshot.service"
 	SnapshotTimerName   = "linuxio-btrfs-snapshot.timer"
+	HealthTimerName     = "linuxio-btrfs-health.timer"
 	SnapshotUnitDir     = "/etc/systemd/system"
 )
 
-// RenderUnit returns the oneshot service the timer starts.
+// RenderUnit returns the oneshot service the snapshot timer starts.
 func RenderUnit() []byte {
 	return []byte("[Unit]\nDescription=LinuxIO btrfs timeline snapshots\n\n[Service]\nType=oneshot\nExecStart=" +
 		version.BinDir + "/linuxio btrfs-snapshot run\n")

@@ -54,6 +54,12 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.BtrfsSSHTrustRequest, btrfs.BtrfsSSHTrust]("storage.btrfs_replication_ssh_trust", apischema.Privileged()).Handle(handleBtrfsReplicationSSHTrust),
 	apischema.Call[apischema.BtrfsDeviceAddRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_add", apischema.Privileged()).Handle(handleBtrfsDeviceAdd),
 	apischema.Call[apischema.UUIDRequest, apischema.SuccessResponse]("storage.btrfs_balance_cancel", apischema.Privileged()).Handle(handleBtrfsBalanceCancel),
+	apischema.Call[apischema.BtrfsPoolCreateRequest, btrfs.BtrfsFilesystem]("storage.btrfs_pool_create", apischema.Privileged()).Handle(handleBtrfsPoolCreate),
+	apischema.Call[apischema.UUIDRequest, apischema.SuccessResponse]("storage.btrfs_pool_destroy", apischema.Privileged()).Handle(handleBtrfsPoolDestroy),
+	apischema.Call[apischema.BtrfsPoolMountRequest, btrfs.BtrfsFilesystem]("storage.btrfs_pool_mount", apischema.Privileged()).Handle(handleBtrfsPoolMount),
+	apischema.Call[apischema.NoRequest, []btrfs.BtrfsOfflinePool]("storage.btrfs_pools_offline", apischema.RetrySafe()).Handle(handleBtrfsPoolsOffline),
+	apischema.Call[apischema.BtrfsDeviceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_grow", apischema.Privileged()).Handle(handleBtrfsDeviceGrow),
+	apischema.Call[apischema.BtrfsLabelRequest, btrfs.BtrfsFilesystem]("storage.btrfs_set_label", apischema.Privileged()).Handle(handleBtrfsSetLabel),
 	apischema.Call[apischema.UUIDRequest, apischema.SuccessResponse]("storage.btrfs_scrub_cancel", apischema.Privileged()).Handle(handleBtrfsScrubCancel),
 	apischema.Call[apischema.NoRequest, apischema.BtrfsMaintenanceSchedule]("storage.get_btrfs_maintenance", apischema.RetrySafe()).Handle(handleGetBtrfsMaintenance),
 	apischema.Call[apischema.BtrfsMaintenanceRequest, apischema.BtrfsMaintenanceSchedule]("storage.set_btrfs_maintenance").Handle(handleSetBtrfsMaintenance),
@@ -78,8 +84,9 @@ func handleBtrfsList(ctx context.Context, _ apischema.NoRequest) ([]btrfs.BtrfsF
 		return nil, err
 	}
 	for _, fs := range filesystems {
-		raiseBtrfsHealthAlerts(ctx, fs)
+		btrfs.RaiseAlerts(ctx, fs)
 	}
+	ensureBtrfsHealthTimerOnce(ctx)
 	slog.Debug("listed btrfs filesystems", "count", len(filesystems))
 	return filesystems, nil
 }

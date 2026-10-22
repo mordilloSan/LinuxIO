@@ -174,9 +174,9 @@ func TestCreateBridgeWritesNetworkdConfigurationAndApplies(t *testing.T) {
 		t.Fatalf("member network = %q", body)
 	}
 	requireCalls(t, runner,
-		"networkctl reload",
-		"networkctl reconfigure br.test",
-		"networkctl reconfigure eth1",
+		"networkd Reload",
+		"networkd ReconfigureLink br.test",
+		"networkd ReconfigureLink eth1",
 	)
 }
 
@@ -307,7 +307,7 @@ func TestCreateNetworkdBridgeRestoresFilesAfterApplyFailure(t *testing.T) {
 	memberPath := filepath.Join(env.NetworkdDir, "10-eth1.network")
 	original := "[Match]\nName=eth1\n\n[Network]\nDHCP=no\n"
 	mustWriteFile(t, memberPath, original)
-	runner.fail("networkctl reconfigure br0", errors.New("reconfigure failed"))
+	runner.fail("networkd ReconfigureLink br0", errors.New("reconfigure failed"))
 
 	_, err := CreateBridge(context.Background(), env, BridgePlan{Name: "br0", Member: "eth1"})
 	if err == nil || !strings.Contains(err.Error(), "reconfigure failed") {
@@ -329,10 +329,10 @@ func TestCreateNetworkdBridgeRestoresFilesAfterApplyFailure(t *testing.T) {
 		}
 	}
 	requireCalls(t, runner,
-		"networkctl reload",
-		"networkctl reconfigure br0",
-		"networkctl reload",
-		"networkctl reconfigure eth1",
+		"networkd Reload",
+		"networkd ReconfigureLink br0",
+		"networkd Reload",
+		"networkd ReconfigureLink eth1",
 	)
 }
 

@@ -197,27 +197,28 @@ Everything a route file needs comes from these four `-` prefixed modules:
 
 ## Anatomy Of A Route
 
-A complete, guarded, data-owning route — `routes/_authenticated/wireguard/route.tsx`:
+A complete, guarded, data-owning route — `routes/_authenticated/vm/route.tsx`:
 
 ```tsx
 const access = {
-  requiredCapabilities: ["wireguardAvailable"],
+  requiredCapabilities: ["libvirtAvailable"],
   requiresPrivileged: true,
 } satisfies AccessPolicy;
 
-export const Route = createFileRoute("/_authenticated/wireguard")({
+export const Route = createFileRoute("/_authenticated/vm")({
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [
-      linuxio.wireguard.list_interfaces,
+      linuxio.virt.list,
+      linuxio.virt.preflight({}),
     ]),
-  component: WireguardPage,
+  component: VMPage,
   staticData: {
     access,
     navigation: {
-      icon: WireguardIcon,
-      position: 80,
-      title: "Wireguard",
+      icon: VirtualMachineIcon,
+      position: 55,
+      title: "VMs",
     },
   },
 });
@@ -363,7 +364,7 @@ either way, so the component reuses the entry the loader seeded and simply
 attaches an observer:
 
 ```tsx
-// wireguard/route.tsx
+// network/wireguard.tsx
 loader: (loaderArgs) =>
   loadRouteQueries(loaderArgs, [
     linuxio.wireguard.list_interfaces,
@@ -371,7 +372,7 @@ loader: (loaderArgs) =>
 ```
 
 ```tsx
-// wireguard/-components/WireguardPage.tsx
+// network/-components/wireguard/WireguardPage.tsx
 const { data: interfaces } = useSuspenseQuery({
   ...linuxio.wireguard.list_interfaces,
   refetchInterval: 10000,
@@ -607,20 +608,22 @@ inherits its ancestor's.
 | `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | `volume` | — |
 | `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
-| `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | — | — |
-| `/network` | `network/route.tsx` | `loadRouteQueries` ×1 | — | `iface`, `tab`, `handoffOperationId` | — |
+| `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | `unit`, `invocationId` | — |
+| `/network` | `network/route.tsx` | — | — | — | — |
+| `/network/` | `network/index.tsx` | `loadRouteQueries` ×1 | — | `iface`, `handoffOperationId` | — |
+| `/network/wireguard` | `network/wireguard.tsx` | `loadRouteQueries` ×1 | — | `iface` | `requireAccess` wireguard, privileged |
 | `/services` | `services/route.tsx` | — | — | — | — |
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
 | `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | — | — |
-| `/shares` | `shares/route.tsx` | — | — | — | — |
-| `/shares/` | `shares/index.tsx` | `loadRouteQueries` ×2 | — | — | — |
-| `/shares/mounts` | `shares/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/storage` | `storage/route.tsx` | — | — | — | — |
-| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs` | — |
-| `/storage/btrfs` | `storage/btrfs.tsx` | `loadRouteQueries` ×1 | — | `fs` | `requireAccess` btrfs |
+| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `pool` | — |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
+| `/storage/mounts` | `storage/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
+| `/storage/rsync` | `storage/rsync.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` privileged |
+| `/storage/shares` | `storage/shares.tsx` | `loadRouteQueries` ×2 | — | — | — |
+| `/storage/snapshots` | `storage/snapshots.tsx` | `loadRouteQueries` ×1 | — | `fs` | `requireAccess` btrfs |
 | `/storage/topology` | `storage/topology.tsx` | `loadRouteQueries` ×1 | — | `node` | — |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/updates` | `updates/route.tsx` | — | — | — | — |
@@ -633,7 +636,6 @@ inherits its ancestor's.
 | `/vm/machines` | `vm/machines/route.tsx` | — | — | — | — |
 | `/vm/machines/` | `vm/machines/index.tsx` | — | — | — | — |
 | `/vm/machines/$name` | `vm/machines/$name.tsx` | `loadRouteQueries` ×1 | *params* | — | — |
-| `/wireguard` | `wireguard/route.tsx` | `loadRouteQueries` ×1 | — | — | `requireAccess` wireguard, privileged |
 
 Paths under `_authenticated/` are shown relative to it. The five `/vm*` rows with
 no loader inherit `/vm`'s — that is the intended shape, not an omission.
@@ -680,13 +682,13 @@ the whole tree:
 | `_authenticated.tsx` | `requireAuthentication` | signed in |
 | `sign-in/route.tsx` | `requireGuest` | signed **out** |
 | `docker/route.tsx` | `requireAccess` | `dockerAvailable` |
-| `storage/btrfs.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
+| `storage/snapshots.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
 | `hardware/route.tsx` | `requireAccess` | `lmSensorsAvailable` |
 | `vm/route.tsx` | `requireAccess` | `libvirtAvailable` + privileged |
-| `wireguard/route.tsx` | `requireAccess` | `wireguardAvailable` + privileged |
+| `network/wireguard.tsx` | `requireAccess` | `wireguardAvailable` + privileged |
 | `assistant/route.tsx` | `requireAccess` | `nodeAvailable` |
 | `services/schedules.tsx` | `requireAccess` | privileged |
-| `shares/rsync.tsx` | `requireAccess` | privileged |
+| `storage/rsync.tsx` | `requireAccess` | privileged |
 
 `requireAccess` throws `notFound()` — a 404, **deliberately not a 403**, so an
 unavailable capability is not disclosed to an unauthorised caller. This is
@@ -788,9 +790,9 @@ export function useSidebarItems(): SidebarItem[] {
 
 Current `position` ladder — pick a gap, and leave room:
 
-| 0 | 10 | 20 | 30 | 35 | 40 | 50 | 55 | 60 | 70 | 80 | 90 | 100 | 110 | 120 |
-|---|----|----|----|----|----|----|----|----|----|----|----|-----|-----|-----|
-| Dashboard | Network | Updates | Services | Logs | Storage | Docker | VMs | Accounts | Shares | Wireguard | Hardware | Navigator | Terminal | Settings |
+| 0 | 10 | 20 | 30 | 35 | 40 | 50 | 55 | 60 | 90 | 100 | 110 | 115 | 120 |
+|---|----|----|----|----|----|----|----|----|----|-----|-----|-----|-----|
+| Dashboard | Network | Updates | Services | Logs | Storage | Docker | VMs | Accounts | Hardware | Navigator | Terminal | Assistant | Settings |
 
 ## Page Tabs Are Child Routes
 
