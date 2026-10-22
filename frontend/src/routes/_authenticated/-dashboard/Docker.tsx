@@ -325,6 +325,9 @@ const DockerContainers = () => {
                 }
                 role="group"
                 style={{
+                  // Flex blockifies the inline icon so its baseline descent
+                  // doesn't overflow the cell and add a scrollbar.
+                  display: "flex",
                   position: "relative",
                   width: 36,
                   height: 36,
