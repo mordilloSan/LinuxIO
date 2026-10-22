@@ -3,14 +3,30 @@ import { Link } from "@tanstack/react-router";
 import { memo } from "react";
 
 import type { SidebarItem } from "./types";
+import { useSortableNavItem } from "./useSortableNavItem";
 
 type SidebarNavListItemProps = SidebarItem & {
   collapsed?: boolean;
   disabled?: boolean;
+  /** Layout mode is open: the entry is being rearranged, not followed. */
+  editMode?: boolean;
+  /** This entry is being held, waiting for the hold to complete. */
+  pending?: boolean;
 };
 
 const SidebarNavList = memo<SidebarNavListItemProps>(
-  ({ to, title, icon, params, collapsed = false, disabled = false }) => {
+  ({
+    to,
+    title,
+    icon,
+    params,
+    collapsed = false,
+    disabled = false,
+    editMode = false,
+    pending = false,
+  }) => {
+    const { describedBy, itemProps } = useSortableNavItem(to, disabled);
+
     const renderIcon = () => {
       if (!icon) return null;
       if (typeof icon === "string")
@@ -26,6 +42,9 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
     ]
       .filter(Boolean)
       .join(" ");
+    const itemClassName = pending
+      ? "app-sidebar__item app-sidebar__item--reorder-pending"
+      : "app-sidebar__item";
 
     const content = (
       <>
@@ -38,7 +57,7 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
 
     if (disabled) {
       return (
-        <li>
+        <li className={itemClassName} {...itemProps}>
           <span
             aria-disabled="true"
             className={baseClassName}
@@ -51,14 +70,20 @@ const SidebarNavList = memo<SidebarNavListItemProps>(
     }
 
     return (
-      <li>
+      <li className={itemClassName} {...itemProps}>
+        {/* Layout mode drops the href: dnd-kit only stops the trailing click
+            from propagating, so a live href would still navigate natively.
+            tabIndex keeps the bare anchor focusable through a keyboard drag. */}
         <Link
           activeOptions={{ exact: to === "/" }}
           activeProps={{
             className: `${baseClassName} app-sidebar-link--active`,
           }}
+          aria-describedby={describedBy}
           className={baseClassName}
+          disabled={editMode}
           params={params}
+          tabIndex={editMode ? 0 : undefined}
           title={collapsed ? title : undefined}
           to={to}
         >

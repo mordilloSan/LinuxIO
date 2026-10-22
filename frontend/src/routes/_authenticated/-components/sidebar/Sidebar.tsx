@@ -1,3 +1,8 @@
+import { DndContext } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Icon } from "@iconify/react";
 import { useCallback, useState, type CSSProperties } from "react";
 
@@ -6,12 +11,16 @@ import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
+import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { collapsedDrawerWidth, drawerWidth } from "@/theme/constants";
 
 import SidebarNavList from "./SidebarNavList";
 import type { SidebarItem } from "./types";
 import useSidebar from "./useSidebar";
+import "@/components/reorder/reorder.css";
 import "./sidebar.css";
+
+const getNavItemId = (item: SidebarItem) => item.to;
 
 export interface SidebarProps {
   items: SidebarItem[];
@@ -21,6 +30,12 @@ const Sidebar = ({ items }: SidebarProps) => {
   const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
     useSidebar();
   const canNavigate = useUpdateCanNavigate();
+  const surface = useReorderableSurface({
+    disabled: !canNavigate,
+    getId: getNavItemId,
+    items,
+    surface: "navigation.sidebar",
+  });
 
   const [hovered, setHovered] = useState(false);
 
@@ -98,16 +113,31 @@ const Sidebar = ({ items }: SidebarProps) => {
         </div>
 
         <nav className="app-sidebar__nav">
-          <ul className="app-sidebar__list">
-            {items.map((page) => (
-              <SidebarNavList
-                {...page}
-                collapsed={isDesktop && collapsed && !hovered}
-                disabled={!canNavigate}
-                key={page.title}
-              />
-            ))}
-          </ul>
+          <DndContext {...surface.dndContextProps}>
+            <SortableContext
+              items={surface.ids}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul
+                className={
+                  surface.editMode
+                    ? "app-sidebar__list app-sidebar__list--reordering"
+                    : "app-sidebar__list"
+                }
+              >
+                {surface.items.map((page) => (
+                  <SidebarNavList
+                    {...page}
+                    collapsed={isDesktop && collapsed && !hovered}
+                    disabled={!canNavigate}
+                    editMode={surface.editMode}
+                    key={page.title}
+                    pending={surface.pendingId === page.to}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
         </nav>
       </aside>
     </>

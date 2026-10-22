@@ -100,6 +100,29 @@
   color: var(--app-sidebar-item-active-color);
 }
 
+/* Hold-to-reorder (useSortableNavItem): the held entry fills an inset ring
+   for as long as the hold takes, and layout mode trades the pointer for a grab
+   hand. */
+.app-sidebar__item--reorder-pending .app-sidebar-link {
+  outline: 2px solid var(--reorder-hold-color);
+  outline-offset: -2px;
+  animation: reorder-hold-row var(--reorder-hold-ms) ease-out forwards;
+}
+
+.app-sidebar__list--reordering .app-sidebar-link {
+  cursor: grab;
+}
+
+.app-sidebar__list--reordering .app-sidebar-link:active {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar__item--reorder-pending .app-sidebar-link {
+    animation: none;
+  }
+}
+
 .app-sidebar-link--disabled {
   opacity: 0.5;
   cursor: not-allowed;
