@@ -33,7 +33,7 @@ import { formatFileSize } from "@/utils/formaters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import BtrfsBalanceDialog from "./BtrfsBalanceDialog";
-import { BTRFS_TOAST_META } from "./btrfsShared";
+import { BTRFS_POOL_TOAST_META } from "./btrfsShared";
 
 type DeviceDialog =
   | { kind: "add" }
@@ -60,19 +60,19 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     {
       success: "Device added",
       error: "Failed to add device",
-      toast: BTRFS_TOAST_META,
+      toast: BTRFS_POOL_TOAST_META,
     },
   );
   const { mutate: cancelBalance } = useCallMutation(
     linuxio.storage.btrfs_balance_cancel,
-    { error: "Failed to cancel balance", toast: BTRFS_TOAST_META },
+    { error: "Failed to cancel balance", toast: BTRFS_POOL_TOAST_META },
   );
   const { mutate: growDevice, isPending: isGrowing } = useCallMutation(
     linuxio.storage.btrfs_device_grow,
     {
       success: "Device grown to its disk size",
       error: "Failed to grow device",
-      toast: BTRFS_TOAST_META,
+      toast: BTRFS_POOL_TOAST_META,
     },
   );
   const taskConfig = (success: string, error: string) => ({
@@ -80,7 +80,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       setProgress(taskProgress.detail ?? null),
     success,
     error,
-    toast: BTRFS_TOAST_META,
+    toast: BTRFS_POOL_TOAST_META,
     options: { onSettled: () => setProgress(null) },
   });
   const removeDevice = linuxio.storage.btrfs_device_remove.useTaskStreamAction<

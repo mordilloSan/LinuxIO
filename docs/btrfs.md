@@ -1,8 +1,10 @@
 # Btrfs management
 
-The **Storage → Btrfs** tab (`/storage/btrfs`) manages btrfs filesystems:
-health, subvolumes, snapshots with rollback, automatic snapshots, devices and
-profiles, replication to another filesystem or host, quotas and compression.
+The **Storage → Snapshots** tab (`/storage/snapshots`) manages subvolumes,
+snapshots with rollback, automatic snapshots and replication to another
+filesystem or host. Each pool's details on the **Storage → Disks** overview
+(`/storage?pool=<uuid>`) hold the rest: health, devices and profiles, space,
+quotas, compression and maintenance timers.
 Everything on the host is read and driven through the kernel's btrfs ioctls,
 `mount(2)`, `/proc/self/mountinfo` and the disks' superblocks: devices,
 profiles, balance, scrub, space, health, pools and partition tables,
@@ -20,19 +22,22 @@ real kernel on loop devices; it needs sudo.
 ## Capability and privileges
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
-gates the tab; see [Capabilities](./capabilities.md#btrfs-tools). The tab is
-**administrator-only**: the route requires a privileged session, reads run
+gates the Snapshots tab and the pools on the Disks overview; see
+[Capabilities](./capabilities.md#btrfs-tools). Both are
+**administrator-only**: they require a privileged session, reads run
 `btrfs` as root and the configuration files are root `0600`.
 
 Docker's btrfs storage-driver subvolumes are hidden from every list.
 
 ## Filesystem health
 
-Each filesystem card shows its devices, allocation, profiles and per-device
+Each pool's details show its devices, allocation, profiles and per-device
 error counters. A device the kernel knows but cannot find is listed as missing
-with an empty path, so it can be removed or replaced. The health banner leads
-with the worst condition and the one action that fixes it: **Replace missing
-disk** on a degraded pool, **Reclaim space** when metadata is nearly full.
+with an empty path, so it can be removed or replaced. The health banner at the
+top of the details leads with the worst condition and the one action that
+fixes it: **Replace missing disk** on a degraded pool, **Reclaim space** when
+metadata is nearly full. Health, scrub and space alerts link to those details;
+snapshot and replication alerts link to the Snapshots tab.
 
 Alerts are updated whenever the list is loaded and, independently of the
 browser, by `linuxio-btrfs-health.timer`, which runs `linuxio btrfs-health
@@ -255,6 +260,9 @@ Connections use `StrictHostKeyChecking=yes`, `BatchMode=yes`,
 key fails the job.
 
 ## Quotas and compression
+
+Both are in the **Settings** card of the pool details, with the
+btrfsmaintenance timers.
 
 - **Quotas** toggle enables or disables qgroups with the quota ioctl. With
   quotas on, subvolume and snapshot sizes are read from the quota tree and

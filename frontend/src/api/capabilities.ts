@@ -296,7 +296,7 @@ export const CAPABILITIES = [
     reasonUnknown: "btrfs-progs availability is still being checked.",
     reasonUnavailable: "btrfs-progs is not installed.",
     installable: { requiresPackageKit: true },
-    route: { label: "Open Btrfs", to: "/storage/btrfs" },
+    route: { label: "Open snapshots", to: "/storage/snapshots" },
   },
 ] as const satisfies readonly CapabilityDef[];
 

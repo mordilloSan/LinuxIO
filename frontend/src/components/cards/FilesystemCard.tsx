@@ -165,7 +165,7 @@ const FilesystemCardDetails = ({
               : isNfs
                 ? "This looks like an NFS filesystem, but no matching NFS mount entry was loaded for direct actions."
                 : isBtrfs
-                  ? "Subvolumes, snapshots and maintenance for this btrfs filesystem are managed on the Btrfs tab."
+                  ? "Snapshots and subvolumes of this btrfs filesystem are managed on the Snapshots tab; its disks, health and settings in its pool's details."
                   : canUnmountFilesystem(filesystem)
                     ? "This filesystem can be unmounted directly from the card."
                     : "Protected system mounts stay visible here but do not expose unmount actions."}
@@ -202,8 +202,8 @@ const FilesystemCardDetails = ({
             </AppButton>
           )}
           {isBtrfs && (
-            <AppRouterLinkButton to="/storage/btrfs" variant="outlined">
-              Manage btrfs
+            <AppRouterLinkButton to="/storage/snapshots" variant="outlined">
+              Manage snapshots
             </AppRouterLinkButton>
           )}
           {canUnmountFilesystem(filesystem) && (

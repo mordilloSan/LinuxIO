@@ -50,7 +50,7 @@ func TestRunSkipsMissingFilesystem(t *testing.T) {
 	}
 	a := doc.Alerts[0]
 	if a.ID != "btrfs/snapshot-3f1c0a52-data-photos" || a.Severity != alerts.SeverityWarning ||
-		a.Link != "/storage/btrfs?fs="+rootUUID || !strings.Contains(a.Title, "data/Photos") {
+		a.Link != "/storage/snapshots?fs="+rootUUID || !strings.Contains(a.Title, "data/Photos") {
 		t.Fatalf("alert = %+v", a)
 	}
 }

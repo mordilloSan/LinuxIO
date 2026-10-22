@@ -506,6 +506,14 @@ const DiskOverview = () => {
           nfsMounts={nfsMounts}
           onInspectDrive={handleInspectDrive}
           onOpenVolume={handleOpenVolume}
+          onSelectPool={(pool) =>
+            void navigate({
+              to: "/storage",
+              search: (previous) => ({ ...previous, pool }),
+              resetScroll: false,
+            })
+          }
+          selectedPool={search.pool}
         />
       )}
 

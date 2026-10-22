@@ -33,23 +33,6 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-btrfs-snapshot-rules"],
           queryFn: () => mocks.rules(),
         },
-        btrfs_settings: (request: { uuid: string }) => ({
-          queryKey: ["test-btrfs-settings", request.uuid],
-          queryFn: () =>
-            Promise.resolve({
-              uuid: request.uuid,
-              quotasEnabled: false,
-              compression: {
-                algorithm: "none",
-                force: false,
-                fstabPersisted: false,
-              },
-            }),
-        }),
-        get_btrfs_maintenance: {
-          queryKey: ["test-btrfs-maintenance"],
-          queryFn: () => Promise.resolve({ tasks: [] }),
-        },
         btrfs_snapshots: (request: { uuid: string }) => ({
           queryKey: ["test-btrfs-snapshots", request.uuid],
           queryFn: () => mocks.snapshots(),
@@ -156,16 +139,14 @@ describe("BtrfsPage", () => {
     expect(
       screen.getByRole("heading", { name: "Snapshots" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
     expect(screen.queryByText("Subvolumes")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Advanced" }));
-    expect(await screen.findByText("Settings")).toBeInTheDocument();
-    expect(screen.getByText("Subvolumes")).toBeInTheDocument();
+    expect(await screen.findByText("Subvolumes")).toBeInTheDocument();
     expect(screen.getByText("Replication")).toBeInTheDocument();
   });
 
-  it("leaves disk and pool management to the Disks tab", async () => {
+  it("leaves disks, health and settings to the pool on the Disks tab", async () => {
     const user = userEvent.setup();
     renderWithTanStackRouter(
       <BtrfsPage selectedUuid="uuid-data" onSelect={vi.fn()} />,
@@ -175,19 +156,14 @@ describe("BtrfsPage", () => {
     await user.click(screen.getByRole("button", { name: "Advanced" }));
     expect(screen.queryByText("Disks")).not.toBeInTheDocument();
     expect(screen.queryByText("Add device")).not.toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Check for errors" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("sums up space, devices, snapshots and protected folders in tiles", async () => {
-    mocks.list.mockResolvedValue([
-      {
-        ...data,
-        degraded: true,
-        lowMetadataSpace: false,
-        devices: [{ missing: true, errors: {} } as never],
-        totalBytes: 100 * 1024 ** 3,
-        usedBytes: 30 * 1024 ** 3,
-      },
-    ]);
+  it("sums up snapshots and protected folders in tiles", async () => {
+    mocks.list.mockResolvedValue([data]);
     mocks.snapshots.mockResolvedValue([
       { path: "a", source: "home", createdAt: "2026-10-20T00:00:00Z" },
       { path: "b", source: "home", createdAt: "2026-10-19T00:00:00Z" },
@@ -203,14 +179,8 @@ describe("BtrfsPage", () => {
     renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} />, {
       capabilities,
     });
-    expect(await screen.findByText("30%")).toBeInTheDocument();
-    expect(screen.getByText("30 GB of 100 GB")).toBeInTheDocument();
-    expect(screen.getByText("1 missing")).toBeInTheDocument();
     expect(await screen.findByText("of 2 folders")).toBeInTheDocument();
     expect(screen.getByText(/^Last .*ago$/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Degraded" }),
-    ).toBeInTheDocument();
   });
 
   it("says when no btrfs filesystem is mounted", async () => {

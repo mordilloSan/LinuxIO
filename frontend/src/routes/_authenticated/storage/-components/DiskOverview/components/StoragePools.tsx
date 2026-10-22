@@ -30,6 +30,8 @@ import { formatFileSize } from "@/utils/formaters";
 
 import BtrfsCreatePoolDialog from "../../btrfs/BtrfsCreatePoolDialog";
 import BtrfsDevicesCard from "../../btrfs/BtrfsDevicesCard";
+import BtrfsHealthBanner from "../../btrfs/BtrfsHealthBanner";
+import BtrfsSettingsCard from "../../btrfs/BtrfsSettingsCard";
 import BtrfsSpaceCard from "../../btrfs/BtrfsSpaceCard";
 import { buildStorageLayout, fsTypeLabel } from "../storagePools";
 import type { DriveInfo } from "../types";
@@ -230,13 +232,17 @@ interface StoragePoolsProps {
   nfsMounts: NFSMount[];
   onInspectDrive: (name: string) => void;
   onOpenVolume: (mountpoint: string) => void;
+  /** UUID of the pool whose details are open; kept in the URL for alert links. */
+  selectedPool?: string;
+  onSelectPool: (uuid?: string) => void;
 }
 
 /**
  * Every drive and every mounted filesystem, drawn as disks -> pool -> volumes
  * for btrfs pools, disk -> volumes for plain partitions and source -> volumes
- * for network shares and mapper devices. The selected pool's disk and RAID
- * management sits below. Pools need btrfs and privilege; the rest does not.
+ * for network shares and mapper devices. The selected pool's health, disk and
+ * RAID management and settings sit below. Pools need btrfs and privilege; the
+ * rest does not.
  */
 const StoragePools = ({
   drives,
@@ -244,6 +250,8 @@ const StoragePools = ({
   nfsMounts,
   onInspectDrive,
   onOpenVolume,
+  selectedPool,
+  onSelectPool,
 }: StoragePoolsProps) => {
   const { privileged } = useAuth();
   const { isEnabled } = useCapability("btrfsAvailable");
@@ -258,7 +266,6 @@ const StoragePools = ({
     enabled: poolsEnabled,
     refetchInterval: 10000,
   });
-  const [selectedUuid, setSelectedUuid] = useState<string>();
   const [dialog, setDialog] = useState<PoolDialog | null>(null);
   const closeDialog = () => setDialog(null);
   const { mutate: createPool, isPending: isCreating } = useCallMutation(
@@ -293,7 +300,7 @@ const StoragePools = ({
     ),
   );
   const idleDrives = unpooled.filter((drive) => !offlineDrives.has(drive.name));
-  const selected = poolStacks.find(({ fs }) => fs.uuid === selectedUuid);
+  const selected = poolStacks.find(({ fs }) => fs.uuid === selectedPool);
 
   // Until the pools load, btrfs volumes would sit under their drives and then
   // jump into their pool; draw nothing rather than that flicker.
@@ -367,9 +374,7 @@ const StoragePools = ({
               className="storage-pools__card storage-pools__pool"
               color="inherit"
               onClick={() =>
-                setSelectedUuid(
-                  pool.uuid === selectedUuid ? undefined : pool.uuid,
-                )
+                onSelectPool(pool.uuid === selectedPool ? undefined : pool.uuid)
               }
             >
               <Icon
@@ -583,6 +588,12 @@ const StoragePools = ({
             spacing={DASHBOARD_CARD_SPACING}
             style={{ marginBottom: 16 }}
           >
+            <AppGrid size={12}>
+              <BtrfsHealthBanner
+                filesystem={selected.fs}
+                key={selected.fs.uuid}
+              />
+            </AppGrid>
             <AppGrid size={{ xs: 12, md: 7 }}>
               <BtrfsDevicesCard
                 filesystem={selected.fs}
@@ -591,6 +602,13 @@ const StoragePools = ({
             </AppGrid>
             <AppGrid size={{ xs: 12, md: 5 }}>
               <BtrfsSpaceCard filesystem={selected.fs} />
+            </AppGrid>
+            <AppGrid size={12}>
+              <BtrfsSettingsCard
+                key={selected.fs.uuid}
+                mountpoint={selected.fs.mountpoints[0]?.mountpoint}
+                uuid={selected.fs.uuid}
+              />
             </AppGrid>
           </AppGrid>
         </>
@@ -663,7 +681,7 @@ const StoragePools = ({
                 {
                   onSuccess: () => {
                     closeDialog();
-                    setSelectedUuid(undefined);
+                    onSelectPool(undefined);
                   },
                 },
               );

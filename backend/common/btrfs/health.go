@@ -43,7 +43,7 @@ func resolve(ctx context.Context, key string) {
 // raises nor resolves, so a failed read does not flap an alert.
 func RaiseAlerts(ctx context.Context, fs BtrfsFilesystem) {
 	name := poolName(fs.Label, fs.UUID)
-	link := "/storage/btrfs?fs=" + fs.UUID
+	link := "/storage?pool=" + fs.UUID
 	if fs.HealthKnown {
 		if occurrence := errorOccurrence(fs); occurrence == "" {
 			resolve(ctx, "health-"+fs.UUID)

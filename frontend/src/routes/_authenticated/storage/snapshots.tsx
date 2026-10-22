@@ -13,16 +13,16 @@ const access = {
   requiresPrivileged: true,
 } satisfies AccessPolicy;
 
-export const Route = createFileRoute("/_authenticated/storage/btrfs")({
+export const Route = createFileRoute("/_authenticated/storage/snapshots")({
   validateSearch: (search) => optionalString(search, "fs"),
   beforeLoad: ({ context }) => requireAccess(access, context),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [linuxio.storage.btrfs_list]),
-  component: StorageBtrfsRoute,
+  component: StorageSnapshotsRoute,
   staticData: { access },
 });
 
-function StorageBtrfsRoute() {
+function StorageSnapshotsRoute() {
   const { fs } = Route.useSearch();
   const navigate = Route.useNavigate();
   return (

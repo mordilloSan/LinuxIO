@@ -10,6 +10,7 @@ export const Route = createFileRoute("/_authenticated/storage/")({
   validateSearch: (search) => ({
     ...optionalString(search, "drive"),
     ...optionalString(search, "fs"),
+    ...optionalString(search, "pool"),
   }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [

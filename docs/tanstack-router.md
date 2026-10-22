@@ -618,12 +618,12 @@ inherits its ancestor's.
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
 | `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/storage` | `storage/route.tsx` | — | — | — | — |
-| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs` | — |
-| `/storage/btrfs` | `storage/btrfs.tsx` | `loadRouteQueries` ×1 | — | `fs` | `requireAccess` btrfs |
+| `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `pool` | — |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
 | `/storage/mounts` | `storage/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/storage/rsync` | `storage/rsync.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` privileged |
 | `/storage/shares` | `storage/shares.tsx` | `loadRouteQueries` ×2 | — | — | — |
+| `/storage/snapshots` | `storage/snapshots.tsx` | `loadRouteQueries` ×1 | — | `fs` | `requireAccess` btrfs |
 | `/storage/topology` | `storage/topology.tsx` | `loadRouteQueries` ×1 | — | `node` | — |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/updates` | `updates/route.tsx` | — | — | — | — |
@@ -682,7 +682,7 @@ the whole tree:
 | `_authenticated.tsx` | `requireAuthentication` | signed in |
 | `sign-in/route.tsx` | `requireGuest` | signed **out** |
 | `docker/route.tsx` | `requireAccess` | `dockerAvailable` |
-| `storage/btrfs.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
+| `storage/snapshots.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
 | `hardware/route.tsx` | `requireAccess` | `lmSensorsAvailable` |
 | `vm/route.tsx` | `requireAccess` | `libvirtAvailable` + privileged |
 | `network/wireguard.tsx` | `requireAccess` | `wireguardAvailable` + privileged |

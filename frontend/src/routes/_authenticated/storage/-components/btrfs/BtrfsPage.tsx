@@ -13,12 +13,9 @@ import {
   Tile,
 } from "@/routes/_authenticated/vm/-components/vmCards";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
-import { formatFileSize, formatRelativeAge } from "@/utils/formaters";
+import { formatRelativeAge } from "@/utils/formaters";
 
-import { deviceErrorCount } from "./BtrfsDevicesCard";
-import BtrfsHealthBanner from "./BtrfsHealthBanner";
 import BtrfsReplicationCard from "./BtrfsReplicationCard";
-import BtrfsSettingsCard from "./BtrfsSettingsCard";
 import { isSystemSubvolume } from "./btrfsShared";
 import BtrfsSnapshotRulesCard from "./BtrfsSnapshotRulesCard";
 import BtrfsSnapshotsCard from "./BtrfsSnapshotsCard";
@@ -46,9 +43,8 @@ const tileGridStyle: CSSProperties = {
 const filesystemLabel = (fs: BtrfsFilesystem) =>
   `${fs.mountpoints[0]?.mountpoint ?? ""} · ${fs.label || fs.uuid}`;
 
-/** Space, devices, snapshots and protection at a glance. */
-const BtrfsTiles = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
-  const { uuid } = filesystem;
+/** Snapshots and protection at a glance. */
+const BtrfsTiles = ({ uuid }: { uuid: string }) => {
   // The same queries the cards below use, so the cache is shared.
   const { data: snapshots = [] } = useQuery(
     linuxio.storage.btrfs_snapshots({ uuid }),
@@ -58,14 +54,6 @@ const BtrfsTiles = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   );
   const { data: rulesData } = useQuery(linuxio.storage.btrfs_snapshot_rules);
 
-  const percent =
-    filesystem.totalBytes > 0
-      ? (filesystem.usedBytes / filesystem.totalBytes) * 100
-      : 0;
-  const missing = filesystem.devices.filter((d) => d.missing).length;
-  const failing = filesystem.devices.filter(
-    (d) => deviceErrorCount(d) > 0,
-  ).length;
   const latest = snapshots.reduce(
     (max, s) => Math.max(max, new Date(s.createdAt).getTime()),
     0,
@@ -85,34 +73,6 @@ const BtrfsTiles = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
 
   return (
     <div style={tileGridStyle}>
-      <Tile
-        count={`${percent.toFixed(0)}%`}
-        icon="mdi:chart-donut"
-        label="Space"
-        status={`${formatFileSize(filesystem.usedBytes)} of ${formatFileSize(filesystem.totalBytes)}`}
-        statusColor={
-          percent > 90
-            ? STATUS_COLOR.error
-            : percent > 80
-              ? STATUS_COLOR.warning
-              : STATUS_COLOR.ok
-        }
-      />
-      <Tile
-        count={filesystem.devices.length}
-        icon="mdi:harddisk"
-        label="Devices"
-        status={
-          missing > 0
-            ? `${missing} missing`
-            : failing > 0
-              ? `${failing} with errors`
-              : "Normal"
-        }
-        statusColor={
-          missing + failing > 0 ? STATUS_COLOR.error : STATUS_COLOR.ok
-        }
-      />
       <Tile
         count={snapshots.length}
         icon="mdi:camera-burst"
@@ -163,8 +123,7 @@ const BtrfsFilesystems = ({ selectedUuid, onSelect }: BtrfsPageProps) => {
           ))}
         </AppSelect>
       )}
-      <BtrfsHealthBanner filesystem={selected} key={selected.uuid} />
-      <BtrfsTiles filesystem={selected} />
+      <BtrfsTiles uuid={selected.uuid} />
       <BtrfsSnapshotsCard
         key={`snapshots-${selected.uuid}`}
         uuid={selected.uuid}
@@ -184,11 +143,6 @@ const BtrfsFilesystems = ({ selectedUuid, onSelect }: BtrfsPageProps) => {
           <div id="btrfs-advanced" style={pageStyle}>
             <BtrfsSubvolumesCard uuid={selected.uuid} />
             <BtrfsReplicationCard key={selected.uuid} uuid={selected.uuid} />
-            <BtrfsSettingsCard
-              key={`settings-${selected.uuid}`}
-              mountpoint={selected.mountpoints[0]?.mountpoint}
-              uuid={selected.uuid}
-            />
           </div>
         </AppCollapse>
       </section>

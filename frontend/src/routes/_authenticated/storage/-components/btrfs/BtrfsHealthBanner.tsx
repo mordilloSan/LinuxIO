@@ -17,7 +17,7 @@ import { formatDate } from "@/utils/formaters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import { deviceErrorCount } from "./BtrfsDevicesCard";
-import { BTRFS_TOAST_META } from "./btrfsShared";
+import { BTRFS_POOL_TOAST_META } from "./btrfsShared";
 
 const bannerStyle: CSSProperties = {
   alignItems: "center",
@@ -59,7 +59,7 @@ const healthOf = (filesystem: BtrfsFilesystem, name: string): Health => {
     return {
       color: STATUS_COLOR.error,
       icon: "mdi:shield-alert",
-      text: `A device of ${name} has reported errors. Check its disks on the Disks tab.`,
+      text: `A device of ${name} has reported errors. Check its disks below.`,
       title: "Errors",
     };
   if (filesystem.degraded)
@@ -111,7 +111,7 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   const taskConfig = (success: string, error: string) => ({
     success,
     error,
-    toast: BTRFS_TOAST_META,
+    toast: BTRFS_POOL_TOAST_META,
   });
   const scrub = linuxio.storage.btrfs_scrub_start.useTaskStreamAction<
     BtrfsFilesystem,
@@ -127,7 +127,7 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   >(taskConfig("Space reclaimed", "Failed to reclaim space"));
   const { mutate: cancelScrub } = useCallMutation(
     linuxio.storage.btrfs_scrub_cancel,
-    { error: "Failed to stop the check", toast: BTRFS_TOAST_META },
+    { error: "Failed to stop the check", toast: BTRFS_POOL_TOAST_META },
   );
 
   return (

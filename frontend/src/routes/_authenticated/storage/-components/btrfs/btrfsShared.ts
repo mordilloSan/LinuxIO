@@ -1,8 +1,14 @@
 import type { BtrfsSnapshotRule } from "@/api";
 
 export const BTRFS_TOAST_META = {
-  label: "Open Btrfs",
-  to: "/storage/btrfs",
+  label: "Open snapshots",
+  to: "/storage/snapshots",
+} as const;
+
+// Devices, health and settings live with the pool on the Disks tab.
+export const BTRFS_POOL_TOAST_META = {
+  label: "Open storage",
+  to: "/storage",
 } as const;
 
 // Subvolumes that distros and container runtimes create for themselves. They
