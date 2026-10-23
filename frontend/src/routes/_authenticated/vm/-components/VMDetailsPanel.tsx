@@ -1,16 +1,17 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
-import type { VirtualMachine, VMFirmware } from "@/api";
+import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppChip from "@/components/ui/AppChip";
-import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { down } from "@/theme/breakpoints";
 import { formatThroughput } from "@/utils/formatters";
 
+import EditVMDialog from "./EditVMDialog";
 import {
   VM_TOAST,
   formatDisk,
@@ -39,6 +40,12 @@ const detailHeaderStyle: CSSProperties = {
   display: "flex",
   gap: "var(--app-space-16)",
   justifyContent: "space-between",
+};
+
+const headerActionsStyle: CSSProperties = {
+  alignItems: "center",
+  display: "flex",
+  gap: "var(--app-space-8)",
 };
 
 const statGridStyle = (isMobile: boolean): CSSProperties => ({
@@ -103,11 +110,7 @@ function StatItem({ label, value }: { label: string; value: string }) {
  */
 export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
   const isMobile = useMediaQuery(down("sm"));
-  const firmwareMutation = useCallMutation(linuxio.virt.set_firmware, {
-    success: "Firmware updated",
-    error: "Failed to change firmware",
-    toast: VM_TOAST,
-  });
+  const [editOpen, setEditOpen] = useState(false);
   const autostartMutation = useCallMutation(linuxio.virt.set_autostart, {
     success: "Autostart updated",
     error: "Failed to change autostart",
@@ -135,12 +138,23 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             {vm.uuid || "No UUID"}
           </AppTypography>
         </div>
-        <AppChip
-          color={stateChipColor(vm.state)}
-          label={normalizeState(vm.state)}
-          size="small"
-          variant="soft"
-        />
+        <div style={headerActionsStyle}>
+          <AppChip
+            color={stateChipColor(vm.state)}
+            label={normalizeState(vm.state)}
+            size="small"
+            variant="soft"
+          />
+          <AppActionIconButton
+            ariaLabel="Edit"
+            disabled={vm.state !== "shutoff"}
+            icon="mdi:pencil"
+            label={
+              vm.state === "shutoff" ? "Edit" : "Shut off the VM to edit it"
+            }
+            onClick={() => setEditOpen(true)}
+          />
+        </div>
       </div>
       <div style={statGridStyle(isMobile)}>
         <div style={statItemStyle}>
@@ -221,33 +235,10 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             />
           </div>
         </div>
-        <div style={{ ...statItemStyle, gridColumn: "1 / -1" }}>
-          <AppSelect
-            disabled={vm.state !== "shutoff" || firmwareMutation.isPending}
-            fullWidth
-            label="Firmware"
-            onChange={(event) =>
-              firmwareMutation.mutate({
-                firmware: event.target.value as VMFirmware,
-                name: vm.name,
-              })
-            }
-            size="small"
-            value={vm.firmware ?? "bios"}
-          >
-            <option value="uefi">UEFI</option>
-            <option value="bios">BIOS (legacy)</option>
-          </AppSelect>
-          {vm.state !== "shutoff" ? (
-            <AppTypography
-              color="text.secondary"
-              component="small"
-              variant="caption"
-            >
-              Shut off the VM to change its firmware
-            </AppTypography>
-          ) : null}
-        </div>
+        <StatItem
+          label="Firmware"
+          value={vm.firmware === "uefi" ? "UEFI" : "BIOS (legacy)"}
+        />
       </div>
       <div style={detailSectionStyle}>
         <AppTypography component="h3" variant="subtitle2">
@@ -323,6 +314,11 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
           </div>
         )}
       </div>
+      <EditVMDialog
+        onClose={() => setEditOpen(false)}
+        open={editOpen}
+        vm={vm}
+      />
     </FrostedCard>
   );
 }

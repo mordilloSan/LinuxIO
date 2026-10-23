@@ -109,15 +109,6 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 		})
 	}
 
-	interfaceSource := &libvirtxml.DomainInterfaceSource{
-		Network: &libvirtxml.DomainInterfaceSourceNetwork{Network: networkName},
-	}
-	if networkName != defaultNetworkName {
-		interfaceSource = &libvirtxml.DomainInterfaceSource{
-			Bridge: &libvirtxml.DomainInterfaceSourceBridge{Bridge: networkName},
-		}
-	}
-
 	domain := libvirtxml.Domain{
 		Type: "kvm",
 		Name: req.Name,
@@ -136,7 +127,7 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 			Disks: disks,
 			Interfaces: []libvirtxml.DomainInterface{
 				{
-					Source: interfaceSource,
+					Source: vmInterfaceSource(networkName),
 					Model:  &libvirtxml.DomainInterfaceModel{Type: "virtio"},
 				},
 			},
@@ -161,6 +152,18 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 		OnCrash:    "restart",
 	}
 	return domain, nil
+}
+
+// vmInterfaceSource attaches a NIC to libvirt's NAT network or a host bridge.
+func vmInterfaceSource(networkName string) *libvirtxml.DomainInterfaceSource {
+	if networkName == defaultNetworkName {
+		return &libvirtxml.DomainInterfaceSource{
+			Network: &libvirtxml.DomainInterfaceSourceNetwork{Network: networkName},
+		}
+	}
+	return &libvirtxml.DomainInterfaceSource{
+		Bridge: &libvirtxml.DomainInterfaceSourceBridge{Bridge: networkName},
+	}
 }
 
 // setDomainFirmware switches <os> between libvirt's UEFI autoselection and
@@ -371,8 +374,13 @@ func parseLinuxIOMetadata(metadata *libvirtxml.DomainMetadata) linuxioMetadata {
 	if metadata == nil || metadata.XML == "" {
 		return linuxioMetadata{}
 	}
+	// Other applications' elements, such as libosinfo's, may come first.
+	start, end, err := linuxioMetadataSpan(metadata.XML)
+	if err != nil || start < 0 {
+		return linuxioMetadata{}
+	}
 	var parsed linuxioMetadata
-	if err := xml.Unmarshal([]byte(metadata.XML), &parsed); err != nil {
+	if err := xml.Unmarshal([]byte(metadata.XML[start:end]), &parsed); err != nil {
 		return linuxioMetadata{}
 	}
 	return parsed

@@ -170,6 +170,27 @@ const VM_OS_ICONS: Record<string, string> = {
   homeassistant: "simple-icons:homeassistant",
 };
 
+/** OS ids the edit dialog offers; their logos come from vmOSIcon. */
+export const VM_OS_OPTIONS = [
+  { id: "almalinux", label: "AlmaLinux" },
+  { id: "alpine", label: "Alpine Linux" },
+  { id: "archlinux", label: "Arch Linux" },
+  { id: "centos-stream", label: "CentOS Stream" },
+  { id: "debian", label: "Debian" },
+  { id: "fedora", label: "Fedora" },
+  { id: "freebsd", label: "FreeBSD" },
+  { id: "homeassistant", label: "Home Assistant OS" },
+  { id: "kali", label: "Kali Linux" },
+  { id: "linuxmint", label: "Linux Mint" },
+  { id: "manjaro", label: "Manjaro" },
+  { id: "nixos", label: "NixOS" },
+  { id: "opensuse", label: "openSUSE" },
+  { id: "rhel", label: "Red Hat Enterprise Linux" },
+  { id: "rocky", label: "Rocky Linux" },
+  { id: "ubuntu", label: "Ubuntu" },
+  { id: "win", label: "Windows" },
+] as const;
+
 /** The logo for a VM's OS id; a plain screen when the OS is unknown. */
 export function vmOSIcon(os?: string): string {
   if (!os) return "mdi:monitor";

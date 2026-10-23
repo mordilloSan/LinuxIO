@@ -422,7 +422,6 @@ const linuxio = {
     reboot: defineCallWithRequest("virt.reboot"),
     resume: defineCallWithRequest("virt.resume"),
     set_autostart: defineCallWithRequest("virt.set_autostart"),
-    set_firmware: defineCallWithRequest("virt.set_firmware"),
     shutdown: defineCallWithRequest("virt.shutdown"),
     start: defineCallWithRequest("virt.start"),
     suspend: defineCallWithRequest("virt.suspend"),
@@ -434,6 +433,7 @@ const linuxio = {
     templates: defineCall("virt.templates"),
     unused_disk_delete: defineCallWithRequest("virt.unused_disk_delete"),
     unused_disks: defineCall("virt.unused_disks"),
+    update: defineCallWithRequest("virt.update"),
   },
   wireguard: {
     add_interface: defineCallWithRequest("wireguard.add_interface"),

@@ -32,14 +32,8 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 	if err := validateVMName(req.Name); err != nil {
 		return err
 	}
-	if req.VCPUs <= 0 {
-		return badRequestf("vcpus must be greater than 0")
-	}
-	if req.VCPUs > runtime.NumCPU() {
-		return badRequestf("vcpus must not exceed the host's %d logical CPUs", runtime.NumCPU())
-	}
-	if req.MemoryMB < 256 {
-		return badRequestf("memoryMB must be at least 256")
+	if err := validateVMResources(req.VCPUs, req.MemoryMB); err != nil {
+		return err
 	}
 	if req.DiskGB <= 0 {
 		return badRequestf("diskGB must be greater than 0")
@@ -54,6 +48,19 @@ func validateCreateRequest(req apischema.VMCreateRequest) error {
 		return err
 	}
 	return validateCreateSource(req, sourceType)
+}
+
+func validateVMResources(vcpus, memoryMB int) error {
+	if vcpus <= 0 {
+		return badRequestf("vcpus must be greater than 0")
+	}
+	if vcpus > runtime.NumCPU() {
+		return badRequestf("vcpus must not exceed the host's %d logical CPUs", runtime.NumCPU())
+	}
+	if memoryMB < 256 {
+		return badRequestf("memoryMB must be at least 256")
+	}
+	return nil
 }
 
 func validateCreateSource(req apischema.VMCreateRequest, sourceType apischema.VMSourceType) error {

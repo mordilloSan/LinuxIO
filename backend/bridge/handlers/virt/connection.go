@@ -27,6 +27,7 @@ type libvirtConn interface {
 	DomainIsActive(libvirt.Domain) (int32, error)
 	DomainLookupByName(string) (libvirt.Domain, error)
 	DomainReboot(libvirt.Domain, libvirt.DomainRebootFlagValues) error
+	DomainRename(libvirt.Domain, libvirt.OptString, uint32) (int32, error)
 	DomainResume(libvirt.Domain) error
 	DomainSetAutostart(libvirt.Domain, int32) error
 	DomainShutdown(libvirt.Domain) error

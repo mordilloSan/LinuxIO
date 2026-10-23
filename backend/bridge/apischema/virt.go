@@ -178,9 +178,18 @@ type VMCreateRequest struct {
 	Start    bool       `json:"start"`
 }
 
-type VMFirmwareRequest struct {
+// VMUpdateRequest redefines a shut-off VM. An empty NewName, OS or Network
+// keeps the current value, and DiskGB 0 keeps the disk size.
+type VMUpdateRequest struct {
 	Name     string     `json:"name"`
+	NewName  string     `json:"newName,omitempty"`
+	VCPUs    int        `json:"vcpus"`
+	MemoryMB int        `json:"memoryMB"`
+	DiskGB   int        `json:"diskGB,omitempty"`
 	Firmware VMFirmware `json:"firmware"`
+	Network  string     `json:"network,omitempty"`
+	// OS is a distro id such as "ubuntu", stored in LinuxIO's metadata.
+	OS string `json:"os,omitempty"`
 }
 
 type VMAutostartRequest struct {

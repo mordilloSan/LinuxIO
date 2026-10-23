@@ -129,6 +129,7 @@ type fakeConn struct {
 	volumesByPath               map[string]libvirt.StorageVol
 	deletedVolumes              []string
 	defineErr                   error
+	domainRenameErr             error
 	domainCreateErr             error
 	domainIsActiveErr           error
 	domainLookupErr             error
@@ -383,6 +384,18 @@ func (f *fakeConn) DomainLookupByName(name string) (libvirt.Domain, error) {
 
 func (f *fakeConn) DomainReboot(libvirt.Domain, libvirt.DomainRebootFlagValues) error {
 	return nil
+}
+
+func (f *fakeConn) DomainRename(domain libvirt.Domain, newName libvirt.OptString, _ uint32) (int32, error) {
+	if f.domainRenameErr != nil {
+		return -1, f.domainRenameErr
+	}
+	name := newName[0]
+	f.domains[name] = testDomain(name)
+	f.domainXML[name] = strings.Replace(f.domainXML[domain.Name], "<name>"+domain.Name+"</name>", "<name>"+name+"</name>", 1)
+	delete(f.domains, domain.Name)
+	delete(f.domainXML, domain.Name)
+	return 0, nil
 }
 
 func (f *fakeConn) DomainResume(libvirt.Domain) error { return nil }

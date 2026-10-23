@@ -3122,11 +3122,6 @@ export interface VMDisk {
 
 export type VMFirmware = "bios" | "uefi";
 
-export interface VMFirmwareRequest {
-  name: string;
-  firmware: VMFirmware;
-}
-
 export type VMImagePresetID =
   | "home-assistant-os"
   | "debian-server"
@@ -3241,6 +3236,17 @@ export interface VMUnusedDisk {
   vmName: string;
   sizeBytes: number;
   modifiedAt: string;
+}
+
+export interface VMUpdateRequest {
+  name: string;
+  newName?: string;
+  vcpus: number;
+  memoryMB: number;
+  diskGB?: number;
+  firmware: VMFirmware;
+  network?: string;
+  os?: string;
 }
 
 export interface ValidateComposeError {
@@ -4566,11 +4572,6 @@ export interface LinuxIOSchema {
       request: VMAutostartRequest;
       result: VirtualMachine;
     };
-    set_firmware: {
-      input: [request: VMFirmwareRequest];
-      request: VMFirmwareRequest;
-      result: VirtualMachine;
-    };
     shutdown: { input: [name: string]; request: NameRequest; result: void };
     start: { input: [name: string]; request: NameRequest; result: void };
     suspend: { input: [name: string]; request: NameRequest; result: void };
@@ -4592,6 +4593,11 @@ export interface LinuxIOSchema {
       result: void;
     };
     unused_disks: { input: []; request: void; result: VMUnusedDisk[] };
+    update: {
+      input: [request: VMUpdateRequest];
+      request: VMUpdateRequest;
+      result: VirtualMachine;
+    };
   };
 
   wireguard: {
@@ -5238,7 +5244,6 @@ export interface LinuxIOCallSchema {
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };
   "virt.set_autostart": { request: VMAutostartRequest; result: VirtualMachine };
-  "virt.set_firmware": { request: VMFirmwareRequest; result: VirtualMachine };
   "virt.shutdown": { request: NameRequest; result: void };
   "virt.start": { request: NameRequest; result: void };
   "virt.suspend": { request: NameRequest; result: void };
@@ -5246,6 +5251,7 @@ export interface LinuxIOCallSchema {
   "virt.templates": { request: void; result: VMTemplateLibrary };
   "virt.unused_disk_delete": { request: PathRequest; result: void };
   "virt.unused_disks": { request: void; result: VMUnusedDisk[] };
+  "virt.update": { request: VMUpdateRequest; result: VirtualMachine };
   "wireguard.add_interface": {
     request: WireGuardAddInterfaceRequest;
     result: void;
