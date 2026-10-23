@@ -217,23 +217,26 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: unticking the last group now works (`usermod -G ""`).
   - Done 2026-10-23: `modifyUserArgs` (pure, testable) uses `req.Groups != nil`. Test: `TestModifyUserArgsEmptyGroupsClearsSecondaryGroups`.
 
-- [ ] **19a. SMTP envelope uses the display-name form**
+- [x] **19a. SMTP envelope uses the display-name form**
   `backend/common/alerts/deliver.go:143-148`, `settings.go:107-118`
   - Verified `[source]+[lib]`: `validate` accepts `Name <addr>`; `net/smtp` `Mail(from)` sends `MAIL FROM:<from>` verbatim → 501/553.
   - Fix: use `mail.ParseAddress(...).Address` for `Mail`/`Rcpt`; keep the raw string for headers.
   - Behaviour change: emails with display names are delivered; headers unchanged.
+  - Done 2026-10-23: `envelopeAddress` feeds `Mail`/`Rcpt` in `sendEmail`. Test: `TestSendEmailEnvelopeUsesBareAddresses` (strict fake SMTP server).
 
-- [ ] **19b. Webhook secret URL logged and returned on transport errors**
+- [x] **19b. Webhook secret URL logged and returned on transport errors**
   `deliver.go:83-85` (`return err` from `Do`), `:90` (status branch already redacts)
   - Verified `[lib]`: `*url.Error.Error()` includes the full URL.
   - Fix: unwrap `*url.Error` to its `Err` before returning.
   - Behaviour change: log/test-notification text no longer contains the URL.
+  - Done 2026-10-23: `postWebhook` unwraps `*url.Error` to `.Err`. Test: `TestPostWebhookTransportErrorOmitsURL`.
 
-- [ ] **19c. Alert store hard-fails at 200 alerts, nothing evicts**
+- [x] **19c. Alert store hard-fails at 200 alerts, nothing evicts**
   `store.go:32,227-228` (`Raise`), `:260-271` (`Dismiss` only sets `DismissedAt`)
   - Verified `[source]`.
   - Fix: when full, drop the oldest dismissed alert (then the oldest by `LastOccurrence`) before appending.
   - Behaviour change: old dismissed alerts disappear from history once the store is full; new alerts are never lost.
+  - Done 2026-10-23: `Raise` evicts via `evictIndex` (oldest dismissed, else oldest) when full. Test: `TestRaiseEvictsWhenStoreIsFull`.
 
 - [ ] **20a. Public `/api/version` forks 4 processes per request, uncached**
   `backend/webserver/appupdate/routes.go:12` (no `RequireSession`), `version.go:129-175`

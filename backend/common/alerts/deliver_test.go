@@ -107,6 +107,12 @@ func serveSMTP(r *bufio.Reader, w io.Writer, msg chan<- string) {
 		switch cmd := strings.ToUpper(strings.TrimSpace(line)); {
 		case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
 			reply("250 fake")
+		case strings.HasPrefix(cmd, "MAIL FROM:") || strings.HasPrefix(cmd, "RCPT TO:"):
+			if strings.Count(cmd, "<") != 1 {
+				reply("501 bad address")
+			} else {
+				reply("250 ok")
+			}
 		case cmd == "DATA":
 			reply("354 go")
 			readData(r, &data)
@@ -146,6 +152,31 @@ func TestSendEmail(t *testing.T) {
 	}
 	if !strings.Contains(got, "To: me@example.com\r\n") || !strings.Contains(got, "Severity: info") {
 		t.Fatalf("message =\n%s", got)
+	}
+}
+
+func TestSendEmailEnvelopeUsesBareAddresses(t *testing.T) {
+	port, msg := fakeSMTP(t)
+	n := NotificationSettings{SMTPHost: "127.0.0.1", SMTPPort: port, EmailFrom: "LinuxIO <alerts@example.com>", EmailTo: []string{"Me <me@example.com>"}}
+	if err := Send(context.Background(), n, TestAlert()); err != nil {
+		t.Fatal(err)
+	}
+	got := <-msg
+	if !strings.Contains(got, "From: LinuxIO <alerts@example.com>\r\n") || !strings.Contains(got, "To: Me <me@example.com>\r\n") {
+		t.Fatalf("headers lost the display names:\n%s", got)
+	}
+}
+
+func TestPostWebhookTransportErrorOmitsURL(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	target := srv.URL + "/services/T000/B000/secret-token"
+	srv.Close() // nothing listens: the connection is refused
+	err := postWebhook(context.Background(), target, TestAlert())
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if strings.Contains(err.Error(), "secret-token") || strings.Contains(err.Error(), srv.URL) {
+		t.Fatalf("error leaks the webhook URL: %v", err)
 	}
 }
 

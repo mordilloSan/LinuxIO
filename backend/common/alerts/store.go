@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -225,7 +226,8 @@ func Raise(ctx context.Context, obs Observation) error {
 			return nil
 		}
 		if len(doc.Alerts) >= maxAlerts {
-			return fmt.Errorf("raise alert %s: store already holds %d alerts", id, maxAlerts)
+			i := evictIndex(doc.Alerts)
+			doc.Alerts = slices.Delete(doc.Alerts, i, i+1)
 		}
 		doc.Alerts = append(doc.Alerts, Alert{
 			ID: id, Source: obs.Source, Key: obs.Key,
@@ -240,6 +242,17 @@ func Raise(ctx context.Context, obs Observation) error {
 		notify(ctx, *changed)
 	}
 	return err
+}
+
+// evictIndex picks the oldest dismissed alert, else the oldest alert. The
+// slice is sorted newest-first, so both are found from the end.
+func evictIndex(alerts []Alert) int {
+	for i := len(alerts) - 1; i >= 0; i-- {
+		if alerts[i].DismissedAt != nil {
+			return i
+		}
+	}
+	return len(alerts) - 1
 }
 
 // Resolve removes the record, finding it by the key as Raise normalises it. Resolving an absent alert is not an error.

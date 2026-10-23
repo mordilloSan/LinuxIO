@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,42 @@ func TestDismissUnknownIsNotFound(t *testing.T) {
 	useTempStore(t)
 	if err := Dismiss(context.Background(), "test/missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRaiseEvictsWhenStoreIsFull(t *testing.T) {
+	useTempStore(t)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	doc := Document{Version: 1}
+	for i := range maxAlerts {
+		at := base.Add(time.Duration(i) * time.Minute)
+		doc.Alerts = append(doc.Alerts, Alert{ID: ID("test", "k"+strconv.Itoa(i)), Source: "test", Key: "k" + strconv.Itoa(i), LastOccurrence: at})
+	}
+	dismissed := base.Add(time.Hour)
+	doc.Alerts[100].DismissedAt = &dismissed // newer than k0, but the only dismissed one
+	if err := write(doc); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := Raise(ctx, obs("new")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Raise(ctx, obs("new2")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, a := range got.Alerts {
+		ids[a.ID] = true
+	}
+	if len(got.Alerts) != maxAlerts || !ids[ID("test", "new")] || !ids[ID("test", "new2")] {
+		t.Fatalf("alerts = %d, want %d including both new alerts", len(got.Alerts), maxAlerts)
+	}
+	if ids[ID("test", "k100")] || ids[ID("test", "k0")] || !ids[ID("test", "k1")] {
+		t.Fatal("expected the dismissed alert, then the oldest alert, to be evicted")
 	}
 }
 

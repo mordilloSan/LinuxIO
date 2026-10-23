@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -82,6 +84,10 @@ func postWebhook(ctx context.Context, target string, a Alert) error {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		// *url.Error text embeds the full URL, which carries the webhook secret.
+		if urlErr, ok := errors.AsType[*url.Error](err); ok {
+			return urlErr.Err
+		}
 		return err
 	}
 	defer resp.Body.Close()
@@ -133,6 +139,14 @@ func dialSMTP(ctx context.Context, n NotificationSettings) (*smtp.Client, error)
 	return c, nil
 }
 
+// envelopeAddress returns the bare address of a validated "Name <addr>" form.
+func envelopeAddress(s string) string {
+	if addr, err := mail.ParseAddress(s); err == nil {
+		return addr.Address
+	}
+	return s
+}
+
 // sendEmail sends a as a plain-text message to every recipient.
 func sendEmail(ctx context.Context, n NotificationSettings, a Alert) error {
 	c, err := dialSMTP(ctx, n)
@@ -140,11 +154,12 @@ func sendEmail(ctx context.Context, n NotificationSettings, a Alert) error {
 		return err
 	}
 	defer c.Close()
-	if err = c.Mail(n.EmailFrom); err != nil {
+	// The envelope takes the bare address; the headers keep the display name.
+	if err = c.Mail(envelopeAddress(n.EmailFrom)); err != nil {
 		return err
 	}
 	for _, to := range n.EmailTo {
-		if err = c.Rcpt(to); err != nil {
+		if err = c.Rcpt(envelopeAddress(to)); err != nil {
 			return err
 		}
 	}
