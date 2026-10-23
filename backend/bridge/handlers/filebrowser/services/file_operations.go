@@ -62,11 +62,14 @@ func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrit
 		}
 	}
 
-	if err := prepareDestination(root, info.IsDir(), dest, overwrite); err != nil {
-		return err
+	finish, prepErr := prepareDestination(root, info.IsDir(), dest, overwrite)
+	if prepErr != nil {
+		return prepErr
 	}
 
-	return copyEntryWithCallbacks(root, source, dest, info, opts, &copyState{links: map[linkKey]string{}})
+	copyErr := copyEntryWithCallbacks(root, source, dest, info, opts, &copyState{links: map[linkKey]string{}})
+	finish(copyErr)
+	return copyErr
 }
 
 // copyState carries per-operation bookkeeping through a recursive copy.
@@ -418,21 +421,22 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *OperationCallb
 		return err
 	}
 
-	if destErr := prepareDestination(root, srcInfo.IsDir(), dst, overwrite); destErr != nil {
-		return destErr
-	}
-
-	if tryRenameMove(root, src, dst, opts, moveOpts) {
-		return nil
-	}
-
-	if err := copyWithCallbacksAndRoot(root, src, dst, overwrite, opts); err != nil {
-		slog.Error("copy with callbacks failed", "component", "filebrowser", "subsystem", "file_operations", "path", src, "destination", dst, "error", err)
+	finish, err := prepareDestination(root, srcInfo.IsDir(), dst, overwrite)
+	if err != nil {
 		return err
 	}
 
-	if opts.IsCancelled() {
-		return ErrAborted
+	moved, err := tryRenameMove(root, src, dst, opts, moveOpts)
+	if err == nil && !moved {
+		if err = copyWithCallbacksAndRoot(root, src, dst, overwrite, opts); err != nil {
+			slog.Error("copy with callbacks failed", "component", "filebrowser", "subsystem", "file_operations", "path", src, "destination", dst, "error", err)
+		} else if opts.IsCancelled() {
+			err = ErrAborted
+		}
+	}
+	finish(err)
+	if err != nil || moved {
+		return err
 	}
 
 	// Delete source after successful copy
@@ -444,9 +448,15 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *OperationCallb
 	return nil
 }
 
-func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *OperationCallbacks, moveOpts MoveFileOptions) bool {
+// tryRenameMove moves src with one rename. Only a cross-filesystem refusal
+// (EXDEV) is reported as "not moved" so the caller can copy and delete
+// instead; any other rename failure is returned as is.
+func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *OperationCallbacks, moveOpts MoveFileOptions) (bool, error) {
 	if err := root.Root.Rename(relPath(src), relPath(dst)); err != nil {
-		return false
+		if errors.Is(err, syscall.EXDEV) {
+			return false, nil
+		}
+		return false, err
 	}
 
 	totalSize := moveOpts.KnownSize
@@ -455,12 +465,12 @@ func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *OperationCallback
 		totalSize, sizeErr = ComputeCopySize(dst)
 		if sizeErr != nil {
 			slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
-			return true
+			return true, nil
 		}
 	}
 
 	opts.ReportProgress(totalSize)
-	return true
+	return true, nil
 }
 
 type DeleteOptions struct {
@@ -818,6 +828,10 @@ func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	if src == dst {
 		return fmt.Errorf("source and destination are the same")
 	}
+	// dst above src: clearing dst for an overwrite would delete src with it.
+	if strings.HasPrefix(src, strings.TrimSuffix(dst, "/")+"/") {
+		return fmt.Errorf("destination '%s' contains the source '%s'", dst, src)
+	}
 
 	// Check if source is a directory
 	srcInfo, err := root.Root.Lstat(relPath(src))
@@ -849,22 +863,43 @@ func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	return nil
 }
 
-func prepareDestination(root *fsroot.FSRoot, srcIsDir bool, dst string, overwrite bool) error {
+// prepareDestination clears the way for a transfer onto dst. With overwrite
+// the existing entry is moved aside rather than deleted: the returned finish
+// removes it after a successful transfer and puts it back after a failed one,
+// so a transfer that dies halfway never loses what it was replacing.
+func prepareDestination(root *fsroot.FSRoot, srcIsDir bool, dst string, overwrite bool) (func(error), error) {
 	dstInfo, err := root.Root.Lstat(relPath(dst))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
+		if errors.Is(err, fs.ErrNotExist) {
+			return func(error) {}, nil
 		}
-		return err
+		return nil, err
 	}
 
 	if !overwrite {
-		return fmt.Errorf("destination already exists")
+		return nil, fmt.Errorf("destination already exists")
 	}
 
 	if dstInfo.IsDir() != srcIsDir {
-		return fmt.Errorf("destination exists with different type")
+		return nil, fmt.Errorf("destination exists with different type")
 	}
 
-	return root.Root.RemoveAll(relPath(dst))
+	aside := fmt.Sprintf("%s.linuxio-replaced-%d", dst, time.Now().UnixNano())
+	if err := root.Root.Rename(relPath(dst), relPath(aside)); err != nil {
+		return nil, err
+	}
+	return func(transferErr error) {
+		if transferErr == nil {
+			if err := root.Root.RemoveAll(relPath(aside)); err != nil {
+				slog.Warn("failed to remove replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", aside, "error", err)
+			}
+			return
+		}
+		if err := root.Root.RemoveAll(relPath(dst)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			slog.Warn("failed to clear partial destination", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", err)
+		}
+		if err := root.Root.Rename(relPath(aside), relPath(dst)); err != nil {
+			slog.Error("failed to restore replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", aside, "destination", dst, "error", err)
+		}
+	}, nil
 }

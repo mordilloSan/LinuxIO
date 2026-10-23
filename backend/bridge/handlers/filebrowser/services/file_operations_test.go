@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -12,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 )
 
 func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
@@ -79,6 +83,45 @@ func TestMoveFileWithCallbacks(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []byte("new"), content, "destination should be overwritten")
 	})
+}
+
+func TestTransferRejectsDestinationContainingSource(t *testing.T) {
+	tmpDir := t.TempDir()
+	outer := createTestDir(t, tmpDir, "foo")
+	inner := createTestDir(t, outer, "foo")
+	keep := createTestFile(t, inner, "keep.txt", []byte("keep"))
+
+	require.Error(t, MoveFileWithCallbacks(inner, outer, true, nil, MoveFileOptions{}))
+	require.Error(t, CopyFileWithCallbacks(inner, outer, true, nil))
+
+	content, err := os.ReadFile(keep)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("keep"), content, "source must survive a rejected transfer")
+}
+
+func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	defer root.Close()
+
+	finish, err := prepareDestination(root, false, dst, true)
+	require.NoError(t, err)
+	_, err = os.Lstat(dst)
+	require.ErrorIs(t, err, fs.ErrNotExist, "destination is moved aside for the transfer")
+
+	finish(errors.New("transfer failed"))
+	content, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("old"), content, "failed transfer restores the replaced file")
+
+	finish, err = prepareDestination(root, false, dst, true)
+	require.NoError(t, err)
+	finish(nil)
+	entries, err := os.ReadDir(tmpDir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "successful transfer removes the replaced file")
 }
 
 func TestCopyFileWithCallbacks(t *testing.T) {

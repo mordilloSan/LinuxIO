@@ -4,6 +4,7 @@ Each active plan has its own document:
 
 - [API reliability, recovery, and notifications](./api-reliability-roadmap.md)
 - [Frontend test coverage](./e2e-testing.md)
+- [Backend audit checklist](./backend-audit.md)
 
 ## Dependency maintenance
 
