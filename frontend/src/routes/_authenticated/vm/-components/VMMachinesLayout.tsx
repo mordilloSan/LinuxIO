@@ -13,6 +13,7 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { down } from "@/theme/breakpoints";
 
 import DeleteVMDialog from "./DeleteVMDialog";
+import EditVMDialog from "./EditVMDialog";
 import { useVMLifecycle } from "./useVMLifecycle";
 import VMListTable from "./VMListTable";
 import { VM_TOAST, normalizeVMDeleteResult } from "./vmShared";
@@ -60,6 +61,10 @@ const VMMachinesLayout = () => {
   const [pendingDeleteVM, setPendingDeleteVM] = useState<VirtualMachine | null>(
     null,
   );
+  // A snapshot: the form copies it once per open, and a rename drops the
+  // original row from the polled list.
+  const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [consoleVM, setConsoleVM] = useState<VirtualMachine | null>(null);
   const [consoleDialogOpen, setConsoleDialogOpen] = useState(false);
 
@@ -134,6 +139,10 @@ const VMMachinesLayout = () => {
               setPendingDeleteVM(vm);
               setDeleteDialogOpen(true);
             }}
+            onEdit={(vm) => {
+              setEditVM(vm);
+              setEditDialogOpen(true);
+            }}
             onOpenConsole={(vm) => {
               setConsoleVM(vm);
               setConsoleDialogOpen(true);
@@ -163,6 +172,13 @@ const VMMachinesLayout = () => {
           }}
           open={deleteDialogOpen}
           vm={deleteTarget}
+        />
+      )}
+      {editVM && (
+        <EditVMDialog
+          onClose={() => setEditDialogOpen(false)}
+          open={editDialogOpen}
+          vm={editVM}
         />
       )}
       <Suspense fallback={null}>

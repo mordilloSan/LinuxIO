@@ -1,9 +1,8 @@
-import { useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
 import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppChip from "@/components/ui/AppChip";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
@@ -11,7 +10,6 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { down } from "@/theme/breakpoints";
 import { formatThroughput } from "@/utils/formatters";
 
-import EditVMDialog from "./EditVMDialog";
 import {
   VM_TOAST,
   formatDisk,
@@ -40,12 +38,6 @@ const detailHeaderStyle: CSSProperties = {
   display: "flex",
   gap: "var(--app-space-16)",
   justifyContent: "space-between",
-};
-
-const headerActionsStyle: CSSProperties = {
-  alignItems: "center",
-  display: "flex",
-  gap: "var(--app-space-8)",
 };
 
 const statGridStyle = (isMobile: boolean): CSSProperties => ({
@@ -110,7 +102,6 @@ function StatItem({ label, value }: { label: string; value: string }) {
  */
 export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
   const isMobile = useMediaQuery(down("sm"));
-  const [editOpen, setEditOpen] = useState(false);
   const autostartMutation = useCallMutation(linuxio.virt.set_autostart, {
     success: "Autostart updated",
     error: "Failed to change autostart",
@@ -138,23 +129,12 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             {vm.uuid || "No UUID"}
           </AppTypography>
         </div>
-        <div style={headerActionsStyle}>
-          <AppChip
-            color={stateChipColor(vm.state)}
-            label={normalizeState(vm.state)}
-            size="small"
-            variant="soft"
-          />
-          <AppActionIconButton
-            ariaLabel="Edit"
-            disabled={vm.state !== "shutoff"}
-            icon="mdi:pencil"
-            label={
-              vm.state === "shutoff" ? "Edit" : "Shut off the VM to edit it"
-            }
-            onClick={() => setEditOpen(true)}
-          />
-        </div>
+        <AppChip
+          color={stateChipColor(vm.state)}
+          label={normalizeState(vm.state)}
+          size="small"
+          variant="soft"
+        />
       </div>
       <div style={statGridStyle(isMobile)}>
         <div style={statItemStyle}>
@@ -314,11 +294,6 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
           </div>
         )}
       </div>
-      <EditVMDialog
-        onClose={() => setEditOpen(false)}
-        open={editOpen}
-        vm={vm}
-      />
     </FrostedCard>
   );
 }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { VirtualMachine } from "@/api";
-import { renderWithTanStackRouter, screen, within } from "@/test/render";
+import { renderWithTanStackRouter, screen } from "@/test/render";
 
 import VMDetailsPanel from "./VMDetailsPanel";
 
@@ -30,33 +30,6 @@ const vm: VirtualMachine = {
 beforeEach(() => mocks.mutate.mockReset());
 
 describe("VMDetailsPanel", () => {
-  it("edits a shut-off VM in a dialog", async () => {
-    const { user } = renderWithTanStackRouter(<VMDetailsPanel vm={vm} />);
-    expect(
-      screen.queryByRole("combobox", { name: "Firmware" }),
-    ).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
-    const dialog = await screen.findByRole("dialog");
-    const name = within(dialog).getByLabelText(/^name/i);
-    await user.clear(name);
-    await user.type(name, "HA2");
-    await user.click(screen.getByRole("combobox", { name: "Firmware" }));
-    await user.click(screen.getByRole("option", { name: "UEFI" }));
-    await user.click(
-      screen.getByRole("combobox", { name: "Operating system" }),
-    );
-    await user.click(screen.getByRole("option", { name: "Ubuntu" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(mocks.mutate).toHaveBeenCalledWith({
-      firmware: "uefi",
-      memoryMB: 4096,
-      name: "HA",
-      newName: "HA2",
-      os: "ubuntu",
-      vcpus: 2,
-    });
-  });
-
   it("toggles autostart", async () => {
     const { user } = renderWithTanStackRouter(<VMDetailsPanel vm={vm} />);
     await user.click(
@@ -65,10 +38,9 @@ describe("VMDetailsPanel", () => {
     expect(mocks.mutate).toHaveBeenCalledWith({ autostart: true, name: "HA" });
   });
 
-  it("locks editing while the VM runs", async () => {
-    renderWithTanStackRouter(
-      <VMDetailsPanel vm={{ ...vm, state: "running" }} />,
-    );
-    expect(await screen.findByRole("button", { name: "Edit" })).toBeDisabled();
+  it("shows the firmware without an inline select", async () => {
+    renderWithTanStackRouter(<VMDetailsPanel vm={vm} />);
+    expect(await screen.findByText("BIOS (legacy)")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 });

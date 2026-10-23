@@ -98,6 +98,7 @@ const START_ACTION = { action: "start", icon: "mdi:play", label: "Start" };
 export default function VMListTable({
   effectiveSelectedName,
   onDelete,
+  onEdit,
   onOpenConsole,
   onRunAction,
   onSelect,
@@ -106,6 +107,7 @@ export default function VMListTable({
 }: {
   effectiveSelectedName: string | null;
   onDelete: (vm: VirtualMachine) => void;
+  onEdit: (vm: VirtualMachine) => void;
   onOpenConsole: (vm: VirtualMachine) => void;
   onRunAction: (action: VMAction, vm: VirtualMachine) => void;
   onSelect: (name: string) => void;
@@ -249,6 +251,15 @@ export default function VMListTable({
                 onClick={() => onOpenConsole(vm)}
               />
               <AppActionIconButton
+                ariaLabel="Edit"
+                disabled={rowBusy || vm.state !== "shutoff"}
+                icon="mdi:pencil"
+                label={
+                  vm.state === "shutoff" ? "Edit" : "Shut off the VM to edit it"
+                }
+                onClick={() => onEdit(vm)}
+              />
+              <AppActionIconButton
                 disabled={rowBusy}
                 icon="mdi:trash-can-outline"
                 label="Delete"
@@ -265,10 +276,10 @@ export default function VMListTable({
             </div>
           );
         },
-        meta: { align: "right", width: "minmax(180px, 0.9fr)" },
+        meta: { align: "right", width: "minmax(210px, 0.9fr)" },
       },
     ],
-    [onDelete, onOpenConsole, onRunAction, onSelect, pendingActions],
+    [onDelete, onEdit, onOpenConsole, onRunAction, onSelect, pendingActions],
   );
   const surface = useReorderableSurface({
     getId: getVirtualMachineId,

@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { getRouteApi, useParams } from "@tanstack/react-router";
 import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
 import { getMutationErrorMessage, linuxio, useCallMutation } from "@/api";
@@ -21,6 +21,8 @@ import { down } from "@/theme/breakpoints";
 
 import { VM_OS_OPTIONS, VM_TOAST } from "./vmShared";
 
+const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
+
 const formGridStyle = (isMobile: boolean): CSSProperties => ({
   display: "grid",
   gap: "var(--app-dialog-field-gap)",
@@ -36,7 +38,11 @@ function EditVMForm({
 }) {
   const isMobile = useMediaQuery(down("sm"));
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
+  const navigate = vmMachinesRouteApi.useNavigate();
+  const selectedName = useParams({
+    from: "/_authenticated/vm/machines/$name",
+    shouldThrow: false,
+  })?.name;
   const toast = useScopedToast(VM_TOAST);
   const currentNetwork = vm.nics?.[0]?.network ?? "";
   const [name, setName] = useState(vm.name);
@@ -66,16 +72,18 @@ function EditVMForm({
         (current) =>
           current?.map((item) => (item.name === request.name ? result : item)),
       );
-      if (result.name !== request.name) {
+      const removeOldName = () =>
+        queryClient.removeQueries({
+          queryKey: linuxio.virt.get({ name: request.name }).queryKey,
+        });
+      if (result.name !== request.name && selectedName === request.name) {
         void navigate({
           params: { name: result.name },
           replace: true,
           to: "/vm/machines/$name",
-        }).then(() =>
-          queryClient.removeQueries({
-            queryKey: linuxio.virt.get({ name: request.name }).queryKey,
-          }),
-        );
+        }).then(removeOldName);
+      } else if (result.name !== request.name) {
+        removeOldName();
       }
       toast.success(`Updated ${result.name}`);
       onClose();

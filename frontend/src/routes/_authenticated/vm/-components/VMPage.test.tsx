@@ -120,6 +120,7 @@ const mocks = vi.hoisted(() => {
     openTaskWatchStream: vi.fn(),
     virtCreate: vi.fn(),
     virtDelete: vi.fn(),
+    virtUpdate: vi.fn(),
     waitForStreamResult: vi.fn(),
   };
 });
@@ -266,6 +267,7 @@ vi.mock("@/api", async (importOriginal) => {
     const handlers: Record<string, (request: unknown) => Promise<unknown>> = {
       "filebrowser.resource_post": mocks.resourcePost,
       "virt.delete": mocks.virtDelete,
+      "virt.update": mocks.virtUpdate,
       "virt.force_off": mocks.mutations.forceOff,
       "virt.reboot": mocks.mutations.reboot,
       "virt.resume": mocks.mutations.resume,
@@ -351,6 +353,7 @@ vi.mock("@/api", async (importOriginal) => {
             useTaskStreamActionMock(mocks.virtCreate, config),
         }),
         delete: Object.assign(mocks.virtDelete, { route: "virt.delete" }),
+        update: Object.assign(mocks.virtUpdate, { route: "virt.update" }),
         force_off: Object.assign(mocks.mutations.forceOff, {
           route: "virt.force_off",
         }),
@@ -540,6 +543,7 @@ beforeEach(() => {
   );
   mocks.virtDelete.mockReset();
   mocks.virtDelete.mockResolvedValue({ failed: [], removed: [] });
+  mocks.virtUpdate.mockReset();
   mocks.preflight = {
     ...mocks.readyPreflight,
     firmware: { ...mocks.readyPreflight.firmware },
@@ -742,6 +746,56 @@ describe("Virtual Machines page", () => {
       ).not.toBeInTheDocument();
     });
   }, 15_000);
+
+  it("edits a shut-off VM from its row and follows a rename", async () => {
+    const shutOff = { ...mocks.alpha, state: "shutoff" };
+    mocks.listVMs = [shutOff, mocks.beta];
+    mocks.virtUpdate.mockResolvedValue({ ...shutOff, name: "alpha2" });
+    mocks.routeNavigate.mockResolvedValue(undefined);
+    const { user } = await renderVMPage();
+    const getVMRow = (name: string) => {
+      const row = screen
+        .getByRole("button", { name })
+        .closest<HTMLElement>('[role="row"]');
+      if (!row) throw new Error(`Missing row for VM ${name}`);
+      return row;
+    };
+
+    expect(
+      within(getVMRow("beta")).getByRole("button", { name: "Edit" }),
+    ).toBeDisabled();
+    await user.click(
+      within(getVMRow("alpha")).getByRole("button", { name: "Edit" }),
+    );
+    const dialog = screen.getByRole("dialog");
+    await user.clear(within(dialog).getByLabelText(/^name/i));
+    await user.type(within(dialog).getByLabelText(/^name/i), "alpha2");
+    await user.clear(within(dialog).getByLabelText(/vcpus/i));
+    await user.type(within(dialog).getByLabelText(/vcpus/i), "4");
+    await user.click(
+      within(dialog).getByRole("combobox", { name: "Operating system" }),
+    );
+    await user.click(screen.getByRole("option", { name: "Ubuntu" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.virtUpdate).toHaveBeenCalledWith({
+        firmware: "bios",
+        memoryMB: 2048,
+        name: "alpha",
+        newName: "alpha2",
+        os: "ubuntu",
+        vcpus: 4,
+      }),
+    );
+    await waitFor(() =>
+      expect(mocks.routeNavigate).toHaveBeenCalledWith({
+        params: { name: "alpha2" },
+        replace: true,
+        to: "/vm/machines/$name",
+      }),
+    );
+  });
 
   it("does not crash when delete success has no disk arrays", async () => {
     const { user } = await renderVMPage();
