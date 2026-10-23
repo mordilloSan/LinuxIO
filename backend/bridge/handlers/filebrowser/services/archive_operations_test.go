@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -416,4 +417,109 @@ func TestAddArchiveSizeSaturates(t *testing.T) {
 	assert.Equal(t, int64(math.MaxInt64), addArchiveSize(10, math.MaxUint64))
 	assert.Equal(t, int64(math.MaxInt64), addArchiveSize(math.MaxInt64-5, 6))
 	assert.Equal(t, int64(math.MaxInt64), addArchiveSize(math.MaxInt64, 1))
+}
+
+func TestCreateArchiveSkipsDanglingSymlinkInDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	createTestFile(t, srcDir, "keep.txt", []byte("kept"))
+	require.NoError(t, os.Symlink(filepath.Join(tmpDir, "missing"), filepath.Join(srcDir, "dangling")))
+
+	zipPath := filepath.Join(tmpDir, "out.zip")
+	require.NoError(t, CreateZip(zipPath, nil, zipPath, srcDir))
+	zr, err := zip.OpenReader(zipPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = zr.Close() })
+	var zipNames []string
+	for _, f := range zr.File {
+		zipNames = append(zipNames, f.Name)
+	}
+	assert.Equal(t, []string{"src/keep.txt"}, zipNames)
+
+	tarPath := filepath.Join(tmpDir, "out.tar.gz")
+	require.NoError(t, CreateTarGz(tarPath, nil, tarPath, 0, srcDir))
+	tarFile, err := os.Open(tarPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tarFile.Close() })
+	gr, err := gzip.NewReader(tarFile)
+	require.NoError(t, err)
+	tr := tar.NewReader(gr)
+	var tarNames []string
+	for {
+		header, nextErr := tr.Next()
+		if errors.Is(nextErr, io.EOF) {
+			break
+		}
+		require.NoError(t, nextErr)
+		tarNames = append(tarNames, header.Name)
+	}
+	assert.Equal(t, []string{"src/keep.txt"}, tarNames)
+}
+
+func TestCreateTarGzKeepsHeaderSizeWhenFileGrows(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	logPath := createTestFile(t, srcDir, "app.log", []byte("0123456789"))
+	grown := false
+	opts := &OperationCallbacks{Progress: func(int64) {
+		if grown {
+			return
+		}
+		grown = true
+		logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0)
+		require.NoError(t, err)
+		_, err = logFile.WriteString("appended while archiving")
+		require.NoError(t, err)
+		require.NoError(t, logFile.Close())
+	}}
+
+	tarPath := filepath.Join(tmpDir, "out.tar.gz")
+	require.NoError(t, CreateTarGz(tarPath, opts, tarPath, 0, srcDir))
+	require.True(t, grown)
+
+	destDir := filepath.Join(tmpDir, "dest")
+	require.NoError(t, ExtractArchive(tarPath, destDir, nil, 0))
+	content, err := os.ReadFile(filepath.Join(destDir, "src", "app.log"))
+	require.NoError(t, err)
+	assert.Equal(t, "0123456789", string(content))
+}
+
+func TestExtractArchiveKeepsExecutableBit(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	script := createTestFile(t, srcDir, "run.sh", []byte("#!/bin/sh\n"))
+	require.NoError(t, os.Chmod(script, 0o755))
+
+	zipPath := filepath.Join(tmpDir, "out.zip")
+	require.NoError(t, CreateZip(zipPath, nil, zipPath, srcDir))
+	tarPath := filepath.Join(tmpDir, "out.tar.gz")
+	require.NoError(t, CreateTarGz(tarPath, nil, tarPath, 0, srcDir))
+
+	for _, archivePath := range []string{zipPath, tarPath} {
+		destDir := filepath.Join(tmpDir, "dest-"+filepath.Base(archivePath))
+		require.NoError(t, ExtractArchive(archivePath, destDir, nil, 0))
+		info, err := os.Stat(filepath.Join(destDir, "src", "run.sh"))
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(), archivePath)
+	}
+}
+
+func TestExtractZipStopsWorkersAfterFirstError(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivePath := filepath.Join(tmpDir, "archive.zip")
+	f, err := os.Create(archivePath)
+	require.NoError(t, err)
+	zw := zip.NewWriter(f)
+	for _, name := range []string{"../escape.txt", "later.txt"} {
+		w, createErr := zw.Create(name)
+		require.NoError(t, createErr)
+		_, err = w.Write([]byte("data"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, zw.Close())
+	require.NoError(t, f.Close())
+
+	destDir := filepath.Join(tmpDir, "dest")
+	require.Error(t, ExtractArchive(archivePath, destDir, nil, 1))
+	assert.NoFileExists(t, filepath.Join(destDir, "later.txt"))
 }

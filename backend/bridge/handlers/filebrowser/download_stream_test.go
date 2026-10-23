@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -66,29 +67,36 @@ func TestStreamFileDownload(t *testing.T) {
 	}
 }
 
-func TestStreamFileDownloadRejectsDirectory(t *testing.T) {
-	directory := t.TempDir()
-	server, client := net.Pipe()
-	t.Cleanup(func() {
-		_ = server.Close()
-		_ = client.Close()
-	})
-	done := make(chan error, 1)
-	go func() {
-		done <- streamFileDownload(context.Background(), server, apischema.PathRequest{Path: directory})
-	}()
+func TestStreamFileDownloadRejectsNonRegular(t *testing.T) {
+	fifo := filepath.Join(t.TempDir(), "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+	for name, path := range map[string]string{"directory": t.TempDir(), "fifo": fifo} {
+		t.Run(name, func(t *testing.T) {
+			server, client := net.Pipe()
+			t.Cleanup(func() {
+				_ = server.Close()
+				_ = client.Close()
+			})
+			done := make(chan error, 1)
+			go func() {
+				done <- streamFileDownload(context.Background(), server, apischema.PathRequest{Path: path})
+			}()
 
-	frame := readFileDownloadFrame(t, client, relay.OpStreamResult)
-	var result relay.ResultFrame
-	if err := json.Unmarshal(frame.Payload, &result); err != nil {
-		t.Fatalf("decode result: %v", err)
-	}
-	if result.Status != "error" || result.Code != 400 {
-		t.Fatalf("result = %#v, want status error code 400", result)
-	}
-	readFileDownloadFrame(t, client, relay.OpStreamClose)
-	if err := <-done; err != nil {
-		t.Fatalf("streamFileDownload: %v", err)
+			frame := readFileDownloadFrame(t, client, relay.OpStreamResult)
+			var result relay.ResultFrame
+			if err := json.Unmarshal(frame.Payload, &result); err != nil {
+				t.Fatalf("decode result: %v", err)
+			}
+			if result.Status != "error" || result.Code != 400 {
+				t.Fatalf("result = %#v, want status error code 400", result)
+			}
+			readFileDownloadFrame(t, client, relay.OpStreamClose)
+			if err := <-done; err != nil {
+				t.Fatalf("streamFileDownload: %v", err)
+			}
+		})
 	}
 }
 

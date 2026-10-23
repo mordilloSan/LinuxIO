@@ -377,17 +377,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: skip symlinks; count failures and return an error.
   - Behaviour change: a chmod -R over a tree with links no longer touches link targets; partial failures surface.
 
-- [ ] **38. One dangling symlink or one growing file aborts the whole archive/download**
+- [x] **38. One dangling symlink or one growing file aborts the whole archive/download**
   `backend/bridge/handlers/filebrowser/services/archive_operations.go:749-804,667-698`
   - `[worker]`: `Root.Open` ENOENT on a dangling link fails the archive; tar `write too long` on a growing log.
   - Fix: skip-and-log on `ErrNotExist`/ELOOP/`ErrPermission`; `io.LimitReader(file, header.Size)`.
   - Behaviour change: archives succeed with skipped entries logged.
+  - Done 2026-10-23: `skipArchiveEntry` (ENOENT/EACCES/ELOOP) via `walkEntryError` and `addSingleFileOrSkip` in `addDirectory`; tar body through `io.LimitReader(header.Size)`. Tests: `TestCreateArchiveSkipsDanglingSymlinkInDirectory`, `TestCreateTarGzKeepsHeaderSizeWhenFileGrows`.
 
-- [ ] **39. Extraction drops permission bits; zip worker pool ignores errors**
+- [x] **39. Extraction drops permission bits; zip worker pool ignores errors**
   `backend/bridge/handlers/filebrowser/services/archive_operations.go:520,621,456-481`
   - `[worker]`: every file becomes 0664 / dir 0775 (`+x` lost); `extractZipFiles` keeps launching workers after an error and returns without `g.Wait()`.
   - Fix: apply `header.Mode().Perm()` masked to 0777; `errgroup.WithContext` + `g.Wait()` on every path.
   - Behaviour change: extracted executables keep `+x`; setuid/sticky bits are still stripped.
+  - Done 2026-10-23: `extractPerm` (perm bits minus other-write; dirs floored at 0700) for zip and tar; `extractZipFiles` stops launching on the first failure (atomic flag, since `ExtractArchive` has no ctx) and `g.Wait()`s on every path; zip directory entries now carry a mode. Tests: `TestExtractArchiveKeepsExecutableBit`, `TestExtractZipStopsWorkersAfterFirstError`.
 
 - [ ] **40. Package update-history parsers record wrong data**
   `backend/bridge/handlers/packages/updates.go:571-596,617-656`
@@ -407,11 +409,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: accept a terminal state after N polls or a deadline.
   - Behaviour change: short tests complete instead of hanging.
 
-- [ ] **43. Download of non-regular files (FIFO, `/dev/zero`)**
+- [x] **43. Download of non-regular files (FIFO, `/dev/zero`)**
   `backend/bridge/handlers/filebrowser/download_stream.go:55-84`
   - `[worker]`: only `IsDir` is rejected; a FIFO blocks `Open` with no ctx escape.
   - Fix: require `Mode().IsRegular()`.
   - Behaviour change: such downloads → 400.
+  - Done 2026-10-23: `openDownloadFile` opens `O_RDONLY|O_NONBLOCK` and rejects non-regular files with 400. Test: `TestStreamFileDownloadRejectsNonRegular`.
 
 - [ ] **44. `ComputeCopySize` ignores ctx and runs before an instant rename**
   `backend/bridge/handlers/filebrowser/size_estimate.go:125`, `services/file_operations.go:342-390`

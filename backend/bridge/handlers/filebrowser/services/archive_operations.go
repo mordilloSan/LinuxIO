@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 
 	zip "github.com/klauspost/compress/zip"
 	gzip "github.com/klauspost/pgzip"
@@ -467,26 +469,45 @@ func extractZipFiles(dest *os.Root, reader *zip.Reader, destination string, opts
 		extractWorkers = runtime.GOMAXPROCS(0)
 	}
 
+	// ExtractArchive carries no ctx (it cancels through opts), so a failed
+	// worker raises a flag instead of a group context to stop the others.
 	var g errgroup.Group
-	sem := make(chan struct{}, extractWorkers)
+	g.SetLimit(extractWorkers)
+	var failed atomic.Bool
+	var loopErr error
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
 			continue
 		}
-		if opts.IsCancelled() {
-			return ErrAborted
+		if failed.Load() {
+			break // a worker failed; Wait returns its error
 		}
-		f := file
-		sem <- struct{}{}
+		if opts.IsCancelled() {
+			loopErr = ErrAborted
+			break
+		}
 		g.Go(func() error {
-			defer func() { <-sem }()
-			if opts.IsCancelled() {
+			if failed.Load() || opts.IsCancelled() {
 				return ErrAborted
 			}
-			return extractZipEntry(dest, f, destination, safeOpts)
+			if err := extractZipEntry(dest, file, destination, safeOpts); err != nil {
+				failed.Store(true)
+				return err
+			}
+			return nil
 		})
 	}
-	return g.Wait()
+	// Wait on every path so no worker outlives the archive and destination handles.
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	return loopErr
+}
+
+// extractPerm keeps an archive entry's permission bits but drops
+// setuid/setgid/sticky and other-write, which Windows-made zips set on every file.
+func extractPerm(mode fs.FileMode) fs.FileMode {
+	return mode.Perm() &^ 0o002
 }
 
 func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *OperationCallbacks) error {
@@ -499,7 +520,8 @@ func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *Op
 		if err := dest.MkdirAll(rel, PermDir); err != nil {
 			return err
 		}
-		if err := dest.Chmod(rel, PermDir); err != nil {
+		// Owner rwx stays set so the entries inside can still be written.
+		if err := dest.Chmod(rel, extractPerm(file.Mode())|0o700); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
@@ -526,7 +548,7 @@ func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *Op
 		return err
 	}
 
-	if err := dest.Chmod(rel, PermFile); err != nil {
+	if err := dest.Chmod(rel, extractPerm(file.Mode())); err != nil {
 		return err
 	}
 	opts.ReportComplete(targetPath)
@@ -607,7 +629,8 @@ func extractTarEntry(dest *os.Root, header *tar.Header, tarReader *tar.Reader, d
 		if err := dest.MkdirAll(rel, PermDir); err != nil {
 			return err
 		}
-		if err := dest.Chmod(rel, PermDir); err != nil {
+		// Owner rwx stays set so the entries inside can still be written.
+		if err := dest.Chmod(rel, extractPerm(header.FileInfo().Mode())|0o700); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
@@ -627,7 +650,7 @@ func extractTarEntry(dest *os.Root, header *tar.Header, tarReader *tar.Reader, d
 		if err := outFile.Close(); err != nil {
 			return err
 		}
-		if err := dest.Chmod(rel, PermFile); err != nil {
+		if err := dest.Chmod(rel, extractPerm(header.FileInfo().Mode())); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
@@ -677,7 +700,7 @@ func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter 
 	rootWalkRel := relPath(resolvedPath)
 	return root.WalkDir(resolvedPath, func(walkRel string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			return walkEntryError(rootWalkRel, walkRel, walkErr)
 		}
 		if opts.IsCancelled() {
 			return ErrAborted
@@ -702,8 +725,37 @@ func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter 
 		if entry.IsDir() {
 			return addArchiveDirectoryEntry(entry, relArchivePath, tarWriter, zipWriter)
 		}
-		return addSingleFile(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
+		return addSingleFileOrSkip(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
 	})
+}
+
+// walkEntryError skips a failed entry below the walk root; the root itself
+// still fails the archive.
+func walkEntryError(rootWalkRel, walkRel string, walkErr error) error {
+	if walkRel != rootWalkRel && skipArchiveEntry(walkRel, walkErr) {
+		return nil
+	}
+	return walkErr
+}
+
+// addSingleFileOrSkip adds one walked file, leaving out entries that cannot be read.
+func addSingleFileOrSkip(root *fsroot.FSRoot, filePath, relArchivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
+	err := addSingleFile(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
+	if skipArchiveEntry(filePath, err) {
+		return nil
+	}
+	return err
+}
+
+// skipArchiveEntry reports whether err only affects one entry of a walked
+// directory (dangling or looping symlink, unreadable file or subdirectory), so
+// the entry is logged and left out instead of failing the whole archive.
+func skipArchiveEntry(path string, err error) bool {
+	if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.ELOOP) {
+		return false
+	}
+	slog.Warn("skipping unreadable archive entry", "component", "filebrowser", "subsystem", "archive", "path", path, "error", err)
+	return true
 }
 
 func shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath string) bool {
@@ -748,7 +800,9 @@ func addArchiveDirectoryEntry(entry fs.DirEntry, relArchivePath string, tarWrite
 		return tarWriter.WriteHeader(header)
 	}
 	if zipWriter != nil {
-		_, err := zipWriter.Create(relArchivePath + "/")
+		header := &zip.FileHeader{Name: relArchivePath + "/", Modified: entryInfo.ModTime()}
+		header.SetMode(fs.ModeDir | PermDir)
+		_, err := zipWriter.CreateHeader(header)
 		return err
 	}
 	return nil
@@ -756,9 +810,10 @@ func addArchiveDirectoryEntry(entry fs.DirEntry, relArchivePath string, tarWrite
 
 // addSingleFile adds a single file to an archive
 func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
-	openPath := fsroot.CleanAbsPath(realPath)
-	if _, resolvedPath, err := statWithSymlinkResolution(root, openPath); err == nil {
-		openPath = resolvedPath
+	// A dangling absolute symlink only fails here: os.Root would reject it as an escape.
+	_, openPath, err := statWithSymlinkResolution(root, realPath)
+	if err != nil {
+		return err
 	}
 
 	file, err := root.Root.Open(relPath(openPath))
@@ -791,7 +846,8 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 		if err = tarWriter.WriteHeader(header); err != nil {
 			return err
 		}
-		return copyWithCallbacks(tarWriter, file, opts)
+		// The header size is fixed; a file that grows while copying must not overrun it.
+		return copyWithCallbacks(tarWriter, io.LimitReader(file, header.Size), opts)
 	}
 
 	if zipWriter != nil {

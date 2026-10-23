@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -64,7 +65,8 @@ func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	defer root.Close()
 
 	cleanPath := filepath.Clean(requestPath)
-	file, err := root.Root.Open(fsroot.ToRel(cleanPath))
+	// O_NONBLOCK keeps a FIFO from blocking the open; it is rejected below.
+	file, err := root.Root.OpenFile(fsroot.ToRel(cleanPath), os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, 0, bridgeipc.NewError("file not found", 404)
@@ -79,6 +81,10 @@ func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	if stat.IsDir() {
 		file.Close()
 		return nil, 0, bridgeipc.NewError("path is a directory, use archive download instead", 400)
+	}
+	if !stat.Mode().IsRegular() {
+		file.Close()
+		return nil, 0, bridgeipc.NewError("path is not a regular file", 400)
 	}
 	return file, stat.Size(), nil
 }
