@@ -302,13 +302,50 @@ iface eth0 inet dhcp
 	requireCalls(t, runner, "ifdown eth0", "ifup eth0")
 }
 
+func TestIfupdownSetIPv4ManualDropsLegacyNetmask(t *testing.T) {
+	env, _, _ := testEnv(t)
+	path := filepath.Join(env.IfupdownDir, "eth0")
+	mustWriteFile(t, path, `
+auto eth0
+iface eth0 inet static
+	address 192.168.1.10
+	netmask 255.255.255.0
+	broadcast 192.168.1.255
+	network 192.168.1.0
+	gateway 192.168.1.1
+`)
+	backend, err := detectIfupdownBackend(env, "eth0")
+	if err != nil {
+		t.Fatalf("detectIfupdownBackend: %v", err)
+	}
+	setErr := backend.SetIPv4Manual(context.Background(), "10.0.0.5/16", "10.0.0.1", nil)
+	if setErr != nil {
+		t.Fatalf("SetIPv4Manual: %v", setErr)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read updated interfaces file: %v", err)
+	}
+	body := string(updated)
+	if !strings.Contains(body, "address 10.0.0.5/16") {
+		t.Fatalf("expected CIDR address in interfaces file:\n%s", body)
+	}
+	for _, unwanted := range []string{"netmask", "broadcast", "network"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("unexpected legacy %q in interfaces file:\n%s", unwanted, body)
+		}
+	}
+}
+
 func TestIfcfgSetIPv4ManualWritesExpectedKeysAndRunsIfup(t *testing.T) {
 	env, runner, _ := testEnv(t)
 	path := filepath.Join(env.IfcfgDir, "ifcfg-eth0")
 	mustWriteFile(t, path, `
 DEVICE=eth0
+NAME="System eth0"
+DOMAIN="a.com b.com"
 BOOTPROTO=dhcp
-ONBOOT=yes
+ONBOOT=yes # keep
 `)
 	backend, err := detectIfcfgBackend(env, "eth0")
 	if err != nil {
@@ -330,6 +367,9 @@ ONBOOT=yes
 		"GATEWAY=192.168.1.1",
 		"DNS1=8.8.8.8",
 		"DNS2=1.1.1.1",
+		`NAME="System eth0"`,
+		`DOMAIN="a.com b.com"`,
+		"ONBOOT=yes # keep",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected %q in ifcfg file:\n%s", want, body)

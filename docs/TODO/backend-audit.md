@@ -296,17 +296,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: duplicate names and invalid values → error instead of partial writes.
   - Done 2026-10-23: `AddInterface` stats the config first (409 if it exists); `parseAddInterfaceRequest` validates CIDRs (`validateCIDRs`), port range + `interfaceUsingPort`, MTU range; `exportInterfacePeerConfigs` returns export errors and a failed add removes its orphan peer dir. Tests: `TestAddInterfaceRejectsInvalidRequestsBeforeWriting`, `TestAddInterfaceRefusesExistingInterface`, `TestAddInterfaceReturnsPeerExportError`. The stat-then-write window is not locked.
 
-- [ ] **26. ifcfg backend strips shell quotes on every rewrite**
+- [x] **26. ifcfg backend strips shell quotes on every rewrite**
   `backend/bridge/handlers/network/internal/ifconfig/backend_ifcfg.go:189-215,279-296`
   - `[worker]`: `NAME="System eth0"` → `NAME=System eth0` after any edit (sourced by shell).
   - Fix: keep raw text for untouched keys, or re-quote values with whitespace/special chars. Round-trip test.
   - Behaviour change: none for well-formed files.
+  - Done 2026-10-23: `parseKeyValueDoc` keeps the raw line; `set` clears it; `render` re-renders only changed pairs, so untouched quoting and inline comments survive. Test: `TestIfcfgSetIPv4ManualWritesExpectedKeysAndRunsIfup` (extended).
 
-- [ ] **27. ifupdown `SetIPv4Manual` leaves a stale `netmask`/`broadcast`/`network`**
+- [x] **27. ifupdown `SetIPv4Manual` leaves a stale `netmask`/`broadcast`/`network`**
   `backend/bridge/handlers/network/internal/ifconfig/backend_ifupdown.go:102-118`
   - `[worker]`: `address a.b.c.d/16` next to the old `netmask` → ifup error after `ifdown` already ran.
   - Fix: delete those options before setting `address`; same in the DHCP path.
   - Behaviour change: none for CIDR-only stanzas.
+  - Done 2026-10-23: `SetIPv4Manual` deletes `netmask`/`broadcast`/`network` before setting `address`; `SetIPv4DHCP` drops them too. Test: `TestIfupdownSetIPv4ManualDropsLegacyNetmask`.
 
 - [ ] **28. Slow guest-agent lookup kills the libvirt connection before metrics are fetched**
   `backend/bridge/handlers/virt/domains.go:30-31,53-54`, `domain_addresses.go:14-30`

@@ -200,6 +200,7 @@ func parseKeyValueDoc(data []byte) *keyValueDoc {
 		key := strings.TrimSpace(parts[0])
 		value := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 		doc.lines = append(doc.lines, keyValueLine{
+			raw:    text,
 			key:    key,
 			value:  value,
 			isPair: true,
@@ -221,6 +222,7 @@ func (d *keyValueDoc) set(key, value string) {
 	for i, line := range d.lines {
 		if line.isPair && line.key == key {
 			d.lines[i].value = value
+			d.lines[i].raw = "" // changed: re-render instead of keeping the original quoting
 			return
 		}
 	}
@@ -282,7 +284,7 @@ func (d *keyValueDoc) render() []byte {
 		if i > 0 {
 			builder.WriteByte('\n')
 		}
-		if line.isPair {
+		if line.isPair && line.raw == "" {
 			builder.WriteString(line.key)
 			builder.WriteByte('=')
 			builder.WriteString(line.value)

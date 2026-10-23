@@ -94,7 +94,7 @@ func (b *IfupdownBackend) SetIPv4DHCP(ctx context.Context) error {
 	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV4(b.iface)
 		block.Method = "dhcp"
-		block.deleteOptions("address", "gateway", "dns-nameservers")
+		block.deleteOptions("address", "netmask", "broadcast", "network", "gateway", "dns-nameservers")
 		return nil
 	})
 }
@@ -109,6 +109,8 @@ func (b *IfupdownBackend) SetIPv4Manual(ctx context.Context, addressCIDR, gatewa
 	return b.update(ctx, func(state *ifupdownInterfaceState) error {
 		block := state.ensureV4(b.iface)
 		block.Method = "static"
+		// CIDR address replaces any legacy dotted netmask/broadcast/network.
+		block.deleteOptions("netmask", "broadcast", "network")
 		block.setOption("address", strings.TrimSpace(addressCIDR))
 		block.setOption("gateway", strings.TrimSpace(gateway))
 		block.setOption("dns-nameservers", strings.Join(dns, " "))
