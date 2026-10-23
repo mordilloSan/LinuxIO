@@ -3,6 +3,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 
 import type { ComposeProject, ContainerInfo } from "@/api";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import DockerIcon from "@/components/docker/DockerIcon";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -33,7 +34,6 @@ import {
 import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
 import ComposeStackCard from "../cards/ComposeStackCard";
 import ContainerActions from "../containers/ContainerActions";
-import DockerResourceDetailsLayout from "../shared/DockerResourceDetailsLayout";
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 import "./compose-list.css";
@@ -708,7 +708,7 @@ const ComposeList = ({
           minHeight: 0,
         }}
       >
-        <DockerResourceDetailsLayout
+        <ResourceDetailsLayout
           onClose={() => updateFocusedProject(null)}
           resourceLabel="stack"
           subtitle={`${focusedProject.status} · ${getTotalContainers(focusedProject)} containers`}
@@ -727,7 +727,7 @@ const ComposeList = ({
           title={focusedProject.name}
         >
           {renderStackContainers(focusedProject)}
-        </DockerResourceDetailsLayout>
+        </ResourceDetailsLayout>
         {containerDialogs}
       </div>
     );

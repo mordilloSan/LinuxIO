@@ -1,301 +1,144 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
 import type { VirtualMachine } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppChip from "@/components/ui/AppChip";
+import AppDivider from "@/components/ui/AppDivider";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { down } from "@/theme/breakpoints";
+import InfoRow, { DetailRow } from "@/components/ui/InfoRow";
 import { formatThroughput } from "@/utils/formatters";
 
-import {
-  VM_TOAST,
-  formatDisk,
-  formatMemory,
-  normalizeState,
-  stateChipColor,
-  vmOSLabel,
-} from "./vmShared";
+import { VMMetricBars } from "./VMCard";
+import { VM_TOAST, formatDisk } from "./vmShared";
 
-const detailPanelStyle: CSSProperties = {
+const sectionStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "var(--app-space-16)",
+  gap: "var(--app-space-4)",
   minWidth: 0,
-  padding: "var(--app-space-16)",
-};
-
-const detailPanelEmptyStyle: CSSProperties = {
-  ...detailPanelStyle,
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: 220,
-};
-
-const detailHeaderStyle: CSSProperties = {
-  alignItems: "center",
-  display: "flex",
-  gap: "var(--app-space-16)",
-  justifyContent: "space-between",
-};
-
-const statGridStyle = (isMobile: boolean): CSSProperties => ({
-  display: "grid",
-  gap: "var(--app-space-8)",
-  gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-});
-
-const statItemStyle: CSSProperties = {
-  border: "1px solid var(--app-palette-divider)",
-  borderRadius: 6,
-  padding: "var(--app-space-8)",
-};
-
-const detailSectionStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--app-space-8)",
-};
-
-const tokenListStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "var(--app-space-8)",
-};
-
-const tokenStyle: CSSProperties = {
-  border: "1px solid var(--app-palette-divider)",
-  borderRadius: 6,
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  maxWidth: "100%",
-  minWidth: 110,
-  padding: "var(--app-space-8)",
-};
-
-const wrappingCodeStyle: CSSProperties = {
-  overflowWrap: "anywhere",
 };
 
 const formatRate = (bytesPerSec: number | undefined) =>
-  bytesPerSec === undefined ? "—" : formatThroughput(bytesPerSec);
+  bytesPerSec === undefined ? "Unavailable" : formatThroughput(bytesPerSec);
 
-function StatItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={statItemStyle}>
-      <AppTypography color="text.secondary" component="span" variant="caption">
-        {label}
-      </AppTypography>
-      <strong style={{ display: "block", marginTop: 4 }}>{value}</strong>
-    </div>
-  );
-}
+const SectionTitle = ({ children }: { children: ReactNode }) => (
+  <AppTypography fontWeight={700} style={{ margin: 0 }} variant="subtitle2">
+    {children}
+  </AppTypography>
+);
+
+const valueText = (text: string) => (
+  <AppTypography
+    component="span"
+    fontWeight={500}
+    noWrap
+    title={text}
+    variant="caption"
+  >
+    {text}
+  </AppTypography>
+);
+
+const emptyText = (text: string) => (
+  <AppTypography color="text.secondary" variant="body2">
+    {text}
+  </AppTypography>
+);
 
 /**
- * Renders one VM's detail, or the empty prompt when no machine is selected.
+ * The focused VM's monitoring, settings, disks and network, laid out like a
+ * container's details beside its card.
  *
  * Loading and failure are owned by the `/vm/machines/$name` route: its loader
  * suspends on `virt.get` and its errors surface at the route boundary, which
  * renders here in the parent layout's outlet.
  */
-export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
-  const isMobile = useMediaQuery(down("sm"));
+export default function VMDetailsPanel({ vm }: { vm: VirtualMachine }) {
   const autostartMutation = useCallMutation(linuxio.virt.set_autostart, {
     success: "Autostart updated",
     error: "Failed to change autostart",
     toast: VM_TOAST,
   });
-
-  if (!vm) {
-    return (
-      <FrostedCard style={detailPanelEmptyStyle}>
-        <AppTypography color="text.secondary" variant="body2">
-          Select a VM
-        </AppTypography>
-      </FrostedCard>
-    );
-  }
+  const disks = vm.disks ?? [];
+  const nics = vm.nics ?? [];
 
   return (
-    <FrostedCard style={detailPanelStyle}>
-      <div style={detailHeaderStyle}>
-        <div style={{ minWidth: 0 }}>
-          <AppTypography component="h2" variant="h6">
-            {vm.name}
-          </AppTypography>
-          <AppTypography color="text.secondary" noWrap variant="caption">
-            {vm.uuid || "No UUID"}
-          </AppTypography>
-        </div>
-        <AppChip
-          color={stateChipColor(vm.state)}
-          label={normalizeState(vm.state)}
-          size="small"
-          variant="soft"
-        />
+    <div style={sectionStyle}>
+      <div style={sectionStyle}>
+        <SectionTitle>Monitoring</SectionTitle>
+        <VMMetricBars vm={vm} />
+        <AppDivider style={{ marginBlock: "var(--app-space-4)" }} />
+        <InfoRow label="Net Receive rate">
+          {formatRate(vm.metrics?.networkReceiveBytesPerSecond)}
+        </InfoRow>
+        <InfoRow label="Net Send rate">
+          {formatRate(vm.metrics?.networkSendBytesPerSecond)}
+        </InfoRow>
+        <InfoRow label="Disk Read rate">
+          {formatRate(vm.metrics?.diskReadBytesPerSecond)}
+        </InfoRow>
+        <InfoRow label="Disk Write rate" noBorder>
+          {formatRate(vm.metrics?.diskWriteBytesPerSecond)}
+        </InfoRow>
       </div>
-      <div style={statGridStyle(isMobile)}>
-        <div style={statItemStyle}>
-          <AppTypography
-            color="text.secondary"
-            component="span"
-            variant="caption"
-          >
-            vCPUs
-          </AppTypography>
-          <strong style={{ display: "block", marginTop: 4 }}>{vm.vcpus}</strong>
-        </div>
-        <div style={statItemStyle}>
-          <AppTypography
-            color="text.secondary"
-            component="span"
-            variant="caption"
-          >
-            Memory
-          </AppTypography>
-          <strong style={{ display: "block", marginTop: 4 }}>
-            {formatMemory(vm.memoryMB)}
-          </strong>
-        </div>
-        <div style={statItemStyle}>
-          <AppTypography
-            color="text.secondary"
-            component="span"
-            variant="caption"
-          >
-            Disk
-          </AppTypography>
-          <strong style={{ display: "block", marginTop: 4 }}>
-            {formatDisk(vm.diskGB)}
-          </strong>
-        </div>
-        {vm.metrics && (
-          <>
-            <StatItem
-              label="CPU usage"
-              value={
-                vm.metrics.cpuPercent === undefined
-                  ? "—"
-                  : `${vm.metrics.cpuPercent.toFixed(1)}%`
-              }
-            />
-            <StatItem
-              label="Memory used"
-              value={formatMemory(vm.metrics.memoryUsedMB)}
-            />
-            <StatItem
-              label="Network ↓ / ↑"
-              value={`${formatRate(vm.metrics.networkReceiveBytesPerSecond)} / ${formatRate(vm.metrics.networkSendBytesPerSecond)}`}
-            />
-            <StatItem
-              label="Disk read / write"
-              value={`${formatRate(vm.metrics.diskReadBytesPerSecond)} / ${formatRate(vm.metrics.diskWriteBytesPerSecond)}`}
-            />
-          </>
-        )}
-        <div style={statItemStyle}>
-          <AppTypography
-            color="text.secondary"
-            component="span"
-            variant="caption"
-          >
-            Autostart
-          </AppTypography>
-          <div style={{ marginTop: 4 }}>
-            <AppSwitch
-              aria-label="Autostart"
-              checked={vm.autostart}
-              disabled={autostartMutation.isPending}
-              onChange={(_, autostart) =>
-                autostartMutation.mutate({ autostart, name: vm.name })
-              }
-              size="small"
-            />
-          </div>
-        </div>
-        <StatItem label="Operating system" value={vmOSLabel(vm.os)} />
-        <StatItem
-          label="Firmware"
-          value={vm.firmware === "uefi" ? "UEFI" : "BIOS (legacy)"}
-        />
+      <AppDivider style={{ marginBlock: "var(--app-space-4)" }} />
+      <div style={sectionStyle}>
+        <SectionTitle>Settings</SectionTitle>
+        <DetailRow label="Autostart" noBorder>
+          <AppSwitch
+            aria-label="Autostart"
+            checked={vm.autostart}
+            disabled={autostartMutation.isPending}
+            onChange={(_, autostart) =>
+              autostartMutation.mutate({ autostart, name: vm.name })
+            }
+            size="small"
+          />
+        </DetailRow>
       </div>
-      <div style={detailSectionStyle}>
-        <AppTypography component="h3" variant="subtitle2">
-          Disks
-        </AppTypography>
-        {(vm.disks ?? []).length === 0 ? (
-          <AppTypography color="text.secondary" variant="body2">
-            No disks reported.
-          </AppTypography>
-        ) : (
-          <div style={tokenListStyle}>
-            {(vm.disks ?? []).map((disk) => (
-              <span key={`${disk.target}-${disk.path}`} style={tokenStyle}>
-                <code style={wrappingCodeStyle}>
-                  {disk.target || disk.device}
-                </code>
-                <AppTypography
-                  color="text.secondary"
-                  component="small"
-                  variant="caption"
-                >
-                  {disk.owned ? "managed" : "external"}
-                </AppTypography>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={detailSectionStyle}>
-        <AppTypography component="h3" variant="subtitle2">
-          Network
-        </AppTypography>
-        {(vm.nics ?? []).length === 0 ? (
-          <AppTypography color="text.secondary" variant="body2">
-            No interfaces reported.
-          </AppTypography>
-        ) : (
-          <div style={tokenListStyle}>
-            {(vm.nics ?? []).map((nic, index) => (
-              <span key={`${nic.mac}-${index}`} style={tokenStyle}>
-                <code style={wrappingCodeStyle}>
-                  {nic.network || "network"}
-                </code>
-                {(nic.ipAddresses ?? []).length === 0 ? (
-                  <AppTypography
-                    color="text.secondary"
-                    component="small"
-                    variant="caption"
-                  >
-                    No IP lease yet
-                  </AppTypography>
-                ) : (
-                  (nic.ipAddresses ?? []).map((ip) => (
-                    <AppTypography
-                      color="text.secondary"
-                      component="small"
-                      key={ip}
-                      variant="caption"
-                    >
-                      {ip}
-                    </AppTypography>
-                  ))
+      <AppDivider style={{ marginBlock: "var(--app-space-4)" }} />
+      <div style={sectionStyle}>
+        <SectionTitle>Disks</SectionTitle>
+        {disks.length === 0
+          ? emptyText("No disks reported.")
+          : disks.map((disk, index) => (
+              <DetailRow
+                key={`${disk.target}-${disk.path}`}
+                label={disk.target || disk.device}
+                noBorder={index === 0}
+              >
+                {valueText(
+                  [
+                    disk.owned ? "managed" : "external",
+                    disk.sizeGB ? formatDisk(disk.sizeGB) : "",
+                    disk.path,
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
                 )}
-                <AppTypography
-                  color="text.secondary"
-                  component="small"
-                  variant="caption"
-                >
-                  {nic.mac || nic.model || "virtio"}
-                </AppTypography>
-              </span>
+              </DetailRow>
             ))}
-          </div>
-        )}
       </div>
-    </FrostedCard>
+      <AppDivider style={{ marginBlock: "var(--app-space-4)" }} />
+      <div style={sectionStyle}>
+        <SectionTitle>Networks</SectionTitle>
+        {nics.length === 0
+          ? emptyText("No interfaces reported.")
+          : nics.map((nic, index) => (
+              <DetailRow
+                key={`${nic.mac}-${index}`}
+                label={nic.network || "network"}
+                noBorder={index === 0}
+              >
+                {valueText(
+                  [
+                    (nic.ipAddresses ?? []).join(", ") || "No IP lease yet",
+                    nic.mac || nic.model || "virtio",
+                  ].join(" · "),
+                )}
+              </DetailRow>
+            ))}
+      </div>
+    </div>
   );
 }

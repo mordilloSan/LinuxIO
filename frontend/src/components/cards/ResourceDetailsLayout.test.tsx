@@ -2,12 +2,12 @@ import { expect, it, vi } from "vitest";
 
 import { render, screen } from "@/test/render";
 
-import DockerResourceDetailsLayout from "./DockerResourceDetailsLayout";
+import ResourceDetailsLayout from "./ResourceDetailsLayout";
 
 it("renders a responsive resource summary and closable details panel", async () => {
   const onClose = vi.fn();
   const { user } = render(
-    <DockerResourceDetailsLayout
+    <ResourceDetailsLayout
       onClose={onClose}
       resourceLabel="image"
       subtitle="Docker image details"
@@ -15,7 +15,7 @@ it("renders a responsive resource summary and closable details panel", async () 
       title="example/image:latest"
     >
       <div>Image metadata</div>
-    </DockerResourceDetailsLayout>,
+    </ResourceDetailsLayout>,
   );
 
   expect(screen.getByText("Image summary")).toBeInTheDocument();

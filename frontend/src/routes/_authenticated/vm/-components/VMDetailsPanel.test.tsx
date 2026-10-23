@@ -38,10 +38,28 @@ describe("VMDetailsPanel", () => {
     expect(mocks.mutate).toHaveBeenCalledWith({ autostart: true, name: "HA" });
   });
 
-  it("shows the firmware without an inline select", async () => {
-    renderWithTanStackRouter(<VMDetailsPanel vm={vm} />);
-    expect(await screen.findByText("BIOS (legacy)")).toBeInTheDocument();
-    expect(screen.getByText("Unknown")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  it("lists monitoring, disks and networks", async () => {
+    renderWithTanStackRouter(
+      <VMDetailsPanel
+        vm={{
+          ...vm,
+          disks: [
+            {
+              device: "disk",
+              owned: true,
+              path: "/var/lib/libvirt/images/linuxio-HA.qcow2",
+              sizeGB: 32,
+              target: "vda",
+            },
+          ],
+          nics: [{ mac: "52:54:00:00:00:01", network: "br0" }],
+        }}
+      />,
+    );
+    expect(await screen.findByText("Monitoring")).toBeInTheDocument();
+    expect(screen.getByText(/managed · 32 GB/)).toBeInTheDocument();
+    expect(
+      screen.getByText("No IP lease yet · 52:54:00:00:00:01"),
+    ).toBeInTheDocument();
   });
 });

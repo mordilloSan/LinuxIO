@@ -3,6 +3,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type SyntheticEvent } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -37,7 +38,6 @@ import {
 import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
 import DockerNetworkCard from "../cards/DockerNetworkCard";
 import BatchDeleteDialog from "../shared/BatchDeleteDialog";
-import DockerResourceDetailsLayout from "../shared/DockerResourceDetailsLayout";
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 interface NetworkListProps {
@@ -359,7 +359,7 @@ const NetworkList = ({
         </RoutedTabSearch>
       )}
       {focusedNetwork ? (
-        <DockerResourceDetailsLayout
+        <ResourceDetailsLayout
           onClose={() => updateFocusedNetwork(null)}
           resourceLabel="network"
           subtitle={`${focusedNetwork.Driver} · ${focusedNetwork.Scope}`}
@@ -389,7 +389,7 @@ const NetworkList = ({
             onConnect={openConnectDialog}
             onDisconnect={setDisconnectTarget}
           />
-        </DockerResourceDetailsLayout>
+        </ResourceDetailsLayout>
       ) : viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid

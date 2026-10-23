@@ -7,6 +7,7 @@ import {
   type DockerNetwork,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import {
   cardHeight,
   CARD_PADDING_LG,
@@ -19,7 +20,6 @@ import ContainerInspectSections, {
   type ContainerInspectSection,
 } from "./ContainerInspectSections";
 import ContainerCard from "../cards/ContainerCard";
-import DockerResourceDetailsLayout from "../shared/DockerResourceDetailsLayout";
 
 interface ContainerResourceDetailsProps {
   container: ContainerInfo;
@@ -73,7 +73,7 @@ const ContainerResourceDetails = ({
         minWidth: 0,
       }}
     >
-      <DockerResourceDetailsLayout
+      <ResourceDetailsLayout
         onClose={onClose}
         resourceLabel="container"
         subtitle="Runtime state and live metrics"
@@ -91,7 +91,7 @@ const ContainerResourceDetails = ({
           container={container}
           sections={["monitoring"]}
         />
-      </DockerResourceDetailsLayout>
+      </ResourceDetailsLayout>
 
       <div
         style={{

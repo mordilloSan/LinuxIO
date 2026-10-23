@@ -8,13 +8,22 @@ import {
   useCallMutation,
   type VirtualMachine,
 } from "@/api";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
+import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
+import { RoutedTabActions } from "@/components/tabbar";
+import AppTypography from "@/components/ui/AppTypography";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { down } from "@/theme/breakpoints";
+import { useViewMode } from "@/hooks/useViewMode";
+import { CARD_GRID_SIZE_DENSE } from "@/theme/constants";
 
 import DeleteVMDialog from "./DeleteVMDialog";
 import EditVMDialog from "./EditVMDialog";
 import { useVMLifecycle } from "./useVMLifecycle";
+import VMActions, { type VMActionHandlers } from "./VMActions";
+import VMCard from "./VMCard";
 import VMListTable from "./VMListTable";
 import { VM_TOAST, normalizeVMDeleteResult } from "./vmShared";
 import { VMPreflightCard } from "./VMTabs";
@@ -24,16 +33,19 @@ const ConsoleDialog = lazy(() => import("./ConsoleDialog"));
 
 const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
 
+const getVirtualMachineId = (vm: VirtualMachine) => vm.name;
+
 /**
  * Persistent shell for the Virtual machines tab.
  *
  * The list and every lifecycle mutation live here so they survive detail
  * navigation; the selected machine is a real child route rendered in the
- * outlet. Selection therefore lives in the path, not in search state.
+ * outlet. Selection therefore lives in the path, not in search state, and
+ * replaces the table or card list with the focused card plus its details.
  */
 const VMMachinesLayout = () => {
   const queryClient = useQueryClient();
-  const isCompactLayout = useMediaQuery(down("md"));
+  const [viewMode, setViewMode] = useViewMode("vm.machines");
   const toast = useScopedToast(VM_TOAST);
   const navigate = vmMachinesRouteApi.useNavigate();
   // Both entries were already warmed by the /vm route loader; these observers
@@ -109,9 +121,112 @@ const VMMachinesLayout = () => {
   });
   const deleteTarget = liveDeleteTarget ?? pendingDeleteVM;
   const { pendingActions, runAction } = useVMLifecycle(vms);
+  const surface = useReorderableSurface({
+    getId: getVirtualMachineId,
+    items: vms,
+    surface: "vm.list",
+  });
+  const selectedVM = vms.find((vm) => vm.name === selectedName);
+  useClearSelectionOnEscape(selectedName !== null, () => setSelectedName(null));
+  const handlers: VMActionHandlers = {
+    onDelete: (vm) => {
+      setDeleteTargetName(vm.name);
+      setPendingDeleteVM(vm);
+      setDeleteDialogOpen(true);
+    },
+    onEdit: (vm) => {
+      setEditVM(vm);
+      setEditDialogOpen(true);
+    },
+    onOpenConsole: (vm) => {
+      setConsoleVM(vm);
+      setConsoleDialogOpen(true);
+    },
+    onRunAction: runAction,
+  };
+
+  let content;
+  if (selectedVM) {
+    content = (
+      <ResourceDetailsLayout
+        onClose={() => void setSelectedName(null)}
+        resourceLabel="VM"
+        subtitle="Live metrics, settings, disks and network"
+        summary={
+          <VMCard
+            actions={
+              <VMActions
+                handlers={handlers}
+                pendingAction={pendingActions.get(selectedVM.name)}
+                vm={selectedVM}
+              />
+            }
+            onSelect={() => void setSelectedName(null)}
+            pendingAction={pendingActions.get(selectedVM.name)}
+            selected
+            vm={selectedVM}
+          />
+        }
+        title={selectedVM.name}
+      >
+        <Outlet />
+      </ResourceDetailsLayout>
+    );
+  } else if (selectedName) {
+    // Not in the polled list yet (just created or renamed): the route still
+    // shows its details.
+    content = <Outlet />;
+  } else if (viewMode === "table") {
+    content = (
+      <VMListTable
+        handlers={handlers}
+        onSelect={setSelectedName}
+        pendingActions={pendingActions}
+        surface={surface}
+      />
+    );
+  } else if (vms.length === 0) {
+    content = (
+      <AppTypography color="text.secondary" variant="body2">
+        No virtual machines.
+      </AppTypography>
+    );
+  } else {
+    content = (
+      <ReorderableCardGrid
+        fillAvailable
+        getId={getVirtualMachineId}
+        items={surface.items}
+        renderItem={(vm) => (
+          <VMCard
+            actions={
+              <VMActions
+                compact
+                handlers={handlers}
+                pendingAction={pendingActions.get(vm.name)}
+                vm={vm}
+              />
+            }
+            onSelect={() => void setSelectedName(vm.name)}
+            pendingAction={pendingActions.get(vm.name)}
+            vm={vm}
+          />
+        )}
+        size={CARD_GRID_SIZE_DENSE}
+        surface={surface}
+      />
+    );
+  }
 
   return (
     <>
+      <RoutedTabActions>
+        <ViewModeToggle
+          alternateMode="table"
+          onViewModeChange={setViewMode}
+          viewMode={viewMode}
+        />
+      </RoutedTabActions>
       <div
         style={{
           display: "flex",
@@ -121,39 +236,7 @@ const VMMachinesLayout = () => {
         }}
       >
         <VMPreflightCard preflight={preflight} />
-        <div
-          style={{
-            alignItems: "stretch",
-            display: "grid",
-            gap: "var(--app-space-16)",
-            gridTemplateColumns: isCompactLayout
-              ? "1fr"
-              : "minmax(0, 1fr) minmax(280px, 360px)",
-            minHeight: 0,
-          }}
-        >
-          <VMListTable
-            effectiveSelectedName={selectedName}
-            onDelete={(vm) => {
-              setDeleteTargetName(vm.name);
-              setPendingDeleteVM(vm);
-              setDeleteDialogOpen(true);
-            }}
-            onEdit={(vm) => {
-              setEditVM(vm);
-              setEditDialogOpen(true);
-            }}
-            onOpenConsole={(vm) => {
-              setConsoleVM(vm);
-              setConsoleDialogOpen(true);
-            }}
-            onRunAction={runAction}
-            onSelect={setSelectedName}
-            pendingActions={pendingActions}
-            vms={vms}
-          />
-          <Outlet />
-        </div>
+        {content}
       </div>
 
       {deleteTarget && (

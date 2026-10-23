@@ -110,7 +110,8 @@ const mocks = vi.hoisted(() => {
     preflightRequests: [] as object[],
     routeNavigate: vi.fn(),
     // Detail selection is a path param on /vm/machines/$name.
-    routeParams: { name: "alpha" },
+    routeParams: {},
+    viewMode: "table",
     directoryChildren: vi.fn(),
     existsBatch: vi.fn(),
     resourcePost: vi.fn(),
@@ -137,6 +138,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     useParams: () => mocks.routeParams,
   };
 });
+
+vi.mock("@/hooks/useViewMode", () => ({
+  useViewMode: () => [mocks.viewMode, vi.fn()],
+}));
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
@@ -552,7 +557,8 @@ beforeEach(() => {
   mocks.networksCalls = 0;
   mocks.preflightRequests = [];
   mocks.routeNavigate.mockReset();
-  mocks.routeParams = { name: "alpha" };
+  mocks.routeParams = {};
+  mocks.viewMode = "table";
   mocks.directoryChildren.mockReset();
   mocks.directoryChildren.mockImplementation(
     ({ path, includeFiles }: { path: string; includeFiles: boolean }) => {
@@ -624,7 +630,7 @@ describe("Virtual Machines page", () => {
     expect(mocks.mutations.shutdown).toHaveBeenCalledWith({ name: "alpha" });
   });
 
-  it("shows live usage bars and runs reboot from the more-actions menu", async () => {
+  it("shows live usage bars and runs reboot from the action strip", async () => {
     mocks.listVMs = [
       {
         ...mocks.alpha,
@@ -643,8 +649,7 @@ describe("Virtual Machines page", () => {
       screen.getByRole("progressbar", { name: "Memory usage" }),
     ).toHaveAttribute("aria-valuenow", "50");
 
-    await user.click(screen.getByRole("button", { name: "More actions" }));
-    await user.click(screen.getByRole("menuitem", { name: "Reboot" }));
+    await user.click(screen.getByRole("button", { name: "Reboot" }));
 
     expect(mocks.mutations.reboot).toHaveBeenCalledWith({ name: "alpha" });
   });
@@ -688,7 +693,7 @@ describe("Virtual Machines page", () => {
         within(getVMAction("alpha", "Shutdown")).getByRole("progressbar"),
       ).toBeInTheDocument();
     });
-    expect(getVMAction("alpha", "More actions")).toBeDisabled();
+    expect(getVMAction("alpha", "Reboot")).toBeDisabled();
     // The guest is still up while it shuts down, so the console stays usable.
     expect(getVMAction("alpha", "Console")).toBeEnabled();
     expect(getVMAction("beta", "Start")).toBeEnabled();
@@ -747,7 +752,7 @@ describe("Virtual Machines page", () => {
     });
   }, 15_000);
 
-  it("edits a shut-off VM from its row and follows a rename", async () => {
+  it("edits a shut-off VM from its row", async () => {
     const shutOff = { ...mocks.alpha, state: "shutoff" };
     mocks.listVMs = [shutOff, { ...mocks.beta, state: "running" }];
     mocks.virtUpdate.mockResolvedValue({ ...shutOff, name: "alpha2" });
@@ -764,12 +769,12 @@ describe("Virtual Machines page", () => {
     expect(
       within(getVMRow("beta")).getByRole("button", { name: "Edit" }),
     ).toBeDisabled();
-    // A shut-off VM has no reboot, suspend or force off to offer.
+    // Every row has the same strip; what does not apply is disabled.
     expect(
-      within(getVMRow("alpha")).queryByRole("button", { name: "More actions" }),
-    ).not.toBeInTheDocument();
+      within(getVMRow("alpha")).getByRole("button", { name: "Force off" }),
+    ).toBeDisabled();
     expect(
-      within(getVMRow("beta")).getByRole("button", { name: "More actions" }),
+      within(getVMRow("beta")).getByRole("button", { name: "Force off" }),
     ).toBeEnabled();
     await user.click(
       within(getVMRow("alpha")).getByRole("button", { name: "Edit" }),
@@ -795,6 +800,24 @@ describe("Virtual Machines page", () => {
         vcpus: 4,
       }),
     );
+    // alpha was not the selected VM, so the URL stays put.
+    expect(mocks.routeNavigate).not.toHaveBeenCalled();
+  });
+
+  it("follows a rename of the focused VM", async () => {
+    const shutOff = { ...mocks.alpha, state: "shutoff" };
+    mocks.listVMs = [shutOff];
+    mocks.routeParams = { name: "alpha" };
+    mocks.virtUpdate.mockResolvedValue({ ...shutOff, name: "alpha2" });
+    mocks.routeNavigate.mockResolvedValue(undefined);
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    await user.clear(within(dialog).getByLabelText(/^name/i));
+    await user.type(within(dialog).getByLabelText(/^name/i), "alpha2");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
     await waitFor(() =>
       expect(mocks.routeNavigate).toHaveBeenCalledWith({
         params: { name: "alpha2" },
@@ -823,29 +846,66 @@ describe("Virtual Machines page", () => {
     );
   });
 
-  it("deletes and evicts only the clicked VM while URL selection points elsewhere", async () => {
+  it("deletes the focused VM and returns to the list", async () => {
     const queryClient = createTestQueryClient();
     const removeQueries = vi.spyOn(queryClient, "removeQueries");
     mocks.listVMs = [mocks.alpha, mocks.beta];
     mocks.routeParams = { name: "alpha" };
     const { user } = await renderVMPage(true, queryClient);
 
-    await user.click(screen.getAllByRole("button", { name: "Delete" })[1]);
+    // The focused card replaces the list, so beta's row is gone.
+    expect(
+      screen.queryByRole("button", { name: "beta" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("dialog");
     expect(
-      within(dialog).getByText(/delete beta from libvirt/i),
+      within(dialog).getByText(/delete alpha from libvirt/i),
     ).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() =>
       expect(mocks.virtDelete).toHaveBeenCalledWith({
         deleteDisks: true,
-        name: "beta",
+        name: "alpha",
       }),
     );
     await waitFor(() => expect(removeQueries).toHaveBeenCalledOnce());
     expect(removeQueries).toHaveBeenCalledWith({
-      queryKey: ["linuxio", "virt", "get", { name: "beta" }],
+      queryKey: ["linuxio", "virt", "get", { name: "alpha" }],
+    });
+    expect(mocks.routeNavigate).toHaveBeenCalledWith({
+      replace: true,
+      to: "/vm/machines",
+    });
+  });
+
+  it("opens a VM's details from the card view and closes back", async () => {
+    mocks.viewMode = "card";
+    mocks.listVMs = [mocks.alpha, mocks.beta];
+    const { user, unmount } = await renderVMPage();
+
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Select beta" }));
+    expect(mocks.routeNavigate).toHaveBeenCalledWith({
+      params: { name: "beta" },
+      replace: true,
+      to: "/vm/machines/$name",
+    });
+    unmount();
+
+    mocks.routeNavigate.mockClear();
+    mocks.routeParams = { name: "beta" };
+    const focused = await renderVMPage();
+    expect(
+      screen.getByRole("button", { name: "Collapse beta" }),
+    ).toBeInTheDocument();
+    await focused.user.click(
+      screen.getByRole("button", { name: "Close VM details" }),
+    );
+    expect(mocks.routeNavigate).toHaveBeenCalledWith({
+      replace: true,
+      to: "/vm/machines",
     });
   });
 

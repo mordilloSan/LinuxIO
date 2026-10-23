@@ -4,6 +4,7 @@ import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
 import { linuxio, useCallMutation } from "@/api";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -34,7 +35,6 @@ import { formatReferenceCount, formatVolumeSize } from "./volumeFormat";
 import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
 import VolumeCard from "../cards/VolumeCard";
 import BatchDeleteDialog from "../shared/BatchDeleteDialog";
-import DockerResourceDetailsLayout from "../shared/DockerResourceDetailsLayout";
 
 const dockerRouteApi = getRouteApi("/_authenticated/docker/volumes");
 
@@ -243,7 +243,7 @@ const VolumeList = ({
         </RoutedTabSearch>
       )}
       {focusedVolume ? (
-        <DockerResourceDetailsLayout
+        <ResourceDetailsLayout
           onClose={() => updateFocusedVolume(null)}
           resourceLabel="volume"
           subtitle={`${focusedVolume.Driver} · ${focusedVolume.Scope || "local"}`}
@@ -293,7 +293,7 @@ const VolumeList = ({
           title={focusedVolume.Name}
         >
           <VolumeDetailsContent volume={focusedVolume} />
-        </DockerResourceDetailsLayout>
+        </ResourceDetailsLayout>
       ) : viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid

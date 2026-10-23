@@ -3,6 +3,7 @@ import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
 import { type DockerImage, linuxio, useCallMutation } from "@/api";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import { RoutedTabSearch } from "@/components/tabbar";
@@ -25,7 +26,6 @@ import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
 import DockerImageCard from "../cards/DockerImageCard";
 import BatchDeleteDialog from "../shared/BatchDeleteDialog";
-import DockerResourceDetailsLayout from "../shared/DockerResourceDetailsLayout";
 
 const UNTAGGED_REF = "<none>:<none>";
 
@@ -375,7 +375,7 @@ const ImageList = ({
         </RoutedTabSearch>
       )}
       {focusedImage ? (
-        <DockerResourceDetailsLayout
+        <ResourceDetailsLayout
           onClose={clearFocusedImage}
           resourceLabel="image"
           subtitle={`${focusedImage.size} MB · ${focusedImage.created}`}
@@ -398,7 +398,7 @@ const ImageList = ({
           title={focusedImage.repo}
         >
           <ImageDetailsContent image={focusedImage} />
-        </DockerResourceDetailsLayout>
+        </ResourceDetailsLayout>
       ) : viewMode === "card" ? (
         filtered.length > 0 ? (
           <ReorderableCardGrid

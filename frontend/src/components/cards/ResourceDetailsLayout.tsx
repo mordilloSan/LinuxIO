@@ -13,7 +13,7 @@ import {
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
-interface DockerResourceDetailsLayoutProps {
+interface ResourceDetailsLayoutProps {
   children: ReactNode;
   onClose: () => void;
   resourceLabel: string;
@@ -22,14 +22,14 @@ interface DockerResourceDetailsLayoutProps {
   title: string;
 }
 
-const DockerResourceDetailsLayout = ({
+const ResourceDetailsLayout = ({
   children,
   onClose,
   resourceLabel,
   subtitle,
   summary,
   title,
-}: DockerResourceDetailsLayoutProps) => {
+}: ResourceDetailsLayoutProps) => {
   const isCompactLayout = useMediaQuery(down("md"));
   const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
 
@@ -145,4 +145,4 @@ const DockerResourceDetailsLayout = ({
   );
 };
 
-export default DockerResourceDetailsLayout;
+export default ResourceDetailsLayout;
