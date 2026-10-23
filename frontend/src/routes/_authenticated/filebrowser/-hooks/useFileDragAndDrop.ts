@@ -5,8 +5,14 @@ import type { BackgroundTaskActions } from "@/tasks/types";
 import { joinPath } from "@/utils/path";
 
 import type { ResolveCollisionsFn } from "./useFileConflicts";
+import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import { extractDroppedEntries } from "../-fileUpload";
 import type { FileResource } from "../-types";
+
+// Drags started inside the browser (moving items between folders) are not
+// uploads: they carry the internal type next to whatever else the browser adds.
+const isInternalDrag = (event: DragEvent) =>
+  event.dataTransfer?.types?.includes(INTERNAL_DRAG_TYPE) ?? false;
 
 interface UseDragAndDropUploadParams {
   editingPath?: string | null;
@@ -42,7 +48,7 @@ export const useFileDragAndDrop = ({
 
   const handleDragEnter = useCallback(
     (event: DragEvent) => {
-      if (editingPath) return;
+      if (editingPath || isInternalDrag(event)) return;
       if (!resource || resource.type !== "directory") return;
       if (!event.dataTransfer?.types?.includes("Files")) return;
       event.preventDefault();
@@ -53,7 +59,7 @@ export const useFileDragAndDrop = ({
 
   const handleDragOver = useCallback(
     (event: DragEvent) => {
-      if (editingPath) return;
+      if (editingPath || isInternalDrag(event)) return;
       if (!resource || resource.type !== "directory") return;
       if (!event.dataTransfer?.types?.includes("Files")) return;
       event.preventDefault();
@@ -80,7 +86,7 @@ export const useFileDragAndDrop = ({
 
   const handleDrop = useCallback(
     async (event: DragEvent) => {
-      if (editingPath) return;
+      if (editingPath || isInternalDrag(event)) return;
       if (!resource || resource.type !== "directory") return;
       event.preventDefault();
       setIsDragOver(false);
@@ -103,6 +109,17 @@ export const useFileDragAndDrop = ({
           droppedEntries.filter((entry) => !entry.isDirectory),
           (entry) => joinPath(normalizedPath, entry.relativePath),
           normalizedPath,
+          (entry) =>
+            entry.file
+              ? {
+                  size: entry.file.size,
+                  // 0 means the browser does not know the time, not 1970.
+                  modified:
+                    entry.file.lastModified > 0
+                      ? new Date(entry.file.lastModified).toISOString()
+                      : undefined,
+                }
+              : undefined,
         );
         if (!resolution) {
           return; // user cancelled the conflict prompt
@@ -120,6 +137,7 @@ export const useFileDragAndDrop = ({
           entriesToSend,
           normalizedPath,
           resolution.overwrite,
+          resolution.keepBoth.map((entry) => entry.relativePath),
         );
         if (result.uploaded > 0) {
           onUploadComplete();

@@ -55,6 +55,7 @@ function setup(overrides: Partial<Params> = {}) {
     onContextMenuClose: vi.fn(),
     resolveCollisions: vi.fn(async (items: unknown[]) => ({
       kept: items,
+      keepBoth: [],
       overwrite: false,
     })) as unknown as Params["resolveCollisions"],
     startUpload: vi.fn().mockResolvedValue({
@@ -199,11 +200,19 @@ describe("useFileBrowserUploadActions", () => {
       [entry],
       expect.any(Function),
       "/srv/data",
+      expect.any(Function),
     );
+    const describeIncoming = (
+      params.resolveCollisions as ReturnType<typeof vi.fn>
+    ).mock.calls[0][3] as (item: DroppedEntry) => unknown;
+    expect(describeIncoming(entry)).toEqual({
+      modified: new Date(entry.file!.lastModified).toISOString(),
+      size: 1,
+    });
     const getDestPath = (params.resolveCollisions as ReturnType<typeof vi.fn>)
       .mock.calls[0][1] as (item: DroppedEntry) => string;
     expect(getDestPath(entry)).toBe("/srv/data/a.txt");
-    expect(startUpload).toHaveBeenCalledWith([entry], "/srv/data", false);
+    expect(startUpload).toHaveBeenCalledWith([entry], "/srv/data", false, []);
     expect(params.invalidateListing).toHaveBeenCalledTimes(1);
     expect(params.upload.actions.closeDialog).toHaveBeenCalledTimes(1);
     expect(params.upload.actions.setProcessing).toHaveBeenNthCalledWith(
@@ -240,7 +249,8 @@ describe("useFileBrowserUploadActions", () => {
       relativePath: "b.txt",
     };
     const resolveCollisions = vi.fn().mockResolvedValue({
-      kept: [other],
+      kept: [other, entry],
+      keepBoth: [entry],
       overwrite: true,
     }) as unknown as Params["resolveCollisions"];
     const startUpload = vi.fn().mockResolvedValue({
@@ -257,12 +267,18 @@ describe("useFileBrowserUploadActions", () => {
       await result.current.handleStartUpload();
     });
 
-    expect(startUpload).toHaveBeenCalledWith([other], "/srv/data", true);
+    expect(startUpload).toHaveBeenCalledWith(
+      [entry, other],
+      "/srv/data",
+      true,
+      ["a.txt"],
+    );
   });
 
   it("does not start a task when every item is skipped", async () => {
     const resolveCollisions = vi.fn().mockResolvedValue({
       kept: [],
+      keepBoth: [],
       overwrite: false,
     }) as unknown as Params["resolveCollisions"];
     const startUpload = vi.fn();

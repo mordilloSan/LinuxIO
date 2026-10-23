@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
@@ -31,6 +32,7 @@ interface FileCardProps {
   hidden?: boolean;
   isCut?: boolean;
   isDirectory: boolean;
+  isDropTarget?: boolean;
   isRenaming?: boolean;
   isRenamePending?: boolean;
   isSymlink?: boolean;
@@ -41,6 +43,10 @@ interface FileCardProps {
   onConfirmRename?: (newName: string) => void;
   onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
+  onDragLeave?: (event: DragEvent) => void;
+  onDragOver?: (event: DragEvent) => void;
+  onDragStart?: (event: DragEvent) => void;
+  onDrop?: (event: DragEvent) => void;
   path?: string;
   renameProgressPct?: number;
   selected?: boolean;
@@ -60,6 +66,7 @@ const FileCard = memo<FileCardProps>(
     selected = false,
     hidden = false,
     isCut = false,
+    isDropTarget = false,
     isRenaming = false,
     isRenamePending = false,
     renameProgressPct,
@@ -69,6 +76,10 @@ const FileCard = memo<FileCardProps>(
     directorySizeUnavailable = false,
     onClick,
     onDoubleClick,
+    onDragLeave,
+    onDragOver,
+    onDragStart,
+    onDrop,
     onContextMenu,
     onConfirmRename,
     onCancelRename,
@@ -193,16 +204,21 @@ const FileCard = memo<FileCardProps>(
     );
 
     // Use CSS classes for hover - no React state updates during hover
-    const className = `file-card hover-lift${disableHover ? " hover-lift--disabled" : ""}`;
+    const className = `file-card hover-lift${disableHover ? " hover-lift--disabled" : ""}${isDropTarget ? " drop-target" : ""}`;
 
     return (
       <div
         className={className}
         data-file-card="true"
         data-file-path={path}
+        draggable={Boolean(onDragStart) && !isRenaming}
         onClick={handleClick}
         onContextMenu={onContextMenu}
         onDoubleClick={handleDoubleClick}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDragStart={onDragStart}
+        onDrop={onDrop}
         style={{
           display: "flex",
           alignItems: "center",

@@ -115,6 +115,9 @@ func TestExistsBatchReportsExistingPaths(t *testing.T) {
 	if resp.Existing[0].Path != file || resp.Existing[0].IsDir {
 		t.Fatalf("existing[0] = %+v", resp.Existing[0])
 	}
+	if resp.Existing[0].Size != 1 || resp.Existing[0].Modified == "" {
+		t.Fatalf("existing[0] should carry size and modified time: %+v", resp.Existing[0])
+	}
 	if resp.Existing[1].Path != sub || !resp.Existing[1].IsDir {
 		t.Fatalf("existing[1] = %+v", resp.Existing[1])
 	}

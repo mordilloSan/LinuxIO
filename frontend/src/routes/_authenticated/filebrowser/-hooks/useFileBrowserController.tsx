@@ -1,6 +1,7 @@
 import { useCallback, useMemo, type MouseEvent } from "react";
 
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
+import { parentPath, stripTrailingSlash } from "@/utils/path";
 
 import type { FileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
 import { useFileBrowserArchiveActions } from "./useFileBrowserArchiveActions";
@@ -41,7 +42,6 @@ export function useFileBrowserController(
   const dialogs = useFileDialogs();
   const {
     createFileDialog,
-    createFolderDialog,
     deleteDialog,
     deleteMode,
     detailItems = [],
@@ -167,12 +167,10 @@ export function useFileBrowserController(
     handleCancelInlineRename,
     handleChangePermissions,
     handleCloseCreateFileDialog,
-    handleCloseCreateFolderDialog,
     handleCloseDeleteDialog,
     handleCloseDetailDialog,
     handleClosePermissionsDialog,
     handleConfirmCreateFile,
-    handleConfirmCreateFolder,
     handleConfirmDelete,
     handleConfirmInlineRename,
     handleConfirmPermissions,
@@ -210,6 +208,33 @@ export function useFileBrowserController(
     startDownload,
     view,
   });
+
+  const handleNavigateUp = useCallback(() => {
+    if (normalizedPath === "/") return;
+    handleOpenDirectory(parentPath(normalizedPath));
+  }, [handleOpenDirectory, normalizedPath]);
+
+  // Dropping on a folder or breadcrumb moves (Ctrl: copies) into it. The
+  // mutations own the conflict prompt, toasts and listing refresh.
+  const handleDropItems = useCallback(
+    async (paths: string[], destinationDir: string, copy: boolean) => {
+      const payload = {
+        sourcePaths: paths,
+        destinationDir: stripTrailingSlash(destinationDir),
+      };
+      try {
+        if (copy) {
+          await copyItems(payload);
+        } else {
+          await moveItems(payload);
+          selectionActions.clear();
+        }
+      } catch {
+        // Error is handled by the mutation
+      }
+    },
+    [copyItems, moveItems, selectionActions],
+  );
 
   useFileBrowserClipboardShortcuts({
     editingPath,
@@ -443,21 +468,14 @@ export function useFileBrowserController(
     () => ({
       fileOpen: createFileDialog,
       filePending: createPending === "file",
-      folderOpen: createFolderDialog,
-      folderPending: createPending === "folder",
       onCloseFile: handleCloseCreateFileDialog,
-      onCloseFolder: handleCloseCreateFolderDialog,
       onConfirmFile: handleConfirmCreateFile,
-      onConfirmFolder: handleConfirmCreateFolder,
     }),
     [
       createPending,
       createFileDialog,
-      createFolderDialog,
       handleCloseCreateFileDialog,
-      handleCloseCreateFolderDialog,
       handleConfirmCreateFile,
-      handleConfirmCreateFolder,
     ],
   );
 
@@ -584,6 +602,7 @@ export function useFileBrowserController(
       editingPath,
       isSavingFile,
       normalizedPath,
+      onDropItems: handleDropItems,
       onOpenDirectory: handleOpenDirectory,
       onSearchCaseSensitiveChange: viewActions.setSearchCaseSensitive,
       onSearchChange: viewActions.setSearch,
@@ -598,6 +617,7 @@ export function useFileBrowserController(
     }),
     [
       editingPath,
+      handleDropItems,
       handleOpenDirectory,
       isSavingFile,
       normalizedPath,
@@ -629,6 +649,8 @@ export function useFileBrowserController(
       onDelete: handleDelete,
       onDeletePermanently: handleDeletePermanently,
       onDownloadFile: handleDoubleClickFile,
+      onDropItems: handleDropItems,
+      onNavigateUp: handleNavigateUp,
       onOpenDirectory: handleOpenDirectory,
       onSelectedPathsChange: selectionActions.select,
       onStartRename: handleStartInlineRename,
@@ -649,6 +671,8 @@ export function useFileBrowserController(
       handleDelete,
       handleDeletePermanently,
       handleDoubleClickFile,
+      handleDropItems,
+      handleNavigateUp,
       handleOpenDirectory,
       handleStartInlineRename,
       renamingPath,

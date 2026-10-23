@@ -605,3 +605,38 @@ func TestUploadBatchNewFilesBelongToSessionUserAsRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestUploadBatchKeepBothLandsUnderUniqueName(t *testing.T) {
+	dest := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dest, "exists.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	req := apischema.FileUploadBatchRequest{
+		Destination: dest,
+		Files:       []apischema.FileUploadBatchEntry{{Path: "exists.txt", Size: "3"}},
+		KeepBoth:    []string{"exists.txt"},
+	}
+
+	task := startUploadBatchTask(t, req)
+	conn, results, _ := attachUploadBatchStream(t, task, "")
+	writeData(t, conn, []byte("XXX"))
+	writeClose(t, conn)
+
+	result := waitResult(t, results)
+	if result.Status != "ok" {
+		t.Fatalf("result status = %q (error %q)", result.Status, result.Error)
+	}
+	decoded := decodeUploadBatchResult(t, result)
+	if decoded.Succeeded != 1 || len(decoded.Failed) != 0 {
+		t.Fatalf("result = %+v", decoded)
+	}
+
+	if got, err := os.ReadFile(filepath.Join(dest, "exists.txt")); err != nil || string(got) != "old" {
+		t.Fatalf("existing file must be kept: %q, err %v", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dest, "exists (copy).txt")); err != nil || string(got) != "XXX" {
+		t.Fatalf("upload should land under a unique name: %q, err %v", got, err)
+	}
+	waitTaskDone(t, task)
+}

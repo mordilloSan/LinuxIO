@@ -73,6 +73,7 @@ export function useUploadTasks(
     directories: string[],
     destination: string,
     overwrite: boolean,
+    keepBoth: string[],
     uploadId: string,
     onProgress: (progress: BatchUploadProgress) => void,
     abortSignal: AbortSignal,
@@ -97,9 +98,10 @@ export function useUploadTasks(
           : {}),
       })),
       // Falsy fields omitted so the identity key matches the Go-marshaled
-      // request (`directories` and `overwrite` are omitempty on the wire).
+      // request (`directories`, `overwrite` and `keepBoth` are omitempty on the wire).
       ...(directories.length ? { directories } : {}),
       ...(overwrite ? { overwrite: true } : {}),
+      ...(keepBoth.length ? { keepBoth } : {}),
     };
 
     const pendingUploadKey = taskIdentityKey(
@@ -314,6 +316,9 @@ export function useUploadTasks(
     // pass overwrite only when the user explicitly chose it; without it the
     // bridge skips existing destinations and reports them as failures.
     overwrite?: boolean,
+    // Manifest-relative paths that land under a unique "name (copy)" when
+    // their destination exists.
+    keepBoth?: string[],
   ) => {
     if (!entries.length) {
       return { uploaded: 0, failures: [] };
@@ -405,6 +410,7 @@ export function useUploadTasks(
         directories,
         targetPath,
         overwrite ?? false,
+        keepBoth ?? [],
         uploadId,
         onProgress,
         abortController.signal,

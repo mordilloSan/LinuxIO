@@ -78,6 +78,9 @@ type BatchTransferRequest struct {
 	Sources     []string `json:"sources"`
 	Destination string   `json:"destination"`
 	Overwrite   *bool    `json:"overwrite,omitempty"`
+	// KeepBoth lists sources that land under a unique name ("name (copy)")
+	// when their destination already exists, instead of replacing it.
+	KeepBoth []string `json:"keepBoth,omitempty"`
 }
 
 // BatchPathRequest deletes many paths within one Task.
@@ -87,8 +90,10 @@ type BatchPathRequest struct {
 
 // ExistsBatchItem reports one existing path from an exists_batch pre-check.
 type ExistsBatchItem struct {
-	Path  string `json:"path"`
-	IsDir bool   `json:"isDir"`
+	Path     string `json:"path"`
+	IsDir    bool   `json:"isDir"`
+	Size     int64  `json:"size"`
+	Modified string `json:"modified"` // RFC 3339; empty when unknown
 }
 
 // ExistsBatchResponse lists which of the requested paths already exist, so the
@@ -149,8 +154,7 @@ type OptionalPathRequest struct {
 }
 
 type FileResourcePostRequest struct {
-	Path     string `json:"path"`
-	Override *bool  `json:"override,omitempty"`
+	Path string `json:"path"`
 }
 
 type DirectoryChildrenRequest struct {
@@ -195,4 +199,7 @@ type FileUploadBatchRequest struct {
 	Files       []FileUploadBatchEntry `json:"files"`
 	Directories []string               `json:"directories,omitempty"`
 	Overwrite   *bool                  `json:"overwrite,omitempty"`
+	// KeepBoth lists manifest paths that land under a unique name when their
+	// destination already exists, instead of being skipped or replaced.
+	KeepBoth []string `json:"keepBoth,omitempty"`
 }

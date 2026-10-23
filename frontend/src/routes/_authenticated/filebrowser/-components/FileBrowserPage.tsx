@@ -6,10 +6,6 @@ import FileBrowserDialogs from "./FileBrowserDialogs";
 import { useFileBrowserController } from "../-hooks/useFileBrowserController";
 
 const fileBrowserRouteApi = getRouteApi("/_authenticated/filebrowser/$");
-// Keep the header slot stable. This leaf subscribes to `_splat` itself, so a
-// directory navigation updates the trail without re-rendering the header.
-const fileBrowserBreadcrumbs = <FileBrowserBreadcrumbs />;
-
 const FileBrowserPage = () => {
   const fileBrowserListingQueryOptions = fileBrowserRouteApi.useRouteContext({
     select: (context) => context.fileBrowserListingQueryOptions,
@@ -22,7 +18,13 @@ const FileBrowserPage = () => {
     <>
       <FileBrowserContent
         {...contentProps}
-        breadcrumbs={fileBrowserBreadcrumbs}
+        // The trail subscribes to `_splat` itself, so a directory navigation
+        // updates it without re-rendering the header; `onDropItems` is stable.
+        breadcrumbs={
+          <FileBrowserBreadcrumbs
+            onDropItems={contentProps.chrome.onDropItems}
+          />
+        }
       />
       <FileBrowserDialogs {...dialogsProps} />
     </>

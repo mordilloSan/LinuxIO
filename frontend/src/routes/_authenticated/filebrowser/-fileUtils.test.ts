@@ -10,6 +10,7 @@ import {
   isImageFile,
   normalizeResource,
   stripArchiveExtension,
+  validateFileName,
 } from "./-fileUtils";
 
 describe("filebrowser utils", () => {
@@ -137,5 +138,20 @@ describe("filebrowser utils", () => {
         size: 5_000_000,
       }),
     ).toBeNull();
+  });
+});
+
+describe("validateFileName", () => {
+  it("accepts ordinary names and refuses the impossible ones", () => {
+    expect(validateFileName("report.txt")).toBeNull();
+    expect(validateFileName("  spaced name ")).toBeNull();
+    expect(validateFileName("")).toBe("Enter a name.");
+    expect(validateFileName("   ")).toBe("Enter a name.");
+    expect(validateFileName(".")).toBe("That name is reserved.");
+    expect(validateFileName("..")).toBe("That name is reserved.");
+    expect(validateFileName("a/b")).toBe("Names cannot contain “/”.");
+    expect(validateFileName("a\u0000b")).toBe(
+      "Names cannot contain control characters.",
+    );
   });
 });

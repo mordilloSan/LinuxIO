@@ -22,7 +22,9 @@ vi.mock("@tanstack/react-router", () => ({
 
 describe("FileBrowserBreadcrumbs", () => {
   it("subscribes to the route path and navigates from the breadcrumb leaf", async () => {
-    const { rerender, user } = render(<FileBrowserBreadcrumbs />);
+    const { rerender, user } = render(
+      <FileBrowserBreadcrumbs onDropItems={vi.fn()} />,
+    );
 
     expect(
       screen.getByRole("button", { name: "breadcrumb-link-projects" }),
@@ -38,7 +40,7 @@ describe("FileBrowserBreadcrumbs", () => {
     });
 
     routeMocks.splat = "srv/projects/archive";
-    rerender(<FileBrowserBreadcrumbs />);
+    rerender(<FileBrowserBreadcrumbs onDropItems={vi.fn()} />);
 
     expect(
       screen.getByRole("button", { name: "breadcrumb-link-archive" }),

@@ -83,6 +83,35 @@ describe("file mutation feedback dialogs", () => {
     expect(input).toHaveValue("assets");
   });
 
+  it("rejects invalid names with a message and blocks confirm and Enter", async () => {
+    const onConfirm = vi.fn();
+    const view = render(
+      <InputDialog
+        label="Folder Name"
+        onClose={vi.fn()}
+        onConfirm={onConfirm}
+        open
+        title="Create Folder"
+      />,
+    );
+
+    const input = screen.getByRole("textbox");
+    // Nothing typed yet: disabled, but no error shown.
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(screen.queryByText("Enter a name.")).not.toBeInTheDocument();
+
+    await view.user.type(input, "a/b");
+    expect(screen.getByText(/cannot contain/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    await view.user.keyboard("{Enter}");
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    await view.user.clear(input);
+    await view.user.type(input, "ab{Enter}");
+    expect(screen.queryByText(/cannot contain/)).not.toBeInTheDocument();
+    expect(onConfirm).toHaveBeenCalledWith("ab");
+  });
+
   it("starts with a fresh draft when a create dialog is reopened", async () => {
     const onClose = vi.fn();
     const view = render(

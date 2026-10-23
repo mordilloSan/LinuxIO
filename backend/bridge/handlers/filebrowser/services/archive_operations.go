@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -369,7 +370,15 @@ func ExtractArchive(archivePath, destination string, opts *OperationCallbacks, e
 	archivePath = fsroot.CleanAbsPath(archivePath)
 	destination = fsroot.CleanAbsPath(destination)
 
-	if err := root.Root.MkdirAll(relPath(destination), PermDir); err != nil {
+	// The destination is created fresh: extracting into an existing folder
+	// would merge into it and truncate same-named files unasked.
+	if err := root.Root.MkdirAll(relPath(filepath.Dir(destination)), PermDir); err != nil {
+		return err
+	}
+	if err := root.Root.Mkdir(relPath(destination), PermDir); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("destination %s already exists", destination)
+		}
 		return err
 	}
 	if err := root.Root.Chmod(relPath(destination), PermDir); err != nil {

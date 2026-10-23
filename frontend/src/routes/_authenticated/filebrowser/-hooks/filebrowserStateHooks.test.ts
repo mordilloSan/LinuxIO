@@ -18,7 +18,6 @@ describe("filebrowser state hooks", () => {
         type: "file",
       };
       result.current.actions.openCreateFile();
-      result.current.actions.openCreateFolder();
       result.current.actions.requestDelete(["/tmp/old.txt"], "trash");
       result.current.actions.showDetails(["/tmp/old.txt"], [item]);
       result.current.actions.openPermissions({
@@ -31,7 +30,6 @@ describe("filebrowser state hooks", () => {
     });
 
     expect(result.current.createFileDialog).toBe(true);
-    expect(result.current.createFolderDialog).toBe(true);
     expect(result.current.deleteDialog).toBe(true);
     expect(result.current.pendingDeletePaths).toEqual(["/tmp/old.txt"]);
     expect(result.current.detailTarget).toEqual(["/tmp/old.txt"]);

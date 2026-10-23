@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties, type DragEvent } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -7,6 +7,7 @@ import { down } from "@/theme/breakpoints";
 import { isDirectoryPath } from "@/utils/path";
 
 import { getChromeSurfaceColor } from "./fileBrowserSurfaces";
+import { hasInternalDrag, readInternalDrag } from "../-internalDrag";
 
 interface BreadcrumbItem {
   isLast: boolean;
@@ -16,6 +17,12 @@ interface BreadcrumbItem {
 
 interface FilebrowserBreadcrumbsProps {
   gallerySize?: number;
+  /** Items dropped on a trail segment move (or, with Ctrl, copy) into it. */
+  onDropItems?: (
+    paths: string[],
+    destinationDir: string,
+    copy: boolean,
+  ) => void;
   onGallerySizeChange?: (next: number) => void;
   onNavigate: (path: string) => void;
   path: string;
@@ -105,6 +112,14 @@ const breadcrumbStyles = `
   }
 
   .linuxio-breadcrumb-button:hover::after {
+    border-left-color: var(--app-palette-primary-main);
+  }
+
+  .linuxio-breadcrumb-button.drop-target {
+    background: var(--app-palette-primary-main);
+  }
+
+  .linuxio-breadcrumb-button.drop-target::after {
     border-left-color: var(--app-palette-primary-main);
   }
 
@@ -248,6 +263,7 @@ const buildBreadcrumbs = (
 const FilebrowserBreadcrumbs = ({
   path,
   onNavigate,
+  onDropItems,
   showGallerySize = false,
   gallerySize = 4,
   onGallerySizeChange,
@@ -259,6 +275,35 @@ const FilebrowserBreadcrumbs = ({
     const maxSegments = isMobile ? 1 : 3;
     return buildBreadcrumbs(normalizedPath, maxSegments);
   }, [isMobile, normalizedPath]);
+
+  const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
+
+  // Drop handlers for one segment; segments are ancestors of what is shown, so
+  // no dragged item can be the segment itself.
+  const dropProps = (path: string) =>
+    onDropItems && {
+      onDragLeave: (event: DragEvent) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          return;
+        }
+        setDropTargetPath((current) => (current === path ? null : current));
+      },
+      onDragOver: (event: DragEvent) => {
+        if (!hasInternalDrag(event.dataTransfer)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = event.ctrlKey ? "copy" : "move";
+        setDropTargetPath(path);
+      },
+      onDrop: (event: DragEvent) => {
+        if (!hasInternalDrag(event.dataTransfer)) return;
+        // The page's upload drop handler must never see an internal drag.
+        event.preventDefault();
+        event.stopPropagation();
+        setDropTargetPath(null);
+        const paths = readInternalDrag(event.dataTransfer);
+        if (paths.length > 0) onDropItems(paths, path, event.ctrlKey);
+      },
+    };
 
   const handleHome = () => onNavigate("/");
   const cssVars = {
@@ -281,9 +326,10 @@ const FilebrowserBreadcrumbs = ({
         <li className="linuxio-breadcrumb-list-item">
           <AppButton
             aria-label="Go to root"
-            className="linuxio-breadcrumb-button"
+            className={`linuxio-breadcrumb-button${dropTargetPath === "/" ? " drop-target" : ""}`}
             onClick={handleHome}
             title="Home"
+            {...dropProps("/")}
           >
             <span className="linuxio-breadcrumb-home-icon">
               <HomeFilledIcon />
@@ -297,9 +343,11 @@ const FilebrowserBreadcrumbs = ({
           >
             <AppButton
               aria-label={`breadcrumb-link-${crumb.label}`}
-              className={`linuxio-breadcrumb-button${crumb.isLast ? " active" : ""}`}
+              className={`linuxio-breadcrumb-button${crumb.isLast ? " active" : ""}${dropTargetPath === crumb.path ? " drop-target" : ""}`}
               onClick={() => onNavigate(crumb.path)}
               title={crumb.label}
+              // The "..." crumb stands for a run of hidden segments.
+              {...(crumb.label !== "..." && dropProps(crumb.path))}
             >
               {crumb.label}
             </AppButton>

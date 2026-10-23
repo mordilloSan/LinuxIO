@@ -5,7 +5,13 @@ import Breadcrumbs from "./Breadcrumbs";
 
 const fileBrowserRouteApi = getRouteApi("/_authenticated/filebrowser/$");
 
-const FileBrowserBreadcrumbs = () => {
+interface FileBrowserBreadcrumbsProps {
+  onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
+}
+
+const FileBrowserBreadcrumbs = ({
+  onDropItems,
+}: FileBrowserBreadcrumbsProps) => {
   const splat = fileBrowserRouteApi.useParams({
     select: (params) => params._splat,
   });
@@ -23,7 +29,11 @@ const FileBrowserBreadcrumbs = () => {
   );
 
   return (
-    <Breadcrumbs onNavigate={handleNavigate} path={splat ? `/${splat}` : "/"} />
+    <Breadcrumbs
+      onDropItems={onDropItems}
+      onNavigate={handleNavigate}
+      path={splat ? `/${splat}` : "/"}
+    />
   );
 };
 

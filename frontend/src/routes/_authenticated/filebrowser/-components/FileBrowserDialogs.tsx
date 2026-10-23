@@ -110,12 +110,8 @@ interface FileBrowserDetailsDialogsProps {
 interface FileBrowserCreateDialogsProps {
   filePending?: boolean;
   fileOpen: boolean;
-  folderPending?: boolean;
-  folderOpen: boolean;
   onCloseFile: () => void;
-  onCloseFolder: () => void;
   onConfirmFile: (fileName: string) => Promise<void> | void;
-  onConfirmFolder: (folderName: string) => Promise<void> | void;
 }
 
 interface FileBrowserPermissionsDialogProps {
@@ -270,15 +266,6 @@ const FileBrowserDialogs = ({
         isPending={create.filePending}
         open={create.fileOpen}
         title="Create File"
-      />
-
-      <InputDialog
-        label="Folder Name"
-        onClose={create.onCloseFolder}
-        onConfirm={create.onConfirmFolder}
-        isPending={create.folderPending}
-        open={create.folderOpen}
-        title="Create Folder"
       />
 
       <FileBrowserDeleteDialog

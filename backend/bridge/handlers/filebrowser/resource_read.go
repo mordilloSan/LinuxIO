@@ -149,8 +149,10 @@ func existsBatch(ctx context.Context, req apischema.BatchPathRequest) (apischema
 			continue
 		}
 		response.Existing = append(response.Existing, apischema.ExistsBatchItem{
-			Path:  path,
-			IsDir: info.IsDir(),
+			Path:     path,
+			IsDir:    info.IsDir(),
+			Size:     info.Size(),
+			Modified: formatResourceModTime(info.ModTime()),
 		})
 	}
 	return response, nil

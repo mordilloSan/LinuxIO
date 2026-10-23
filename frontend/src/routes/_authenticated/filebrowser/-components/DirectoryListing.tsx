@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type MouseEvent,
   type RefObject,
 } from "react";
@@ -17,6 +18,11 @@ import VirtualDirectoryItems from "./VirtualDirectoryItems";
 import { useFileListKeyboardNavigation } from "../-hooks/useFileListKeyboardNavigation";
 import { useFileMarqueeSelection } from "../-hooks/useFileMarqueeSelection";
 import { useFileSubfolders } from "../-hooks/useFileSubfolders";
+import {
+  hasInternalDrag,
+  readInternalDrag,
+  setInternalDrag,
+} from "../-internalDrag";
 import type {
   FileItem,
   FileResource,
@@ -33,6 +39,8 @@ interface DirectoryListingProps {
   onDelete?: () => void;
   onDeletePermanently?: () => void;
   onDownloadFile: (item: FileItem) => void;
+  onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
+  onNavigateUp: () => void;
   onOpenDirectory: (path: string) => void;
   onSelectedPathsChange: (paths: Set<string>) => void;
   onStartRename: () => void;
@@ -55,6 +63,8 @@ const DirectoryListing = ({
   sortOrder,
   onOpenDirectory,
   onDownloadFile,
+  onDropItems,
+  onNavigateUp,
   selectedPaths,
   cutPaths,
   onSelectedPathsChange,
@@ -106,7 +116,10 @@ const DirectoryListing = ({
     [resource.path],
   );
   const lastSelectedIndexRef = useRef(-1);
+  const columnCountRef = useRef(1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const draggedPathsRef = useRef<string[]>([]);
+  const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const selectedPathsRef = useLatestRef(selectedPaths);
 
   // Fetch all subfolder sizes in one request
@@ -177,12 +190,17 @@ const DirectoryListing = ({
   useFileListKeyboardNavigation({
     containerRef: containerRef as RefObject<HTMLDivElement>,
     allItems,
+    anchorIndexRef: lastSelectedIndexRef,
+    columnCountRef,
     focusedIndex,
     selectedPaths,
     onFocusChange: focusIndexFromKeyboard,
     onSelectionChange: onSelectedPathsChange,
     onDelete: onDelete,
     onDeletePermanently,
+    onDownloadFile,
+    onNavigateUp,
+    onOpenDirectory,
     onRename: onStartRename,
     global: true, // Enable global keyboard navigation
   });
@@ -291,6 +309,59 @@ const DirectoryListing = ({
     [clearSelection],
   );
 
+  // Dragging a selected row drags the whole selection; any other row is
+  // selected and dragged alone.
+  const handleItemDragStart = useCallback(
+    (event: DragEvent, path: string) => {
+      let paths = Array.from(selectedPathsRef.current);
+      if (!selectedPathsRef.current.has(path)) {
+        paths = [path];
+        onSelectedPathsChange(new Set(paths));
+        focusItemByPath(path);
+      }
+      draggedPathsRef.current = paths;
+      setInternalDrag(event.dataTransfer, paths);
+    },
+    [focusItemByPath, onSelectedPathsChange, selectedPathsRef],
+  );
+
+  const handleFolderDragOver = useCallback((event: DragEvent, path: string) => {
+    // A folder cannot be dropped into itself.
+    if (
+      !hasInternalDrag(event.dataTransfer) ||
+      draggedPathsRef.current.includes(path)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = event.ctrlKey ? "copy" : "move";
+    setDropTargetPath(path);
+  }, []);
+
+  const handleFolderDragLeave = useCallback(
+    (event: DragEvent, path: string) => {
+      if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+        return;
+      }
+      setDropTargetPath((current) => (current === path ? null : current));
+    },
+    [],
+  );
+
+  const handleFolderDrop = useCallback(
+    (event: DragEvent, path: string) => {
+      if (!hasInternalDrag(event.dataTransfer)) return;
+      // The page's upload drop handler must never see an internal drag.
+      event.preventDefault();
+      event.stopPropagation();
+      setDropTargetPath(null);
+      const paths = readInternalDrag(event.dataTransfer);
+      if (paths.length === 0 || paths.includes(path)) return;
+      onDropItems(paths, path, event.ctrlKey);
+    },
+    [onDropItems],
+  );
+
   const handleFolderClick = useCallback(
     (event: MouseEvent, path: string) => {
       handleItemSelection(event, path);
@@ -319,8 +390,10 @@ const DirectoryListing = ({
         </AppAlert>
       )}
       <VirtualDirectoryItems
+        columnCountRef={columnCountRef}
         containerRef={containerRef}
         cutPaths={cutPaths}
+        dropTargetPath={dropTargetPath}
         files={files}
         folders={folders}
         isLoadingSubfolders={isLoadingSubfolders}
@@ -333,6 +406,10 @@ const DirectoryListing = ({
         onFileContextMenu={handleItemContextMenu}
         onFolderClick={handleFolderClick}
         onFolderContextMenu={handleItemContextMenu}
+        onFolderDragLeave={handleFolderDragLeave}
+        onFolderDragOver={handleFolderDragOver}
+        onFolderDrop={handleFolderDrop}
+        onItemDragStart={handleItemDragStart}
         onMarqueeMouseDown={handleMouseDown}
         onOpenDirectory={onOpenDirectory}
         renamingPath={renamingPath}

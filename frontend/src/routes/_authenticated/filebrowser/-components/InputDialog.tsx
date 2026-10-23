@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 
+import { validateFileName } from "../-fileUtils";
+
 interface InputDialogProps {
   confirmText?: string;
   defaultValue?: string;
@@ -45,6 +47,9 @@ const InputDialog = ({
     setDialogState(normalizedState);
   }
   const { value } = normalizedState;
+  const invalidMessage = validateFileName(value);
+  // An empty field is not an error until something was typed.
+  const shownError = value ? invalidMessage : null;
   const setValue = useCallback(
     (nextValue: string) => {
       setDialogState((prev) => {
@@ -61,7 +66,7 @@ const InputDialog = ({
   );
 
   const handleConfirm = async () => {
-    if (value.trim() && !isPending) {
+    if (!invalidMessage && !isPending) {
       try {
         await onConfirm(value.trim());
         onClose();
@@ -72,7 +77,7 @@ const InputDialog = ({
   };
 
   const handleKeyPress = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && value.trim() && !isPending) {
+    if (e.key === "Enter" && !invalidMessage && !isPending) {
       e.preventDefault();
       void handleConfirm();
     }
@@ -92,7 +97,9 @@ const InputDialog = ({
         <AppTextField
           autoFocus
           disabled={isPending}
+          error={Boolean(shownError)}
           fullWidth
+          helperText={shownError}
           label={label}
           onChange={(e) => !isPending && setValue(e.target.value)}
           onKeyDown={handleKeyPress}
@@ -106,7 +113,7 @@ const InputDialog = ({
           Cancel
         </AppButton>
         <AppButton
-          disabled={!value.trim() || isPending}
+          disabled={Boolean(invalidMessage) || isPending}
           onClick={() => void handleConfirm()}
           variant="contained"
         >

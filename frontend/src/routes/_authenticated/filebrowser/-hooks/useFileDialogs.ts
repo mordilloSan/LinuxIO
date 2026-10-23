@@ -16,7 +16,6 @@ interface PermissionsDialogState {
 
 interface DialogsState {
   createFileDialog: boolean;
-  createFolderDialog: boolean;
   deleteDialog: boolean;
   deleteMode: DeleteMode;
   detailTarget: string[] | null;
@@ -29,20 +28,17 @@ interface DialogsState {
 type DialogsEvent =
   | { type: "clearPendingDelete" }
   | { type: "closeCreateFile" }
-  | { type: "closeCreateFolder" }
   | { type: "closeDelete" }
   | { type: "closeDetails" }
   | { type: "closePermissions" }
   | { type: "clearPermissions" }
   | { type: "openCreateFile" }
-  | { type: "openCreateFolder" }
   | { dialog: PermissionsDialogState; type: "openPermissions" }
   | { mode: DeleteMode; paths: string[]; type: "requestDelete" }
   | { items: FileItem[]; paths: string[]; type: "showDetails" };
 
 const initialDialogsState: DialogsState = {
   createFileDialog: false,
-  createFolderDialog: false,
   deleteDialog: false,
   deleteMode: "trash",
   detailTarget: null,
@@ -61,8 +57,6 @@ function dialogsReducer(
       return { ...state, pendingDeletePaths: [] };
     case "closeCreateFile":
       return { ...state, createFileDialog: false };
-    case "closeCreateFolder":
-      return { ...state, createFolderDialog: false };
     case "closeDelete":
       return { ...state, deleteDialog: false, pendingDeletePaths: [] };
     case "closeDetails":
@@ -73,8 +67,6 @@ function dialogsReducer(
       return { ...state, permissionsDialog: null };
     case "openCreateFile":
       return { ...state, createFileDialog: true };
-    case "openCreateFolder":
-      return { ...state, createFolderDialog: true };
     case "openPermissions":
       return {
         ...state,
@@ -96,13 +88,11 @@ function dialogsReducer(
 interface DialogsActions {
   clearPendingDelete: () => void;
   closeCreateFile: () => void;
-  closeCreateFolder: () => void;
   closeDelete: () => void;
   closeDetails: () => void;
   closePermissions: () => void;
   clearPermissions: () => void;
   openCreateFile: () => void;
-  openCreateFolder: () => void;
   openPermissions: (dialog: PermissionsDialogState) => void;
   requestDelete: (paths: string[], mode: DeleteMode) => void;
   showDetails: (paths: string[], items?: FileItem[]) => void;
@@ -124,13 +114,11 @@ export const useFileDialogs = (): DialogsSlice => {
     () => ({
       clearPendingDelete: () => dispatch({ type: "clearPendingDelete" }),
       closeCreateFile: () => dispatch({ type: "closeCreateFile" }),
-      closeCreateFolder: () => dispatch({ type: "closeCreateFolder" }),
       closeDelete: () => dispatch({ type: "closeDelete" }),
       closeDetails: () => dispatch({ type: "closeDetails" }),
       closePermissions: () => dispatch({ type: "closePermissions" }),
       clearPermissions: () => dispatch({ type: "clearPermissions" }),
       openCreateFile: () => dispatch({ type: "openCreateFile" }),
-      openCreateFolder: () => dispatch({ type: "openCreateFolder" }),
       openPermissions: (dialog) =>
         dispatch({ dialog, type: "openPermissions" }),
       requestDelete: (paths, mode) =>

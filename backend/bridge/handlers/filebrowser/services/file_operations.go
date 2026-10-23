@@ -112,7 +112,7 @@ func transferEntry(root *fsroot.FSRoot, src, dst string, info os.FileInfo, overw
 // filesystem allows it and otherwise copies and removes entry by entry.
 func placeEntry(root *fsroot.FSRoot, src, dst string, info os.FileInfo, opts *OperationCallbacks, state *copyState, moveOpts MoveFileOptions) error {
 	if state.move {
-		moved, err := tryRenameMove(root, src, dst, opts, moveOpts)
+		moved, err := tryRenameMove(root, src, dst, info, opts, moveOpts)
 		if moved || err != nil {
 			return err
 		}
@@ -265,7 +265,9 @@ func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, info 
 	}
 	defer src.Close()
 
-	dst, err := root.Root.OpenFile(destRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+	// O_EXCL: a file that appeared here after the exists check is an error,
+	// never something to truncate.
+	dst, err := root.Root.OpenFile(destRel, os.O_RDWR|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
 	if err != nil {
 		return err
 	}
@@ -491,11 +493,11 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *OperationCallb
 	return transferEntry(root, src, dst, srcInfo, overwrite, opts, newCopyState(true), moveOpts)
 }
 
-// tryRenameMove moves src with one rename. Only a cross-filesystem refusal
-// (EXDEV) is reported as "not moved" so the caller can copy and delete
-// instead; any other rename failure is returned as is.
-func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *OperationCallbacks, moveOpts MoveFileOptions) (bool, error) {
-	if err := root.Root.Rename(relPath(src), relPath(dst)); err != nil {
+// tryRenameMove moves src in place. Only a cross-filesystem refusal (EXDEV)
+// is reported as "not moved" so the caller can copy and delete instead; any
+// other failure is returned as is.
+func tryRenameMove(root *fsroot.FSRoot, src, dst string, info os.FileInfo, opts *OperationCallbacks, moveOpts MoveFileOptions) (bool, error) {
+	if err := moveWithoutReplace(root, src, dst, info); err != nil {
 		if errors.Is(err, syscall.EXDEV) {
 			return false, nil
 		}
@@ -514,6 +516,89 @@ func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *OperationCallback
 
 	opts.ReportProgress(totalSize)
 	return true, nil
+}
+
+// moveWithoutReplace renames src to dst. A regular file is linked and then
+// unlinked instead, so a file that appeared at dst after the exists check is
+// refused (EEXIST) where rename(2) would silently replace it. Filesystems
+// without hard links fall back to rename; directories can only rename.
+func moveWithoutReplace(root *fsroot.FSRoot, src, dst string, info os.FileInfo) error {
+	if info.Mode().IsRegular() {
+		err := root.Root.Link(relPath(src), relPath(dst))
+		if err == nil {
+			if removeErr := root.Root.Remove(relPath(src)); removeErr != nil {
+				_ = root.Root.Remove(relPath(dst))
+				return removeErr
+			}
+			return nil
+		}
+		if !errors.Is(err, syscall.EPERM) && !errors.Is(err, syscall.EOPNOTSUPP) && !errors.Is(err, syscall.EMLINK) {
+			return err
+		}
+	}
+	return root.Root.Rename(relPath(src), relPath(dst))
+}
+
+// protectedTopLevel are the standard top-level directories a user never means
+// to delete, trash or move through a file browser.
+var protectedTopLevel = map[string]bool{
+	"bin": true, "boot": true, "dev": true, "etc": true, "home": true, "lib": true, "lib32": true,
+	"lib64": true, "libx32": true, "media": true, "mnt": true, "opt": true, "proc": true, "root": true,
+	"run": true, "sbin": true, "srv": true, "sys": true, "tmp": true, "usr": true, "var": true,
+}
+
+// CheckNotProtected refuses the root, the standard top-level system
+// directories and mount points as the subject of a delete, trash or move.
+func CheckNotProtected(root *fsroot.FSRoot, path string) error {
+	path = fsroot.CleanAbsPath(path)
+	if path == "/" {
+		return errors.New("cannot modify the root directory")
+	}
+	if filepath.Dir(path) == "/" && protectedTopLevel[filepath.Base(path)] {
+		return fmt.Errorf("%s is a system folder", path)
+	}
+	info, err := root.Root.Lstat(relPath(path))
+	if err != nil || !info.IsDir() {
+		return nil
+	}
+	dev, err := deviceOf(root, path)
+	if err != nil {
+		return nil
+	}
+	if parentDev, err := deviceOf(root, filepath.Dir(path)); err == nil && parentDev != dev {
+		return fmt.Errorf("%s is a mount point", path)
+	}
+	return nil
+}
+
+// EnsureFreeSpace refuses a transfer that cannot fit at path. A failed statfs
+// does not block the transfer; the write itself will report the problem.
+func EnsureFreeSpace(path string, need int64) error {
+	if need <= 0 {
+		return nil
+	}
+	var st unix.Statfs_t
+	if err := unix.Statfs(path, &st); err != nil {
+		return nil
+	}
+	avail := st.Bavail * uint64(st.Bsize)
+	if uint64(need) > avail {
+		return fmt.Errorf("not enough free space in %s: %s needed, %s available", path, humanBytes(uint64(need)), humanBytes(avail))
+	}
+	return nil
+}
+
+func humanBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := uint64(unit), 0
+	for n/div >= unit && exp < 4 {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTP"[exp])
 }
 
 type DeleteOptions struct {

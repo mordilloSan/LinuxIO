@@ -547,6 +547,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     sources,
     destination,
     overwrite,
+    keepBoth,
     onComplete,
   }: CopyMoveStartOptions) => {
     if (!sources.length || !destination) {
@@ -555,7 +556,13 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     return startTransfer(
       "copy",
       [...sources, destination],
-      () => linuxio.filebrowser.copy_batch({ sources, destination, overwrite }),
+      () =>
+        linuxio.filebrowser.copy_batch({
+          sources,
+          destination,
+          overwrite,
+          keepBoth,
+        }),
       batchLabelBase(sources),
       () => ({ type: "copy", source: sources[0], destination }),
       onComplete,
@@ -566,6 +573,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     sources,
     destination,
     overwrite,
+    keepBoth,
     onComplete,
   }: CopyMoveStartOptions) => {
     if (!sources.length || !destination) {
@@ -574,7 +582,13 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     return startTransfer(
       "move",
       [...sources, destination],
-      () => linuxio.filebrowser.move_batch({ sources, destination, overwrite }),
+      () =>
+        linuxio.filebrowser.move_batch({
+          sources,
+          destination,
+          overwrite,
+          keepBoth,
+        }),
       batchLabelBase(sources),
       () => ({ type: "move", source: sources[0], destination }),
       onComplete,

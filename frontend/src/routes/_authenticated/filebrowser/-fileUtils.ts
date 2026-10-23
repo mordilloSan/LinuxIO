@@ -120,3 +120,16 @@ export const ensureTarGzExtension = (name: string) => {
   }
   return `${name}.tar.gz`;
 };
+
+// Names no single entry can have. Slashes are refused here even though the
+// backend accepts nested folder creation: a typed name is one entry.
+export const validateFileName = (name: string): string | null => {
+  const trimmed = name.trim();
+  if (!trimmed) return "Enter a name.";
+  if (trimmed === "." || trimmed === "..") return "That name is reserved.";
+  if (trimmed.includes("/")) return "Names cannot contain “/”.";
+  if (trimmed.split("").some((char) => char.charCodeAt(0) < 0x20)) {
+    return "Names cannot contain control characters.";
+  }
+  return null;
+};

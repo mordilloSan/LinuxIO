@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ResolveCollisionsFn } from "./useFileConflicts";
+import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import type { DroppedEntry } from "../-fileUpload";
 import type { FileResource } from "../-types";
 
@@ -67,6 +68,7 @@ const droppedFile: DroppedEntry = {
 const passthroughCollisions = () =>
   vi.fn(async (items: unknown[]) => ({
     kept: items,
+    keepBoth: [],
     overwrite: false,
   })) as unknown as ResolveCollisionsFn;
 
@@ -149,11 +151,19 @@ describe("useFileDragAndDrop", () => {
       [droppedFile],
       expect.any(Function),
       "/srv/target",
+      expect.any(Function),
     );
+    const describeIncoming = (resolveCollisions as ReturnType<typeof vi.fn>)
+      .mock.calls[0][3] as (entry: DroppedEntry) => unknown;
+    expect(describeIncoming(droppedFile)).toEqual({
+      modified: new Date(droppedFile.file!.lastModified).toISOString(),
+      size: 7,
+    });
     expect(startUpload).toHaveBeenCalledWith(
       [droppedFile],
       "/srv/target",
       false,
+      [],
     );
     expect(onUploadComplete).toHaveBeenCalledTimes(1);
   });
@@ -191,7 +201,8 @@ describe("useFileDragAndDrop", () => {
     };
     droppedEntriesMocks.extract.mockResolvedValue([droppedFile, second]);
     const resolveCollisions = vi.fn().mockResolvedValue({
-      kept: [second],
+      kept: [second, droppedFile],
+      keepBoth: [droppedFile],
       overwrite: true,
     }) as unknown as ResolveCollisionsFn;
     const startUpload = vi.fn(async () => ({
@@ -212,13 +223,19 @@ describe("useFileDragAndDrop", () => {
       await result.current.handleDrop(dragEvent());
     });
 
-    expect(startUpload).toHaveBeenCalledWith([second], "/srv/target", true);
+    expect(startUpload).toHaveBeenCalledWith(
+      [droppedFile, second],
+      "/srv/target",
+      true,
+      ["compose.yaml"],
+    );
   });
 
   it("does not start a task when every dropped item is skipped", async () => {
     droppedEntriesMocks.extract.mockResolvedValue([droppedFile]);
     const resolveCollisions = vi.fn().mockResolvedValue({
       kept: [],
+      keepBoth: [],
       overwrite: false,
     }) as unknown as ResolveCollisionsFn;
     const startUpload = vi.fn();
@@ -265,5 +282,44 @@ describe("useFileDragAndDrop", () => {
       "Could not read dropped items. Folder drag-and-drop may not be supported in this browser.",
       expect.anything(),
     );
+  });
+
+  it("ignores drags that started inside the file browser", async () => {
+    droppedEntriesMocks.extract.mockClear();
+    const startUpload = vi.fn();
+    const { result } = renderHook(() =>
+      useFileDragAndDrop({
+        normalizedPath: "/srv/target",
+        onUploadComplete: vi.fn(),
+        resolveCollisions: passthroughCollisions(),
+        resource: directory,
+        startUpload,
+      }),
+    );
+    const internal = () =>
+      dragEvent({
+        dataTransfer: {
+          dropEffect: "none",
+          types: ["Files", INTERNAL_DRAG_TYPE],
+        },
+      });
+    const enter = internal();
+    const over = internal();
+    const drop = internal();
+
+    act(() => result.current.handleDragEnter(enter));
+    act(() => result.current.handleDragOver(over));
+    await act(async () => {
+      await result.current.handleDrop(drop);
+    });
+
+    expect(enter.preventDefault).not.toHaveBeenCalled();
+    expect(over.preventDefault).not.toHaveBeenCalled();
+    expect(over.dataTransfer.dropEffect).toBe("none");
+    expect(drop.preventDefault).not.toHaveBeenCalled();
+    expect(result.current.isDragOver).toBe(false);
+    expect(droppedEntriesMocks.extract).not.toHaveBeenCalled();
+    expect(startUpload).not.toHaveBeenCalled();
+    expect(toastMocks.warning).not.toHaveBeenCalled();
   });
 });

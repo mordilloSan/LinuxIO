@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -50,6 +51,31 @@ type batchTransferItem struct {
 	dest     string
 	size     computedTransferSize
 	replaced bool
+	// needsSpace is false only for a move within one filesystem, which renames.
+	needsSpace bool
+}
+
+// deviceID is the filesystem path lives on; ok is false when it cannot be read.
+func deviceID(root *fsroot.FSRoot, path string) (uint64, bool) {
+	info, err := root.Root.Lstat(fsroot.ToRel(path))
+	if err != nil {
+		return 0, false
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return st.Dev, true
+}
+
+func spaceNeeded(items []batchTransferItem) int64 {
+	var need int64
+	for _, item := range items {
+		if item.needsSpace {
+			need += item.size.total
+		}
+	}
+	return need
 }
 
 type batchIndexerUpdate struct {
@@ -62,51 +88,98 @@ type batchIndexerUpdate struct {
 // planBatchTransfer validates each source, computes its destination directory
 // landing path and size, and sums a grand total for aggregate progress. Invalid
 // items are returned as failures so the task can still process the rest.
-func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string, sources []string, overwrite bool, action string) ([]batchTransferItem, int64, []FileBatchItemFailure) {
-	items := make([]batchTransferItem, 0, len(sources))
+func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string, req apischema.BatchTransferRequest, action string) ([]batchTransferItem, int64, []FileBatchItemFailure) {
+	plan := transferPlan{
+		root:      root,
+		destDir:   destDir,
+		action:    action,
+		overwrite: req.Overwrite != nil && *req.Overwrite,
+		keepBoth:  make(map[string]bool, len(req.KeepBoth)),
+	}
+	for _, raw := range req.KeepBoth {
+		plan.keepBoth[fsroot.CleanAbsPath(raw)] = true
+	}
+	plan.destDev, plan.destDevKnown = deviceID(root, destDir)
+
+	items := make([]batchTransferItem, 0, len(req.Sources))
 	failures := make([]FileBatchItemFailure, 0)
 	var grandTotal int64
-
-	for _, raw := range sources {
-		src := fsroot.CleanAbsPath(raw)
-		if src == "/" {
-			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "cannot transfer root"})
+	for _, raw := range req.Sources {
+		item, failure := plan.item(ctx, raw)
+		if failure != "" {
+			failures = append(failures, FileBatchItemFailure{Path: raw, Error: failure})
 			continue
 		}
-		info, err := root.Root.Lstat(fsroot.ToRel(src))
-		if err != nil {
-			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "source not found"})
-			continue
-		}
-
-		dest := filepath.Join(destDir, filepath.Base(src))
-		if dest == src {
-			if action != "copy" {
-				failures = append(failures, FileBatchItemFailure{Path: raw, Error: "already in the destination folder"})
-				continue
-			}
-			// A paste into the item's own folder makes a copy next to it, as
-			// Explorer's "name - Copy" does.
-			dest = generateUniquePath(dest, info.IsDir(), root)
-		}
-		replaced := false
-		if destInfo, derr := root.Root.Lstat(fsroot.ToRel(dest)); derr == nil {
-			if !overwrite {
-				failures = append(failures, FileBatchItemFailure{Path: raw, Error: "destination already exists"})
-				continue
-			}
-			if destInfo.IsDir() != info.IsDir() {
-				failures = append(failures, FileBatchItemFailure{Path: raw, Error: "destination type mismatch"})
-				continue
-			}
-			replaced = true
-		}
-
-		size := computeTransferSize(ctx, src, info)
-		grandTotal += size.total
-		items = append(items, batchTransferItem{source: src, dest: dest, size: size, replaced: replaced})
+		grandTotal += item.size.total
+		items = append(items, item)
 	}
 	return items, grandTotal, failures
+}
+
+type transferPlan struct {
+	root         *fsroot.FSRoot
+	destDir      string
+	action       string
+	overwrite    bool
+	keepBoth     map[string]bool
+	destDev      uint64
+	destDevKnown bool
+}
+
+// item plans one source; a non-empty failure means the source is skipped.
+func (p *transferPlan) item(ctx context.Context, raw string) (batchTransferItem, string) {
+	src := fsroot.CleanAbsPath(raw)
+	if src == "/" {
+		return batchTransferItem{}, "cannot transfer root"
+	}
+	if p.action == "move" {
+		if err := services.CheckNotProtected(p.root, src); err != nil {
+			return batchTransferItem{}, err.Error()
+		}
+	}
+	info, err := p.root.Root.Lstat(fsroot.ToRel(src))
+	if err != nil {
+		return batchTransferItem{}, "source not found"
+	}
+
+	dest := filepath.Join(p.destDir, filepath.Base(src))
+	if dest == src {
+		if p.action != "copy" {
+			return batchTransferItem{}, "already in the destination folder"
+		}
+		// A paste into the item's own folder makes a copy next to it, as
+		// Explorer's "name - Copy" does.
+		dest = generateUniquePath(dest, info.IsDir(), p.root)
+	}
+	dest, replaced, failure := p.resolveExisting(dest, src, info.IsDir())
+	if failure != "" {
+		return batchTransferItem{}, failure
+	}
+
+	needsSpace := p.action == "copy"
+	if !needsSpace {
+		srcDev, ok := deviceID(p.root, src)
+		needsSpace = !ok || !p.destDevKnown || srcDev != p.destDev
+	}
+	return batchTransferItem{source: src, dest: dest, size: computeTransferSize(ctx, src, info), replaced: replaced, needsSpace: needsSpace}, ""
+}
+
+// resolveExisting applies the user's conflict choice to a destination that is
+// already taken: keep both under a unique name, replace it, or fail the item.
+func (p *transferPlan) resolveExisting(dest, src string, isDir bool) (string, bool, string) {
+	destInfo, err := p.root.Root.Lstat(fsroot.ToRel(dest))
+	if err != nil {
+		return dest, false, ""
+	}
+	switch {
+	case p.keepBoth[src]:
+		return generateUniquePath(dest, isDir, p.root), false, ""
+	case !p.overwrite:
+		return "", false, "destination already exists"
+	case destInfo.IsDir() != isDir:
+		return "", false, "destination type mismatch"
+	}
+	return dest, true, ""
 }
 
 type batchTransferFunc func(batchTransferItem, *services.OperationCallbacks, bool) error
@@ -134,7 +207,10 @@ func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *user
 		return FileBatchResult{}, err
 	}
 
-	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req.Sources, overwrite, action)
+	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req, action)
+	if spaceErr := services.EnsureFreeSpace(destDir, spaceNeeded(items)); spaceErr != nil {
+		return FileBatchResult{}, bridgeipc.NewError(spaceErr.Error(), 507)
+	}
 	writeTaskPhaseProgress(task, grandTotal, "preparing")
 
 	// One shared callback/limiter across all items so byte progress accumulates
@@ -206,22 +282,6 @@ func runMoveBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 	})
 }
 
-// deleteTargetIsDir reports whether path is a directory without following a final symlink.
-func deleteTargetIsDir(path string) (bool, error) {
-	root, err := fsroot.Open()
-	if err != nil {
-		return false, err
-	}
-	defer root.Close()
-
-	cleanPath := fsroot.CleanAbsPath(path)
-	info, err := root.Root.Lstat(fsroot.ToRel(cleanPath))
-	if err != nil {
-		return false, err
-	}
-	return info.IsDir(), nil
-}
-
 // deletePlanItem is one validated delete target with its known entry total
 // (0 when unknown).
 type deletePlanItem struct {
@@ -235,6 +295,14 @@ type deletePlanItem struct {
 // grand total is 0 (indeterminate) unless every item's total is known.
 func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanItem, grandTotal int64, failures []FileBatchItemFailure) {
 	failures = make([]FileBatchItemFailure, 0)
+	root, err := fsroot.Open()
+	if err != nil {
+		for _, raw := range paths {
+			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "failed to access filesystem"})
+		}
+		return nil, 0, failures
+	}
+	defer root.Close()
 	allKnown := true
 
 	for _, raw := range paths {
@@ -242,16 +310,16 @@ func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanIte
 			return nil, 0, failures
 		}
 		path := fsroot.CleanAbsPath(raw)
-		if path == "/" {
-			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "cannot delete root"})
+		if err := services.CheckNotProtected(root, path); err != nil {
+			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error()})
 			continue
 		}
-		isDir, err := deleteTargetIsDir(path)
+		info, err := root.Root.Lstat(fsroot.ToRel(path))
 		if err != nil {
 			failures = append(failures, FileBatchItemFailure{Path: raw, Error: "not found"})
 			continue
 		}
-		total := deleteEntryTotalForPath(ctx, path, isDir)
+		total := deleteEntryTotalForPath(ctx, path, info.IsDir())
 		if total <= 0 {
 			allKnown = false
 		}

@@ -1,4 +1,4 @@
-import { memo, type MouseEvent } from "react";
+import { memo, type DragEvent, type MouseEvent } from "react";
 
 import type { SubfolderData } from "@/api";
 import AppTypography from "@/components/ui/AppTypography";
@@ -10,6 +10,7 @@ import type { FileItem, ViewMode } from "../-types";
 interface DirectoryItemProps {
   disableHover: boolean;
   isCut: boolean;
+  isDropTarget?: boolean;
   isLoadingSubfolders: boolean;
   isRenaming: boolean;
   isRenamePending?: boolean;
@@ -23,6 +24,10 @@ interface DirectoryItemProps {
   onFileContextMenu: (event: MouseEvent, path: string) => void;
   onFolderClick: (event: MouseEvent, path: string) => void;
   onFolderContextMenu: (event: MouseEvent, path: string) => void;
+  onFolderDragLeave?: (event: DragEvent, path: string) => void;
+  onFolderDragOver?: (event: DragEvent, path: string) => void;
+  onFolderDrop?: (event: DragEvent, path: string) => void;
+  onItemDragStart?: (event: DragEvent, path: string) => void;
   onOpenDirectory: (path: string) => void;
   selected: boolean;
   subfolderData?: SubfolderData;
@@ -55,6 +60,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
     itemKind,
     selected,
     isCut,
+    isDropTarget,
     isRenaming,
     isRenamePending,
     renameProgressPct,
@@ -65,6 +71,10 @@ export const DirectoryItem = memo<DirectoryItemProps>(
     onFolderClick,
     onOpenDirectory,
     onFolderContextMenu,
+    onFolderDragLeave,
+    onFolderDragOver,
+    onFolderDrop,
+    onItemDragStart,
     onConfirmRename,
     onCancelRename,
     disableHover,
@@ -90,6 +100,9 @@ export const DirectoryItem = memo<DirectoryItemProps>(
           onConfirmRename={(newName) => onConfirmRename(item.path, newName)}
           onContextMenu={(event) => onFileContextMenu(event, item.path)}
           onDoubleClick={() => onDownloadFile(item)}
+          onDragStart={
+            onItemDragStart && ((event) => onItemDragStart(event, item.path))
+          }
           path={item.path}
           renameProgressPct={renameProgressPct}
           selected={selected}
@@ -122,6 +135,7 @@ export const DirectoryItem = memo<DirectoryItemProps>(
         hidden={item.hidden}
         isCut={isCut}
         isDirectory={true}
+        isDropTarget={isDropTarget}
         isRenaming={isRenaming}
         isRenamePending={isRenamePending}
         isSymlink={item.symlink}
@@ -132,6 +146,16 @@ export const DirectoryItem = memo<DirectoryItemProps>(
         onConfirmRename={(newName) => onConfirmRename(item.path, newName)}
         onContextMenu={(event) => onFolderContextMenu(event, item.path)}
         onDoubleClick={() => onOpenDirectory(item.path)}
+        onDragLeave={
+          onFolderDragLeave && ((event) => onFolderDragLeave(event, item.path))
+        }
+        onDragOver={
+          onFolderDragOver && ((event) => onFolderDragOver(event, item.path))
+        }
+        onDragStart={
+          onItemDragStart && ((event) => onItemDragStart(event, item.path))
+        }
+        onDrop={onFolderDrop && ((event) => onFolderDrop(event, item.path))}
         path={item.path}
         renameProgressPct={renameProgressPct}
         selected={selected}

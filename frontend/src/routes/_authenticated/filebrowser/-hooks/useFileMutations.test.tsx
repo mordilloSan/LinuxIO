@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   startExtraction: vi.fn(),
   startMove: vi.fn(),
   resolveCollisions: vi.fn(),
+  call: vi.fn(),
   taskOptions: {} as Record<string, { success?: (result: unknown) => void }>,
 }));
 
@@ -35,8 +36,10 @@ vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   return {
     ...actual,
+    call: mocks.call,
     linuxio: {
       filebrowser: {
+        exists_batch: { route: "filebrowser.exists_batch" },
         chmod_batch: taskEndpoint(),
         delete_batch: taskEndpoint("delete"),
         trash_batch: taskEndpoint("trash"),
@@ -155,10 +158,99 @@ describe("useFileMutations", () => {
     });
   });
 
+  describe("keep both on paste", () => {
+    beforeEach(() => {
+      mocks.call.mockResolvedValue({
+        existing: [
+          {
+            isDir: false,
+            modified: "2026-10-23T08:00:00Z",
+            path: "/srv/other/b.txt",
+            size: 42,
+          },
+        ],
+      });
+    });
+
+    it("describes the sources and sends the keep-both sources to the copy task", async () => {
+      mocks.resolveCollisions.mockImplementation(async (items: string[]) => ({
+        kept: items,
+        keepBoth: ["/srv/other/b.txt"],
+        overwrite: false,
+      }));
+      const { result } = renderHook(() =>
+        useFileMutations({
+          normalizedPath: "/srv/projects",
+          resolveCollisions: mocks.resolveCollisions,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.copyItems({
+          destinationDir: "/srv/projects",
+          sourcePaths: ["/srv/other/b.txt", "/srv/other/c.txt"],
+        });
+      });
+
+      expect(mocks.call).toHaveBeenCalledWith("filebrowser.exists_batch", {
+        paths: ["/srv/other/b.txt", "/srv/other/c.txt"],
+      });
+      const describeIncoming = mocks.resolveCollisions.mock.calls[0][3] as (
+        path: string,
+      ) => unknown;
+      expect(describeIncoming("/srv/other/b.txt")).toMatchObject({
+        modified: "2026-10-23T08:00:00Z",
+        size: 42,
+      });
+      expect(describeIncoming("/srv/other/c.txt")).toBeUndefined();
+      expect(mocks.startCopy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          keepBoth: ["/srv/other/b.txt"],
+          overwrite: undefined,
+        }),
+      );
+    });
+
+    it("sends the keep-both sources to the move task and still prompts when the source lookup fails", async () => {
+      mocks.call.mockRejectedValue(new Error("offline"));
+      mocks.resolveCollisions.mockImplementation(async (items: string[]) => ({
+        kept: items,
+        keepBoth: [items[0]],
+        overwrite: false,
+      }));
+      const { result } = renderHook(() =>
+        useFileMutations({
+          normalizedPath: "/srv/projects",
+          resolveCollisions: mocks.resolveCollisions,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.moveItems({
+          destinationDir: "/srv/projects",
+          sourcePaths: ["/srv/other/b.txt"],
+        });
+      });
+
+      const describeIncoming = mocks.resolveCollisions.mock.calls[0][3] as (
+        path: string,
+      ) => unknown;
+      expect(describeIncoming("/srv/other/b.txt")).toBeUndefined();
+      expect(mocks.startMove).toHaveBeenCalledWith(
+        expect.objectContaining({ keepBoth: ["/srv/other/b.txt"] }),
+      );
+    });
+  });
+
   describe("paste into the item's own folder", () => {
     const keepAll = async (items: string[]) => ({
       kept: items,
+      keepBoth: [],
       overwrite: false,
+    });
+
+    beforeEach(() => {
+      mocks.call.mockResolvedValue({ existing: [] });
     });
 
     it("drops same-folder sources of a move and starts nothing when none remain", async () => {
@@ -224,6 +316,7 @@ describe("useFileMutations", () => {
         ["/srv/other/b.txt"],
         expect.any(Function),
         "/srv/projects",
+        expect.any(Function),
       );
       expect(mocks.startCopy).toHaveBeenCalledWith(
         expect.objectContaining({

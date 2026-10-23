@@ -42,6 +42,9 @@ func parseResourcePatchRequest(req apischema.ActionSourceDestinationRequest) (re
 	if dst == "/" || src == "/" {
 		return resourcePatchRequest{}, fmt.Errorf("bad_request:cannot modify root directory")
 	}
+	if invalidEntryName(filepath.Base(strings.TrimRight(dst, "/"))) {
+		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid name")
+	}
 
 	return resourcePatchRequest{
 		action: req.Action,
@@ -64,13 +67,12 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	}
 	req.realSrc = fsroot.CleanAbsPath(req.src)
 
-	srcInfo, err := root.Root.Lstat(fsroot.ToRel(req.realSrc))
-	if err != nil {
+	if _, err := root.Root.Lstat(fsroot.ToRel(req.realSrc)); err != nil {
 		slog.Debug("error getting source info", "path", req.realSrc, "error", err)
 		return req, fmt.Errorf("bad_request:source not found")
 	}
-	if req.realSrc == req.realDest && req.action == "copy" {
-		req.realDest = generateUniquePath(req.realDest, srcInfo.IsDir(), root)
+	if err := services.CheckNotProtected(root, req.realSrc); err != nil {
+		return req, fmt.Errorf("bad_request:%w", err)
 	}
 	return req, validatePatchDestination(root, req)
 }
@@ -90,10 +92,10 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest) err
 	}
 }
 
+// executeResourcePatch renames: copying and moving selections go through the
+// batch tasks, which carry conflict handling and progress.
 func executeResourcePatch(req resourcePatchRequest, opts *services.OperationCallbacks, size computedTransferSize) error {
 	switch req.action {
-	case "copy":
-		return services.CopyFileWithCallbacks(req.realSrc, req.realDest, false, opts)
 	case "rename", "move":
 		return services.MoveFileWithCallbacks(req.realSrc, req.realDest, false, opts, moveFileOptions(size))
 	default:
@@ -137,11 +139,7 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 		Phase: "preparing",
 	})
 
-	phase := "copying"
-	if patchReq.action == "move" || patchReq.action == "rename" {
-		phase = "moving"
-	}
-	opts := newTaskPhaseCallbacks(ctx, task, nil, size.estimate(), phase)
+	opts := newTaskPhaseCallbacks(ctx, task, nil, size.estimate(), "moving")
 	if err := executeResourcePatch(patchReq, opts, size); err != nil {
 		slog.Debug("error patching resource", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest, "error", err)
 		return apischema.MessageResponse{}, fmt.Errorf("bad_request:%w", err)

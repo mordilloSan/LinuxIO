@@ -123,6 +123,9 @@ func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 
 	var updates []batchIndexerUpdate
 	result, err := runPathBatch(ctx, task, store, paths, phase, func(ctx context.Context, source string) error {
+		if protectedErr := services.CheckNotProtected(root, source); protectedErr != nil {
+			return protectedErr
+		}
 		info, statErr := root.Root.Lstat(fsroot.ToRel(source))
 		if statErr != nil {
 			return statErr

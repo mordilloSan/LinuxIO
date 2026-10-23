@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, type RefObject } from "react";
+import { useEffect, useEffectEvent, useRef, type RefObject } from "react";
 
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 
@@ -6,28 +6,72 @@ import type { FileItem } from "../-types";
 
 interface UseFileListKeyboardNavigationProps {
   allItems: FileItem[];
+  /** Index selection ranges extend from; the last position reached without Shift. */
+  anchorIndexRef: RefObject<number>;
+  /** Items per visual row; read at key time, 1 (list view) when omitted. */
+  columnCountRef?: RefObject<number>;
   containerRef: RefObject<HTMLDivElement>;
   focusedIndex: number;
   global?: boolean; // Listen to document events instead of container events
   onDelete?: () => void;
   onDeletePermanently?: () => void;
+  onDownloadFile?: (item: FileItem) => void;
   onFocusChange: (index: number) => void;
+  onNavigateUp?: () => void;
+  onOpenDirectory?: (path: string) => void;
   onRename?: () => void;
   onSelectionChange: (paths: Set<string>) => void;
   selectedPaths: Set<string>;
 }
 
+const TYPEAHEAD_RESET_MS = 1000;
+
+// Index a movement key leads to, or null when the key is not one (or does
+// nothing in this layout). `from` is -1 while nothing is focused.
+const getMoveTarget = (
+  key: string,
+  from: number,
+  count: number,
+  columns: number,
+): number | null => {
+  const last = count - 1;
+  switch (key) {
+    case "Home":
+      return 0;
+    case "End":
+      return last;
+    case "ArrowDown":
+      return from < 0 ? 0 : Math.min(from + columns, last);
+    case "ArrowUp":
+      return from < 0 ? last : Math.max(from - columns, 0);
+    case "ArrowRight":
+      return columns > 1 ? Math.min(from + 1, last) : null;
+    case "ArrowLeft":
+      return columns > 1 ? (from < 0 ? last : Math.max(from - 1, 0)) : null;
+    default:
+      return null;
+  }
+};
+
 export const useFileListKeyboardNavigation = ({
   containerRef,
   allItems,
+  anchorIndexRef,
+  columnCountRef,
   focusedIndex,
   onFocusChange,
   onSelectionChange,
   onDelete,
   onDeletePermanently,
+  onDownloadFile,
+  onNavigateUp,
+  onOpenDirectory,
   onRename,
+  selectedPaths,
   global = false,
 }: UseFileListKeyboardNavigationProps) => {
+  const typeaheadRef = useRef({ prefix: "", time: 0 });
+
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
     // Don't intercept keyboard events when user is typing in an input/textarea
     const target = e.target as HTMLElement;
@@ -82,43 +126,90 @@ export const useFileListKeyboardNavigation = ({
       return;
     }
 
-    // Letter key navigation
+    // Alt+Up and Backspace go to the parent folder
     if (
-      e.key.length === 1 &&
-      e.key.match(/[a-z]/i) &&
-      !e.ctrlKey &&
-      !e.altKey &&
-      !e.metaKey
+      (e.key === "ArrowUp" && e.altKey && !e.ctrlKey && !e.metaKey) ||
+      (e.key === "Backspace" && !e.altKey && !e.ctrlKey && !e.metaKey)
     ) {
       e.preventDefault();
-      const letter = e.key.toLowerCase();
+      onNavigateUp?.();
+      return;
+    }
 
-      // Find next item starting with this letter
-      const currentIndex = focusedIndex;
-      let foundIndex = -1;
+    if (e.ctrlKey || e.altKey || e.metaKey) {
+      return;
+    }
 
-      // Search from current position forward
-      for (let i = currentIndex + 1; i < allItems.length; i++) {
-        if (allItems[i].name.toLowerCase().startsWith(letter)) {
-          foundIndex = i;
-          break;
-        }
+    // The listing always has a focused index, but with nothing selected there
+    // is no visible cursor: movement and typeahead start from the edge.
+    const current = selectedPaths.size > 0 ? focusedIndex : -1;
+
+    const moveTarget =
+      allItems.length > 0
+        ? getMoveTarget(
+            e.key,
+            current,
+            allItems.length,
+            columnCountRef?.current ?? 1,
+          )
+        : null;
+    if (moveTarget !== null) {
+      e.preventDefault();
+      const anchor =
+        e.shiftKey && current >= 0
+          ? Math.min(Math.max(anchorIndexRef.current, 0), allItems.length - 1)
+          : moveTarget;
+      if (!e.shiftKey || current < 0) {
+        anchorIndexRef.current = moveTarget;
       }
+      const from = Math.min(anchor, moveTarget);
+      const to = Math.max(anchor, moveTarget);
+      onFocusChange(moveTarget);
+      onSelectionChange(
+        new Set(allItems.slice(from, to + 1).map((item) => item.path)),
+      );
+      return;
+    }
 
-      // If not found, wrap around and search from beginning
-      if (foundIndex === -1) {
-        for (let i = 0; i <= currentIndex; i++) {
-          if (allItems[i].name.toLowerCase().startsWith(letter)) {
-            foundIndex = i;
-            break;
-          }
-        }
+    // Enter opens the focused folder, or does what double-click does on a file
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      // A focused control owns Enter (a breadcrumb or toolbar button).
+      !target?.closest?.("button, a[href], [role='button'], [role='menuitem']")
+    ) {
+      const item = allItems[current];
+      if (!item) return;
+      e.preventDefault();
+      if (item.type === "directory") {
+        onOpenDirectory?.(item.path);
+      } else {
+        onDownloadFile?.(item);
       }
+      return;
+    }
 
-      if (foundIndex !== -1) {
-        onFocusChange(foundIndex);
-        const item = allItems[foundIndex];
-        onSelectionChange(new Set([item.path]));
+    // Typeahead: characters typed within a second form a prefix to jump to
+    if (/^[a-z0-9]$/i.test(e.key)) {
+      e.preventDefault();
+      const now = Date.now();
+      const typeahead = typeaheadRef.current;
+      const prefix =
+        (now - typeahead.time < TYPEAHEAD_RESET_MS ? typeahead.prefix : "") +
+        e.key.toLowerCase();
+      typeaheadRef.current = { prefix, time: now };
+
+      // A lone character steps past the focused item so repeating it cycles
+      // through matches; a longer prefix may keep the focused one.
+      const start = prefix.length === 1 ? current + 1 : Math.max(current, 0);
+      for (let offset = 0; offset < allItems.length; offset++) {
+        const index = (start + offset) % allItems.length;
+        if (allItems[index].name.toLowerCase().startsWith(prefix)) {
+          anchorIndexRef.current = index;
+          onFocusChange(index);
+          onSelectionChange(new Set([allItems[index].path]));
+          return;
+        }
       }
     }
   });

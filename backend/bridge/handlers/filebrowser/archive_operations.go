@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -92,6 +94,20 @@ func prepareArchiveTarget(root *fsroot.FSRoot, targetPath string) (targetRel, te
 	}
 	tempPath = filepath.Clean("/" + tempRel)
 	return targetRel, tempRel, tempPath, nil
+}
+
+// publishArchive moves the finished temp archive to its name without ever
+// replacing a file that appeared there meanwhile: link then unlink, with a
+// plain rename only on filesystems that have no hard links.
+func publishArchive(root *fsroot.FSRoot, tempRel, targetRel string) error {
+	err := root.Root.Link(tempRel, targetRel)
+	if err == nil {
+		return root.Root.Remove(tempRel)
+	}
+	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EOPNOTSUPP) {
+		return root.Root.Rename(tempRel, targetRel)
+	}
+	return err
 }
 
 func removeWithDebug(root *fsroot.FSRoot, targetRel, targetPath string) {
@@ -182,8 +198,11 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 		removeWithDebug(root, tempRel, tempPath)
 		return FileCompressResult{}, bridgeipc.NewError(fmt.Sprintf("compression failed: %v", err), 500)
 	}
-	if err := root.Root.Rename(tempRel, targetRel); err != nil {
+	if err := publishArchive(root, tempRel, targetRel); err != nil {
 		removeWithDebug(root, tempRel, tempPath)
+		if errors.Is(err, fs.ErrExist) {
+			return FileCompressResult{}, bridgeipc.NewError("an archive with that name already exists", 409)
+		}
 		return FileCompressResult{}, bridgeipc.NewError(fmt.Sprintf("finalize archive: %v", err), 500)
 	}
 
@@ -209,9 +228,6 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	}
 	defer root.Close()
 
-	_, statErr := root.Root.Stat(fsroot.ToRel(destination))
-	destExistedBefore := statErr == nil
-
 	archiveStat, err := root.Root.Stat(fsroot.ToRel(archivePath))
 	if err != nil {
 		return FileExtractResult{}, bridgeipc.NewError(fmt.Sprintf("archive not found: %v", err), 404)
@@ -228,15 +244,17 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	defer release()
 
 	totalSize := computeExtractSize(archivePath, archiveStat.Size())
+	if spaceErr := services.EnsureFreeSpace(filepath.Dir(destination), totalSize); spaceErr != nil {
+		return FileExtractResult{}, bridgeipc.NewError(spaceErr.Error(), 507)
+	}
 	writeTaskPhaseProgress(task, totalSize, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(totalSize), "extracting")
 	err = services.ExtractArchive(archivePath, destination, opts, archiveExtractWorkers(settings))
 	if errors.Is(err, services.ErrAborted) {
 		slog.Info("extract aborted, cleaning up", "path", destination)
-		if !destExistedBefore {
-			if removeErr := root.Root.RemoveAll(fsroot.ToRel(destination)); removeErr != nil {
-				slog.Debug("failed to clean up extraction directory", "path", destination, "error", removeErr)
-			}
+		// The destination was created by this task, so it is ours to drop.
+		if removeErr := root.Root.RemoveAll(fsroot.ToRel(destination)); removeErr != nil {
+			slog.Debug("failed to clean up extraction directory", "path", destination, "error", removeErr)
 		}
 		return FileExtractResult{}, abortErr(ctx)
 	}

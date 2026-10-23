@@ -23,7 +23,9 @@ import {
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { formatDate, formatFileSize } from "@/utils/formatters";
 import { nativeFileInlineUrl } from "@/utils/nativeDownload";
+import { baseName } from "@/utils/path";
 
 import FileBrowserHeader from "./FileBrowserHeader";
 import FileDetail from "./FileDetail";
@@ -297,7 +299,17 @@ export const FileBrowserDeleteDialog = ({
 }: FileBrowserDeleteDialogProps) => {
   const isTrash = mode === "trash";
   const count = pendingDeletePaths.length;
+  const names = pendingDeletePaths.map(baseName).filter(Boolean);
   const countLabel = `${count} item${count === 1 ? "" : "s"}`;
+  // Name up to three items; beyond that name two and count the rest.
+  const subject =
+    names.length === 0
+      ? countLabel
+      : names.length <= 3
+        ? [names.slice(0, -1).join(", "), names[names.length - 1]]
+            .filter(Boolean)
+            .join(" and ")
+        : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
   return (
     <AppConfirmDialog
       confirmText={isTrash ? "Move to Trash" : "Delete"}
@@ -305,8 +317,8 @@ export const FileBrowserDeleteDialog = ({
       isPending={isPending}
       message={
         isTrash
-          ? `Move ${countLabel} to Trash?`
-          : `Permanently delete ${countLabel}? This cannot be undone.`
+          ? `Move ${subject} to Trash?`
+          : `Permanently delete ${subject}? This cannot be undone.`
       }
       onClose={onClose}
       onConfirm={onConfirm}
@@ -553,6 +565,20 @@ interface FileBrowserConflictDialogProps {
   prompt: ConflictPrompt | null;
 }
 
+// "Existing: 1.2 MB · 12 Mar 2026"; unknown parts are left out. A folder's
+// size is not comparable to anything, so only its time is shown.
+const describeSide = (
+  label: string,
+  side: { size?: number; modified?: string } | undefined,
+  isDir: boolean,
+) => {
+  const parts = [
+    !isDir && side?.size !== undefined ? formatFileSize(side.size) : "",
+    side?.modified ? formatDate(side.modified) : "",
+  ].filter(Boolean);
+  return parts.length ? `${label}: ${parts.join(" · ")}` : "";
+};
+
 export const FileBrowserConflictDialog = ({
   onCancel,
   onResolve,
@@ -613,8 +639,9 @@ export const FileBrowserConflictDialog = ({
         <AppTypography style={{ marginBottom: 8 }} variant="body2">
           Choose what to do with each item in {prompt?.destination}. Overwrite
           replaces the existing file. Merge keeps the existing folder and
-          replaces only the files inside it that have the same name. Skipped
-          items are left untouched.
+          replaces only the files inside it that have the same name. Keep both
+          saves the new item as &ldquo;name (copy)&rdquo;. Skipped items are
+          left untouched.
         </AppTypography>
         <div
           style={{
@@ -629,6 +656,9 @@ export const FileBrowserConflictDialog = ({
           </AppTypography>
           <AppButton onClick={() => setAll("skip")} size="small">
             Skip all
+          </AppButton>
+          <AppButton onClick={() => setAll("keep")} size="small">
+            Keep both for all
           </AppButton>
           <AppButton
             color="warning"
@@ -647,7 +677,7 @@ export const FileBrowserConflictDialog = ({
             padding: 0,
           }}
         >
-          {conflicts.map(({ path, name, isDir }) => (
+          {conflicts.map(({ path, name, isDir, existing, incoming }) => (
             <li
               key={path}
               style={{
@@ -657,20 +687,36 @@ export const FileBrowserConflictDialog = ({
                 padding: "4px 0",
               }}
             >
-              <AppTypography
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                variant="body2"
-              >
-                {name}
-                {isDir ? "/" : ""}
-              </AppTypography>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <AppTypography
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  variant="body2"
+                >
+                  {name}
+                  {isDir ? "/" : ""}
+                </AppTypography>
+                {[
+                  describeSide("Existing", existing, isDir),
+                  describeSide("New", incoming, isDir),
+                ]
+                  .filter(Boolean)
+                  .map((line) => (
+                    <AppTypography
+                      color="text.secondary"
+                      key={line}
+                      style={{ display: "block" }}
+                      variant="caption"
+                    >
+                      {line}
+                    </AppTypography>
+                  ))}
+              </div>
               {choiceButton(path, "skip", "Skip")}
+              {choiceButton(path, "keep", "Keep both")}
               {choiceButton(path, "overwrite", isDir ? "Merge" : "Overwrite")}
             </li>
           ))}

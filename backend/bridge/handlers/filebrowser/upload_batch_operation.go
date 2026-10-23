@@ -22,10 +22,11 @@ import (
 // uploadBatchFile is one manifest entry of a batch upload: where the file
 // lands and how many of the stream's bytes belong to it.
 type uploadBatchFile struct {
-	relPath string // manifest path, relative to the batch destination
-	absPath string // cleaned absolute final path
-	size    int64
-	modTime time.Time // zero when the manifest carried no modified time
+	relPath  string // manifest path, relative to the batch destination
+	absPath  string // cleaned absolute final path
+	size     int64
+	modTime  time.Time // zero when the manifest carried no modified time
+	keepBoth bool      // land under a unique name when absPath already exists
 }
 
 // uploadBatchTransferTask receives many files over one data stream. The wire
@@ -108,6 +109,15 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 	}
 	destination := fsroot.CleanAbsPath(req.Destination)
 
+	keepBoth := make(map[string]bool, len(req.KeepBoth))
+	for _, raw := range req.KeepBoth {
+		rel, err := cleanManifestPath(raw)
+		if err != nil {
+			return "", nil, nil, 0, err
+		}
+		keepBoth[rel] = true
+	}
+
 	files := make([]uploadBatchFile, 0, len(req.Files))
 	var total int64
 	for _, entry := range req.Files {
@@ -127,10 +137,11 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 			}
 		}
 		files = append(files, uploadBatchFile{
-			relPath: rel,
-			absPath: filepath.Join(destination, rel),
-			size:    size,
-			modTime: modTime,
+			relPath:  rel,
+			absPath:  filepath.Join(destination, rel),
+			size:     size,
+			modTime:  modTime,
+			keepBoth: keepBoth[rel],
 		})
 		total += size
 	}
@@ -163,6 +174,9 @@ func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema
 	}
 	if closeErr != nil {
 		slog.Debug("failed to close filesystem root", "error", closeErr)
+	}
+	if err := services.EnsureFreeSpace(destination, total); err != nil {
+		return nil, bridgeipc.NewError(err.Error(), 507)
 	}
 
 	transfer := &uploadBatchTransferTask{
@@ -323,8 +337,11 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 	t.mu.Unlock()
 
 	finalRel := fsroot.ToRel(current.absPath)
-	if !t.overwrite {
-		if _, statErr := session.root.Root.Stat(finalRel); statErr == nil {
+	if _, statErr := session.root.Root.Stat(finalRel); statErr == nil {
+		switch {
+		case current.keepBoth:
+			finalRel = fsroot.ToRel(generateUniquePath(current.absPath, false, session.root))
+		case !t.overwrite:
 			return fmt.Errorf("destination already exists")
 		}
 	}

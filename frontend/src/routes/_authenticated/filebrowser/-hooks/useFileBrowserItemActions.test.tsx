@@ -71,18 +71,15 @@ function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
       clearPendingDelete: vi.fn(),
       clearPermissions: vi.fn(),
       closeCreateFile: vi.fn(),
-      closeCreateFolder: vi.fn(),
       closeDelete: vi.fn(),
       closeDetails: vi.fn(),
       closePermissions: vi.fn(),
       openCreateFile: vi.fn(),
-      openCreateFolder: vi.fn(),
       openPermissions: vi.fn(),
       requestDelete: vi.fn(),
       showDetails: vi.fn(),
     },
     createFileDialog: false,
-    createFolderDialog: false,
     deleteDialog: false,
     deleteMode: "trash",
     detailTarget: null,
@@ -287,7 +284,7 @@ describe("useFileBrowserItemActions", () => {
     });
   });
 
-  describe("create dialogs", () => {
+  describe("create file", () => {
     it("opens and confirms the create-file flow", async () => {
       const { result, params } = setup();
 
@@ -301,15 +298,57 @@ describe("useFileBrowserItemActions", () => {
       await act(async () => result.current.handleConfirmCreateFile("new.txt"));
       expect(params.createFile).toHaveBeenCalledWith("new.txt");
     });
+  });
 
-    it("opens and confirms the create-folder flow", async () => {
+  describe("new folder", () => {
+    it('creates "New folder" and opens it in inline rename', async () => {
       const { result, params } = setup();
 
-      act(() => result.current.handleCreateFolder());
-      expect(params.dialogs.actions.openCreateFolder).toHaveBeenCalledTimes(1);
+      await act(async () => result.current.handleCreateFolder());
 
-      await act(async () => result.current.handleConfirmCreateFolder("assets"));
-      expect(params.createFolder).toHaveBeenCalledWith("assets");
+      expect(params.view.actions.closeContextMenu).toHaveBeenCalledTimes(1);
+      expect(params.createFolder).toHaveBeenCalledWith("New folder");
+      expect(result.current.renamingPath).toBe("/srv/projects/New folder/");
+    });
+
+    it("picks the first free numbered name", async () => {
+      const { result, params } = setup({
+        resource: {
+          items: [
+            fileItem("New folder", "directory"),
+            fileItem("New folder (2)", "directory"),
+            fileItem("New folder (4)", "directory"),
+          ],
+          name: "projects",
+          path: "/srv/projects",
+          type: "directory",
+        },
+      });
+
+      await act(async () => result.current.handleCreateFolder());
+
+      expect(params.createFolder).toHaveBeenCalledWith("New folder (3)");
+      expect(result.current.renamingPath).toBe("/srv/projects/New folder (3)/");
+    });
+
+    it("builds the path under the root without a doubled slash", async () => {
+      const { result } = setup({
+        resource: { items: [], name: "/", path: "/", type: "directory" },
+      });
+
+      await act(async () => result.current.handleCreateFolder());
+
+      expect(result.current.renamingPath).toBe("/New folder/");
+    });
+
+    it("does not rename anything when the folder could not be created", async () => {
+      const { result } = setup({
+        createFolder: vi.fn().mockRejectedValue(new Error("create failed")),
+      });
+
+      await act(async () => result.current.handleCreateFolder());
+
+      expect(result.current.renamingPath).toBeNull();
     });
   });
 
@@ -505,6 +544,36 @@ describe("useFileBrowserItemActions", () => {
         destination: "/srv/projects/new/",
         from: "/srv/projects/old",
       });
+    });
+
+    it("rejects an invalid name with a toast and keeps the editor open", async () => {
+      const { result, params } = setup({
+        selectedPaths: new Set(["/srv/projects/old.txt"]),
+      });
+
+      act(() => result.current.handleStartInlineRename());
+      await act(async () =>
+        result.current.handleConfirmInlineRename(
+          "/srv/projects/old.txt",
+          "a/b",
+        ),
+      );
+      await act(async () =>
+        result.current.handleConfirmInlineRename("/srv/projects/old.txt", ".."),
+      );
+
+      expect(toastMocks.error).toHaveBeenNthCalledWith(
+        1,
+        "Names cannot contain “/”.",
+        expect.anything(),
+      );
+      expect(toastMocks.error).toHaveBeenNthCalledWith(
+        2,
+        "That name is reserved.",
+        expect.anything(),
+      );
+      expect(params.renameItem).not.toHaveBeenCalled();
+      expect(result.current.renamingPath).toBe("/srv/projects/old.txt");
     });
 
     it("retains the inline editor when rename fails", async () => {

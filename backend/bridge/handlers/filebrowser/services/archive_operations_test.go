@@ -382,18 +382,21 @@ func TestExtractArchiveStaysInsideDestination(t *testing.T) {
 			assert.NoFileExists(t, filepath.Join(tmpDir, "escape.txt"))
 		})
 
-		t.Run("relative_symlink_in_destination"+format.ext, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			archivePath := filepath.Join(tmpDir, "archive"+format.ext)
-			format.write(t, archivePath, "link/pwned.txt")
-			destDir := createTestDir(t, tmpDir, "dest")
-			outside := createTestDir(t, tmpDir, "outside")
-			require.NoError(t, os.Symlink("../outside", filepath.Join(destDir, "link")))
-
-			require.Error(t, ExtractArchive(archivePath, destDir, nil, 0))
-			assert.NoFileExists(t, filepath.Join(outside, "pwned.txt"))
-		})
 	}
+}
+
+// The destination is always created fresh, so a folder that already exists,
+// with whatever symlinks it holds, is refused instead of being merged into.
+func TestExtractArchiveRefusesExistingDestination(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivePath := filepath.Join(tmpDir, "archive.zip")
+	writeSingleEntryZip(t, archivePath, "link/pwned.txt")
+	destDir := createTestDir(t, tmpDir, "dest")
+	outside := createTestDir(t, tmpDir, "outside")
+	require.NoError(t, os.Symlink("../outside", filepath.Join(destDir, "link")))
+
+	require.ErrorContains(t, ExtractArchive(archivePath, destDir, nil, 0), "already exists")
+	assert.NoFileExists(t, filepath.Join(outside, "pwned.txt"))
 }
 
 type failingWriter struct{}

@@ -258,6 +258,34 @@ describe("task streams write the shared cache", () => {
     expect(queryClient.getQueryData(key)).toBeUndefined();
   });
 
+  it("sends the keep-both manifest paths with the upload request", async () => {
+    const { result } = setup();
+    const data = stream();
+    mocks.data.mockReturnValue(data);
+    mocks.upload.mockResolvedValue(
+      snapshot("upload", TASK_TYPE_FILE_UPLOAD_BATCH),
+    );
+    let completion: ReturnType<typeof result.current.uploads.startUpload>;
+    await act(async () => {
+      completion = result.current.uploads.startUpload(
+        [{ relativePath: "folder", isDirectory: true }],
+        "/data",
+        false,
+        ["a.txt"],
+      );
+    });
+    expect(mocks.upload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: "/data",
+        keepBoth: ["a.txt"],
+      }),
+    );
+    await act(async () => {
+      data.onResult?.({ status: "ok", data: { succeeded: 1 } });
+      await completion;
+    });
+  });
+
   it("seeds recovered indexer progress and keeps its terminal summary in the cache", async () => {
     const { queryClient, events, watches } = setup();
     const task = {

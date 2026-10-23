@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react";
 
 import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
+import AppTypography from "@/components/ui/AppTypography";
 
 interface ContextMenuProps {
   anchorPosition: { top: number; left: number } | null;
@@ -29,6 +30,12 @@ interface ContextMenuProps {
   onShowDetails?: () => void;
   onUpload: () => void;
 }
+
+const shortcutHint = (keys: string) => (
+  <AppTypography color="text.secondary" variant="caption">
+    {keys}
+  </AppTypography>
+);
 
 const ContextMenu = ({
   anchorPosition,
@@ -87,7 +94,7 @@ const ContextMenu = ({
         onClick={onCreateFolder}
         startAdornment={<Icon icon="mdi:folder-plus" />}
       >
-        Create Folder
+        New folder
       </AppMenuItem>
 
       <AppMenuItem
@@ -122,6 +129,7 @@ const ContextMenu = ({
 
       <AppMenuItem
         disabled={!hasSelection}
+        endAdornment={shortcutHint("Ctrl+C")}
         onClick={onCopy}
         startAdornment={<Icon icon="mdi:content-copy" />}
       >
@@ -130,6 +138,7 @@ const ContextMenu = ({
 
       <AppMenuItem
         disabled={!hasSelection}
+        endAdornment={shortcutHint("Ctrl+X")}
         onClick={onCut}
         startAdornment={<Icon icon="mdi:content-cut" />}
       >
@@ -138,6 +147,7 @@ const ContextMenu = ({
 
       <AppMenuItem
         disabled={renameDisabled}
+        endAdornment={shortcutHint("F2")}
         onClick={onRename}
         startAdornment={<Icon icon="mdi:rename-box" />}
       >
@@ -146,6 +156,7 @@ const ContextMenu = ({
 
       <AppMenuItem
         disabled={!hasClipboard}
+        endAdornment={shortcutHint("Ctrl+V")}
         onClick={onPaste}
         startAdornment={<Icon icon="mdi:content-paste" />}
       >
@@ -183,13 +194,14 @@ const ContextMenu = ({
         onClick={onExtract}
         startAdornment={<Icon icon="mdi:archive-arrow-up" />}
       >
-        Extract Here
+        Extract to new folder
       </AppMenuItem>
 
       <AppDivider />
 
       <AppMenuItem
         disabled={!hasSelection}
+        endAdornment={shortcutHint("Del")}
         onClick={onDelete}
         startAdornment={<Icon icon="mdi:delete" />}
       >
@@ -199,6 +211,7 @@ const ContextMenu = ({
       <AppMenuItem
         danger
         disabled={!hasSelection}
+        endAdornment={shortcutHint("Shift+Del")}
         onClick={onDeletePermanently}
         startAdornment={<Icon icon="mdi:delete-forever" />}
       >

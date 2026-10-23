@@ -15,8 +15,10 @@ import type { DeleteMode, DialogsSlice } from "./useFileDialogs";
 import type { EditorSlice } from "./useFileEditor";
 import { useFilePathUtilities } from "./useFilePathUtilities";
 import type { ViewSlice } from "./useFileViewState";
-import { isImageFile } from "../-fileUtils";
+import { isImageFile, validateFileName } from "../-fileUtils";
 import type { FileItem, FileResource } from "../-types";
+
+const NEW_FOLDER_NAME = "New folder";
 
 type ChangePermissionsPayload = Pick<
   FileChmodBatchRequest,
@@ -137,27 +139,32 @@ export const useFileBrowserItemActions = ({
     dialogActions.openCreateFile();
   }, [dialogActions, closeContextMenu]);
 
-  const handleCreateFolder = useCallback(() => {
+  // Explorer-style: create "New folder" right away and rename it in place.
+  const handleCreateFolder = useCallback(async () => {
     closeContextMenu();
-    dialogActions.openCreateFolder();
-  }, [dialogActions, closeContextMenu]);
+    if (!resource) return;
+    // The new row only shows in the unfiltered listing.
+    clearSearch();
+    const taken = new Set(resource.items?.map((item) => item.name));
+    let name = NEW_FOLDER_NAME;
+    for (let n = 2; taken.has(name); n++) {
+      name = `${NEW_FOLDER_NAME} (${n})`;
+    }
+    try {
+      await createFolder(name);
+      setRenamingPath(`${joinPath(resource.path, name)}/`);
+    } catch {
+      // The mutation reports the error.
+    }
+  }, [clearSearch, closeContextMenu, createFolder, joinPath, resource]);
 
   const handleCloseCreateFileDialog = useCallback(() => {
     dialogActions.closeCreateFile();
   }, [dialogActions]);
 
-  const handleCloseCreateFolderDialog = useCallback(() => {
-    dialogActions.closeCreateFolder();
-  }, [dialogActions]);
-
   const handleConfirmCreateFile = useCallback(
     (fileName: string) => createFile(fileName),
     [createFile],
-  );
-
-  const handleConfirmCreateFolder = useCallback(
-    (folderName: string) => createFolder(folderName),
-    [createFolder],
   );
 
   const handleChangePermissions = useCallback(async () => {
@@ -210,6 +217,12 @@ export const useFileBrowserItemActions = ({
         setRenamingPath(null);
         return;
       }
+      const invalid = validateFileName(newName);
+      if (invalid) {
+        // Keep the inline editor mounted so the user can correct the name.
+        toast.error(invalid);
+        return;
+      }
       const target = resourceItemsRef.current?.find(
         (item) => item.path === path,
       );
@@ -229,7 +242,14 @@ export const useFileBrowserItemActions = ({
         // Keep the inline editor mounted so the user can correct and retry.
       }
     },
-    [getParentPath, joinPath, renameItem, renamePending, resourceItemsRef],
+    [
+      getParentPath,
+      joinPath,
+      renameItem,
+      renamePending,
+      resourceItemsRef,
+      toast,
+    ],
   );
 
   const handleCancelInlineRename = useCallback(() => {
@@ -355,12 +375,10 @@ export const useFileBrowserItemActions = ({
     handleCancelInlineRename,
     handleChangePermissions,
     handleCloseCreateFileDialog,
-    handleCloseCreateFolderDialog,
     handleCloseDeleteDialog,
     handleCloseDetailDialog,
     handleClosePermissionsDialog,
     handleConfirmCreateFile,
-    handleConfirmCreateFolder,
     handleConfirmDelete,
     handleConfirmInlineRename,
     handleConfirmPermissions,

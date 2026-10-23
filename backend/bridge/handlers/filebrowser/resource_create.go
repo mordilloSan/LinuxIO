@@ -18,7 +18,12 @@ type resourcePostRequest struct {
 	cleanPath string
 	relPath   string
 	isDir     bool
-	override  bool
+}
+
+// invalidEntryName reports the names no entry can have. Slashes are left to
+// the callers: folder creation accepts nested paths on purpose.
+func invalidEntryName(name string) bool {
+	return name == "" || name == "." || name == ".." || strings.ContainsRune(name, 0)
 }
 
 func parseResourcePostRequest(req apischema.FileResourcePostRequest) (resourcePostRequest, error) {
@@ -35,12 +40,14 @@ func parseResourcePostRequest(req apischema.FileResourcePostRequest) (resourcePo
 	if cleanPath == "/" {
 		return resourcePostRequest{}, fmt.Errorf("bad_request:cannot create root")
 	}
+	if invalidEntryName(filepath.Base(strings.TrimRight(path, "/"))) {
+		return resourcePostRequest{}, fmt.Errorf("bad_request:invalid name")
+	}
 
 	return resourcePostRequest{
 		cleanPath: cleanPath,
 		relPath:   strings.TrimPrefix(cleanPath, "/"),
 		isDir:     strings.HasSuffix(path, "/"),
-		override:  req.Override != nil && *req.Override,
 	}, nil
 }
 
@@ -49,7 +56,7 @@ func ensureResourcePostType(root *fsroot.FSRoot, req resourcePostRequest) error 
 	if err != nil {
 		return nil
 	}
-	if stat.IsDir() != req.isDir && !req.override {
+	if stat.IsDir() != req.isDir {
 		return fmt.Errorf("bad_request:resource already exists with different type")
 	}
 	return nil
@@ -58,15 +65,8 @@ func ensureResourcePostType(root *fsroot.FSRoot, req resourcePostRequest) error 
 func createDirectoryResource(ctx context.Context, root *fsroot.FSRoot, req resourcePostRequest) (any, error) {
 	// MkdirAll would accept an existing folder and the chmod below would then
 	// rewrite its mode, so an existing folder has to be refused here.
-	if stat, statErr := root.Root.Stat(req.relPath); statErr == nil {
-		if stat.IsDir() {
-			return nil, fmt.Errorf("bad_request:folder already exists")
-		}
-		// ensureResourcePostType only lets a file through with override set.
-		if removeErr := root.Root.Remove(req.relPath); removeErr != nil {
-			slog.Debug("error removing existing file for directory create", "path", req.cleanPath, "error", removeErr)
-			return nil, fmt.Errorf("bad_request:%w", removeErr)
-		}
+	if _, statErr := root.Root.Stat(req.relPath); statErr == nil {
+		return nil, fmt.Errorf("bad_request:folder already exists")
 	}
 
 	if mkdirErr := root.Root.MkdirAll(req.relPath, services.PermDir); mkdirErr != nil {
@@ -92,7 +92,7 @@ func createFileResource(ctx context.Context, root *fsroot.FSRoot, req resourcePo
 		}
 	}
 
-	if _, statErr := root.Root.Stat(req.relPath); statErr == nil && !req.override {
+	if _, statErr := root.Root.Stat(req.relPath); statErr == nil {
 		return nil, fmt.Errorf("bad_request:file already exists")
 	}
 

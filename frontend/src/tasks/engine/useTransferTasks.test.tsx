@@ -140,6 +140,36 @@ describe("useTransferTasks batch results", () => {
     expect(onComplete).toHaveBeenCalledOnce();
   });
 
+  it("sends keepBoth with the copy and move requests", async () => {
+    const { hook } = setupTransfer();
+
+    await act(async () => {
+      await hook.result.current.startCopy({
+        sources: ["/src/a.txt"],
+        destination: "/dst",
+        keepBoth: ["/src/a.txt"],
+      });
+      await hook.result.current.startMove({
+        sources: ["/src/b.txt"],
+        destination: "/dst",
+        keepBoth: ["/src/b.txt"],
+      });
+    });
+
+    expect(apiMocks.copy_batch).toHaveBeenCalledWith({
+      sources: ["/src/a.txt"],
+      destination: "/dst",
+      overwrite: undefined,
+      keepBoth: ["/src/a.txt"],
+    });
+    expect(apiMocks.move_batch).toHaveBeenCalledWith({
+      sources: ["/src/b.txt"],
+      destination: "/dst",
+      overwrite: undefined,
+      keepBoth: ["/src/b.txt"],
+    });
+  });
+
   it("keeps the success toast when every item moved", async () => {
     const { hook, streamOptions } = setupTransfer();
     const onComplete = vi.fn();

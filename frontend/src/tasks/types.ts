@@ -6,6 +6,8 @@ export interface CopyMoveStartOptions {
   sources: string[];
   destination: string;
   overwrite?: boolean;
+  // Sources that land under a unique "name (copy)" when their destination exists.
+  keepBoth?: string[];
   onComplete?: () => void;
 }
 
@@ -140,6 +142,8 @@ export interface BackgroundTaskActions {
     entries: { file?: File; relativePath: string; isDirectory: boolean }[],
     targetPath: string,
     overwrite?: boolean,
+    // Manifest-relative paths that land under a unique "name (copy)".
+    keepBoth?: string[],
   ) => Promise<{
     uploaded: number;
     failures: { path: string; message: string }[];

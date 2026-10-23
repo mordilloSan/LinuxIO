@@ -71,3 +71,11 @@
   font-weight: 400;
   line-height: 1.2;
 }
+
+/* A folder (or breadcrumb) an internal drag would drop into. Both renderers
+   carry it, and an outline wins over their inline or hover backgrounds. */
+.file-row.drop-target,
+.file-card.drop-target {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: -2px;
+}

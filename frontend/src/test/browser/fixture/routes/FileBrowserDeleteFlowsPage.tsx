@@ -39,8 +39,18 @@ const resource: FileResource = {
 
 const conflictPromptFixture: ConflictPrompt = {
   conflicts: [
-    { isDir: true, name: "photos", path: "/dst/photos" },
-    { isDir: false, name: "a.txt", path: "/dst/a.txt" },
+    {
+      existing: { modified: "", size: 0 },
+      isDir: true,
+      name: "photos",
+      path: "/dst/photos",
+    },
+    {
+      existing: { modified: "", size: 12 },
+      isDir: false,
+      name: "a.txt",
+      path: "/dst/a.txt",
+    },
   ],
   destination: "/dst",
 };
@@ -71,6 +81,9 @@ function DeleteFlowsFixture() {
     null,
   );
   const [conflictResult, setConflictResult] = useState("none");
+  const [dropResult, setDropResult] = useState("none");
+  const [openResult, setOpenResult] = useState("none");
+  const [upResult, setUpResult] = useState("none");
 
   const requestDelete = (mode: DeleteMode) => {
     setMenuPosition(null);
@@ -96,6 +109,9 @@ function DeleteFlowsFixture() {
         </AppButton>
         <output data-testid="delete-result">{deleteResult}</output>
         <output data-testid="conflict-result">{conflictResult}</output>
+        <output data-testid="drop-result">{dropResult}</output>
+        <output data-testid="open-result">{openResult}</output>
+        <output data-testid="up-result">{upResult}</output>
       </div>
       <div
         onContextMenu={handleContextMenu}
@@ -109,7 +125,13 @@ function DeleteFlowsFixture() {
           onDelete={() => requestDelete("trash")}
           onDeletePermanently={() => requestDelete("permanent")}
           onDownloadFile={noop}
-          onOpenDirectory={noop}
+          onDropItems={(paths, destinationDir, copy) =>
+            setDropResult(
+              `${copy ? "copy" : "move"}:${paths.join(",")}->${destinationDir}`,
+            )
+          }
+          onNavigateUp={() => setUpResult("up")}
+          onOpenDirectory={setOpenResult}
           onSelectedPathsChange={setSelectedPaths}
           onStartRename={noop}
           renamingPath={null}

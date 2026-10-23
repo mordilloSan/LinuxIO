@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -743,4 +744,57 @@ func readXattr(t *testing.T, path, name string) string {
 	n, err := unix.Getxattr(path, name, buf)
 	require.NoError(t, err)
 	return string(buf[:n])
+}
+
+func TestCheckNotProtected(t *testing.T) {
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	defer root.Close()
+
+	require.ErrorContains(t, CheckNotProtected(root, "/"), "root")
+	require.ErrorContains(t, CheckNotProtected(root, "/etc"), "system folder")
+	require.ErrorContains(t, CheckNotProtected(root, "/proc/"), "system folder")
+	require.NoError(t, CheckNotProtected(root, createTestDir(t, t.TempDir(), "mine")))
+	require.NoError(t, CheckNotProtected(root, "/etc/hostname"), "files inside system folders are the user's business")
+
+	other := otherFilesystemDir(t)
+	mount := filepath.Dir(other) // the mount point the temp dir was made under
+	if filepath.Dir(mount) != "/" {
+		t.Skipf("%s is not a top-level mount point", mount)
+	}
+	// A mount point that is not in the fixed list, when the host has one.
+	if !protectedTopLevel[filepath.Base(mount)] {
+		require.ErrorContains(t, CheckNotProtected(root, mount), "mount point")
+	}
+}
+
+func TestEnsureFreeSpace(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, EnsureFreeSpace(dir, 1))
+	require.NoError(t, EnsureFreeSpace(dir, 0))
+	require.NoError(t, EnsureFreeSpace(filepath.Join(dir, "missing"), 1), "an unreadable destination does not block the transfer")
+	err := EnsureFreeSpace(dir, math.MaxInt64)
+	require.ErrorContains(t, err, "not enough free space")
+	assert.Contains(t, err.Error(), "needed")
+}
+
+func TestMoveWithoutReplaceRefusesAnAppearedDestination(t *testing.T) {
+	tmpDir := t.TempDir()
+	src := createTestFile(t, tmpDir, "src.txt", []byte("src"))
+	dst := createTestFile(t, tmpDir, "dst.txt", []byte("dst"))
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	defer root.Close()
+	info, err := os.Lstat(src)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, moveWithoutReplace(root, src, dst, info), fs.ErrExist)
+	assert.Equal(t, "src", readString(t, src))
+	assert.Equal(t, "dst", readString(t, dst), "rename(2) would have replaced this")
+
+	fresh := filepath.Join(tmpDir, "fresh.txt")
+	require.NoError(t, moveWithoutReplace(root, src, fresh, info))
+	assert.Equal(t, "src", readString(t, fresh))
+	_, err = os.Lstat(src)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }

@@ -35,6 +35,7 @@ interface FileBrowserChromeProps {
   editingPath: string | null;
   isSavingFile: boolean;
   normalizedPath: string;
+  onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
   onOpenDirectory: (path: string) => void;
   onSearchCaseSensitiveChange: (value: boolean) => void;
   onSearchChange: (value: string) => void;
@@ -63,6 +64,8 @@ interface FileBrowserListingProps {
   onDelete: () => void;
   onDeletePermanently: () => void;
   onDownloadFile: (item: FileItem) => void;
+  onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
+  onNavigateUp: () => void;
   onOpenDirectory: (path: string) => void;
   onSelectedPathsChange: (paths: Set<string>) => void;
   onStartRename: () => void;
@@ -184,6 +187,8 @@ const FileBrowserContent = ({
                 onDelete={listing.onDelete}
                 onDeletePermanently={listing.onDeletePermanently}
                 onDownloadFile={listing.onDownloadFile}
+                onDropItems={listing.onDropItems}
+                onNavigateUp={listing.onNavigateUp}
                 onOpenDirectory={listing.onOpenDirectory}
                 onSelectedPathsChange={listing.onSelectedPathsChange}
                 onStartRename={listing.onStartRename}

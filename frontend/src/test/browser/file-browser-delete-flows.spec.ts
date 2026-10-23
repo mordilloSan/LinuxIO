@@ -15,7 +15,7 @@ test.describe("file-browser delete flows", () => {
 
     const dialog = page.getByRole("dialog", { name: "Move to Trash" });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText("Move 1 item to Trash?");
+    await expect(dialog).toContainText("Move a.txt to Trash?");
     await page.keyboard.press("Enter");
 
     await expect(dialog).toBeHidden();
@@ -44,12 +44,13 @@ test.describe("file-browser delete flows", () => {
 
     const menu = page.getByRole("menu");
     await expect(
-      menu.getByRole("menuitem", { name: "Delete", exact: true }),
+      // Menu items carry their shortcut hint ("Delete Del").
+      menu.getByRole("menuitem", { name: /^Delete(?! permanently)/ }),
     ).toBeEnabled();
     await menu.getByRole("menuitem", { name: "Delete permanently" }).click();
 
     const dialog = page.getByRole("dialog", { name: "Delete permanently" });
-    await expect(dialog).toContainText("Permanently delete 1 item?");
+    await expect(dialog).toContainText("Permanently delete b.txt?");
     await dialog.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.getByTestId("delete-result")).toHaveText(
       "permanent:/fixture/b.txt",

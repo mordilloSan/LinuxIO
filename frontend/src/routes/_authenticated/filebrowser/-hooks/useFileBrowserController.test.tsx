@@ -26,18 +26,15 @@ const mocks = vi.hoisted(() => ({
       clearPendingDelete: vi.fn(),
       clearPermissions: vi.fn(),
       closeCreateFile: vi.fn(),
-      closeCreateFolder: vi.fn(),
       closeDelete: vi.fn(),
       closeDetails: vi.fn(),
       closePermissions: vi.fn(),
       openCreateFile: vi.fn(),
-      openCreateFolder: vi.fn(),
       openPermissions: vi.fn(),
       requestDelete: vi.fn(),
       showDetails: vi.fn(),
     },
     createFileDialog: false,
-    createFolderDialog: true,
     deleteDialog: false,
     detailTarget: ["/srv/projects/readme.md"],
     pendingDeletePaths: ["/srv/projects/readme.md"],
@@ -85,12 +82,10 @@ const mocks = vi.hoisted(() => ({
     handleCancelInlineRename: vi.fn(),
     handleChangePermissions: vi.fn(),
     handleCloseCreateFileDialog: vi.fn(),
-    handleCloseCreateFolderDialog: vi.fn(),
     handleCloseDeleteDialog: vi.fn(),
     handleCloseDetailDialog: vi.fn(),
     handleClosePermissionsDialog: vi.fn(),
     handleConfirmCreateFile: vi.fn(),
-    handleConfirmCreateFolder: vi.fn(),
     handleConfirmDelete: vi.fn(),
     handleConfirmInlineRename: vi.fn(),
     handleConfirmPermissions: vi.fn(),
@@ -417,7 +412,6 @@ describe("useFileBrowserController", () => {
       },
       create: {
         fileOpen: false,
-        folderOpen: true,
       },
       deleteDialog: {
         open: false,
@@ -507,5 +501,59 @@ describe("useFileBrowserController", () => {
 
     // Both flows share the one useListingInvalidation callback.
     expect(mocks.invalidateListing).toHaveBeenCalledTimes(2);
+  });
+
+  it("goes up to the parent folder and does nothing at the root", () => {
+    const { result } = setup();
+
+    act(() => result.current.contentProps.listing.onNavigateUp());
+    expect(mocks.navigation.handleOpenDirectory).toHaveBeenCalledWith("/srv");
+
+    mocks.navigation.handleOpenDirectory.mockClear();
+    mocks.navigation.normalizedPath = "/";
+    try {
+      const atRoot = setup();
+      act(() => atRoot.result.current.contentProps.listing.onNavigateUp());
+      expect(mocks.navigation.handleOpenDirectory).not.toHaveBeenCalled();
+    } finally {
+      mocks.navigation.normalizedPath = "/srv/projects";
+    }
+  });
+
+  it("moves dropped items and clears the selection, or copies them", async () => {
+    const { result } = setup();
+    const { onDropItems } = result.current.contentProps.listing;
+    expect(result.current.contentProps.chrome.onDropItems).toBe(onDropItems);
+
+    await act(() =>
+      onDropItems(["/srv/projects/a.txt"], "/srv/projects/photos/", false),
+    );
+    expect(mocks.mutations.moveItems).toHaveBeenCalledWith({
+      destinationDir: "/srv/projects/photos",
+      sourcePaths: ["/srv/projects/a.txt"],
+    });
+    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
+
+    await act(() => onDropItems(["/srv/projects/a.txt"], "/srv", true));
+    expect(mocks.mutations.copyItems).toHaveBeenCalledWith({
+      destinationDir: "/srv",
+      sourcePaths: ["/srv/projects/a.txt"],
+    });
+    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the selection when a dropped move fails or is cancelled", async () => {
+    mocks.mutations.moveItems.mockRejectedValueOnce(new Error("cancelled"));
+    const { result } = setup();
+
+    await act(() =>
+      result.current.contentProps.listing.onDropItems(
+        ["/srv/projects/a.txt"],
+        "/srv/projects/photos/",
+        false,
+      ),
+    );
+
+    expect(mocks.selectionState.actions.clear).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
@@ -32,6 +33,7 @@ interface FileListRowProps {
   hidden?: boolean;
   isCut?: boolean;
   isDirectory: boolean;
+  isDropTarget?: boolean;
   isRenaming?: boolean;
   isRenamePending?: boolean;
   isSymlink?: boolean;
@@ -42,6 +44,10 @@ interface FileListRowProps {
   onConfirmRename?: (newName: string) => void;
   onContextMenu?: (event: MouseEvent) => void;
   onDoubleClick?: () => void;
+  onDragLeave?: (event: DragEvent) => void;
+  onDragOver?: (event: DragEvent) => void;
+  onDragStart?: (event: DragEvent) => void;
+  onDrop?: (event: DragEvent) => void;
   path?: string;
   renameProgressPct?: number;
   selected?: boolean;
@@ -68,6 +74,7 @@ const FileListRow = memo<FileListRowProps>(
     selected = false,
     hidden = false,
     isCut = false,
+    isDropTarget = false,
     isRenaming = false,
     isRenamePending = false,
     renameProgressPct,
@@ -77,6 +84,10 @@ const FileListRow = memo<FileListRowProps>(
     directorySizeUnavailable = false,
     onClick,
     onDoubleClick,
+    onDragLeave,
+    onDragOver,
+    onDragStart,
+    onDrop,
     onContextMenu,
     onConfirmRename,
     onCancelRename,
@@ -214,12 +225,17 @@ const FileListRow = memo<FileListRowProps>(
 
     return (
       <div
-        className={`file-row hover-lift${disableHover ? " hover-lift--disabled" : ""}`}
+        className={`file-row hover-lift${disableHover ? " hover-lift--disabled" : ""}${isDropTarget ? " drop-target" : ""}`}
         data-file-card="true"
         data-file-path={path}
+        draggable={Boolean(onDragStart) && !isRenaming}
         onClick={handleClick}
         onContextMenu={onContextMenu}
         onDoubleClick={handleDoubleClick}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDragStart={onDragStart}
+        onDrop={onDrop}
         style={
           {
             display: "grid",

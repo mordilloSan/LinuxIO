@@ -238,6 +238,7 @@ export interface BatchTransferRequest {
   sources: string[];
   destination: string;
   overwrite?: boolean;
+  keepBoth?: string[];
 }
 
 export interface BatchUploadProgress {
@@ -1430,6 +1431,8 @@ export interface EnabledRequest {
 export interface ExistsBatchItem {
   path: string;
   isDir: boolean;
+  size: number;
+  modified: string;
 }
 
 export interface ExistsBatchResponse {
@@ -1501,7 +1504,6 @@ export interface FileProgress {
 
 export interface FileResourcePostRequest {
   path: string;
-  override?: boolean;
 }
 
 export interface FileSearchRequest {
@@ -1521,6 +1523,7 @@ export interface FileUploadBatchRequest {
   files: FileUploadBatchEntry[];
   directories?: string[];
   overwrite?: boolean;
+  keepBoth?: string[];
 }
 
 export interface FileUploadBatchResult {
@@ -3827,7 +3830,7 @@ export interface LinuxIOSchema {
       progress: TaskProgress<FileProgress>;
     };
     resource_post: {
-      input: [request: FileResourcePostRequest];
+      input: [path: string];
       request: FileResourcePostRequest;
       result: void;
     };

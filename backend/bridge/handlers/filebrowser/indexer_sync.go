@@ -112,19 +112,10 @@ func notifyIndexerForCreatedResource(ctx context.Context, root *fsroot.FSRoot, c
 }
 
 func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resourcePatchRequest) {
-	switch req.action {
-	case "copy":
-		if info, err := root.Root.Lstat(fsroot.ToRel(req.realDest)); err == nil {
-			if err := addCopiedPathToIndexer(ctx, req.realDest, info, false); err != nil {
-				slog.Debug("failed to update indexer after copy", "path", req.realDest, "error", err)
-			}
-		}
-	case "rename", "move":
-		if err := movePathInIndexer(ctx, req.realSrc, req.realDest, false, func() (os.FileInfo, error) {
-			return root.Root.Lstat(fsroot.ToRel(req.realDest))
-		}); err != nil {
-			slog.Debug("failed to update indexer after move", "source", req.realSrc, "destination", req.realDest, "error", err)
-		}
+	if err := movePathInIndexer(ctx, req.realSrc, req.realDest, false, func() (os.FileInfo, error) {
+		return root.Root.Lstat(fsroot.ToRel(req.realDest))
+	}); err != nil {
+		slog.Debug("failed to update indexer after move", "source", req.realSrc, "destination", req.realDest, "error", err)
 	}
 }
 

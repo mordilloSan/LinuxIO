@@ -99,6 +99,17 @@ export const useFileBrowserUploadActions = ({
             uploadEntries.filter((entry) => !entry.isDirectory),
             (entry) => joinPath(normalizedPath, entry.relativePath),
             normalizedPath,
+            (entry) =>
+              entry.file
+                ? {
+                    size: entry.file.size,
+                    // 0 means the browser does not know the time, not 1970.
+                    modified:
+                      entry.file.lastModified > 0
+                        ? new Date(entry.file.lastModified).toISOString()
+                        : undefined,
+                  }
+                : undefined,
           );
           if (!resolution) {
             return; // user cancelled the conflict prompt; keep the dialog open
@@ -116,6 +127,7 @@ export const useFileBrowserUploadActions = ({
             entriesToSend,
             normalizedPath,
             resolution.overwrite,
+            resolution.keepBoth.map((entry) => entry.relativePath),
           );
           if (result.uploaded > 0) {
             invalidateListing();

@@ -4,6 +4,7 @@ import {
   useCallback,
   useLayoutEffect,
   useMemo,
+  type DragEvent,
   type MouseEvent,
   type MouseEventHandler,
   type RefObject,
@@ -54,8 +55,11 @@ type DirectoryVirtualRow =
     };
 
 interface VirtualDirectoryItemsProps {
+  /** Receives the number of items per row (1 in list view). */
+  columnCountRef?: RefObject<number>;
   containerRef: RefObject<HTMLDivElement | null>;
   cutPaths: Set<string>;
+  dropTargetPath?: string | null;
   files: FileItem[];
   folders: FileItem[];
   isLoadingSubfolders: boolean;
@@ -68,6 +72,10 @@ interface VirtualDirectoryItemsProps {
   onFileContextMenu: (event: MouseEvent, path: string) => void;
   onFolderClick: (event: MouseEvent, path: string) => void;
   onFolderContextMenu: (event: MouseEvent, path: string) => void;
+  onFolderDragLeave?: (event: DragEvent, path: string) => void;
+  onFolderDragOver?: (event: DragEvent, path: string) => void;
+  onFolderDrop?: (event: DragEvent, path: string) => void;
+  onItemDragStart?: (event: DragEvent, path: string) => void;
   onMarqueeMouseDown: MouseEventHandler<HTMLDivElement>;
   onOpenDirectory: (path: string) => void;
   renamingPath: string | null;
@@ -213,8 +221,10 @@ export function getDirectoryRevealRowIndex(
 // Manual memoization here stays load-bearing, and anything memo-worthy belongs
 // in DirectoryRows.tsx rather than in this file.
 const VirtualDirectoryItems = ({
+  columnCountRef,
   containerRef,
   cutPaths,
+  dropTargetPath,
   files,
   folders,
   isLoadingSubfolders,
@@ -227,6 +237,10 @@ const VirtualDirectoryItems = ({
   onFileContextMenu,
   onFolderClick,
   onFolderContextMenu,
+  onFolderDragLeave,
+  onFolderDragOver,
+  onFolderDrop,
+  onItemDragStart,
   onMarqueeMouseDown,
   onOpenDirectory,
   renamingPath,
@@ -249,6 +263,10 @@ const VirtualDirectoryItems = ({
     padding: CARD_PADDING,
   });
   const columnCount = viewMode === "list" ? 1 : cardColumnCount;
+
+  useLayoutEffect(() => {
+    if (columnCountRef) columnCountRef.current = columnCount;
+  }, [columnCount, columnCountRef]);
 
   const layout = useMemo(
     () =>
@@ -382,6 +400,7 @@ const VirtualDirectoryItems = ({
                       <DirectoryItem
                         disableHover={isMarqueeSelecting}
                         isCut={cutPaths.has(item.path)}
+                        isDropTarget={dropTargetPath === item.path}
                         isLoadingSubfolders={
                           row.itemKind === "folder" && isLoadingSubfolders
                         }
@@ -397,6 +416,10 @@ const VirtualDirectoryItems = ({
                         onFileContextMenu={onFileContextMenu}
                         onFolderClick={onFolderClick}
                         onFolderContextMenu={onFolderContextMenu}
+                        onFolderDragLeave={onFolderDragLeave}
+                        onFolderDragOver={onFolderDragOver}
+                        onFolderDrop={onFolderDrop}
+                        onItemDragStart={onItemDragStart}
                         onOpenDirectory={onOpenDirectory}
                         renameProgressPct={
                           renamePendingPath === item.path

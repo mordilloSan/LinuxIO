@@ -38,6 +38,12 @@ const wrapper = ({ children }: { children: ReactNode }) =>
     children,
   );
 
+const existingA = {
+  isDir: false,
+  modified: "2026-03-12T10:00:00Z",
+  path: "/dest/a.txt",
+  size: 1200,
+};
 const items = ["/src/a.txt", "/src/sub/b.txt"];
 const getDestPath = (source: string) =>
   `/dest/${source.split("/").slice(2).join("/")}`;
@@ -61,13 +67,13 @@ describe("useFileConflictResolution", () => {
     expect(apiMocks.exists_batch).toHaveBeenCalledWith({
       paths: ["/dest/a.txt", "/dest/sub/b.txt"],
     });
-    expect(resolution).toEqual({ kept: items, overwrite: false });
+    expect(resolution).toEqual({ kept: items, keepBoth: [], overwrite: false });
     expect(result.current.conflictPrompt).toBeNull();
   });
 
   it("prompts on collisions and applies per-item decisions", async () => {
     apiMocks.exists_batch.mockResolvedValue({
-      existing: [{ isDir: false, path: "/dest/a.txt" }],
+      existing: [existingA],
     });
     const { result } = renderHook(() => useFileConflictResolution(), {
       wrapper,
@@ -86,7 +92,15 @@ describe("useFileConflictResolution", () => {
     await act(async () => {}); // let the exists_batch pre-check settle
 
     expect(result.current.conflictPrompt).toEqual({
-      conflicts: [{ isDir: false, name: "a.txt", path: "/dest/a.txt" }],
+      conflicts: [
+        {
+          existing: { modified: "2026-03-12T10:00:00Z", size: 1200 },
+          incoming: undefined,
+          isDir: false,
+          name: "a.txt",
+          path: "/dest/a.txt",
+        },
+      ],
       destination: "/dest",
     });
 
@@ -96,6 +110,7 @@ describe("useFileConflictResolution", () => {
 
     await expect(resolutionPromise).resolves.toEqual({
       kept: items,
+      keepBoth: [],
       overwrite: true,
     });
     expect(result.current.conflictPrompt).toBeNull();
@@ -103,7 +118,7 @@ describe("useFileConflictResolution", () => {
 
   it("drops skipped items and reports no overwrite when everything is skipped", async () => {
     apiMocks.exists_batch.mockResolvedValue({
-      existing: [{ isDir: false, path: "/dest/a.txt" }],
+      existing: [existingA],
     });
     const { result } = renderHook(() => useFileConflictResolution(), {
       wrapper,
@@ -127,13 +142,49 @@ describe("useFileConflictResolution", () => {
 
     await expect(resolutionPromise).resolves.toEqual({
       kept: ["/src/sub/b.txt"],
+      keepBoth: [],
+      overwrite: false,
+    });
+  });
+
+  it("describes the incoming side and reports keep-both items as kept without overwrite", async () => {
+    apiMocks.exists_batch.mockResolvedValue({ existing: [existingA] });
+    const { result } = renderHook(() => useFileConflictResolution(), {
+      wrapper,
+    });
+
+    let resolutionPromise!: ReturnType<
+      typeof result.current.resolveCollisions<string>
+    >;
+    act(() => {
+      resolutionPromise = result.current.resolveCollisions(
+        items,
+        getDestPath,
+        "/dest",
+        (item) => (item === "/src/a.txt" ? { size: 1500 } : undefined),
+      );
+    });
+    await act(async () => {});
+
+    expect(result.current.conflictPrompt?.conflicts[0]).toMatchObject({
+      existing: { modified: "2026-03-12T10:00:00Z", size: 1200 },
+      incoming: { size: 1500 },
+    });
+
+    act(() => {
+      result.current.applyConflictDecisions({ "/dest/a.txt": "keep" });
+    });
+
+    await expect(resolutionPromise).resolves.toEqual({
+      kept: items,
+      keepBoth: ["/src/a.txt"],
       overwrite: false,
     });
   });
 
   it("resolves null when the prompt is cancelled", async () => {
     apiMocks.exists_batch.mockResolvedValue({
-      existing: [{ isDir: false, path: "/dest/a.txt" }],
+      existing: [existingA],
     });
     const { result } = renderHook(() => useFileConflictResolution(), {
       wrapper,
@@ -174,6 +225,6 @@ describe("useFileConflictResolution", () => {
       );
     });
 
-    expect(resolution).toEqual({ kept: items, overwrite: false });
+    expect(resolution).toEqual({ kept: items, keepBoth: [], overwrite: false });
   });
 });

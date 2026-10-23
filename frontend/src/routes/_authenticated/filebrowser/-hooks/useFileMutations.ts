@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import {
   type ActionSourceDestinationRequest,
+  call,
   type CountProgress,
   type FileBatchResult,
   type FileChmodBatchRequest,
@@ -15,7 +16,12 @@ import {
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { describeBatchFailures } from "@/tasks/batchFailures";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
-import { joinPath, parentPath, stripTrailingSlash } from "@/utils/path";
+import {
+  baseName,
+  joinPath,
+  parentPath,
+  stripTrailingSlash,
+} from "@/utils/path";
 
 import {
   CONFLICT_PROMPT_CANCELLED,
@@ -341,8 +347,9 @@ export const useFileMutations = ({
   );
 
   // Transfers never overwrite silently: pre-check the landing paths and ask
-  // the user per collision (overwrite/skip). Returns the sources to transfer
-  // plus whether any overwrite was chosen; throws CONFLICT_PROMPT_CANCELLED
+  // the user per collision (overwrite/skip/keep both). Returns the sources to
+  // transfer, whether any overwrite was chosen and which sources to keep under
+  // a unique name; throws CONFLICT_PROMPT_CANCELLED
   // when the user dismissed the prompt, and returns null when every item was
   // skipped (nothing to do). Items already in destinationDir are a no-op for a
   // move; a copy keeps them (the bridge names the copy "name (copy)") but
@@ -352,7 +359,11 @@ export const useFileMutations = ({
       sourcePaths: string[],
       destinationDir: string,
       action: "copy" | "move",
-    ): Promise<{ sources: string[]; overwrite: boolean } | null> => {
+    ): Promise<{
+      sources: string[];
+      overwrite: boolean;
+      keepBoth: string[];
+    } | null> => {
       const destination = stripTrailingSlash(destinationDir);
       const isSameFolder = (path: string) => parentPath(path) === destination;
       const candidates =
@@ -365,14 +376,26 @@ export const useFileMutations = ({
       }
       const checked = candidates.filter((path) => !isSameFolder(path));
       if (!resolveCollisions || !checked.length) {
-        return { sources: candidates, overwrite: false };
+        return { sources: candidates, overwrite: false, keepBoth: [] };
       }
-      const baseName = (path: string) =>
-        path.replace(/\/+$/, "").split("/").pop() || path;
+      // The incoming side of the prompt: size and time of the sources. Best
+      // effort — the prompt still works without them.
+      const sourceInfo = new Map<string, { size: number; modified: string }>();
+      try {
+        const response = await call(linuxio.filebrowser.exists_batch.route, {
+          paths: checked,
+        });
+        for (const entry of response.existing ?? []) {
+          sourceInfo.set(entry.path, entry);
+        }
+      } catch {
+        // Fall through with no incoming details.
+      }
       const resolution = await resolveCollisions(
         checked,
         (path) => joinPath(destinationDir, baseName(path)),
         destinationDir,
+        (path) => sourceInfo.get(path),
       );
       if (!resolution) {
         throw CONFLICT_PROMPT_CANCELLED;
@@ -385,7 +408,11 @@ export const useFileMutations = ({
         toast.info("All items skipped");
         return null;
       }
-      return { sources, overwrite: resolution.overwrite };
+      return {
+        sources,
+        overwrite: resolution.overwrite,
+        keepBoth: resolution.keepBoth,
+      };
     },
     [resolveCollisions, toast],
   );
@@ -410,6 +437,7 @@ export const useFileMutations = ({
           sources: plan.sources,
           destination: destinationDir,
           overwrite: plan.overwrite || undefined,
+          keepBoth: plan.keepBoth.length ? plan.keepBoth : undefined,
           onComplete: invalidateListing,
         });
       } catch (error) {
@@ -441,6 +469,7 @@ export const useFileMutations = ({
           sources: plan.sources,
           destination: destinationDir,
           overwrite: plan.overwrite || undefined,
+          keepBoth: plan.keepBoth.length ? plan.keepBoth : undefined,
           onComplete: invalidateListing,
         });
       } catch (error) {
