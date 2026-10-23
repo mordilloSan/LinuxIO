@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import type { RowData } from "@tanstack/react-table";
-import { motion } from "motion/react";
 import {
   useCallback,
   useMemo,
@@ -11,6 +10,7 @@ import {
 
 import type { UnitInfo } from "@/api";
 import { linuxio, useCallMutation } from "@/api";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import type { ReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -24,11 +24,6 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import UnitCard from "@/routes/_authenticated/services/-components/UnitCard";
 import type { UnitListItem } from "@/routes/_authenticated/services/-components/UnitCard";
 import { down } from "@/theme/breakpoints";
-import {
-  DETAIL_PANEL_GAP,
-  TRANSITION_DURATION_STANDARD_MS,
-  EASING_STANDARD,
-} from "@/theme/constants";
 import { formatSystemdUsec } from "@/utils/formatters";
 
 import { formatUnitFileState } from "./unitFormatters";
@@ -494,8 +489,6 @@ export function UnitCardsView<T extends UnitListItem>({
   renderBottomPanel,
   emptyMessage,
 }: UnitCardsViewProps<T>) {
-  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
-  const isCompactLayout = useMediaQuery(down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
   // Fed to ReorderableCardGrid's `virtualized` path, which hands it straight
   // to AppVirtualGrid's hand-memoized row — that memo only holds if this
@@ -531,79 +524,24 @@ export function UnitCardsView<T extends UnitListItem>({
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--app-space-12)",
-      }}
+    <ResourceDetailsLayout
+      below={renderBottomPanel?.(expandedItem)}
+      onClose={() => onExpand(null)}
+      resourceLabel="unit"
+      subtitle={expandedItem.name}
+      summary={
+        <ExpandedUnitCard
+          item={expandedItem}
+          onExpand={onExpand}
+          renderActions={renderActions}
+          renderSelectedRows={renderSelectedRows}
+          renderSummaryRows={renderSummaryRows}
+        />
+      }
+      summaryWidth="content"
+      title="Unit file & dependencies"
     >
-      <motion.div
-        animate={{ opacity: 1, y: 0 }}
-        initial={{ opacity: 0, y: 14 }}
-        style={{
-          display: "flex",
-          flexDirection: isCompactLayout ? "column" : "row",
-          alignItems: "stretch",
-          gap: DETAIL_PANEL_GAP,
-        }}
-        transition={{
-          duration: transitionDuration,
-          delay: 0,
-          ease: EASING_STANDARD,
-        }}
-      >
-        <div
-          style={{
-            flex: isCompactLayout ? "0 0 auto" : "0 0 max-content",
-            width: isCompactLayout ? "100%" : "max-content",
-            minWidth: 0,
-            display: "flex",
-          }}
-        >
-          <ExpandedUnitCard
-            item={expandedItem}
-            onExpand={onExpand}
-            renderActions={renderActions}
-            renderSelectedRows={renderSelectedRows}
-            renderSummaryRows={renderSummaryRows}
-          />
-        </div>
-        <motion.div
-          animate={{ opacity: 1, x: 0, y: 0 }}
-          initial={{
-            opacity: 0,
-            x: isCompactLayout ? 0 : 40,
-            y: isCompactLayout ? 20 : 0,
-          }}
-          style={{
-            flex: isCompactLayout ? "0 0 auto" : 3,
-            width: isCompactLayout ? "100%" : undefined,
-            minWidth: 0,
-            display: "flex",
-          }}
-          transition={{
-            duration: transitionDuration,
-            delay: 0.1,
-            ease: EASING_STANDARD,
-          }}
-        >
-          {renderDetailPanel(expandedItem)}
-        </motion.div>
-      </motion.div>
-      {renderBottomPanel && (
-        <motion.div
-          animate={{ opacity: 1, y: 0 }}
-          initial={{ opacity: 0, y: 20 }}
-          transition={{
-            duration: transitionDuration,
-            delay: 0.2,
-            ease: EASING_STANDARD,
-          }}
-        >
-          {renderBottomPanel(expandedItem)}
-        </motion.div>
-      )}
-    </div>
+      {renderDetailPanel(expandedItem)}
+    </ResourceDetailsLayout>
   );
 }

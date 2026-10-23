@@ -131,9 +131,8 @@ function UnitKindTab<T extends UnitListItem>({
           surface={surface}
         />
       )}
-      renderDetailPanel={(item, onClose) => (
+      renderDetailPanel={(item) => (
         <UnitInfoPanel
-          onClose={onClose}
           queryOptions={
             selected === item.name ? selectedQueryOptions : undefined
           }

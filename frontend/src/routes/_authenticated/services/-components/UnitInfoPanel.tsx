@@ -1,14 +1,10 @@
-import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import type { UnitInfo } from "@/api";
 import { linuxio } from "@/api";
-import FrostedCard from "@/components/cards/FrostedCard";
-import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
-import { CARD_PADDING_LG } from "@/theme/constants";
 
 export interface UnitInfoRow {
   hidden?: boolean;
@@ -18,9 +14,7 @@ export interface UnitInfoRow {
 }
 
 interface UnitInfoPanelProps {
-  onClose: () => void;
   renderInfoRows?: (info: UnitInfo | undefined) => UnitInfoRow[];
-  title?: string;
   unitName: string;
   queryOptions?: ReturnType<typeof linuxio.systemd.get_unit_info>;
 }
@@ -41,81 +35,12 @@ function toStringArray(val: unknown): string[] {
   return val.filter((v): v is string => typeof v === "string" && v.length > 0);
 }
 
-export function UnitInfoPanel({
-  unitName,
-  onClose,
-  title = "Unit file & dependencies",
-  renderInfoRows,
-  queryOptions,
-}: UnitInfoPanelProps) {
-  return (
-    <FrostedCard
-      style={{
-        padding: CARD_PADDING_LG,
-        height: "100%",
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <AppTypography
-            component="div"
-            fontSize="0.875rem"
-            fontWeight="bold"
-            noWrap
-            title={title || unitName}
-            variant="body2"
-          >
-            {title}
-          </AppTypography>
-        </div>
-
-        <AppIconButton
-          aria-label="Close unit information"
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 4,
-            borderRadius: 4,
-            color: "var(--app-palette-text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon height={20} icon="mdi:close" width={20} />
-        </AppIconButton>
-      </div>
-
-      <UnitInfoPanelLive
-        queryOptions={queryOptions}
-        renderInfoRows={renderInfoRows}
-        unitName={unitName}
-      />
-    </FrostedCard>
-  );
-}
-
-const UnitInfoPanelLive = ({
+/** The unit file path, kind-specific rows and dependencies of one unit. */
+const UnitInfoPanel = ({
   unitName,
   renderInfoRows,
   queryOptions,
-}: Pick<
-  UnitInfoPanelProps,
-  "unitName" | "renderInfoRows" | "queryOptions"
->) => {
+}: UnitInfoPanelProps) => {
   const { data: info } = useSuspenseQuery({
     ...(queryOptions ?? linuxio.systemd.get_unit_info({ unitName })),
     refetchInterval: 2000,

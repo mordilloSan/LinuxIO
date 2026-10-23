@@ -14,20 +14,33 @@ import {
 } from "@/theme/constants";
 
 interface ResourceDetailsLayoutProps {
+  /** Full-width content under the summary and panel row, such as logs. */
+  below?: ReactNode;
   children: ReactNode;
   onClose: () => void;
   resourceLabel: string;
   subtitle: string;
   summary: ReactNode;
+  /**
+   * "share" gives the summary a third of the row; "content" sizes it to its
+   * own width and hands the rest to the panel.
+   */
+  summaryWidth?: "share" | "content";
   title: string;
 }
 
+/**
+ * The focused-resource view: its card beside a closable details panel, with
+ * optional full-width content below.
+ */
 const ResourceDetailsLayout = ({
+  below,
   children,
   onClose,
   resourceLabel,
   subtitle,
   summary,
+  summaryWidth = "share",
   title,
 }: ResourceDetailsLayoutProps) => {
   const isCompactLayout = useMediaQuery(down("md"));
@@ -36,7 +49,12 @@ const ResourceDetailsLayout = ({
   return (
     <motion.div
       layout="position"
-      style={{ minHeight: 0 }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: DETAIL_PANEL_GAP,
+        minHeight: 0,
+      }}
       transition={{
         duration: transitionDuration,
         ease: EASING_STANDARD,
@@ -56,7 +74,11 @@ const ResourceDetailsLayout = ({
           initial={{ opacity: 0, y: 12 }}
           style={{
             display: "flex",
-            flex: isCompactLayout ? "0 0 auto" : 1,
+            flex: isCompactLayout
+              ? "0 0 auto"
+              : summaryWidth === "content"
+                ? "0 0 max-content"
+                : 1,
             minWidth: 0,
             width: isCompactLayout ? "100%" : undefined,
           }}
@@ -141,6 +163,20 @@ const ResourceDetailsLayout = ({
           </FrostedCard>
         </motion.div>
       </div>
+      {below && (
+        <motion.div
+          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 20 }}
+          style={{ minWidth: 0 }}
+          transition={{
+            delay: 0.2,
+            duration: transitionDuration,
+            ease: EASING_STANDARD,
+          }}
+        >
+          {below}
+        </motion.div>
+      )}
     </motion.div>
   );
 };

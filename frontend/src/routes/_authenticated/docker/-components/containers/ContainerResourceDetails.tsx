@@ -52,6 +52,14 @@ const InspectCard = ({
   </FrostedCard>
 );
 
+const INSPECT_CARD_SECTIONS: ContainerInspectSection[][] = [
+  ["overview"],
+  ["configuration"],
+  ["environment"],
+  ["labels"],
+  ["ports", "mounts", "networks"],
+];
+
 const ContainerResourceDetails = ({
   container,
   onClose,
@@ -65,71 +73,43 @@ const ContainerResourceDetails = ({
   });
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--app-space-12)",
-        minWidth: 0,
-      }}
+    <ResourceDetailsLayout
+      below={
+        <div
+          style={{
+            alignItems: "start",
+            display: "grid",
+            gap: DASHBOARD_CARD_GAP,
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
+            minWidth: 0,
+          }}
+        >
+          {INSPECT_CARD_SECTIONS.map((sections) => (
+            <InspectCard
+              inspect={inspect}
+              key={sections.join("-")}
+              networks={networks}
+              sections={sections}
+            />
+          ))}
+        </div>
+      }
+      onClose={onClose}
+      resourceLabel="container"
+      subtitle="Runtime state and live metrics"
+      summary={
+        <ContainerCard
+          actionPending={stopping}
+          containerId={container.Id}
+          onSelect={onClose}
+          selected
+        />
+      }
+      title={getContainerName(container)}
     >
-      <ResourceDetailsLayout
-        onClose={onClose}
-        resourceLabel="container"
-        subtitle="Runtime state and live metrics"
-        summary={
-          <ContainerCard
-            actionPending={stopping}
-            containerId={container.Id}
-            onSelect={onClose}
-            selected
-          />
-        }
-        title={getContainerName(container)}
-      >
-        <ContainerInfoSections
-          container={container}
-          sections={["monitoring"]}
-        />
-      </ResourceDetailsLayout>
-
-      <div
-        style={{
-          alignItems: "start",
-          display: "grid",
-          gap: DASHBOARD_CARD_GAP,
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-          minWidth: 0,
-        }}
-      >
-        <InspectCard
-          inspect={inspect}
-          networks={networks}
-          sections={["overview"]}
-        />
-        <InspectCard
-          inspect={inspect}
-          networks={networks}
-          sections={["configuration"]}
-        />
-        <InspectCard
-          inspect={inspect}
-          networks={networks}
-          sections={["environment"]}
-        />
-        <InspectCard
-          inspect={inspect}
-          networks={networks}
-          sections={["labels"]}
-        />
-        <InspectCard
-          inspect={inspect}
-          networks={networks}
-          sections={["ports", "mounts", "networks"]}
-        />
-      </div>
-    </div>
+      <ContainerInfoSections container={container} sections={["monitoring"]} />
+    </ResourceDetailsLayout>
   );
 };
 

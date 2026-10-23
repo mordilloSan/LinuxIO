@@ -38,7 +38,7 @@ interface UnitListTabProps<T extends UnitListItem> {
   matchesSearch: (item: T, search: string) => boolean;
   onSelectedChange: (name: string | null) => void;
   renderCardsView: (props: UnitCardsViewRenderProps<T>) => ReactNode;
-  renderDetailPanel: (item: T, onClose: () => void) => ReactNode;
+  renderDetailPanel: (item: T) => ReactNode;
   renderTableView: (props: UnitTableViewRenderProps<T>) => ReactNode;
   searchPlaceholder: string;
   selected?: string;
@@ -131,8 +131,7 @@ function UnitListTab<T extends UnitListItem>({
             items: filtered,
             expanded: expanded ?? null,
             onExpand: setExpanded,
-            renderDetailPanel: (item) =>
-              renderDetailPanel(item, () => setExpanded(null)),
+            renderDetailPanel,
             surface,
           })}
         </div>

@@ -423,14 +423,10 @@ const hookContracts: HookContract[] = [
     hooks: { useQuery: 1 },
   },
 
-  // Standalone unit panel shell and its sole polling body.
+  // The unit panel body inside ResourceDetailsLayout; its sole poller.
   {
     file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
     name: "UnitInfoPanel",
-  },
-  {
-    file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
-    name: "UnitInfoPanelLive",
     hooks: { useSuspenseQuery: 1 },
   },
 ];
@@ -694,11 +690,6 @@ const edgeContracts: EdgeContract[] = [
     name: "MountCard",
     renders: ["FrostedCard", "MountCardLiveContent"],
   },
-  {
-    file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
-    name: "UnitInfoPanel",
-    renders: ["FrostedCard", "UnitInfoPanelLive"],
-  },
 ];
 
 describe("card query ownership", () => {
@@ -860,7 +851,7 @@ describe("card query ownership", () => {
       },
       {
         file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
-        name: "UnitInfoPanelLive",
+        name: "UnitInfoPanel",
       },
       {
         file: "routes/_authenticated/network/-components/NetworkInterfaceList.tsx",
