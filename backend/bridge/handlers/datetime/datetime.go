@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
@@ -49,6 +51,10 @@ type chronyBackend struct {
 	managedPath   string
 	inlineManaged bool
 }
+
+// validNTPServer limits entries to hostnames and IP literals: anything else
+// (whitespace, newlines) would inject directives or options into root-owned config.
+var validNTPServer = regexp.MustCompile(`^[A-Za-z0-9.:\[\]-]{1,253}$`)
 
 var timedateIface = dbusclient.Timedate.Interface(dbusclient.TimedateIface)
 
@@ -120,6 +126,11 @@ func GetNTPServers(ctx context.Context) ([]string, error) {
 }
 
 func SetNTPServers(ctx context.Context, servers []string) error {
+	for _, server := range servers {
+		if !validNTPServer.MatchString(server) {
+			return bridgeipc.NewError(fmt.Sprintf("invalid NTP server %q", server), 400)
+		}
+	}
 	backend, err := selectNTPServerBackend(ctx)
 	if err != nil {
 		return err

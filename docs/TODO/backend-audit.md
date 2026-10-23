@@ -278,17 +278,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: none.
   - Done 2026-10-23: `resolveNetworkLogUnit` holds `networkLogUnitCacheMu` for its whole body. Test: `TestResolveNetworkLogUnitIsSafeForConcurrentCallers` (race detector).
 
-- [ ] **24. NTP server strings written into root-owned config unvalidated; `datetime` has no tests**
+- [x] **24. NTP server strings written into root-owned config unvalidated; `datetime` has no tests**
   `backend/bridge/handlers/datetime/datetime.go:211,365`
   - `[worker]`: an entry with `\n` injects directives into `timesyncd.conf.d/linuxio.conf` or `chrony.conf`.
   - Fix: `^[A-Za-z0-9.:\[\]-]{1,253}$` per entry; table tests for `replaceManagedBlock`, `findManagedBlock`, parsers.
   - Behaviour change: invalid entries → 400.
+  - Done 2026-10-23: `validNTPServer` check in `SetNTPServers` (400 via `bridgeipc.NewError`); new `datetime_test.go` with tables for the validation, `findManagedBlock`, `replaceManagedBlock`, `parseTimesyncdServers`.
 
-- [ ] **25. WireGuard `add_interface` can overwrite a live interface; port/MTU/addresses unvalidated; export errors swallowed**
+- [x] **25. WireGuard `add_interface` can overwrite a live interface; port/MTU/addresses unvalidated; export errors swallowed**
   `backend/bridge/handlers/wireguard/add_interface.go:28-62,74-125`
   - `[worker]`: no existence check on `configPath(name)`; `interfaceUsingPort` only in update; `listenPort` unranged; `normalizeAddresses` keeps non-CIDR; `exportInterfacePeerConfigs` logs and continues.
   - Fix: stat-and-refuse; reuse the update validators; return export errors; `net.ParseCIDR` up front.
   - Behaviour change: duplicate names and invalid values → error instead of partial writes.
+  - Done 2026-10-23: `AddInterface` stats the config first (409 if it exists); `parseAddInterfaceRequest` validates CIDRs (`validateCIDRs`), port range + `interfaceUsingPort`, MTU range; `exportInterfacePeerConfigs` returns export errors and a failed add removes its orphan peer dir. Tests: `TestAddInterfaceRejectsInvalidRequestsBeforeWriting`, `TestAddInterfaceRefusesExistingInterface`, `TestAddInterfaceReturnsPeerExportError`. The stat-then-write window is not locked.
 
 - [ ] **26. ifcfg backend strips shell quotes on every rewrite**
   `backend/bridge/handlers/network/internal/ifconfig/backend_ifcfg.go:189-215,279-296`

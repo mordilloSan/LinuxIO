@@ -3,14 +3,17 @@ package wireguard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 type addInterfaceRequest struct {
@@ -32,6 +35,14 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		return nil, err
 	}
 
+	// Refuse before anything is written: an existing interface would otherwise
+	// get a new private key and its peers overwritten while possibly still up.
+	if _, statErr := os.Stat(configPath(req.name)); statErr == nil {
+		return nil, bridgeipc.NewError(fmt.Sprintf("interface %s already exists", req.name), 409)
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("check interface config: %w", statErr)
+	}
+
 	peers, err := resolveInterfacePeers(req)
 	if err != nil {
 		slog.Error("failed to generate interface peers", "interface", req.name, "error", err)
@@ -48,6 +59,8 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 	publicIP, gatewayDNS := readInterfaceEndpointInfo(cfg, "AddInterface", req.egressNic)
 	if err := exportInterfacePeerConfigs(req.name, peers, cfg, req.addresses[0], publicIP, gatewayDNS); err != nil {
 		slog.Error("failed to export interface peer configs", "interface", req.name, "error", err)
+		// No interface config exists yet, so these files would only block a retry.
+		_ = os.RemoveAll(peerDirPath(req.name))
 		return nil, err
 	}
 
@@ -81,7 +94,11 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 		return addInterfaceRequest{}, fmt.Errorf("invalid interface name: %w", err)
 	}
 
-	addresses := normalizeAddresses(parseCSV(req.Addresses))
+	validAddresses, err := validateCIDRs(parseCSV(req.Addresses))
+	if err != nil {
+		return addInterfaceRequest{}, fmt.Errorf("invalid address: %w", err)
+	}
+	addresses := normalizeAddresses(validAddresses)
 	if len(addresses) == 0 {
 		return addInterfaceRequest{}, fmt.Errorf("at least one address is required")
 	}
@@ -89,6 +106,12 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 	listenPort, err := strconv.Atoi(req.ListenPort)
 	if err != nil {
 		return addInterfaceRequest{}, fmt.Errorf("invalid listen port: %w", err)
+	}
+	if listenPort < minListenPort || listenPort > maxListenPort {
+		return addInterfaceRequest{}, fmt.Errorf("invalid listen port %d", listenPort)
+	}
+	if other := interfaceUsingPort(name, listenPort); other != "" {
+		return addInterfaceRequest{}, fmt.Errorf("port %d is already used by %s", listenPort, other)
 	}
 
 	peers, err := parseOptionalPeersValue(req.PeersJSON)
@@ -108,6 +131,11 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 		return addInterfaceRequest{}, err
 	}
 
+	mtu := parseOptionalIntValue(req.MTU, 0)
+	if mtu != 0 && (mtu < minMTU || mtu > maxMTU) {
+		return addInterfaceRequest{}, fmt.Errorf("invalid MTU %d: use 0 or %d to %d", mtu, minMTU, maxMTU)
+	}
+
 	return addInterfaceRequest{
 		name:       name,
 		addresses:  addresses,
@@ -115,7 +143,7 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 		egressNic:  req.EgressNic,
 		host:       host,
 		dns:        dns,
-		mtu:        parseOptionalIntValue(req.MTU, 0),
+		mtu:        mtu,
 		peers:      peers,
 		numPeers:   parseOptionalIntValue(req.NumPeers, 0),
 	}, nil
@@ -180,7 +208,7 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardCo
 			err = exportPeerFile(name, file)
 		}
 		if err != nil {
-			slog.Warn("failed to export peer config", "interface", name, "peer", peer.PublicKey, "error", err)
+			return fmt.Errorf("export config for peer %s: %w", id, err)
 		}
 	}
 

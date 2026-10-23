@@ -2,12 +2,15 @@ package wireguard
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestAddInterfaceStoresDNSAndHostInHeaderNotSidecar(t *testing.T) {
@@ -140,4 +143,86 @@ func TestGeneratePeersIncludePresharedKeys(t *testing.T) {
 			t.Fatalf("peer %s has no preshared key", peer.Name)
 		}
 	}
+}
+
+func TestAddInterfaceRejectsInvalidRequestsBeforeWriting(t *testing.T) {
+	env := newWireGuardTestEnv(t)
+	writeTestInterface(t, "wgother", "10.8.0.1/24")
+	badMTU := "100"
+	tests := []struct {
+		name string
+		req  apischema.WireGuardAddInterfaceRequest
+	}{
+		{"port zero", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24", ListenPort: "0"}},
+		{"negative port", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24", ListenPort: "-1"}},
+		{"port too large", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24", ListenPort: "70000"}},
+		{"port used by another interface", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24", ListenPort: "51820"}},
+		{"MTU below minimum", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24", ListenPort: "51821", MTU: &badMTU}},
+		{"address without prefix", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1", ListenPort: "51821"}},
+		{"garbage address", apischema.WireGuardAddInterfaceRequest{Addresses: "10.7.0.1/24,nope", ListenPort: "51821"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.req.Name = "wgtest"
+			tc.req.EgressNic = "eth0"
+			if _, err := AddInterface(context.Background(), tc.req); err == nil {
+				t.Fatal("AddInterface returned nil error")
+			}
+			assertPathMissing(t, configPath("wgtest"))
+			assertPathMissing(t, peerDirPath("wgtest"))
+			if len(env.wgQuick) != 0 {
+				t.Fatalf("wg-quick calls = %v, want none", env.wgQuick)
+			}
+		})
+	}
+}
+
+func TestAddInterfaceRefusesExistingInterface(t *testing.T) {
+	env := newWireGuardTestEnv(t)
+	old := writeTestInterface(t, "wgtest", "10.7.0.1/24")
+
+	_, err := AddInterface(context.Background(), apischema.WireGuardAddInterfaceRequest{
+		Name:       "wgtest",
+		Addresses:  "10.9.0.1/24",
+		ListenPort: "51821",
+		EgressNic:  "eth0",
+	})
+	var ipcErr *bridgeipc.Error
+	if !errors.As(err, &ipcErr) || ipcErr.Code != 409 {
+		t.Fatalf("error = %v, want a 409 conflict", err)
+	}
+	cfg, err := ParseWireGuardConfig(configPath("wgtest"))
+	if err != nil {
+		t.Fatalf("ParseWireGuardConfig returned error: %v", err)
+	}
+	if cfg.PrivateKey != old.PrivateKey {
+		t.Fatal("existing interface private key was replaced")
+	}
+	if len(env.wgQuick) != 0 {
+		t.Fatalf("wg-quick calls = %v, want none", env.wgQuick)
+	}
+}
+
+func TestAddInterfaceReturnsPeerExportError(t *testing.T) {
+	newWireGuardTestEnv(t)
+	numPeers := "1"
+	if err := os.MkdirAll(peerDirPath("wgtest"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(peerConfigPath("wgtest", "Peer2"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := AddInterface(context.Background(), apischema.WireGuardAddInterfaceRequest{
+		Name:       "wgtest",
+		Addresses:  "10.7.0.1/24",
+		ListenPort: "51820",
+		EgressNic:  "eth0",
+		NumPeers:   &numPeers,
+	})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("error = %v, want the peer export failure", err)
+	}
+	assertPathMissing(t, configPath("wgtest"))
+	assertPathMissing(t, peerDirPath("wgtest"))
 }
