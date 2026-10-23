@@ -381,3 +381,30 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 		t.Fatalf("expected session deleted after logout")
 	}
 }
+
+func TestLoginRejectsOversizedBody(t *testing.T) {
+	oldStart := startBridge
+	t.Cleanup(func() { startBridge = oldStart })
+	bridgeStarted := false
+	startBridge = func(*sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+		bridgeStarted = true
+		return nil, fmt.Errorf("unexpected bridge start")
+	}
+
+	sm := sessions.NewManager(sessions.DefaultConfig)
+	t.Cleanup(sm.Close)
+	handler := newRouterForTests(&Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)})
+
+	body := fmt.Sprintf(`{"username":"user","password":"%s"}`, bytes.Repeat([]byte("a"), maxLoginBodyBytes))
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	if bridgeStarted {
+		t.Fatal("oversized login payload started the bridge")
+	}
+}

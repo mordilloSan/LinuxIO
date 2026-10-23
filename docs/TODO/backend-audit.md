@@ -49,11 +49,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: identifiers with `/`, `..`, odd characters, or URLs to internal addresses fall back to the bundled Docker icon.
   - Done 2026-10-23: `parseIconIdentifier` requires names and file names to match `^[A-Za-z0-9][A-Za-z0-9._-]*$` (else `IconTypeUnknown`); the icon `http.Client` dials through `refuseLocalDial`, which rejects loopback, link-local and unspecified addresses (covers redirects and DNS rebinding). Private LAN hosts stay allowed on purpose — homelab icon servers are a real use. Tests: `TestParseIconIdentifierRejectsUnsafeNames`, `TestRefuseLocalDial`. `docs/docker-icons.md` updated.
 
-- [ ] **4. Login holds one of 8 auth slots while reading an unbounded body with no timeout**
+- [x] **4. Login holds one of 8 auth slots while reading an unbounded body with no timeout**
   `backend/webserver/auth/auth.go:48-59`, `backend/webserver/cmd/root.go:124-127`
   - Verified `[source]`: `Login` takes `authSem` then `jsonv2.UnmarshalRead(r.Body)`; no `MaxBytesReader` anywhere in `webserver/`; the server sets `ReadHeaderTimeout` and `IdleTimeout` only (`WriteTimeout` 0 is intentional for streams).
   - Fix: read and decode the body before taking the slot, wrapped in `http.MaxBytesReader(w, r.Body, 8<<10)` and `http.NewResponseController(w).SetReadDeadline(...)` (needs an `Unwrap()` on `web.responseWriter`, `web/middleware.go:75`).
   - Behaviour change: login bodies over 8 KiB → 400 (limits are 255-byte user / 2047-byte password, so nothing legitimate is affected); slow-body clients are cut off after the deadline.
+  - Done 2026-10-23: `Login` decodes the body through `http.MaxBytesReader(8 KiB)` under a 10 s read deadline (`http.NewResponseController`, best effort) *before* taking an `authSem` slot; `web.responseWriter` gained `Unwrap()` so the controller reaches the server's writer. Test: `TestLoginRejectsOversizedBody`.
 
 - [ ] **5. Adding a WireGuard peer reuses a disabled peer's IP and overwrites its key file**
   `backend/bridge/handlers/wireguard/add_peer.go:94` (`findNextAvailable(cfg.Peers)`), `update_peer.go:72` (disable → `replacePeerSection(…, nil)`), `peer_file.go:199` (ID = `Peer<offset>`), `:233` (`exportPeerFile` → `SaveTo`, overwrites)

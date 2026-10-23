@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -13,7 +14,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
-const maxConcurrentLogins = 8
+const (
+	maxConcurrentLogins = 8
+	// maxLoginBodyBytes bounds the credentials JSON; the auth protocol itself
+	// caps usernames at 255 and passwords at 2047 bytes.
+	maxLoginBodyBytes = 8 << 10
+	loginBodyTimeout  = 10 * time.Second
+)
 
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
@@ -45,17 +52,21 @@ func writeLoginError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
+	// Read the body before taking a slot, bounded in size and time, so a slow
+	// or oversized client cannot hold one of the few login slots. The deadline
+	// is best effort: test recorders do not support it.
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(loginBodyTimeout))
+	var req LoginRequest
+	if err := jsonv2.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxLoginBodyBytes), &req, jsonv2.RejectUnknownMembers(true)); err != nil {
+		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+		return
+	}
+
 	select {
 	case h.authSem <- struct{}{}:
 		defer func() { <-h.authSem }()
 	default:
 		writeLoginError(w, http.StatusServiceUnavailable, "too_many_requests", "too many login attempts, try again shortly")
-		return
-	}
-
-	var req LoginRequest
-	if err := jsonv2.UnmarshalRead(r.Body, &req, jsonv2.RejectUnknownMembers(true)); err != nil {
-		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 
