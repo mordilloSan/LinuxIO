@@ -1,7 +1,12 @@
 package accounts
 
 import (
+	osuser "os/user"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestValidateChpasswdInput(t *testing.T) {
@@ -44,4 +49,24 @@ func TestValidateChpasswdInput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRequireUserAcceptsSystemAccounts(t *testing.T) {
+	orig := lookupUser
+	t.Cleanup(func() { lookupUser = orig })
+	lookupUser = func(name string) (*osuser.User, error) {
+		if name == "syslog" {
+			return &osuser.User{Username: name, Uid: "104"}, nil
+		}
+		return nil, osuser.UnknownUserError(name)
+	}
+
+	require.NoError(t, requireUser("syslog"))
+	require.ErrorContains(t, requireUser("ghost"), "user not found: ghost")
+}
+
+func TestModifyUserArgsEmptyGroupsClearsSecondaryGroups(t *testing.T) {
+	require.Equal(t, []string{"-G", ""}, modifyUserArgs(apischema.ModifyUserRequest{Groups: []string{}}))
+	require.Equal(t, []string{"-G", "a,b"}, modifyUserArgs(apischema.ModifyUserRequest{Groups: []string{"a", "b"}}))
+	require.Empty(t, modifyUserArgs(apischema.ModifyUserRequest{}))
 }

@@ -246,8 +246,8 @@ func ModifyGroupMembers(ctx context.Context, req apischema.ModifyGroupMembersReq
 
 	// Validate all users exist
 	for _, member := range members {
-		if _, userErr := GetUser(ctx, member); userErr != nil {
-			return fmt.Errorf("user not found: %s", member)
+		if userErr := requireUser(member); userErr != nil {
+			return userErr
 		}
 	}
 

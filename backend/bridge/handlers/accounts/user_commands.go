@@ -5,10 +5,23 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	osuser "os/user"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
+
+// lookupUser is a seam for tests.
+var lookupUser = osuser.Lookup
+
+// requireUser fails unless the account exists in the passwd database, including
+// system and nologin accounts that ListUsers filters out.
+func requireUser(username string) error {
+	if _, err := lookupUser(username); err != nil {
+		return fmt.Errorf("user not found: %s: %w", username, err)
+	}
+	return nil
+}
 
 // CreateUser creates a new system user
 func CreateUser(ctx context.Context, req apischema.CreateUserRequest) error {
@@ -74,8 +87,7 @@ func DeleteUser(ctx context.Context, username string) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(ctx, username)
-	if err != nil {
+	if err := requireUser(username); err != nil {
 		return err
 	}
 
@@ -99,29 +111,11 @@ func ModifyUser(ctx context.Context, req apischema.ModifyUserRequest) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(ctx, req.Username)
-	if err != nil {
+	if err := requireUser(req.Username); err != nil {
 		return err
 	}
 
-	args := []string{}
-
-	if req.FullName != nil {
-		args = append(args, "-c", *req.FullName)
-	}
-
-	if req.HomeDir != nil {
-		args = append(args, "-d", *req.HomeDir, "-m")
-	}
-
-	if req.Shell != nil {
-		args = append(args, "-s", *req.Shell)
-	}
-
-	if len(req.Groups) > 0 {
-		args = append(args, "-G", strings.Join(req.Groups, ","))
-	}
-
+	args := modifyUserArgs(req)
 	if len(args) == 0 {
 		return nil
 	}
@@ -137,6 +131,30 @@ func ModifyUser(ctx context.Context, req apischema.ModifyUserRequest) error {
 	return nil
 }
 
+// modifyUserArgs builds the usermod flags for the fields present in req.
+func modifyUserArgs(req apischema.ModifyUserRequest) []string {
+	args := []string{}
+
+	if req.FullName != nil {
+		args = append(args, "-c", *req.FullName)
+	}
+
+	if req.HomeDir != nil {
+		args = append(args, "-d", *req.HomeDir, "-m")
+	}
+
+	if req.Shell != nil {
+		args = append(args, "-s", *req.Shell)
+	}
+
+	// A non-nil empty list clears the secondary groups (-G "").
+	if req.Groups != nil {
+		args = append(args, "-G", strings.Join(req.Groups, ","))
+	}
+
+	return args
+}
+
 // ChangePassword changes a user's password
 func ChangePassword(ctx context.Context, username, password string) error {
 	if username == "" {
@@ -147,8 +165,7 @@ func ChangePassword(ctx context.Context, username, password string) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(ctx, username)
-	if err != nil {
+	if err := requireUser(username); err != nil {
 		return err
 	}
 
@@ -166,8 +183,7 @@ func LockUser(ctx context.Context, username string) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(ctx, username)
-	if err != nil {
+	if err := requireUser(username); err != nil {
 		return err
 	}
 
@@ -187,8 +203,7 @@ func UnlockUser(ctx context.Context, username string) error {
 	}
 
 	// Check if user exists
-	_, err := GetUser(ctx, username)
-	if err != nil {
+	if err := requireUser(username); err != nil {
 		return err
 	}
 

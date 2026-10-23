@@ -194,17 +194,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: require `len(clients) > 0`; validate host (`^[A-Za-z0-9_.:*/@\[\]-]+$`) and options (`^[a-z_]+(=[0-9A-Za-z_]+)?$`); `filepath.Clean` the path and reject `/`.
   - Behaviour change: empty client lists and odd host/option strings → 400.
 
-- [ ] **18a. Account existence checks use the login-user listing**
+- [x] **18a. Account existence checks use the login-user listing**
   `backend/bridge/handlers/accounts/passwd.go:83-88` (filter: UID ≥ 1000 or root, login shell), `:128-136` (`GetUser` → `ListUsers`), callers `user_commands.go:77,102,150,169,190`, `groups.go:249`, `user_details.go:65`
   - Verified `[source]`: editing a group with a system member (`adm`/`syslog`, `docker`/service users) fails "user not found"; a user switched to `nologin` can no longer be deleted/unlocked/modified; `CreateUser` rollback via `DeleteUser` has the same filter. `ListUsers` also runs the full login-history dump (`getLastLogins` → `loginhistory.FetchByUser`) per call, once per member in `ModifyGroupMembers`.
   - Fix: `user.Lookup` (os/user) for existence checks; keep the filter and the history dump in `ListUsers` only.
   - Behaviour change: system/nologin accounts become manageable through the API (the UI still lists only login users); group edits with system members succeed.
+  - Done 2026-10-23: `requireUser` (`os/user` lookup behind a test seam) replaces `GetUser` in the five mutation paths and `ModifyGroupMembers`; `ListUsers` keeps its filter and the history dump; `GetUser` remains only for `GetUserDetails`. Test: `TestRequireUserAcceptsSystemAccounts`.
 
-- [ ] **18b. `modify_user` ignores "remove all secondary groups"**
+- [x] **18b. `modify_user` ignores "remove all secondary groups"**
   `user_commands.go:121` (`len(req.Groups) > 0`), `frontend/src/routes/_authenticated/accounts/-components/EditUserDialog.tsx:87-90` (sends `selectedGroups`, possibly `[]`)
   - Verified `[source]`.
   - Fix: `req.Groups != nil` → `-G` with the joined list (empty string clears).
   - Behaviour change: unticking the last group now works (`usermod -G ""`).
+  - Done 2026-10-23: `modifyUserArgs` (pure, testable) uses `req.Groups != nil`. Test: `TestModifyUserArgsEmptyGroupsClearsSecondaryGroups`.
 
 - [ ] **19a. SMTP envelope uses the display-name form**
   `backend/common/alerts/deliver.go:143-148`, `settings.go:107-118`
