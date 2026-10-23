@@ -322,11 +322,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: fail clearly or `0640` + `chgrp`; prefer hashed passwords in the seed.
   - Behaviour change: on such distros VM creation fails with a clear error instead of loosening permissions.
 
-- [ ] **30. `delete_stack` with `deleteDirectory` can `RemoveAll` a shared directory**
+- [x] **30. `delete_stack` with `deleteDirectory` can `RemoveAll` a shared directory**
   `backend/bridge/handlers/docker/compose.go:412-430`
   - `[source]`: guard is only `/`, `$HOME`, `/home`; a compose file directly in a configured docker folder has `workingDir` = that folder.
   - Fix: allow directory deletion only when `workingDir` is a direct child of a configured docker folder; otherwise delete just the compose file. Reuse the host-path translation used by `ComposeRestart`.
   - Behaviour change: deletion of a stack whose compose file sits in a shared folder removes only the file.
+  - Done 2026-10-23: `deleteStackFiles` removes the directory only for a strict descendant of a configured docker folder (`isStrictChildOfAny`, `deletableDockerFolders`), otherwise just the compose file; live-project label paths are host-translated via `resolveComposeRestartTargetFromProject`. Tests: `TestDeleteStackFilesKeepsSharedDirectory`, `TestDeleteStackFilesDeletesChildDirectory`. `filepath.Rel` is lexical: a symlinked working dir is not resolved.
 
 - [ ] **31. Btrfs: no cross-process lock around snapshot runs or replication**
   `backend/common/btrfs/replication_run.go:156-230`, `backend/bridge/handlers/storage/btrfs_replication_operation.go:45`, `backend/btrfs-timer/snapshot.go`

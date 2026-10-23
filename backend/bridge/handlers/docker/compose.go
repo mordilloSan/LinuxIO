@@ -351,7 +351,7 @@ func DeleteStack(ctx context.Context, username string, store *userconfig.UserSto
 		}
 
 		// No containers, just handle file deletion
-		result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, options)
+		result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, deletableDockerFolders(ctx, username, store), options)
 		if delErr != nil {
 			return apischema.DeleteStackResult{}, delErr
 		}
@@ -370,6 +370,10 @@ func DeleteStack(ctx context.Context, username string, store *userconfig.UserSto
 		if workingDir == "" {
 			workingDir = filepath.Dir(configFile)
 		}
+		// Label paths may be container paths; prefer the host-translated ones.
+		if hostFile, hostDir := resolveComposeRestartTargetFromProject(ctx, projectName, composeProject); hostFile != "" {
+			configFile, workingDir = hostFile, hostDir
+		}
 	}
 
 	// First, run docker compose down to remove containers and networks
@@ -386,7 +390,7 @@ func DeleteStack(ctx context.Context, username string, store *userconfig.UserSto
 	}
 
 	// Handle file deletion
-	result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, options)
+	result, delErr := deleteStackFiles(ctx, projectName, configFile, workingDir, deletableDockerFolders(ctx, username, store), options)
 	if delErr != nil {
 		return apischema.DeleteStackResult{}, delErr
 	}
@@ -394,15 +398,38 @@ func DeleteStack(ctx context.Context, username string, store *userconfig.UserSto
 	return result, nil
 }
 
+// deletableDockerFolders returns the configured docker folders; none when they cannot be read,
+// which keeps directory deletion disabled.
+func deletableDockerFolders(ctx context.Context, username string, store *userconfig.UserStore) []string {
+	folders, err := configuredDockerFolders(ctx, username, store)
+	if err != nil {
+		slog.Warn("docker folders unavailable, stack directory deletion disabled", "user", username, "error", err)
+		return nil
+	}
+	return folders
+}
+
+// isStrictChildOfAny reports whether dir lies inside one of folders but is not a folder itself.
+func isStrictChildOfAny(dir string, folders []string) bool {
+	for _, folder := range folders {
+		rel, err := filepath.Rel(filepath.Clean(folder), filepath.Clean(dir))
+		if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
 // deleteStackFiles handles the file/directory deletion part of stack removal
-func deleteStackFiles(ctx context.Context, projectName, configFile, workingDir string, options DeleteStackOptions) (apischema.DeleteStackResult, error) {
+func deleteStackFiles(ctx context.Context, projectName, configFile, workingDir string, dockerFolders []string, options DeleteStackOptions) (apischema.DeleteStackResult, error) {
 	result := apischema.DeleteStackResult{Message: "Stack removed successfully", Project: projectName}
 
-	if options.DeleteDirectory && workingDir != "" {
+	// A working dir that is (or is outside) a configured folder may hold other stacks: delete only the file.
+	if options.DeleteDirectory && workingDir != "" && isStrictChildOfAny(workingDir, dockerFolders) {
 		return deleteStackDirectory(ctx, result, projectName, workingDir)
 	}
 
-	if options.DeleteFile && configFile != "" {
+	if (options.DeleteFile || options.DeleteDirectory) && configFile != "" {
 		return deleteComposeFile(ctx, result, projectName, configFile)
 	}
 
