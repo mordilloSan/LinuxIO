@@ -10,7 +10,22 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
+
+// runLockWait is how long a run waits for another process working on the same
+// job or filesystem before reporting it as already running.
+const runLockWait = 2 * time.Second
+
+// runLocked runs fn under an exclusive cross-process lock, so the timer and a
+// manual run never work on the same job or filesystem at once.
+func runLocked(ctx context.Context, lockPath, what string, fn func() error) error {
+	err := filelock.RunExclusive(ctx, lockPath, fn, filelock.WithDirPermissions(0o700), filelock.WithTimeout(runLockWait))
+	if errors.Is(err, filelock.ErrTimeout) {
+		return fmt.Errorf("%s is already running", what)
+	}
+	return err
+}
 
 const alertSource = "btrfs"
 
@@ -50,7 +65,9 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 			continue
 		}
 		if err == nil {
-			err = runRule(ctx, rule, now, kind, &report)
+			err = runLocked(ctx, RulesPath+"."+rule.UUID+".lock", "a snapshot run for this filesystem", func() error {
+				return runRule(ctx, rule, now, kind, &report)
+			})
 		}
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {

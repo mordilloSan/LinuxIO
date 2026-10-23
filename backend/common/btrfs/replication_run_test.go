@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
 const replPayload = "btrfs-send-stream-0123456789"
@@ -233,6 +234,47 @@ func TestReplicateUpToDate(t *testing.T) {
 	s.target = []string{targetRow(1, filepath.Base(t1), "-")}
 	if res, err = Replicate(context.Background(), job, nil); err != nil || res.UpToDate || res.Sent == nil || res.Sent.Path != t1 {
 		t.Fatalf("partial copy = %+v, %v; want t1 sent", res, err)
+	}
+}
+
+// A partial copy a crash left on the target is deleted before the send, so
+// the receive does not fail on the existing name.
+func TestReplicateRemovesPartialCopyBeforeSend(t *testing.T) {
+	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, []string{targetRow(1, filepath.Base(t1), "-")})
+	job := BtrfsReplicationJob{
+		ID: "11111111-2222-4333-8444-555555555555", UUID: rootUUID, Path: "@home", After: AfterTimeline, Enabled: true,
+		Target: BtrfsReplicationTarget{Kind: TargetLocal, Path: "/mnt/backup"},
+	}
+	res, err := Replicate(context.Background(), job, nil)
+	if err != nil || res.Sent == nil {
+		t.Fatalf("Replicate = %+v, %v", res, err)
+	}
+	if want := []string{"subvolume delete /mnt/backup/" + filepath.Base(t1), "receive"}; !reflect.DeepEqual(s.order, want) {
+		t.Fatalf("order = %q, want %q", s.order, want)
+	}
+}
+
+// A second run of the same job while another process holds its lock reports
+// "already running" and touches nothing.
+func TestReplicateAlreadyRunning(t *testing.T) {
+	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, nil)
+	job := BtrfsReplicationJob{
+		ID: "11111111-2222-4333-8444-555555555555", UUID: rootUUID, Path: "@home", After: AfterTimeline, Enabled: true,
+		Target: BtrfsReplicationTarget{Kind: TargetLocal, Path: "/mnt/backup"},
+	}
+	release, err := filelock.AcquireExclusive(context.Background(), filepath.Join(ReplicationDir, job.ID+".lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+	_, err = Replicate(context.Background(), job, nil)
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("err = %v, want already running", err)
+	}
+	if len(s.calls) != 0 || len(s.mutations) != 0 {
+		t.Fatalf("calls %q, mutations %q; want none", s.calls, s.mutations)
 	}
 }
 

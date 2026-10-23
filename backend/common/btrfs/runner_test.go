@@ -12,13 +12,15 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
 func useTempAlerts(t *testing.T) {
 	t.Helper()
-	old := alerts.Path
+	old, oldRules := alerts.Path, RulesPath
 	alerts.Path = filepath.Join(t.TempDir(), "alerts.json")
-	t.Cleanup(func() { alerts.Path = old })
+	RulesPath = filepath.Join(t.TempDir(), "btrfs-snapshots.json") // the per-filesystem run locks live beside it
+	t.Cleanup(func() { alerts.Path, RulesPath = old, oldRules })
 }
 
 func TestRunSkipsMissingFilesystem(t *testing.T) {
@@ -77,6 +79,27 @@ func stubRunnerBtrfs(t *testing.T, top string, rows []subvolumeRow) *[][]string 
 		return nil
 	})
 	return &calls
+}
+
+func TestRunReportsRuleAlreadyRunning(t *testing.T) {
+	useTempAlerts(t)
+	top := t.TempDir()
+	stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
+	calls := stubRunnerBtrfs(t, top, nil)
+	release, err := filelock.AcquireExclusive(context.Background(), RulesPath+"."+rootUUID+".lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+
+	rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly}}
+	report, err := Run(context.Background(), rules, snapshotTime, KindTimeline)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(report.Errors) != 1 || !strings.Contains(report.Errors[0], "already running") || len(report.Taken) != 0 || len(*calls) != 0 {
+		t.Fatalf("report = %+v, calls = %v", report, *calls)
+	}
 }
 
 func TestRunTakesDueOnly(t *testing.T) {

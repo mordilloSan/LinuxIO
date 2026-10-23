@@ -329,17 +329,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: deletion of a stack whose compose file sits in a shared folder removes only the file.
   - Done 2026-10-23: `deleteStackFiles` removes the directory only for a strict descendant of a configured docker folder (`isStrictChildOfAny`, `deletableDockerFolders`), otherwise just the compose file; live-project label paths are host-translated via `resolveComposeRestartTargetFromProject`. Tests: `TestDeleteStackFilesKeepsSharedDirectory`, `TestDeleteStackFilesDeletesChildDirectory`. `filepath.Rel` is lexical: a symlinked working dir is not resolved.
 
-- [ ] **31. Btrfs: no cross-process lock around snapshot runs or replication**
+- [x] **31. Btrfs: no cross-process lock around snapshot runs or replication**
   `backend/common/btrfs/replication_run.go:156-230`, `backend/bridge/handlers/storage/btrfs_replication_operation.go:45`, `backend/btrfs-timer/snapshot.go`
   - `[worker]`: timer and "Run now" can overlap; the second `removePartial` deletes the first run's in-flight copy.
   - Fix: `filelock.RunExclusive` per job / per rule with a short timeout and a clear "already running" error.
   - Behaviour change: an overlapping run reports "already running".
+  - Done 2026-10-23: `runLocked` (`filelock.RunExclusive`, 2 s wait) wraps `Replicate` per job (`ReplicationDir/<id>.lock`) and `runRule` per filesystem UUID (`RulesPath.<uuid>.lock`); the losing run goes through the normal failure path (alert), which the winner resolves. Tests: `TestReplicateAlreadyRunning`, `TestRunReportsRuleAlreadyRunning`.
 
-- [ ] **32. Btrfs: a partial receive left by a crash makes the next replication run fail once**
+- [x] **32. Btrfs: a partial receive left by a crash makes the next replication run fail once**
   `backend/common/btrfs/replication_run.go:181-216` (`removePartial` only after a failed send)
   - `[source]`: the newest snapshot's name exists on the target → receive fails → alert; run 2 succeeds.
   - Fix: call `removePartial` for the chosen snapshot before `sendReceive`.
   - Behaviour change: one fewer false alert.
+  - Done 2026-10-23: `deletePartial` (split from `removePartial`) runs on the listing already in hand before `sendReceive`. Test: `TestReplicateRemovesPartialCopyBeforeSend`.
 
 - [ ] **33. Btrfs: replication shares the hourly snapshot service, so a long send delays snapshots**
   `backend/common/btrfs/unit.go:15-19`, `backend/btrfs-timer/snapshot.go:72`

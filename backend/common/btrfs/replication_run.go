@@ -160,6 +160,11 @@ func removePartial(ctx context.Context, job BtrfsReplicationJob, targetID int, l
 	if err != nil {
 		return false
 	}
+	return deletePartial(ctx, job, remote, leaf)
+}
+
+// deletePartial deletes the copy of leaf in remote that has no ReceivedUUID.
+func deletePartial(ctx context.Context, job BtrfsReplicationJob, remote []BtrfsSnapshot, leaf string) bool {
 	for _, r := range remote {
 		if path.Base(r.Path) == leaf && r.ReceivedUUID == "" {
 			if _, err := targetCommand(ctx, job, "subvolume", "delete", r.Path); err != nil {
@@ -179,6 +184,16 @@ func removePartial(ctx context.Context, job BtrfsReplicationJob, targetID int, l
 // count as on the target. It does not touch the job file; see
 // RecordReplicationOutcome.
 func Replicate(ctx context.Context, job BtrfsReplicationJob, progress func(bytes int64)) (BtrfsReplicationResult, error) {
+	var result BtrfsReplicationResult
+	err := runLocked(ctx, filepath.Join(ReplicationDir, job.ID+".lock"), "replication for this job", func() error {
+		var replErr error
+		result, replErr = replicateJob(ctx, job, progress)
+		return replErr
+	})
+	return result, err
+}
+
+func replicateJob(ctx context.Context, job BtrfsReplicationJob, progress func(bytes int64)) (BtrfsReplicationResult, error) {
 	targetID, err := ensureTarget(ctx, job)
 	if err != nil {
 		return BtrfsReplicationResult{}, err
@@ -191,6 +206,7 @@ func Replicate(ctx context.Context, job BtrfsReplicationJob, progress func(bytes
 	if err != nil {
 		return BtrfsReplicationResult{}, err
 	}
+	listed := slices.Clone(remote) // receivedOnly filters in place
 	remote = receivedOnly(remote)
 	var snap *BtrfsSnapshot
 	for i := range local { // newest first
@@ -211,6 +227,9 @@ func Replicate(ctx context.Context, job BtrfsReplicationJob, progress func(bytes
 	if result.Parent != nil {
 		parent = filepath.Join(top, result.Parent.Path)
 	}
+	// A crash mid-receive leaves a hidden partial copy of this name that would
+	// fail the receive.
+	deletePartial(ctx, job, listed, path.Base(snap.Path))
 	if result.Bytes, err = sendReceive(ctx, job, filepath.Join(top, snap.Path), parent, progress); err != nil {
 		if removePartial(ctx, job, targetID, path.Base(snap.Path)) {
 			err = fmt.Errorf("%w (removed partial copy)", err)
