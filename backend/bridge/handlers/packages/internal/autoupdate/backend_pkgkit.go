@@ -13,6 +13,8 @@ import (
 
 type pkgkitBackend struct{}
 
+var errNoUpdates = errors.New("no updates available")
+
 func newPkgKitBackend() *pkgkitBackend         { return &pkgkitBackend{} }
 func (*pkgkitBackend) Name() AutoUpdateBackend { return "packagekit" }
 func (*pkgkitBackend) Detect(ctx context.Context) bool {
@@ -65,8 +67,10 @@ func (*pkgkitBackend) ApplyOfflineNow(ctx context.Context) error {
 
 		// Step 3: Download updates (UpdatePackages with ONLY_DOWNLOAD flag = 2)
 		if err := pkTransactionCallWithUpdates(ctx, session); err != nil {
-			// Non-fatal - updates may already be downloaded or none available
-			slog.Debug("PackageKit download step returned non-fatal error", "component", "dbus", "subsystem", "updates", "error", err)
+			if !errors.Is(err, errNoUpdates) {
+				return fmt.Errorf("failed to download updates: %w", err)
+			}
+			slog.Debug("PackageKit has no updates to download", "component", "dbus", "subsystem", "updates")
 		}
 
 		// Step 4: Trigger offline update
@@ -103,7 +107,7 @@ func pkTransactionCallWithUpdates(ctx context.Context, session packagekit.Client
 		return err
 	}
 	if len(packageIDs) == 0 {
-		return fmt.Errorf("no updates available")
+		return errNoUpdates
 	}
 	return downloadPackageKitUpdates(ctx, session, packageIDs)
 }

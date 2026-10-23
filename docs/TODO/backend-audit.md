@@ -424,10 +424,11 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: same-filesystem moves start instantly; cancel works during sizing.
   - Done 2026-10-23: `ComputeCopySize(ctx, …)` checks ctx in the walk; `tryRenameMove` no longer walks after a rename; `transferPlan.item` and `resourcePatchWithProgress` size only cross-device transfers (same-filesystem moves report no byte progress). Tests: `TestComputeCopySizeStopsOnCancelledContext`, `TestMoveFileWithCallbacksSkipsSizeWalkWithoutKnownSize`, `TestPlanBatchTransferSkipsSizeForSameFilesystemMove`.
 
-- [ ] **45. `ApplyOfflineNow` swallows a download failure and still schedules the offline update**
+- [x] **45. `ApplyOfflineNow` swallows a download failure and still schedules the offline update**
   `backend/bridge/handlers/packages/internal/autoupdate/backend_pkgkit.go:171-174`
   - `[worker]`. Fix: only "no updates available" is non-fatal.
   - Behaviour change: a failed download reports failure instead of "scheduled".
+  - Done 2026-10-23: `ApplyOfflineNow` fails on any download error except the new `errNoUpdates` sentinel returned by `pkTransactionCallWithUpdates`. No test: `packagekit.ClientSession` wraps a real D-Bus session and has no fake (source-verified only).
 
 ## D. Nice to have
 
