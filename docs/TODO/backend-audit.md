@@ -392,11 +392,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: extracted executables keep `+x`; setuid/sticky bits are still stripped.
   - Done 2026-10-23: `extractPerm` (perm bits minus other-write; dirs floored at 0700) for zip and tar; `extractZipFiles` stops launching on the first failure (atomic flag, since `ExtractArchive` has no ctx) and `g.Wait()`s on every path; zip directory entries now carry a mode. Tests: `TestExtractArchiveKeepsExecutableBit`, `TestExtractZipStopsWorkersAfterFirstError`.
 
-- [ ] **40. Package update-history parsers record wrong data**
+- [x] **40. Package update-history parsers record wrong data**
   `backend/bridge/handlers/packages/updates.go:571-596,617-656`
   - `[worker]`: dpkg takes the old version for upgrades; dnf splits `python3-requests-2.28.1-1` at the first hyphen; no tests. `[unverified]`: check a real `dnf.log` line first.
   - Fix: dpkg fifth token for upgrades; dnf NEVRA from the right; table tests.
   - Behaviour change: history shows correct names/versions.
+  - Done 2026-10-23: `applyDpkgLogLine` records the new version for `upgrade` lines (`newDpkgLogPatterns`); `parseDnfHistory` splits NEVRA from the right (`splitNEVRA`) and keys by day like dpkg. Tests: `TestApplyDpkgLogLineRecordsNewVersion`, `TestParseDnfHistorySplitsNEVRAAndKeysByDate`. The dnf.log line format is still from documentation, not a real host.
 
 - [ ] **41. LVM listing hides all failures; mount lookup keys on the wrong device name**
   `backend/bridge/handlers/storage/lvm.go:26-33,61-66,99-104,112-134`

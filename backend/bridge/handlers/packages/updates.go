@@ -526,6 +526,13 @@ func GetUpdateHistory(ctx context.Context) ([]apischema.UpdateHistoryRow, error)
 	return []apischema.UpdateHistoryRow{}, nil
 }
 
+func newDpkgLogPatterns() dpkgLogPatterns {
+	return dpkgLogPatterns{
+		install:   regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+(install|upgrade)\s+([^ ]+)\s+([^ ]+)(?:\s+([^ ]+))?`),
+		configure: regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+configure\s+([^ ]+)\s+([^ ]+)`),
+	}
+}
+
 // parseDpkgLogs reads dpkg.log plus all rotated variants (.1, .2.gz, …).
 func parseDpkgLogs(ctx context.Context) []apischema.UpdateHistoryRow {
 	historyMap := make(map[string][]apischema.UpgradeItem)
@@ -533,10 +540,7 @@ func parseDpkgLogs(ctx context.Context) []apischema.UpdateHistoryRow {
 	matches, _ := filepath.Glob("/var/log/dpkg.log*")
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
 
-	patterns := dpkgLogPatterns{
-		install:   regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+(install|upgrade)\s+([^ ]+)\s+([^ ]+)`),
-		configure: regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+configure\s+([^ ]+)\s+([^ ]+)`),
-	}
+	patterns := newDpkgLogPatterns()
 	for _, logPath := range matches {
 		if err := ctx.Err(); err != nil {
 			return mapToSortedHistory(historyMap)
@@ -574,8 +578,12 @@ func parseDpkgLogFile(
 }
 
 func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[string][]apischema.UpgradeItem, pendingPackages map[string]string) {
-	if m := patterns.install.FindStringSubmatch(line); len(m) == 5 {
-		recordDpkgInstall(m[1], m[3], m[4], historyMap, pendingPackages)
+	if m := patterns.install.FindStringSubmatch(line); len(m) == 6 {
+		version := m[4]
+		if m[2] == "upgrade" && m[5] != "" {
+			version = m[5] // upgrade lines read "<old> <new>"
+		}
+		recordDpkgInstall(m[1], m[3], version, historyMap, pendingPackages)
 		return
 	}
 	if m := patterns.configure.FindStringSubmatch(line); len(m) == 4 {
@@ -631,7 +639,7 @@ func parseDnfHistory(ctx context.Context, logPath string) []apischema.UpdateHist
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	upgradeRe := regexp.MustCompile(`Upgrade:\s+([^\s-]+)-([^-]+-[^\s]+)`)
+	upgradeRe := regexp.MustCompile(`Upgrade:\s+(\S+)`)
 
 	historyMap := make(map[string][]apischema.UpgradeItem)
 
@@ -645,12 +653,14 @@ func parseDnfHistory(ctx context.Context, logPath string) []apischema.UpdateHist
 			continue
 		}
 		date := parts[0]
+		if len(date) >= 10 {
+			date = date[:10] // dnf.log timestamps are ISO 8601; key by day like dpkg
+		}
 
-		if matches := upgradeRe.FindStringSubmatch(line); len(matches) > 2 {
-			historyMap[date] = append(historyMap[date], apischema.UpgradeItem{
-				Package: matches[1],
-				Version: matches[2],
-			})
+		if matches := upgradeRe.FindStringSubmatch(line); len(matches) > 1 {
+			if name, version, ok := splitNEVRA(matches[1]); ok {
+				historyMap[date] = append(historyMap[date], apischema.UpgradeItem{Package: name, Version: version})
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -658,6 +668,24 @@ func parseDnfHistory(ctx context.Context, logPath string) []apischema.UpdateHist
 	}
 
 	return mapToSortedHistory(historyMap)
+}
+
+// splitNEVRA splits "name-version-release.arch" from the right, since names may contain hyphens.
+func splitNEVRA(nevra string) (name, version string, ok bool) {
+	before, _, ok := strings.CutLast(nevra, ".")
+	if !ok {
+		return "", "", false
+	}
+	rest := before
+	before0, _, ok0 := strings.CutLast(rest, "-")
+	if !ok0 {
+		return "", "", false
+	}
+	verDash := strings.LastIndex(before0, "-")
+	if verDash <= 0 {
+		return "", "", false
+	}
+	return rest[:verDash], rest[verDash+1:], true
 }
 
 func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []apischema.UpdateHistoryRow {
