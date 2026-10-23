@@ -7,12 +7,14 @@ import {
   type RefObject,
 } from "react";
 
+import type { CountProgress, TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -33,6 +35,7 @@ import type {
   ConflictDecision,
   ConflictPrompt,
 } from "../-hooks/useFileConflicts";
+import type { DeleteMode } from "../-hooks/useFileDialogs";
 import type { UploadSummary } from "../-hooks/useFileUpload";
 import type {
   FileResource,
@@ -270,6 +273,50 @@ export const FileBrowserSaveConflictDialog = ({
     </AppDialogActions>
   </FileBrowserDialog>
 );
+
+export interface FileBrowserDeleteDialogProps {
+  isPending?: boolean;
+  mode: DeleteMode;
+  onClose: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  pendingDeletePaths: string[];
+  progress?: TaskProgress<CountProgress> | null;
+}
+
+// Moving to the trash asks as well: the dialog doubles as the progress
+// surface, and its wording is what tells the two modes apart.
+export const FileBrowserDeleteDialog = ({
+  isPending,
+  mode,
+  onClose,
+  onConfirm,
+  open,
+  pendingDeletePaths,
+  progress,
+}: FileBrowserDeleteDialogProps) => {
+  const isTrash = mode === "trash";
+  const count = pendingDeletePaths.length;
+  const countLabel = `${count} item${count === 1 ? "" : "s"}`;
+  return (
+    <AppConfirmDialog
+      confirmText={isTrash ? "Move to Trash" : "Delete"}
+      destructive={!isTrash}
+      isPending={isPending}
+      message={
+        isTrash
+          ? `Move ${countLabel} to Trash?`
+          : `Permanently delete ${countLabel}? This cannot be undone.`
+      }
+      onClose={onClose}
+      onConfirm={onConfirm}
+      open={open}
+      pendingText={isTrash ? "Moving…" : undefined}
+      progress={progress}
+      title={isTrash ? "Move to Trash" : "Delete permanently"}
+    />
+  );
+};
 
 export type MultiFileDetailItem = MultiStatsItem & {
   aggregateSize?: number;

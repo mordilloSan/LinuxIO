@@ -2,13 +2,14 @@ import { memo, type ChangeEvent, type RefObject } from "react";
 
 import type { CountProgress, TaskProgress } from "@/api";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
-import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import AppUnsavedChangesDialog from "@/components/ui/AppUnsavedChangesDialog";
 
 import CompressFormatDialog from "./CompressFormatDialog";
 import ContextMenu from "./ContextMenu";
 import {
   FileBrowserConflictDialog,
+  FileBrowserDeleteDialog,
+  type FileBrowserDeleteDialogProps,
   FileBrowserDetailsDialog,
   FileBrowserEditorDialog,
   FileBrowserSaveConflictDialog,
@@ -117,16 +118,6 @@ interface FileBrowserCreateDialogsProps {
   onConfirmFolder: (folderName: string) => Promise<void> | void;
 }
 
-interface FileBrowserDeleteDialogProps {
-  mode: "trash" | "permanent";
-  onClose: () => void;
-  onConfirm: () => void;
-  open: boolean;
-  pendingDeletePaths: string[];
-  isPending?: boolean;
-  progress?: TaskProgress<CountProgress> | null;
-}
-
 interface FileBrowserPermissionsDialogProps {
   dialog: PermissionsDialogState | null;
   onExited: () => void;
@@ -193,9 +184,6 @@ const FileBrowserDialogs = ({
   permissions,
   upload,
 }: FileBrowserDialogsProps) => {
-  const isTrash = deleteDialog.mode === "trash";
-  const deleteCount = deleteDialog.pendingDeletePaths.length;
-  const deleteCountLabel = `${deleteCount} item${deleteCount !== 1 ? "s" : ""}`;
   return (
     <>
       <FileBrowserEditorDialog
@@ -293,20 +281,13 @@ const FileBrowserDialogs = ({
         title="Create Folder"
       />
 
-      <AppConfirmDialog
-        confirmText={isTrash ? "Move to Trash" : "Delete"}
-        message={
-          isTrash
-            ? `Move ${deleteCountLabel} to Trash?`
-            : `Permanently delete ${deleteCountLabel}? This cannot be undone.`
-        }
+      <FileBrowserDeleteDialog
+        isPending={deleteDialog.isPending}
+        mode={deleteDialog.mode}
         onClose={deleteDialog.onClose}
         onConfirm={deleteDialog.onConfirm}
         open={deleteDialog.open}
-        pendingText={isTrash ? "Moving…" : undefined}
-        title={isTrash ? "Move to Trash" : "Delete permanently"}
-        destructive={!isTrash}
-        isPending={deleteDialog.isPending}
+        pendingDeletePaths={deleteDialog.pendingDeletePaths}
         progress={deleteDialog.progress}
       />
 
