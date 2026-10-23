@@ -538,6 +538,7 @@ func TestUpdateStandaloneContainerStopsBeforeMutationWhenPreparationFails(t *tes
 				"pull:docker.io/library/nginx:latest",
 				"inspect-image:docker.io/library/nginx:latest",
 				"stop:old-container",
+				"start:old-container",
 			},
 		},
 	}

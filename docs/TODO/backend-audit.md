@@ -98,23 +98,26 @@ fix, so each item can be accepted or rejected on that basis.
 
 ## B. Should fix
 
-- [ ] **10a. Docker standalone update: a failed stop clears the recovery journal and leaves the container down**
+- [x] **10a. Docker standalone update: a failed stop clears the recovery journal and leaves the container down**
   `backend/common/dockerupdate/standalone.go:228-230`
   - Verified `[source]`: stop-error branch → `errors.Join(err, clearStandaloneJournal(journal))`, no restore; the rename-error branch two lines below calls `restoreOriginalRunningState` then `clearJournalAfterRollback`. A ctx cancel/timeout after dockerd already stopped the container hits the first branch.
   - Fix: mirror the rename branch.
   - Behaviour change: after a stop failure the container is restarted when it was running; the journal is cleared only after that rollback attempt.
+  - Done 2026-10-23: `parkStandaloneOriginal` calls `restoreOriginalRunningState` then `clearJournalAfterRollback` on a stop error, like the rename branch. Covered by the "stop" case of `TestUpdateStandaloneContainerStopsBeforeMutationWhenPreparationFails`.
 
-- [ ] **10b. `ctr.Names[0]` indexed without a length check**
+- [x] **10b. `ctr.Names[0]` indexed without a length check**
   `backend/common/dockerupdate/compose_target.go:244,255` (guard exists in `status_store.go:349` `PrimaryContainerName`)
   - Verified `[source]`. A container with an empty `Names` slice panics the root update worker.
   - Fix: use `PrimaryContainerName`.
   - Behaviour change: none.
+  - Done 2026-10-23: both sites in `compose_target.go` use `PrimaryContainerName`.
 
-- [ ] **11. A progress/error message cut mid-rune makes a durable-task record unreadable forever**
+- [x] **11. A progress/error message cut mid-rune makes a durable-task record unreadable forever**
   `backend/common/durabletask/store.go:159-166` (`AppendProgress` byte cut), `:394-403` (`ApplyExecutorResult`, no clamp), `:608-611` (`readRecord` validates), `:635` (>512), `:646` (>1024); `backend/common/dockerupdate/durable_worker.go:49-53` (`BoundedMessage` byte cut)
   - Verified `[source]+[lib]`: `encoding/json` replaces each invalid UTF-8 byte with U+FFFD (3 bytes). `ListActiveForUID` (L272) and `activeRouteExists` (L502) return the first read error, so one bad record blocks every listing and every `ExclusiveRoute` claim; prune skips unreadable records.
   - Fix: one rune-safe clamp (`strings.ToValidUTF8` + cut on a rune boundary; `alerts.truncate` already does this) used in `AppendProgress`, `ApplyExecutorResult` and `BoundedMessage`. Optionally make the two listings skip-and-log like `terminalRecordsByUID`.
   - Behaviour change: none visible (messages are clamped to the same limits, now rune-safe).
+  - Done 2026-10-23: `durabletask.ClampMessage` (`strings.ToValidUTF8` + cut on a rune boundary) used by `AppendProgress` (512), `ApplyExecutorResult` (1024) and `dockerupdate.BoundedMessage` (1024). Test: `TestClampMessageKeepsRecordReadable` (write → `readRecord` round trip). The optional skip-and-log in the two listings was not done.
 
 - [x] **12a. PackageKit loops spin at 100% CPU on a closed signal channel; collectors treat timeout as "finished"**
   `backend/bridge/handlers/packages/internal/packagekit/packagekit.go:176` (`CollectPackageIDs`), `package_update_operation.go:330` (`awaitPackageUpdateSignals`), `updates.go:197,235` (`isTransactionFinished`, `collectUpdatePackages`)

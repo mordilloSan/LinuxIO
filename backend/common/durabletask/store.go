@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 	"uuid"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
@@ -156,11 +157,21 @@ func (r Record) Terminal() bool {
 	}
 }
 
-func (r *Record) AppendProgress(now time.Time, phase, message string) {
-	if len(message) > 512 {
-		message = message[:512]
+// ClampMessage replaces invalid UTF-8 and cuts message to at most limit bytes
+// on a rune boundary, so the JSON-encoded record stays within readRecord's limits.
+func ClampMessage(message string, limit int) string {
+	message = strings.ToValidUTF8(message, "\uFFFD")
+	if len(message) <= limit {
+		return message
 	}
-	r.Progress = append(r.Progress, Progress{At: now.UTC(), Phase: phase, Message: message})
+	for limit > 0 && !utf8.RuneStart(message[limit]) {
+		limit--
+	}
+	return message[:limit]
+}
+
+func (r *Record) AppendProgress(now time.Time, phase, message string) {
+	r.Progress = append(r.Progress, Progress{At: now.UTC(), Phase: phase, Message: ClampMessage(message, 512)})
 	if len(r.Progress) > MaxProgressEntries {
 		r.Progress = slices.Clone(r.Progress[len(r.Progress)-MaxProgressEntries:])
 	}
@@ -391,13 +402,13 @@ func (s *Store) ApplyExecutorResult(ctx context.Context, uid uint32, result Exec
 		record.FinishedAt = new(result.FinishedAt.UTC())
 		switch result.State {
 		case StateFailed:
-			message := strings.TrimSpace(result.Error)
+			message := ClampMessage(strings.TrimSpace(result.Error), 1024)
 			if message == "" {
 				message = fmt.Sprintf("updater exited with status %d", result.ExitCode)
 			}
 			record.Error = &StructuredError{Code: result.ExitCode, Message: message}
 		case StateCanceled:
-			message := strings.TrimSpace(result.Error)
+			message := ClampMessage(strings.TrimSpace(result.Error), 1024)
 			if message == "" {
 				message = "operation canceled"
 			}

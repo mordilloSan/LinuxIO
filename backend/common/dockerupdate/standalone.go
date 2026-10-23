@@ -226,7 +226,8 @@ func parkStandaloneOriginal(
 	}
 	if tx.OriginalRunning {
 		if _, stopErr := cli.ContainerStop(ctx, tx.OriginalID, client.ContainerStopOptions{}); stopErr != nil {
-			return errors.Join(fmt.Errorf("stop standalone container %q: %w", tx.OriginalName, stopErr), clearStandaloneJournal(journal))
+			rollbackErr := restoreOriginalRunningState(ctx, cli, tx.OriginalID, tx.OriginalRunning)
+			return errors.Join(fmt.Errorf("stop standalone container %q: %w", tx.OriginalName, stopErr), clearJournalAfterRollback(journal, rollbackErr))
 		}
 	}
 	if _, renameErr := cli.ContainerRename(ctx, tx.OriginalID, client.ContainerRenameOptions{NewName: tx.BackupName}); renameErr != nil {

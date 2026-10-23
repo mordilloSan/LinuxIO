@@ -47,10 +47,7 @@ func UnitDescription(operationID string, uid uint32) string {
 // BoundedMessage trims message to a size safe to persist and never returns it
 // empty.
 func BoundedMessage(message string) string {
-	message = strings.TrimSpace(message)
-	if len(message) > 1024 {
-		return message[:1024]
-	}
+	message = durabletask.ClampMessage(strings.TrimSpace(message), 1024)
 	if message == "" {
 		return "durable Docker update failed"
 	}

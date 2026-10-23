@@ -241,7 +241,7 @@ func TranslateContainerPathToHost(ctx context.Context, cli *client.Client, conta
 	for _, priorityName := range priorityNames {
 		for _, ctr := range containers.Items {
 			// Check if container name contains the priority name
-			containerName := strings.TrimPrefix(ctr.Names[0], "/")
+			containerName := PrimaryContainerName(ctr)
 			if strings.Contains(strings.ToLower(containerName), priorityName) {
 				if hostPath := tryTranslatePath(ctx, cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
 					return hostPath
@@ -252,7 +252,7 @@ func TranslateContainerPathToHost(ctx context.Context, cli *client.Client, conta
 
 	// Check all other containers
 	for _, ctr := range containers.Items {
-		containerName := strings.TrimPrefix(ctr.Names[0], "/")
+		containerName := PrimaryContainerName(ctr)
 		if hostPath := tryTranslatePath(ctx, cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
 			return hostPath
 		}
