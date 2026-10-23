@@ -16,6 +16,7 @@ import {
   formatMemory,
   normalizeState,
   stateChipColor,
+  vmOSLabel,
 } from "./vmShared";
 
 const detailPanelStyle: CSSProperties = {
@@ -215,6 +216,7 @@ export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
             />
           </div>
         </div>
+        <StatItem label="Operating system" value={vmOSLabel(vm.os)} />
         <StatItem
           label="Firmware"
           value={vm.firmware === "uefi" ? "UEFI" : "BIOS (legacy)"}

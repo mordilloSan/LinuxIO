@@ -191,6 +191,12 @@ export const VM_OS_OPTIONS = [
   { id: "win", label: "Windows" },
 ] as const;
 
+/** A readable name for a VM's OS id, or "Unknown". */
+export function vmOSLabel(os?: string): string {
+  if (!os) return "Unknown";
+  return VM_OS_OPTIONS.find((option) => option.id === os)?.label ?? os;
+}
+
 /** The logo for a VM's OS id; a plain screen when the OS is unknown. */
 export function vmOSIcon(os?: string): string {
   if (!os) return "mdi:monitor";

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import "@/icons/icons";
 import "@/icons/shell";
 
-import { vmOSIcon } from "./vmShared";
+import { VM_OS_OPTIONS, vmOSIcon, vmOSLabel } from "./vmShared";
 
 describe("vmOSIcon", () => {
   it("maps OS ids to logos and falls back sensibly", () => {
@@ -13,6 +13,14 @@ describe("vmOSIcon", () => {
     expect(vmOSIcon("win")).toBe("mdi:microsoft-windows");
     expect(vmOSIcon("silverblue")).toBe("simple-icons:linux");
     expect(vmOSIcon(undefined)).toBe("mdi:monitor");
+  });
+});
+
+describe("vmOSLabel", () => {
+  it("names known ids and keeps unknown ones readable", () => {
+    expect(vmOSLabel("homeassistant")).toBe("Home Assistant OS");
+    expect(vmOSLabel("silverblue")).toBe("silverblue");
+    expect(vmOSLabel(undefined)).toBe("Unknown");
   });
 });
 
@@ -27,6 +35,7 @@ describe("bundled VM OS icons", () => {
       "homeassistant",
       "ubuntu",
       "silverblue",
+      ...VM_OS_OPTIONS.map((option) => option.id),
     ]) {
       const icon = vmOSIcon(os);
       expect(getIcon(icon)?.body, icon).toBeTruthy();

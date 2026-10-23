@@ -265,14 +265,20 @@ export default function VMListTable({
                 label="Delete"
                 onClick={() => onDelete(vm)}
               />
-              <AppActionIconButton
-                disabled={rowBusy || (!running && !paused)}
-                icon="mdi:dots-horizontal"
-                label="More actions"
-                onClick={(event) =>
-                  setMenu({ anchor: event.currentTarget, name: vm.name })
-                }
-              />
+              {/* Reboot, Suspend and Force off only apply to a live VM; the
+                  hidden button keeps the row's buttons aligned. */}
+              <span
+                style={running || paused ? undefined : { visibility: "hidden" }}
+              >
+                <AppActionIconButton
+                  disabled={rowBusy}
+                  icon="mdi:dots-horizontal"
+                  label="More actions"
+                  onClick={(event) =>
+                    setMenu({ anchor: event.currentTarget, name: vm.name })
+                  }
+                />
+              </span>
             </div>
           );
         },

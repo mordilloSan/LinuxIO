@@ -41,6 +41,7 @@ describe("VMDetailsPanel", () => {
   it("shows the firmware without an inline select", async () => {
     renderWithTanStackRouter(<VMDetailsPanel vm={vm} />);
     expect(await screen.findByText("BIOS (legacy)")).toBeInTheDocument();
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 });

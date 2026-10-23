@@ -23,10 +23,12 @@ import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 
 import { normalizeState, stateChipColor } from "./vmShared";
 
+// Cards share rows on wide screens; a lone card still spans one column only.
 const pageStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
+  alignItems: "start",
+  display: "grid",
   gap: "var(--app-space-16)",
+  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 560px), 1fr))",
   minHeight: 0,
 };
 

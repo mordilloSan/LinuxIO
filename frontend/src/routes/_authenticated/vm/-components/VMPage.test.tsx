@@ -749,7 +749,7 @@ describe("Virtual Machines page", () => {
 
   it("edits a shut-off VM from its row and follows a rename", async () => {
     const shutOff = { ...mocks.alpha, state: "shutoff" };
-    mocks.listVMs = [shutOff, mocks.beta];
+    mocks.listVMs = [shutOff, { ...mocks.beta, state: "running" }];
     mocks.virtUpdate.mockResolvedValue({ ...shutOff, name: "alpha2" });
     mocks.routeNavigate.mockResolvedValue(undefined);
     const { user } = await renderVMPage();
@@ -764,6 +764,13 @@ describe("Virtual Machines page", () => {
     expect(
       within(getVMRow("beta")).getByRole("button", { name: "Edit" }),
     ).toBeDisabled();
+    // A shut-off VM has no reboot, suspend or force off to offer.
+    expect(
+      within(getVMRow("alpha")).queryByRole("button", { name: "More actions" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(getVMRow("beta")).getByRole("button", { name: "More actions" }),
+    ).toBeEnabled();
     await user.click(
       within(getVMRow("alpha")).getByRole("button", { name: "Edit" }),
     );
