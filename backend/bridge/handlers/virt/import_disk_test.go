@@ -52,6 +52,7 @@ func writeOVA(t *testing.T, ovf string) string {
 }
 
 func TestImportDiskFileConvertsOVAAndDetectsBIOSFirmware(t *testing.T) {
+	withFakeManagedStoragePermissions(t)
 	fakeImportCommands(t, "10737418240")
 	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
 
@@ -71,6 +72,7 @@ func TestImportDiskFileConvertsOVAAndDetectsBIOSFirmware(t *testing.T) {
 }
 
 func TestImportDiskFileKeepsLargerImageAndEFIFirmware(t *testing.T) {
+	withFakeManagedStoragePermissions(t)
 	fakeImportCommands(t, "34359738368")
 	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
 
@@ -84,6 +86,7 @@ func TestImportDiskFileKeepsLargerImageAndEFIFirmware(t *testing.T) {
 }
 
 func TestImportDiskFileDetectsTerraMasterOVMF(t *testing.T) {
+	withFakeManagedStoragePermissions(t)
 	fakeImportCommands(t, "34359738368")
 	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
 

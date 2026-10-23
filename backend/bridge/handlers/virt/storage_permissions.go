@@ -5,9 +5,12 @@ import (
 	"os"
 	"os/user"
 	"strconv"
+	"strings"
 
 	"libvirt.org/go/libvirtxml"
 )
+
+var qemuAccountNames = []string{"libvirt-qemu", "qemu"}
 
 var (
 	chmodFile    = os.Chmod
@@ -16,32 +19,30 @@ var (
 )
 
 func makeManagedWritableDiskAccessible(path string) error {
-	return makeManagedFileAccessible(path, 0o660, 0o666)
+	return makeManagedFileAccessible(path, 0o660)
 }
 
 func makeManagedReadOnlyDiskAccessible(path string) error {
-	return makeManagedFileAccessible(path, 0o640, 0o644)
+	return makeManagedFileAccessible(path, 0o640)
 }
 
-func makeManagedFileAccessible(path string, ownerMode, fallbackMode os.FileMode) error {
+// Never loosen the mode as a fallback: seed images carry credentials and disks must not be world-writable.
+func makeManagedFileAccessible(path string, mode os.FileMode) error {
 	uid, gid, ok := libvirtQEMUUserAndGroup()
-	if ok && os.Geteuid() == 0 {
-		if chownErr := chownFile(path, uid, gid); chownErr != nil {
-			return fmt.Errorf("set qemu ownership on %s: %w", path, chownErr)
-		}
-		if chmodErr := chmodFile(path, ownerMode); chmodErr != nil {
-			return fmt.Errorf("set qemu permissions on %s: %w", path, chmodErr)
-		}
-		return nil
+	if !ok {
+		return fmt.Errorf("set qemu ownership on %s: no qemu account found (tried %s)", path, strings.Join(qemuAccountNames, ", "))
 	}
-	if chmodErr := chmodFile(path, fallbackMode); chmodErr != nil {
-		return fmt.Errorf("set qemu-readable permissions on %s: %w", path, chmodErr)
+	if chownErr := chownFile(path, uid, gid); chownErr != nil {
+		return fmt.Errorf("set qemu ownership on %s: %w", path, chownErr)
+	}
+	if chmodErr := chmodFile(path, mode); chmodErr != nil {
+		return fmt.Errorf("set qemu permissions on %s: %w", path, chmodErr)
 	}
 	return nil
 }
 
 func libvirtQEMUUserAndGroup() (int, int, bool) {
-	for _, username := range []string{"libvirt-qemu", "qemu"} {
+	for _, username := range qemuAccountNames {
 		account, lookupErr := lookupOSUser(username)
 		if lookupErr != nil {
 			continue

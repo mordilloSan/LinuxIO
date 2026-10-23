@@ -76,19 +76,31 @@ func withFakeManagedStoragePermissions(t *testing.T) {
 	t.Helper()
 	oldMkdirAll := mkdirAll
 	oldChmodFile := chmodFile
-	oldLookupOSUser := lookupOSUser
+	withFakeQEMUOwnership(t)
 	mkdirAll = func(string, os.FileMode) error {
 		return nil
 	}
 	chmodFile = func(string, os.FileMode) error {
 		return nil
 	}
-	lookupOSUser = func(string) (*user.User, error) {
-		return nil, errors.New("missing")
-	}
 	t.Cleanup(func() {
 		mkdirAll = oldMkdirAll
 		chmodFile = oldChmodFile
+	})
+}
+
+func withFakeQEMUOwnership(t *testing.T) {
+	t.Helper()
+	oldChownFile := chownFile
+	oldLookupOSUser := lookupOSUser
+	chownFile = func(string, int, int) error {
+		return nil
+	}
+	lookupOSUser = func(string) (*user.User, error) {
+		return &user.User{Uid: "1", Gid: "1"}, nil
+	}
+	t.Cleanup(func() {
+		chownFile = oldChownFile
 		lookupOSUser = oldLookupOSUser
 	})
 }

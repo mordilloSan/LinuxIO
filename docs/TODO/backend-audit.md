@@ -310,17 +310,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: none for CIDR-only stanzas.
   - Done 2026-10-23: `SetIPv4Manual` deletes `netmask`/`broadcast`/`network` before setting `address`; `SetIPv4DHCP` drops them too. Test: `TestIfupdownSetIPv4ManualDropsLegacyNetmask`.
 
-- [ ] **28. Slow guest-agent lookup kills the libvirt connection before metrics are fetched**
+- [x] **28. Slow guest-agent lookup kills the libvirt connection before metrics are fetched**
   `backend/bridge/handlers/virt/domains.go:30-31,53-54`, `domain_addresses.go:14-30`
   - `[worker]`: the 3 s interrupt closes the shared transport; `enrichMetrics` then fails silently for every VM.
   - Fix: call `enrichMetrics` before `enrichBridgeAddresses` (two-line swap in `ListVMs`/`GetVM`).
   - Behaviour change: none except metrics present.
+  - Done 2026-10-23: `ListVMs`/`GetVM` call `enrichMetrics` before `enrichBridgeAddresses`. Test: `TestListAndGetVMsFetchMetricsBeforeBridgeAddresses`.
 
-- [ ] **29. chmod 0666/0644 fallback on VM disks and on a seed holding a plaintext password**
+- [x] **29. chmod 0666/0644 fallback on VM disks and on a seed holding a plaintext password**
   `backend/bridge/handlers/virt/storage_permissions.go:18-40`, `cloud_init.go` (`buildCloudInitUserData`)
   - `[worker]`: when neither `libvirt-qemu` nor `qemu` exists, disks become world-writable and the seed world-readable.
   - Fix: fail clearly or `0640` + `chgrp`; prefer hashed passwords in the seed.
   - Behaviour change: on such distros VM creation fails with a clear error instead of loosening permissions.
+  - Done 2026-10-23: `makeManagedFileAccessible` drops the 0666/0644 fallback and the root gate (every `virt.*` route is `Privileged()`, so the bridge is root here) and errors naming the qemu accounts tried; disks 0660, seeds 0640. Cloud-init content unchanged. Test: `TestMakeManagedFileAccessibleFailsWithoutQEMUAccountAndKeepsMode`.
 
 - [x] **30. `delete_stack` with `deleteDirectory` can `RemoveAll` a shared directory**
   `backend/bridge/handlers/docker/compose.go:412-430`

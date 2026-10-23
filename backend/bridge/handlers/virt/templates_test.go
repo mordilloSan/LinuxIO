@@ -60,6 +60,7 @@ func ensureTemplateForTest(ctx context.Context, store vmTemplateStore, preset vm
 }
 
 func TestTemplateReuseAcrossSessionsAndDeletionKeepsVMDisk(t *testing.T) {
+	withFakeQEMUOwnership(t)
 	decompressions := fakeTemplateCommands(t)
 	var downloads atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
