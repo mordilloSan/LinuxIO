@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"os"
@@ -46,6 +47,7 @@ type uploadTransferTask struct {
 	expectedSize    int64
 	expectedVersion string
 	owner           uploadOwner
+	overwrite       bool
 
 	// finalRel, tempRel and attrs are guarded by mu.
 	finalRel string
@@ -92,32 +94,57 @@ func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes
 	return attrs, nil
 }
 
-// restoreUploadedFile settles ownership, mode and time on the renamed upload.
+// restoreUploadedFile settles ownership, mode and time on the upload buffer
+// before it is committed, so the target mode never lags behind the content.
 // Ownership goes first because a chown clears setuid and setgid bits.
-func restoreUploadedFile(root *fsroot.FSRoot, realRel string, attrs uploadAttributes) {
-	switch {
-	case attrs.hasExisting:
-		if err := root.Root.Chown(realRel, attrs.uid, attrs.gid); err != nil {
-			slog.Debug("failed to restore uploaded file ownership", "path", realRel, "error", err)
+func restoreUploadedFile(root *fsroot.FSRoot, rel string, attrs uploadAttributes) error {
+	if attrs.hasExisting {
+		if err := root.Root.Chown(rel, attrs.uid, attrs.gid); err != nil {
+			return fmt.Errorf("restore upload ownership: %w", err)
 		}
-		if err := root.Root.Chmod(realRel, attrs.mode); err != nil {
-			slog.Debug("failed to restore uploaded file permissions", "path", realRel, "error", err)
+		if err := root.Root.Chmod(rel, attrs.mode); err != nil {
+			return fmt.Errorf("restore upload permissions: %w", err)
 		}
-	default:
+	} else {
 		if attrs.owner.set && os.Geteuid() == 0 {
-			if err := root.Root.Chown(realRel, int(attrs.owner.uid), int(attrs.owner.gid)); err != nil {
-				slog.Debug("failed to hand uploaded file to session user", "path", realRel, "error", err)
+			if err := root.Root.Chown(rel, int(attrs.owner.uid), int(attrs.owner.gid)); err != nil {
+				return fmt.Errorf("hand upload to session user: %w", err)
 			}
 		}
-		if err := root.Root.Chmod(realRel, services.PermFile); err != nil {
-			slog.Debug("failed to set uploaded file permissions", "path", realRel, "error", err)
+		if err := root.Root.Chmod(rel, services.PermFile); err != nil {
+			return fmt.Errorf("set upload permissions: %w", err)
 		}
 	}
 	if !attrs.modTime.IsZero() {
-		if err := root.Root.Chtimes(realRel, attrs.modTime, attrs.modTime); err != nil {
-			slog.Debug("failed to apply uploaded file modified time", "path", realRel, "error", err)
+		if err := root.Root.Chtimes(rel, attrs.modTime, attrs.modTime); err != nil {
+			slog.Debug("failed to apply uploaded file modified time", "path", rel, "error", err)
 		}
 	}
+	return nil
+}
+
+// commitUploadBuffer moves the finished buffer into place. Without overwrite
+// it links instead of renaming, so a file that appeared since the upload
+// started is never replaced.
+func commitUploadBuffer(root *fsroot.FSRoot, tempRel, finalRel string, overwrite bool) error {
+	if overwrite {
+		return root.Root.Rename(tempRel, finalRel)
+	}
+	if err := root.Root.Link(tempRel, finalRel); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		// No hard links here (FAT, SMB, some FUSE): fall back to the old
+		// stat-then-rename rather than refusing every upload on that mount.
+		if _, statErr := root.Root.Lstat(finalRel); statErr == nil {
+			return fs.ErrExist
+		}
+		return root.Root.Rename(tempRel, finalRel)
+	}
+	if err := root.Root.Remove(tempRel); err != nil {
+		slog.Warn("failed to remove committed upload buffer", "path", tempRel, "error", err)
+	}
+	return nil
 }
 
 func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest, owner uploadOwner) (any, error) {
@@ -151,6 +178,7 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		expectedSize:    expectedSize,
 		expectedVersion: expectedVersion,
 		owner:           owner,
+		overwrite:       overwrite,
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
 	defer registerTransfer(task.ID(), transfer)()
@@ -237,7 +265,7 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 
 	partName := "." + filepath.Base(realRel) + ".linuxio-upload-" + t.task.ID() + ".part"
 	tempRel := filepath.Join(filepath.Dir(realRel), partName)
-	file, err := root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
+	file, err := root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600) // owner-only until restoreUploadedFile applies the target mode
 	if err != nil {
 		return fmt.Errorf("create upload buffer: %w", err)
 	}
@@ -304,7 +332,6 @@ func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot, file
 	total := t.expectedSize
 	finalRel := t.finalRel
 	tempRel := t.tempRel
-	attrs := t.attrs
 	path := t.path
 	t.mu.Unlock()
 
@@ -316,7 +343,6 @@ func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot, file
 		return t.fail(stream, commitErr.Error(), code, commitErr)
 	}
 
-	restoreUploadedFile(root, finalRel, attrs)
 	if _, err := root.Root.Stat(finalRel); err == nil {
 		addToIndexerDetached("upload", path)
 	}
@@ -342,7 +368,16 @@ func (t *uploadTransferTask) commit(root *fsroot.FSRoot, file *os.File, path, te
 	if err := file.Close(); err != nil {
 		return 500, fmt.Errorf("close upload: %w", err)
 	}
-	if err := root.Root.Rename(tempRel, finalRel); err != nil {
+	t.mu.Lock()
+	attrs := t.attrs
+	t.mu.Unlock()
+	if err := restoreUploadedFile(root, tempRel, attrs); err != nil {
+		return 500, err
+	}
+	if err := commitUploadBuffer(root, tempRel, finalRel, t.overwrite); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return 409, fmt.Errorf("destination already exists: %w", err)
+		}
 		return 500, fmt.Errorf("finalize upload: %w", err)
 	}
 	return 0, nil

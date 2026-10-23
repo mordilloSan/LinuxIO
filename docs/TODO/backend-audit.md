@@ -357,11 +357,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: reset on success; back off instead of returning; return zero data when stale.
   - Behaviour change: GPU panels recover after transient failures; stale readings become zeros.
 
-- [ ] **35. Upload commit exposes the wrong mode briefly; no-overwrite check is stale**
+- [x] **35. Upload commit exposes the wrong mode briefly; no-overwrite check is stale**
   `backend/bridge/handlers/filebrowser/upload_operation.go:97-121,301-349`, `upload_batch_operation.go:411-430`
   - `[worker]`: `.part` (0664) is renamed over a 0600 target before chmod; chmod/chown failures only Debug-logged; `overwrite=false` checked at task start, rename at the end replaces anything that appeared.
   - Fix: chmod/chown the temp fd before rename and return errors; commit with `Link` + remove for `!overwrite`.
   - Behaviour change: a chmod/chown failure now fails the upload; a file that appeared mid-upload is not overwritten.
+  - Done 2026-10-23: `restoreUploadedFile` applies mode/ownership to the 0600 temp buffer before commit and returns errors; `commitUploadBuffer` links (EEXIST → 409) when `!overwrite`/keep-both, falling back to stat-then-rename on filesystems without hard links (FAT, SMB, some FUSE). Tests: `TestUploadTaskCommit{KeepsRestrictiveTargetMode,FailsWhenOwnershipCannotBeRestored,DoesNotReplaceFileCreatedAfterStart,WithoutOverwriteLinksNewFile}`.
 
 - [ ] **36. File operations fail below a directory symlink whose target is absolute**
   `backend/bridge/handlers/filebrowser/fsroot/fsroot.go`, `services/info_operations.go:119-133`, `download_stream.go:67`, `services/safe_open.go:102-112`

@@ -3,8 +3,10 @@ package filebrowser
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,7 +51,7 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 	t.Cleanup(func() { _ = root.Close() })
 	task, err := bridgeipc.NewTaskService().Create(routeUpload, apischema.FileUploadRequest{TargetPath: link, Size: "3"})
 	require.NoError(t, err)
-	transfer := &uploadTransferTask{transferLifecycle: &transferLifecycle{task: task}, ctx: context.Background(), path: link, expectedSize: 3, expectedVersion: opened.Version}
+	transfer := &uploadTransferTask{transferLifecycle: &transferLifecycle{task: task}, ctx: context.Background(), path: link, expectedSize: 3, expectedVersion: opened.Version, overwrite: true}
 	require.NoError(t, transfer.prepare(root))
 
 	file, err := root.Root.OpenFile(transfer.tempRel, os.O_WRONLY, 0)
@@ -66,6 +68,87 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 	content, err := os.ReadFile(target)
 	require.NoError(t, err)
 	require.Equal(t, "new", string(content))
+}
+
+// commitTestUpload prepares an upload to target and commits content through
+// the real prepare/commit path, returning the commit result.
+func commitTestUpload(t *testing.T, target, content string, overwrite bool, mutate func(*uploadTransferTask)) (int, error) {
+	t.Helper()
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+	task, err := bridgeipc.NewTaskService().Create(routeUpload, apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(len(content))})
+	require.NoError(t, err)
+	transfer := &uploadTransferTask{transferLifecycle: &transferLifecycle{task: task}, ctx: context.Background(), path: target, expectedSize: int64(len(content)), overwrite: overwrite}
+	require.NoError(t, transfer.prepare(root))
+	if mutate != nil {
+		mutate(transfer)
+	}
+
+	file, err := root.Root.OpenFile(transfer.tempRel, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = file.WriteString(content)
+	require.NoError(t, err)
+	return transfer.commit(root, file, target, transfer.tempRel, transfer.finalRel)
+}
+
+func TestUploadTaskCommitKeepsRestrictiveTargetMode(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "authorized_keys")
+	require.NoError(t, os.WriteFile(target, []byte("old"), 0o600))
+
+	_, err := commitTestUpload(t, target, "new", true, nil)
+	require.NoError(t, err)
+
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	content, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "new", string(content))
+}
+
+func TestUploadTaskCommitFailsWhenOwnershipCannotBeRestored(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can chown to any owner")
+	}
+	target := filepath.Join(t.TempDir(), "secret.env")
+	require.NoError(t, os.WriteFile(target, []byte("old"), 0o600))
+
+	code, err := commitTestUpload(t, target, "new", true, func(transfer *uploadTransferTask) {
+		transfer.attrs.uid = 0
+	})
+	require.Error(t, err)
+	require.Equal(t, 500, code)
+	content, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, "old", string(content))
+}
+
+func TestUploadTaskCommitDoesNotReplaceFileCreatedAfterStart(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "f.txt")
+
+	code, err := commitTestUpload(t, target, "new", false, func(*uploadTransferTask) {
+		require.NoError(t, os.WriteFile(target, []byte("appeared"), 0o644))
+	})
+	require.ErrorIs(t, err, fs.ErrExist)
+	require.Equal(t, 409, code)
+	content, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, "appeared", string(content))
+}
+
+func TestUploadTaskCommitWithoutOverwriteLinksNewFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "f.txt")
+
+	_, err := commitTestUpload(t, target, "new", false, nil)
+	require.NoError(t, err)
+	content, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	require.Equal(t, "new", string(content))
+	entries, readErr := os.ReadDir(dir)
+	require.NoError(t, readErr)
+	require.Len(t, entries, 1, "buffer must be removed after linking")
 }
 
 func TestUploadTaskPreservesVersionReadErrors(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"os"
@@ -358,7 +359,7 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 
 	partName := fmt.Sprintf(".%s.linuxio-upload-%s-%d.part", filepath.Base(finalRel), t.task.ID(), index)
 	tempRel := filepath.Join(filepath.Dir(finalRel), partName)
-	file, err := session.root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, services.PermFile)
+	file, err := session.root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600) // owner-only until restoreUploadedFile applies the target mode
 	if err != nil {
 		return fmt.Errorf("create upload buffer: %w", err)
 	}
@@ -437,12 +438,18 @@ func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession) e
 
 	t.mu.Lock()
 	tempRel, finalRel, attrs := t.tempRel, t.finalRel, t.attrs
+	overwrite := t.overwrite && !t.files[t.index].keepBoth
 	t.mu.Unlock()
 
-	if err := session.root.Root.Rename(tempRel, finalRel); err != nil {
+	if err := restoreUploadedFile(session.root, tempRel, attrs); err != nil {
+		return err
+	}
+	if err := commitUploadBuffer(session.root, tempRel, finalRel, overwrite); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("destination already exists: %w", err)
+		}
 		return fmt.Errorf("finalize upload: %w", err)
 	}
-	restoreUploadedFile(session.root, finalRel, attrs)
 	return nil
 }
 

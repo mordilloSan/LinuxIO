@@ -445,7 +445,7 @@ func TestUploadBatchDoesNotOverwriteByDefault(t *testing.T) {
 
 func TestUploadBatchOverwriteReplacesExisting(t *testing.T) {
 	dest := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dest, "exists.txt"), []byte("old"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dest, "exists.txt"), []byte("old"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
 
@@ -475,6 +475,10 @@ func TestUploadBatchOverwriteReplacesExisting(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dest, "exists.txt"))
 	if err != nil || string(got) != "XXX" {
 		t.Fatalf("exists.txt = %q, err %v", got, err)
+	}
+	info, err := os.Stat(filepath.Join(dest, "exists.txt"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("exists.txt mode = %v, err %v, want 0600", info.Mode().Perm(), err)
 	}
 	waitTaskDone(t, task)
 }
