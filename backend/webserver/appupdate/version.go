@@ -27,6 +27,16 @@ const maxGitHubReleaseBodyBytes int64 = 1 << 20
 
 var componentVersionCommandTimeout = time.Second
 
+// componentVersionCacheTTL bounds how often the unauthenticated /api/version
+// endpoint can fork the component probes. A restart empties the cache.
+const componentVersionCacheTTL = 5 * time.Second
+
+var (
+	versionCacheMu  sync.Mutex
+	versionCacheAt  time.Time
+	versionCacheVal map[string]string
+)
+
 var runComponentVersionCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, name, args...).Output()
 }
@@ -180,6 +190,22 @@ func getComponentVersions(parent context.Context) map[string]string {
 	return components
 }
 
+// cachedComponentVersions serves getComponentVersions from a short-lived cache
+// so anonymous callers cannot multiply process forks. Concurrent callers wait
+// on the lock and reuse the fresh result. The returned map is read-only.
+func cachedComponentVersions(ctx context.Context) map[string]string {
+	versionCacheMu.Lock()
+	defer versionCacheMu.Unlock()
+	if versionCacheVal != nil && time.Since(versionCacheAt) < componentVersionCacheTTL {
+		return versionCacheVal
+	}
+	components := getComponentVersions(ctx)
+	if ctx.Err() == nil { // a cancelled request yields partial probes; do not cache them
+		versionCacheVal, versionCacheAt = components, time.Now()
+	}
+	return components
+}
+
 func parseComponentVersionOutput(component string, output []byte) (string, bool) {
 	for line := range strings.SplitSeq(string(output), "\n") {
 		line = strings.TrimSpace(line)
@@ -207,7 +233,7 @@ func parseComponentVersionOutput(component string, output []byte) (string, bool)
 // handleVersion returns installed component versions (public endpoint, no auth required).
 // Used by frontend to detect when server is back up after updates.
 func handleVersion(w http.ResponseWriter, r *http.Request) {
-	web.WriteJSON(w, http.StatusOK, getComponentVersions(r.Context()))
+	web.WriteJSON(w, http.StatusOK, cachedComponentVersions(r.Context()))
 }
 
 // handleUpdateInfo reports whether a newer LinuxIO release is available. Update

@@ -111,6 +111,37 @@ func TestLoadOrCreateSelfSignedCertRenewsNearExpiry(t *testing.T) {
 	}
 }
 
+func TestLoadOrCreateSelfSignedCertRegeneratesMismatchedPair(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	first, err := loadOrCreateSelfSignedCert(dir, now, "wdeserver", nil)
+	if err != nil {
+		t.Fatalf("first loadOrCreateSelfSignedCert: %v", err)
+	}
+	other, err := generateSelfSignedCert(now, "wdeserver", nil)
+	if err != nil {
+		t.Fatalf("generateSelfSignedCert: %v", err)
+	}
+	if writeErr := os.WriteFile(filepath.Join(dir, managedPrivateKeyFilename), other.privateKeyPEM, 0o600); writeErr != nil {
+		t.Fatalf("write mismatched key: %v", writeErr)
+	}
+
+	second, err := loadOrCreateSelfSignedCert(dir, now, "wdeserver", nil)
+	if err != nil {
+		t.Fatalf("loadOrCreateSelfSignedCert with mismatched pair: %v", err)
+	}
+	if bytes.Equal(first.Certificate[0], second.Certificate[0]) {
+		t.Fatal("mismatched pair was not regenerated")
+	}
+	third, err := loadOrCreateSelfSignedCert(dir, now, "wdeserver", nil)
+	if err != nil {
+		t.Fatalf("reload regenerated pair: %v", err)
+	}
+	if !bytes.Equal(second.Certificate[0], third.Certificate[0]) {
+		t.Fatal("regenerated pair was not persisted")
+	}
+}
+
 func TestLoadOrCreateSelfSignedCertRejectsIncompletePair(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, managedCertificateFilename), []byte("certificate"), 0o644); err != nil {

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"bytes"
 	"strings"
 	"testing"
@@ -156,6 +157,9 @@ func TestWriteAuthRequest_RejectsFieldsTheCReceiverCannotRepresent(t *testing.T)
 			}
 			if !strings.Contains(err.Error(), tt.fieldName) {
 				t.Fatalf("error = %q, want field %q", err, tt.fieldName)
+			}
+			if !errors.Is(err, ErrInvalidField) {
+				t.Fatalf("error = %v, want ErrInvalidField", err)
 			}
 		})
 	}

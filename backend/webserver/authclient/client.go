@@ -2,6 +2,7 @@
 package authclient
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"time"
@@ -52,12 +53,16 @@ func (e *AuthError) IsUnauthorized() bool {
 // On success, returns the connection which is now connected to the forked bridge
 // process (the auth daemon passed our FD to the bridge via dup2).
 // The caller owns the connection and must close it.
-func Authenticate(req *authipc.AuthRequest) (*AuthResult, error) {
+// Cancelling ctx aborts the exchange by closing the connection.
+func Authenticate(ctx context.Context, req *authipc.AuthRequest) (*AuthResult, error) {
 	// Connect to daemon
-	conn, err := net.DialTimeout("unix", authSocketPath, authDialTimeout)
+	dialer := net.Dialer{Timeout: authDialTimeout}
+	conn, err := dialer.DialContext(ctx, "unix", authSocketPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to auth daemon: %w", err)
 	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
 
 	// Set timeouts
 	if deadlineErr := conn.SetWriteDeadline(time.Now().Add(authWriteTimeout)); deadlineErr != nil {
@@ -81,6 +86,12 @@ func Authenticate(req *authipc.AuthRequest) (*AuthResult, error) {
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to read auth response: %w", err)
+	}
+	// Disarm the cancel hook before the connection is handed to yamux; if it
+	// already fired, the connection is closed and unusable.
+	if !stop() {
+		conn.Close()
+		return nil, fmt.Errorf("auth request cancelled: %w", ctx.Err())
 	}
 
 	if !resp.IsOK() {

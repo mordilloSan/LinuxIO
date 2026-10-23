@@ -1,6 +1,7 @@
 package authclient
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 )
@@ -161,7 +163,7 @@ func TestAuthenticateSuccess(t *testing.T) {
 		serverErr <- nil
 	}()
 
-	result, err := Authenticate(req)
+	result, err := Authenticate(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Authenticate: %v", err)
 	}
@@ -206,7 +208,7 @@ func TestAuthenticateUnauthorized(t *testing.T) {
 	}()
 
 	req := BuildRequest("bob", "sess-2", "wrong", "10.0.0.2", false)
-	result, err := Authenticate(req)
+	result, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
 	}
@@ -248,7 +250,7 @@ func TestAuthenticateErrorEmptyMessage(t *testing.T) {
 	}()
 
 	req := BuildRequest("carol", "sess-3", "pw", "10.0.0.3", false)
-	_, err := Authenticate(req)
+	_, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
 	}
@@ -287,7 +289,7 @@ func TestAuthenticateTruncatedResponse(t *testing.T) {
 	}()
 
 	req := BuildRequest("dave", "sess-4", "pw", "10.0.0.4", false)
-	_, err := Authenticate(req)
+	_, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
 	}
@@ -306,7 +308,7 @@ func TestAuthenticateDialFailure(t *testing.T) {
 	t.Cleanup(func() { authSocketPath = prev })
 
 	req := BuildRequest("erin", "sess-5", "pw", "10.0.0.5", false)
-	_, err := Authenticate(req)
+	_, err := Authenticate(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -339,7 +341,7 @@ func TestAuthenticateBadMagicResponse(t *testing.T) {
 	}()
 
 	req := BuildRequest("frank", "sess-6", "pw", "10.0.0.6", false)
-	_, err := Authenticate(req)
+	_, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
 	}
@@ -349,5 +351,28 @@ func TestAuthenticateBadMagicResponse(t *testing.T) {
 	}
 	if authErr, ok := errors.AsType[*AuthError](err); ok {
 		t.Fatalf("expected non-AuthError, got *AuthError: %v", authErr)
+	}
+}
+
+func TestAuthenticateCancelledContextClosesConnection(t *testing.T) {
+	ln := listenAuthSocket(t)
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = readDecodedRequest(conn)
+		// Never answer: the client must give up when its context is cancelled.
+		_, _ = io.Copy(io.Discard, conn)
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+
+	_, err := Authenticate(ctx, BuildRequest("bob", "sess-c", "pw", "10.0.0.2", false))
+	if err == nil {
+		t.Fatal("expected an error after cancellation")
 	}
 }

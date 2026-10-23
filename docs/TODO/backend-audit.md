@@ -238,29 +238,33 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: old dismissed alerts disappear from history once the store is full; new alerts are never lost.
   - Done 2026-10-23: `Raise` evicts via `evictIndex` (oldest dismissed, else oldest) when full. Test: `TestRaiseEvictsWhenStoreIsFull`.
 
-- [ ] **20a. Public `/api/version` forks 4 processes per request, uncached**
+- [x] **20a. Public `/api/version` forks 4 processes per request, uncached**
   `backend/webserver/appupdate/routes.go:12` (no `RequireSession`), `version.go:129-175`
   - Verified `[source]`; the frontend polls it to detect a restart (`frontend/src/api/webserver.ts:94-110`).
   - Fix: cache the map for a few seconds behind a mutex, or `singleflight`.
   - Behaviour change: version may be ≤ TTL stale; a restart clears the cache, so restart detection is unaffected.
+  - Done 2026-10-23: `cachedComponentVersions` (5 s TTL behind a mutex; a cancelled request is not cached) fronts `handleVersion`. Test: `TestVersionHandlerCachesProbesWithinTTL`.
 
-- [ ] **20b. TLS renewal writes key then cert non-atomically; mismatch bricks startup**
+- [x] **20b. TLS renewal writes key then cert non-atomically; mismatch bricks startup**
   `backend/webserver/tlsserver/certificate.go:173-183` (`persistCertificatePair`), `:84-96` (`loadCertificatePair` error is fatal)
   - Verified `[source]`: a crash between the two writes leaves new key + old cert; `X509KeyPair` fails on every start.
   - Fix: on a pair mismatch regenerate (fall through to `generateSelfSignedCert`); keep the "incomplete pair" error for a single missing file.
   - Behaviour change: self-heals with a new self-signed cert (browser trust prompt again) instead of failing to start.
+  - Done 2026-10-23: `loadCertificatePair` returns `errCertificatePairInvalid` on `X509KeyPair` failure and `loadOrCreateSelfSignedCert` regenerates (Warn log); any unparseable pair, not only a mismatch, is regenerated. Test: `TestLoadOrCreateSelfSignedCertRegeneratesMismatchedPair`.
 
-- [ ] **20c. Login ignores the request context; cancelled logins leave orphan bridges**
+- [x] **20c. Login ignores the request context; cancelled logins leave orphan bridges**
   `backend/webserver/authclient/client.go:55-57` (`DialTimeout`, no ctx), `bridge/bridge.go:63` (`StartBridge`, no ctx), `auth/auth.go:69`
   - Verified `[source]`: the handler keeps going after the client is gone, creates the session, spawns the bridge; the cookie is never delivered; the bridge lives until the 15 min idle GC and holds a login slot meanwhile.
   - Fix: `Authenticate(ctx, …)` with `DialContext` + `context.AfterFunc` close; `StartBridge(ctx, …)`; delete the session when `r.Context().Err() != nil`. Update the `startBridge` test seam.
   - Behaviour change: cancelled login requests create no session.
+  - Done 2026-10-23: `authclient.Authenticate(ctx, …)` (`DialContext` + `context.AfterFunc` close, disarmed before the yamux handoff), `bridge.StartBridge(ctx, …)`, `Login` deletes the session when the request context is already done. Tests: `TestAuthenticateCancelledContextClosesConnection`, `TestLogin_CancelledRequest_LeavesNoSession`.
 
-- [ ] **21. Bad login input returns 500 "could not start the session bridge"**
+- [x] **21. Bad login input returns 500 "could not start the session bridge"**
   `backend/webserver/auth/auth.go:72-99` (only `IsUnauthorized` codes map to 401/403), `backend/common/ipc/auth/auth.go:75-92` (`checkField`), C daemon `PROTO_RESULT_BAD_REQUEST` for empty/space/control-char usernames
   - Verified `[worker]` for the C side; `[source]` for the Go mapping. A trailing space from paste (`"bob "`) → HTTP 500, an Error-level log, and a false "bridge failed" message.
   - Fix: map `authipc.ResultBadRequest` and a new `ErrInvalidField` sentinel to 400 `invalid_request` at Warn level.
   - Behaviour change: such logins get 400 instead of 500.
+  - Done 2026-10-23: `authipc.ErrInvalidField` (wrapped by `checkField`) and `ResultBadRequest` map to 400 `invalid_request` at Warn in the new `writeStartBridgeError`. Tests: `TestLogin_InvalidInput_MapsTo400`, `TestWriteAuthRequest_RejectsUnrepresentableFields`.
 
 ## C. Should fix (from the sweeps, line-checked, not re-traced)
 

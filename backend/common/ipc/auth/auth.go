@@ -69,14 +69,17 @@ type AuthResponse struct {
 	Error      string
 }
 
+// ErrInvalidField marks a request field the auth protocol cannot carry.
+var ErrInvalidField = errors.New("invalid auth request field")
+
 // checkField rejects fields the C daemon cannot represent: its buffers are max
 // bytes including the NUL terminator, and embedded NULs are protocol-ambiguous.
 func checkField(name, s string, max int) error {
 	if len(s) >= max {
-		return fmt.Errorf("%s too long: %d bytes (limit %d)", name, len(s), max-1)
+		return fmt.Errorf("%w: %s too long: %d bytes (limit %d)", ErrInvalidField, name, len(s), max-1)
 	}
 	if strings.IndexByte(s, 0) >= 0 {
-		return fmt.Errorf("%s contains a NUL byte", name)
+		return fmt.Errorf("%w: %s contains a NUL byte", ErrInvalidField, name)
 	}
 	return nil
 }

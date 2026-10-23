@@ -77,37 +77,14 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remoteHost := web.ClientRemoteHost(r)
-	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
+	sess, err := startBridge(r.Context(), h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
 	if err != nil {
-		var authErr *authclient.AuthError
-		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
-			slog.Warn("authentication failed",
-				"component", "auth",
-				"subsystem", "login",
-				"user", req.Username,
-				"remote_host", remoteHost,
-				"error", err)
-			switch authErr.Code {
-			case authipc.ResultPasswordExpired, authipc.ResultAccessDenied:
-				msg := authErr.Message
-				if msg == "" {
-					msg = authErr.Code.DefaultMessage()
-				}
-				writeLoginError(w, http.StatusForbidden, authErr.Code.APIName(), msg)
-				return
-			default:
-				writeLoginError(w, http.StatusUnauthorized, authErr.Code.APIName(), "authentication failed")
-				return
-			}
-		}
-		slog.Error("failed to start bridge",
-			"component", "auth",
-			"subsystem", "login",
-			"user", req.Username,
-			"remote_host", remoteHost,
-			"session_ref", session.DiagnosticRef(sessionID),
-			"error", err)
-		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
+		writeStartBridgeError(w, req.Username, remoteHost, sessionID, err)
+		return
+	}
+	if r.Context().Err() != nil {
+		// The client is gone, so the cookie can never be delivered.
+		h.SM.DeleteSession(sess.SessionID, sessions.ReasonManual)
 		return
 	}
 
@@ -124,6 +101,46 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	web.WriteJSON(w, http.StatusOK, response)
+}
+
+// writeStartBridgeError maps a startBridge failure to the login response.
+func writeStartBridgeError(w http.ResponseWriter, username, remoteHost, sessionID string, err error) {
+	var authErr *authclient.AuthError
+	switch {
+	case errors.Is(err, authipc.ErrInvalidField) || (errors.As(err, &authErr) && authErr.Code == authipc.ResultBadRequest):
+		slog.Warn("login rejected: invalid credentials format",
+			"component", "auth",
+			"subsystem", "login",
+			"remote_host", remoteHost,
+			"error", err)
+		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+	case errors.As(err, &authErr) && authErr.IsUnauthorized():
+		slog.Warn("authentication failed",
+			"component", "auth",
+			"subsystem", "login",
+			"user", username,
+			"remote_host", remoteHost,
+			"error", err)
+		switch authErr.Code {
+		case authipc.ResultPasswordExpired, authipc.ResultAccessDenied:
+			msg := authErr.Message
+			if msg == "" {
+				msg = authErr.Code.DefaultMessage()
+			}
+			writeLoginError(w, http.StatusForbidden, authErr.Code.APIName(), msg)
+		default:
+			writeLoginError(w, http.StatusUnauthorized, authErr.Code.APIName(), "authentication failed")
+		}
+	default:
+		slog.Error("failed to start bridge",
+			"component", "auth",
+			"subsystem", "login",
+			"user", username,
+			"remote_host", remoteHost,
+			"session_ref", session.DiagnosticRef(sessionID),
+			"error", err)
+		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
+	}
 }
 
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {

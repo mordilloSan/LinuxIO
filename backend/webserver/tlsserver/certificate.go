@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"math/big"
 	"net"
 	"os"
@@ -30,6 +31,10 @@ const (
 	certificateClockSkew       = 5 * time.Minute
 	maxCertificateFileBytes    = 1 << 20
 )
+
+// errCertificatePairInvalid marks a managed pair whose files cannot form a key
+// pair, for example after a crash between the key and certificate writes.
+var errCertificatePairInvalid = errors.New("managed TLS certificate pair is invalid")
 
 type encodedCertificate struct {
 	certificate    tls.Certificate
@@ -82,15 +87,19 @@ func loadOrCreateSelfSignedCert(dir string, now time.Time, hostname string, ipAd
 
 	if certificateExists {
 		certificate, loadErr := loadCertificatePair(root)
-		if loadErr != nil {
+		switch {
+		case errors.Is(loadErr, errCertificatePairInvalid):
+			slog.Warn("regenerating managed TLS certificate", "dir", dir, "error", loadErr)
+		case loadErr != nil:
 			return tls.Certificate{}, loadErr
-		}
-		renew, renewalErr := certificateNeedsRenewal(certificate, now)
-		if renewalErr != nil {
-			return tls.Certificate{}, renewalErr
-		}
-		if !renew {
-			return certificate, nil
+		default:
+			renew, renewalErr := certificateNeedsRenewal(certificate, now)
+			if renewalErr != nil {
+				return tls.Certificate{}, renewalErr
+			}
+			if !renew {
+				return certificate, nil
+			}
 		}
 	}
 
@@ -129,7 +138,7 @@ func loadCertificatePair(root *os.Root) (tls.Certificate, error) {
 	}
 	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
 	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("parse managed TLS certificate pair: %w", err)
+		return tls.Certificate{}, fmt.Errorf("%w: %w", errCertificatePairInvalid, err)
 	}
 	return certificate, nil
 }

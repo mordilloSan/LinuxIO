@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -298,6 +299,26 @@ func TestVersionHandlerReturnsPartialResultsOnProbeFailure(t *testing.T) {
 	assertVersionMap(t, got, want)
 }
 
+func TestVersionHandlerCachesProbesWithinTTL(t *testing.T) {
+	var probes atomic.Int32
+	restore := stubVersionCollector(t, "v9.9.9", 50*time.Millisecond, func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		probes.Add(1)
+		return nil, errors.New("boom")
+	})
+	defer restore()
+
+	for range 2 {
+		rec := httptest.NewRecorder()
+		handleVersion(rec, httptest.NewRequest(http.MethodGet, "/api/version", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", rec.Code)
+		}
+	}
+	if got := probes.Load(); got != 4 {
+		t.Fatalf("expected 4 probes for two calls inside the TTL, got %d", got)
+	}
+}
+
 type probeCall struct {
 	name string
 	args []string
@@ -315,6 +336,7 @@ func stubVersionCollector(
 	oldTimeout := componentVersionCommandTimeout
 	oldRunner := runComponentVersionCommand
 
+	versionCacheAt = time.Time{}
 	ver.Version = version
 	componentVersionCommandTimeout = timeout
 	if runner != nil {
@@ -325,6 +347,7 @@ func stubVersionCollector(
 		ver.Version = oldVersion
 		componentVersionCommandTimeout = oldTimeout
 		runComponentVersionCommand = oldRunner
+		versionCacheAt = time.Time{}
 	}
 }
 
