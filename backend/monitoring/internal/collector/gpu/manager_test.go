@@ -2118,3 +2118,51 @@ echo "189  187      412  67  1.80  2.45   1950    823   8.50    2   1    15.00  
 	require.Contains(t, argsStr, "-s ")
 	require.Contains(t, argsStr, "-l")
 }
+
+func TestRocmSmiCollectorRecoversAfterTransientFailures(t *testing.T) {
+	retryWaitTime = time.Millisecond
+	t.Cleanup(func() { retryWaitTime = 5 * time.Second })
+
+	dir := t.TempDir()
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	// The first maxFailureRetries+1 runs print nothing parsable, later runs succeed.
+	counter := filepath.Join(dir, "runs")
+	script := fmt.Sprintf(`#!/bin/sh
+echo x >> %[1]s
+if [ "$(wc -l < %[1]s)" -le %[2]d ]; then echo 'not-json'; exit 0; fi
+echo '{"card0": {"GUID": "1", "Temperature (Sensor edge) (C)": "50.0", "GPU use (%%)": "10", "VRAM Total Memory (B)": "1048576", "VRAM Total Used Memory (B)": "1048576", "Card Series": "Radeon"}}'`, counter, maxFailureRetries+1)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "rocm-smi"), []byte(script), 0o755))
+
+	gm := &Manager{GpuDataMap: make(map[string]*systemmodel.GPUData)}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+		gm.Stop()
+	})
+	gm.startRocmSmiCollector(ctx, time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		gpu, ok := gpuDataForTest(gm, "1")
+		return ok && gpu.Count > 0
+	}, 10*time.Second, 5*time.Millisecond)
+}
+
+func TestGetCurrentDataZeroesStaleGPU(t *testing.T) {
+	gm := &Manager{GpuDataMap: map[string]*systemmodel.GPUData{
+		"0": {Name: "GPU", Temperature: 50, MemoryUsed: 1024, Usage: 20, Count: 2},
+	}}
+
+	live := gm.GetCurrentData(5000)
+	assert.InDelta(t, 50.0, live["0"].Temperature, 1e-9)
+
+	stamp := gm.sampleSeen["0"]
+	stamp.at = time.Now().Add(-2 * gpuStaleAfter)
+	gm.sampleSeen["0"] = stamp
+
+	stale := gm.GetCurrentData(5000)
+	assert.Equal(t, systemmodel.GPUData{Name: "GPU"}, stale["0"])
+
+	gm.GpuDataMap["0"].Count++
+	recovered := gm.GetCurrentData(5000)
+	assert.InDelta(t, 50.0, recovered["0"].Temperature, 1e-9)
+}

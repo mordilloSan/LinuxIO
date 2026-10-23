@@ -35,14 +35,22 @@ const (
 	nvtopCmd      string = "nvtop"
 	noGPUFoundMsg string = "no GPU found"
 
-	// Command retry and timeout constants
-	retryWaitTime     time.Duration = 5 * time.Second
+	// Command retry constants: runRetryingCollector doubles retryWaitTime per
+	// consecutive failure up to maxRetryWait and never gives up; the one-shot
+	// sysfs poll (amd.go) tolerates maxFailureRetries.
+	maxRetryWait      time.Duration = 5 * time.Minute
 	maxFailureRetries int           = 5
+
+	// A GPU whose sample count has not moved for this long is reported as zeros.
+	gpuStaleAfter time.Duration = 30 * time.Second
 
 	// Unit Conversions
 	mebibytesInAMegabyte float64 = 1.024  // nvidia-smi reports memory in MiB
 	milliwattsInAWatt    float64 = 1000.0 // tegrastats reports power in mW
 )
+
+// retryWaitTime is the first backoff step; a variable so tests can shorten it.
+var retryWaitTime = 5 * time.Second
 
 // Manager manages data collection for GPUs (either Nvidia or AMD)
 type Manager struct {
@@ -55,6 +63,8 @@ type Manager struct {
 	// lastAvgData stores the last calculated averages for each GPU
 	// Used when a collection happens before new data arrives (Count == 0)
 	lastAvgData map[string]systemmodel.GPUData
+	// sampleSeen records when each GPU's sample count last changed, to detect dead collectors
+	sampleSeen map[string]sampleStamp
 	// Per-cache-key tracking for delta calculations
 	// cacheKey -> gpuId -> snapshot of last count/usage/power values
 	lastSnapshots map[uint16]map[string]*gpuSnapshot
@@ -63,6 +73,11 @@ type Manager struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
+}
+
+type sampleStamp struct {
+	count float64
+	at    time.Time
 }
 
 // gpuSnapshot stores the last observed incremental values for delta tracking
@@ -124,13 +139,10 @@ func runRetryingCollector(ctx context.Context, interval time.Duration, collect f
 			return
 		}
 		failures++
-		if failures > maxFailureRetries {
-			return
-		}
 		if handleErr != nil && !handleErr(err) {
 			return
 		}
-		if !sleepUntilDone(ctx, retryWaitTime) {
+		if !sleepUntilDone(ctx, min(retryWaitTime<<min(failures-1, 6), maxRetryWait)) {
 			return
 		}
 	}
@@ -416,7 +428,12 @@ func (gm *Manager) GetCurrentData(cacheKey uint16) map[string]systemmodel.GPUDat
 	nameCounts := gm.countGPUNames()
 
 	gpuData := make(map[string]systemmodel.GPUData, len(gm.GpuDataMap))
+	now := time.Now()
 	for id, gpu := range gm.GpuDataMap {
+		if gm.sampleStale(id, gpu, now) {
+			gpuData[id] = systemmodel.GPUData{Name: gpu.Name, Address: gpu.Address}
+			continue
+		}
 		gpuAvg := gm.calculateGPUAverage(id, gpu, cacheKey)
 		gm.updateInstantaneousValues(&gpuAvg, gpu)
 		gm.storeSnapshot(id, gpu, cacheKey)
@@ -431,6 +448,20 @@ func (gm *Manager) GetCurrentData(cacheKey uint16) map[string]systemmodel.GPUDat
 		slog.Debug("GPU data collected", "count", len(gpuData))
 	}
 	return gpuData
+}
+
+// sampleStale reports whether no sample arrived for gpuStaleAfter, so a dead
+// collector's frozen values are not served as live.
+func (gm *Manager) sampleStale(id string, gpu *systemmodel.GPUData, now time.Time) bool {
+	if gm.sampleSeen == nil {
+		gm.sampleSeen = make(map[string]sampleStamp)
+	}
+	stamp, ok := gm.sampleSeen[id]
+	if !ok || stamp.count != gpu.Count {
+		gm.sampleSeen[id] = sampleStamp{count: gpu.Count, at: now}
+		return false
+	}
+	return now.Sub(stamp.at) > gpuStaleAfter
 }
 
 // initializeSnapshots ensures snapshot maps are initialized for the given cache key
@@ -690,25 +721,12 @@ func (gm *Manager) startRocmSmiCollector(ctx context.Context, pollInterval time.
 		parse:   gm.parseAmdData,
 	}
 	gm.startCollector(ctx, "rocm-smi", func() {
-		failures := 0
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-			if err := collector.collect(ctx); err != nil {
-				if ctx.Err() != nil {
-					return
-				}
-				failures++
-				if failures > maxFailureRetries {
-					break
-				}
-				slog.Warn("Error collecting AMD GPU data via rocm-smi", "err", err)
-			}
-			if !sleepUntilDone(ctx, pollInterval) {
-				return
-			}
-		}
+		runRetryingCollector(ctx, pollInterval, func() error {
+			return collector.collect(ctx)
+		}, func(err error) bool {
+			slog.Warn("Error collecting AMD GPU data via rocm-smi", "err", err)
+			return true
+		})
 	})
 }
 

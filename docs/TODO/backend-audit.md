@@ -351,11 +351,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: separate `linuxio-btrfs-replicate.service`/timer or `systemctl start --no-block`.
   - Behaviour change: snapshots keep their cadence during sends; new unit to package.
 
-- [ ] **34. GPU collectors give up permanently and then serve the frozen average as live data**
+- [x] **34. GPU collectors give up permanently and then serve the frozen average as live data**
   `backend/monitoring/internal/collector/gpu/manager.go:113-132,690-711,~455`
   - `[worker]`: rocm loop's failure counter never resets; Intel exits after ~25 s of failures; `GetCurrentData` returns `lastAvgData` with no staleness signal.
   - Fix: reset on success; back off instead of returning; return zero data when stale.
   - Behaviour change: GPU panels recover after transient failures; stale readings become zeros.
+  - Done 2026-10-23: `runRetryingCollector` backs off (5 s doubling to 5 min) and never exits on failures; the rocm-smi loop reuses it; `sampleStale` makes `GetCurrentData` return zeros for a GPU with no new sample for 30 s. The AMD sysfs poll (`amd.go`) still stops after 5 failures but is covered by the stale guard. Tests: `TestRocmSmiCollectorRecoversAfterTransientFailures`, `TestGetCurrentDataZeroesStaleGPU`.
 
 - [x] **35. Upload commit exposes the wrong mode briefly; no-overwrite check is stale**
   `backend/bridge/handlers/filebrowser/upload_operation.go:97-121,301-349`, `upload_batch_operation.go:411-430`
