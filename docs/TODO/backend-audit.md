@@ -34,11 +34,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: that item now fails with a per-item error instead of deleting data. Rename failures other than cross-device (EACCES, EBUSY, …) are reported instead of silently copying — a few moves that "worked" via copy+delete will now error.
   - Done 2026-10-23: `prepareDestination` moves the replaced entry aside (`<dst>.linuxio-replaced-<nanos>`) and the returned `finish` removes it on success or restores it on failure; a source inside the destination is read from its relocated path, so `/data/foo/foo` → `/data/foo` with Replace now works (outer becomes the inner tree; the inner is consumed with the replaced tree, for copy as well as move). `tryRenameMove` falls back to copy only on `EXDEV`. Tests: `TestTransferOntoAncestorReplacesIt`, `TestPrepareDestinationRestoresReplacedEntryOnFailure`, `TestPrepareDestinationRelocatesSourceInsideDestination`.
 
-- [ ] **2. `/etc/fstab` is truncated-then-written; mount options are unvalidated**
+- [x] **2. `/etc/fstab` is truncated-then-written; mount options are unvalidated**
   `backend/bridge/handlers/storage/fstab.go:156,182`, `mounts_common.go:61-110`
   - Verified `[source]`: `updateFstabEntry`/`removeFromFstab` use `os.WriteFile`; `addToFstab` appends. `cleanMountOptions` only trims; `rejectSensitiveCustomOptions` checks the key per element, so one element `ro,password=x` passes; no check for whitespace/newlines. The UI splits custom options on commas (`CIFSMounts.tsx:100-111`), so the comma case is API-only; the newline case is API-only too. `atomicfile.Write` already exists and is used in `mounts_common.go:228`.
   - Fix: `atomicfile.Write` (keep 0644); one `validateMountOptions` (split on `,`, reject whitespace/control chars, run the sensitive-key check per element) used by NFS and CIFS; skip `#` lines in `addToFstab`/`removeFromFstab`.
   - Behaviour change: none for UI flows. API requests with commas, spaces or control characters inside one option get 400. fstab inode changes on write (temp + rename).
+  - Done 2026-10-23: all three fstab writers go through `writeFstab` → `atomicfile.Write(…, 0o644)`; `addToFstab`/`removeFromFstab` skip comment lines; `cleanMountOptions` now splits comma-joined entries and rejects whitespace/control characters (returns an error); CIFS wraps it in `cifsCustomOptions` with the sensitive-key check, NFS uses it alone (NFS legitimately needs `sec=`). Tests in `fstab_test.go`.
 
 - [ ] **3. Container label becomes a file path and a URL with no validation** *(re-rated: should-fix, see note)*
   `backend/bridge/handlers/docker/icons.go:82-116` (`parseIconIdentifier`), `:135`, `:385` (`filepath.Join(userIconsDir, value)`), `:240-262` (`fetchURLIcon`), `container.go:254-257`

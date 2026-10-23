@@ -7,6 +7,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 // fstabPath is the system mount table; a var so tests can use a temp file.
@@ -65,6 +67,18 @@ func replaceFstabOption(options []string, prefix, replacement string) []string {
 	return out
 }
 
+// isFstabComment reports whether line carries no entry (blank or comment).
+func isFstabComment(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return trimmed == "" || strings.HasPrefix(trimmed, "#")
+}
+
+// writeFstab replaces the mount table atomically so a crash or a full disk
+// never leaves it empty or half-written.
+func writeFstab(content string) error {
+	return atomicfile.Write(fstabPath, []byte(content), 0o644)
+}
+
 // addToFstab adds an entry to /etc/fstab.
 func addToFstab(source, mountpoint, fstype string, options []string) error {
 	// Check if entry already exists
@@ -74,8 +88,10 @@ func addToFstab(source, mountpoint, fstype string, options []string) error {
 	}
 
 	// Check if mountpoint already in fstab
-	lines := strings.SplitSeq(string(content), "\n")
-	for line := range lines {
+	for line := range strings.SplitSeq(string(content), "\n") {
+		if isFstabComment(line) {
+			continue
+		}
 		fields := strings.Fields(line)
 		if len(fields) >= 2 && fields[1] == mountpoint {
 			// Entry already exists
@@ -90,15 +106,11 @@ func addToFstab(source, mountpoint, fstype string, options []string) error {
 	}
 	entry := fmt.Sprintf("%s %s %s %s 0 0\n", source, mountpoint, fstype, optStr)
 
-	// Append to fstab
-	f, err := os.OpenFile(fstabPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
+	existing := string(content)
+	if existing != "" && !strings.HasSuffix(existing, "\n") {
+		existing += "\n"
 	}
-	defer f.Close()
-
-	_, err = f.WriteString(entry)
-	return err
+	return writeFstab(existing + entry)
 }
 
 // fstabField matches one whitespace-delimited fstab field.
@@ -153,7 +165,7 @@ func updateFstabEntry(mountpoint, source, fstype string, options []string) error
 		return fmt.Errorf("mountpoint not found in fstab")
 	}
 
-	return os.WriteFile(fstabPath, []byte(strings.Join(newLines, "\n")+"\n"), 0644)
+	return writeFstab(strings.Join(newLines, "\n") + "\n")
 }
 
 // removeFromFstab removes an entry from /etc/fstab.
@@ -169,8 +181,8 @@ func removeFromFstab(mountpoint string) error {
 	for scanner.Scan() {
 		line := scanner.Text()
 		fields := strings.Fields(line)
-		// Keep lines that don't match the mountpoint
-		if len(fields) < 2 || fields[1] != mountpoint {
+		// Keep comments and lines that don't match the mountpoint
+		if isFstabComment(line) || len(fields) < 2 || fields[1] != mountpoint {
 			newLines = append(newLines, line)
 		}
 	}
@@ -179,7 +191,7 @@ func removeFromFstab(mountpoint string) error {
 		return err
 	}
 
-	return os.WriteFile(fstabPath, []byte(strings.Join(newLines, "\n")+"\n"), 0644)
+	return writeFstab(strings.Join(newLines, "\n") + "\n")
 }
 
 // upsertFstabEntry updates an existing fstab entry or adds a new one.

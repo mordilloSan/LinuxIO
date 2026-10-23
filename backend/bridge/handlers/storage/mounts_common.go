@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
@@ -58,15 +59,24 @@ func parseOptionsString(s string) []string {
 	return options
 }
 
-func cleanMountOptions(options []string) []string {
+// cleanMountOptions splits comma-joined entries into single options, drops
+// blanks, and rejects any option carrying whitespace or control characters:
+// those would start a new fstab field or line.
+func cleanMountOptions(options []string) ([]string, error) {
 	out := make([]string, 0, len(options))
-	for _, option := range options {
-		option = strings.TrimSpace(option)
-		if option != "" {
+	for _, raw := range options {
+		for option := range strings.SplitSeq(raw, ",") {
+			option = strings.TrimSpace(option)
+			if option == "" {
+				continue
+			}
+			if strings.ContainsFunc(option, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+				return nil, fmt.Errorf("invalid mount option %q", option)
+			}
 			out = append(out, option)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // isSystemPath checks if a path is a critical system directory.

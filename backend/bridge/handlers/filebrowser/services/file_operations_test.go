@@ -106,7 +106,7 @@ func TestTransferOntoAncestorReplacesIt(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, []byte("keep"), content, "outer is replaced by the inner tree")
 			_, err = os.Lstat(filepath.Join(outer, "old.txt"))
-			assert.ErrorIs(t, err, fs.ErrNotExist, "old outer content is gone")
+			require.ErrorIs(t, err, fs.ErrNotExist, "old outer content is gone")
 			entries, err := os.ReadDir(tmpDir)
 			require.NoError(t, err)
 			assert.Len(t, entries, 1, "no aside is left behind")

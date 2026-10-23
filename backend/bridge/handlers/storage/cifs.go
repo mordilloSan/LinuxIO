@@ -324,9 +324,9 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (apischema.StorageMountRe
 		return mountResult(p.mountpoint, ""), nil
 	}
 
-	options := cleanMountOptions(p.options)
-	if err := rejectSensitiveCustomOptions(options); err != nil {
-		return apischema.StorageMountResult{}, err
+	options, optErr := cifsCustomOptions(p.options)
+	if optErr != nil {
+		return apischema.StorageMountResult{}, optErr
 	}
 
 	if err := os.MkdirAll(p.mountpoint, 0755); err != nil {
@@ -388,9 +388,9 @@ func RemountCIFS(ctx context.Context, mountpoint string, newOptions []string, up
 	if !validPath.MatchString(mountpoint) {
 		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
 	}
-	options := cleanMountOptions(newOptions)
-	if err := rejectSensitiveCustomOptions(options); err != nil {
-		return apischema.StorageMountResult{}, err
+	options, optErr := cifsCustomOptions(newOptions)
+	if optErr != nil {
+		return apischema.StorageMountResult{}, optErr
 	}
 	if err := requireCIFSClientAvailability(); err != nil {
 		return apischema.StorageMountResult{}, err
@@ -551,4 +551,14 @@ func isCIFSMounted(mountpoint string) bool {
 		}
 	}
 	return false
+}
+
+// cifsCustomOptions validates user-supplied CIFS options; authentication only
+// ever comes from the dedicated credential fields.
+func cifsCustomOptions(raw []string) ([]string, error) {
+	options, err := cleanMountOptions(raw)
+	if err != nil {
+		return nil, err
+	}
+	return options, rejectSensitiveCustomOptions(options)
 }

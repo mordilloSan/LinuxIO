@@ -290,7 +290,10 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint string, option
 	}
 
 	source := fmt.Sprintf("%s:%s", server, exportPath)
-	options = cleanMountOptions(options)
+	options, optErr := cleanMountOptions(options)
+	if optErr != nil {
+		return apischema.StorageMountResult{}, optErr
+	}
 
 	// Create mountpoint if it doesn't exist
 	if err := os.MkdirAll(mountpoint, 0755); err != nil {
@@ -379,7 +382,10 @@ func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, upd
 		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
 	}
 
-	options := cleanMountOptions(newOptions)
+	options, optErr := cleanMountOptions(newOptions)
+	if optErr != nil {
+		return apischema.StorageMountResult{}, optErr
+	}
 	fstabEntries := getFstabEntries()
 	entry, inFstab := fstabEntries[mountpoint]
 	managedEntries, err := nfsMountStore.load()
