@@ -481,13 +481,72 @@ func TestComputeCopySizeTreatsSymlinksAsZero(t *testing.T) {
 	createSymlinkOrSkip(t, "target.txt", filepath.Join(srcDir, "file-link"))
 	createSymlinkOrSkip(t, "missing.txt", filepath.Join(srcDir, "dangling-link"))
 
-	size, err := ComputeCopySize(srcDir)
+	size, err := ComputeCopySize(context.Background(), srcDir)
 	require.NoError(t, err)
 	assert.Equal(t, int64(len("target")), size)
 
-	linkSize, err := ComputeCopySize(filepath.Join(srcDir, "file-link"))
+	linkSize, err := ComputeCopySize(context.Background(), filepath.Join(srcDir, "file-link"))
 	require.NoError(t, err)
 	assert.Zero(t, linkSize)
+}
+
+func TestComputeCopySizeStopsOnCancelledContext(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	createTestFile(t, srcDir, "a.txt", []byte("a"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := ComputeCopySize(ctx, srcDir)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestMoveFileWithCallbacksSkipsSizeWalkWithoutKnownSize(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcDir := createTestDir(t, tmpDir, "src")
+	createTestFile(t, srcDir, "a.txt", []byte("content"))
+
+	var reported []int64
+	err := MoveFileWithCallbacks(srcDir, filepath.Join(tmpDir, "dst"), false, &OperationCallbacks{
+		Progress: func(n int64) { reported = append(reported, n) },
+	}, MoveFileOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, reported, "a rename without a known size must not walk the tree to report one")
+}
+
+func TestChangePermissionsCtxRecursiveDoesNotFollowSymlinks(t *testing.T) {
+	tmpDir := t.TempDir()
+	outside := createTestFile(t, tmpDir, "outside.txt", []byte("secret"))
+	require.NoError(t, os.Chmod(outside, 0o600))
+	treeDir := createTestDir(t, tmpDir, "tree")
+	inside := createTestFile(t, treeDir, "inside.txt", []byte("x"))
+	createSymlinkOrSkip(t, outside, filepath.Join(treeDir, "link"))
+
+	require.NoError(t, ChangePermissionsCtx(context.Background(), treeDir, 0o700, true, nil))
+
+	assert.Equal(t, os.FileMode(0o600), statMode(t, outside), "link target must keep its mode")
+	assert.Equal(t, os.FileMode(0o700), statMode(t, inside))
+}
+
+func TestRecursivePermissionAndOwnershipReportFailedEntries(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read a mode 000 directory")
+	}
+	tmpDir := t.TempDir()
+	treeDir := createTestDir(t, tmpDir, "tree")
+	locked := createTestDir(t, treeDir, "locked")
+	createTestFile(t, locked, "a.txt", []byte("a"))
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() {
+		_ = os.Chmod(treeDir, 0o755)
+		_ = os.Chmod(locked, 0o755)
+	})
+
+	err := ChangeOwnershipCtx(context.Background(), treeDir, os.Getuid(), os.Getgid(), true, nil)
+	require.ErrorContains(t, err, "1 entries failed")
+
+	err = ChangePermissionsCtx(context.Background(), treeDir, 0o000, true, nil)
+	require.ErrorContains(t, err, "1 entries failed")
 }
 
 func createSymlinkOrSkip(t *testing.T, target, linkPath string) {
@@ -652,7 +711,7 @@ func TestCopyFileWithCallbacksPreservesHardlinks(t *testing.T) {
 	assert.EqualValues(t, 2, firstStat.Nlink)
 	assert.NotEqual(t, firstStat.Ino, plainStat.Ino)
 
-	expected, err := ComputeCopySize(srcDir)
+	expected, err := ComputeCopySize(context.Background(), srcDir)
 	require.NoError(t, err)
 	assert.Equal(t, expected, progressed, "progress should still account for every file")
 }

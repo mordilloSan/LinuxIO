@@ -371,11 +371,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: one `fsroot.Resolve(abs)` using `filepath.EvalSymlinks` on the parent at the entry points.
   - Behaviour change: files under symlinked mounts become usable.
 
-- [ ] **37. Recursive chmod follows symlinks; recursive chmod/chown report success on partial failure**
+- [x] **37. Recursive chmod follows symlinks; recursive chmod/chown report success on partial failure**
   `backend/bridge/handlers/filebrowser/services/file_operations.go:743-784`
   - `[worker]`: `Root.Chmod` follows links (chown uses `Lchown`); per-entry failures are logged and nil returned.
   - Fix: skip symlinks; count failures and return an error.
   - Behaviour change: a chmod -R over a tree with links no longer touches link targets; partial failures surface.
+  - Done 2026-10-23: `changePermissionsRecursive` skips symlink entries; both walks count failures and return "N entries failed" via `recursiveResult`. Tests: `TestChangePermissionsCtxRecursiveDoesNotFollowSymlinks`, `TestRecursivePermissionAndOwnershipReportFailedEntries` (skipped as root).
 
 - [x] **38. One dangling symlink or one growing file aborts the whole archive/download**
   `backend/bridge/handlers/filebrowser/services/archive_operations.go:749-804,667-698`
@@ -416,11 +417,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: such downloads → 400.
   - Done 2026-10-23: `openDownloadFile` opens `O_RDONLY|O_NONBLOCK` and rejects non-regular files with 400. Test: `TestStreamFileDownloadRejectsNonRegular`.
 
-- [ ] **44. `ComputeCopySize` ignores ctx and runs before an instant rename**
+- [x] **44. `ComputeCopySize` ignores ctx and runs before an instant rename**
   `backend/bridge/handlers/filebrowser/size_estimate.go:125`, `services/file_operations.go:342-390`
   - `[source]`: `ComputeCopySize(path)` has no ctx; a 2M-file move stalls in "preparing" and cannot be cancelled.
   - Fix: pass ctx; compute lazily only after a rename fails.
   - Behaviour change: same-filesystem moves start instantly; cancel works during sizing.
+  - Done 2026-10-23: `ComputeCopySize(ctx, …)` checks ctx in the walk; `tryRenameMove` no longer walks after a rename; `transferPlan.item` and `resourcePatchWithProgress` size only cross-device transfers (same-filesystem moves report no byte progress). Tests: `TestComputeCopySizeStopsOnCancelledContext`, `TestMoveFileWithCallbacksSkipsSizeWalkWithoutKnownSize`, `TestPlanBatchTransferSkipsSizeForSameFilesystemMove`.
 
 - [ ] **45. `ApplyOfflineNow` swallows a download failure and still schedules the offline update**
   `backend/bridge/handlers/packages/internal/autoupdate/backend_pkgkit.go:171-174`

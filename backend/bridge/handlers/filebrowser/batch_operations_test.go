@@ -63,6 +63,27 @@ func TestPlanBatchTransferIntoOwnFolder(t *testing.T) {
 	}
 }
 
+func TestPlanBatchTransferSkipsSizeForSameFilesystemMove(t *testing.T) {
+	src, dest := t.TempDir(), t.TempDir()
+	seedFile(t, filepath.Join(src, "a.txt"), "content")
+	root, err := fsroot.Open()
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer root.Close()
+	req := apischema.BatchTransferRequest{Sources: []string{src}}
+
+	items, _, failures := planBatchTransfer(context.Background(), root, dest, req, "move")
+	if len(failures) != 0 || len(items) != 1 || items[0].size.known {
+		t.Fatalf("move plan computed a size: items=%+v failures=%v", items, failures)
+	}
+
+	items, _, failures = planBatchTransfer(context.Background(), root, dest, req, "copy")
+	if len(failures) != 0 || len(items) != 1 || !items[0].size.known || items[0].size.total != int64(len("content")) {
+		t.Fatalf("copy plan size: items=%+v failures=%v", items, failures)
+	}
+}
+
 func TestPlanBatchTransferKeepBothLandsUnderUniqueName(t *testing.T) {
 	src, dest := t.TempDir(), t.TempDir()
 	file := seedFile(t, filepath.Join(src, "a.txt"), "new")

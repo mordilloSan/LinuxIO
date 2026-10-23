@@ -122,7 +122,7 @@ func computeTransferSize(ctx context.Context, path string, info os.FileInfo) com
 		}
 	}
 
-	totalSize, err := services.ComputeCopySize(path)
+	totalSize, err := services.ComputeCopySize(ctx, path)
 	if err != nil {
 		slog.Debug("failed to compute filebrowser operation size", "path", path, "error", err)
 		return computedTransferSize{}

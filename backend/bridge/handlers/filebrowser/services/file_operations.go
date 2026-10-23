@@ -415,7 +415,7 @@ func getXattr(f *os.File, name string) ([]byte, error) {
 
 // ComputeCopySize calculates the total size of files to be copied.
 // For directories, it recursively sums the sizes of all contained files.
-func ComputeCopySize(path string) (int64, error) {
+func ComputeCopySize(ctx context.Context, path string) (int64, error) {
 	path = fsroot.CleanAbsPath(path)
 
 	root, err := fsroot.Open()
@@ -441,6 +441,9 @@ func ComputeCopySize(path string) (int64, error) {
 
 	var totalSize int64
 	err = root.WalkDir(path, func(_ string, entry fs.DirEntry, walkErr error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -504,17 +507,10 @@ func tryRenameMove(root *fsroot.FSRoot, src, dst string, info os.FileInfo, opts 
 		return false, err
 	}
 
-	totalSize := moveOpts.KnownSize
-	if !moveOpts.HasKnownSize {
-		var sizeErr error
-		totalSize, sizeErr = ComputeCopySize(dst)
-		if sizeErr != nil {
-			slog.Debug("failed to compute move size after rename", "component", "filebrowser", "subsystem", "file_operations", "path", dst, "error", sizeErr)
-			return true, nil
-		}
+	// An unknown size is not worth a walk of the moved tree just to report it.
+	if moveOpts.HasKnownSize {
+		opts.ReportProgress(moveOpts.KnownSize)
 	}
-
-	opts.ReportProgress(totalSize)
 	return true, nil
 }
 
@@ -880,45 +876,69 @@ func progressReporter(cb func(processed int64)) func() {
 
 func changePermissionsRecursive(ctx context.Context, root *fsroot.FSRoot, path string, mode os.FileMode, report func()) error {
 	rootRel := relPath(path)
-	return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
+	failed := 0
+	err := root.WalkDir(path, func(walkRel string, entry fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if walkErr != nil {
-			slog.Error("error walking path during chmod", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
+			slog.Warn("error walking path during chmod", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
+			failed++
 			return nil
 		}
 		if isRecursiveRoot(walkRel, rootRel) {
 			return nil
 		}
-		if err := root.Root.Chmod(walkRel, mode); err != nil {
-			slog.Error("failed to chmod path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
-			return nil
+		// Root.Chmod follows links, which would change a target outside the tree.
+		if entry.Type()&fs.ModeSymlink == 0 {
+			if err := root.Root.Chmod(walkRel, mode); err != nil {
+				slog.Warn("failed to chmod path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
+				failed++
+				return nil
+			}
 		}
 		report()
 		return nil
 	})
+	return recursiveResult(err, failed)
 }
 
 func changeOwnershipRecursive(ctx context.Context, root *fsroot.FSRoot, path string, uid, gid int, report func()) error {
 	rootRel := relPath(path)
-	return root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
+	failed := 0
+	err := root.WalkDir(path, func(walkRel string, _ fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if walkErr != nil {
-			slog.Error("error walking path during chown", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
+			slog.Warn("error walking path during chown", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", walkErr)
+			failed++
 			return nil
 		}
 		if isRecursiveRoot(walkRel, rootRel) {
 			return nil
 		}
 		if err := root.Root.Lchown(walkRel, uid, gid); err != nil {
-			slog.Error("failed to chown path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
+			slog.Warn("failed to chown path", "component", "filebrowser", "subsystem", "file_operations", "path", walkRel, "error", err)
+			failed++
+			return nil
 		}
 		report()
 		return nil
 	})
+	return recursiveResult(err, failed)
+}
+
+// recursiveResult turns per-entry failures, which the walks log and skip, into
+// an error so a partially applied change is not reported as success.
+func recursiveResult(walkErr error, failed int) error {
+	if walkErr != nil {
+		return walkErr
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d entries failed", failed)
+	}
+	return nil
 }
 
 func isRecursiveRoot(walkRel, rootRel string) bool {

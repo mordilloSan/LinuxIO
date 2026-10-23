@@ -127,7 +127,13 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 		return apischema.MessageResponse{}, fmt.Errorf("bad_request:source not found")
 	}
 
-	size := computeTransferSize(ctx, patchReq.realSrc, srcInfo)
+	// A same-filesystem rename needs neither a size nor a walk.
+	var size computedTransferSize
+	srcDev, srcOK := deviceID(root, patchReq.realSrc)
+	destDev, destOK := deviceID(root, filepath.Dir(patchReq.realDest))
+	if !srcOK || !destOK || srcDev != destDev {
+		size = computeTransferSize(ctx, patchReq.realSrc, srcInfo)
+	}
 	// Send initial progress.
 	slog.Info("starting filebrowser operation",
 		"action", patchReq.action,

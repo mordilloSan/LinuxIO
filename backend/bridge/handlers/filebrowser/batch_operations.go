@@ -161,7 +161,12 @@ func (p *transferPlan) item(ctx context.Context, raw string) (batchTransferItem,
 		srcDev, ok := deviceID(p.root, src)
 		needsSpace = !ok || !p.destDevKnown || srcDev != p.destDev
 	}
-	return batchTransferItem{source: src, dest: dest, size: computeTransferSize(ctx, src, info), replaced: replaced, needsSpace: needsSpace}, ""
+	// A same-filesystem move is a rename and needs neither a size nor a walk.
+	var size computedTransferSize
+	if needsSpace {
+		size = computeTransferSize(ctx, src, info)
+	}
+	return batchTransferItem{source: src, dest: dest, size: size, replaced: replaced, needsSpace: needsSpace}, ""
 }
 
 // resolveExisting applies the user's conflict choice to a destination that is
