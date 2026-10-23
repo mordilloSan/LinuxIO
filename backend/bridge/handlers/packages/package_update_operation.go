@@ -301,7 +301,7 @@ func updateOnePackageWithProgress(
 
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	return awaitPackageUpdateSignals(waitCtx, trans, scalePackageProgress(report, index, total))
+	return awaitPackageUpdateSignals(waitCtx, trans.Signals(), scalePackageProgress(report, index, total))
 }
 
 func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpdateReporter {
@@ -321,14 +321,14 @@ func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpd
 	}
 }
 
-func awaitPackageUpdateSignals(ctx context.Context, trans *pkgkit.Transaction, report pkgUpdateReporter) error {
+func awaitPackageUpdateSignals(ctx context.Context, signals <-chan *dbusclient.Signal, report pkgUpdateReporter) error {
 	var lastWorkStatus uint32
 	var transactionErr error
 	for {
 		select {
-		case sig := <-trans.Signals():
-			if sig == nil {
-				continue
+		case sig, ok := <-signals:
+			if !ok {
+				return pkgkit.ErrSignalsClosed
 			}
 			done, err := consumePackageUpdateSignal(
 				report,

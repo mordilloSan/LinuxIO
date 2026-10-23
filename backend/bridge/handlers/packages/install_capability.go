@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -278,6 +279,10 @@ type capabilityProcessOutput struct {
 }
 
 const (
+	// capabilityWaitDelay bounds how long Wait lingers on output pipes after
+	// the direct child exits or is cancelled.
+	capabilityWaitDelay = 5 * time.Second
+
 	capabilityOutputChunkBytes = 8 << 10
 	capabilityErrorTailBytes   = 16 << 10
 )
@@ -356,31 +361,50 @@ func runCapabilityCommand(ctx context.Context, name string, args []string, repor
 }
 
 // runCapabilityProcess starts a prepared, context-bound cmd and streams its
-// output the way runCapabilityCommand describes.
+// output the way runCapabilityCommand describes. The streams are plain
+// writers so cmd.Wait (bounded by WaitDelay) closes the pipes even when a
+// grandchild inherited them, and cancellation signals the whole process group
+// so apt-get/dnf children stop with their shell.
 func runCapabilityProcess(ctx context.Context, cmd *exec.Cmd, name string, report func(InstallCapabilityOutput)) error {
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("capture %s stdout: %w", name, err)
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("capture %s stderr: %w", name, err)
+	// Setsid (set for session-user commands) already makes the child a group leader.
+	cmd.SysProcAttr.Setpgid = !cmd.SysProcAttr.Setsid
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start %s: %w", name, err)
-	}
+	cmd.WaitDelay = capabilityWaitDelay
+
+	stdoutR, stdoutW := io.Pipe()
+	stderrR, stderrW := io.Pipe()
+	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
 
 	output := &capabilityProcessOutput{report: report}
 	var readers sync.WaitGroup
-	read := func(stream string, reader io.Reader) {
+	read := func(stream string, reader *io.PipeReader) {
 		defer readers.Done()
 		output.read(stream, reader)
+		_ = reader.Close()
 	}
 	readers.Add(2)
-	go read("stdout", stdout)
-	go read("stderr", stderr)
+	go read("stdout", stdoutR)
+	go read("stderr", stderrR)
+
+	startErr := cmd.Start()
+	var waitErr error
+	if startErr == nil {
+		waitErr = cmd.Wait()
+	}
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
 	readers.Wait()
-	waitErr := cmd.Wait()
+	if startErr != nil {
+		return fmt.Errorf("start %s: %w", name, startErr)
+	}
 	return output.commandError(ctx, name, waitErr)
 }
 

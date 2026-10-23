@@ -166,6 +166,38 @@ func TestRunCapabilityCommandHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestRunCapabilityProcessCancelStopsPipeHoldingChild(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", "echo started; sleep 30 & wait")
+	seen := make(chan struct{})
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runCapabilityProcess(ctx, cmd, "sh", func(InstallCapabilityOutput) {
+			select {
+			case <-seen:
+			default:
+				close(seen)
+			}
+		})
+	}()
+
+	select {
+	case <-seen:
+		cancel()
+	case <-time.After(2 * time.Second):
+		t.Fatal("command did not produce output")
+	}
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled command did not exit while a child held the pipes")
+	}
+}
+
 func TestInstallCapabilityInstallsAvahiNSSBeforeServiceActions(t *testing.T) {
 	originalFamily := capabilityDistroFamily
 	originalPackage := capabilityInstallPackage

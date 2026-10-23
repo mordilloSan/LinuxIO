@@ -2,6 +2,7 @@ package packagekit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -165,6 +166,10 @@ func AwaitFinished(ctx context.Context, signals <-chan *dbusclient.Signal, actio
 	}
 }
 
+// ErrSignalsClosed means the D-Bus subscription channel was closed (bus drop)
+// before the transaction finished.
+var ErrSignalsClosed = errors.New("PackageKit signal channel closed")
+
 func CollectPackageIDs(ctx context.Context, signals <-chan *dbusclient.Signal, action string) ([]string, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("nil context")
@@ -172,9 +177,9 @@ func CollectPackageIDs(ctx context.Context, signals <-chan *dbusclient.Signal, a
 	var packageIDs []string
 	for {
 		select {
-		case sig := <-signals:
-			if sig == nil {
-				continue
+		case sig, ok := <-signals:
+			if !ok {
+				return nil, ErrSignalsClosed
 			}
 			switch sig.Name {
 			case TransactionIface + ".Package":

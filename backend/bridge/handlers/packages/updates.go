@@ -193,10 +193,6 @@ func mergeUpdateCVEs(changelogRaw string, cves []string) []string {
 	return combinedCVEs
 }
 
-func isTransactionFinished(sig *dbusclient.Signal) bool {
-	return sig == nil || sig.Name == pkgkit.TransactionIface+".Finished"
-}
-
 func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool) {
 	if sig.Name != pkgkit.TransactionIface+".Package" || len(sig.Body) <= 2 {
 		return "", packageUpdateMeta{}, false
@@ -212,15 +208,18 @@ func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool)
 	}, true
 }
 
-func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal) ([]string, map[string]packageUpdateMeta) {
+func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal) ([]string, map[string]packageUpdateMeta, error) {
 	var pkgIDs []string
 	metaByPkg := make(map[string]packageUpdateMeta)
 
 	for {
 		select {
-		case sig := <-sigCh:
-			if isTransactionFinished(sig) {
-				return pkgIDs, metaByPkg
+		case sig, ok := <-sigCh:
+			if !ok {
+				return nil, nil, pkgkit.ErrSignalsClosed
+			}
+			if sig.Name == pkgkit.TransactionIface+".Finished" {
+				return pkgIDs, metaByPkg, nil
 			}
 
 			pkgID, meta, ok := readPackageSignal(sig)
@@ -231,7 +230,7 @@ func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 			pkgIDs = append(pkgIDs, pkgID)
 			metaByPkg[pkgID] = meta
 		case <-ctx.Done():
-			return pkgIDs, metaByPkg
+			return nil, nil, ctx.Err()
 		}
 	}
 }
@@ -307,8 +306,11 @@ func collectSingleUpdateDetail(ctx context.Context, sigCh <-chan *dbusclient.Sig
 
 	for {
 		select {
-		case sig := <-sigCh:
-			if isTransactionFinished(sig) {
+		case sig, ok := <-sigCh:
+			if !ok {
+				return nil, pkgkit.ErrSignalsClosed
+			}
+			if sig.Name == pkgkit.TransactionIface+".Finished" {
 				return finalizeSingleUpdateDetail(detail, packageID)
 			}
 			if sig.Name != pkgkit.TransactionIface+".UpdateDetail" {
@@ -457,14 +459,17 @@ func getUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 		}
 		defer pkgkit.LogClose(session.Context(), trans)
 
-		if err := trans.Call("GetUpdates", uint64(0)); err != nil {
-			return err
+		if callErr := trans.Call("GetUpdates", uint64(0)); callErr != nil {
+			return callErr
 		}
 
 		waitCtx, cancel := context.WithTimeout(session.Context(), 15*time.Second)
 		defer cancel()
 
-		pkgIDs, metaByPkg := collectUpdatePackages(waitCtx, trans.Signals())
+		pkgIDs, metaByPkg, err := collectUpdatePackages(waitCtx, trans.Signals())
+		if err != nil {
+			return fmt.Errorf("collect updates: %w", err)
+		}
 		updates = buildBasicUpdates(pkgIDs, metaByPkg)
 		return nil
 	})
@@ -693,6 +698,6 @@ func installPackageWithProgress(ctx context.Context, packageID string, report pk
 
 		waitCtx, cancel := context.WithTimeout(session.Context(), 120*time.Second)
 		defer cancel()
-		return awaitPackageUpdateSignals(waitCtx, trans, report)
+		return awaitPackageUpdateSignals(waitCtx, trans.Signals(), report)
 	})
 }

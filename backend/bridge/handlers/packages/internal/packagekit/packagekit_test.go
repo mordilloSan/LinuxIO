@@ -127,3 +127,18 @@ func TestSignalsFlowWhilePackageKitGateHeld(t *testing.T) {
 		t.Fatal("signal was blocked while PackageKit gate was held")
 	}
 }
+
+func TestCollectPackageIDsFailsOnClosedChannel(t *testing.T) {
+	ch := make(chan *dbusclient.Signal)
+	close(ch)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := CollectPackageIDs(ctx, ch, "resolve")
+	if !errors.Is(err, ErrSignalsClosed) {
+		t.Fatalf("error = %v, want ErrSignalsClosed", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("CollectPackageIDs spun until the context expired")
+	}
+}

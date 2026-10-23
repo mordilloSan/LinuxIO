@@ -116,17 +116,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: one rune-safe clamp (`strings.ToValidUTF8` + cut on a rune boundary; `alerts.truncate` already does this) used in `AppendProgress`, `ApplyExecutorResult` and `BoundedMessage`. Optionally make the two listings skip-and-log like `terminalRecordsByUID`.
   - Behaviour change: none visible (messages are clamped to the same limits, now rune-safe).
 
-- [ ] **12a. PackageKit loops spin at 100% CPU on a closed signal channel; collectors treat timeout as "finished"**
+- [x] **12a. PackageKit loops spin at 100% CPU on a closed signal channel; collectors treat timeout as "finished"**
   `backend/bridge/handlers/packages/internal/packagekit/packagekit.go:176` (`CollectPackageIDs`), `package_update_operation.go:330` (`awaitPackageUpdateSignals`), `updates.go:197,235` (`isTransactionFinished`, `collectUpdatePackages`)
   - Verified `[source]`: `dbusclient/signals.go:261,291` close `sub.ch` on bus drop; a closed channel yields nil immediately, forever; `AwaitFinished` (L153) already returns an error.
   - Fix: `sig, ok := <-ch; if !ok { return err }`; collectors return `ctx.Err()` on timeout/close.
   - Behaviour change: a bus drop fails the operation with an error (was: spin until the 30 min/30 s timeout); a slow update check returns an error instead of a partial/empty "up to date".
+  - Done 2026-10-23: `pkgkit.ErrSignalsClosed`; `CollectPackageIDs`, `awaitPackageUpdateSignals` (now takes the signal channel), `collectUpdatePackages` and `collectSingleUpdateDetail` return it on a closed channel and `ctx.Err()` on timeout; `isTransactionFinished` removed; `getUpdatesBasic` propagates the error. Tests: `TestCollectPackageIDsFailsOnClosedChannel`, `TestPackageKitSignalLoopsFailOnClosedChannel`, `TestCollectUpdatePackagesReturnsContextErrorOnTimeout`.
 
-- [ ] **12b. Cancelling a capability installer does not stop its children**
+- [x] **12b. Cancelling a capability installer does not stop its children**
   `backend/bridge/handlers/packages/install_capability.go:382-383` (`readers.Wait()` before `cmd.Wait()`)
   - Verified `[source]`: pipe readers block until every child holding the pipe exits; `cmd.Cancel`/`WaitDelay` never get a chance.
   - Fix: `cmd.Stdout/Stderr` writers plus `cmd.WaitDelay`, or `Setpgid` with `cmd.Cancel` signalling the group.
   - Behaviour change: cancel/timeouts actually kill `apt-get`/`dnf` children.
+  - Done 2026-10-23: `runCapabilityProcess` streams through `io.Pipe` writers, sets `cmd.WaitDelay` (5 s), runs the child in its own process group (`Setpgid` unless `Setsid` is already set) and `cmd.Cancel` sends SIGTERM to the group. Test: `TestRunCapabilityProcessCancelStopsPipeHoldingChild`.
 
 - [x] **13. Indexer dir-size uses case-insensitive, non-indexed `LIKE`; blank search terms sort the whole table**
   `backend/indexer/internal/storage/queries.go:85,146-156` (`appendSearchBaseFilter`, `DirDetails`), `:89-111` (`buildSearchFilter` → `1 = 1`), `paths.go:23-30` (`subtreeBounds`, already explains the LIKE problem)
