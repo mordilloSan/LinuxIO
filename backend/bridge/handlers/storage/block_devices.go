@@ -14,7 +14,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 func GetTopology(ctx context.Context) (apischema.StorageTopologyInventory, error) {
@@ -51,23 +51,31 @@ type topologyBlockDevice struct {
 	Children    []topologyBlockDevice `json:"children"`
 }
 
-func ListBlockDevices(ctx context.Context) ([]apischema.StorageBlockDevice, error) {
+// runLsblk runs lsblk with args and returns stdout. Both the topology tree and
+// the drive inventory go through it.
+func runLsblk(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	args := []string{"--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO"}
-	cmd := exec.CommandContext(ctx, "lsblk", args...)
-	out, err := cmd.Output()
+	out, err := exec.CommandContext(ctx, "lsblk", args...).Output()
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("list block devices: %w", ctx.Err())
+			return nil, fmt.Errorf("run lsblk: %w", ctx.Err())
 		}
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			out = exitErr.Stderr
 		}
 		return nil, hostcmd.OutputError("lsblk", args, out, err)
+	}
+	return out, nil
+}
+
+func ListBlockDevices(ctx context.Context) ([]apischema.StorageBlockDevice, error) {
+	out, err := runLsblk(ctx, "--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO")
+	if err != nil {
+		return nil, err
 	}
 	return parseBlockDevices(out)
 }

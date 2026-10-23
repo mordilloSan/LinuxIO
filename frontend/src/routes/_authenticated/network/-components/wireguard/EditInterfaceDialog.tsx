@@ -1,10 +1,11 @@
 import { useState } from "react";
 
 import {
+  getMutationErrorMessage,
   linuxio,
+  useCallMutation,
   type WireGuardInterface,
   type WireGuardUpdateInterfaceRequest,
-  useCallMutation,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -16,7 +17,6 @@ import {
 } from "@/components/ui/AppDialog";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import { isMtuValid } from "./CreateInterfaceDialog";
 

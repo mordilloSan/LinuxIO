@@ -9,6 +9,7 @@ import {
   type ScheduleStatus,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppButton from "@/components/ui/AppButton";
@@ -23,7 +24,6 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import PathPickerField from "@/components/ui/PathPickerField";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
 import {
@@ -53,7 +53,7 @@ const toastMeta = {
   to: "/services/schedules",
 } as const;
 
-export const createOptions = (draft: Draft): ScheduleOptions => ({
+const createOptions = (draft: Draft): ScheduleOptions => ({
   name: draft.name,
   script: draft.script,
   user: draft.user,

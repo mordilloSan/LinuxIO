@@ -14,7 +14,7 @@ import AppTopologyEdge from "@/components/ui/AppTopologyEdge";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapabilityState } from "@/hooks/useCapabilities";
 import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
-import { formatFileSize, formatThroughput } from "@/utils/formaters";
+import { formatFileSize, formatThroughput } from "@/utils/formatters";
 
 import {
   buildStorageTopology,

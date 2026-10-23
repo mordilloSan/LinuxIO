@@ -3,11 +3,11 @@ import { useState, type ReactNode } from "react";
 
 import { openChannel, type Stream } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import LogViewport from "@/components/ui/LogViewport";
 import { useLogStream } from "@/hooks/useLogStream";
 import { CARD_PADDING_LG } from "@/theme/constants";
 
@@ -63,67 +63,12 @@ const UnitLogsLiveContent = ({
           />
         </AppTooltip>
       </div>
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          flexDirection: "column",
-          // Fills whatever height the card is given, and falls back to the
-          // viewport's own bounds when the card is content-sized.
-          flex: 1,
-          minHeight: 0,
-          backgroundColor: "var(--app-code-block-background)",
-          color: "var(--app-code-block-color)",
-          borderRadius: 4,
-          overflow: "hidden",
-        }}
-      >
-        {isLoading && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "color-mix(in srgb, var(--app-code-block-background), transparent 15%)",
-              zIndex: 10,
-            }}
-          >
-            <ComponentLoader />
-          </div>
-        )}
-        {error && (
-          <div style={{ color: "var(--app-palette-error-main)", padding: 16 }}>
-            {error}
-          </div>
-        )}
-        <AppTypography
-          component="div"
-          ref={logsBoxRef}
-          style={{
-            flex: 1,
-            padding: 16,
-            overflow: "auto",
-            fontFamily: "Fira Mono, monospace",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
-            minHeight: 120,
-            maxHeight: 340,
-          }}
-          variant="body2"
-        >
-          {!isLoading &&
-            !error &&
-            (logs || (
-              <AppTypography
-                color="text.secondary"
-                component="span"
-                variant="caption"
-              >
-                No logs available.
-              </AppTypography>
-            ))}
-        </AppTypography>
-      </div>
+      <LogViewport
+        error={error}
+        isLoading={isLoading}
+        logs={logs}
+        logsBoxRef={logsBoxRef}
+      />
     </>
   );
 };

@@ -5,9 +5,9 @@ import { linuxio } from "@/api";
 import {
   capabilitiesQueryKey,
   wireFromCapabilityState,
-  type CapabilitiesResponse,
 } from "@/api/capabilities";
-import { AuthContext } from "@/contexts/AuthContext";
+import { ANONYMOUS_USER_ID } from "@/api/user-scope";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import StorageTopologyPage from "@/routes/_authenticated/storage/-components/StorageTopologyPage";
 import {
   storageContainers,
@@ -16,7 +16,6 @@ import {
   storageLive,
   storageVMs,
 } from "@/test/storageTopologyFixture";
-import type { AuthContextType } from "@/types/auth";
 
 import { seedDockerIcons } from "../dockerIcons";
 
@@ -36,12 +35,12 @@ const auth: AuthContextType = {
   method: "session",
   privileged: false,
   user: null,
-  refreshCapabilities: async () => capabilities as CapabilitiesResponse,
+  refreshCapabilities: async () => capabilities,
   sessionExpired: () => {},
   signIn: async () => {},
   signOut: async () => {},
 };
-queryClient.setQueryData(capabilitiesQueryKey("anonymous"), capabilities);
+queryClient.setQueryData(capabilitiesQueryKey(ANONYMOUS_USER_ID), capabilities);
 seedDockerIcons(queryClient);
 linuxio.storage.get_topology.queryFn = async () => storageInventory;
 linuxio.storage.list_vgs.queryFn = async () => storageGroups;

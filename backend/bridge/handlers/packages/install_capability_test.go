@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -210,7 +210,7 @@ func TestInstallCapabilityInstallsAvahiNSSBeforeServiceActions(t *testing.T) {
 				order = append(order, "wait:"+service)
 				return nil
 			}
-			capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+			capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 				order = append(order, "detect:"+spec.Name)
 				return true, ""
 			}
@@ -272,7 +272,7 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 		order = append(order, "wait:"+service)
 		return nil
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}
@@ -327,7 +327,7 @@ func TestInstallOptionalCapabilityPackageUsesGenericFallbackWarning(t *testing.T
 		nil,
 		"rhel",
 		"Example capability",
-		&system.InstallSpec{OptionalPackageRHEL: "example-extra"},
+		&capabilities.InstallSpec{OptionalPackageRHEL: "example-extra"},
 	)
 	if err != nil {
 		t.Fatalf("installOptionalCapabilityPackage: %v", err)
@@ -365,7 +365,7 @@ func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgeipc.TaskE
 
 func specOptionalRHELWarning(t *testing.T, name string) string {
 	t.Helper()
-	spec, ok := system.CapabilitySpecByName(name)
+	spec, ok := capabilities.CapabilitySpecByName(name)
 	if !ok || spec.Install == nil {
 		t.Fatalf("capability %q has no install specification", name)
 	}
@@ -395,7 +395,7 @@ func TestInstallCapabilityRunsSensorsDetectBeforeRedetection(t *testing.T) {
 		order = append(order, "post-install:"+name)
 		return originalLookPath(name)
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}

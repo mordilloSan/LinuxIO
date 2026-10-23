@@ -16,12 +16,14 @@ import (
 	"github.com/vishvananda/netlink"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/hostbridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/ifconfig"
 )
 
 var (
 	networkMutationMu sync.Mutex
-	networkEnv        = networkbackend.DefaultEnvironment()
+	networkEnv        = ifconfig.DefaultEnvironment()
+	bridgeEnv         = hostbridge.DefaultEnvironment()
 )
 
 func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
@@ -39,7 +41,7 @@ func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
 			return nil, err
 		}
 		info := liveInterfaceInfo(iface, dns, gateways[iface.Name])
-		if cfg, ok, err := networkbackend.ReadConfigBestEffort(networkEnv, iface.Name); err == nil && ok {
+		if cfg, ok, err := ifconfig.ReadConfigBestEffort(networkEnv, iface.Name); err == nil && ok {
 			mergeConfiguredState(&info, cfg)
 		} else if err != nil {
 			slog.Debug("network config unavailable", "component", "dbus", "subsystem", "network", "interface", iface.Name, "error", err)
@@ -51,7 +53,7 @@ func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
 }
 
 func GetBridgeOptions(ctx context.Context) (apischema.NetworkBridgeOptions, error) {
-	options, err := networkbackend.GetBridgeOptions(ctx, networkEnv)
+	options, err := hostbridge.GetBridgeOptions(ctx, bridgeEnv)
 	if err != nil {
 		return apischema.NetworkBridgeOptions{}, fmt.Errorf("get bridge options: %w", err)
 	}
@@ -74,7 +76,7 @@ func CreateBridge(ctx context.Context, req apischema.NetworkBridgeCreateRequest)
 	}
 	defer unlock()
 
-	result, err := networkbackend.CreateBridge(ctx, networkEnv, networkbackend.BridgePlan{
+	result, err := hostbridge.CreateBridge(ctx, bridgeEnv, hostbridge.BridgePlan{
 		Name:   name,
 		Member: member,
 	})
@@ -88,7 +90,7 @@ func CreateBridge(ctx context.Context, req apischema.NetworkBridgeCreateRequest)
 	}, nil
 }
 
-func mapBridgeOptions(options networkbackend.BridgeOptions) apischema.NetworkBridgeOptions {
+func mapBridgeOptions(options hostbridge.BridgeOptions) apischema.NetworkBridgeOptions {
 	result := apischema.NetworkBridgeOptions{
 		Candidates: make([]apischema.NetworkBridgeCandidate, 0, len(options.Candidates)),
 		Warnings:   options.Warnings,
@@ -129,15 +131,15 @@ func SetIPv4Manual(ctx context.Context, iface, addressCIDR, gateway string, dnsS
 	}
 	defer unlock()
 
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	backend, err := ifconfig.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
-	if setter, ok := backend.(networkbackend.DNSOptionsSetter); ok {
+	if setter, ok := backend.(ifconfig.DNSOptionsSetter); ok {
 		return setter.SetIPv4ManualWithSearch(ctx, addressCIDR, gateway, dnsServers, search)
 	}
 	if len(search) > 0 {
-		return fmt.Errorf("%w: %s cannot set DNS search domains", networkbackend.ErrUnsupportedBackend, backend.Name())
+		return fmt.Errorf("%w: %s cannot set DNS search domains", ifconfig.ErrUnsupportedBackend, backend.Name())
 	}
 	return backend.SetIPv4Manual(ctx, addressCIDR, gateway, dnsServers)
 }
@@ -157,15 +159,15 @@ func SetIPv4DHCP(ctx context.Context, iface string, dnsServers, search []string)
 	}
 	defer unlock()
 
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	backend, err := ifconfig.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
-	if setter, ok := backend.(networkbackend.DNSOptionsSetter); ok {
+	if setter, ok := backend.(ifconfig.DNSOptionsSetter); ok {
 		return setter.SetIPv4DHCPWithDNS(ctx, dnsServers, search)
 	}
 	if len(dnsServers) > 0 || len(search) > 0 {
-		return fmt.Errorf("%w: %s cannot set DNS alongside DHCP", networkbackend.ErrUnsupportedBackend, backend.Name())
+		return fmt.Errorf("%w: %s cannot set DNS alongside DHCP", ifconfig.ErrUnsupportedBackend, backend.Name())
 	}
 	return backend.SetIPv4DHCP(ctx)
 }
@@ -218,7 +220,7 @@ func SetIPv6DHCP(ctx context.Context, iface string) error {
 	}
 	defer unlock()
 
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	backend, err := ifconfig.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -235,7 +237,7 @@ func DisableConnection(ctx context.Context, iface string) error {
 	}
 	defer unlock()
 
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	backend, err := ifconfig.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -252,7 +254,7 @@ func EnableConnection(ctx context.Context, iface string) error {
 	}
 	defer unlock()
 
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	backend, err := ifconfig.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -276,7 +278,7 @@ func SetMTU(ctx context.Context, iface, mtu string) error {
 	}
 	defer unlock()
 
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	backend, err := ifconfig.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
@@ -293,13 +295,13 @@ func SetOptional(ctx context.Context, iface string, optional bool) error {
 	}
 	defer unlock()
 
-	backend, err := networkbackend.OpenBackend(networkEnv, iface)
+	backend, err := ifconfig.OpenBackend(networkEnv, iface)
 	if err != nil {
 		return err
 	}
-	setter, ok := backend.(networkbackend.OptionalSetter)
+	setter, ok := backend.(ifconfig.OptionalSetter)
 	if !ok {
-		return fmt.Errorf("%w: %s cannot mark %s optional", networkbackend.ErrUnsupportedBackend, backend.Name(), iface)
+		return fmt.Errorf("%w: %s cannot mark %s optional", ifconfig.ErrUnsupportedBackend, backend.Name(), iface)
 	}
 	return setter.SetOptional(ctx, optional)
 }
@@ -498,7 +500,7 @@ func networkInterfaceCarrier(name string) *bool {
 	return nil
 }
 
-func mergeConfiguredState(info *apischema.NetworkInterface, cfg networkbackend.InterfaceConfig) {
+func mergeConfiguredState(info *apischema.NetworkInterface, cfg ifconfig.InterfaceConfig) {
 	info.ConfigBackend = cfg.Backend
 	info.Optional = cfg.Optional
 	ignoreDHCPDNS := false

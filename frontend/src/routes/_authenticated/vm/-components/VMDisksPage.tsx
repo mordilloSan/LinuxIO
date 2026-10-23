@@ -3,12 +3,14 @@ import { useState, type CSSProperties } from "react";
 
 import {
   CACHE_TTL_MS,
+  getMutationErrorMessage,
   linuxio,
   useCallMutation,
+  type VirtualMachine,
   type VMStoragePool,
   type VMUnusedDisk,
-  type VirtualMachine,
 } from "@/api";
+import { EntityCard, KeyValues } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -23,10 +25,8 @@ import {
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { formatFileSize } from "@/utils/formaters";
-import { getMutationErrorMessage } from "@/utils/mutations";
+import { formatFileSize } from "@/utils/formatters";
 
-import { EntityCard, KeyValues } from "./vmCards";
 import { VM_TOAST } from "./vmShared";
 
 const pageStyle: CSSProperties = {
@@ -80,7 +80,7 @@ const vmDiskColumns: AppVirtualTableColumnDef<VMDiskRow>[] = [
 const inPool = (pool: VMStoragePool, path: string) =>
   Boolean(pool.path) && path.startsWith(`${pool.path}/`);
 
-export function StoragePoolCard({
+function StoragePoolCard({
   hostname,
   pool,
   vms,

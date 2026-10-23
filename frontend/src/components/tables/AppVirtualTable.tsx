@@ -27,6 +27,7 @@ import {
   type UIEventHandler,
 } from "react";
 
+import type { ReorderableSurfaceDndProps } from "@/components/reorder/useReorderableSurface";
 import type {
   AppVirtualTableColumnDef,
   AppTableFeatures,
@@ -49,8 +50,7 @@ import {
   useRowClickGestures,
   useTableGestureKeys,
 } from "@/components/tables/tableShared";
-import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { TRANSITION_DURATION_STANDARD_MS } from "@/theme/constants";
 
 // The app-dt__* chrome; see the note at the top of the stylesheet.
@@ -732,7 +732,7 @@ function AppVirtualTable<TData extends RowData>({
 }: AppVirtualTableProps<TData>) {
   "use no memo";
 
-  const prefersReducedMotion = useAppMediaQuery(
+  const prefersReducedMotion = useMediaQuery(
     "(prefers-reduced-motion: reduce)",
   );
   const internalScrollRef = useRef<HTMLDivElement>(null);
@@ -885,8 +885,7 @@ function AppVirtualTable<TData extends RowData>({
     >
   >((item, delta, instance) => {
     const cachedSize = instance.itemSizeCache.get(item.key);
-    const scrollOffset =
-      (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+    const scrollOffset = instance.scrollOffset ?? 0;
 
     // Preserve TanStack Virtual's default first-measure behavior.
     if (cachedSize === undefined) return item.start < scrollOffset;

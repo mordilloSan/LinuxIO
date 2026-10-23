@@ -18,8 +18,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
-const managedSeedSuffix = "-seed.img"
-
 var (
 	// Directories where LinuxIO writes VM disks: the default pool (ISO
 	// installs) and the cloud image folder (ready images).

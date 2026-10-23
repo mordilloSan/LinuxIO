@@ -13,8 +13,8 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
-	"github.com/mordilloSan/LinuxIO/backend/indexer/daemon"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/configfile"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/daemon"
 )
 
 const usageText = `linuxio-indexer is managed by LinuxIO and systemd.
@@ -59,12 +59,7 @@ func runDaemon(args []string) int {
 		slog.Error("failed to load config", "config_file", *configPath, "err", err)
 		return 1
 	}
-	cfg, err := daemon.DaemonConfigFromConfig(fileCfg, *configPath)
-	if err != nil {
-		slog.Error("invalid daemon config", "err", err)
-		return 1
-	}
-	d, err := daemon.NewDaemon(cfg)
+	d, err := daemon.New(fileCfg, *configPath)
 	if err != nil {
 		slog.Error("failed to start daemon", "err", err)
 		return 1
@@ -72,8 +67,8 @@ func runDaemon(args []string) int {
 	defer d.Close()
 
 	slog.Info("daemon initialized",
-		"config_file", cfg.ConfigPath,
-		"include_network_mounts", cfg.IncludeNetworkMounts,
+		"config_file", *configPath,
+		"include_network_mounts", fileCfg.IncludeNetworkMounts,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

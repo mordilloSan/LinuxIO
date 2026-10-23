@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-import buildAppTheme, { AppThemeProvider, useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import buildAppTheme, { AppThemeProvider } from "@/theme";
 import { up } from "@/theme/breakpoints";
 
 interface AuthLayoutProps {
@@ -20,7 +21,7 @@ const AuthLayout = ({ children }: AuthLayoutProps) => {
 };
 
 const AuthContent = ({ children }: AuthLayoutProps) => {
-  const isSmallUp = useAppMediaQuery(up("sm"));
+  const isSmallUp = useMediaQuery(up("sm"));
 
   return (
     <div

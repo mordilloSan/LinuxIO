@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { linuxio, type Count, type MonitoringLive } from "@/api";
 import AppPaper from "@/components/ui/AppPaper";
 import AppTypography from "@/components/ui/AppTypography";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize, formatUptimeClock } from "@/utils/formatters";
 
 import ProcessVirtualTable from "./ProcessVirtualTable";
 import { PROCESS_REFRESH_INTERVAL_MS } from "./ProgramsTab";
@@ -54,19 +54,6 @@ const Meter = ({
 };
 
 const formatSize = (bytes: number) => formatFileSize(bytes, 1, "0");
-
-export const formatHtopUptime = (seconds: number): string => {
-  const days = Math.floor(seconds / 86_400);
-  const clock = [
-    Math.floor((seconds % 86_400) / 3_600),
-    Math.floor((seconds % 3_600) / 60),
-    Math.floor(seconds % 60),
-  ]
-    .map((part) => String(part).padStart(2, "0"))
-    .join(":");
-  if (days === 0) return clock;
-  return `${days} ${days === 1 ? "day" : "days"}, ${clock}`;
-};
 
 export const HtopHeader = ({
   count,
@@ -137,7 +124,7 @@ export const HtopHeader = ({
             {cpu.load_average.map((load) => load.toFixed(2)).join(" ") || "—"}
           </dd>
           <dt>Uptime</dt>
-          <dd>{formatHtopUptime(live.uptime_seconds)}</dd>
+          <dd>{formatUptimeClock(live.uptime_seconds)}</dd>
         </dl>
       </div>
     </AppPaper>

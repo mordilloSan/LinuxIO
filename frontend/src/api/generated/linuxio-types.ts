@@ -2312,15 +2312,25 @@ export interface NetworkInterface {
 }
 
 export interface NotificationSettings {
-  minSeverity: string;
-  webhookUrl: string;
-  smtpHost: string;
-  smtpPort: number;
-  smtpUsername: string;
-  smtpPassword?: string;
   emailFrom: string;
   emailTo: string[];
+  minSeverity: string;
+  smtpHost: string;
+  smtpPassword?: string;
+  smtpPort: number;
+  smtpUsername: string;
+  webhookUrl: string;
+}
+
+export interface NotificationSettingsView {
+  emailFrom: string;
+  emailTo: string[];
+  minSeverity: string;
+  smtpHost: string;
   smtpPasswordSet: boolean;
+  smtpPort: number;
+  smtpUsername: string;
+  webhookUrl: string;
 }
 
 export interface OfflineUpdatesResponse {
@@ -3045,18 +3055,6 @@ export interface UpdateHistoryRow {
   upgrades: UpgradeItem[];
 }
 
-export interface UpdateItem {
-  arch?: string;
-  currentVersion?: string;
-  name: string;
-  newVersion?: string;
-  repo?: string;
-}
-
-export interface UpdatesFastResponse {
-  updates?: UpdateItem[];
-}
-
 export interface UpgradeItem {
   package: string;
   version?: string;
@@ -3447,7 +3445,7 @@ export interface LinuxIOSchema {
     get_notifications: {
       input: [];
       request: void;
-      result: NotificationSettings;
+      result: NotificationSettingsView;
     };
     list: { input: []; request: void; result: AlertList };
     mark_all_seen: { input: []; request: void; result: AlertList };
@@ -3459,7 +3457,7 @@ export interface LinuxIOSchema {
     set_notifications: {
       input: [request: NotificationSettings];
       request: NotificationSettings;
-      result: NotificationSettings;
+      result: NotificationSettingsView;
     };
     test_notifications: { input: []; request: void; result: SuccessResponse };
   };
@@ -4414,7 +4412,6 @@ export interface LinuxIOSchema {
     get_server_time: { input: []; request: void; result: string };
     get_system_info: { input: []; request: void; result: SystemInfo };
     get_timezones: { input: []; request: void; result: string[] };
-    get_updates_fast: { input: []; request: void; result: UpdatesFastResponse };
     install_capability: {
       input: [capability: string];
       request: CapabilityRequest;
@@ -4693,13 +4690,16 @@ export interface LinuxIOCallSchema {
   };
   "accounts.unlock_user": { request: UsernameRequest; result: void };
   "alerts.dismiss": { request: AlertDismissRequest; result: AlertList };
-  "alerts.get_notifications": { request: void; result: NotificationSettings };
+  "alerts.get_notifications": {
+    request: void;
+    result: NotificationSettingsView;
+  };
   "alerts.list": { request: void; result: AlertList };
   "alerts.mark_all_seen": { request: void; result: AlertList };
   "alerts.mark_seen": { request: AlertIDsRequest; result: AlertList };
   "alerts.set_notifications": {
     request: NotificationSettings;
-    result: NotificationSettings;
+    result: NotificationSettingsView;
   };
   "alerts.test_notifications": { request: void; result: SuccessResponse };
   "config.get": { request: void; result: AppConfig };
@@ -5194,7 +5194,6 @@ export interface LinuxIOCallSchema {
   "system.get_server_time": { request: void; result: string };
   "system.get_system_info": { request: void; result: SystemInfo };
   "system.get_timezones": { request: void; result: string[] };
-  "system.get_updates_fast": { request: void; result: UpdatesFastResponse };
   "system.list_failed_login_events": {
     request: FailedLoginEventsRequest;
     result: AccountUserLogin[];

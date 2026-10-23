@@ -12,6 +12,7 @@ import (
 	"github.com/shirou/gopsutil/v4/cpu"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 )
 
 func FetchCPUSummary(ctx context.Context) string {
@@ -27,13 +28,13 @@ func FetchCPUSummary(ctx context.Context) string {
 	return cpuInfo[0].ModelName
 }
 
-var systemInfoCache hwSnapshotCache[*apischema.SystemInfo]
+var systemInfoCache hwprobe.SnapshotCache[*apischema.SystemInfo]
 
 func FetchSystemInfo(ctx context.Context) (*apischema.SystemInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return systemInfoCache.get(func() (*apischema.SystemInfo, error) {
+	return systemInfoCache.Get(func() (*apischema.SystemInfo, error) {
 		return fetchSystemInfo(ctx)
 	})
 }

@@ -7,15 +7,17 @@ import (
 	"strings"
 
 	"github.com/moby/moby/client"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 )
 
 // ListContainerShells returns a list of available shells in a container.
 func ListContainerShells(ctx context.Context, containerID string) ([]string, error) {
-	cli, err := client.New(client.FromEnv)
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer cli.Close()
+	defer dockerclient.Release(cli)
 
 	shells := []string{"bash", "sh", "zsh", "ash", "dash"}
 	available := []string{}

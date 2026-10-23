@@ -79,3 +79,10 @@
 .app-linear-progress--success {
   --_lp-color: var(--app-palette-success-main);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-linear-progress--indeterminate .app-linear-progress__bar {
+    animation-duration: 2.1s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

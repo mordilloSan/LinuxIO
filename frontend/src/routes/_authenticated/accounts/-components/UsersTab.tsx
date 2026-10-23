@@ -1,33 +1,27 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { type AccountUser, linuxio, useCallMutation } from "@/api";
-import type { UserLockAction } from "@/components/cards/UserCard";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import { useReorderableTableDnd } from "@/components/tables/useReorderableTableDnd";
+import { RESPONSIVE_TEXT_CLASS } from "@/components/tables/wrappingText";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
-import { responsiveTextStyles } from "@/theme/tableStyles";
+import type { UserLockAction } from "@/routes/_authenticated/accounts/-components/UserCard";
 
-import ChangePasswordDialog from "./components/ChangePasswordDialog";
-import CreateUserDialog from "./components/CreateUserDialog";
-import EditUserDialog from "./components/EditUserDialog";
-import UserCardsView from "./components/UserCardsView";
+import ChangePasswordDialog from "./ChangePasswordDialog";
+import CreateUserDialog from "./CreateUserDialog";
+import EditUserDialog from "./EditUserDialog";
+import UserCardsView from "./UserCardsView";
 
 const ACCOUNTS_TOAST_META = {
   label: "Open accounts",
@@ -118,23 +112,9 @@ const UsersTab = ({
 
   const effectiveViewMode = selectedUsername ? "card" : viewMode;
 
-  const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      !selectedUsername ||
-      (event.key !== "Escape" && event.key !== "Esc") ||
-      event.defaultPrevented ||
-      document.querySelector(OVERLAY_ROOT_SELECTOR)
-    ) {
-      return;
-    }
-    setSelectedUsername(null);
-    event.preventDefault();
-  });
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleEscapeKey);
-    return () => window.removeEventListener("keydown", handleEscapeKey);
-  }, []);
+  useClearSelectionOnEscape(Boolean(selectedUsername), () =>
+    setSelectedUsername(null),
+  );
 
   const handleCreateUser = useCallback(() => {
     setCreateDialogOpen(true);
@@ -239,7 +219,7 @@ const UsersTab = ({
             >
               <AppTypography
                 fontWeight={500}
-                style={responsiveTextStyles}
+                className={RESPONSIVE_TEXT_CLASS}
                 variant="body2"
               >
                 {user.username}
@@ -269,7 +249,7 @@ const UsersTab = ({
         accessorKey: "gecos",
         header: "Full Name",
         cell: ({ row }) => (
-          <AppTypography style={responsiveTextStyles} variant="body2">
+          <AppTypography className={RESPONSIVE_TEXT_CLASS} variant="body2">
             {row.original.gecos || "-"}
           </AppTypography>
         ),
@@ -282,7 +262,7 @@ const UsersTab = ({
         accessorKey: "uid",
         header: "ID",
         cell: ({ row }) => (
-          <AppTypography style={responsiveTextStyles} variant="body2">
+          <AppTypography className={RESPONSIVE_TEXT_CLASS} variant="body2">
             {row.original.uid}
           </AppTypography>
         ),
@@ -304,7 +284,7 @@ const UsersTab = ({
                   ? "success"
                   : "text.secondary"
               }
-              style={responsiveTextStyles}
+              className={RESPONSIVE_TEXT_CLASS}
               variant="body2"
             >
               {formatLastLogin(

@@ -5,9 +5,7 @@ import type { Process, Program } from "@/api";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppTypography from "@/components/ui/AppTypography";
-import { formatFileSize } from "@/utils/formaters";
-
-const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
+import { formatFileSize, formatPercent } from "@/utils/formatters";
 
 const processColumns: AppVirtualTableColumnDef<Process>[] = [
   { accessorKey: "pid", header: "PID", meta: { align: "right", width: 80 } },

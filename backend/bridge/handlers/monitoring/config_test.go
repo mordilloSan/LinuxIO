@@ -13,6 +13,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -40,15 +41,15 @@ func withFastCommandRetry(t *testing.T) {
 	})
 }
 
-func decodeCommandRequest(t *testing.T, req *http.Request) commandRequest {
+func decodeCommandRequest(t *testing.T, req *http.Request) monitoringapi.CommandRequest {
 	t.Helper()
 	if req.Method != http.MethodPost {
 		t.Fatalf("method = %s, want POST", req.Method)
 	}
-	if req.URL.Path != "/api/v1/command" {
-		t.Fatalf("path = %s, want /api/v1/command", req.URL.Path)
+	if req.URL.Path != monitoringapi.RouteCommand {
+		t.Fatalf("path = %s, want %s", req.URL.Path, monitoringapi.RouteCommand)
 	}
-	var decoded commandRequest
+	var decoded monitoringapi.CommandRequest
 	if err := json.NewDecoder(req.Body).Decode(&decoded); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}

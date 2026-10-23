@@ -2,11 +2,15 @@ import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useState } from "react";
 
-import { linuxio, type VirtualMachine, useCallMutation } from "@/api";
+import {
+  getMutationErrorMessage,
+  linuxio,
+  useCallMutation,
+  type VirtualMachine,
+} from "@/api";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import DeleteVMDialog from "./DeleteVMDialog";
 import { useVMLifecycle } from "./useVMLifecycle";
@@ -28,7 +32,7 @@ const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
  */
 const VMMachinesLayout = () => {
   const queryClient = useQueryClient();
-  const isCompactLayout = useAppMediaQuery(down("md"));
+  const isCompactLayout = useMediaQuery(down("md"));
   const toast = useScopedToast(VM_TOAST);
   const navigate = vmMachinesRouteApi.useNavigate();
   // Both entries were already warmed by the /vm route loader; these observers

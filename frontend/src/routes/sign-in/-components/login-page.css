@@ -66,3 +66,11 @@
     transform: none;
   }
 }
+
+.panel {
+  background: var(--app-panel-background);
+  color: var(--app-panel-text);
+  border: 1px solid var(--app-panel-border);
+  border-radius: var(--app-radius-base);
+  box-shadow: var(--app-panel-shadow);
+}

@@ -11,31 +11,37 @@ import {
 
 import type { UnitInfo } from "@/api";
 import { linuxio, useCallMutation } from "@/api";
-import type { UnitListItem } from "@/components/cards/UnitCard";
-import UnitCard from "@/components/cards/UnitCard";
-import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import type { ReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { DetailRow } from "@/components/ui/InfoRow";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import UnitCard from "@/routes/_authenticated/services/-components/UnitCard";
+import type { UnitListItem } from "@/routes/_authenticated/services/-components/UnitCard";
 import { down } from "@/theme/breakpoints";
 import {
   DETAIL_PANEL_GAP,
   TRANSITION_DURATION_STANDARD_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
+import { formatSystemdUsec } from "@/utils/formatters";
 
-import { formatTimestamp, formatUnitFileState } from "./unitFormatters";
+import { formatUnitFileState } from "./unitFormatters";
 
-export type { UnitListItem } from "@/components/cards/UnitCard";
-export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
-export type { UnitInfoRow } from "@/components/cards/UnitInfoPanelCard";
-export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
+export type { UnitListItem } from "@/routes/_authenticated/services/-components/UnitCard";
+
+const SHORT_DATE_TIME: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+};
 
 // In layout mode a card press belongs to the drag, not to opening the unit.
 const noopExpand = () => {};
@@ -60,7 +66,7 @@ interface UnitTableViewProps<T extends RowData> {
   renderMainRow: (row: T, isMobile: boolean, index: number) => ReactNode[];
 }
 
-interface UnitTableColumn {
+export interface UnitTableColumn {
   align?: "left" | "center" | "right";
   field: string;
   headerName: string;
@@ -119,7 +125,7 @@ function ExpandedUnitCard<T extends UnitListItem>({
   );
 }
 
-export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
+function AutoStartRow({ unitFileState }: { unitFileState: string }) {
   const { label, auto } = formatUnitFileState(unitFileState);
 
   return (
@@ -167,8 +173,9 @@ export function UnitStatusRows({
 }: UnitStatusRowsProps) {
   const statusColor = getServiceStatusColor(activeState);
   const isActive = activeState === "active";
-  const timestamp = formatTimestamp(
+  const timestamp = formatSystemdUsec(
     isActive ? activeEnterTimestamp : inactiveEnterTimestamp,
+    SHORT_DATE_TIME,
   );
 
   return (
@@ -413,7 +420,7 @@ export function UnitTableView<T extends RowData>({
   onSelect,
   emptyMessage,
 }: UnitTableViewProps<T>) {
-  const isMobile = useAppMediaQuery(down("sm"));
+  const isMobile = useMediaQuery(down("sm"));
   const activeColumns = isMobile ? mobileColumns : desktopColumns;
   const columns = useMemo<AppVirtualTableColumnDef<T>[]>(() => {
     const renderedCellCache = new Map<
@@ -488,7 +495,7 @@ export function UnitCardsView<T extends UnitListItem>({
   emptyMessage,
 }: UnitCardsViewProps<T>) {
   const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
-  const isCompactLayout = useAppMediaQuery(down("md"));
+  const isCompactLayout = useMediaQuery(down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
   // Fed to ReorderableCardGrid's `virtualized` path, which hands it straight
   // to AppVirtualGrid's hand-memoized row — that memo only holds if this

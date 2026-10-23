@@ -2,7 +2,6 @@ package alerts
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -37,31 +36,15 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.AlertDismissRequest, apischema.AlertList]("alerts.dismiss", apischema.Privileged()).Handle(func(ctx context.Context, req apischema.AlertDismissRequest) (apischema.AlertList, error) {
 			return dismissForUID(ctx, uid(), req.ID)
 		}),
-		apischema.Call[apischema.NoRequest, store.NotificationSettings]("alerts.get_notifications", apischema.Privileged(), apischema.RetrySafe()).Handle(func(context.Context, apischema.NoRequest) (store.NotificationSettings, error) {
+		apischema.Call[apischema.NoRequest, apischema.NotificationSettingsView]("alerts.get_notifications", apischema.Privileged(), apischema.RetrySafe()).Handle(func(context.Context, apischema.NoRequest) (apischema.NotificationSettingsView, error) {
 			n, err := store.LoadNotifications()
-			return n.View(), err
+			return notificationsView(n), err
 		}),
-		apischema.Call[store.NotificationSettings, store.NotificationSettings]("alerts.set_notifications", apischema.Privileged()).Handle(func(_ context.Context, req store.NotificationSettings) (store.NotificationSettings, error) {
+		apischema.Call[apischema.NotificationSettings, apischema.NotificationSettingsView]("alerts.set_notifications", apischema.Privileged()).Handle(func(_ context.Context, req apischema.NotificationSettings) (apischema.NotificationSettingsView, error) {
 			slog.Info("saving alert notification settings", "minSeverity", req.MinSeverity, "webhook", req.WebhookURL != "", "email", req.SMTPHost != "")
-			return store.SaveNotifications(req)
+			n, err := store.SaveNotifications(notificationsFromRequest(req))
+			return notificationsView(n), err
 		}),
 		apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("alerts.test_notifications", apischema.Privileged()).Handle(handleTestNotifications),
 	)
-}
-
-// handleTestNotifications sends a test alert through the saved channels,
-// whatever their minimum severity, and reports the first failure.
-func handleTestNotifications(ctx context.Context, _ apischema.NoRequest) (apischema.SuccessResponse, error) {
-	n, err := store.LoadNotifications()
-	if err != nil {
-		return apischema.SuccessResponse{}, err
-	}
-	if n.WebhookURL == "" && n.SMTPHost == "" {
-		return apischema.SuccessResponse{}, errors.New("no notification channel is configured")
-	}
-	if err := store.Send(ctx, n, store.TestAlert()); err != nil {
-		slog.Warn("test notification failed", "error", err)
-		return apischema.SuccessResponse{}, err
-	}
-	return apischema.SuccessResponse{Success: true}, nil
 }

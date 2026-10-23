@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -27,7 +28,7 @@ var ErrUnavailable = errors.New("indexer unavailable")
 var Client = &http.Client{Transport: &http.Transport{
 	ResponseHeaderTimeout: indexerResponseHeaderTimeout,
 	DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "unix", "/run/linuxio/indexer.sock")
+		return (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "unix", version.RunDir+"/indexer.sock")
 	},
 }}
 

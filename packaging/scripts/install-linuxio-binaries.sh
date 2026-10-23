@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
 # LinuxIO Full Installer
-# Downloads and installs LinuxIO binaries, systemd services, PAM, and config
+# Downloads and installs LinuxIO binaries, systemd services, PAM, and config.
+# With --local it installs from a local checkout instead (binaries from the
+# build directory, packaging assets from the repo); localinstall.sh wraps that.
+# This file must stay self-contained: it is piped to bash from main and run by
+# the bridge updater with --defer-restart.
 #  2025 Miguel Mariz (mordilloSan)
 # =============================================================================
 set -euo pipefail
@@ -25,6 +29,13 @@ readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
 readonly MINIMUM_MONITORING_RELEASE="v0.28.0"
 ENABLE_INDEXER_TIMER=0
+# Install source. Release mode downloads into STAGING; --local reads the build
+# directory and the checkout (set in main).
+LOCAL_INSTALL=0
+REPO_ROOT=""
+BINARY_SRC_DIR="$STAGING"
+LICENSE_SRC="${STAGING}/LICENSE"
+NOTICES_SRC="${STAGING}/THIRD_PARTY_NOTICES.md"
 # Recovery-asset policy: a versioned install downloads immutable release
 # binaries, but intentionally fetches current-main configuration, PAM, MOTD,
 # and systemd packaging assets. This lets a maintainer repair an installer or
@@ -62,7 +73,8 @@ require_release_version() {
 	fi
 }
 
-release_binary_names() {
+# Must equal `make print-binaries`; tests/installer-fixtures.sh enforces it.
+binary_names() {
 	printf '%s\n' \
 		linuxio \
 		linuxio-webserver \
@@ -70,15 +82,18 @@ release_binary_names() {
 		linuxio-auth \
 		linuxio-docker-update \
 		linuxio-indexer \
-		linuxio-monitoring
+		linuxio-monitoring \
+		linuxio-btrfs-timer
 }
 
 release_download_assets() {
-	release_binary_names
+	binary_names
 	printf '%s\n' LICENSE THIRD_PARTY_NOTICES.md SHA256SUMS
 }
 
-release_systemd_units() {
+# Must equal the units in packaging/systemd (linuxio-tmpfiles.conf is not a
+# unit); tests/installer-fixtures.sh enforces it.
+systemd_units() {
 	printf '%s\n' \
 		linuxio.target \
 		linuxio-webserver.socket \
@@ -94,6 +109,28 @@ release_systemd_units() {
 		linuxio-btrfs-health.service \
 		linuxio-btrfs-health.timer \
 		linuxio-monitoring.service
+}
+
+# Administrator-owned configuration, relative to ${CONFIG_DIR}: created when
+# missing, never overwritten by any install mode.
+admin_owned_config_files() {
+	printf '%s\n' \
+		disallowed-users \
+		indexer/config.yaml \
+		monitoring/config.yaml
+}
+
+# Copy (--local) or download (release) one asset under packaging/ to a path.
+# Release installs deliberately take current-main packaging; see the policy above.
+fetch_packaging_asset() {
+	local rel="$1"
+	local dest="$2"
+
+	if [[ $LOCAL_INSTALL -eq 1 ]]; then
+		cp "${REPO_ROOT}/packaging/${rel}" "$dest"
+	else
+		curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/${rel}" -o "$dest"
+	fi
 }
 
 atomic_replace_file() {
@@ -243,16 +280,24 @@ verify_checksums() {
 	return 0
 }
 
+verify_local_binaries() {
+	local binary
+	while IFS= read -r binary; do
+		[[ -f "${BINARY_SRC_DIR}/${binary}" ]] || Show 1 "Binary not found: ${BINARY_SRC_DIR}/${binary}. Run 'make build-binaries' first."
+		Show 0 "${binary}"
+	done < <(binary_names)
+}
+
 install_binaries() {
 	Show 2 "Installing binaries to ${BOLD}${BIN_DIR}${COLOUR_RESET}"
 
 	mkdir -p "$BIN_DIR"
 
 	local binaries
-	mapfile -t binaries < <(release_binary_names)
+	mapfile -t binaries < <(binary_names)
 
 	for binary in "${binaries[@]}"; do
-		local src="${STAGING}/${binary}"
+		local src="${BINARY_SRC_DIR}/${binary}"
 		local dst="${BIN_DIR}/${binary}"
 		local mode=0755
 
@@ -282,10 +327,10 @@ install_binaries() {
 
 install_license_files() {
 	Show 2 "Installing licenses to ${BOLD}${DOC_DIR}${COLOUR_RESET}"
-	if ! atomic_replace_file "${STAGING}/LICENSE" "${DOC_DIR}/LICENSE" 0644 root:root; then
+	if ! atomic_replace_file "$LICENSE_SRC" "${DOC_DIR}/LICENSE" 0644 root:root; then
 		Show 1 "Failed to install license"
 	fi
-	if ! atomic_replace_file "${STAGING}/THIRD_PARTY_NOTICES.md" "${DOC_DIR}/THIRD_PARTY_NOTICES.md" 0644 root:root; then
+	if ! atomic_replace_file "$NOTICES_SRC" "${DOC_DIR}/THIRD_PARTY_NOTICES.md" 0644 root:root; then
 		Show 1 "Failed to install third-party notices"
 	fi
 	Show 0 "Licenses installed"
@@ -303,42 +348,23 @@ install_config_files() {
 		chmod 0755 "$CONFIG_DIR"
 	fi
 
-	local disallowed_file="${CONFIG_DIR}/disallowed-users"
-	if [[ ! -f "$disallowed_file" ]]; then
-		Show 2 "Downloading disallowed-users..."
-		if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/linuxio/disallowed-users" -o "$disallowed_file"; then
-			Show 1 "Failed to download disallowed-users"
-		fi
-		chown root:root "$disallowed_file"
-		chmod 0644 "$disallowed_file"
-		Show 0 "Created ${disallowed_file}"
-	else
-		Show 0 "${disallowed_file} already exists (not overwriting)"
-	fi
-
-	local component component_dir component_file component_staged
-	for component in indexer monitoring; do
-		component_dir="${CONFIG_DIR}/${component}"
-		if [[ ! -d "$component_dir" ]]; then
-			mkdir -p "$component_dir"
-			chown root:root "$component_dir"
-			chmod 0755 "$component_dir"
-		fi
-		component_file="${component_dir}/config.yaml"
-		if [[ -f "$component_file" ]]; then
-			Show 0 "${component_file} already exists (not overwriting)"
+	local rel dest staged
+	while IFS= read -r rel; do
+		dest="${CONFIG_DIR}/${rel}"
+		if [[ -f "$dest" ]]; then
+			Show 0 "${dest} already exists (not overwriting)"
 			continue
 		fi
-		Show 2 "Downloading ${component} configuration..."
-		component_staged="${STAGING}/${component}-config.yaml"
-		if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/linuxio/${component}/config.yaml" -o "$component_staged"; then
-			Show 1 "Failed to download ${component} configuration"
+		Show 2 "Installing ${rel}..."
+		staged="${STAGING}/config-${rel//\//-}"
+		if ! fetch_packaging_asset "etc/linuxio/${rel}" "$staged"; then
+			Show 1 "Failed to fetch ${rel}"
 		fi
-		if ! atomic_replace_file "$component_staged" "$component_file" 0644 root:root; then
-			Show 1 "Failed to install ${component} configuration"
+		if ! atomic_replace_file "$staged" "$dest" 0644 root:root; then
+			Show 1 "Failed to install ${dest}"
 		fi
-		Show 0 "Created ${component_file}"
-	done
+		Show 0 "Created ${dest}"
+	done < <(admin_owned_config_files)
 
 	return 0
 }
@@ -348,8 +374,8 @@ install_pam_config() {
 
 	local pam_file="${PAM_DIR}/linuxio"
 
-	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/pam.d/linuxio" -o "$pam_file"; then
-		Show 1 "Failed to download PAM configuration"
+	if ! fetch_packaging_asset "etc/pam.d/linuxio" "$pam_file"; then
+		Show 1 "Failed to fetch PAM configuration"
 	fi
 
 	chown root:root "$pam_file"
@@ -372,8 +398,8 @@ install_avahi_service() {
 		return 0
 	fi
 
-	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/avahi/services/linuxio.service" -o "$avahi_file"; then
-		Show 3 "Failed to download Avahi service file — mDNS advertisement skipped"
+	if ! fetch_packaging_asset "etc/avahi/services/linuxio.service" "$avahi_file"; then
+		Show 3 "Failed to fetch Avahi service file — mDNS advertisement skipped"
 		return 0
 	fi
 
@@ -568,12 +594,12 @@ install_systemd_files() {
 	fi
 
 	local units
-	mapfile -t units < <(release_systemd_units)
+	mapfile -t units < <(systemd_units)
 	for file in "${units[@]}"; do
-		Show 2 "Downloading ${file}..."
+		Show 2 "Fetching ${file}..."
 		local staged_unit="${STAGING}/${file}"
-		if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/systemd/${file}" -o "$staged_unit"; then
-			Show 1 "Failed to download ${file}"
+		if ! fetch_packaging_asset "systemd/${file}" "$staged_unit"; then
+			Show 1 "Failed to fetch ${file}"
 		fi
 		if ! atomic_replace_file "$staged_unit" "${SYSTEMD_DIR}/${file}" 0644 root:root; then
 			Show 1 "Failed to install ${file}"
@@ -599,19 +625,19 @@ install_systemd_files() {
 
 	Show 2 "Installing SSH login banner support..."
 	mkdir -p /usr/share/linuxio/issue
-	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/scripts/update-issue" -o /usr/share/linuxio/issue/update-issue; then
-		Show 3 "Failed to download issue script (non-critical)"
+	if ! fetch_packaging_asset "scripts/update-issue" /usr/share/linuxio/issue/update-issue; then
+		Show 3 "Failed to fetch issue script (non-critical)"
 	else
 		chmod 0755 /usr/share/linuxio/issue/update-issue
 		# Wire the banner into the distro's MOTD mechanism:
 		# - Debian/Ubuntu/Mint render /etc/update-motd.d/* into /run/motd.dynamic
 		# - Fedora/RHEL-style pam_motd reads /etc/motd.d directly
 		if [[ -d /etc/update-motd.d ]]; then
-			if curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/etc/update-motd.d/60-linuxio" -o /etc/update-motd.d/60-linuxio; then
+			if fetch_packaging_asset "etc/update-motd.d/60-linuxio" /etc/update-motd.d/60-linuxio; then
 				chmod 0755 /etc/update-motd.d/60-linuxio
 				Show 0 "SSH login banner configured (update-motd.d)"
 			else
-				Show 3 "Failed to download motd script (non-critical)"
+				Show 3 "Failed to fetch motd script (non-critical)"
 			fi
 		elif [[ -d /etc/motd.d ]]; then
 			ln -sf ../../run/linuxio/issue /etc/motd.d/linuxio 2>/dev/null || true
@@ -623,8 +649,8 @@ install_systemd_files() {
 
 	Show 2 "Installing tmpfiles.d configuration..."
 	mkdir -p /usr/lib/tmpfiles.d
-	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/systemd/linuxio-tmpfiles.conf" -o /usr/lib/tmpfiles.d/linuxio.conf; then
-		Show 3 "Failed to download tmpfiles.d config (non-critical)"
+	if ! fetch_packaging_asset "systemd/linuxio-tmpfiles.conf" /usr/lib/tmpfiles.d/linuxio.conf; then
+		Show 3 "Failed to fetch tmpfiles.d config (non-critical)"
 	else
 		chmod 0644 /usr/lib/tmpfiles.d/linuxio.conf
 		systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
@@ -634,8 +660,8 @@ install_systemd_files() {
 	# libvirt hook: lets bridged VM traffic through Docker's FORWARD DROP policy
 	Show 2 "Installing libvirt bridge hook..."
 	mkdir -p /etc/libvirt/hooks/qemu.d
-	if ! curl -fsSL "${CURRENT_MAIN_PACKAGING_BASE}/libvirt/hooks/qemu.d/linuxio-bridge-netfilter" -o /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter; then
-		Show 3 "Failed to download libvirt bridge hook (non-critical)"
+	if ! fetch_packaging_asset "libvirt/hooks/qemu.d/linuxio-bridge-netfilter" /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter; then
+		Show 3 "Failed to fetch libvirt bridge hook (non-critical)"
 	else
 		chmod 0755 /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter
 		# libvirt only discovers hook scripts when its daemon starts.
@@ -679,8 +705,10 @@ enable_services() {
 		fi
 	fi
 	# The control-plane restart (here or deferred to the caller) does not cover
-	# the monitoring daemon, so move it onto the installed binary now.
+	# the monitoring daemon or the login banner, so move them onto the
+	# installed binary and update-issue script now.
 	systemctl restart linuxio-monitoring.service >/dev/null 2>&1 || true
+	systemctl restart linuxio-issue.service >/dev/null 2>&1 || true
 
 	return 0
 }
@@ -702,49 +730,39 @@ grant_journal_access() {
 # ---------- Verification Functions ----------
 
 verify_installation() {
-	if "${BIN_DIR}/linuxio" help >/dev/null 2>&1; then
-		Show 0 "linuxio CLI: working"
-	else
-		Show 3 "linuxio CLI did not run successfully"
-	fi
-
-	if "${BIN_DIR}/linuxio-webserver" >/dev/null 2>&1; then
-		local version
-		version=$("${BIN_DIR}/linuxio-webserver" 2>&1 | head -n1 || echo "unknown")
-		Show 0 "${version}"
-	else
-		Show 3 "linuxio-webserver did not run successfully (may be arch mismatch)"
-	fi
-
-	if [[ -x "${BIN_DIR}/linuxio-bridge" ]]; then
-		Show 0 "linuxio-bridge: executable"
-	else
-		Show 3 "linuxio-bridge: not executable"
-	fi
-
-	if [[ -x "${BIN_DIR}/linuxio-auth" ]]; then
-		Show 0 "linuxio-auth: executable"
-	else
-		Show 3 "linuxio-auth: not executable"
-	fi
-
-	if "${BIN_DIR}/linuxio-docker-update" help >/dev/null 2>&1; then
-		Show 0 "linuxio-docker-update: working"
-	else
-		Show 3 "linuxio-docker-update did not run successfully"
-	fi
-
-	if "${BIN_DIR}/linuxio-indexer" --version >/dev/null 2>&1; then
-		Show 0 "linuxio-indexer: working"
-	else
-		Show 3 "linuxio-indexer did not run successfully"
-	fi
-
-	if "${BIN_DIR}/linuxio-monitoring" --version >/dev/null 2>&1; then
-		Show 0 "linuxio-monitoring: working"
-	else
-		Show 3 "linuxio-monitoring did not run successfully"
-	fi
+	local binary
+	while IFS= read -r binary; do
+		case "$binary" in
+		linuxio | linuxio-docker-update | linuxio-btrfs-timer)
+			if "${BIN_DIR}/${binary}" help >/dev/null 2>&1; then
+				Show 0 "${binary}: working"
+			else
+				Show 3 "${binary} did not run successfully"
+			fi
+			;;
+		linuxio-webserver)
+			if "${BIN_DIR}/${binary}" >/dev/null 2>&1; then
+				Show 0 "$("${BIN_DIR}/${binary}" 2>&1 | head -n1 || echo "unknown")"
+			else
+				Show 3 "${binary} did not run successfully (may be arch mismatch)"
+			fi
+			;;
+		linuxio-indexer | linuxio-monitoring)
+			if "${BIN_DIR}/${binary}" --version >/dev/null 2>&1; then
+				Show 0 "${binary}: working"
+			else
+				Show 3 "${binary} did not run successfully"
+			fi
+			;;
+		*)
+			if [[ -x "${BIN_DIR}/${binary}" ]]; then
+				Show 0 "${binary}: executable"
+			else
+				Show 3 "${binary}: not executable"
+			fi
+			;;
+		esac
+	done < <(binary_names)
 
 	if systemctl is-enabled linuxio.target >/dev/null 2>&1; then
 		Show 0 "linuxio.target is enabled"
@@ -763,13 +781,15 @@ verify_installation() {
 	else
 		Show 3 "Configuration directory not found"
 	fi
-	for config_file in "${CONFIG_DIR}/config.yaml" "${CONFIG_DIR}/indexer/config.yaml" "${CONFIG_DIR}/monitoring/config.yaml"; do
+	local rel config_file
+	while IFS= read -r rel; do
+		config_file="${CONFIG_DIR}/${rel}"
 		if [[ -f "$config_file" ]]; then
 			Show 0 "${config_file} installed"
 		else
 			Show 3 "${config_file} not found"
 		fi
-	done
+	done < <(admin_owned_config_files)
 
 	return 0
 }
@@ -814,6 +834,7 @@ main() {
 	local skip_binaries=0
 	local dry_run=0
 	local defer_restart=0
+	local build_dir=""
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -828,6 +849,16 @@ main() {
 		--defer-restart)
 			defer_restart=1
 			shift
+			;;
+		--local)
+			LOCAL_INSTALL=1
+			shift
+			;;
+		--build-dir)
+			[[ $# -ge 2 ]] || Show 1 "--build-dir requires a directory"
+			LOCAL_INSTALL=1
+			build_dir="$2"
+			shift 2
 			;;
 		-h | --help)
 			show_help
@@ -846,8 +877,17 @@ main() {
 	if [[ $EUID -ne 0 ]]; then
 		Show 1 "This script must be run as root"
 	fi
-	require_release_architecture
-	require_release_version "$version"
+	if [[ $LOCAL_INSTALL -eq 1 ]]; then
+		[[ -z "$version" ]] || Show 1 "A version cannot be combined with --local"
+		REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+		[[ -f "${REPO_ROOT}/Makefile" ]] || Show 1 "Cannot find LinuxIO repository root at ${REPO_ROOT}"
+		BINARY_SRC_DIR="${build_dir:-${REPO_ROOT}/build}"
+		LICENSE_SRC="${REPO_ROOT}/LICENSE"
+		NOTICES_SRC="${REPO_ROOT}/docs/THIRD_PARTY_NOTICES.md"
+	else
+		require_release_architecture
+		require_release_version "$version"
+	fi
 
 	if [[ $dry_run -eq 1 ]]; then
 		if ! verify_dry_run_targets; then
@@ -856,24 +896,29 @@ main() {
 		exit 0
 	fi
 
-	Header "LinuxIO ${GREY}· Binary Installer${COLOUR_RESET}"
-
-	if [[ -n "$version" ]]; then
-		Show 2 "Target version: ${BOLD}${version}${COLOUR_RESET}"
+	if [[ $LOCAL_INSTALL -eq 1 ]]; then
+		Header "LinuxIO ${GREY}· Local Install${COLOUR_RESET}"
+		Show 2 "Installing from ${BOLD}${REPO_ROOT}${COLOUR_RESET}"
 	else
-		Show 2 "Target version: ${BOLD}latest${COLOUR_RESET}"
+		Header "LinuxIO ${GREY}· Binary Installer${COLOUR_RESET}"
+		Show 2 "Target version: ${BOLD}${version:-latest}${COLOUR_RESET}"
 	fi
 
 	# Step 1-3: Binaries
 	if [[ $skip_binaries -eq 0 ]]; then
-		Header "Step 1/5 — Download Binaries"
-		if ! download_binaries "$version"; then
-			Show 1 "Download failed"
-		fi
+		if [[ $LOCAL_INSTALL -eq 1 ]]; then
+			Header "Steps 1-2 — Verify Local Build"
+			verify_local_binaries
+		else
+			Header "Step 1/5 — Download Binaries"
+			if ! download_binaries "$version"; then
+				Show 1 "Download failed"
+			fi
 
-		Header "Step 2/5 — Verify Checksums"
-		if ! verify_checksums; then
-			Show 1 "Checksum verification failed"
+			Header "Step 2/5 — Verify Checksums"
+			if ! verify_checksums; then
+				Show 1 "Checksum verification failed"
+			fi
 		fi
 
 		Header "Step 3/5 — Install Release Files"
@@ -952,7 +997,8 @@ show_help() {
 	cat <<EOF
 Usage: $(basename "$0") [OPTIONS] [VERSION]
 
-Downloads and installs LinuxIO with all required system configuration.
+Downloads and installs LinuxIO with all required system configuration, or
+installs a local checkout with --local.
 
 Arguments:
   VERSION           Optional release tag (v0.28.0 or newer). If omitted, installs latest.
@@ -961,14 +1007,16 @@ Options:
   --dry-run         Validate writable install targets and exit
   --defer-restart   Do not restart services; caller will do it after the script exits
   --skip-binaries   Skip downloading and installing binaries (config only)
+  --local           Install from this checkout: binaries from build/, assets from packaging/
+  --build-dir DIR   Like --local, with binaries from DIR (matches make BIN_DIR)
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-btrfs-timer
   - Systemd:      /etc/systemd/system/linuxio*
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and ${DATA_DIR}/icons)
   - PAM:          /etc/pam.d/linuxio
-  - Config:       /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml, /etc/linuxio/disallowed-users
+  - Config:       /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml, /etc/linuxio/disallowed-users (created if missing, never overwritten)
   - Licenses:     ${DOC_DIR}/
   - Avahi mDNS:   /etc/avahi/services/linuxio.service (advertises <hostname>.local)
 

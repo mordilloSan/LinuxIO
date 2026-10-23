@@ -4,6 +4,11 @@
   color: var(--app-palette-text-primary);
 }
 
+/* Secondary copy under a heading (sign-in footer, not-found page). */
+.text-muted {
+  color: var(--app-palette-text-secondary);
+}
+
 /* heading variants */
 .app-typo--h1 {
   font-size: 2rem;

@@ -4,12 +4,12 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
-func applyDismissalsUpdate(dismissals **bridgeconfig.PersistedDismissals, payload *apischema.ConfigDismissalsPayload) {
+func applyDismissalsUpdate(dismissals **userconfig.PersistedDismissals, payload *apischema.ConfigDismissalsPayload) {
 	if *dismissals == nil {
-		*dismissals = &bridgeconfig.PersistedDismissals{}
+		*dismissals = &userconfig.PersistedDismissals{}
 	}
 	if payload.UncleanShutdownBootID != nil {
 		(*dismissals).UncleanShutdownBootID = strings.TrimSpace(*payload.UncleanShutdownBootID)

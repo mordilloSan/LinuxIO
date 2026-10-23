@@ -194,12 +194,12 @@ handleYamuxSession(..., clientConn, ..., startup.ready)
 
 ### WebSocket Upgrade
 
-`wsAuthMiddleware` validates the session before upgrading. Both authenticated
+`ws.AuthMiddleware` validates the session before upgrading. Both authenticated
 and unauthenticated upgrades enforce the same origin policy. Invalid sessions
 receive close code 1008 (`no-session`) after upgrade, allowing the frontend to
 distinguish an authentication failure from a network error.
 
-For valid sessions, `WebSocketRelayHandler` creates the relay, registers the tab,
+For valid sessions, `ws.RelayHandler` creates the relay, registers the tab,
 rechecks session validity, and starts its ping loop and reader.
 
 ### Relay Loop
@@ -339,7 +339,7 @@ already closed it. Stream cleanup runs once, even when readers and writers fail
 together.
 
 If the yamux session dies, its `OnClose` callback terminates the HTTP session.
-`CloseWebSocketForSession` closes all of that login's WebSocket connections with
+`ws.CloseForSession` closes all of that login's WebSocket connections with
 code 1008.
 
 ## Performance
@@ -368,7 +368,7 @@ they do not eliminate flow-control waits within an individual stream.
 Reproduce the relay framing benchmark with:
 
 ```sh
-make test-go-quiet GO_TEST_PKGS=./webserver/web GO_TEST_FLAGS='-run=NoTests -bench=BenchmarkRelayFromBridge -benchmem -count=5 -race=false'
+make test-go-quiet GO_TEST_PKGS=./webserver/ws GO_TEST_FLAGS='-run=NoTests -bench=BenchmarkRelayFromBridge -benchmem -count=5 -race=false'
 ```
 
 On an Intel Core Ultra 7 265H with Go 1.27.1, five-run medians for a 1 MiB
@@ -390,7 +390,7 @@ The Vite `/ws` proxy preserves both browser Host and Origin (`changeOrigin:
 false`); it does not rewrite Origin to bypass validation. Clients without an
 Origin header still require session authentication.
 
-WebSocket upgrade requires valid session cookie, enforced by `wsAuthMiddleware`:
+WebSocket upgrade requires valid session cookie, enforced by `ws.AuthMiddleware`:
 
 ```go
 sess, err := sm.ValidateFromRequest(r)
@@ -422,8 +422,8 @@ json.Unmarshal(payload, &req) // Never parses
 
 | Component | File |
 |-----------|------|
-| WebSocket handler + relay | `backend/webserver/web/websocket.go` |
-| Auth middleware (`wsAuthMiddleware`) | `backend/webserver/web/websocket.go` |
+| WebSocket handler + relay | `backend/webserver/ws/ws.go` |
+| Auth middleware (`ws.AuthMiddleware`) | `backend/webserver/ws/ws.go` |
 | Yamux session pool (`GetYamuxSession`) | `backend/webserver/bridge/bridge.go` |
 | Bridge launch (`StartBridge`) | `backend/webserver/bridge/bridge.go` |
 | Yamux config + wrappers | `backend/common/ipc/relay/yamux.go` |

@@ -5,4 +5,4 @@ PartOf=linuxio.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/linuxio btrfs-health run
+ExecStart=/usr/local/bin/linuxio-btrfs-timer health run

@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/moby/moby/api/types/network"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
 
 func testContainerConfiguration() apischema.ContainerConfiguration {
@@ -72,9 +74,9 @@ func TestContainerCreateOptionsMapsSupportedConfiguration(t *testing.T) {
 func TestApplyContainerConfigurationPreservesAttachedPrimaryNetwork(t *testing.T) {
 	configuration := testContainerConfiguration()
 	configuration.Networks = []apischema.ContainerNetworkAttachment{{Name: "frontend"}, {Name: "backend"}}
-	options, err := standaloneCreateOptions(standaloneTestInspect(), configuration.Image, configuration.Name)
+	options, err := dockerupdate.StandaloneCreateOptions(standaloneTestInspect(), configuration.Image, configuration.Name)
 	if err != nil {
-		t.Fatalf("standaloneCreateOptions: %v", err)
+		t.Fatalf("StandaloneCreateOptions: %v", err)
 	}
 	options.HostConfig.NetworkMode = "backend"
 	options.HostConfig.Mounts = []mount.Mount{{
@@ -170,12 +172,13 @@ func TestEditConfiguredContainerUsesRollbackTransactionAndNewName(t *testing.T) 
 	configuration := testContainerConfiguration()
 	configuration.Name = "renamed-web"
 	configuration.Image = "nginx:stable"
-	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	journalPath := filepath.Join(t.TempDir(), "transaction.json")
+	journal := dockerupdate.NewJournal(journalPath)
 
 	result, err := editConfiguredContainer(context.Background(), fake, apischema.ContainerEditRequest{
 		ContainerID:   before.ID,
 		Configuration: configuration,
-	}, &journal)
+	}, journal)
 	if err != nil {
 		t.Fatalf("editConfiguredContainer: %v", err)
 	}
@@ -197,8 +200,8 @@ func TestEditConfiguredContainerUsesRollbackTransactionAndNewName(t *testing.T) 
 			t.Errorf("calls %q do not contain %q", fake.calls, call)
 		}
 	}
-	if _, ok, err := journal.read(); err != nil || ok {
-		t.Fatalf("journal remains after edit: exists=%v err=%v", ok, err)
+	if _, err := os.Stat(journalPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("journal remains after edit: %v", err)
 	}
 }
 
@@ -207,12 +210,12 @@ func TestEditConfiguredContainerRejectsComposeManagedContainer(t *testing.T) {
 	before := standaloneTestInspect()
 	before.Config.Labels = map[string]string{"com.docker.compose.project": "example"}
 	fake.inspectResults[before.ID] = before
-	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	journal := dockerupdate.NewJournal(filepath.Join(t.TempDir(), "transaction.json"))
 
 	_, err := editConfiguredContainer(context.Background(), fake, apischema.ContainerEditRequest{
 		ContainerID:   before.ID,
 		Configuration: testContainerConfiguration(),
-	}, &journal)
+	}, journal)
 	if err == nil || slices.ContainsFunc(fake.calls, func(call string) bool {
 		return strings.HasPrefix(call, "stop:") || strings.HasPrefix(call, "rename:")
 	}) {
@@ -226,12 +229,12 @@ func TestEditConfiguredContainerRejectsAnonymousVolumesBeforeDowntime(t *testing
 	before.Mounts = []container.MountPoint{{Type: mount.TypeVolume, Destination: "/data", RW: true}}
 	before.HostConfig.Mounts = []mount.Mount{{Type: mount.TypeVolume, Target: "/data"}}
 	fake.inspectResults[before.ID] = before
-	journal := standaloneUpdateJournal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	journal := dockerupdate.NewJournal(filepath.Join(t.TempDir(), "transaction.json"))
 
 	_, err := editConfiguredContainer(context.Background(), fake, apischema.ContainerEditRequest{
 		ContainerID:   before.ID,
 		Configuration: testContainerConfiguration(),
-	}, &journal)
+	}, journal)
 	if err == nil || slices.ContainsFunc(fake.calls, func(call string) bool {
 		return strings.HasPrefix(call, "stop:") || strings.HasPrefix(call, "rename:")
 	}) {

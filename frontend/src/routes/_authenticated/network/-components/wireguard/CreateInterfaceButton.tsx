@@ -1,10 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
+import {
+  getMutationErrorMessage,
+  linuxio,
+  useCallMutation,
+  type WireGuardInterface,
+} from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import CreateInterfaceDialog from "./CreateInterfaceDialog";
 import { getEgressNICOptions } from "./wireguardEgressNICs";

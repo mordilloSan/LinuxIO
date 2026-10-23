@@ -86,7 +86,7 @@ func alertRaise(ctx context.Context, args []string) error {
 		if err != nil {
 			return fmt.Errorf("read message from stdin: %w", err)
 		}
-		obs.Message = truncateMessage(strings.TrimSpace(string(data)))
+		obs.Message = strings.TrimSpace(string(data))
 	}
 	return alerts.Raise(ctx, obs)
 }
@@ -180,19 +180,6 @@ func parseAptUnattendedLog(r io.Reader) autoUpdateRun {
 	return run
 }
 
-func truncateMessage(s string) string {
-	if len(s) <= alerts.MaxMessageLen {
-		return s
-	}
-	cut := alerts.MaxMessageLen - len("…")
-	for cut > 0 && !utf8RuneStart(s[cut]) {
-		cut--
-	}
-	return s[:cut] + "…"
-}
-
-func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
-
 // autoUpdateAlert decides whether a run deserves an alert under policy and
 // builds it. serviceResult is systemd's $SERVICE_RESULT; empty means success.
 func autoUpdateAlert(policy, serviceResult string, run autoUpdateRun, rebootRequired bool, occurrence string) (alerts.Observation, bool) {
@@ -226,6 +213,6 @@ func autoUpdateAlert(policy, serviceResult string, run autoUpdateRun, rebootRequ
 		}
 		parts = append(parts, "Reboot required.")
 	}
-	obs.Message = truncateMessage(strings.Join(parts, "\n"))
+	obs.Message = strings.Join(parts, "\n")
 	return obs, true
 }

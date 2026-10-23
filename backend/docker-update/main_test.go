@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
 
 func TestParseRunArgs(t *testing.T) {
@@ -17,7 +17,7 @@ func TestParseRunArgs(t *testing.T) {
 		want string
 		ok   bool
 	}{
-		{name: "default", want: docker.DockerUpdateConfigPath, ok: true},
+		{name: "default", want: dockerupdate.ConfigPath, ok: true},
 		{name: "custom", args: []string{"--config", "/tmp/update.json"}, want: "/tmp/update.json", ok: true},
 		{name: "missing path", args: []string{"--config"}, ok: false},
 		{name: "blank path", args: []string{"--config", "  "}, ok: false},

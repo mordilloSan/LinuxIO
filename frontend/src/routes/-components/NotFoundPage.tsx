@@ -1,6 +1,8 @@
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTypography from "@/components/ui/AppTypography";
 
+import "./not-found-page.css";
+
 function NotFoundPage() {
   return (
     <div style={{ textAlign: "center" }}>

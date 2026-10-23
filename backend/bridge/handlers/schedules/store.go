@@ -16,6 +16,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const maxSchedules = 100
@@ -23,7 +24,7 @@ const maxDefinitionBytes = 512 << 10
 
 type store struct{ configDir, unitDir string }
 
-var defaultStore = store{configDir: "/etc/linuxio/schedules", unitDir: "/etc/systemd/system"}
+var defaultStore = store{configDir: version.ConfigDir + "/schedules", unitDir: "/etc/systemd/system"}
 
 type definitionDocument struct {
 	Version    int                          `json:"version"`

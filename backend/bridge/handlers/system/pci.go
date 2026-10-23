@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 )
 
 func FetchPCIDevices(ctx context.Context) ([]apischema.PCIDevice, error) {
@@ -13,7 +14,7 @@ func FetchPCIDevices(ctx context.Context) ([]apischema.PCIDevice, error) {
 		return nil, err
 	}
 	// ghw has no context support; ctx is accepted for consistent handler flow.
-	info, err := cachedPCIInfo()
+	info, err := hwprobe.CachedPCIInfo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve PCI information: %w", err)
 	}

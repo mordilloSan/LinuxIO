@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { NetworkInterface, WireGuardInterface } from "@/api";
-import DockerStatCard from "@/components/cards/DockerStatCard";
-import DriveCard, { driveIcon } from "@/components/cards/DriveCard";
-import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
-import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
+import DockerStatCard from "@/routes/_authenticated/docker/-components/cards/DockerStatCard";
+import NetworkInterfaceCard from "@/routes/_authenticated/network/-components/NetworkInterfaceCard";
+import WireguardInterfaceCard from "@/routes/_authenticated/network/-components/wireguard/WireguardInterfaceCard";
+import DriveCard, {
+  driveIcon,
+} from "@/routes/_authenticated/storage/-components/disk-overview/DriveCard";
 import { testNetworkInterface } from "@/test/networkInterface";
 import { render, screen } from "@/test/render";
 

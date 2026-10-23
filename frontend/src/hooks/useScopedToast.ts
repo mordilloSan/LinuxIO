@@ -2,12 +2,12 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
-import type { ToastMeta } from "@/types/navigation";
+import type { ToastMeta } from "@/api";
 
 type ToastFn = typeof toast.success;
 type ToastOpts = Parameters<ToastFn>[1];
 
-export interface ScopedToast {
+interface ScopedToast {
   error: (msg: ReactNode, opts?: ToastOpts) => ReturnType<ToastFn>;
   info: (msg: ReactNode, opts?: ToastOpts) => ReturnType<ToastFn>;
   success: (msg: ReactNode, opts?: ToastOpts) => ReturnType<ToastFn>;

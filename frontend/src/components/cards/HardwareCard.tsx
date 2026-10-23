@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
-import AppTypography from "@/components/ui/AppTypography";
+import InfoRow from "@/components/ui/InfoRow";
 import { CARD_PADDING_SM, GAP_MD } from "@/theme/constants";
 
 export type SummaryRow = {
@@ -12,70 +12,28 @@ export type SummaryRow = {
   noWrap?: boolean;
 };
 
-export const SummaryRowsList = ({ rows }: { rows: SummaryRow[] }) => {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignSelf: "stretch",
-        width: "100%",
-      }}
-    >
-      {rows.map(({ label, value, noWrap }, index) => (
-        <div
-          key={label}
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            gap: "var(--app-space-4)",
-            paddingTop: "var(--app-space-2)",
-            paddingBottom: "var(--app-space-2)",
-            borderBottom:
-              index === rows.length - 1
-                ? "none"
-                : "1px solid var(--app-palette-divider)",
-          }}
-        >
-          <AppTypography
-            color="text.secondary"
-            style={{
-              textTransform: "uppercase",
-              flexShrink: 0,
-            }}
-            variant="caption"
-          >
-            {label}
-          </AppTypography>
-          <div
-            style={{
-              minWidth: 0,
-              flex: 1,
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-            }}
-          >
-            {typeof value === "string" ? (
-              <AppTypography
-                align="right"
-                fontWeight={500}
-                noWrap={noWrap ?? true}
-                style={{ width: "100%", textAlign: "right" }}
-                variant="body2"
-              >
-                {value}
-              </AppTypography>
-            ) : (
-              value
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
+export const SummaryRowsList = ({ rows }: { rows: SummaryRow[] }) => (
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      alignSelf: "stretch",
+      width: "100%",
+    }}
+  >
+    {rows.map(({ label, value, noWrap }) => (
+      <InfoRow
+        key={label}
+        label={label}
+        raw={typeof value !== "string"}
+        variant="list"
+        wrap={noWrap === false}
+      >
+        {value}
+      </InfoRow>
+    ))}
+  </div>
+);
 
 const HardwareCard = ({
   title,

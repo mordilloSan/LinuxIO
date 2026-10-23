@@ -64,7 +64,7 @@
   --app-elevation-24:
     0 11px 15px -7px rgba(0, 0, 0, 0.2), 0 24px 38px 3px rgba(0, 0, 0, 0.14),
     0 9px 46px 8px rgba(0, 0, 0, 0.12);
-  /* Kept in sync with FONT_FAMILY_MONO in theme/index.ts — see font-loading
+  /* Kept in sync with FONT_FAMILY_MONO in theme/appTheme.ts — see font-loading
      tests. Machine values (paths, addresses, port maps) use this; prose does
      not. */
   --app-font-mono:
@@ -123,38 +123,8 @@ a {
 
 /* Global utilities */
 
-.panel {
-  background: var(--app-panel-background);
-  color: var(--app-panel-text);
-  border: 1px solid var(--app-panel-border);
-  border-radius: var(--app-radius-base);
-  box-shadow: var(--app-panel-shadow);
-}
-
 .text-muted {
   color: var(--app-palette-text-secondary);
-}
-
-.text-caption {
-  font-size: 0.75rem;
-  line-height: 1.5;
-}
-
-.section-title {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 500;
-  line-height: 1.25;
-}
-
-.chip-interactive {
-  opacity: 0.7;
-  cursor: pointer;
-  transition: opacity 150ms;
-}
-
-.chip-interactive:hover {
-  opacity: 1;
 }
 
 /* Hover timing for anything card-shaped. Entering runs on the dock's
@@ -235,16 +205,6 @@ a {
   }
 }
 
-.log-identifier-link {
-  cursor: pointer;
-}
-
-.log-identifier-link:hover {
-  text-decoration: underline;
-  text-decoration-color: var(--app-palette-text-secondary);
-  text-underline-offset: 3px;
-}
-
 /* Focus and its presentation have separate ownership. The browser may keep a
    pointer-focused element active across Escape presses and window returns, so
    native :focus-visible alone can paint a stale ring. Only an explicit Tab
@@ -255,30 +215,11 @@ a {
   outline: none;
 }
 
-:root[data-tab-navigation] .log-identifier-link:focus-visible {
-  outline: 2px solid var(--app-palette-primary-main);
-  outline-offset: 2px;
-}
-
 /* The standard focus ring for focusable elements that have no stylesheet of
    their own (inline-styled links, wrapper divs given tabIndex). */
 :root[data-tab-navigation] .app-focus-ring:focus-visible {
   outline: 2px solid var(--app-palette-primary-main);
   outline-offset: 2px;
-}
-
-/* App-owned side effects. */
-
-.xterm-helper-textarea,
-.xterm-textarea {
-  opacity: 0;
-  position: absolute;
-  left: -9999px;
-  width: 0;
-  height: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: transparent;
 }
 
 :root {
@@ -345,25 +286,6 @@ a {
   background-color: var(--app-scrollbar-thumb-hover);
 }
 
-.xterm .scrollbar {
-  width: 4px !important;
-  opacity: 1 !important;
-}
-
-.xterm .scrollbar .slider {
-  background-color: var(--app-scrollbar-thumb-idle) !important;
-  border-radius: 8px !important;
-  width: 8px !important;
-}
-
-.xterm:hover .scrollbar .slider {
-  background-color: var(--app-scrollbar-thumb-active) !important;
-}
-
-.xterm .scrollbar:hover .slider {
-  background-color: var(--app-scrollbar-thumb-hover) !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -373,55 +295,4 @@ a {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
-
-  /* Loading motion communicates ongoing work rather than decoration. */
-  .app-circular-progress,
-  .app-circular-progress__circle {
-    animation-duration: 1.4s !important;
-    animation-iteration-count: infinite !important;
-  }
-
-  .app-linear-progress--indeterminate .app-linear-progress__bar {
-    animation-duration: 2.1s !important;
-    animation-iteration-count: infinite !important;
-  }
-
-  .capability-manager__spin {
-    animation-duration: 900ms !important;
-    animation-iteration-count: infinite !important;
-  }
-
-  .compose-progress__spin {
-    animation-duration: 1s !important;
-    animation-iteration-count: infinite !important;
-  }
-}
-
-/* Syntax colours for highlighted code in rendered Markdown. Muted hues, picked
-   to hold contrast on each scheme's default background. Dark is the default
-   until AppThemeProvider sets data-app-color-scheme. */
-:root {
-  --app-code-keyword: #b794d6;
-  --app-code-string: #8fbf8f;
-  --app-code-comment: #8b98a9;
-  --app-code-number: #d4a574;
-  --app-code-variable: #9cc4e4;
-  --app-code-type: #6fbfb5;
-  --app-code-operator: #a9b4c2;
-  --app-code-property: #8fb4d9;
-  --app-code-literal: #d19a8a;
-  --app-code-meta: #9aa5b5;
-}
-
-:root[data-app-color-scheme="light"] {
-  --app-code-keyword: #7b4fa0;
-  --app-code-string: #3d7a3d;
-  --app-code-comment: #6b7280;
-  --app-code-number: #a35f1c;
-  --app-code-variable: #2f6a99;
-  --app-code-type: #1f7a70;
-  --app-code-operator: #5a6572;
-  --app-code-property: #3a6a9a;
-  --app-code-literal: #a14a3a;
-  --app-code-meta: #6b7280;
 }

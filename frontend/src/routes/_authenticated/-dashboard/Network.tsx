@@ -2,12 +2,12 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { linuxio, type NetworkInterface } from "@/api";
+import AppTypography from "@/components/ui/AppTypography";
+import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import DashboardCard, {
   CardHeaderSelect,
   CardStatusDot,
-} from "@/components/cards/DashboardCard";
-import AppTypography from "@/components/ui/AppTypography";
-import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
+} from "@/routes/_authenticated/-dashboard/DashboardCard";
 
 import DashboardStatRows from "./DashboardStatRows";
 import NetworkGraph from "./NetworkGraph";

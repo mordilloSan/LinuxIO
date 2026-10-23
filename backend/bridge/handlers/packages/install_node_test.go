@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -45,7 +45,7 @@ func TestInstallCapabilityInstallsNodeWithNVMAsTheSessionUser(t *testing.T) {
 		return cmd, nil
 	}
 	var detectedFor string
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, u session.User, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, u session.User, _ time.Duration) (bool, string) {
 		detectedFor = spec.Name + ":" + u.Username
 		return true, ""
 	}

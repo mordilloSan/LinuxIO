@@ -13,7 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/hostbridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/ifconfig"
 	bridgeruntime "github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -91,7 +92,7 @@ func TestMergeConfiguredStatePrefersManualConfiguredValues(t *testing.T) {
 		Gateway:    "192.168.1.1",
 		IPv4Method: &liveMethod,
 	}
-	cfg := networkbackend.InterfaceConfig{
+	cfg := ifconfig.InterfaceConfig{
 		Backend:       "netplan",
 		IPv4Method:    "manual",
 		IPv4Addresses: []string{"10.0.0.20/24"},
@@ -120,7 +121,7 @@ func TestMergeConfiguredStatePrefersManualConfiguredValues(t *testing.T) {
 
 func TestMergeConfiguredStateBackfillsEmptyLiveValues(t *testing.T) {
 	info := apischema.NetworkInterface{Name: "eth1"}
-	cfg := networkbackend.InterfaceConfig{
+	cfg := ifconfig.InterfaceConfig{
 		Backend:       "ifcfg",
 		IPv4Method:    "manual",
 		IPv4Addresses: []string{"172.16.10.5/24"},
@@ -145,7 +146,7 @@ func TestMergeConfiguredStateKeepsLiveMethodWhenBackendHasNone(t *testing.T) {
 	liveMethod := "unknown"
 	info := apischema.NetworkInterface{Name: "eth2", IPv4Method: &liveMethod}
 
-	mergeConfiguredState(&info, networkbackend.InterfaceConfig{Backend: "ifupdown"})
+	mergeConfiguredState(&info, ifconfig.InterfaceConfig{Backend: "ifupdown"})
 
 	if info.IPv4Method == nil || *info.IPv4Method != "unknown" {
 		t.Fatalf("expected the live method to survive, got %v", info.IPv4Method)
@@ -153,8 +154,8 @@ func TestMergeConfiguredStateKeepsLiveMethodWhenBackendHasNone(t *testing.T) {
 }
 
 func TestMapBridgeOptionsPreservesCandidatesAndHostWarnings(t *testing.T) {
-	options := networkbackend.BridgeOptions{
-		Candidates: []networkbackend.BridgeCandidate{{
+	options := hostbridge.BridgeOptions{
+		Candidates: []hostbridge.BridgeCandidate{{
 			Name:            "enp2s0",
 			MAC:             "52:54:00:00:00:01",
 			Backend:         "systemd-networkd",
@@ -311,7 +312,7 @@ func TestHandleSetIPv4ManualDNS(t *testing.T) {
 			require.NoError(t, os.WriteFile(path, []byte(original), 0o600))
 			runner := &networkConfigRunner{}
 			previous := networkEnv
-			networkEnv = networkbackend.Environment{
+			networkEnv = ifconfig.Environment{
 				NetplanDir: dir,
 				Runner:     runner,
 				NetplanCall: func(ctx context.Context, method string) error {
@@ -336,7 +337,7 @@ func TestHandleSetIPv4ManualDNS(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			cfg, ok, err := networkbackend.ReadConfigBestEffort(networkEnv, "eth0")
+			cfg, ok, err := ifconfig.ReadConfigBestEffort(networkEnv, "eth0")
 			require.NoError(t, err)
 			require.True(t, ok, "updated configuration is missing")
 			require.Equal(t, tt.want, cfg.DNS)

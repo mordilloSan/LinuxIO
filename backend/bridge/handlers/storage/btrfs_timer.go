@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	godbus "github.com/godbus/dbus/v5"
 
@@ -179,4 +180,48 @@ func updateBtrfsReplicationJobs(ctx context.Context, fn func(*[]btrfs.BtrfsRepli
 		return nil, err
 	}
 	return jobs, nil
+}
+
+// LoadBtrfsSnapshotRules returns the stored snapshot rules with their timer state.
+func LoadBtrfsSnapshotRules(ctx context.Context) (btrfs.BtrfsSnapshotRules, error) {
+	rules, err := btrfs.LoadRules()
+	if err != nil {
+		return btrfs.BtrfsSnapshotRules{}, err
+	}
+	return btrfsSnapshotRules(ctx, rules), nil
+}
+
+// SaveBtrfsSnapshotRule stores a snapshot rule and returns the updated rules.
+func SaveBtrfsSnapshotRule(ctx context.Context, rule btrfs.BtrfsSnapshotRule) (btrfs.BtrfsSnapshotRules, error) {
+	slog.Info("setting btrfs snapshot rule", "uuid", rule.UUID, "path", rule.Path, "enabled", rule.Enabled)
+	rules, err := setBtrfsSnapshotRule(ctx, rule)
+	if err != nil {
+		slog.Error("failed to set btrfs snapshot rule", "uuid", rule.UUID, "path", rule.Path, "error", err)
+		return btrfs.BtrfsSnapshotRules{}, err
+	}
+	return btrfsSnapshotRules(ctx, rules), nil
+}
+
+// DeleteBtrfsSnapshotRule removes a snapshot rule and returns the updated rules.
+func DeleteBtrfsSnapshotRule(ctx context.Context, uuid, path string) (btrfs.BtrfsSnapshotRules, error) {
+	slog.Info("deleting btrfs snapshot rule", "uuid", uuid, "path", path)
+	rules, err := updateBtrfsSnapshotRules(ctx, func(rules *[]btrfs.BtrfsSnapshotRule) error {
+		*rules = btrfs.DeleteRule(*rules, uuid, path)
+		return nil
+	})
+	if err != nil {
+		slog.Error("failed to delete btrfs snapshot rule", "uuid", uuid, "path", path, "error", err)
+		return btrfs.BtrfsSnapshotRules{}, err
+	}
+	return btrfsSnapshotRules(ctx, rules), nil
+}
+
+// RunBtrfsSnapshotRules runs every stored snapshot rule now.
+func RunBtrfsSnapshotRules(ctx context.Context) (btrfs.RunReport, error) {
+	rules, err := btrfs.LoadRules()
+	if err != nil {
+		return btrfs.RunReport{}, err
+	}
+	slog.Info("running btrfs snapshot rules", "rules", len(rules))
+	return btrfs.Run(ctx, rules, time.Now(), btrfs.KindTimeline)
 }

@@ -16,7 +16,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 import { HOVER_LIFT_HEADROOM } from "@/theme/constants";
 
-export interface AppVirtualGridProps<TItem> {
+interface AppVirtualGridProps<TItem> {
   ariaLabel?: string;
   className?: string;
   emptyMessage?: string;

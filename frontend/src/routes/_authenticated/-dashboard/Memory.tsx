@@ -1,10 +1,10 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
-import { GradientCircularGauge } from "@/components/gauge/CirularGauge";
+import { GradientCircularGauge } from "@/components/gauge/CircularGauge";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
-import { formatFileSize } from "@/utils/formaters";
+import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
+import { formatFileSize } from "@/utils/formatters";
 
 import DashboardStatRows from "./DashboardStatRows";
 

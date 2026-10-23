@@ -57,8 +57,8 @@ vi.mock("./sidebar/useSidebar", () => ({
 vi.mock("./sidebar/useSidebarItems", () => ({
   useSidebarItems: () => [],
 }));
-vi.mock("./update/useUpdateInfo", () => ({
-  useUpdateInfo: () => ({ dismissUpdate: vi.fn(), updateInfo: null }),
+vi.mock("./app-update/useAppUpdateInfo", () => ({
+  useAppUpdateInfo: () => ({ dismissUpdate: vi.fn(), updateInfo: null }),
 }));
 
 describe("MainLayout navigation mode", () => {

@@ -5,28 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"regexp"
-	"strings"
 	"time"
 
 	libvirt "github.com/digitalocean/go-libvirt"
 	"github.com/digitalocean/go-libvirt/socket/dialers"
 )
-
-const (
-	defaultPoolName    = "default"
-	defaultPoolPath    = "/var/lib/libvirt/images"
-	defaultNetworkName = "default"
-	managedRootPath    = defaultPoolPath + "/linuxio"
-	managedISOPath     = managedRootPath + "/isos"
-	managedCloudPath   = managedRootPath + "/cloud-images"
-	managedDiskPrefix  = "linuxio-"
-	managedDiskSuffix  = ".qcow2"
-	vncSocketDir       = "/var/lib/libvirt/qemu"
-)
-
-var validVMName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`)
 
 type libvirtConn interface {
 	ConnectGetAllDomainStats([]libvirt.Domain, uint32, uint32) ([]libvirt.DomainStatsRecord, error)
@@ -71,21 +54,6 @@ type libvirtConn interface {
 }
 
 var withLibvirtConn = withLibvirt
-var mkdirAll = os.MkdirAll
-
-func closeOnContextDone(ctx context.Context, conn net.Conn) func() {
-	done := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		defer close(done)
-		_ = conn.Close()
-	})
-	return func() {
-		if stop() {
-			return
-		}
-		<-done
-	}
-}
 
 type interruptibleLibvirtConn struct {
 	libvirtConn
@@ -110,7 +78,7 @@ func withLibvirt(ctx context.Context, fn func(libvirtConn) error) error {
 			lastErr = err
 			continue
 		}
-		stopCancellation := closeOnContextDone(ctx, raw)
+		stopCancellation := interruptOnContextDone(ctx, func() { _ = raw.Close() })
 		l := libvirt.NewWithDialer(dialers.NewAlreadyConnected(raw))
 		if err := l.Connect(); err != nil {
 			_ = raw.Close()
@@ -151,43 +119,4 @@ func CheckLibvirtAvailability(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return true, nil
-}
-
-func validateVMName(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return badRequestf("VM name is required")
-	}
-	if !validVMName.MatchString(name) || strings.Contains(name, "..") {
-		return badRequestf("VM name must be 1-63 characters and contain only letters, numbers, dots, dashes, and underscores")
-	}
-	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "-") {
-		return badRequestf("VM name must not start with a dot or dash")
-	}
-	return nil
-}
-
-func managedVolumeName(vmName string) string {
-	return managedDiskPrefix + vmName + managedDiskSuffix
-}
-
-func managedSeedVolumeName(vmName string) string {
-	return managedDiskPrefix + vmName + "-seed.img"
-}
-
-func isManagedVolumeName(vmName, volumeName string) bool {
-	return volumeName == managedVolumeName(vmName) || volumeName == managedSeedVolumeName(vmName)
-}
-
-func isSafeVNCSocket(path string) bool {
-	return strings.HasPrefix(path, vncSocketDir+"/") && !strings.Contains(path, "..")
-}
-
-func qemuReadable(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	_ = f.Close()
-	return true
 }

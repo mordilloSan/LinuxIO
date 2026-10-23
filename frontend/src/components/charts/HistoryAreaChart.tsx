@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppTheme } from "@/theme";
+import { alpha } from "@/theme/colorUtils";
 import { GAP_MD } from "@/theme/constants";
-import { alpha } from "@/utils/color";
 
 import "@/components/charts/chart-tooltip.css";
 
-export interface HistoryChartPoint {
+interface HistoryChartPoint {
   /** Epoch milliseconds. */
   t: number;
   /** A null value is an unavailable sample and renders as a chart gap. */

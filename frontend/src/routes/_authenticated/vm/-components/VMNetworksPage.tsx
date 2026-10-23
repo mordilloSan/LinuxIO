@@ -9,13 +9,18 @@ import {
   type VMNetwork,
   type VirtualMachine,
 } from "@/api";
+import {
+  EntityCard,
+  KeyValues,
+  PillToggle,
+  Throughput,
+} from "@/components/cards/EntityCardKit";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 
-import { EntityCard, KeyValues, PillToggle, Throughput } from "./vmCards";
 import { normalizeState, stateChipColor } from "./vmShared";
 
 const pageStyle: CSSProperties = {
@@ -132,7 +137,7 @@ function networkStatus(network: VMNetwork): {
   return { text: "Normal", tone: "ok" };
 }
 
-export function NetworkCard({
+function NetworkCard({
   hostname,
   interfaces,
   live,

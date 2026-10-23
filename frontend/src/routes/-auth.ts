@@ -5,12 +5,12 @@ import {
   redirect,
 } from "@tanstack/react-router";
 
+import type { AuthState } from "@/contexts/AuthContext";
 import {
   hasAccessPolicy,
   type AccessContext,
   type AccessPolicy,
 } from "@/hooks/useCapabilities";
-import type { AuthState } from "@/types/auth";
 
 export type RouterAuthSnapshot = Omit<
   Pick<AuthState, "isAuthenticated" | "isInitialized" | "user">,

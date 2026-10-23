@@ -1,15 +1,16 @@
 import { useState } from "react";
 
 import {
+  getMutationErrorMessage,
   linuxio,
   type Peer,
-  type WireGuardUpdatePeerRequest,
   useCallMutation,
+  type WireGuardUpdatePeerRequest,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import ConfirmDialog from "@/components/ui/AppConfirmDialog";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -19,7 +20,6 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 const WIREGUARD_TOAST_META = {
   label: "Open WireGuard",

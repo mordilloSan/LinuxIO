@@ -17,24 +17,35 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/monitoring"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
+
+// validateContainerID rejects a blank container ID before it reaches Docker.
+func validateContainerID(containerID string) error {
+	if strings.TrimSpace(containerID) == "" {
+		return bridgeipc.ErrInvalidArgs
+	}
+	return nil
+}
 
 const containerMetricsTimeout = 2 * time.Second
 
 // List all containers with metrics.
 func ListContainers(ctx context.Context) ([]apischema.ContainerInfo, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	updateStatus := readUpdateStatusSnapshot()
+	updateStatus := dockerupdate.ReadStatusSnapshot()
 	metricsSnapshot := monitoring.ContainerMetricsSnapshot{}
 	var metricsErr error
 	if len(containers.Items) > 0 {
@@ -307,11 +318,11 @@ type containerRemover interface {
 }
 
 func InspectContainer(ctx context.Context, id string) (apischema.ContainerInspectInfo, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return apischema.ContainerInspectInfo{}, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	return inspectContainer(ctx, cli, id)
 }
@@ -433,11 +444,11 @@ func containerPortBindingsFromSDK(config *container.Config, ports network.PortMa
 
 // Start a container by ID
 func StartContainer(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return startContainer(ctx, cli, id)
 }
 
@@ -450,11 +461,11 @@ func startContainer(ctx context.Context, cli containerStarter, id string) error 
 
 // Stop a container by ID
 func StopContainer(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return stopContainer(ctx, cli, id)
 }
 
@@ -467,11 +478,11 @@ func stopContainer(ctx context.Context, cli containerStopper, id string) error {
 
 // Restart a container by ID
 func RestartContainer(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return restartContainer(ctx, cli, id)
 }
 
@@ -483,11 +494,11 @@ func restartContainer(ctx context.Context, cli containerRestarter, id string) er
 }
 
 func PauseContainer(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return pauseContainer(ctx, cli, id)
 }
 
@@ -499,11 +510,11 @@ func pauseContainer(ctx context.Context, cli containerPauser, id string) error {
 }
 
 func UnpauseContainer(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return unpauseContainer(ctx, cli, id)
 }
 
@@ -515,11 +526,11 @@ func unpauseContainer(ctx context.Context, cli containerUnpauser, id string) err
 }
 
 func KillContainer(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return killContainer(ctx, cli, id)
 }
 
@@ -531,11 +542,11 @@ func killContainer(ctx context.Context, cli containerKiller, id string) error {
 }
 
 func RemoveContainer(ctx context.Context, id string, force bool) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return removeContainer(ctx, cli, id, force)
 }
 
@@ -548,11 +559,11 @@ func removeContainer(ctx context.Context, cli containerRemover, id string, force
 
 // StartAllStopped starts all exited/dead containers and returns counts.
 func StartAllStopped(ctx context.Context) (apischema.DockerStartedFailedResponse, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return apischema.DockerStartedFailedResponse{}, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
@@ -582,11 +593,11 @@ func StartAllStopped(ctx context.Context) (apischema.DockerStartedFailedResponse
 
 // StopAllRunning stops all running containers and returns counts.
 func StopAllRunning(ctx context.Context) (apischema.DockerStoppedFailedResponse, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return apischema.DockerStoppedFailedResponse{}, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {

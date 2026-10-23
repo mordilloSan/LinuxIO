@@ -12,7 +12,7 @@ export interface AssistantExit {
   stderr: string;
 }
 
-export interface AcpTransport {
+interface AcpTransport {
   stream: acp.Stream;
   ready: Promise<AssistantReady>;
   exit: Promise<AssistantExit | null>;

@@ -37,7 +37,7 @@ webserver, bridge, and authentication boundaries.
 
 | Boundary | Owner |
 |----------|-------|
-| Scanner, generations, SQLite storage, HTTP/SSE daemon | `linuxio-indexer` |
+| Scanner, generations, SQLite storage, HTTP/SSE daemon | `linuxio-indexer` (`backend/indexer/internal/{indexing,storage,daemon,searchquery,configfile,cli}`); the `storage.Store` owns generations and the reindex transaction |
 | Daemon wire routes and types | `backend/indexer/api` |
 | Unix-socket client and LinuxIO API adapters | `backend/bridge/handlers/indexer` |
 | Public generated bridge contract | `backend/bridge/apischema` |
@@ -122,6 +122,10 @@ contents. Directory symlinks are recorded as entries but are not traversed.
 | Idle check interval | `15s` |
 | Completed generations retained | `1` |
 | Full scan publication | atomic generation |
+
+The daemon-side values live in `backend/indexer/internal/daemon/policy.go`; the
+database path (`storage.DefaultDBPath`) and SQLite options live in
+`backend/indexer/internal/storage/policy.go`.
 
 Both configuration fields apply to the next scan without a daemon restart. The
 recurring interval is a systemd timer setting, not a YAML field. LinuxIO writes

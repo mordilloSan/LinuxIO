@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -367,8 +366,8 @@ func TestStreamIndexer_ContextCancellation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error after cancellation")
 	}
-	if !errors.Is(err, ipc.ErrAborted) {
-		t.Fatalf("expected ipc.ErrAborted, got %v", err)
+	if !errors.Is(err, ErrAborted) {
+		t.Fatalf("expected ErrAborted, got %v", err)
 	}
 	if !gotAbortError {
 		t.Error("expected abort error (code 499)")

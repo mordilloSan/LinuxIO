@@ -1,14 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CSSProperties, ReactNode } from "react";
 
+import type { ConfigContextType } from "@/api";
 import { uiConfigQueryKey } from "@/api/config-query";
+import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import { RoutedTabLayout, type RoutedTab } from "@/components/tabbar";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
-import type { ConfigContextType } from "@/types/config";
 
 const tabs = [
   { label: "Users", to: "/accounts" },
@@ -31,7 +32,7 @@ const getItemId = (item: FixtureItem) => item.id;
 // a cache seeded with an empty order and a no-op writer are the whole surface
 // it needs.
 const queryClient = new QueryClient();
-queryClient.setQueryData(uiConfigQueryKey("anonymous"), {
+queryClient.setQueryData(uiConfigQueryKey(ANONYMOUS_USER_ID), {
   layoutOrders: {},
 });
 

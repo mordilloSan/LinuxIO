@@ -19,14 +19,10 @@ var (
 	btrfsListMounts     = btrfs.ListMounts
 )
 
-func handleBtrfsSettings(ctx context.Context, req apischema.UUIDRequest) (btrfs.BtrfsSettings, error) {
-	return btrfsSettings(ctx, req.UUID)
-}
-
-// btrfsSettings is btrfs.GetSettings with FstabPersisted filled from
+// GetBtrfsSettings is btrfs.GetSettings with FstabPersisted filled from
 // /etc/fstab: true when the filesystem has fstab entries and all of them carry
 // its compression.
-func btrfsSettings(ctx context.Context, uuid string) (btrfs.BtrfsSettings, error) {
+func GetBtrfsSettings(ctx context.Context, uuid string) (btrfs.BtrfsSettings, error) {
 	settings, err := btrfs.GetSettings(ctx, uuid)
 	if err != nil {
 		return btrfs.BtrfsSettings{}, err
@@ -88,16 +84,18 @@ func fstabHasCompression(entry fstabEntry, c btrfs.BtrfsCompression) bool {
 	return found == (c.Algorithm != "none")
 }
 
-func handleBtrfsSetQuotas(ctx context.Context, req apischema.BtrfsQuotaRequest) (btrfs.BtrfsSettings, error) {
+// SetBtrfsQuotas enables or disables quotas and returns the updated settings.
+func SetBtrfsQuotas(ctx context.Context, req apischema.BtrfsQuotaRequest) (btrfs.BtrfsSettings, error) {
 	slog.Info("setting btrfs quotas", "uuid", req.UUID, "enabled", req.Enabled)
 	if err := btrfs.SetQuotas(ctx, req.UUID, req.Enabled); err != nil {
 		slog.Error("failed to set btrfs quotas", "uuid", req.UUID, "error", err)
 		return btrfs.BtrfsSettings{}, err
 	}
-	return btrfsSettings(ctx, req.UUID)
+	return GetBtrfsSettings(ctx, req.UUID)
 }
 
-func handleBtrfsQgroupLimit(ctx context.Context, req apischema.BtrfsQgroupLimitRequest) (btrfs.BtrfsSubvolume, error) {
+// LimitBtrfsQgroup sets the referenced-size limit of a subvolume.
+func LimitBtrfsQgroup(ctx context.Context, req apischema.BtrfsQgroupLimitRequest) (btrfs.BtrfsSubvolume, error) {
 	slog.Info("setting btrfs qgroup limit", "uuid", req.UUID, "path", req.Path)
 	sv, err := btrfs.SetQgroupLimit(ctx, req.UUID, req.Path, req.MaxReferencedBytes)
 	if err != nil {
@@ -106,16 +104,19 @@ func handleBtrfsQgroupLimit(ctx context.Context, req apischema.BtrfsQgroupLimitR
 	return sv, err
 }
 
-func handleBtrfsSetCompression(ctx context.Context, req apischema.BtrfsCompressionRequest) (btrfs.BtrfsSettings, error) {
+// ApplyBtrfsCompression sets the filesystem compression and returns the
+// updated settings.
+func ApplyBtrfsCompression(ctx context.Context, req apischema.BtrfsCompressionRequest) (btrfs.BtrfsSettings, error) {
 	slog.Info("setting btrfs compression", "uuid", req.UUID, "algorithm", req.Algorithm)
 	if err := setBtrfsCompression(ctx, req); err != nil {
 		slog.Error("failed to set btrfs compression", "uuid", req.UUID, "error", err)
 		return btrfs.BtrfsSettings{}, err
 	}
-	return btrfsSettings(ctx, req.UUID)
+	return GetBtrfsSettings(ctx, req.UUID)
 }
 
-func handleBtrfsSubvolumeSetCompression(ctx context.Context, req apischema.BtrfsSubvolumeCompressionRequest) (btrfs.BtrfsSubvolume, error) {
+// SetBtrfsSubvolumeCompression sets the compression property of a subvolume.
+func SetBtrfsSubvolumeCompression(ctx context.Context, req apischema.BtrfsSubvolumeCompressionRequest) (btrfs.BtrfsSubvolume, error) {
 	slog.Info("setting btrfs subvolume compression", "uuid", req.UUID, "path", req.Path, "algorithm", req.Algorithm)
 	sv, err := btrfs.SetSubvolumeCompression(ctx, req.UUID, req.Path, req.Algorithm)
 	if err != nil {

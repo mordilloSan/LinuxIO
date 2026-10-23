@@ -1,5 +1,5 @@
 import type { ConfigDockAccentGradient } from "@/api";
-import { fromHsl, interpolateHsl, toHsl } from "@/utils/color";
+import { fromHsl, interpolateHsl, toHsl } from "@/theme/colorUtils";
 
 export type TileGradient = readonly [string, string];
 
@@ -15,7 +15,7 @@ export const DEFAULT_DOCK_ACCENT_GRADIENT = {
    while the settings editor can replace either endpoint explicitly. */
 const DEFAULT_ACCENT_HUE_SPREAD = 60;
 
-export interface ResolvedDockAccentGradient {
+interface ResolvedDockAccentGradient {
   endColor: string;
   rangeEnd: number;
   rangeStart: number;

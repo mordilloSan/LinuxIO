@@ -2,11 +2,9 @@ import { Icon } from "@iconify/react";
 import type { ComponentType } from "react";
 import { memo, Suspense, useCallback, useMemo, useState } from "react";
 
-import DashboardCardSkeleton, {
-  type DashboardCardSkeletonLayout,
-} from "@/components/cards/DashboardCardSkeleton";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -14,7 +12,9 @@ import AppPopover from "@/components/ui/AppPopover";
 import AppTooltip from "@/components/ui/AppTooltip";
 import { useAccessContext } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import DashboardCardSkeleton, {
+  type DashboardCardSkeletonLayout,
+} from "@/routes/_authenticated/-dashboard/DashboardCardSkeleton";
 
 import DockerInfo from "./Docker";
 import DriveInfo from "./Drive";

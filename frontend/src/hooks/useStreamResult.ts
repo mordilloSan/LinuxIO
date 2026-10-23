@@ -4,12 +4,13 @@ import {
   LinuxIOError,
   type ProgressFrame,
   type Stream,
+  streamWriteChunks,
+  waitForStreamResult,
   type WaitForStreamResultOptions,
 } from "@/api";
-import { streamWriteChunks, waitForStreamResult } from "@/api";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
-export interface RunStreamResultOptions<
+interface RunStreamResultOptions<
   TResult = unknown,
   TProgress = ProgressFrame,
 > extends Omit<WaitForStreamResultOptions<TResult, TProgress>, "signal"> {
@@ -35,7 +36,7 @@ type RunStreamResultFn = {
   ): Promise<TResult>;
 };
 
-export interface RunChunkedStreamResultOptions<
+interface RunChunkedStreamResultOptions<
   TResult = unknown,
   TProgress = ProgressFrame,
 > extends RunStreamResultOptions<TResult, TProgress> {
@@ -56,7 +57,7 @@ type RunChunkedStreamResultFn = {
   ): Promise<TResult>;
 };
 
-export interface UseStreamResultReturn {
+interface UseStreamResultReturn {
   run: RunStreamResultFn;
   runChunked: RunChunkedStreamResultFn;
 }

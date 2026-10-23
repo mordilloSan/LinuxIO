@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import { type AccountUserLogin, linuxio, useCallMutation } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
@@ -26,6 +25,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 import { GAP_MD } from "@/theme/constants";
 
 const HEALTH_REFETCH_MS = 50000;

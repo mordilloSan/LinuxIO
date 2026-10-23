@@ -16,10 +16,10 @@ import {
   type ContainerInspectInfo,
   type DockerNetwork,
 } from "@/api";
-import ContainerCard from "@/components/cards/ContainerCard";
 import SortableCard from "@/components/cards/SortableCard";
-import ContainerResourceDetails from "@/components/docker/ContainerResourceDetails";
 import AppButton from "@/components/ui/AppButton";
+import ContainerCard from "@/routes/_authenticated/docker/-components/cards/ContainerCard";
+import ContainerResourceDetails from "@/routes/_authenticated/docker/-components/containers/ContainerResourceDetails";
 
 const container: ContainerInfo = {
   Created: 1_788_428_800,

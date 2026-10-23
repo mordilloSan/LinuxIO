@@ -4,12 +4,11 @@ import { type ApiDisk, linuxio } from "@/api";
 import {
   capabilitiesQueryKey,
   wireFromCapabilityState,
-  type CapabilitiesResponse,
 } from "@/api/capabilities";
-import { AuthContext } from "@/contexts/AuthContext";
-import DiskOverview from "@/routes/_authenticated/storage/-components/DiskOverview";
+import { ANONYMOUS_USER_ID } from "@/api/user-scope";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
+import DiskOverview from "@/routes/_authenticated/storage/-components/disk-overview/DiskOverview";
 import { storageLive } from "@/test/storageTopologyFixture";
-import type { AuthContextType } from "@/types/auth";
 
 import "@fontsource-variable/inter/wght.css";
 
@@ -46,12 +45,12 @@ const auth: AuthContextType = {
   method: "session",
   privileged: false,
   user: null,
-  refreshCapabilities: async () => capabilities as CapabilitiesResponse,
+  refreshCapabilities: async () => capabilities,
   sessionExpired: () => {},
   signIn: async () => {},
   signOut: async () => {},
 };
-queryClient.setQueryData(capabilitiesQueryKey("anonymous"), capabilities);
+queryClient.setQueryData(capabilitiesQueryKey(ANONYMOUS_USER_ID), capabilities);
 linuxio.storage.get_drive_info.queryFn = async () => drives;
 linuxio.storage.list_nfs_mounts.queryFn = async () => [];
 linuxio.storage.btrfs_list.queryFn = async () => [];

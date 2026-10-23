@@ -1,0 +1,330 @@
+import { useMemo, type CSSProperties } from "react";
+
+import AppButton from "@/components/ui/AppButton";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { HomeFilledIcon } from "@/icons/svg";
+import { down } from "@/theme/breakpoints";
+import { isDirectoryPath } from "@/utils/path";
+
+import { getChromeSurfaceColor } from "./fileBrowserSurfaces";
+
+interface BreadcrumbItem {
+  isLast: boolean;
+  label: string;
+  path: string;
+}
+
+interface FilebrowserBreadcrumbsProps {
+  gallerySize?: number;
+  onGallerySizeChange?: (next: number) => void;
+  onNavigate: (path: string) => void;
+  path: string;
+  showGallerySize?: boolean;
+}
+
+// Static CSS styles (injected once)
+// Uses MUI CSS variables and light-dark() function for theme-aware colors
+const breadcrumbStyles = `
+  .linuxio-breadcrumb-container {
+    margin: 0.5em 0;
+    overflow-y: hidden;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: nowrap;
+    /* Stretch to the header column. Shrink-to-fit would make the list's
+       percentage max-width resolve against the trail's own width, so any
+       reservation subtracted from it clips the trail no matter how short. */
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  @media (max-width: 599.95px) {
+    .linuxio-breadcrumb-container {
+      gap: 0.75rem;
+    }
+  }
+
+  .linuxio-breadcrumb-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 3.25em;
+    background: var(--linuxio-filebrowser-breadcrumb-bg);
+    text-align: center;
+    padding: 0 1em;
+    padding-left: 2em;
+    position: relative;
+    text-decoration: none;
+    color: var(--linuxio-filebrowser-breadcrumb-text);
+    border: none;
+    border-radius: 0;
+    min-width: 0;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1;
+  }
+
+  .linuxio-breadcrumb-button::after {
+    content: "";
+    border-top: 1.625em solid transparent;
+    border-bottom: 1.625em solid transparent;
+    border-left: 1em solid var(--linuxio-filebrowser-breadcrumb-bg);
+    position: absolute;
+    right: -1em;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+  }
+
+  .linuxio-breadcrumb-button::before {
+    content: "";
+    width: 0;
+    height: 0;
+    border-top: 1.625em solid transparent;
+    border-bottom: 1.625em solid transparent;
+    border-left: 1.2em solid var(--app-palette-background-default);
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+  }
+
+  .linuxio-breadcrumb-home-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .linuxio-breadcrumb-button:hover {
+    background: var(--app-palette-primary-main);
+  }
+
+  .linuxio-breadcrumb-button:hover::after {
+    border-left-color: var(--app-palette-primary-main);
+  }
+
+  .linuxio-breadcrumb-button.active::after {
+    display: none;
+  }
+
+  .linuxio-breadcrumb-list {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 100%;
+  }
+
+  @media (max-width: 599.95px) {
+    .linuxio-breadcrumb-list {
+      overflow: hidden;
+    }
+  }
+
+  .linuxio-breadcrumb-list-item {
+    display: inline-block;
+    margin: 0 8px 0 0;
+  }
+
+  .linuxio-breadcrumb-list-item:last-of-type {
+    margin-right: 0;
+  }
+
+  .linuxio-breadcrumb-list-item:first-of-type {
+    margin-left: 0;
+  }
+
+  .linuxio-breadcrumb-list-item:first-of-type .linuxio-breadcrumb-button {
+    border-top-left-radius: 1em;
+    border-bottom-left-radius: 1em;
+    padding-left: 1.5em;
+  }
+
+  .linuxio-breadcrumb-list-item:first-of-type .linuxio-breadcrumb-button::before {
+    display: none;
+  }
+
+  .linuxio-breadcrumb-list-item:last-of-type .linuxio-breadcrumb-button {
+    padding-right: 1.5em;
+    border-top-right-radius: 1em;
+    border-bottom-right-radius: 1em;
+  }
+
+  .linuxio-breadcrumb-list-item:last-of-type .linuxio-breadcrumb-button::after {
+    display: none;
+  }
+
+  .linuxio-gallery-size {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    flex: 0 0 auto;
+    padding: 0.35em 0.75em;
+    max-width: 8.5em;
+    border-radius: 0.75em;
+    background: var(--linuxio-filebrowser-chrome-surface);
+  }
+
+  .linuxio-range-input {
+    margin: 0;
+    width: 100%;
+    max-width: 6.25em;
+    accent-color: var(--app-palette-primary-main);
+  }
+
+  :root[data-tab-navigation] .linuxio-range-input:focus-visible {
+    outline: 2px solid var(--app-palette-primary-main);
+    outline-offset: 2px;
+  }
+`;
+
+// Inject styles once
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("breadcrumbStyles")
+) {
+  const style = document.createElement("style");
+  style.id = "breadcrumbStyles";
+  style.textContent = breadcrumbStyles;
+  document.head.appendChild(style);
+}
+
+const normalizePath = (input: string): string => {
+  if (!input) return "/";
+  if (input === "/") return "/";
+  const trimmed = input.trim();
+  if (!trimmed) return "/";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+};
+
+const splitSegments = (path: string): string[] => {
+  const cleaned = path.replace(/^\/+|\/+$/g, "");
+  if (!cleaned) {
+    return [];
+  }
+  return cleaned.split("/").filter(Boolean);
+};
+
+const buildBreadcrumbs = (
+  normalizedPath: string,
+  maxSegments: number,
+): BreadcrumbItem[] => {
+  const segments = splitSegments(normalizedPath);
+  const breadcrumbs: BreadcrumbItem[] = [];
+
+  const accumulated: string[] = [];
+
+  segments.forEach((segment, index) => {
+    accumulated.push(segment);
+    const isLast = index === segments.length - 1;
+    // Pass unencoded filesystem paths - encoding is handled by onNavigate
+    breadcrumbs.push({
+      label: segment,
+      path: `/${accumulated.join("/")}${isLast && isDirectoryPath(normalizedPath) ? "/" : ""}`,
+      isLast,
+    });
+  });
+
+  if (breadcrumbs.length > maxSegments) {
+    const trimmed = breadcrumbs.slice(-maxSegments);
+    return [
+      { label: "...", path: trimmed[0].path, isLast: false },
+      ...trimmed.map((b, idx) => ({
+        ...b,
+        isLast: idx === trimmed.length - 1,
+      })),
+    ];
+  }
+
+  return breadcrumbs;
+};
+
+const FilebrowserBreadcrumbs = ({
+  path,
+  onNavigate,
+  showGallerySize = false,
+  gallerySize = 4,
+  onGallerySizeChange,
+}: FilebrowserBreadcrumbsProps) => {
+  const isMobile = useMediaQuery(down("sm"));
+  const normalizedPath = normalizePath(path);
+
+  const breadcrumbs = useMemo(() => {
+    const maxSegments = isMobile ? 1 : 3;
+    return buildBreadcrumbs(normalizedPath, maxSegments);
+  }, [isMobile, normalizedPath]);
+
+  const handleHome = () => onNavigate("/");
+  const cssVars = {
+    "--linuxio-filebrowser-breadcrumb-bg":
+      "var(--app-file-browser-breadcrumb-background)",
+    "--linuxio-filebrowser-breadcrumb-text":
+      "var(--app-file-browser-breadcrumb-text)",
+    "--linuxio-filebrowser-chrome-surface": getChromeSurfaceColor(
+      "var(--app-file-browser-chrome)",
+    ),
+  } as CSSProperties;
+
+  return (
+    <div
+      className="linuxio-breadcrumb-container"
+      id="breadcrumbs"
+      style={cssVars}
+    >
+      <ul className="linuxio-breadcrumb-list">
+        <li className="linuxio-breadcrumb-list-item">
+          <AppButton
+            aria-label="Go to root"
+            className="linuxio-breadcrumb-button"
+            onClick={handleHome}
+            title="Home"
+          >
+            <span className="linuxio-breadcrumb-home-icon">
+              <HomeFilledIcon />
+            </span>
+          </AppButton>
+        </li>
+        {breadcrumbs.map((crumb, index) => (
+          <li
+            className="linuxio-breadcrumb-list-item"
+            key={`${crumb.path}-${crumb.label}-${index}`}
+          >
+            <AppButton
+              aria-label={`breadcrumb-link-${crumb.label}`}
+              className={`linuxio-breadcrumb-button${crumb.isLast ? " active" : ""}`}
+              onClick={() => onNavigate(crumb.path)}
+              title={crumb.label}
+            >
+              {crumb.label}
+            </AppButton>
+          </li>
+        ))}
+      </ul>
+      {showGallerySize && onGallerySizeChange && (
+        <div className="linuxio-gallery-size gallery-size card">
+          Size<span className="sr-only">:</span>
+          <input
+            className="linuxio-range-input"
+            id="gallery-size"
+            max={8}
+            min={1}
+            name="gallery-size"
+            onChange={(event) =>
+              onGallerySizeChange(Number.parseInt(event.target.value, 10))
+            }
+            type="range"
+            value={gallerySize}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default FilebrowserBreadcrumbs;

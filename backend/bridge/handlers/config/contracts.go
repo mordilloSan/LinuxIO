@@ -2,12 +2,12 @@ package config
 
 import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 // appConfigToAPI is deliberately explicit: core persisted configuration has
 // validation-specific types, while apischema owns the public response shape.
-func appConfigToAPI(value bridgeconfig.Settings, storageMode bridgeconfig.StorageMode) apischema.AppConfig {
+func appConfigToAPI(value userconfig.Settings, storageMode userconfig.StorageMode) apischema.AppConfig {
 	result := apischema.AppConfig{
 		AppSettings: apischema.AppSettings{
 			ShowHiddenFiles: value.AppSettings.ShowHiddenFiles,
@@ -32,11 +32,11 @@ func appConfigToAPI(value bridgeconfig.Settings, storageMode bridgeconfig.Storag
 	return result
 }
 
-func uiConfigToAPI(value bridgeconfig.UIPreferences) apischema.UIConfig {
+func uiConfigToAPI(value userconfig.UIPreferences) apischema.UIConfig {
 	// Store reads normally return a validated complete snapshot, but keeping
 	// this boundary total prevents a malformed in-memory value (or a direct
 	// unit-test call) from turning an API response into a panic.
-	defaults := bridgeconfig.DefaultUIPreferences()
+	defaults := userconfig.DefaultUIPreferences()
 	if value.DockAccentGradient == nil {
 		value.DockAccentGradient = defaults.DockAccentGradient
 	}
@@ -81,7 +81,7 @@ func uiConfigToAPI(value bridgeconfig.UIPreferences) apischema.UIConfig {
 		DockerDashboardSections: *dockerDashboardSectionsToAPI(value.DockerDashboardSections),
 		HardwareSections:        *hardwareSectionsToAPI(value.HardwareSections),
 		LayoutOrders:            value.LayoutOrders,
-		ViewModeDefault:         apischema.TableCardViewMode(bridgeconfig.DefaultViewMode),
+		ViewModeDefault:         apischema.TableCardViewMode(userconfig.DefaultViewMode),
 		TerminalFontSize:        value.TerminalFontSize,
 	}
 	result.ViewModes = make(map[string]apischema.TableCardViewMode, len(value.ViewModes))
@@ -92,11 +92,11 @@ func uiConfigToAPI(value bridgeconfig.UIPreferences) apischema.UIConfig {
 	return result
 }
 
-func dockAccentGradientToAPI(value bridgeconfig.DockAccentGradient) *apischema.ConfigDockAccentGradient {
+func dockAccentGradientToAPI(value userconfig.DockAccentGradient) *apischema.ConfigDockAccentGradient {
 	return &apischema.ConfigDockAccentGradient{StartColor: optionalString(value.StartColor.String()), EndColor: optionalString(value.EndColor.String()), RangeStart: value.RangeStart, RangeEnd: value.RangeEnd}
 }
 
-func absolutePathsToStrings(values []bridgeconfig.AbsolutePath) []string {
+func absolutePathsToStrings(values []userconfig.AbsolutePath) []string {
 	result := make([]string, len(values))
 	for i, value := range values {
 		result[i] = string(value)
@@ -104,28 +104,28 @@ func absolutePathsToStrings(values []bridgeconfig.AbsolutePath) []string {
 	return result
 }
 
-func dockerDashboardSectionsToAPI(value *bridgeconfig.DockerDashboardSections) *apischema.ConfigDockerDashboardSections {
+func dockerDashboardSectionsToAPI(value *userconfig.DockerDashboardSections) *apischema.ConfigDockerDashboardSections {
 	if value == nil {
 		return nil
 	}
 	return &apischema.ConfigDockerDashboardSections{Overview: value.Overview, Monitoring: value.Monitoring, Daemon: value.Daemon, Resources: value.Resources}
 }
 
-func hardwareSectionsToAPI(value *bridgeconfig.HardwareSections) *apischema.ConfigHardwareSections {
+func hardwareSectionsToAPI(value *userconfig.HardwareSections) *apischema.ConfigHardwareSections {
 	if value == nil {
 		return nil
 	}
 	return &apischema.ConfigHardwareSections{Overview: value.Overview, Hardware: value.Hardware, Sensors: value.Sensors, SystemInfo: value.SystemInfo, GPU: value.GPU, PCIDevices: value.PCIDevices, MemoryModules: value.MemoryModules}
 }
 
-func themeColorsToAPI(value *bridgeconfig.ThemeColorsByMode) *apischema.ConfigThemeColorsByModePayload {
+func themeColorsToAPI(value *userconfig.ThemeColorsByMode) *apischema.ConfigThemeColorsByModePayload {
 	if value == nil {
 		return nil
 	}
 	return &apischema.ConfigThemeColorsByModePayload{Light: themeColorToAPI(value.Light), Dark: themeColorToAPI(value.Dark)}
 }
 
-func themeColorToAPI(value *bridgeconfig.ThemeColors) *apischema.ConfigThemeColorsPayload {
+func themeColorToAPI(value *userconfig.ThemeColors) *apischema.ConfigThemeColorsPayload {
 	if value == nil {
 		return nil
 	}
@@ -134,7 +134,7 @@ func themeColorToAPI(value *bridgeconfig.ThemeColors) *apischema.ConfigThemeColo
 	}
 }
 
-func cssColorToString(value *bridgeconfig.CSSColor) *string {
+func cssColorToString(value *userconfig.CSSColor) *string {
 	if value == nil {
 		return nil
 	}

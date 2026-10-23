@@ -14,8 +14,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 // Helper function to create temporary test files/directories
@@ -404,7 +402,7 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk ful
 
 func TestCopyWithCallbacksReportsProgressAfterWrite(t *testing.T) {
 	var progressed int64
-	opts := &ipc.OperationCallbacks{Progress: func(n int64) { progressed += n }}
+	opts := &OperationCallbacks{Progress: func(n int64) { progressed += n }}
 
 	require.Error(t, copyWithCallbacks(failingWriter{}, strings.NewReader("hello"), opts))
 	assert.Zero(t, progressed, "bytes that never reached the destination must not count as progress")

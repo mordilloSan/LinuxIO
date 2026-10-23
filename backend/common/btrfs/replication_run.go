@@ -350,12 +350,12 @@ func RecordReplicationOutcome(ctx context.Context, job BtrfsReplicationJob, runE
 	var lastErr *string
 	key := "replication-" + job.ID
 	if runErr != nil {
-		msg := truncate(runErr.Error(), alerts.MaxMessageLen)
+		msg := runErr.Error()
 		lastErr = &msg
 		sum := sha256.Sum256([]byte(msg))
 		raiseAlert(ctx, alerts.Observation{
 			Source: alertSource, Key: key, Severity: alerts.SeverityError,
-			Title:        truncate("Replication failed for "+job.Path, 200),
+			Title:        "Replication failed for " + job.Path,
 			Message:      msg,
 			Link:         "/storage/snapshots?fs=" + job.UUID,
 			OccurrenceID: hex.EncodeToString(sum[:8]),

@@ -2,12 +2,13 @@ import { Icon } from "@iconify/react";
 import { useMemo, useState } from "react";
 
 import { openChannel } from "@/api";
-import LogDialog from "@/components/dialog/LogDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import { useLogStream } from "@/hooks/useLogStream";
 import { copyToClipboard } from "@/utils/clipboard";
+
+import LogDialog from "./LogDialog";
 
 const LOG_LINE_OPTIONS = [
   { value: "50", label: "50" },

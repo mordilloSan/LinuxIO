@@ -1,8 +1,15 @@
-import type { GridSize } from "@/components/ui/AppGrid";
+export type GridSize =
+  | number
+  | {
+      xs?: number;
+      sm?: number;
+      md?: number;
+      lg?: number;
+      xl?: number;
+    };
 
-// Themes
-export const drawerWidth = 200; //full width
-export const collapsedDrawerWidth = 70; // mini sidebar width
+// Card dimensions shared by the dashboard, hardware, docker and chart cards.
+// cardBorderRadius mirrors --app-radius-card in variables.css.
 export const cardHeight = 220;
 export const cardBorderRadius = 16;
 
@@ -10,11 +17,11 @@ export const cardBorderRadius = 16;
 export const EASING_STANDARD = [0.4, 0, 0.2, 1] as const;
 export const EASING_STANDARD_CSS = `cubic-bezier(${EASING_STANDARD.join(", ")})`;
 export const EASING_DECELERATE = [0, 0, 0.2, 1] as const;
-export const EASING_DECELERATE_CSS = `cubic-bezier(${EASING_DECELERATE.join(", ")})`;
-export const EASING_LINEAR_PROGRESS_PRIMARY = [0.65, 0.815, 0.74, 0.4] as const;
-export const EASING_LINEAR_PROGRESS_PRIMARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_PRIMARY.join(", ")})`;
-export const EASING_LINEAR_PROGRESS_SECONDARY = [0.165, 0.84, 0.44, 1] as const;
-export const EASING_LINEAR_PROGRESS_SECONDARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_SECONDARY.join(", ")})`;
+const EASING_DECELERATE_CSS = `cubic-bezier(${EASING_DECELERATE.join(", ")})`;
+const EASING_LINEAR_PROGRESS_PRIMARY = [0.65, 0.815, 0.74, 0.4] as const;
+const EASING_LINEAR_PROGRESS_PRIMARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_PRIMARY.join(", ")})`;
+const EASING_LINEAR_PROGRESS_SECONDARY = [0.165, 0.84, 0.44, 1] as const;
+const EASING_LINEAR_PROGRESS_SECONDARY_CSS = `cubic-bezier(${EASING_LINEAR_PROGRESS_SECONDARY.join(", ")})`;
 /* The dock's magnification spring (stiffness 170, damping 14, mass 0.1 — see
    useDockMagnification.tsx), sampled as an easing curve so CSS hover states move
    with the same physics as the dock tiles. The spring is overdamped (ζ ≈ 1.70),
@@ -22,14 +29,14 @@ export const EASING_LINEAR_PROGRESS_SECONDARY_CSS = `cubic-bezier(${EASING_LINEA
    decelerating tail, not bounce. Points are the step response at 16 even
    intervals across TRANSITION_DURATION_LIFT_MS; regenerate both together if the
    dock's spring constants change. */
-export const EASING_SPRING_CSS =
+const EASING_SPRING_CSS =
   "linear(0, 0.1543, 0.347, 0.5003, 0.618, 0.708, 0.7768, 0.8294, 0.8696, 0.9003, 0.9238, 0.9417, 0.9555, 0.966, 0.974, 0.9801, 1)";
 export const TRANSITION_DURATION_FAST_MS = 150;
 export const TRANSITION_DURATION_MEDIUM_MS = 200;
 export const TRANSITION_DURATION_STANDARD_MS = 250;
 /* Time for EASING_SPRING_CSS to reach ~98.5% of the way — past that the spring
    is still settling but the movement is no longer visible. */
-export const TRANSITION_DURATION_LIFT_MS = 320;
+const TRANSITION_DURATION_LIFT_MS = 320;
 export const MOTION_CSS_VARS: Record<string, string> = {
   "--app-easing-standard": EASING_STANDARD_CSS,
   "--app-easing-decelerate": EASING_DECELERATE_CSS,
@@ -45,6 +52,10 @@ export const MOTION_CSS_VARS: Record<string, string> = {
 
 // Shadows
 export const shadowSm = "0px 1px 2px 0px rgba(0, 0, 0, 0.05)";
+
+// The single source for the app's 4px spacing unit. AppGrid's gap math
+// imports this directly rather than restating the literal.
+export const BASE_SPACING_UNIT = 4;
 
 // Named gap shortcuts (plain numbers for use in style={{ gap: GAP_SM }})
 export const GAP_XS = 4;

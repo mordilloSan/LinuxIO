@@ -104,9 +104,11 @@ hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
 
-The installer places seven binaries in `/usr/local/bin`: `linuxio`,
+The installer places eight binaries in `/usr/local/bin`: `linuxio`,
 `linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
-`linuxio-indexer`, and `linuxio-monitoring`.
+`linuxio-indexer`, `linuxio-monitoring`, and `linuxio-btrfs-timer`. From a
+checkout, `make localinstall` runs the same installer with `--local` against the
+binaries in `build/`.
 
 The first-party `linuxio-monitoring` binary is installed and enabled with
 LinuxIO rather than through Capability Manager. It samples the host, keeps the
@@ -190,8 +192,10 @@ LinuxIO/
 |- frontend/         # React frontend (Vite + TypeScript)
 |- docs/             # Architecture and development docs (plans in docs/TODO)
 |- packaging/        # Installation scripts and helpers
+|- scripts/          # Shell programs behind the Make targets
+|- mk/               # Make targets by concern (go, frontend, auth, quality, install)
 |- .github/          # CI/CD workflows
-|- Makefile          # Build automation
+|- Makefile          # Build automation entry point (binaries land in build/)
 `- README.md         # This file
 ```
 
@@ -199,7 +203,7 @@ LinuxIO/
 
 ## Contributing
 
-Contributions welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
+Contributions welcome! Please read the [development guide](docs/development.md) and [AGENTS.md](AGENTS.md) first.
 
 Use [conventional commits](https://www.conventionalcommits.org/) for pull requests:
 

@@ -18,23 +18,25 @@ import (
 
 	sqlite3 "github.com/mattn/go-sqlite3"
 
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/utils"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/config"
+	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
+	systemmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 )
 
 const storeSchemaVersion = 7
 
 const resolution1m = "1m"
-const defaultHistoryRetention = 30 * 24 * time.Hour
 
-var queryResolutions = map[string]time.Duration{
-	resolution1m: 1 * time.Minute,
-	"10m":        10 * time.Minute,
-	"20m":        20 * time.Minute,
-	"120m":       120 * time.Minute,
-	"480m":       480 * time.Minute,
-}
+var queryResolutions = func() map[string]time.Duration {
+	steps := make(map[string]time.Duration)
+	for _, resolution := range monitoringapi.HistoryResolutions() {
+		step, _ := monitoringapi.HistoryResolutionStep(resolution)
+		steps[resolution] = step
+	}
+	return steps
+}()
 
 type Store struct {
 	db               *sql.DB
@@ -53,19 +55,19 @@ type HistoryRecord[T any] struct {
 type SmartDeviceRecord struct {
 	ID   string
 	Key  string
-	Data smart.SmartData
+	Data smartmodel.SmartData
 }
 
 type Options struct {
 	HistoryPlugins   []string
-	HistoryEvery     map[string]uint64 // from HistoryEvery; nil writes every plugin on every tick
+	HistoryEvery     map[string]uint64 // from plugins.HistoryEvery; nil writes every plugin on every tick
 	HistoryRetention time.Duration
 }
 
 func OpenStore(dataDir string, options ...Options) (*Store, error) {
 	dbPath := filepath.Join(dataDir, "metrics.db")
-	historyPlugins := DefaultHistoryPluginNames()
-	retention := defaultHistoryRetention
+	historyPlugins := plugins.DefaultHistory()
+	retention := config.DefaultHistoryRetention
 	if len(options) > 0 {
 		historyPlugins = options[0].HistoryPlugins
 		if options[0].HistoryRetention > 0 {
@@ -174,10 +176,6 @@ func moveAsideStoreFiles(dbPath, reason string) ([]string, error) {
 	return moved, nil
 }
 
-func ParseHistoryPlugins(raw string, explicit bool) ([]string, error) {
-	return parseHistoryPlugins(raw, explicit, utils.GetEnv)
-}
-
 func (s *Store) init() error {
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
@@ -241,12 +239,12 @@ func (s *Store) migrateToV7(version int) (err error) {
 }
 
 func dropLegacySnapshotTables(tx *sql.Tx) error {
-	for _, plugin := range pluginNames {
+	for _, plugin := range plugins.Names() {
 		if _, err := tx.Exec("DROP TABLE IF EXISTS " + plugin + "_current"); err != nil {
 			return err
 		}
 	}
-	for _, plugin := range []string{PluginProcesses, PluginPrograms} {
+	for _, plugin := range []string{plugins.Processes, plugins.Programs} {
 		if _, err := tx.Exec("DROP TABLE IF EXISTS " + pluginHistoryTable(plugin)); err != nil {
 			return err
 		}
@@ -256,7 +254,7 @@ func dropLegacySnapshotTables(tx *sql.Tx) error {
 }
 
 func deleteLegacyRollupRows(tx *sql.Tx) error {
-	for _, plugin := range historyCapablePluginNames() {
+	for _, plugin := range plugins.HistoryCapable() {
 		table := pluginHistoryTable(plugin)
 		var exists int
 		if err := tx.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&exists); err != nil {
@@ -276,8 +274,8 @@ type schemaExecer interface {
 }
 
 func createSchema(db schemaExecer) error {
-	statements := make([]string, 0, len(historyCapablePluginNames())*2+1)
-	for _, plugin := range historyCapablePluginNames() {
+	statements := make([]string, 0, len(plugins.HistoryCapable())*2+1)
+	for _, plugin := range plugins.HistoryCapable() {
 		statements = append(statements,
 			fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 				resolution TEXT NOT NULL,
@@ -351,7 +349,7 @@ func checkDBIntegrity(db *sql.DB) error {
 	return nil
 }
 
-func (s *Store) WriteSnapshot(capturedAt int64, data *system.CombinedData) (err error) {
+func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) (err error) {
 	if data == nil {
 		return errors.New("snapshot data is nil")
 	}
@@ -370,9 +368,9 @@ func (s *Store) WriteSnapshot(capturedAt int64, data *system.CombinedData) (err 
 		}
 	}()
 
-	payloads := SnapshotPluginPayloads(data)
+	payloads := plugins.Snapshot(data)
 	for _, plugin := range historyPlugins {
-		if plugin == PluginSmart || !dueFilter(plugin) {
+		if plugin == plugins.Smart || !dueFilter(plugin) {
 			continue
 		}
 		payload, ok := payloads[plugin]
@@ -401,8 +399,8 @@ func insertPluginHistory(tx *sql.Tx, plugin, resolution string, capturedAt int64
 	return err
 }
 
-func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smart.SmartData) error {
-	if !s.HistoryEnabled(PluginSmart) {
+func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smartmodel.SmartData) error {
+	if !s.HistoryEnabled(plugins.Smart) {
 		return nil
 	}
 	tx, err := s.db.Begin()
@@ -432,7 +430,7 @@ func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smart.Smart
 	if err != nil {
 		return err
 	}
-	if err = insertPluginHistory(tx, PluginSmart, resolution1m, capturedAt, raw); err != nil {
+	if err = insertPluginHistory(tx, plugins.Smart, resolution1m, capturedAt, raw); err != nil {
 		return err
 	}
 
@@ -442,8 +440,8 @@ func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smart.Smart
 	return nil
 }
 
-func compactSmartData(item smart.SmartData) smart.SmartData {
-	return smart.SmartData{
+func compactSmartData(item smartmodel.SmartData) smartmodel.SmartData {
+	return smartmodel.SmartData{
 		ModelName:       item.ModelName,
 		SerialNumber:    item.SerialNumber,
 		FirmwareVersion: item.FirmwareVersion,
@@ -457,7 +455,7 @@ func compactSmartData(item smart.SmartData) smart.SmartData {
 }
 
 func (s *Store) PluginHistory(ctx context.Context, plugin, resolution string, from, to int64, limit int) ([]HistoryRecord[json.RawMessage], error) {
-	if !IsPluginName(plugin) {
+	if !plugins.IsName(plugin) {
 		return nil, fmt.Errorf("unknown plugin %q", plugin)
 	}
 	if !s.HistoryEnabled(plugin) {
@@ -542,7 +540,7 @@ func downsampleHistory(ctx context.Context, plugin string, items []HistoryRecord
 	bucketLatest := items[0].CapturedAt
 	bucketItems := make([]string, 0)
 	flush := func() error {
-		raw, err := aggregatePluginHistoryJSON(plugin, bucketItems)
+		raw, err := plugins.Average(plugin, bucketItems)
 		if err != nil {
 			return err
 		}
@@ -586,7 +584,7 @@ func (s *Store) historyPluginNames() []string {
 	s.historyMu.RLock()
 	defer s.historyMu.RUnlock()
 	out := make([]string, 0, len(s.historyPlugins))
-	for _, plugin := range historyCapablePluginNames() {
+	for _, plugin := range plugins.HistoryCapable() {
 		if _, ok := s.historyPlugins[plugin]; ok {
 			out = append(out, plugin)
 		}
@@ -594,13 +592,13 @@ func (s *Store) historyPluginNames() []string {
 	return out
 }
 
-func (s *Store) SetHistoryPlugins(plugins []string) {
+func (s *Store) SetHistoryPlugins(names []string) {
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
-	s.historyPlugins = historyPluginSet(plugins)
+	s.historyPlugins = historyPluginSet(names)
 }
 
-// SetHistoryEvery replaces the per-plugin write cadence, see HistoryEvery.
+// SetHistoryEvery replaces the per-plugin write cadence, see plugins.HistoryEvery.
 func (s *Store) SetHistoryEvery(every map[string]uint64) {
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
@@ -647,10 +645,8 @@ func (s *Store) RetentionStrings() map[string]string {
 }
 
 func RetentionStrings() map[string]string {
-	return map[string]string{resolution1m: defaultHistoryRetention.String()}
+	return map[string]string{resolution1m: config.DefaultHistoryRetention.String()}
 }
-
-func DefaultHistoryRetention() time.Duration { return defaultHistoryRetention }
 
 func (s *Store) SetHistoryRetention(retention time.Duration) {
 	if retention > 0 {
@@ -664,4 +660,19 @@ func (s *Store) historyRetentionDuration() time.Duration {
 	s.historyMu.RLock()
 	defer s.historyMu.RUnlock()
 	return s.historyRetention
+}
+
+func pluginHistoryTable(plugin string) string {
+	return plugin + "_history"
+}
+
+func historyPluginSet(names []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(names))
+	for _, plugin := range names {
+		if plugins.IsLiveOnly(plugin) {
+			continue
+		}
+		out[plugin] = struct{}{}
+	}
+	return out
 }

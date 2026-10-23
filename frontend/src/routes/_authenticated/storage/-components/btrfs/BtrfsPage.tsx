@@ -2,18 +2,15 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
 
 import { linuxio, type BtrfsFilesystem } from "@/api";
+import { STATUS_COLOR, Tile } from "@/components/cards/EntityCardKit";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppCollapse from "@/components/ui/AppCollapse";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { useCapability } from "@/hooks/useCapabilities";
-import {
-  STATUS_COLOR,
-  Tile,
-} from "@/routes/_authenticated/vm/-components/vmCards";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
-import { formatRelativeAge } from "@/utils/formaters";
+import { formatRelativeAge } from "@/utils/formatters";
 
 import BtrfsReplicationCard from "./BtrfsReplicationCard";
 import { isSystemSubvolume } from "./btrfsShared";

@@ -1,7 +1,10 @@
 # Development targets and overrides
 
 The repository Makefile is the supported entry point for setup, checks, tests,
-builds, and packaging. Prefer focused targets when working on one area:
+builds, and packaging. `Makefile` owns the public variables, validation and
+`.PHONY`; targets live in `mk/{toolchain,go,frontend,auth,quality,install}.mk`
+and the longer shell programs behind them in `scripts/`. Prefer focused targets
+when working on one area:
 
 ```sh
 make check-frontend
@@ -76,6 +79,15 @@ Vite serves on port `3000` by default and proxies backend requests to port
 `8090`. Go/backend or bridge changes can be rebuilt with `make fastbuild` and
 installed with `make localinstall`.
 
+Built binaries land in `build/` (`BIN_DIR`). `make build-go-binaries` builds
+every Go binary (embedding the bridge SHA-256 in the webserver),
+`make build-binaries` adds the C authentication helper, and
+`make print-binaries` lists the shipped-binary names that the release workflow
+and installer tests consume. `make localinstall` runs
+`packaging/scripts/localinstall.sh`, a wrapper for
+`install-linuxio-binaries.sh --local --build-dir build/`. Only
+`common/version.Version` is stamped into binaries at link time.
+
 ## Overrides
 
 Override values on the command line (`make test GO_TEST_FLAGS=-count=1`) or in
@@ -90,7 +102,7 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `FRONTEND_DIR` | `$(REPO_ROOT)/frontend` | Frontend project directory. |
 | `BACKEND_DIR` | Auto-detected `backend/` or repository root | Go module directory. |
 | `CACHE_DIR` | `$(REPO_ROOT)/.cache` | Make caches, logs, and analysis artifacts. |
-| `BIN_DIR` | `$(REPO_ROOT)` | Built binary output directory. |
+| `BIN_DIR` | `$(REPO_ROOT)/build` | Built binary output directory. |
 | `GO_TOOLS_DIR` | `$(HOME)/.go` | Installed Go tool binaries. |
 | `GO_TOOLCHAIN_VERSIONS_DIR` | `$(HOME)/.go-versions` | Managed Go installations. |
 | `NVM_DIR` | `$(HOME)/.nvm` | Node Version Manager installation. |
@@ -133,7 +145,9 @@ system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `GO_TEST_PKGS` | `./...` | Go packages (relative to `backend/`) for `test-go`, for example `./bridge/handlers/filebrowser/...`. |
 | `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. |
+| `PLAYWRIGHT_ARGS` | empty | Extra arguments for the browser suite, such as one spec path. |
 | `VITEST_MAX_WORKERS` | `8` | Maximum Vitest workers; lower this on memory-constrained hosts. |
 | `VITEST_FILE` | empty | Frontend-relative test/spec file for a focused Vitest run. |
 | `VITEST_TEST_NAME` | empty | Vitest test-name regex, optionally combined with `VITEST_FILE`. |

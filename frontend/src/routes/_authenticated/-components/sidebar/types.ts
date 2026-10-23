@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-import type { RouteTarget } from "@/types/navigation";
+import type { RouteTarget } from "@/api";
 
 export type SidebarItem = RouteTarget & {
   icon?: ComponentType | string;

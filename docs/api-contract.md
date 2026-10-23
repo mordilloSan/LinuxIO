@@ -70,8 +70,8 @@ For request routes:
 |------|------|
 | `backend/bridge/handlers/<domain>/handlers.go` | One `apischema.Bindings(...)` table per handler family. Each normal entry contains the route contract and typed handler binding together. The `tasks` family publishes the reserved Task-service contracts while `TaskService` supplies their runtime implementations. |
 | `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
-| `backend/bridge/apischema/contracts.go` | Shared request structs and small shared responses. |
-| `backend/bridge/apischema/models.go` | API response/domain models reflected into TypeScript. |
+| `backend/bridge/apischema/contracts.go` | `TypeSpec` payload-type reflection and the `NoRequest`/`NoResponse` marker types. |
+| `backend/bridge/apischema/<domain>.go` | Request/response/domain models for one route family (`docker.go`, `network.go`, ...), reflected into TypeScript. `values.go` holds the `Optional` helper for optional DTO fields. |
 | `backend/bridge/apischema/schema.go` | Contract helpers, route policy, and typed registration adapters. |
 | `backend/bridge/internal/bridgeipc/request_decoder.go` | Shared strict request decoder for normal contracts and the reserved Task service. |
 | `backend/bridge/internal/apigen` | Generator for frontend client/types/route metadata. |
@@ -206,7 +206,7 @@ Progress work uses the separate Task module's
 `useTaskAction`/`useTaskStreamAction` or the background-Tasks layer,
 while imperative cache work uses QueryClient directly. Feature code does not
 invent query keys/functions or use raw mutations. Guard tests
-(`frontend/src/constants/apiLayering.test.ts`) enforce that boundary.
+(`frontend/src/test/guards/apiLayering.test.ts`) enforce that boundary.
 
 Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for the request transport and pass typed Call descriptors to the shared browser QueryClient. It requires a live `isUpdateBlocked` getter from router context rather than the mux, rechecks it after readiness, and rejects without querying while an update is active. Loader failures propagate to TanStack Router; intent preloads are marked speculative so QueryCache suppresses their global error toast.
 
@@ -250,7 +250,7 @@ useCallMutation(linuxio.docker.start_container).mutate({ containerId });
 ## Request Decoding and Call Reliability
 
 Every normal route and reserved `tasks.*` request uses the shared
-`bridge.JSONRequestDecoder`. It uses `encoding/json/v2.Unmarshal` with
+`bridgeipc.JSONRequestDecoder`. It uses `encoding/json/v2.Unmarshal` with
 `RejectUnknownMembers(true)`. The v2 defaults require exact, case-sensitive
 member matches and reject duplicate names, invalid UTF-8, and trailing data.
 A missing or `null` request retains the existing empty-object behavior.
@@ -579,7 +579,7 @@ For the common case where request/result structs already exist, adding a route t
 
 1. `backend/bridge/handlers/<domain>/handlers.go` for one `apischema.Bindings(...)` entry and the typed handler adapter.
 
-If the request or response type is new, also add the Go struct in `backend/bridge/apischema/contracts.go` or `backend/bridge/apischema/models.go`.
+If the request or response type is new, add the Go struct to the matching `backend/bridge/apischema/<domain>.go` file (or the nearest shared domain file when several families use it).
 If the handler family is new, add one entry to `backend/bridge/handlers/register.go`.
 
 The practical checklist:
@@ -706,13 +706,13 @@ The only unavoidable second file for a new route is the shared contract file whe
 
 ### 4. Tighten Shared Contracts
 
-Goal: `apischema/contracts.go` and `apischema/models.go` stay reviewable.
+Goal: the per-domain `apischema/<domain>.go` files and `apischema/contracts.go` stay reviewable.
 
 Next cleanup passes:
 
 1. Move highly domain-specific request structs closer to their handler family if they are not reused elsewhere.
 2. Keep only genuinely shared fragments in `contracts.go`.
-3. Keep API response/domain models in `models.go` only when they are actually generated for frontend use.
+3. Keep API response/domain models in their domain file, and only when they are actually generated for frontend use.
 4. Periodically run a usage scan before moving or deleting contract types.
 
 ### 5. Frontend API Surface

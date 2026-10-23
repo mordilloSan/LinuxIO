@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/osrelease"
 	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
@@ -480,28 +480,9 @@ func distroMatches(id string, idLike []string, values ...string) bool {
 }
 
 func readOSReleaseIDs() (string, []string) {
-	data, err := os.ReadFile("/etc/os-release")
+	info, err := osrelease.Read()
 	if err != nil {
 		return "", nil
 	}
-	values := parseOSRelease(data)
-	id := strings.ToLower(values["ID"])
-	idLike := strings.Fields(strings.ToLower(values["ID_LIKE"]))
-	return id, idLike
-}
-
-func parseOSRelease(data []byte) map[string]string {
-	values := make(map[string]string)
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		values[key] = strings.Trim(strings.TrimSpace(value), `"'`)
-	}
-	return values
+	return info.ID(), info.IDLike()
 }

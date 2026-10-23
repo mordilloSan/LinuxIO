@@ -14,15 +14,6 @@ vi.mock("@/api/linuxio", () => ({
 }));
 
 vi.mock("@/api/linuxio-core", () => ({
-  LinuxIOError: class LinuxIOError extends Error {
-    code?: string | number;
-
-    constructor(message: string, code?: string | number) {
-      super(message);
-      this.code = code;
-      this.name = "LinuxIOError";
-    }
-  },
   request: mocks.request,
 }));
 

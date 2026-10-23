@@ -2,8 +2,8 @@ import { Icon } from "@iconify/react";
 import { lazy, memo, Suspense, type MouseEventHandler } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
-import { HeaderActionSlotHost } from "@/contexts/HeaderActionSlotContext";
-import { useAppMediaQuery } from "@/theme";
+import { HeaderActionSlotHost } from "@/contexts/HeaderActionSlotProvider";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { up } from "@/theme/breakpoints";
 import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
@@ -22,7 +22,7 @@ interface NavbarProps {
 }
 
 const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
-  const isDesktop = useAppMediaQuery(up("md"));
+  const isDesktop = useMediaQuery(up("md"));
 
   return (
     <header

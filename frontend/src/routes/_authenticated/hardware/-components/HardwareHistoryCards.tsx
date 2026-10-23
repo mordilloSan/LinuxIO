@@ -18,7 +18,7 @@ import {
 import AppSelect from "@/components/ui/AppSelect";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
-import { formatThroughput } from "@/utils/formaters";
+import { formatThroughput } from "@/utils/formatters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
 import { hardwareStableQueryOptions } from "./hardwareQueryOptions";

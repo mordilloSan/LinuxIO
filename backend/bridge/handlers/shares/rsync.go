@@ -22,15 +22,16 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const rsyncUnit = "linuxio-rsync.service"
 
 var (
-	rsyncConfigFile = "/etc/linuxio/rsyncd.conf"
+	rsyncConfigFile = version.ConfigDir + "/rsyncd.conf"
 	// TOS's encryption mode reads this path over SSH to find the module folder.
 	rsyncSystemConfigFile = "/etc/rsyncd.conf"
-	rsyncSecretsFile      = "/etc/linuxio/rsyncd.secrets"
+	rsyncSecretsFile      = version.ConfigDir + "/rsyncd.secrets"
 	rsyncUnitFile         = "/etc/systemd/system/" + rsyncUnit
 	rsyncLockFile         = "/run/lock/linuxio-rsync.lock"
 	rsyncLookPath         = exec.LookPath
@@ -45,7 +46,8 @@ var (
 	rsyncName             = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 )
 
-func handleGetRsync(ctx context.Context, _ apischema.NoRequest) (apischema.RsyncStatus, error) {
+// GetRsync returns the rsync module status.
+func GetRsync(ctx context.Context) (apischema.RsyncStatus, error) {
 	var status apischema.RsyncStatus
 	err := filelock.RunExclusive(ctx, rsyncLockFile, func() error {
 		var err error
@@ -191,7 +193,8 @@ strict modes = yes
 `, config.Port, config.Module, config.Path, config.NASAddress, config.Username, rsyncSecretsFile)
 }
 
-func handleSaveRsync(ctx context.Context, req apischema.RsyncSaveRequest) (apischema.RsyncStatus, error) {
+// ConfigureRsync validates and applies the rsync module configuration.
+func ConfigureRsync(ctx context.Context, req apischema.RsyncSaveRequest) (apischema.RsyncStatus, error) {
 	if err := validateRsyncConfig(&req.RsyncConfig); err != nil {
 		return apischema.RsyncStatus{}, err
 	}
@@ -329,7 +332,8 @@ func linkRsyncSystemConfig() error {
 	return nil
 }
 
-func handleStopRsync(ctx context.Context, _ apischema.NoRequest) (apischema.RsyncStatus, error) {
+// StopRsync stops and disables the rsync service.
+func StopRsync(ctx context.Context) (apischema.RsyncStatus, error) {
 	var status apischema.RsyncStatus
 	err := filelock.RunExclusive(ctx, rsyncLockFile, func() error {
 		if err := rsyncStopUnit(ctx, rsyncUnit); err != nil {

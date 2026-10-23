@@ -16,7 +16,7 @@ import {
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import usePowerAction from "@/hooks/usePowerAction";
-import { formatDate } from "@/utils/formaters";
+import { formatDate } from "@/utils/formatters";
 
 interface BtrfsRollbackDialogProps {
   isPending: boolean;

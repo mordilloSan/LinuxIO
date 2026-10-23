@@ -6,8 +6,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func TestAddNATHooksAddsExpectedPostUpAndPostDown(t *testing.T) {
@@ -61,32 +59,6 @@ func TestWriteWireGuardConfigPersistsPostHooks(t *testing.T) {
 	}
 	if !slices.Equal(got.PostDown, cfg.PostDown) {
 		t.Fatalf("PostDown = %v, want %v", got.PostDown, cfg.PostDown)
-	}
-}
-
-func TestPeerFileServerSectionDerivesKeysAndAllowedIPs(t *testing.T) {
-	priv, err := wgtypes.GeneratePrivateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := peerFile{
-		ID: "Peer2", Name: "Alice", Enabled: true,
-		ServerAllowedIPs:    []string{"192.168.50.0/24"},
-		PrivateKey:          priv.String(),
-		Address:             "10.10.20.2/32",
-		PresharedKey:        "psk",
-		PersistentKeepalive: 25,
-	}
-
-	section, err := p.serverSection()
-	if err != nil {
-		t.Fatalf("serverSection returned error: %v", err)
-	}
-	if section.PublicKey != priv.PublicKey().String() || section.PresharedKey != "psk" || section.PersistentKeepalive != 25 || section.Name != "Alice" {
-		t.Fatalf("section = %+v", section)
-	}
-	if !slices.Equal(section.AllowedIPs, []string{"10.10.20.2/32", "192.168.50.0/24"}) {
-		t.Fatalf("allowed ips = %v", section.AllowedIPs)
 	}
 }
 

@@ -25,7 +25,7 @@ const MAGNIFY_RANGE = 140;
 const LIFT_MAX = 8;
 const SPRING = { damping: 14, mass: 0.1, stiffness: 170 };
 
-export interface DockTarget {
+interface DockTarget {
   scale: number;
   x: number;
 }
@@ -216,7 +216,7 @@ export function useDockMagnification() {
   return { labelY, lift, registerTile, renderScale, x };
 }
 
-export function useDockPointer() {
+function useDockPointer() {
   return useRequiredDockContext().setPointer;
 }
 

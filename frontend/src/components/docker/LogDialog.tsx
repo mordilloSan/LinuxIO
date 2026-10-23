@@ -1,0 +1,110 @@
+import { Icon } from "@iconify/react";
+import type { ReactNode, RefObject } from "react";
+
+import GeneralDialog from "@/components/dialog/GeneralDialog";
+import { AppDialogContent, AppDialogTitle } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppIconButton from "@/components/ui/AppIconButton";
+import AppSwitch from "@/components/ui/AppSwitch";
+import AppTooltip from "@/components/ui/AppTooltip";
+import LogViewport from "@/components/ui/LogViewport";
+
+interface LogDialogProps {
+  error: string | null;
+  /** Extra action buttons rendered before the live switch (e.g. copy, download). */
+  extraActions?: ReactNode;
+  isLoading: boolean;
+  liveMode: boolean;
+  logs: string;
+  logsBoxRef: RefObject<HTMLDivElement | null>;
+  maxWidth?: "sm" | "md" | "lg" | "xl";
+  onClose: () => void;
+  onExited?: () => void;
+  onLiveModeChange: (value: boolean) => void;
+  open: boolean;
+  /** Text title shown in the header. Ignored when `titleContent` is provided. */
+  title?: string;
+  /** Replaces the text title (e.g. a search field). Should grow to fill available space. */
+  titleContent?: ReactNode;
+}
+const LogDialog = ({
+  open,
+  onClose,
+  title,
+  titleContent,
+  extraActions,
+  logs,
+  isLoading,
+  error,
+  liveMode,
+  onLiveModeChange,
+  logsBoxRef,
+  onExited,
+  maxWidth = "md",
+}: LogDialogProps) => {
+  return (
+    <GeneralDialog
+      fullWidth
+      maxWidth={maxWidth}
+      onClose={onClose}
+      open={open}
+      slotProps={{
+        transition: {
+          onExited,
+        },
+      }}
+    >
+      <AppDialogTitle
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          {titleContent ?? title}
+        </div>
+        {extraActions}
+        <AppTooltip
+          title={liveMode ? "Live streaming ON" : "Live streaming OFF"}
+        >
+          <AppFormControlLabel
+            control={
+              <AppSwitch
+                checked={liveMode}
+                onChange={(_, checked) => onLiveModeChange(checked)}
+                size="small"
+              />
+            }
+            label="Live"
+            style={{ marginLeft: 4 }}
+          />
+        </AppTooltip>
+        <AppIconButton
+          aria-label="Close log dialog"
+          onClick={onClose}
+          size="small"
+        >
+          <Icon height={18} icon="mdi:close" width={18} />
+        </AppIconButton>
+      </AppDialogTitle>
+
+      <AppDialogContent flush>
+        <LogViewport
+          error={error}
+          isLoading={isLoading}
+          logs={logs}
+          logsBoxRef={logsBoxRef}
+          variant="dialog"
+        />
+      </AppDialogContent>
+    </GeneralDialog>
+  );
+};
+export default LogDialog;

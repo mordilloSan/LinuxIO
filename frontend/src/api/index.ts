@@ -42,13 +42,15 @@ export {
   TASK_CANCELED_CODE,
 } from "./tasks";
 
-// === API Error Type ===
+// === API Errors ===
 export {
   LinuxIOError,
-  ensureLoaderRequestReady,
+  getMutationErrorMessage,
   isConnectionLossError,
-} from "./linuxio-core";
-export type { ConnectionLossCode } from "./linuxio-core";
+} from "./errors";
+export type { ConnectionLossCode } from "./errors";
+export { ensureLoaderRequestReady } from "./linuxio-core";
+export type { RouteTarget, ToastMeta } from "./toast-meta";
 
 // === React Hooks ===
 export { useStreamMux } from "./linuxio";
@@ -100,6 +102,9 @@ export {
   StreamMessageChannel,
 } from "./stream-channel";
 export type * from "./stream-channel";
+
+// === Config Types (effective UI settings, config context shape) ===
+export type * from "./config-types";
 
 // === Stream Types ===
 export type * from "./StreamMultiplexer";

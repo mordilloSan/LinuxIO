@@ -4,10 +4,9 @@ import { Suspense, useEffect } from "react";
 import { closeStreamMux, initStreamMux, useStreamMux } from "@/api";
 import { capabilitiesQueryKey } from "@/api/capabilities";
 import { RoutedTabLayout } from "@/components/tabbar";
-import { AuthContext } from "@/contexts/AuthContext";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import RsyncPage from "@/routes/_authenticated/storage/-components/shares/RsyncPage";
 import { STORAGE_TABS } from "@/routes/_authenticated/storage/-components/storageTabs";
-import type { AuthContextType } from "@/types/auth";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },

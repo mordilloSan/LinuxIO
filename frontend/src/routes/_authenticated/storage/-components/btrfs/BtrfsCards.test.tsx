@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { BtrfsFilesystem } from "@/api";
 import { render, screen } from "@/test/render";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formatters";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
 import BtrfsHealthBanner from "./BtrfsHealthBanner";

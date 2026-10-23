@@ -12,6 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -107,10 +108,5 @@ func copyDownloadFile(ctx context.Context, stream net.Conn, file io.Reader) erro
 }
 
 func writeFileDownloadError(stream net.Conn, err error) error {
-	code := 500
-	var bridgeErr *bridgeipc.Error
-	if errors.As(err, &bridgeErr) && bridgeErr.Code != 0 {
-		code = bridgeErr.Code
-	}
-	return relay.WriteResultErrorAndClose(stream, 0, err.Error(), code)
+	return streamrelay.WriteError(stream, 0, err)
 }

@@ -6,8 +6,7 @@ CLI or Codex) running on the host as the logged-in user. The agent speaks the
 over stdin/stdout). The browser is the ACP client and renders the session; the
 model runs at the vendor. LinuxIO runs no model, holds no API key and stores
 nothing about conversations. The only thing it persists is the chosen agent id
-(`assistant.agent` in the per-user config). Design background lives in the
-[spec](./superpowers/specs/2026-10-07-assistant-acp-design.md).
+(`assistant.agent` in the per-user config).
 
 ## Relay
 

@@ -9,11 +9,11 @@ import { type QueryKey, type UseMutationResult } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
 
 import { type ActionConfig, useActionMutation } from "./call-react-query";
+import { LinuxIOError } from "./errors";
 import type { TaskSnapshot } from "./generated/linuxio-types";
 import { getRouteMode, routeName } from "./generated/route-metadata";
 import { openTaskWatchStream } from "./linuxio";
 import * as core from "./linuxio-core";
-import { LinuxIOError } from "./linuxio-core";
 import {
   endpointQueryKey,
   requestForWire,

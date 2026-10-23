@@ -15,7 +15,7 @@ type TerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
 type ReadyCleanup = (() => void) | void;
 type ReadyMode = "animationFrame" | "timeout";
 
-export interface UseXtermStreamTerminalOptions {
+interface UseXtermStreamTerminalOptions {
   background: string;
   enabled: boolean;
   focusDelayMs?: number;
@@ -28,7 +28,7 @@ export interface UseXtermStreamTerminalOptions {
   terminalOptions?: TerminalOptions;
 }
 
-export interface UseXtermStreamTerminalResult {
+interface UseXtermStreamTerminalResult {
   containerRef: RefObject<HTMLDivElement | null>;
   fitAddonRef: RefObject<FitAddon | null>;
   fitAndResize: () => void;

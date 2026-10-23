@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -16,10 +15,11 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/common/osrelease"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
@@ -141,7 +141,7 @@ func runInstallCapabilityTask(ctx context.Context, task *bridgeipc.Task, user se
 }
 
 func installCapability(ctx context.Context, task *bridgeipc.Task, user session.User, name string) (apischema.InstallCapabilityResult, error) {
-	spec, ok := system.CapabilitySpecByName(name)
+	spec, ok := capabilities.CapabilitySpecByName(name)
 	if !ok {
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
 	}
@@ -200,7 +200,7 @@ func installCapability(ctx context.Context, task *bridgeipc.Task, user session.U
 	}, nil
 }
 
-func installCapabilityDependencies(ctx context.Context, task *bridgeipc.Task, family, name, logName, packageList string, spec *system.InstallSpec) (string, error) {
+func installCapabilityDependencies(ctx context.Context, task *bridgeipc.Task, family, name, logName, packageList string, spec *capabilities.InstallSpec) (string, error) {
 	if err := installCapabilityPackages(ctx, task, name, packageList); err != nil {
 		return "", err
 	}
@@ -225,7 +225,7 @@ func installCapabilityPackages(ctx context.Context, task *bridgeipc.Task, capabi
 	return nil
 }
 
-func installOptionalCapabilityPackage(ctx context.Context, task *bridgeipc.Task, family, capabilityName string, spec *system.InstallSpec) (string, error) {
+func installOptionalCapabilityPackage(ctx context.Context, task *bridgeipc.Task, family, capabilityName string, spec *capabilities.InstallSpec) (string, error) {
 	if !isRHELFamily(family) || spec == nil || strings.TrimSpace(spec.OptionalPackageRHEL) == "" {
 		return "", nil
 	}
@@ -250,7 +250,7 @@ func installOptionalCapabilityPackage(ctx context.Context, task *bridgeipc.Task,
 	return warning, nil
 }
 
-func runCapabilityPostInstall(ctx context.Context, task *bridgeipc.Task, command *system.InstallCommand) error {
+func runCapabilityPostInstall(ctx context.Context, task *bridgeipc.Task, command *capabilities.InstallCommand) error {
 	if command == nil || strings.TrimSpace(command.Name) == "" {
 		return nil
 	}
@@ -384,7 +384,7 @@ func runCapabilityProcess(ctx context.Context, cmd *exec.Cmd, name string, repor
 	return output.commandError(ctx, name, waitErr)
 }
 
-func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgeipc.Task, spec system.CapabilitySpec) error {
+func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgeipc.Task, spec capabilities.CapabilitySpec) error {
 	if !spec.Install.RequiresDocker {
 		return nil
 	}
@@ -509,7 +509,7 @@ func waitUnitActive(ctx context.Context, unit string, timeout time.Duration) err
 // while it still reports unavailable. This covers the small window between a
 // service becoming "active" and its public surface (D-Bus name, listening
 // socket, etc.) being reachable from the detector.
-func detectWithRetry(ctx context.Context, spec system.CapabilitySpec, user session.User, timeout time.Duration) (bool, string) {
+func detectWithRetry(ctx context.Context, spec capabilities.CapabilitySpec, user session.User, timeout time.Duration) (bool, string) {
 	deadline := time.Now().Add(timeout)
 	var available bool
 	var errMsg string
@@ -559,26 +559,12 @@ func isRHELFamily(family string) bool {
 // resolve-failed error from PackageKit, which is better than silently doing
 // nothing.
 func detectDistroFamily() string {
-	data, err := os.ReadFile("/etc/os-release")
+	info, err := osrelease.Read()
 	if err != nil {
 		return "debian"
 	}
 
-	values := make(map[string]string)
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		values[key] = strings.ToLower(strings.Trim(strings.TrimSpace(value), `"'`))
-	}
-
-	ids := []string{values["ID"]}
-	ids = append(ids, strings.Fields(values["ID_LIKE"])...)
+	ids := append([]string{info.ID()}, info.IDLike()...)
 
 	if slices.ContainsFunc(ids, isRHELFamily) {
 		return "rhel"

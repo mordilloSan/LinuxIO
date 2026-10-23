@@ -7,29 +7,30 @@ import { Icon } from "@iconify/react";
 import { useCallback, useState, type CSSProperties } from "react";
 
 import LogoDisplay from "@/components/logo/LogoDisplay";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
-import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { collapsedDrawerWidth, drawerWidth } from "@/theme/constants";
+import { useAppUpdateInProgress } from "@/hooks/useAppUpdater";
 
+import { collapsedDrawerWidth, drawerWidth } from "./sidebarLayout";
 import SidebarNavList from "./SidebarNavList";
 import type { SidebarItem } from "./types";
 import useSidebar from "./useSidebar";
+
 import "@/components/reorder/reorder.css";
 import "./sidebar.css";
 
 const getNavItemId = (item: SidebarItem) => item.to;
 
-export interface SidebarProps {
+interface SidebarProps {
   items: SidebarItem[];
 }
 
 const Sidebar = ({ items }: SidebarProps) => {
   const { collapsed, toggleCollapse, isDesktop, mobileOpen, setMobileOpen } =
     useSidebar();
-  const canNavigate = useUpdateCanNavigate();
+  const canNavigate = !useAppUpdateInProgress();
   const surface = useReorderableSurface({
     disabled: !canNavigate,
     getId: getNavItemId,

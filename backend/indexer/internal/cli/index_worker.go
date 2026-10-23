@@ -10,8 +10,9 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
-	"github.com/mordilloSan/LinuxIO/backend/indexer/daemon"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/configfile"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/daemon"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/storage"
 )
 
 func runIndexMode(args []string) int {
@@ -41,7 +42,7 @@ func runIndexMode(args []string) int {
 	stats, err := daemon.RunIndexMode(
 		ctx,
 		fileCfg,
-		configfile.DefaultDBPath,
+		storage.DefaultDBPath,
 		wire,
 	)
 	if err != nil {

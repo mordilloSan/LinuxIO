@@ -136,7 +136,7 @@ func updaterWritablePaths() []updaterWritablePath {
 	// installer destinations must remain within these paths.
 	return []updaterWritablePath{
 		{path: version.BinDir},
-		{path: "/etc/linuxio"},
+		{path: version.ConfigDir},
 		{path: "/etc/pam.d"},
 		{path: "/etc/systemd/system"},
 		{path: "/etc/motd.d", optional: true},

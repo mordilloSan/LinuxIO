@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/download"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/ws"
 )
 
 // Config holds router configuration.
@@ -21,7 +23,7 @@ type Config struct {
 }
 
 // BuildRouter constructs and returns the main HTTP handler.
-func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
+func BuildRouter(cfg Config, sm *sessions.Manager) http.Handler {
 	mux := http.NewServeMux()
 
 	// Apply middleware chain
@@ -38,12 +40,12 @@ func BuildRouter(cfg Config, sm *session.Manager) http.Handler {
 	// WebSocket relay — session validated inside wsAuthMiddleware so that auth
 	// failures are sent as WS close code 1008 ("no-session") rather than HTTP
 	// 401, which browsers cannot distinguish from a network error.
-	mux.Handle("GET /ws", wsAuthMiddleware(sm, WebSocketRelayHandler(sm)))
+	mux.Handle("GET /ws", ws.AuthMiddleware(sm, ws.RelayHandler(sm)))
 
 	// Native browser downloads use one ordinary HTTP endpoint. A path streams
 	// directly; a taskId attaches to a prepared archive. Neither source buffers
 	// file contents in the webserver or browser tab.
-	mux.Handle("GET /api/download", nativeDownloadHandler(sm))
+	mux.Handle("GET /api/download", download.Handler(sm))
 
 	// Serve embedded SPA
 	mountProductionSPA(mux, cfg.UI)

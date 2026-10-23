@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 func TestFetchProcessesDecodesDaemonEnvelope(t *testing.T) {
 	withTestAPIClient(t, func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != processesRoute {
-			t.Fatalf("path = %s, want %s", req.URL.Path, processesRoute)
+		if req.URL.Path != monitoringapi.RouteProcesses {
+			t.Fatalf("path = %s, want %s", req.URL.Path, monitoringapi.RouteProcesses)
 		}
 		return jsonResponse(http.StatusOK, `{
 			"captured_at": 1700000000000,
@@ -36,8 +37,8 @@ func TestFetchProcessesDecodesDaemonEnvelope(t *testing.T) {
 
 func TestFetchProgramsDecodesDaemonEnvelope(t *testing.T) {
 	withTestAPIClient(t, func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != programsRoute {
-			t.Fatalf("path = %s, want %s", req.URL.Path, programsRoute)
+		if req.URL.Path != monitoringapi.RoutePrograms {
+			t.Fatalf("path = %s, want %s", req.URL.Path, monitoringapi.RoutePrograms)
 		}
 		return jsonResponse(http.StatusOK, `{
 			"captured_at": 1700000000001,

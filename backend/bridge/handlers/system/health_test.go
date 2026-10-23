@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 func TestDetectUncleanShutdownUsesPreviousUncleanBoot(t *testing.T) {
@@ -91,7 +91,7 @@ func TestApplyFailedLoginAlertDismissal(t *testing.T) {
 		},
 	}
 
-	applyFailedLoginAlertDismissal(summary, &config.PersistedDismissals{FailedLoginAlertID: alertID})
+	applyFailedLoginAlertDismissal(summary, &userconfig.PersistedDismissals{FailedLoginAlertID: alertID})
 
 	require.Nil(t, summary.FailedLoginAlert)
 }
@@ -108,7 +108,7 @@ func TestApplyFailedLoginAlertDismissalKeepsNewAlert(t *testing.T) {
 		},
 	}
 
-	applyFailedLoginAlertDismissal(summary, &config.PersistedDismissals{FailedLoginAlertID: failedLoginAlertID("user", "miguel", "login_def")})
+	applyFailedLoginAlertDismissal(summary, &userconfig.PersistedDismissals{FailedLoginAlertID: failedLoginAlertID("user", "miguel", "login_def")})
 
 	require.NotNil(t, summary.FailedLoginAlert)
 	require.Equal(t, alertID, summary.FailedLoginAlert.ID)

@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -70,7 +70,7 @@ func Path(ctx context.Context, u session.User) (string, error) {
 // session, with HOME, USER and LOGNAME set for u. Credentials are only
 // switched when the bridge runs as root.
 func Command(ctx context.Context, u session.User, name string, args ...string) (*exec.Cmd, error) {
-	home, err := bridgeconfig.Homedir(u.Username)
+	home, err := userconfig.Homedir(u.Username)
 	if err != nil {
 		return nil, fmt.Errorf("resolve %s's home directory: %w", u.Username, err)
 	}

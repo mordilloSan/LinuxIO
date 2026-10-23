@@ -17,20 +17,24 @@ import {
   useContext,
 } from "react";
 
-import type { AppConfig, UIConfig } from "@/api";
-import { createBackgroundTaskCache } from "@/api/background-task-cache";
+import type {
+  AppConfig,
+  ConfigContextType,
+  EffectiveAppSettings,
+  UIConfig,
+} from "@/api";
 import {
   capabilitiesQueryKey,
   wireFromCapabilityState,
 } from "@/api/capabilities";
-import type { CapabilitiesResponse, CapabilityState } from "@/api/capabilities";
+import type { CapabilityState } from "@/api/capabilities";
 import { bridgeConfigQueryKey, uiConfigQueryKey } from "@/api/config-query";
-import { AuthContext } from "@/contexts/AuthContext";
+import { ANONYMOUS_USER_ID, cacheUserId } from "@/api/user-scope";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
+import { createBackgroundTaskCache } from "@/tasks/taskCache";
+import type { BackgroundTaskItem } from "@/tasks/types";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
-import type { AuthContextType } from "@/types/auth";
-import type { BackgroundTaskItem } from "@/types/backgroundTasks";
-import type { ConfigContextType, EffectiveAppSettings } from "@/types/config";
 
 const TEST_THEME = buildAppTheme("DARK");
 
@@ -55,7 +59,7 @@ export function createAuthContextValue(
     isInitialized: true,
     method: "session",
     privileged: false,
-    refreshCapabilities: async () => ({}) as CapabilitiesResponse,
+    refreshCapabilities: async () => ({}),
     sessionExpired: () => {},
     signIn: async () => {},
     signOut: async () => {},
@@ -68,7 +72,7 @@ export function createAuthContextValue(
 export function seedCapabilityCache(
   queryClient: QueryClient,
   overrides: Partial<CapabilityState> = {},
-  userId = "anonymous",
+  userId = ANONYMOUS_USER_ID,
 ) {
   queryClient.setQueryData(
     capabilitiesQueryKey(userId),
@@ -153,7 +157,7 @@ export function buildTestConfigSnapshots(
 export function seedConfigCache(
   queryClient: QueryClient,
   appSettings: Partial<EffectiveAppSettings> = {},
-  userId = "anonymous",
+  userId = ANONYMOUS_USER_ID,
 ) {
   const { bridge, ui } = buildTestConfigSnapshots(appSettings);
   queryClient.setQueryData(bridgeConfigQueryKey(userId), bridge);
@@ -164,7 +168,7 @@ export function seedConfigCache(
 export function seedTaskCache(
   queryClient: QueryClient,
   items: BackgroundTaskItem[],
-  userId = "anonymous",
+  userId = ANONYMOUS_USER_ID,
 ) {
   const tasks = createBackgroundTaskCache(queryClient, userId);
   tasks.downloads.set(items.filter((item) => item.type === "download"));
@@ -206,18 +210,10 @@ export function render(
 ) {
   const authValue = createAuthContextValue(auth);
   if (seedConfig) {
-    seedConfigCache(
-      queryClient,
-      appSettings,
-      authValue.user?.id ?? "anonymous",
-    );
+    seedConfigCache(queryClient, appSettings, cacheUserId(authValue.user));
   }
   if (capabilities) {
-    seedCapabilityCache(
-      queryClient,
-      capabilities,
-      authValue.user?.id ?? "anonymous",
-    );
+    seedCapabilityCache(queryClient, capabilities, cacheUserId(authValue.user));
   }
   const configValue = createConfigContextValue();
   const user = userEvent.setup();
@@ -263,13 +259,9 @@ export function createTanStackRouterWrapper({
   queryClient?: QueryClient;
 } = {}) {
   const authValue = createAuthContextValue(auth);
-  seedConfigCache(queryClient, {}, authValue.user?.id ?? "anonymous");
+  seedConfigCache(queryClient, {}, cacheUserId(authValue.user));
   if (capabilities) {
-    seedCapabilityCache(
-      queryClient,
-      capabilities,
-      authValue.user?.id ?? "anonymous",
-    );
+    seedCapabilityCache(queryClient, capabilities, cacheUserId(authValue.user));
   }
   const rootRoute = createRootRoute({ component: TanStackRouterTestRoute });
   const router = createRouter({

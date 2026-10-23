@@ -9,19 +9,8 @@ import (
 	"math"
 )
 
-// Common errors for stream operations.
-var (
-	ErrAborted           = errors.New("operation aborted")
-	ErrNotFound          = errors.New("not found")
-	ErrPermissionDenied  = errors.New("permission denied")
-	ErrInvalidRequest    = errors.New("invalid request")
-	ErrUnsupportedFormat = errors.New("unsupported format")
-	ErrAlreadyExists     = errors.New("already exists")
-	ErrIsDirectory       = errors.New("is a directory")
-	ErrNotDirectory      = errors.New("not a directory")
-	ErrConnectionClosed  = errors.New("connection closed")
-	ErrTimeout           = errors.New("operation timed out")
-)
+// ErrInvalidRequest marks a malformed stream open payload.
+var ErrInvalidRequest = errors.New("invalid request")
 
 // Stream opcodes for the binary relay protocol.
 // Frame format: [opcode:1][streamID:4][length:4][payload:N]
@@ -40,9 +29,6 @@ const (
 const maxRelayPayloadSize = 16 * 1024 * 1024
 const relayFrameHeaderSize = 9
 const firstFrameReadChunkSize = 32 * 1024
-
-// Shared journald field names. Keep in sync with backend/auth/linuxio_protocol.h.
-const JournalFieldSessionID = "LINUXIO_SESSION_ID"
 
 // StreamFrame represents a framed message for the relay protocol.
 // Format: [opcode:1][streamID:4][length:4][payload:N]
@@ -282,43 +268,4 @@ func WriteStreamClose(w io.Writer, streamID uint32) error {
 		Opcode:   OpStreamClose,
 		StreamID: streamID,
 	})
-}
-
-// CancelFunc returns true if the operation should be cancelled.
-type CancelFunc func() bool
-
-// ProgressFunc is called with the number of bytes processed.
-type ProgressFunc func(bytes int64)
-
-// CompleteFunc is called when an item is completed (e.g., file extracted).
-type CompleteFunc func(path string)
-
-// OperationCallbacks provides common callbacks for long-running operations.
-// All fields are optional - nil callbacks are safely ignored.
-type OperationCallbacks struct {
-	Progress   ProgressFunc // Called with bytes processed
-	Cancel     CancelFunc   // Returns true if operation should abort
-	OnComplete CompleteFunc // Called when an item completes
-}
-
-// ReportProgress safely calls the progress callback if set.
-func (o *OperationCallbacks) ReportProgress(bytes int64) {
-	if o != nil && o.Progress != nil {
-		o.Progress(bytes)
-	}
-}
-
-// IsCancelled safely checks the cancel function if set.
-func (o *OperationCallbacks) IsCancelled() bool {
-	if o != nil && o.Cancel != nil {
-		return o.Cancel()
-	}
-	return false
-}
-
-// ReportComplete safely calls the completion callback if set.
-func (o *OperationCallbacks) ReportComplete(path string) {
-	if o != nil && o.OnComplete != nil {
-		o.OnComplete(path)
-	}
 }

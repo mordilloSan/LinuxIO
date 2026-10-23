@@ -165,3 +165,36 @@ func profileOrKeep(p *string) string {
 	}
 	return *p
 }
+
+// AddBtrfsDevice adds a free device to a filesystem.
+func AddBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (btrfs.BtrfsFilesystem, error) {
+	if err := ensureBtrfsDeviceFree(ctx, req.Device, req.Force); err != nil {
+		return btrfs.BtrfsFilesystem{}, err
+	}
+	slog.Info("adding btrfs device", "uuid", req.UUID, "device", req.Device, "force", req.Force)
+	if err := btrfs.AddDevice(ctx, req.UUID, req.Device, req.Force); err != nil {
+		slog.Error("failed to add btrfs device", "uuid", req.UUID, "device", req.Device, "error", err)
+		return btrfs.BtrfsFilesystem{}, err
+	}
+	return btrfs.FindFilesystem(ctx, req.UUID)
+}
+
+// CancelBtrfsBalance cancels a running balance.
+func CancelBtrfsBalance(ctx context.Context, uuid string) error {
+	slog.Info("canceling btrfs balance", "uuid", uuid)
+	if err := btrfs.BalanceCancel(ctx, uuid); err != nil {
+		slog.Error("failed to cancel btrfs balance", "uuid", uuid, "error", err)
+		return err
+	}
+	return nil
+}
+
+// CancelBtrfsScrub cancels a running scrub.
+func CancelBtrfsScrub(ctx context.Context, uuid string) error {
+	slog.Info("canceling btrfs scrub", "uuid", uuid)
+	if err := btrfs.ScrubCancel(ctx, uuid); err != nil {
+		slog.Error("failed to cancel btrfs scrub", "uuid", uuid, "error", err)
+		return err
+	}
+	return nil
+}

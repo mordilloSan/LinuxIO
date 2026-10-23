@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/collector/smart"
 )
 
 func TestStartContextCreatesDatabaseAndServesAPI(t *testing.T) {
@@ -174,17 +176,16 @@ func testListenAddr(a *App) string {
 }
 
 // The status and summary responses read the SMART interval from request
-// goroutines while config reloads rewrite it under the app lock; the read must
-// take the same lock or the race detector reports it.
-func TestSmartRefreshIntervalStringTakesTheAppLock(t *testing.T) {
-	a := &App{smartManager: &SmartManager{refreshInterval: time.Hour}}
+// goroutines while config reloads rewrite it; the manager guards the interval
+// with its own lock or the race detector reports it.
+func TestSmartRefreshIntervalStringIsSafeAgainstReloads(t *testing.T) {
+	a := &App{smartManager: &smart.Manager{}}
+	a.smartManager.SetRefreshInterval(time.Hour)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for i := range 100 {
-			a.Lock()
-			a.smartManager.refreshInterval = time.Duration(i+1) * time.Minute
-			a.Unlock()
+			a.smartManager.SetRefreshInterval(time.Duration(i+1) * time.Minute)
 		}
 	}()
 	for range 100 {
@@ -206,7 +207,6 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 		errCh <- a.StartContext(ctx, RunOptions{
 			CollectorInterval: 5 * time.Minute,
 			History:           "cpu,mem",
-			HistorySet:        true,
 			HistoryIntervals:  map[string]time.Duration{"mem": 10 * time.Minute},
 		})
 	}()
@@ -231,7 +231,6 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 	err = a.ReloadRuntime(ReloadOptions{
 		CollectorInterval: 5 * time.Minute,
 		History:           "cpu,mem",
-		HistorySet:        true,
 		HistoryIntervals:  map[string]time.Duration{"mem": 7 * time.Minute},
 	})
 	require.Error(t, err, "reload must reject an interval that is not a multiple of the tick")
@@ -239,7 +238,6 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 	require.NoError(t, a.ReloadRuntime(ReloadOptions{
 		CollectorInterval: 5 * time.Minute,
 		History:           "cpu,mem",
-		HistorySet:        true,
 	}))
 	assert.Empty(t, a.configInfo().HistoryIntervals)
 	assert.NotNil(t, a.configInfo().HistoryIntervals)

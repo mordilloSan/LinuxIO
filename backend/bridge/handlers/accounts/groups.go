@@ -52,6 +52,27 @@ func ListGroups(ctx context.Context) ([]apischema.AccountGroup, error) {
 	return groups, nil
 }
 
+// groupIndex reads /etc/group once and returns the username→groups map
+// (secondary memberships) and the GID→name map. Read failures are logged and
+// yield empty maps so callers degrade to numeric group IDs.
+func groupIndex(ctx context.Context) (map[string][]string, map[int]string) {
+	userGroups := make(map[string][]string)
+	gidToGroup := make(map[int]string)
+
+	groups, err := ListGroups(ctx)
+	if err != nil {
+		slog.Warn("failed to read group file", "file", groupFile, "error", err)
+		return userGroups, gidToGroup
+	}
+	for _, group := range groups {
+		gidToGroup[group.GID] = group.Name
+		for _, member := range group.Members {
+			userGroups[member] = append(userGroups[member], group.Name)
+		}
+	}
+	return userGroups, gidToGroup
+}
+
 func parseGroupLine(line string) (apischema.AccountGroup, bool) {
 	parts := strings.Split(line, ":")
 	if len(parts) < 4 {

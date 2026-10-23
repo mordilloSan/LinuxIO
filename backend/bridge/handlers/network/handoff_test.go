@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/hostbridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
 )
 
@@ -25,18 +25,18 @@ func stubBridgeHandoffBackend(t *testing.T) *int {
 		revertBridgeHandoff = oldRevert
 	})
 	applyCalls := 0
-	prepareBridgeHandoff = func(_ context.Context, _ networkbackend.Environment, plan networkbackend.BridgeHandoffPlan) (networkbackend.BridgeHandoffState, error) {
-		return networkbackend.BridgeHandoffState{Plan: plan, Backend: "netplan", MemberMAC: "00:11:22:33:44:55"}, nil
+	prepareBridgeHandoff = func(_ context.Context, _ hostbridge.Environment, plan hostbridge.BridgeHandoffPlan) (hostbridge.BridgeHandoffState, error) {
+		return hostbridge.BridgeHandoffState{Plan: plan, Backend: "netplan", MemberMAC: "00:11:22:33:44:55"}, nil
 	}
-	applyBridgeHandoff = func(_ context.Context, _ networkbackend.Environment, state *networkbackend.BridgeHandoffState) error {
+	applyBridgeHandoff = func(_ context.Context, _ hostbridge.Environment, state *hostbridge.BridgeHandoffState) error {
 		applyCalls++
 		state.Handle = "/io/netplan/Netplan/config/1"
 		return nil
 	}
-	confirmBridgeHandoff = func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error {
+	confirmBridgeHandoff = func(context.Context, hostbridge.Environment, *hostbridge.BridgeHandoffState) error {
 		return nil
 	}
-	revertBridgeHandoff = func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error {
+	revertBridgeHandoff = func(context.Context, hostbridge.Environment, *hostbridge.BridgeHandoffState) error {
 		return nil
 	}
 	return &applyCalls
@@ -91,7 +91,7 @@ func TestBridgeHandoffConfirmAndRevertUseStoredHandle(t *testing.T) {
 	service := newHandoffTestService(t, &now)
 
 	confirmed := ""
-	confirmBridgeHandoff = func(_ context.Context, _ networkbackend.Environment, state *networkbackend.BridgeHandoffState) error {
+	confirmBridgeHandoff = func(_ context.Context, _ hostbridge.Environment, state *hostbridge.BridgeHandoffState) error {
 		confirmed = state.Handle
 		return nil
 	}
@@ -105,7 +105,7 @@ func TestBridgeHandoffConfirmAndRevertUseStoredHandle(t *testing.T) {
 	}
 
 	reverted := ""
-	revertBridgeHandoff = func(_ context.Context, _ networkbackend.Environment, state *networkbackend.BridgeHandoffState) error {
+	revertBridgeHandoff = func(_ context.Context, _ hostbridge.Environment, state *hostbridge.BridgeHandoffState) error {
 		reverted = state.Handle
 		return nil
 	}
@@ -127,7 +127,7 @@ func TestBridgeHandoffTimeoutTrustsNativeRollback(t *testing.T) {
 	if _, err := service.Start(context.Background(), 1000, req); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	now = now.Add(bridgeHandoffStartTimeout + networkbackend.BridgeHandoffConfirmationTimeout + time.Second)
+	now = now.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout + time.Second)
 	status, err := service.Status(context.Background(), 1000, req.OperationID)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -146,7 +146,7 @@ func TestBridgeHandoffReconcilesExpiredOperationAcrossUIDs(t *testing.T) {
 		t.Fatalf("first Start: %v", err)
 	}
 
-	now = now.Add(bridgeHandoffStartTimeout + networkbackend.BridgeHandoffConfirmationTimeout + time.Second)
+	now = now.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout + time.Second)
 	second := handoffRequest("00000000-0000-4000-8000-000000000097")
 	if _, err := service.Start(context.Background(), 1001, second); err != nil {
 		t.Fatalf("expired operation still blocks a different UID: %v", err)
@@ -169,7 +169,7 @@ func TestBridgeHandoffKeepsLiveOperationExclusiveAcrossUIDs(t *testing.T) {
 		t.Fatalf("first Start: %v", err)
 	}
 
-	now = now.Add(networkbackend.BridgeHandoffConfirmationTimeout - time.Second)
+	now = now.Add(hostbridge.BridgeHandoffConfirmationTimeout - time.Second)
 	second := handoffRequest("00000000-0000-4000-8000-000000000099")
 	if _, err := service.Start(context.Background(), 1001, second); err == nil {
 		t.Fatal("live operation did not keep the route exclusive")
@@ -184,7 +184,7 @@ func TestBridgeHandoffRejectsDecisionAfterDeadlineBeforeSafeRelease(t *testing.T
 	if _, err := service.Start(context.Background(), 1000, request); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	now = now.Add(networkbackend.BridgeHandoffConfirmationTimeout + time.Second)
+	now = now.Add(hostbridge.BridgeHandoffConfirmationTimeout + time.Second)
 	if _, err := service.Confirm(context.Background(), 1000, request.OperationID); err == nil {
 		t.Fatal("Confirm succeeded after the confirmation deadline")
 	}
@@ -213,7 +213,7 @@ func TestBridgeHandoffReconcilesStaleQueuedOperationWithoutResult(t *testing.T) 
 		t.Fatalf("queue operation: %v", err)
 	}
 
-	now = now.Add(bridgeHandoffStartTimeout + networkbackend.BridgeHandoffConfirmationTimeout - time.Second)
+	now = now.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout - time.Second)
 	second := handoffRequest("00000000-0000-4000-8000-00000000009b")
 	if _, err := service.Start(context.Background(), 1001, second); err == nil {
 		t.Fatal("live queued operation did not keep the route exclusive")
@@ -228,7 +228,7 @@ func TestBridgeHandoffReconcilesStaleQueuedOperationWithoutResult(t *testing.T) 
 func TestBridgeHandoffApplyFailureRetainsExclusivityUntilSafeRelease(t *testing.T) {
 	stubBridgeHandoffBackend(t)
 	successfulApply := applyBridgeHandoff
-	applyBridgeHandoff = func(_ context.Context, _ networkbackend.Environment, state *networkbackend.BridgeHandoffState) error {
+	applyBridgeHandoff = func(_ context.Context, _ hostbridge.Environment, state *hostbridge.BridgeHandoffState) error {
 		state.Handle = "/io/netplan/Netplan/config/1"
 		return errors.New("native rollback failed")
 	}
@@ -246,7 +246,7 @@ func TestBridgeHandoffApplyFailureRetainsExclusivityUntilSafeRelease(t *testing.
 		t.Fatalf("failed handoff record = %+v, want nonterminal error", record)
 	}
 
-	now = now.Add(bridgeHandoffStartTimeout + networkbackend.BridgeHandoffConfirmationTimeout - time.Second)
+	now = now.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout - time.Second)
 	second := handoffRequest("00000000-0000-4000-8000-00000000009f")
 	if _, err := service.Start(context.Background(), 1001, second); err == nil {
 		t.Fatal("active native rollback window did not keep the route exclusive")
@@ -261,7 +261,7 @@ func TestBridgeHandoffApplyFailureRetainsExclusivityUntilSafeRelease(t *testing.
 
 func TestBridgeHandoffRollbackFailureDoesNotBecomeSuccessfulRevert(t *testing.T) {
 	stubBridgeHandoffBackend(t)
-	revertBridgeHandoff = func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error {
+	revertBridgeHandoff = func(context.Context, hostbridge.Environment, *hostbridge.BridgeHandoffState) error {
 		return errors.New("rollback failed for device eth0")
 	}
 	now := time.Now().UTC()
@@ -273,7 +273,7 @@ func TestBridgeHandoffRollbackFailureDoesNotBecomeSuccessfulRevert(t *testing.T)
 	if _, err := service.Revert(context.Background(), 1000, request.OperationID); err == nil {
 		t.Fatal("Revert unexpectedly succeeded")
 	}
-	now = now.Add(bridgeHandoffStartTimeout + networkbackend.BridgeHandoffConfirmationTimeout + time.Second)
+	now = now.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout + time.Second)
 	status, err := service.Status(context.Background(), 1000, request.OperationID)
 	if err != nil {
 		t.Fatalf("Status: %v", err)

@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	httpapi "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/api/http"
-	apimodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/api/model"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/app"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/httpapi"
 )
 
 type commandExecutor struct {
@@ -44,7 +44,7 @@ func (e *commandExecutor) reloadFromFile() error {
 	return e.app.ReloadRuntime(runOptions(cfg, "loaded"))
 }
 
-func (e *commandExecutor) ExecuteCommand(ctx context.Context, req apimodel.CommandRequest) httpapi.CommandResult {
+func (e *commandExecutor) ExecuteCommand(ctx context.Context, req monitoringapi.CommandRequest) httpapi.CommandResult {
 	req.Command = normalizeCommand(req.Command)
 	if req.RequestID == "" {
 		// Give every command a correlation ID even when the caller omits one.
@@ -54,35 +54,35 @@ func (e *commandExecutor) ExecuteCommand(ctx context.Context, req apimodel.Comma
 		return commandError(req, http.StatusBadRequest, "invalid_command", "command is required")
 	}
 	switch req.Command {
-	case "commands.list":
-		return commandOK(req, commandList(), false)
-	case "status.get":
+	case monitoringapi.CommandList:
+		return commandOK(req, monitoringapi.Commands(), false)
+	case monitoringapi.CommandStatusGet:
 		return commandOK(req, e.app.StatusMeta(), false)
-	case "config.get":
+	case monitoringapi.CommandConfigGet:
 		cfg, _, err := config.Load(e.configPath)
 		if err != nil {
 			return commandError(req, http.StatusInternalServerError, "config_load_failed", err.Error())
 		}
 		return commandOK(req, cfg.View(), false)
-	case "config.set":
+	case monitoringapi.CommandConfigSet:
 		return e.handleConfigSet(ctx, req)
-	case "config.reload":
+	case monitoringapi.CommandConfigReload:
 		return e.handleConfigReload(req)
-	case "smart.refresh":
+	case monitoringapi.CommandSmartRefresh:
 		if err := e.app.RefreshSmartNow(ctx); err != nil {
 			return commandError(req, http.StatusInternalServerError, "smart_refresh_failed", err.Error())
 		}
-		return commandOK(req, map[string]any{"refreshed": true}, false)
-	case "db.check":
+		return commandOK(req, monitoringapi.MonitoringSmartRefreshResult{Refreshed: true}, false)
+	case monitoringapi.CommandDBCheck:
 		if err := e.app.CheckDatabase(); err != nil {
 			return commandError(req, http.StatusInternalServerError, "db_check_failed", err.Error())
 		}
-		return commandOK(req, map[string]any{"path": e.app.StatusMeta().DBPath}, false)
-	case "db.maintain":
+		return commandOK(req, monitoringapi.MonitoringDatabaseResult{Path: e.app.StatusMeta().DBPath}, false)
+	case monitoringapi.CommandDBMaintain:
 		if err := e.app.MaintainDatabase(ctx); err != nil {
 			return commandError(req, http.StatusInternalServerError, "db_maintain_failed", err.Error())
 		}
-		return commandOK(req, map[string]any{"path": e.app.StatusMeta().DBPath}, false)
+		return commandOK(req, monitoringapi.MonitoringDatabaseResult{Path: e.app.StatusMeta().DBPath}, false)
 	default:
 		return commandError(req, http.StatusNotFound, "unknown_command", "unknown command")
 	}
@@ -92,20 +92,7 @@ func normalizeCommand(command string) string {
 	return strings.ToLower(strings.TrimSpace(command))
 }
 
-func commandList() []string {
-	return []string{
-		"commands.list",
-		"status.get",
-		"config.get",
-		"config.set",
-		"config.reload",
-		"smart.refresh",
-		"db.check",
-		"db.maintain",
-	}
-}
-
-func (e *commandExecutor) handleConfigReload(req apimodel.CommandRequest) httpapi.CommandResult {
+func (e *commandExecutor) handleConfigReload(req monitoringapi.CommandRequest) httpapi.CommandResult {
 	e.configMu.Lock()
 	defer e.configMu.Unlock()
 	cfg, _, err := config.Load(e.configPath)
@@ -115,21 +102,11 @@ func (e *commandExecutor) handleConfigReload(req apimodel.CommandRequest) httpap
 	return e.reloadRuntimeConfig(req, cfg, "loaded")
 }
 
-type configSetParams struct {
-	CollectorInterval    *string            `json:"collector_interval"`
-	SmartRefreshInterval *string            `json:"smart_refresh_interval"`
-	DiskUsageCache       *string            `json:"disk_usage_cache"`
-	HistoryRetention     *string            `json:"history_retention"`
-	History              *string            `json:"history"`
-	HistoryIntervals     *map[string]string `json:"history_intervals"` // replaces the whole map
-	Listeners            *[]config.Listener `json:"listeners"`
-}
-
-func (e *commandExecutor) handleConfigSet(_ context.Context, req apimodel.CommandRequest) httpapi.CommandResult {
+func (e *commandExecutor) handleConfigSet(_ context.Context, req monitoringapi.CommandRequest) httpapi.CommandResult {
 	if len(req.Params) == 0 {
 		return commandError(req, http.StatusBadRequest, "invalid_params", "params are required")
 	}
-	var params configSetParams
+	var params monitoringapi.MonitoringConfigPatch
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return commandError(req, http.StatusBadRequest, "invalid_params", err.Error())
 	}
@@ -155,7 +132,7 @@ func (e *commandExecutor) handleConfigSet(_ context.Context, req apimodel.Comman
 	return reloadResult
 }
 
-func applyConfigSetParams(cfg *config.Config, params configSetParams) (bool, error) {
+func applyConfigSetParams(cfg *config.Config, params monitoringapi.MonitoringConfigPatch) (bool, error) {
 	restartRequired := false
 	if err := errors.Join(
 		setDuration(&cfg.Collector.Interval, params.CollectorInterval),
@@ -186,7 +163,10 @@ func applyConfigSetParams(cfg *config.Config, params configSetParams) (bool, err
 		cfg.History.Intervals = intervals
 	}
 	if params.Listeners != nil {
-		cfg.Listeners = append([]config.Listener(nil), (*params.Listeners)...)
+		cfg.Listeners = nil
+		for _, listener := range *params.Listeners {
+			cfg.Listeners = append(cfg.Listeners, config.Listener{Name: listener.Name, Address: listener.Address, Plugins: listener.Plugins})
+		}
 		restartRequired = true
 	}
 	if err := config.Validate(*cfg); err != nil {
@@ -209,7 +189,7 @@ func setDuration(target *config.Duration, raw *string) error {
 	return nil
 }
 
-func (e *commandExecutor) reloadRuntimeConfig(req apimodel.CommandRequest, cfg config.Config, source string) httpapi.CommandResult {
+func (e *commandExecutor) reloadRuntimeConfig(req monitoringapi.CommandRequest, cfg config.Config, source string) httpapi.CommandResult {
 	if err := e.app.ReloadRuntime(runOptions(cfg, source)); err != nil {
 		return commandError(req, http.StatusBadRequest, "reload_failed", err.Error())
 	}
@@ -219,8 +199,8 @@ func (e *commandExecutor) reloadRuntimeConfig(req apimodel.CommandRequest, cfg c
 // listenersRestartRequired reports whether the configured listeners differ from
 // the running ones. The two fixed sockets are never configurable, so they are
 // skipped before comparing.
-func listenersRestartRequired(active []apimodel.ListenerMeta, cfg config.Config) bool {
-	configurable := make([]apimodel.ListenerMeta, 0, len(active))
+func listenersRestartRequired(active []monitoringapi.ListenerMeta, cfg config.Config) bool {
+	configurable := make([]monitoringapi.ListenerMeta, 0, len(active))
 	for _, listener := range active {
 		if listener.Name == "api" || listener.Name == "control" {
 			continue
@@ -232,7 +212,7 @@ func listenersRestartRequired(active []apimodel.ListenerMeta, cfg config.Config)
 	}
 	for i, listener := range cfg.Listeners {
 		if configurable[i].Name != listener.Name ||
-			configurable[i].Address != app.GetAddress(listener.Address) ||
+			configurable[i].Address != config.GetAddress(listener.Address) ||
 			!slices.EqualFunc(configurable[i].Plugins, listener.Plugins, func(active, configured string) bool {
 				return strings.EqualFold(strings.TrimSpace(active), strings.TrimSpace(configured))
 			}) {
@@ -242,10 +222,10 @@ func listenersRestartRequired(active []apimodel.ListenerMeta, cfg config.Config)
 	return false
 }
 
-func commandOK(req apimodel.CommandRequest, data any, restartRequired bool) httpapi.CommandResult {
+func commandOK(req monitoringapi.CommandRequest, data any, restartRequired bool) httpapi.CommandResult {
 	return httpapi.CommandResult{
 		Status: http.StatusOK,
-		Response: apimodel.CommandResponse{
+		Response: monitoringapi.CommandResponse[any]{
 			OK:              true,
 			Command:         req.Command,
 			RequestID:       req.RequestID,
@@ -255,7 +235,7 @@ func commandOK(req apimodel.CommandRequest, data any, restartRequired bool) http
 	}
 }
 
-func commandError(req apimodel.CommandRequest, status int, code, message string) httpapi.CommandResult {
+func commandError(req monitoringapi.CommandRequest, status int, code, message string) httpapi.CommandResult {
 	if status == 0 {
 		status = http.StatusInternalServerError
 	}
@@ -264,11 +244,11 @@ func commandError(req apimodel.CommandRequest, status int, code, message string)
 	}
 	return httpapi.CommandResult{
 		Status: status,
-		Response: apimodel.CommandResponse{
+		Response: monitoringapi.CommandResponse[any]{
 			OK:        false,
 			Command:   req.Command,
 			RequestID: req.RequestID,
-			Error: &apimodel.CommandError{
+			Error: &monitoringapi.CommandError{
 				Code:    code,
 				Message: message,
 			},

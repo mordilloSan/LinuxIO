@@ -7,9 +7,9 @@ import AppChip from "@/components/ui/AppChip";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTypography from "@/components/ui/AppTypography";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { down } from "@/theme/breakpoints";
-import { formatThroughput } from "@/utils/formaters";
+import { formatThroughput } from "@/utils/formatters";
 
 import {
   VM_TOAST,
@@ -102,7 +102,7 @@ function StatItem({ label, value }: { label: string; value: string }) {
  * renders here in the parent layout's outlet.
  */
 export default function VMDetailsPanel({ vm }: { vm: VirtualMachine | null }) {
-  const isMobile = useAppMediaQuery(down("sm"));
+  const isMobile = useMediaQuery(down("sm"));
   const firmwareMutation = useCallMutation(linuxio.virt.set_firmware, {
     success: "Firmware updated",
     error: "Failed to change firmware",

@@ -22,12 +22,9 @@ export function uiConfigQueryKey(userId: string): QueryKey {
 }
 
 /** App-setting keys persisted by the bridge config file, not the UI file. */
-export const BRIDGE_APP_SETTING_KEYS = [
-  "showHiddenFiles",
-  "chunkSizeMB",
-] as const;
+const BRIDGE_APP_SETTING_KEYS = ["showHiddenFiles", "chunkSizeMB"] as const;
 
-export type BridgeAppSettingKey = (typeof BRIDGE_APP_SETTING_KEYS)[number];
+type BridgeAppSettingKey = (typeof BRIDGE_APP_SETTING_KEYS)[number];
 
 export function isBridgeAppSettingKey(key: string): key is BridgeAppSettingKey {
   return (BRIDGE_APP_SETTING_KEYS as readonly string[]).includes(key);

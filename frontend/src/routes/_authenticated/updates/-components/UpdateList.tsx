@@ -2,10 +2,10 @@ import { noop, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Update } from "@/api";
-import UpdateCard from "@/components/cards/UpdateCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppTypography from "@/components/ui/AppTypography";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import UpdateCard from "@/routes/_authenticated/updates/-components/UpdateCard";
 interface Props {
   currentPackage?: string | null;
   isUpdating?: boolean;

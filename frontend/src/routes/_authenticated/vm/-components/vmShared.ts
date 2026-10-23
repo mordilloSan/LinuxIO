@@ -1,9 +1,4 @@
-import {
-  LinuxIOError,
-  type VMDeleteResult,
-  type VMPreflight,
-  type VirtualMachine,
-} from "@/api";
+import type { VMDeleteResult, VMPreflight, VirtualMachine } from "@/api";
 import { getDistroIcon } from "@/icons/distro";
 
 export type VMAction =
@@ -145,7 +140,7 @@ export function isImportDiskPath(path: string): boolean {
   return /\.(ova|qcow2|vmdk|vdi|img|raw)$/i.test(path);
 }
 
-export function normalizeFolderPath(path: string): string {
+function normalizeFolderPath(path: string): string {
   const trimmed = path.trim();
   if (!trimmed) return "";
   if (/^\/+$/.test(trimmed)) return "/";
@@ -165,10 +160,6 @@ export function folderFromISOPathText(path: string): string {
   if (!trimmed.startsWith("/")) return "";
   if (isISOPath(trimmed)) return parentDirectory(trimmed);
   return normalizeFolderPath(trimmed);
-}
-
-export function isMissingPathError(error: unknown): boolean {
-  return error instanceof LinuxIOError && Number(error.code) === 404;
 }
 
 // libosinfo ids that the distro map does not spell the same way.

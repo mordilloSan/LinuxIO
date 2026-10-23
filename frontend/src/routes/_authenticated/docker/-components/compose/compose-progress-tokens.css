@@ -1,0 +1,9 @@
+/* Loading motion communicates ongoing work rather than decoration, so the
+   spinner keeps turning under prefers-reduced-motion, which theme/variables.css
+   otherwise collapses to 0.01ms. */
+@media (prefers-reduced-motion: reduce) {
+  .compose-progress__spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

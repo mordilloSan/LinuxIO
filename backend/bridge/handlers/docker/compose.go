@@ -19,7 +19,9 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -29,12 +31,12 @@ var validIPCMode = regexp.MustCompile(`^(host|private|shareable|service:.+)$`)
 var validPIDMode = regexp.MustCompile(`^(host|service:.+)$`)
 
 // ListComposeProjects discovers all compose projects by analyzing container labels and configured Docker folders.
-func ListComposeProjects(ctx context.Context, username string, store *config.UserStore) ([]*apischema.ComposeProject, error) {
-	cli, err := getClient()
+func ListComposeProjects(ctx context.Context, username string, store *userconfig.UserStore) ([]*apischema.ComposeProject, error) {
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
@@ -101,41 +103,11 @@ func ensureComposeProject(
 }
 
 func resolveComposeConfigFiles(ctx context.Context, cli *client.Client, configFilesLabel, workingDir string) []string {
-	configFiles := translateComposeConfigFiles(ctx, cli, parseConfigFiles(configFilesLabel))
+	configFiles := dockerupdate.TranslateComposeConfigFiles(ctx, cli, dockerupdate.ParseComposeConfigFiles(configFilesLabel))
 	if len(configFiles) > 0 || workingDir == "" {
 		return configFiles
 	}
-	return inferComposeFilesFromWorkingDir(ctx, cli, workingDir)
-}
-
-func translateComposeConfigFiles(ctx context.Context, cli *client.Client, configFiles []string) []string {
-	translated := make([]string, 0, len(configFiles))
-	for _, configFile := range configFiles {
-		if ctx.Err() != nil {
-			return translated
-		}
-		if _, err := os.Stat(configFile); err == nil {
-			translated = append(translated, configFile)
-			continue
-		}
-		translatedPath := translateContainerPathToHost(ctx, cli, configFile)
-		if translatedPath != configFile {
-			translated = append(translated, translatedPath)
-		}
-	}
-	return translated
-}
-
-func inferComposeFilesFromWorkingDir(ctx context.Context, cli *client.Client, workingDir string) []string {
-	translatedWorkingDir := translateContainerPathToHost(ctx, cli, workingDir)
-	composeFileNames := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
-	for _, fileName := range composeFileNames {
-		possiblePath := filepath.Join(translatedWorkingDir, fileName)
-		if _, err := os.Stat(possiblePath); err == nil {
-			return []string{possiblePath}
-		}
-	}
-	return nil
+	return dockerupdate.InferComposeFilesFromWorkingDir(ctx, cli, workingDir)
 }
 
 func setComposeProjectIcon(project *apischema.ComposeProject) {
@@ -196,7 +168,7 @@ func collectComposeServicePorts(ctr container.Summary) []string {
 }
 
 func finalizeComposeProjects(projects map[string]*apischema.ComposeProject) []*apischema.ComposeProject {
-	updateStatus := readUpdateStatusSnapshot()
+	updateStatus := dockerupdate.ReadStatusSnapshot()
 	result := make([]*apischema.ComposeProject, 0, len(projects))
 	for _, project := range projects {
 		if project.Containers == nil {
@@ -228,7 +200,7 @@ func composeProjectUpdateAvailable(project *apischema.ComposeProject) bool {
 }
 
 // GetComposeProject returns detailed information about a specific compose project
-func GetComposeProject(ctx context.Context, username string, store *config.UserStore, projectName string) (*apischema.ComposeProject, error) {
+func GetComposeProject(ctx context.Context, username string, store *userconfig.UserStore, projectName string) (*apischema.ComposeProject, error) {
 	projects, err := ListComposeProjects(ctx, username, store)
 	if err != nil {
 		return nil, err
@@ -244,7 +216,7 @@ func GetComposeProject(ctx context.Context, username string, store *config.UserS
 }
 
 // ComposeUp starts a compose project
-func ComposeUp(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (apischema.ComposeActionResult, error) {
+func ComposeUp(ctx context.Context, username string, store *userconfig.UserStore, projectName, composePath string) (apischema.ComposeActionResult, error) {
 	var configFile string
 	var workingDir string
 
@@ -278,7 +250,7 @@ func ComposeUp(ctx context.Context, username string, store *config.UserStore, pr
 		}
 	}
 
-	collector := &composeMessageCollector{}
+	collector := &dockerupdate.ComposeMessageCollector{}
 	err := composeUp(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
 		return apischema.ComposeActionResult{}, fmt.Errorf("failed to start project: %w\nOutput: %s", err, collector.String())
@@ -290,7 +262,7 @@ func ComposeUp(ctx context.Context, username string, store *config.UserStore, pr
 }
 
 // findComposeFile attempts to locate a compose file for a project
-func findComposeFile(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
+func findComposeFile(ctx context.Context, username string, store *userconfig.UserStore, projectName string) (string, string, error) {
 	sanitized := sanitizeStackName(projectName)
 
 	dockerFolders, err := configuredDockerFolders(ctx, username, store)
@@ -332,7 +304,7 @@ func findComposeFileInBases(ctx context.Context, basePaths []string, stackName s
 }
 
 // ComposeDown stops and removes a compose project
-func ComposeDown(ctx context.Context, username string, store *config.UserStore, projectName string) (apischema.ComposeActionResult, error) {
+func ComposeDown(ctx context.Context, username string, store *userconfig.UserStore, projectName string) (apischema.ComposeActionResult, error) {
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
 		return apischema.ComposeActionResult{}, err
@@ -350,7 +322,7 @@ func ComposeDown(ctx context.Context, username string, store *config.UserStore, 
 		workingDir = filepath.Dir(configFile)
 	}
 
-	collector := &composeMessageCollector{}
+	collector := &dockerupdate.ComposeMessageCollector{}
 	err = composeDown(ctx, projectName, configFile, workingDir, false, collector.Emit)
 	if err != nil {
 		return apischema.ComposeActionResult{}, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
@@ -367,7 +339,7 @@ type DeleteStackOptions struct {
 }
 
 // DeleteStack removes a compose stack with options to delete files
-func DeleteStack(ctx context.Context, username string, store *config.UserStore, projectName string, options DeleteStackOptions) (apischema.DeleteStackResult, error) {
+func DeleteStack(ctx context.Context, username string, store *userconfig.UserStore, projectName string, options DeleteStackOptions) (apischema.DeleteStackResult, error) {
 	// Get project info first
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
@@ -402,7 +374,7 @@ func DeleteStack(ctx context.Context, username string, store *config.UserStore, 
 
 	// First, run docker compose down to remove containers and networks
 	if configFile != "" {
-		collector := &composeMessageCollector{}
+		collector := &dockerupdate.ComposeMessageCollector{}
 		cmdErr := composeDown(ctx, projectName, configFile, workingDir, false, collector.Emit)
 		if cmdErr != nil {
 			slog.Warn("docker compose down failed",
@@ -475,14 +447,14 @@ func deleteComposeFile(ctx context.Context, result apischema.DeleteStackResult, 
 }
 
 // ComposeRestart restarts a compose project
-func ComposeRestart(ctx context.Context, username string, store *config.UserStore, projectName string) (apischema.ComposeActionResult, error) {
+func ComposeRestart(ctx context.Context, username string, store *userconfig.UserStore, projectName string) (apischema.ComposeActionResult, error) {
 	configFile, workingDir, err := resolveComposeRestartTarget(ctx, username, store, projectName)
 	if err != nil {
 		return apischema.ComposeActionResult{}, err
 	}
 
 	// Use up+remove-orphans semantics for restart so compose file changes are applied.
-	collector := &composeMessageCollector{}
+	collector := &dockerupdate.ComposeMessageCollector{}
 	err = composeUp(ctx, projectName, configFile, workingDir, true, collector.Emit)
 	if err != nil {
 		return apischema.ComposeActionResult{}, fmt.Errorf("failed to restart project: %w\nOutput: %s", err, collector.String())
@@ -493,7 +465,7 @@ func ComposeRestart(ctx context.Context, username string, store *config.UserStor
 	return apischema.ComposeActionResult{Message: "Project restarted successfully", Output: collector.String()}, nil
 }
 
-func resolveComposeRestartTarget(ctx context.Context, username string, store *config.UserStore, projectName string) (string, string, error) {
+func resolveComposeRestartTarget(ctx context.Context, username string, store *userconfig.UserStore, projectName string) (string, string, error) {
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err == nil {
 		if configFile, workingDir := resolveComposeRestartTargetFromProject(ctx, projectName, project); configFile != "" {
@@ -510,12 +482,12 @@ func resolveComposeRestartTarget(ctx context.Context, username string, store *co
 }
 
 func resolveComposeRestartTargetFromProject(ctx context.Context, projectName string, composeProject *apischema.ComposeProject) (string, string) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		slog.Warn("failed to get Docker client for path translation", "project", projectName, "error", err.Error())
 		return resolveComposeRestartWithoutClient(projectName, composeProject)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	if len(composeProject.ConfigFiles) > 0 {
 		return resolveComposeRestartFromConfigFiles(ctx, cli, projectName, composeProject)
@@ -552,7 +524,7 @@ func resolveComposeRestartFromConfigFiles(
 		return configFile, fallbackWorkingDir(workingDir, configFile)
 	}
 
-	translatedConfigFile := translateContainerPathToHost(ctx, cli, configFile)
+	translatedConfigFile := dockerupdate.TranslateContainerPathToHost(ctx, cli, configFile)
 	if translatedConfigFile == configFile {
 		slog.Warn("compose file from container labels not found and translation failed",
 			"project", projectName,
@@ -568,13 +540,13 @@ func resolveComposeRestartFromConfigFiles(
 		"container_path", configFile,
 		"host_path", translatedConfigFile)
 	if workingDir != "" {
-		workingDir = translateContainerPathToHost(ctx, cli, workingDir)
+		workingDir = dockerupdate.TranslateContainerPathToHost(ctx, cli, workingDir)
 	}
 	return translatedConfigFile, fallbackWorkingDir(workingDir, translatedConfigFile)
 }
 
 func resolveComposeRestartFromWorkingDir(ctx context.Context, cli *client.Client, projectName, workingDir string) (string, string) {
-	translatedWorkingDir := translateContainerPathToHost(ctx, cli, workingDir)
+	translatedWorkingDir := dockerupdate.TranslateContainerPathToHost(ctx, cli, workingDir)
 	slog.Debug("translating working directory",
 		"project", projectName,
 		"container_path", workingDir,
@@ -598,7 +570,7 @@ func fallbackWorkingDir(workingDir, configFile string) string {
 }
 
 // ComposeStop stops a compose project without removing containers
-func ComposeStop(ctx context.Context, username string, store *config.UserStore, projectName string) (apischema.ComposeActionResult, error) {
+func ComposeStop(ctx context.Context, username string, store *userconfig.UserStore, projectName string) (apischema.ComposeActionResult, error) {
 	project, err := GetComposeProject(ctx, username, store, projectName)
 	if err != nil {
 		return apischema.ComposeActionResult{}, err
@@ -616,7 +588,7 @@ func ComposeStop(ctx context.Context, username string, store *config.UserStore, 
 		workingDir = filepath.Dir(configFile)
 	}
 
-	collector := &composeMessageCollector{}
+	collector := &dockerupdate.ComposeMessageCollector{}
 	err = composeStop(ctx, projectName, configFile, workingDir, collector.Emit)
 	if err != nil {
 		return apischema.ComposeActionResult{}, fmt.Errorf("failed to stop project: %w\nOutput: %s", err, collector.String())
@@ -627,102 +599,6 @@ func ComposeStop(ctx context.Context, username string, store *config.UserStore, 
 }
 
 // Helper functions
-
-// translateContainerPathToHost attempts to translate a container path to a host path
-// by inspecting volume mounts across all containers to find the correct mount source
-func translateContainerPathToHost(ctx context.Context, cli *client.Client, containerPath string) string {
-	// First, get all running containers to search for the correct mount
-	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
-	if err != nil {
-		slog.Warn("failed to list containers for path translation", "error", err)
-		return containerPath
-	}
-
-	// Priority containers to check first (e.g., Portainer, Docker-in-Docker)
-	priorityNames := []string{"portainer", "portainer-ce", "portainer-ee", "dind"}
-
-	// Check priority containers first
-	for _, priorityName := range priorityNames {
-		for _, ctr := range containers.Items {
-			// Check if container name contains the priority name
-			containerName := strings.TrimPrefix(ctr.Names[0], "/")
-			if strings.Contains(strings.ToLower(containerName), priorityName) {
-				if hostPath := tryTranslatePath(ctx, cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
-					return hostPath
-				}
-			}
-		}
-	}
-
-	// Check all other containers
-	for _, ctr := range containers.Items {
-		containerName := strings.TrimPrefix(ctr.Names[0], "/")
-		if hostPath := tryTranslatePath(ctx, cli, ctr.ID, containerPath, containerName); hostPath != containerPath {
-			return hostPath
-		}
-	}
-	slog.Debug("no mount found for container path, using original", "path", containerPath)
-	return containerPath // Return original path if no mount translation found
-}
-
-// tryTranslatePath attempts to translate a path using a specific container's mounts
-func tryTranslatePath(ctx context.Context, cli *client.Client, containerID, containerPath, containerName string) string {
-	inspect, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
-	if err != nil {
-		return containerPath
-	}
-	containerJSON := inspect.Container
-
-	for _, mount := range containerJSON.Mounts {
-		if hostPath, ok := translateMountPath(mount, containerPath, containerName); ok {
-			return hostPath
-		}
-	}
-
-	return containerPath
-}
-
-func translateMountPath(mount container.MountPoint, containerPath, containerName string) (string, bool) {
-	relPath, found := strings.CutPrefix(containerPath, mount.Destination)
-	if !found || mount.Source == "" {
-		return "", false
-	}
-
-	relPath = strings.TrimPrefix(relPath, "/")
-	hostPath := filepath.Join(mount.Source, relPath)
-
-	if stat, err := os.Stat(hostPath); err == nil {
-		if mount.Type == "volume" && strings.HasPrefix(mount.Source, "/var/lib/docker/volumes/") {
-			slog.Debug("found path in Docker volume", "volume", mount.Name, "path", hostPath)
-		} else if mount.Type == "bind" {
-			slog.Debug("translated container path via bind mount", "container_path", containerPath, "host_path", hostPath, "container", containerName)
-		}
-		if stat.IsDir() || stat.Mode().IsRegular() {
-			return hostPath, true
-		}
-		return "", false
-	}
-
-	// Check parent directory for file paths that don't exist yet
-	parentDir := filepath.Dir(hostPath)
-	if parentStat, err := os.Stat(parentDir); err == nil && parentStat.IsDir() {
-		slog.Debug("translated container path via parent directory verification", "container_path", containerPath, "host_path", hostPath, "container", containerName)
-		return hostPath, true
-	}
-	return "", false
-}
-
-func parseConfigFiles(configFilesStr string) []string {
-	if configFilesStr == "" {
-		return []string{}
-	}
-	// Config files are comma-separated in the label
-	files := strings.Split(configFilesStr, ",")
-	for i, f := range files {
-		files[i] = strings.TrimSpace(f)
-	}
-	return files
-}
 
 func calculateProjectStatus(project *apischema.ComposeProject) string {
 	if len(project.Services) == 0 {
@@ -984,8 +860,8 @@ func populateNormalizedComposeContent(ctx context.Context, content string, resul
 	result.NormalizedContent = normalized
 }
 
-func configuredDockerFolders(ctx context.Context, username string, store *config.UserStore) ([]string, error) {
-	cfg, _, err := config.SnapshotForUser(ctx, username, store)
+func configuredDockerFolders(ctx context.Context, username string, store *userconfig.UserStore) ([]string, error) {
+	cfg, _, err := userconfig.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, err
 	}
@@ -996,7 +872,7 @@ func configuredDockerFolders(ctx context.Context, username string, store *config
 	return folders, nil
 }
 
-func dockerFoldersFromConfig(cfg *config.Settings) []string {
+func dockerFoldersFromConfig(cfg *userconfig.Settings) []string {
 	folders := make([]string, 0, len(cfg.Docker.Folders))
 	for _, folder := range cfg.Docker.Folders {
 		path := strings.TrimSpace(string(folder))
@@ -1008,7 +884,7 @@ func dockerFoldersFromConfig(cfg *config.Settings) []string {
 }
 
 // GetDockerFolders returns the configured Docker folder paths from user config.
-func GetDockerFolders(ctx context.Context, username string, store *config.UserStore) (apischema.DockerFoldersResponse, error) {
+func GetDockerFolders(ctx context.Context, username string, store *userconfig.UserStore) (apischema.DockerFoldersResponse, error) {
 	folders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return apischema.DockerFoldersResponse{}, fmt.Errorf("load config: %w", err)
@@ -1018,11 +894,11 @@ func GetDockerFolders(ctx context.Context, username string, store *config.UserSt
 }
 
 // GetComposeFilePath builds the full path for a compose file
-func GetComposeFilePath(ctx context.Context, username string, store *config.UserStore, stackName string) (apischema.ComposeFilePathResponse, error) {
+func GetComposeFilePath(ctx context.Context, username string, store *userconfig.UserStore, stackName string) (apischema.ComposeFilePathResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.ComposeFilePathResponse{}, err
 	}
-	cfg, _, err := config.SnapshotForUser(ctx, username, store)
+	cfg, _, err := userconfig.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return apischema.ComposeFilePathResponse{}, fmt.Errorf("load config: %w", err)
 	}
@@ -1450,7 +1326,7 @@ func extractStackIcon(composePath string) (string, error) {
 
 // discoverOfflineStacks searches configured Docker folders for compose files and adds them as offline stacks.
 // Each stack directory contributes at most one canonical compose file.
-func discoverOfflineStacks(ctx context.Context, username string, store *config.UserStore, projects map[string]*apischema.ComposeProject) error {
+func discoverOfflineStacks(ctx context.Context, username string, store *userconfig.UserStore, projects map[string]*apischema.ComposeProject) error {
 	dockerFolders, err := configuredDockerFolders(ctx, username, store)
 	if err != nil {
 		return fmt.Errorf("failed to load user config: %w", err)
@@ -1554,7 +1430,7 @@ func extractComposeIcon(composePath string) string {
 }
 
 // DeleteComposeStack runs docker compose down and deletes the compose file(s)
-func DeleteComposeStack(ctx context.Context, username string, store *config.UserStore, projectName string) error {
+func DeleteComposeStack(ctx context.Context, username string, store *userconfig.UserStore, projectName string) error {
 	// Get project details to find config files
 	projects, err := ListComposeProjects(ctx, username, store)
 	if err != nil {
@@ -1582,7 +1458,7 @@ func DeleteComposeStack(ctx context.Context, username string, store *config.User
 			"project", projectName,
 			"working_dir", project.WorkingDir)
 
-		collector := &composeMessageCollector{}
+		collector := &dockerupdate.ComposeMessageCollector{}
 		err := composeDown(
 			ctx,
 			projectName,

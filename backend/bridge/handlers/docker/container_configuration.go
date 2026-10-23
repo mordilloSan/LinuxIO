@@ -19,6 +19,8 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
 
 const maxContainerConfigurationEntries = 256
@@ -31,18 +33,18 @@ func CreateConfiguredContainer(ctx context.Context, request apischema.ContainerC
 		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(err.Error(), 400)
 	}
 
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return apischema.ContainerConfigurationResult{}, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
-	release, err := acquireDockerUpdateLock(ctx)
+	release, err := dockerupdate.AcquireLock(ctx)
 	if err != nil {
 		return apischema.ContainerConfigurationResult{}, err
 	}
 	defer release()
-	if recoveryErr := recoverStandaloneUpdate(ctx, cli, defaultStandaloneUpdateJournal); recoveryErr != nil {
+	if recoveryErr := dockerupdate.RecoverStandaloneUpdate(ctx, cli); recoveryErr != nil {
 		return apischema.ContainerConfigurationResult{}, fmt.Errorf("recover previous standalone Docker update: %w", recoveryErr)
 	}
 
@@ -51,7 +53,7 @@ func CreateConfiguredContainer(ctx context.Context, request apischema.ContainerC
 
 func createConfiguredContainer(
 	ctx context.Context,
-	cli nativeContainerUpdateClient,
+	cli dockerupdate.ContainerClient,
 	request apischema.ContainerCreateRequest,
 	options client.ContainerCreateOptions,
 ) (apischema.ContainerConfigurationResult, error) {
@@ -69,7 +71,7 @@ func createConfiguredContainer(
 				removeFailedConfiguredContainer(ctx, cli, created.ID),
 			)
 		}
-		if _, err := waitForContainerReady(ctx, cli, created.ID); err != nil {
+		if _, err := dockerupdate.WaitForContainerReady(ctx, cli, created.ID); err != nil {
 			return apischema.ContainerConfigurationResult{}, errors.Join(
 				fmt.Errorf("verify container %q: %w", options.Name, err),
 				removeFailedConfiguredContainer(ctx, cli, created.ID),
@@ -84,41 +86,39 @@ func EditConfiguredContainer(ctx context.Context, request apischema.ContainerEdi
 		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(err.Error(), 400)
 	}
 
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return apischema.ContainerConfigurationResult{}, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
-	release, err := acquireDockerUpdateLock(ctx)
+	release, err := dockerupdate.AcquireLock(ctx)
 	if err != nil {
 		return apischema.ContainerConfigurationResult{}, err
 	}
 	defer release()
-	if recoveryErr := recoverStandaloneUpdate(ctx, cli, defaultStandaloneUpdateJournal); recoveryErr != nil {
+	if recoveryErr := dockerupdate.RecoverStandaloneUpdate(ctx, cli); recoveryErr != nil {
 		return apischema.ContainerConfigurationResult{}, fmt.Errorf("recover previous standalone Docker update: %w", recoveryErr)
 	}
 
-	return editConfiguredContainer(ctx, cli, request, &defaultStandaloneUpdateJournal)
+	return editConfiguredContainer(ctx, cli, request, dockerupdate.DefaultJournal())
 }
 
 func editConfiguredContainer(
 	ctx context.Context,
-	cli nativeContainerUpdateClient,
+	cli dockerupdate.ContainerClient,
 	request apischema.ContainerEditRequest,
-	journal *standaloneUpdateJournal,
+	journal *dockerupdate.Journal,
 ) (apischema.ContainerConfigurationResult, error) {
 	inspectResult, err := cli.ContainerInspect(ctx, request.ContainerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return apischema.ContainerConfigurationResult{}, fmt.Errorf("inspect container before edit: %w", err)
 	}
 	before := inspectResult.Container
-	originalName := strings.TrimPrefix(before.Name, "/")
 	if before.Config != nil && strings.TrimSpace(before.Config.Labels["com.docker.compose.project"]) != "" {
 		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError("Compose-managed containers must be edited through their stack", 409)
 	}
-	policy := stoppedContainerUpdatePolicy{Allow: true}
-	if preflightErr := validateStandaloneUpdatePreconditions(ctx, cli, before, journal, nil, policy); preflightErr != nil {
+	if preflightErr := dockerupdate.ValidateStandaloneEdit(ctx, cli, before, journal); preflightErr != nil {
 		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(preflightErr.Error(), 409)
 	}
 	if mountErr := validateEditableContainerMounts(before.Mounts); mountErr != nil {
@@ -128,7 +128,7 @@ func editConfiguredContainer(
 		return apischema.ContainerConfigurationResult{}, imageErr
 	}
 
-	options, err := standaloneCreateOptions(before, request.Configuration.Image, request.Configuration.Name)
+	options, err := dockerupdate.StandaloneCreateOptions(before, request.Configuration.Image, request.Configuration.Name)
 	if err != nil {
 		return apischema.ContainerConfigurationResult{}, err
 	}
@@ -137,36 +137,9 @@ func editConfiguredContainer(
 		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(applyErr.Error(), 400)
 	}
 
-	tx := standaloneUpdateTransaction{
-		Phase:           standaloneUpdatePrepared,
-		OriginalID:      before.ID,
-		OriginalName:    originalName,
-		BackupName:      standaloneBackupName(before.ID),
-		ReplacementName: options.Name,
-		OriginalRunning: before.State != nil && before.State.Running,
-	}
-	if parkErr := parkStandaloneOriginal(ctx, cli, tx, journal); parkErr != nil {
-		return apischema.ContainerConfigurationResult{}, parkErr
-	}
-	after, replacementErr := createAndVerifyStandaloneReplacementWithProgress(
-		ctx,
-		cli,
-		before.ID,
-		originalName,
-		options,
-		tx,
-		journal,
-		policy,
-		nil,
-	)
-	if replacementErr != nil {
-		return apischema.ContainerConfigurationResult{}, replacementErr
-	}
-	if _, removeErr := cli.ContainerRemove(ctx, before.ID, client.ContainerRemoveOptions{}); removeErr != nil {
-		return apischema.ContainerConfigurationResult{}, fmt.Errorf("remove rollback container %q after successful edit: %w", tx.BackupName, removeErr)
-	}
-	if clearErr := clearStandaloneJournal(journal); clearErr != nil {
-		return apischema.ContainerConfigurationResult{}, clearErr
+	after, err := dockerupdate.ReplaceStandalone(ctx, cli, before, options, journal)
+	if err != nil {
+		return apischema.ContainerConfigurationResult{}, err
 	}
 	return apischema.ContainerConfigurationResult{ContainerID: after.ID, Name: options.Name}, nil
 }
@@ -177,7 +150,7 @@ func containerCreateOptions(configuration apischema.ContainerConfiguration) (cli
 		return client.ContainerCreateOptions{}, errors.New("container name must begin with a letter or number and use only letters, numbers, periods, underscores, or hyphens")
 	}
 	imageRef := strings.TrimSpace(configuration.Image)
-	if _, _, _, err := normalizeUpdateReference(imageRef); err != nil {
+	if _, _, _, err := dockerupdate.NormalizeImageReference(imageRef); err != nil {
 		return client.ContainerCreateOptions{}, err
 	}
 	options := client.ContainerCreateOptions{
@@ -502,20 +475,20 @@ func cleanStrings(values []string) []string {
 	return result
 }
 
-func ensureContainerImage(ctx context.Context, cli nativeContainerUpdateClient, imageRef string) error {
+func ensureContainerImage(ctx context.Context, cli dockerupdate.ContainerClient, imageRef string) error {
 	imageRef = strings.TrimSpace(imageRef)
 	if _, err := cli.ImageInspect(ctx, imageRef); err == nil {
 		return nil
 	} else if !errdefs.IsNotFound(err) {
 		return fmt.Errorf("inspect image %q: %w", imageRef, err)
 	}
-	if _, err := pullAndInspectStandaloneImage(ctx, cli, imageRef); err != nil {
+	if _, err := dockerupdate.PullAndInspectImage(ctx, cli, imageRef); err != nil {
 		return err
 	}
 	return nil
 }
 
-func removeFailedConfiguredContainer(ctx context.Context, cli nativeContainerUpdateClient, containerID string) error {
+func removeFailedConfiguredContainer(ctx context.Context, cli dockerupdate.ContainerClient, containerID string) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	if _, err := cli.ContainerRemove(cleanupCtx, containerID, client.ContainerRemoveOptions{Force: true}); err != nil {

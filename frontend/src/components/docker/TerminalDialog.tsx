@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import "@xterm/xterm/css/xterm.css";
 
 import { linuxio, openContainerStream, useStreamMux } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -17,6 +16,9 @@ import { useLiveStream } from "@/hooks/useLiveStream";
 import { useTerminalContextMenu } from "@/hooks/useTerminalContextMenu";
 import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
+
+import "@xterm/xterm/css/xterm.css";
+import "@/components/terminal/terminal-tokens.css";
 
 interface Props {
   containerId: string;

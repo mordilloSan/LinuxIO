@@ -59,7 +59,7 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 			raiseAlert(ctx, alerts.Observation{
 				Source: alertSource, Key: key, Severity: alerts.SeverityError,
 				Title:        "Snapshot failed for " + rule.Path,
-				Message:      truncate(err.Error(), alerts.MaxMessageLen),
+				Message:      err.Error(),
 				Link:         "/storage/snapshots?fs=" + rule.UUID,
 				OccurrenceID: "failed",
 			})

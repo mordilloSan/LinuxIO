@@ -21,7 +21,7 @@ vi.mock("@/hooks/useCapabilities", () => ({
   useCapability: () => ({ isEnabled: true }),
 }));
 
-vi.mock("@/components/cards/DashboardCard", () => ({
+vi.mock("@/routes/_authenticated/-dashboard/DashboardCard", () => ({
   CardBadge: ({ text }: { text: string }) => <span>{text}</span>,
   default: ({
     headerExtras,

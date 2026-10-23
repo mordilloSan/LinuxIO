@@ -2,8 +2,12 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useState, type MouseEvent } from "react";
 
-import { type ContainerInfo, linuxio, useCallMutation } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
+import {
+  type ContainerInfo,
+  getMutationErrorMessage,
+  linuxio,
+  useCallMutation,
+} from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
@@ -11,10 +15,10 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { useAppMediaQuery } from "@/theme";
+import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 import { up } from "@/theme/breakpoints";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import DashboardStatRows from "./DashboardStatRows";
 
@@ -136,7 +140,7 @@ const DockerStats = () => {
 
 const DockerContainers = () => {
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
-  const isSmallUp = useAppMediaQuery(up("sm"));
+  const isSmallUp = useMediaQuery(up("sm"));
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuContainer, setMenuContainer] = useState<{
     id: string;

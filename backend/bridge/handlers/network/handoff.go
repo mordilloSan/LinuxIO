@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	networkbackend "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/network"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/hostbridge"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
@@ -23,10 +23,10 @@ const (
 )
 
 var (
-	prepareBridgeHandoff = networkbackend.PrepareBridgeHandoff
-	applyBridgeHandoff   = networkbackend.ApplyBridgeHandoff
-	confirmBridgeHandoff = networkbackend.ConfirmBridgeHandoff
-	revertBridgeHandoff  = networkbackend.RevertBridgeHandoff
+	prepareBridgeHandoff = hostbridge.PrepareBridgeHandoff
+	applyBridgeHandoff   = hostbridge.ApplyBridgeHandoff
+	confirmBridgeHandoff = hostbridge.ConfirmBridgeHandoff
+	revertBridgeHandoff  = hostbridge.RevertBridgeHandoff
 )
 
 type bridgeHandoffService interface {
@@ -43,22 +43,22 @@ type networkHandlers struct {
 
 func newBridgeHandoffAdapter(_ runtime.Runtime) bridgeHandoffService {
 	return &durableBridgeHandoffService{
-		env:   networkEnv,
+		env:   bridgeEnv,
 		store: durabletask.NewStore(durabletask.DefaultRoot),
 		now:   func() time.Time { return time.Now().UTC() },
 	}
 }
 
 type durableBridgeHandoffService struct {
-	env   networkbackend.Environment
+	env   hostbridge.Environment
 	store *durabletask.Store
 	now   func() time.Time
 }
 
 type bridgeHandoffRecord struct {
-	State               networkbackend.BridgeHandoffState `json:"state"`
-	Deadline            time.Time                         `json:"deadline"`
-	SafeReleaseDeadline time.Time                         `json:"safe_release_deadline"`
+	State               hostbridge.BridgeHandoffState `json:"state"`
+	Deadline            time.Time                     `json:"deadline"`
+	SafeReleaseDeadline time.Time                     `json:"safe_release_deadline"`
 }
 
 func (s *durableBridgeHandoffService) Start(ctx context.Context, uid uint32, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
@@ -81,7 +81,7 @@ func (s *durableBridgeHandoffService) Start(ctx context.Context, uid uint32, req
 		return s.status(operationCtx, uid, record)
 	}
 
-	state, err := prepareBridgeHandoff(operationCtx, s.env, networkbackend.BridgeHandoffPlan{
+	state, err := prepareBridgeHandoff(operationCtx, s.env, hostbridge.BridgeHandoffPlan{
 		Name: name, Member: member, ConsoleAcknowledged: req.ConsoleAcknowledged,
 	})
 	if err != nil {
@@ -91,8 +91,8 @@ func (s *durableBridgeHandoffService) Start(ctx context.Context, uid uint32, req
 	now := s.now().UTC()
 	data := bridgeHandoffRecord{
 		State:               state,
-		Deadline:            now.Add(networkbackend.BridgeHandoffConfirmationTimeout),
-		SafeReleaseDeadline: now.Add(bridgeHandoffStartTimeout + networkbackend.BridgeHandoffConfirmationTimeout),
+		Deadline:            now.Add(hostbridge.BridgeHandoffConfirmationTimeout),
+		SafeReleaseDeadline: now.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout),
 	}
 	record, err = s.updateData(operationCtx, record, data, func(current *durabletask.Record) {
 		current.AppendProgress(s.now(), "applying", "Moving the host IP configuration to the bridge")
@@ -223,7 +223,7 @@ func handoffExpired(record durabletask.Record, data bridgeHandoffRecord, now tim
 		if record.State != durabletask.StateQueued {
 			return false
 		}
-		deadline = record.CreatedAt.Add(bridgeHandoffStartTimeout + networkbackend.BridgeHandoffConfirmationTimeout)
+		deadline = record.CreatedAt.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout)
 	}
 	if deadline.IsZero() {
 		// Older records persisted the native deadline before the native start;
@@ -264,7 +264,7 @@ func (s *durableBridgeHandoffService) Revert(ctx context.Context, uid uint32, id
 	return s.finish(ctx, uid, id, "reverting", durabletask.StateCanceled, revertBridgeHandoff)
 }
 
-func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id, phase string, terminal durabletask.State, action func(context.Context, networkbackend.Environment, *networkbackend.BridgeHandoffState) error) (apischema.NetworkBridgeHandoffStatus, error) {
+func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id, phase string, terminal durabletask.State, action func(context.Context, hostbridge.Environment, *hostbridge.BridgeHandoffState) error) (apischema.NetworkBridgeHandoffStatus, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}

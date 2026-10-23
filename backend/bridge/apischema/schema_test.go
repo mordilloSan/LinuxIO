@@ -93,7 +93,7 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 279; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 278; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeTask], 25; got != want {
@@ -223,7 +223,6 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 		"network.create_bridge",
 		"network.start_bridge_handoff",
 		"system.get_health_summary",
-		"system.get_updates_fast",
 		"tasks.cancel",
 		"terminal.list_shells",
 	} {

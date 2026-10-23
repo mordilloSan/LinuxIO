@@ -1,7 +1,7 @@
+import { LinuxIOError } from "./errors";
 import linuxio from "./generated/client";
 import type { TaskSnapshot } from "./generated/linuxio-types";
 import { openTaskDataStream } from "./linuxio";
-import { LinuxIOError } from "./linuxio-core";
 import { streamWriteChunks, waitForStreamResult } from "./stream-helpers";
 import { isTerminalTaskState, terminalSnapshotOrThrow } from "./tasks";
 

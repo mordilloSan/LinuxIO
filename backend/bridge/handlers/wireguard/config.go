@@ -3,7 +3,9 @@ package wireguard
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gopkg.in/ini.v1"
@@ -15,7 +17,6 @@ const (
 	metaKeyDNS       = "dns"
 )
 
-// --- Config Parsing ---
 func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	var cfg WireGuardConfig
 
@@ -201,4 +202,63 @@ func replacePeerSection(cfg *WireGuardConfig, oldPublicKey string, section *Peer
 
 func shellArg(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func configPath(name string) string {
+	return filepath.Join(wgConfigDir, name+configExt)
+}
+
+func parseCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func setKey(section *ini.Section, key, value string) {
+	if _, err := section.NewKey(key, value); err != nil {
+		slog.Warn("failed to set INI key", "component", "wireguard", "subsystem", "config", "path", key, "error", err)
+	}
+}
+
+func setKeyIfNotEmpty(section *ini.Section, key, value string) {
+	if value != "" {
+		setKey(section, key, value)
+	}
+}
+
+func setKeyIfPositive(section *ini.Section, key string, value int) {
+	if value > 0 {
+		setKey(section, key, strconv.Itoa(value))
+	}
+}
+
+func addPeerSection(iniFile *ini.File, peer PeerConfig) error {
+	psec, err := iniFile.NewSection("Peer")
+	if err != nil {
+		return err
+	}
+	if peer.Name != "" {
+		psec.Comment = "# " + peer.Name
+	}
+
+	setKey(psec, "PublicKey", peer.PublicKey)
+	setKeyIfNotEmpty(psec, "PresharedKey", peer.PresharedKey)
+	setKeyIfNotEmpty(psec, "AllowedIPs", strings.Join(peer.AllowedIPs, ","))
+	setKeyIfNotEmpty(psec, "Endpoint", peer.Endpoint)
+	setKeyIfPositive(psec, "PersistentKeepalive", peer.PersistentKeepalive)
+
+	return nil
+}
+
+func isPeerSection(name string) bool {
+	return name == "Peer" || strings.HasPrefix(name, "Peer ")
 }

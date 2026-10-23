@@ -181,3 +181,9 @@ func TestSaveRoundTripsHistoryIntervals(t *testing.T) {
 		t.Fatalf("durations = %+v", got)
 	}
 }
+
+func TestIntervalDefaults(t *testing.T) {
+	if DefaultCollectorInterval != time.Minute || DefaultSmartRefreshInterval != time.Hour {
+		t.Fatalf("collector=%v smart=%v", DefaultCollectorInterval, DefaultSmartRefreshInterval)
+	}
+}

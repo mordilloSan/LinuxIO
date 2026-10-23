@@ -1,7 +1,7 @@
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback } from "react";
 
-import Breadcrumbs from "@/components/filebrowser/Breadcrumbs";
+import Breadcrumbs from "./Breadcrumbs";
 
 const fileBrowserRouteApi = getRouteApi("/_authenticated/filebrowser/$");
 

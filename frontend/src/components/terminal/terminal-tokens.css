@@ -1,0 +1,33 @@
+/* App-owned rules for xterm.js hosts. xterm's own stylesheet is imported by the
+   terminal components; these adjust its helper textarea and scrollbar to the
+   app's chrome. Import this wherever xterm.css is imported. */
+.xterm-helper-textarea,
+.xterm-textarea {
+  opacity: 0;
+  position: absolute;
+  left: -9999px;
+  width: 0;
+  height: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: transparent;
+}
+
+.xterm .scrollbar {
+  width: 4px !important;
+  opacity: 1 !important;
+}
+
+.xterm .scrollbar .slider {
+  background-color: var(--app-scrollbar-thumb-idle) !important;
+  border-radius: 8px !important;
+  width: 8px !important;
+}
+
+.xterm:hover .scrollbar .slider {
+  background-color: var(--app-scrollbar-thumb-active) !important;
+}
+
+.xterm .scrollbar:hover .slider {
+  background-color: var(--app-scrollbar-thumb-hover) !important;
+}

@@ -370,7 +370,6 @@ const linuxio = {
     get_server_time: defineCall("system.get_server_time"),
     get_system_info: defineCall("system.get_system_info"),
     get_timezones: defineCall("system.get_timezones"),
-    get_updates_fast: defineCall("system.get_updates_fast"),
     install_capability: createTaskEndpoint("system", "install_capability", {
       kind: "field",
       field: "capability",

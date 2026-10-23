@@ -10,10 +10,12 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // TopLevelDir is where TopLevel mounts filesystems that have no top-level mount.
-var TopLevelDir = "/run/linuxio/btrfs"
+var TopLevelDir = version.RunDir + "/btrfs"
 
 // topLevelSubvolID is the id of the btrfs top-level subvolume.
 const topLevelSubvolID = 5

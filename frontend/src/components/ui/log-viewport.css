@@ -1,0 +1,44 @@
+/* LogViewport: code-block surface with a scrolling, monospace log box */
+.log-viewport {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: var(--app-code-block-background);
+  color: var(--app-code-block-color);
+}
+/* card: fills whatever height the card gives it, with rounded corners */
+.log-viewport--card {
+  flex: 1;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.log-viewport__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: color-mix(
+    in srgb,
+    var(--app-code-block-background),
+    transparent 15%
+  );
+}
+.log-viewport__error {
+  padding: 16px;
+  color: var(--app-palette-error-main);
+}
+.log-viewport .log-viewport__box {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  min-height: 120px;
+  max-height: 340px;
+  font-family: "Fira Mono", monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.log-viewport--dialog .log-viewport__box {
+  padding: var(--app-space-8);
+  min-height: 300px;
+  max-height: 500px;
+}

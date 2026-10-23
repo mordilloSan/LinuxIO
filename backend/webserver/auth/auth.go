@@ -8,7 +8,8 @@ import (
 
 	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/authclient"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
@@ -16,7 +17,7 @@ const maxConcurrentLogins = 8
 
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
-	SM      *session.Manager
+	SM      *sessions.Manager
 	Verbose bool
 	authSem chan struct{}
 }
@@ -64,10 +65,10 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remoteHost := clientRemoteHost(r)
+	remoteHost := web.ClientRemoteHost(r)
 	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
 	if err != nil {
-		var authErr *bridge.AuthError
+		var authErr *authclient.AuthError
 		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
 			slog.Warn("authentication failed",
 				"component", "auth",
@@ -122,30 +123,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.SM.DeleteCookie(w)
-	h.SM.DeleteSession(ck.Value, session.ReasonLogout)
+	h.SM.DeleteSession(ck.Value, sessions.ReasonLogout)
 	slog.Info("session logout", "cookie_cleared", true)
 	w.WriteHeader(http.StatusOK)
-}
-
-// Version returns installed component versions (public endpoint, no auth required).
-// Used by frontend to detect when server is back up after updates.
-func (h *Handlers) Version(w http.ResponseWriter, r *http.Request) {
-	web.WriteJSON(w, http.StatusOK, getComponentVersions(r.Context()))
-}
-
-// UpdateInfo reports whether a newer LinuxIO release is available. Update
-// checks are restricted to privileged sessions and are kept out of login so
-// authentication is not delayed by the external GitHub request.
-func (h *Handlers) UpdateInfo(w http.ResponseWriter, r *http.Request) {
-	sess := session.SessionFromContext(r.Context())
-	if sess == nil || !sess.Privileged {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	if updateInfo := checkForUpdate(r.Context()); updateInfo != nil {
-		web.WriteJSON(w, http.StatusOK, updateInfo)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

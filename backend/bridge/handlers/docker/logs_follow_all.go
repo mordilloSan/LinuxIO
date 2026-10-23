@@ -12,12 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -110,15 +111,10 @@ func (w *dockerLogLineWriter) appendRecord(frame *bytes.Buffer, raw []byte) {
 	frame.WriteByte('\n')
 }
 
-// copyContainerLogs drains one container's log stream into the line writers.
-// TTY containers return raw bytes; the others are stdout/stderr multiplexed.
+// copyContainerLogs drains one container's log stream into the line writers
+// and flushes their trailing partial lines.
 func copyContainerLogs(reader io.Reader, tty bool, stdout, stderr *dockerLogLineWriter) error {
-	var err error
-	if tty {
-		_, err = io.Copy(stdout, reader)
-	} else {
-		_, err = stdcopy.StdCopy(stdout, stderr, reader)
-	}
+	err := demuxContainerLogs(reader, tty, stdout, stderr)
 	if closeErr := stdout.Close(); err == nil {
 		err = closeErr
 	}
@@ -141,11 +137,11 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	}
 	slog.Debug("starting merged docker log channel", "component", "docker", "route", routeDockerLogsFollowAll, "mode", tail)
 
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to get docker client", "route", routeDockerLogsFollowAll)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	// Subscribe before listing so a container that starts in between is not missed.
 	events := cli.Events(ctx, client.EventsListOptions{
@@ -167,7 +163,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	}
 	for _, c := range containers.Items {
 		listed[c.ID] = struct{}{}
-		follow(c.ID, primaryContainerName(c), false)
+		follow(c.ID, dockerupdate.PrimaryContainerName(c), false)
 	}
 
 	eventsErr := attachStartedContainers(ctx, events, listed, listedAt, follow)

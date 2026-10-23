@@ -6,18 +6,11 @@ import {
 } from "react";
 
 import { BASE_SPACING_UNIT } from "@/theme";
+import type { GridSize } from "@/theme/constants";
 
 import "./app-grid.css";
 
-export type GridSize =
-  | number
-  | {
-      xs?: number;
-      sm?: number;
-      md?: number;
-      lg?: number;
-      xl?: number;
-    };
+export type { GridSize };
 
 export interface AppGridProps extends HTMLAttributes<HTMLElement> {
   /** Allow extra props to pass through to the underlying component (e.g. motion props). */

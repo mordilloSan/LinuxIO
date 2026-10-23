@@ -429,35 +429,35 @@ type PowerOnTimeInfoNvme struct {
 }
 
 type SmartData struct {
-	ModelName       string            `json:"model_name,omitempty" cbor:"1,keyasint,omitempty"`
-	SerialNumber    string            `json:"serial_number,omitempty" cbor:"2,keyasint,omitempty"`
-	FirmwareVersion string            `json:"firmware_version,omitempty" cbor:"3,keyasint,omitempty"`
-	Capacity        uint64            `json:"capacity_bytes,omitempty" cbor:"4,keyasint,omitempty"`
-	SmartStatus     string            `json:"smart_status,omitempty" cbor:"5,keyasint,omitempty"`
-	DiskName        string            `json:"disk_name,omitempty" cbor:"6,keyasint,omitempty"`
-	DiskType        string            `json:"disk_type,omitempty" cbor:"7,keyasint,omitempty"`
-	Temperature     uint8             `json:"temperature_celsius,omitempty" cbor:"8,keyasint,omitempty"`
-	Attributes      []*SmartAttribute `json:"attributes,omitempty" cbor:"9,keyasint,omitempty"`
+	ModelName       string            `json:"model_name,omitempty"`
+	SerialNumber    string            `json:"serial_number,omitempty"`
+	FirmwareVersion string            `json:"firmware_version,omitempty"`
+	Capacity        uint64            `json:"capacity_bytes,omitempty"`
+	SmartStatus     string            `json:"smart_status,omitempty"`
+	DiskName        string            `json:"disk_name,omitempty"`
+	DiskType        string            `json:"disk_type,omitempty"`
+	Temperature     uint8             `json:"temperature_celsius,omitempty"`
+	Attributes      []*SmartAttribute `json:"attributes,omitempty"`
 	// The following fields are live-only compatibility data for the storage UI.
 	// WriteSmartDevices projects them out of persisted history JSON so existing
 	// records retain their compact shape.
-	Device                        *DeviceInfo                    `json:"device,omitempty" cbor:"-"`
-	AtaSmartSelfTestLog           *SmartSelfTestLog              `json:"ata_smart_self_test_log,omitempty" cbor:"-"`
-	NVMeVersion                   *NVMeVersionInfo               `json:"nvme_version,omitempty" cbor:"-"`
-	NVMeNumberOfNamespaces        *uint64                        `json:"nvme_number_of_namespaces,omitempty" cbor:"-"`
-	NVMeSmartHealthInformationLog *NVMeSmartHealthInformationLog `json:"nvme_smart_health_information_log,omitempty" cbor:"-"`
-	NVMeSelfTestLog               *NVMeSelfTestLog               `json:"nvme_self_test_log,omitempty" cbor:"-"`
-	PowerOnTime                   *SmartPowerOnTime              `json:"power_on_time,omitempty" cbor:"-"`
-	PowerCycleCount               *uint64                        `json:"power_cycle_count,omitempty" cbor:"-"`
+	Device                        *DeviceInfo                    `json:"device,omitempty"`
+	AtaSmartSelfTestLog           *SmartSelfTestLog              `json:"ata_smart_self_test_log,omitempty"`
+	NVMeVersion                   *NVMeVersionInfo               `json:"nvme_version,omitempty"`
+	NVMeNumberOfNamespaces        *uint64                        `json:"nvme_number_of_namespaces,omitempty"`
+	NVMeSmartHealthInformationLog *NVMeSmartHealthInformationLog `json:"nvme_smart_health_information_log,omitempty"`
+	NVMeSelfTestLog               *NVMeSelfTestLog               `json:"nvme_self_test_log,omitempty"`
+	PowerOnTime                   *SmartPowerOnTime              `json:"power_on_time,omitempty"`
+	PowerCycleCount               *uint64                        `json:"power_cycle_count,omitempty"`
 }
 
 type SmartAttribute struct {
-	ID         uint16 `json:"id,omitempty" cbor:"0,keyasint,omitempty"`
-	Name       string `json:"name" cbor:"1,keyasint"`
-	Value      uint16 `json:"value,omitempty" cbor:"2,keyasint,omitempty"`
-	Worst      uint16 `json:"worst,omitempty" cbor:"3,keyasint,omitempty"`
-	Threshold  uint16 `json:"threshold,omitempty" cbor:"4,keyasint,omitempty"`
-	RawValue   uint64 `json:"raw_value" cbor:"5,keyasint"`
-	RawString  string `json:"raw_string,omitempty" cbor:"6,keyasint,omitempty"`
-	WhenFailed string `json:"when_failed,omitempty" cbor:"7,keyasint,omitempty"`
+	ID         uint16 `json:"id,omitempty"`
+	Name       string `json:"name"`
+	Value      uint16 `json:"value,omitempty"`
+	Worst      uint16 `json:"worst,omitempty"`
+	Threshold  uint16 `json:"threshold,omitempty"`
+	RawValue   uint64 `json:"raw_value"`
+	RawString  string `json:"raw_string,omitempty"`
+	WhenFailed string `json:"when_failed,omitempty"`
 }

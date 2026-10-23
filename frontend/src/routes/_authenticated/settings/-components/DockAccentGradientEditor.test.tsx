@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveDockAccentGradient } from "@/routes/_authenticated/-components/dock/dockPalette";
 import { fireEvent, render, screen } from "@/test/render";
 import buildAppTheme from "@/theme";
-import { toHexColor } from "@/utils/color";
+import { toHexColor } from "@/theme/colorUtils";
 
 import DockAccentGradientEditor from "./DockAccentGradientEditor";
 

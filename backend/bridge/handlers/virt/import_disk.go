@@ -64,19 +64,9 @@ func readOVADescriptor(ovaPath string) ([]byte, error) {
 }
 
 func validateImportDisk(rawPath string) (string, error) {
-	path := strings.TrimSpace(rawPath)
-	if path == "" {
-		return "", badRequestf("importPath is required")
-	}
-	if !filepath.IsAbs(path) {
-		return "", badRequestf("import path must be absolute")
-	}
-	info, err := os.Stat(path)
+	path, info, err := statHostFile(rawPath, "importPath", "import")
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", notFoundf("import path does not exist: %s", path)
-		}
-		return "", fmt.Errorf("import path is not accessible: %w", err)
+		return "", err
 	}
 	if !info.Mode().IsRegular() {
 		return "", badRequestf("import path must point to a regular file: %s", path)

@@ -5,10 +5,10 @@ import LiveChartHover from "@/components/charts/LiveChartHover";
 import { sampleLiveSeries } from "@/components/charts/liveSeriesStore";
 import { LIVE_MILLIS_PER_PIXEL } from "@/constants/liveCharts";
 import { useAppTheme } from "@/theme";
-import { alpha } from "@/utils/color";
-import { formatThroughput } from "@/utils/formaters";
+import { alpha } from "@/theme/colorUtils";
+import { formatThroughput } from "@/utils/formatters";
 
-export const STREAM_DELAY_MS = 1000;
+const STREAM_DELAY_MS = 1000;
 
 /**
  * Half-range floor, in kB/s. An idle interface reads zero in both directions,
@@ -33,7 +33,7 @@ export const centerZeroRange = ({ max, min }: { max: number; min: number }) => {
   return { max: halfRange, min: -halfRange };
 };
 
-export interface NetworkTrafficSeries {
+interface NetworkTrafficSeries {
   /* Which theme chart colour draws the line. The canvas needs the resolved
      colour, so the graph reads it from the theme; callers stay on CSS vars. */
   colorKey: "rx" | "tx";

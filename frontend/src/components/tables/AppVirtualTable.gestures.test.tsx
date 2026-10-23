@@ -2,11 +2,11 @@ import { useSortable } from "@dnd-kit/sortable";
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import { useReorderableTableDnd } from "@/components/tables/useReorderableTableDnd";
 import AppCheckbox from "@/components/ui/AppCheckbox";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { act, fireEvent, render, screen, waitFor } from "@/test/render";
 
 vi.mock("@tanstack/react-virtual", async () =>

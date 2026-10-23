@@ -1,5 +1,5 @@
 import AppButton from "@/components/ui/AppButton";
-import { useFileEditor } from "@/hooks/filebrowser/useFileEditor";
+import { useFileEditor } from "@/routes/_authenticated/filebrowser/-hooks/useFileEditor";
 
 export default function FileEditorHistoryPage() {
   const { actions, closeEditorDialog, editingPath } = useFileEditor();

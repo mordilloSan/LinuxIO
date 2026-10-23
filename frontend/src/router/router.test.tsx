@@ -1,11 +1,11 @@
 import type { AnyRoute } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
+import { appQueryClient } from "@/api/query-client";
 import PageLoader from "@/components/loaders/PageLoader";
 import NotFoundPage from "@/routes/-components/NotFoundPage";
 import RouteError from "@/routes/-components/RouteError";
 
-import AppQueryClientProvider, { appQueryClient } from "./query-client";
 import { router } from "./router";
 
 const applicationRoutes = Object.values(router.routesById).filter(
@@ -22,9 +22,9 @@ function routeOrAncestorHasLoader(route: AnyRoute): boolean {
 }
 
 describe("generated application router", () => {
-  it("owns one QueryClient for loader context and mounted observers", () => {
+  it("hands the app QueryClient to loaders without mounting its own provider", () => {
     expect(router.options.context?.queryClient).toBe(appQueryClient);
-    expect(router.options.Wrap).toBe(AppQueryClientProvider);
+    expect(router.options.Wrap).toBeUndefined();
   });
 
   it("uses one global intent-preload policy", () => {

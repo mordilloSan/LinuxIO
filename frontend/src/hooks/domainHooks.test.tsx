@@ -2,18 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PowerActionContext } from "@/contexts/PowerActionContext";
-import {
-  UpdateContext,
-  UpdateNavigationContext,
-  type UpdateContextValue,
-} from "@/contexts/UpdateContext";
 import { useDockerIcon } from "@/hooks/useDockerIcon";
-import {
-  useLinuxIOUpdater,
-  useUpdateCanNavigate,
-} from "@/hooks/useLinuxIOUpdater";
-import usePowerAction from "@/hooks/usePowerAction";
 import { createTestQueryClient, renderHook } from "@/test/render";
 
 const queryClient = createTestQueryClient();
@@ -40,21 +29,6 @@ vi.mock("@/api", async () => {
     },
   };
 });
-
-const updateValue: UpdateContextValue = {
-  canNavigate: true,
-  error: null,
-  isUpdating: false,
-  output: [],
-  phase: "idle",
-  progress: 0,
-  resetUpdate: vi.fn(),
-  startUpdate: vi.fn(),
-  status: "",
-  targetVersion: null,
-  updateComplete: false,
-  updateSuccess: false,
-};
 
 describe("useDockerIcon", () => {
   beforeEach(() => {
@@ -98,54 +72,5 @@ describe("useDockerIcon", () => {
     expect(apiMocks.getIconUriQueryOptions.mock.calls[1]).toEqual([
       { identifier: "si:nginx" },
     ]);
-  });
-});
-
-describe("domain context hooks", () => {
-  it("returns power actions from context and throws outside the provider", () => {
-    expect(() => renderHook(() => usePowerAction())).toThrow(
-      "usePowerAction must be used within a PowerActionProvider",
-    );
-
-    const value = {
-      triggerPowerOff: vi.fn(),
-      triggerReboot: vi.fn(),
-    };
-    const { result } = renderHook(() => usePowerAction(), {
-      wrapper: ({ children }) => (
-        <PowerActionContext.Provider value={value}>
-          {children}
-        </PowerActionContext.Provider>
-      ),
-    });
-
-    expect(result.current).toBe(value);
-  });
-
-  it("returns update state and navigation guard from their contexts", () => {
-    expect(() => renderHook(() => useLinuxIOUpdater())).toThrow(
-      "UpdateContext must be placed within UpdateProvider",
-    );
-    expect(() => renderHook(() => useUpdateCanNavigate())).toThrow(
-      "UpdateContext must be placed within UpdateProvider",
-    );
-
-    const updater = renderHook(() => useLinuxIOUpdater(), {
-      wrapper: ({ children }) => (
-        <UpdateContext.Provider value={updateValue}>
-          {children}
-        </UpdateContext.Provider>
-      ),
-    });
-    const canNavigate = renderHook(() => useUpdateCanNavigate(), {
-      wrapper: ({ children }) => (
-        <UpdateNavigationContext.Provider value={false}>
-          {children}
-        </UpdateNavigationContext.Provider>
-      ),
-    });
-
-    expect(updater.result.current).toBe(updateValue);
-    expect(canNavigate.result.current).toBe(false);
   });
 });

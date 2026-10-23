@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { useConfigValue } from "@/hooks/useConfig";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import breakpoints from "@/theme/breakpoints";
-import { collapsedDrawerWidth, drawerWidth } from "@/theme/constants";
 
 import { SidebarContext } from "./SidebarContext";
+import { collapsedDrawerWidth, drawerWidth } from "./sidebarLayout";
 
 export const SidebarProvider = ({ children }: { children: ReactNode }) => {
-  const isDesktop = useAppMediaQuery(`(min-width:${breakpoints.values.md}px)`);
+  const isDesktop = useMediaQuery(`(min-width:${breakpoints.values.md}px)`);
 
   // persisted collapsed flag
   const [collapsed, setCollapsed] = useConfigValue("sidebarCollapsed");

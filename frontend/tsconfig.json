@@ -30,17 +30,15 @@
       "@/hooks/*": ["./src/hooks/*"],
       "@/performance/*": ["./src/performance/*"],
       "@/routes/*": ["./src/routes/*"],
+      "@/tasks/*": ["./src/tasks/*"],
       "@/theme/*": ["./src/theme/*"],
       "@/test/*": ["./src/test/*"],
       "@/types/*": ["./src/types/*"],
       "@/utils/*": ["./src/utils/*"],
       "@/constants/*": ["./src/constants/*"],
-      "@/assets/*": ["./src/assets/*"],
-      "@/services/*": ["./src/services/*"],
       "@/icons/*": ["./src/icons/*"],
       // Files
       "@/api": ["./src/api/index"],
-      "@/config": ["./src/config"],
       "@/routeTree.gen": ["./src/routeTree.gen"],
       "@/theme": ["./src/theme/index"]
     }

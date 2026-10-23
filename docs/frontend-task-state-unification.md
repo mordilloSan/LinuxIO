@@ -8,8 +8,8 @@ stable actions. No task or progress arrays remain in provider state.
 
 ## Implementation
 
-`api/background-task-cache.ts` defines per-user keys and the cache writer owned
-by `useBackgroundTaskRuntime`. Downloads, uploads, transfers, indexers, and
+`tasks/taskCache.ts` defines per-user keys and the cache writer owned
+by `useBackgroundTaskRuntime` (`tasks/engine/`). Downloads, uploads, transfers, indexers, and
 recovered generic tasks all write through it. Task entries use the bridge task
 id once available; uploads start under a temporary id and move to the bridge id
 without changing the row identity. Stream-owned entries do not expire while

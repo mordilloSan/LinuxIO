@@ -15,22 +15,17 @@ const modulePrefix = "github.com/mordilloSan/LinuxIO/backend/"
 // the reason. Anything else two families need is a library and belongs in
 // bridge/internal (bridge-only) or common (shared with another binary).
 var allowedHandlerEdges = map[string]map[string]string{
-	"accounts":    {"control": "logs the user out through logind when the account is deleted"},
+	"accounts": {"control": "logs the user out through logind when the account is deleted"},
+	"config":   {"docker": "the Docker daemon mount-ordering drop-in is rewritten when its setting changes"},
+	"capabilities": {
+		"docker": "capability probe", "monitoring": "the health probe reuses the daemon client", "power": "capability probe",
+		"shares": "capability probe", "storage": "capability probe", "virt": "capability probe",
+	},
 	"docker":      {"indexer": "keeps the file index in sync with container mounts", "monitoring": "container metrics come from the monitoring daemon client"},
 	"filebrowser": {"indexer": "search and index maintenance use the indexer client"},
-	"packages":    {"docker": "Docker capability probe", "system": "capability registry (CapabilitySpec, InstallSpec)"},
-	"system": {
-		"docker": "capability probe", "power": "capability probe", "shares": "capability probe",
-		"storage": "capability probe", "virt": "capability probe",
-		"systemd": "the health summary lists services",
-	},
-	"virt": {"docker": "excludes Docker-owned bridges from VM bridge candidates"},
-}
-
-// shortcut: the root docker-update worker still links handlers/docker, drop
-// this once the Docker update engine leaves the handler package.
-var handlerImportersOutsideBridge = map[string]string{
-	"docker-update": "bridge/handlers/docker",
+	"packages":    {"capabilities": "capability registry (CapabilitySpec, InstallSpec)", "docker": "Docker capability probe"},
+	"system":      {"packages": "the health summary counts pending updates", "systemd": "the health summary lists services"},
+	"virt":        {"docker": "excludes Docker-owned bridges from VM bridge candidates"},
 }
 
 // TestImportBoundaries keeps the layering docs/bridge_handler_patterns.md
@@ -108,7 +103,7 @@ func importViolation(pkg, dep string) string {
 			return ""
 		}
 		return "the bridge reaches the daemons only through their api packages"
-	case pkg == "cli" || pkg == "docker-update":
+	case pkg == "cli" || pkg == "docker-update" || pkg == "btrfs-timer":
 		if strings.HasPrefix(dep, "common/") {
 			return ""
 		}
@@ -119,7 +114,7 @@ func importViolation(pkg, dep string) string {
 
 func handlerImportViolation(pkg, dep string) string {
 	switch {
-	case pkg == "bridge/handlers", handlerImportersOutsideBridge[pkg] == dep:
+	case pkg == "bridge/handlers":
 		return ""
 	case dep == "bridge/handlers" && (pkg == "bridge/cmd" || pkg == "bridge/internal/apigen"):
 		return "" // the composition root and the contract generator read the registry

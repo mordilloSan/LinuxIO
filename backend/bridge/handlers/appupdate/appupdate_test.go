@@ -17,6 +17,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/updatestatus"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -192,7 +193,7 @@ func recordSuccessfulRestart(t *testing.T, statusPath string, restarted chan<- s
 		if err != nil {
 			t.Errorf("read status before restart: %v", err)
 		} else {
-			var status updateStatus
+			var status updatestatus.Record
 			if unmarshalErr := json.Unmarshal(data, &status); unmarshalErr != nil {
 				t.Errorf("decode status before restart: %v", unmarshalErr)
 			} else if status.Status != "ok" || status.OwnerUID != 1000 {
@@ -262,7 +263,7 @@ func TestExecuteAppUpdateReloadFailureDoesNotRestart(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("read status: %v", readErr)
 	}
-	var status updateStatus
+	var status updatestatus.Record
 	if unmarshalErr := json.Unmarshal(data, &status); unmarshalErr != nil || status.Status != "error" {
 		t.Fatalf("reload failure status = %+v, %v", status, unmarshalErr)
 	}
@@ -308,7 +309,7 @@ func TestExecuteAppUpdateFailureDoesNotRestart(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("read status: %v", readErr)
 	}
-	var status updateStatus
+	var status updatestatus.Record
 	if unmarshalErr := json.Unmarshal(data, &status); unmarshalErr != nil {
 		t.Fatalf("decode status: %v", unmarshalErr)
 	}
@@ -319,16 +320,16 @@ func TestExecuteAppUpdateFailureDoesNotRestart(t *testing.T) {
 
 func configurePipedUpdateTest(t *testing.T, statusPath string) func() {
 	t.Helper()
-	oldStatusPath := updateStatusPath
+	oldStatusPath := updatestatus.Path
 	oldInstaller := runAppUpdateInstaller
 	oldReload := reloadSystemd
 	oldRestart := restartSystemdUnit
 	oldDelay := postUpdateRestartDelay
-	updateStatusPath = statusPath
+	updatestatus.Path = statusPath
 	reloadSystemd = func(context.Context) error { return nil }
 	postUpdateRestartDelay = 0
 	return func() {
-		updateStatusPath = oldStatusPath
+		updatestatus.Path = oldStatusPath
 		runAppUpdateInstaller = oldInstaller
 		reloadSystemd = oldReload
 		restartSystemdUnit = oldRestart

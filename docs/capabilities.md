@@ -9,12 +9,12 @@ features on it, and installs it from the UI.
 - A capability is a named, optional host dependency (a binary, package, or
   service) that some feature needs in order to work.
 - Each capability is declared **once per side** in a manifest:
-  - Backend: the `capabilityRegistry` in `backend/bridge/handlers/system/capabilities.go`.
+  - Backend: the `capabilityRegistry` in `backend/bridge/handlers/capabilities/registry.go`.
   - Frontend: the `CAPABILITIES` array in `frontend/src/api/capabilities.ts`.
 - `system.get_capabilities` reports, for every capability, an `*_available`
   boolean and an optional `*_error` string. It is a post-login UI hint, not
   part of the login JSON or an authorization decision: once the authenticated
-  session mux opens, `AuthContext` invokes the RPC asynchronously once for the
+  session mux opens, `AuthProvider` invokes the RPC asynchronously once for the
   frontend authentication lifecycle and persists valid results for route/action
   gating.
 - Installable capabilities expose an `Install` spec; `system.install_capability`
@@ -47,7 +47,7 @@ control UI availability; backend handlers continue to enforce authorization.
 
 `StartBridge` creates and attaches the authenticated bridge without waiting for
 `system.get_capabilities`, and the login response does not include capability
-fields. `AuthContext` starts the authenticated mux eagerly, then performs one
+fields. `AuthProvider` starts the authenticated mux eagerly, then performs one
 best-effort capability refresh per authenticated frontend bootstrap after the
 mux opens. Completion is ignored when the user/authentication generation is
 stale, and only valid results are persisted. Callers may explicitly refresh
@@ -57,14 +57,14 @@ after an install; that is separate from the initial bootstrap refresh.
 
 | Symbol | File | Role |
 |--------|------|------|
-| `capabilityRegistry` | `handlers/system/capabilities.go` | Source of truth: one `CapabilitySpec` per capability. |
-| `CapabilitySpec` | `handlers/system/capabilities.go` | `Name` (wire prefix), `LogName`, `Detect`, optional `Install`. |
-| `InstallSpec` | `handlers/system/capabilities.go` | Package/service to install per distro family. |
+| `capabilityRegistry` | `handlers/capabilities/registry.go` | Source of truth: one `CapabilitySpec` per capability. |
+| `CapabilitySpec` | `handlers/capabilities/registry.go` | `Name` (wire prefix), `LogName`, `Detect`, optional `Install`. |
+| `InstallSpec` | `handlers/capabilities/registry.go` | Package/service to install per distro family. |
 | `CapabilitiesAvailable` / `CapabilitiesError` | `common/session/session.go` | Shared wire/session capability fields. |
-| `setCapabilityField` | `handlers/system/capabilities.go` | Maps a wire name to its struct fields. |
-| `buildCapabilitiesResponse` | `handlers/system/capabilities.go` | Iterates the registry and fills the struct. |
-| `CapabilitySpecByName` | `handlers/system/capabilities.go` | Lookup used by the install runner. |
-| `CapabilitiesResponse` | `apischema/models.go` | Exported API contract type (pointer errors), reflected into TypeScript. |
+| `setCapabilityField` | `handlers/capabilities/response.go` | Maps a wire name to its struct fields. |
+| `buildCapabilitiesResponse` | `handlers/capabilities/response.go` | Iterates the registry and fills the struct. |
+| `CapabilitySpecByName` | `handlers/capabilities/registry.go` | Lookup used by the install runner. |
+| `CapabilitiesResponse` | `apischema/capabilities.go` | Exported API contract type (pointer errors), reflected into TypeScript. |
 | `runInstallCapabilityJob` | `handlers/packages/install_capability.go` | The `system.install_capability` runner. |
 
 ### Detection
@@ -80,7 +80,7 @@ the error/unavailable shaping stays consistent:
   error when absent.
 
 Detection lives next to the feature where possible (e.g.
-`docker.CheckDockerAvailability`, `storage.CheckNFSClientAvailability`), or is
+`CheckDockerAvailability` in `handlers/docker`, `CheckNFSClientAvailability` in `handlers/storage`; the registry calls them), or is
 inlined for a plain binary check:
 
 ```go
@@ -96,7 +96,7 @@ inlined for a plain binary check:
 
 ### Anti-drift test
 
-`TestCapabilityRegistryCoversWireFields` (`capabilities_test.go`) asserts that
+`TestCapabilityRegistryCoversWireFields` (`registry_test.go`) asserts that
 every `<prefix>_available` field on `session.CapabilitiesAvailable` has a
 matching registry entry and vice versa. `TestSetCapabilityFieldRoundTrips`
 checks that `setCapabilityField` writes only the intended capability's fields.
@@ -159,8 +159,8 @@ PackageKit capability itself).
 | `capabilityStateFromWire` | `api/capabilities.ts` | Maps the wire response into tri-state auth state. |
 | `useCapability` | `hooks/useCapabilities.ts` | Per-capability `{ status, isEnabled, reason }`. |
 | `hasAccessPolicy` / `useAccessContext` | `hooks/useCapabilities.ts` | Evaluate a route's access policy. |
-| `AuthContext` | `contexts/AuthContext.tsx` | Seeds cached state on reload; refreshes `get_capabilities` asynchronously after mux open, persists valid results, and exposes state. |
-| `CapabilityManagerSection` | `components/navbar/CapabilityManagerSection.tsx` | Lists capabilities, shows status, offers Install. |
+| `AuthProvider` | `contexts/AuthProvider.tsx` | Seeds cached state on reload; refreshes `get_capabilities` asynchronously after mux open, persists valid results, and exposes state. |
+| `CapabilityManagerSection` | `routes/_authenticated/settings/-components/CapabilityManagerSection.tsx` | Lists capabilities, shows status, offers Install. |
 
 A `CapabilityDef` (see the interface in `api/capabilities.ts` for the full set):
 
@@ -321,7 +321,7 @@ Worked example: the `wireguard` capability.
 
 ```bash
 make generate                              # regenerates the TS contract
-make test-go-quiet GO_TEST_PKGS=./bridge/handlers/system # registry + detection tests
+make test-go-quiet GO_TEST_PKGS=./bridge/handlers/capabilities # registry + detection tests
 make tsc-only                              # derived capability types compile
 ```
 

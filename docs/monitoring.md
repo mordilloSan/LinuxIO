@@ -47,8 +47,8 @@ counters any local process can read from `/proc` and `/sys`, so the socket
 matches the loopback-TCP default the fork shipped with and the visibility of the
 files it samples. `control.sock` is mode `0600` and additionally checks
 `SO_PEERCRED` on every connection, rejecting any peer whose uid is not `0` with
-`403 Forbidden` (`requireRootPeer` in
-`backend/monitoring/internal/app/peer_gate.go`, over the
+`403 Forbidden` (`RequireRootPeer` in
+`backend/monitoring/internal/httpapi/peer_gate.go`, over the
 `backend/common/peercred` helper — the same uid gate the indexer applies on its
 own socket). Commands are served only there; no configured listener ever mounts
 `/api/v1/command`.
@@ -59,14 +59,20 @@ own socket). Commands are served only there; no configured listener ever mounts
 | History persistence, aggregation, retention, maintenance | `linuxio-monitoring` SQLite store |
 | Read-only metrics API and optional outside consumers | `linuxio-monitoring` listeners |
 | Commands: config, status, SMART refresh, database checks | `linuxio-monitoring` control socket, root peers only |
-| Live wire types and socket constants shared by daemon and bridge | `backend/monitoring/api` |
+| Complete wire contract shared by daemon and bridge: routes, socket constants, command and response envelopes, live, history and process types | `backend/monitoring/api` |
 | Unix-socket clients and LinuxIO API adapters | `backend/bridge/handlers/monitoring` |
 | Public generated bridge contract | `backend/bridge/apischema` |
 | Hardware identity that needs a shutdown to change | `linuxio-bridge`, cached per session |
 | Browser transport relay | `linuxio-webserver` |
 
 Only `backend/monitoring/api` is importable outside the daemon; everything else
-lives under `backend/monitoring/internal`.
+lives under `backend/monitoring/internal`: `app` (runtime, live and handoff),
+`collector` (one package per collector plus the shared tick key, reseed policy
+and single-flight helper), `live` (live payload assembly), `plugins` (plugin
+catalogue, payload types, history parsing and averaging), `store` (SQLite
+persistence only), `httpapi` (listeners and the root-peer gate), `config`
+(YAML schema, `policy.go` defaults and limits, `env.go` environment knobs),
+`daemon` and `cli` (command line), `deltatracker` and `units`.
 
 ## Installed files and units
 
@@ -88,8 +94,10 @@ and restarts `on-failure`. `ExecReload` sends `SIGHUP`. systemd owns
 paths. The daemon is not socket-activated and has no idle exit: history has to
 be sampled whether or not a browser is connected.
 
-The database path is fixed. There is no path setting and no command-line flag
-for it; tests pass temporary directories straight to the internal store.
+The data directory is fixed (`config.DataDir`, `/var/lib/linuxio/monitoring`).
+There is no path setting and no command-line flag for it; the daemon creates
+the directory at startup and fails fast if it cannot, and tests pass temporary
+directories straight to the internal store.
 
 ## Command line
 
@@ -123,20 +131,21 @@ own sample key and its own delta baseline. Two rules apply to every live key:
    in flight; otherwise it collects. `captured_at` (or `captured_at_ms`) reports
    the sample's own time, not the request time. One dashboard polling several
    cards therefore causes at most one collection per second, and several
-   dashboards share it. See `liveReuseWindow` in
-   `backend/monitoring/internal/app/live_reuse.go`.
+   dashboards share it. See `ReuseWindow` in
+   `backend/monitoring/internal/live` and its use in
+   `backend/monitoring/internal/app/live.go`.
 2. **A stale baseline reseeds from the collector.** When a live key's delta
    baseline is older than the last collector tick *and* that tick is itself at
    least one second old, that tick's counters replace the baseline before the
    delta is computed. A first request after an idle period averages over at most
    one collector interval instead of the whole idle time, and a key's first
-   sample has a real window; the one-second condition (`reseedMinWindow` in
-   `backend/monitoring/internal/app/reseed.go`, duplicated in the docker package
-   because it cannot import `app`) keeps a request that arrived just after a
+   sample has a real window; the one-second condition (`collector.ReseedMinWindow` in
+   `backend/monitoring/internal/collector/reseed.go`, shared by every manager)
+   keeps a request that arrived just after a
    tick off a millisecond-wide window, which would read as zero CPU or as a rate
    amplified by 1000/δ. Each manager carries its own reseed helper:
-   `reseedCPUFromCollector` for cpu, `networkManager.reseedFromCollector` and
-   `fsManager.reseedFromCollector` for network and disk, and
+   `reseedCPUFromCollector` for cpu, `network.Manager.reseedFromCollector` and
+   `disk.Manager.reseedFromCollector` for network and disk, and
    `docker.Manager.ReseedFromCollector` for containers.
 
 No live result is retained beyond the one-second window. A live request that
@@ -173,7 +182,7 @@ JSON error body.
 | Method and path | Purpose |
 |-----------------|---------|
 | `GET /healthz` | Collector liveness: `healthy`, `last_updated`, `age_seconds` |
-| `GET /api/v1/meta` | Version, data directory, database path, live listeners, intervals, retention |
+| `GET /api/v1/meta` | Version, data directory, database path and size (`db_size_bytes`), live listeners, intervals, retention |
 | `GET /api/v1/plugins` | Plugins mounted on this listener and their routes |
 | `GET /api/v1/all` | Current sample for every mounted plugin |
 | `GET /api/v1/{plugin}` | Current sample for one plugin |
@@ -305,7 +314,8 @@ running ones.
 `/etc/linuxio/monitoring/config.yaml` is strict YAML parsed with the
 repository's `goccy/go-yaml` (`backend/monitoring/internal/config/config.go`).
 Unknown keys, multiple documents and invalid values are rejected; an absent file
-means defaults, which the daemon then writes. The defaults are:
+means defaults, which the daemon then writes. The defaults live in
+`backend/monitoring/internal/config/policy.go` and are:
 
 ```yaml
 version: 1
@@ -360,7 +370,9 @@ fields; a bad file leaves the running configuration untouched and logs the
 error.
 
 The fork's remaining knobs stay environment-only and are not exposed in the UI,
-because they are host facts rather than timings: `NICS` (interface filter),
+because they are host facts rather than timings. The complete list is the
+constants in `backend/monitoring/internal/config/env.go`; nothing else in the
+daemon reads the environment (there are no `DATA_DIR` or `HISTORY` variables): `NICS` (interface filter),
 `SENSORS`, `SYS_SENSORS`, `PRIMARY_SENSOR` and `SENSORS_TIMEOUT`,
 `GPU_COLLECTOR`, `SKIP_GPU` and `INTEL_GPU_DEVICE`, `SMART_DEVICES`,
 `SMART_DEVICES_SEPARATOR` and `EXCLUDE_SMART`, `EXTRA_FILESYSTEMS` and
@@ -376,7 +388,7 @@ client speaks plain HTTP. `allow_remote_commands` does not exist.
 The `monitoring` capability ships with LinuxIO and is not installable from
 Capability Manager. Detection is a `GET /healthz` on `api.sock`
 (`checkMonitoringAvailability` in
-`backend/bridge/handlers/system/capabilities.go`), so the capability reports
+`backend/bridge/handlers/capabilities/probes.go`), so the capability reports
 whether the daemon is running and has produced a sample, nothing about
 packages.
 
@@ -447,5 +459,3 @@ delete, so the old history stays available for inspection.
 - [Capabilities](capabilities.md) — detection, gating and the install flow.
 - [Filesystem Indexer](indexer.md) — the other first-party daemon, same socket
   and privilege pattern.
-- [linuxio-monitoring plan](TODO/linuxio-monitoring.md) — the approved design
-  and implementation record.

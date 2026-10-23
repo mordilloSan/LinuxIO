@@ -12,7 +12,7 @@ type ProviderComponent = ComponentType<{ children: ReactNode }>;
 
 type ProviderProps = Record<string, unknown> & { key?: Key };
 
-export type ProviderEntry =
+type ProviderEntry =
   | ProviderComponent
   | readonly [ProviderComponent, ProviderProps];
 

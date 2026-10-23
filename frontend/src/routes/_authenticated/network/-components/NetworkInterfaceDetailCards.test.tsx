@@ -5,7 +5,7 @@ import type {
   MonitoringNetworkHistoryPoint,
   NetworkInterface,
 } from "@/api";
-import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
+import NetworkInterfaceCard from "@/routes/_authenticated/network/-components/NetworkInterfaceCard";
 import { testNetworkInterface } from "@/test/networkInterface";
 import { render, screen } from "@/test/render";
 

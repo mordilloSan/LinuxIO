@@ -12,10 +12,11 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // RulesPath is the root-owned automatic-snapshot rule file. Tests may override it.
-var RulesPath = "/etc/linuxio/btrfs-snapshots.json"
+var RulesPath = version.ConfigDir + "/btrfs-snapshots.json"
 
 const rulesLockWait = 10 * time.Second
 

@@ -1,10 +1,9 @@
 import { useState } from "react";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
-import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
-import UnsavedChangesDialog from "@/components/filebrowser/UnsavedChangesDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
+import ConfirmDialog from "@/components/ui/AppConfirmDialog";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -13,6 +12,7 @@ import {
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
+import UnsavedChangesDialog from "@/components/ui/AppUnsavedChangesDialog";
 
 import "@fontsource-variable/inter/wght.css";
 

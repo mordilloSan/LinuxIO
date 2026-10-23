@@ -13,10 +13,12 @@ import (
 	"strings"
 	"time"
 	"uuid"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // ReplicationPath is the root-owned replication job file. Tests may override it.
-var ReplicationPath = "/etc/linuxio/btrfs-replication.json"
+var ReplicationPath = version.ConfigDir + "/btrfs-replication.json"
 
 // Replication target kinds.
 const (

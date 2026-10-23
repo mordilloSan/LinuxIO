@@ -17,9 +17,9 @@ import {
   appendUserMessage,
   applySessionUpdate,
   type TranscriptBlock,
-} from "./transcript";
+} from "./transcript/transcript";
 
-export type AssistantStatus =
+type AssistantStatus =
   | "idle"
   | "connecting"
   | "ready"
@@ -28,7 +28,7 @@ export type AssistantStatus =
   | "stopped"
   | "error";
 
-export interface PendingPermission {
+interface PendingPermission {
   request: acp.RequestPermissionRequest;
   resolve(response: acp.RequestPermissionResponse): void;
 }

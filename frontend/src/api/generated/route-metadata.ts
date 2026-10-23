@@ -253,7 +253,6 @@ export const ROUTE_MODES = {
   "system.get_server_time": "call",
   "system.get_system_info": "call",
   "system.get_timezones": "call",
-  "system.get_updates_fast": "call",
   "system.install_capability": "task",
   "system.list_failed_login_events": "call",
   "systemd.disable_service": "call",

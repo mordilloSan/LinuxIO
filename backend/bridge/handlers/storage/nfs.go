@@ -14,6 +14,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -42,7 +43,7 @@ func isNFSFSType(fstype string) bool {
 
 func checkNFSCommands(commands []string) (bool, error) {
 	for _, command := range commands {
-		if _, err := findMountCommand(command); err != nil {
+		if _, err := hostcmd.LookPath(command); err != nil {
 			return false, fmt.Errorf("%s not found (install %s)", command, nfsCommandInstallHint(command))
 		}
 	}
@@ -120,7 +121,7 @@ func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 	}
 	// Run showmount -e to list exports.
 	slog.Debug("querying NFS exports", "server", server)
-	showmount, err := findMountCommand("showmount")
+	showmount, err := hostcmd.LookPath("showmount")
 	if err != nil {
 		return nil, fmt.Errorf("%s not found (install %s)", "showmount", nfsCommandInstallHint("showmount"))
 	}

@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { createFileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
 import { FolderIcon } from "@/icons/svg";
 import { LOADER_FRESHNESS, loadRouteQueries } from "@/routes/-loader";
 import {
@@ -10,6 +9,7 @@ import {
 } from "@/routes/-search";
 
 import FileBrowserPage from "./-components/FileBrowserPage";
+import { createFileBrowserListingQueryOptions } from "./-hooks/fileBrowserListingQueryOptions";
 
 export const Route = createFileRoute("/_authenticated/filebrowser/$")({
   validateSearch: (search) => ({

@@ -20,17 +20,18 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 )
 
 const maxDockerResourceEntries = 256
 
 // List all volumes
 func ListVolumes(ctx context.Context) ([]apischema.DockerVolume, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return listVolumes(ctx, cli)
 }
 
@@ -209,11 +210,11 @@ type volumeRemover interface {
 
 // DeleteVolume removes an unused volume. Docker owns the in-use check.
 func DeleteVolume(ctx context.Context, name string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return deleteVolume(ctx, cli, name)
 }
 
@@ -236,11 +237,11 @@ func CreateVolume(ctx context.Context, request apischema.DockerVolumeCreateReque
 	if err != nil {
 		return bridgeipc.NewError(err.Error(), 400)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	if _, err := cli.VolumeCreate(ctx, options); err != nil {
 		return fmt.Errorf("failed to create volume %q: %w", options.Name, err)

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 )
 
 // ==== Logic ====
@@ -16,12 +17,12 @@ func FetchBaseboardInfo(ctx context.Context) (apischema.MotherboardInfo, error) 
 	if err := ctx.Err(); err != nil {
 		return apischema.MotherboardInfo{}, err
 	}
-	return motherboardInfoCache.get(func() (apischema.MotherboardInfo, error) {
+	return motherboardInfoCache.Get(func() (apischema.MotherboardInfo, error) {
 		return fetchBaseboardInfo(ctx, "/sys/class/dmi/id")
 	})
 }
 
-var motherboardInfoCache hwSnapshotCache[apischema.MotherboardInfo]
+var motherboardInfoCache hwprobe.SnapshotCache[apischema.MotherboardInfo]
 
 func fetchBaseboardInfo(ctx context.Context, basePath string) (apischema.MotherboardInfo, error) {
 	if err := ctx.Err(); err != nil {

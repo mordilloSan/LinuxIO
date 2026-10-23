@@ -17,6 +17,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -54,7 +55,7 @@ type cifsMountParams struct {
 // CheckCIFSClientAvailability reports whether the SMB client mount helper
 // (mount.cifs, from cifs-utils) is installed.
 func CheckCIFSClientAvailability() (bool, error) {
-	if _, err := findMountCommand("mount.cifs"); err != nil {
+	if _, err := hostcmd.LookPath("mount.cifs"); err != nil {
 		return false, fmt.Errorf("mount.cifs not found (install cifs-utils)")
 	}
 	return true, nil
@@ -90,7 +91,7 @@ func ListCIFSShares(ctx context.Context, server string) ([]string, error) {
 	if !validHostname.MatchString(server) {
 		return nil, fmt.Errorf("invalid SMB server hostname")
 	}
-	smbclient, err := findMountCommand("smbclient")
+	smbclient, err := hostcmd.LookPath("smbclient")
 	if err != nil {
 		return nil, fmt.Errorf("smbclient not found (install smbclient or samba-client)")
 	}

@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  ReorderableSurface,
-  ReorderableSurfaceDndProps,
-} from "@/hooks/useReorderableSurface";
 import { render } from "@/test/render";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 
 import ReorderableCardGrid from "./ReorderableCardGrid";
+import type {
+  ReorderableSurface,
+  ReorderableSurfaceDndProps,
+} from "./useReorderableSurface";
 
 vi.mock("@/components/cards/SortableCard", () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,

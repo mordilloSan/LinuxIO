@@ -8,6 +8,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/appupdate"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/config"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/datetime"
@@ -33,62 +34,62 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 )
 
-type Family struct {
-	Name     string
+type family struct {
 	Routes   []apischema.RouteSpec
 	Register func(runtime.Runtime, *bridgeipc.Router)
 }
 
-var Families = []Family{
-	{Name: "appupdate", Routes: appupdate.Routes, Register: appupdate.RegisterHandlers},
-	{Name: "system", Routes: system.Routes, Register: system.RegisterHandlers},
-	{Name: "accounts", Routes: accounts.Routes, Register: accounts.RegisterHandlers},
-	{Name: "docker", Routes: docker.Routes, Register: docker.RegisterHandlers},
-	{Name: "filebrowser", Routes: filebrowser.Routes, Register: filebrowser.RegisterHandlers},
-	{Name: "indexer", Routes: indexer.Routes, Register: indexer.RegisterHandlers},
-	{Name: "monitoring", Routes: monitoring.Routes, Register: monitoring.RegisterHandlers},
-	{Name: "config", Routes: config.Routes, Register: config.RegisterHandlers},
-	{Name: "control", Routes: control.Routes, Register: control.RegisterHandlers},
-	{Name: "power", Routes: power.Routes, Register: power.RegisterHandlers},
-	{Name: "systemd", Routes: systemd.Routes, Register: systemd.RegisterHandlers},
-	{Name: "hostname", Routes: hostname.Routes, Register: hostname.RegisterHandlers},
-	{Name: "datetime", Routes: datetime.Routes, Register: datetime.RegisterHandlers},
-	{Name: "network", Routes: network.Routes, Register: network.RegisterHandlers},
-	{Name: "packages", Routes: packages.Routes, Register: packages.RegisterHandlers},
-	{Name: "terminal", Routes: terminal.Routes, Register: terminal.RegisterHandlers},
-	{Name: "assistant", Routes: assistant.Routes, Register: assistant.RegisterHandlers},
-	{Name: "virt", Routes: virt.Routes, Register: virt.RegisterHandlers},
-	{Name: "wireguard", Routes: wireguard.Routes, Register: wireguard.RegisterHandlers},
-	{Name: "storage", Routes: storage.Routes, Register: storage.RegisterHandlers},
-	{Name: "schedules", Routes: schedules.Routes, Register: schedules.RegisterHandlers},
-	{Name: "alerts", Routes: alerts.Routes, Register: alerts.RegisterHandlers},
-	{Name: "shares", Routes: shares.Routes, Register: shares.RegisterHandlers},
-	{Name: "logs", Routes: logs.Routes, Register: logs.RegisterHandlers},
-	{Name: "tasks", Routes: tasks.Routes, Register: tasks.RegisterHandlers},
+var families = []family{
+	{Routes: appupdate.Routes, Register: appupdate.RegisterHandlers},
+	{Routes: system.Routes, Register: system.RegisterHandlers},
+	{Routes: capabilities.Routes, Register: capabilities.RegisterHandlers},
+	{Routes: accounts.Routes, Register: accounts.RegisterHandlers},
+	{Routes: docker.Routes, Register: docker.RegisterHandlers},
+	{Routes: filebrowser.Routes, Register: filebrowser.RegisterHandlers},
+	{Routes: indexer.Routes, Register: indexer.RegisterHandlers},
+	{Routes: monitoring.Routes, Register: monitoring.RegisterHandlers},
+	{Routes: config.Routes, Register: config.RegisterHandlers},
+	{Routes: control.Routes, Register: control.RegisterHandlers},
+	{Routes: power.Routes, Register: power.RegisterHandlers},
+	{Routes: systemd.Routes, Register: systemd.RegisterHandlers},
+	{Routes: hostname.Routes, Register: hostname.RegisterHandlers},
+	{Routes: datetime.Routes, Register: datetime.RegisterHandlers},
+	{Routes: network.Routes, Register: network.RegisterHandlers},
+	{Routes: packages.Routes, Register: packages.RegisterHandlers},
+	{Routes: terminal.Routes, Register: terminal.RegisterHandlers},
+	{Routes: assistant.Routes, Register: assistant.RegisterHandlers},
+	{Routes: virt.Routes, Register: virt.RegisterHandlers},
+	{Routes: wireguard.Routes, Register: wireguard.RegisterHandlers},
+	{Routes: storage.Routes, Register: storage.RegisterHandlers},
+	{Routes: schedules.Routes, Register: schedules.RegisterHandlers},
+	{Routes: alerts.Routes, Register: alerts.RegisterHandlers},
+	{Routes: shares.Routes, Register: shares.RegisterHandlers},
+	{Routes: logs.Routes, Register: logs.RegisterHandlers},
+	{Routes: tasks.Routes, Register: tasks.RegisterHandlers},
 }
 
-var Routes = collectRoutes(Families)
+var Routes = collectRoutes(families)
 
 func RegisterAllHandlers(rt runtime.Runtime) *bridgeipc.Router {
 	router := bridgeipc.NewRouter(bridgeipc.DefaultTaskService)
 
-	for _, family := range Families {
-		if family.Register != nil {
-			family.Register(rt, router)
+	for _, f := range families {
+		if f.Register != nil {
+			f.Register(rt, router)
 		}
 	}
 
 	return router
 }
 
-func collectRoutes(families []Family) []apischema.RouteSpec {
+func collectRoutes(families []family) []apischema.RouteSpec {
 	total := 0
-	for _, family := range families {
-		total += len(family.Routes)
+	for _, f := range families {
+		total += len(f.Routes)
 	}
 	routes := make([]apischema.RouteSpec, 0, total)
-	for _, family := range families {
-		routes = append(routes, family.Routes...)
+	for _, f := range families {
+		routes = append(routes, f.Routes...)
 	}
 	sort.Slice(routes, func(i, j int) bool { return routes[i].Route < routes[j].Route })
 	return routes

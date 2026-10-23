@@ -18,14 +18,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/app"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/defaults"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/store"
-)
-
-const (
-	CurrentVersion = 1
-	DefaultPath    = "/etc/linuxio/monitoring/config.yaml"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 )
 
 // Duration serialises as a Go duration string in YAML and JSON.
@@ -102,19 +95,17 @@ type View struct {
 	Listeners            []Listener        `json:"listeners"`
 }
 
-const defaultDiskUsageCache = 0 // re-read usage on every collection; set to keep sleeping disks asleep
-
 func Default() Config {
 	return Config{
 		Version: CurrentVersion,
 		Collector: Collector{
-			Interval:             Duration(defaults.CollectorInterval),
-			SmartRefreshInterval: Duration(defaults.SmartRefreshInterval),
-			DiskUsageCache:       Duration(defaultDiskUsageCache),
+			Interval:             Duration(DefaultCollectorInterval),
+			SmartRefreshInterval: Duration(DefaultSmartRefreshInterval),
+			DiskUsageCache:       Duration(DefaultDiskUsageCache),
 		},
 		History: History{
-			Retention: Duration(store.DefaultHistoryRetention()),
-			Plugins:   store.DefaultHistoryPluginNames(),
+			Retention: Duration(DefaultHistoryRetention),
+			Plugins:   plugins.DefaultHistory(),
 		},
 		Listeners: []Listener{},
 	}
@@ -256,10 +247,10 @@ func Validate(cfg Config) error {
 	if cfg.History.Retention.Duration() <= 0 {
 		return errors.New("history.retention must be greater than zero")
 	}
-	if _, err := store.ParseHistoryPlugins(cfg.HistoryString(), true); err != nil {
+	if _, err := plugins.ParseHistory(cfg.HistoryString()); err != nil {
 		return fmt.Errorf("history.plugins: %w", err)
 	}
-	if _, err := store.HistoryEvery(cfg.HistoryIntervalDurations(), cfg.Collector.Interval.Duration()); err != nil {
+	if _, err := plugins.HistoryEvery(cfg.HistoryIntervalDurations(), cfg.Collector.Interval.Duration()); err != nil {
 		return fmt.Errorf("history.intervals: %w", err)
 	}
 	return validateListeners(cfg.Listeners)
@@ -302,10 +293,10 @@ func validateListenerAddress(i int, listener Listener, seenAddresses map[string]
 	if address == "" {
 		return fmt.Errorf("listeners[%d].address cannot be empty", i)
 	}
-	if app.IsListenDisabled(address) {
+	if IsListenDisabled(address) {
 		return fmt.Errorf("listeners[%d].address cannot be disabled", i)
 	}
-	network, addr := app.SplitListenAddress(app.GetAddress(address))
+	network, addr := SplitListenAddress(GetAddress(address))
 	if network == "unix" {
 		if _, reserved := reservedSocketPaths[addr]; reserved {
 			return fmt.Errorf("listeners[%d].address %q is reserved for LinuxIO", i, address)
@@ -329,11 +320,11 @@ func validateListenerAddress(i int, listener Listener, seenAddresses map[string]
 	return nil
 }
 
-func validateListenerPlugins(i int, plugins []string) error {
+func validateListenerPlugins(i int, names []string) error {
 	seenPlugins := map[string]bool{}
-	for _, plugin := range plugins {
+	for _, plugin := range names {
 		plugin = strings.ToLower(strings.TrimSpace(plugin))
-		if !store.IsPluginName(plugin) {
+		if !plugins.IsName(plugin) {
 			return fmt.Errorf("listeners[%d].plugins: unknown plugin %q", i, plugin)
 		}
 		if seenPlugins[plugin] {

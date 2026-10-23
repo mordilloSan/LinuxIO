@@ -197,12 +197,13 @@ const renderedJsxValues = (component: FunctionSource): Set<string> => {
   return names;
 };
 
-const dashboardCardFile = "components/cards/DashboardCard.tsx";
+const dashboardCardFile = "routes/_authenticated/-dashboard/DashboardCard.tsx";
 const dashboardRoute = (file: string) =>
   `routes/_authenticated/-dashboard/${file}.tsx`;
-const dockerContainerCardFile = "components/cards/ContainerCard.tsx";
+const dockerContainerCardFile =
+  "routes/_authenticated/docker/-components/cards/ContainerCard.tsx";
 const dockerContainerListFile =
-  "routes/_authenticated/docker/-components/ContainerList.tsx";
+  "routes/_authenticated/docker/-components/containers/ContainerList.tsx";
 
 const hookContracts: HookContract[] = [
   // Shared dashboard shell and its query-free owners.
@@ -287,16 +288,16 @@ const hookContracts: HookContract[] = [
     hooks: { useQuery: 1 },
   },
   {
-    file: "components/cards/NetworkInterfaceCard.tsx",
+    file: "routes/_authenticated/network/-components/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceCard",
   },
   {
-    file: "components/cards/NetworkInterfaceCard.tsx",
+    file: "routes/_authenticated/network/-components/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceCardContent",
     hooks: { useQuery: 1 },
   },
   {
-    file: "components/cards/NetworkInterfaceCard.tsx",
+    file: "routes/_authenticated/network/-components/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceRates",
     hooks: { useQuery: 1 },
   },
@@ -307,21 +308,24 @@ const hookContracts: HookContract[] = [
     name: "InterfaceClients",
     hooks: { useQuery: 2 },
   },
-  { file: "components/cards/WireguardPeerCard.tsx", name: "WireguardPeerCard" },
   {
-    file: "components/cards/WireguardPeerCard.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
+    name: "WireguardPeerCard",
+  },
+  {
+    file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
     name: "WireguardPeerStatus",
   },
   {
-    file: "components/cards/WireguardPeerCard.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
     name: "WireguardPeerStats",
   },
   {
-    file: "components/cards/WireguardPeerCard.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
     name: "WireguardPeerToggle",
   },
   {
-    file: "components/cards/WireguardPeerCard.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
     name: "usePeer",
     hooks: { useQuery: 1 },
   },
@@ -333,11 +337,11 @@ const hookContracts: HookContract[] = [
     hooks: { useSuspenseQuery: 1 },
   },
   {
-    file: "components/cards/SensorGroupCard.tsx",
+    file: "routes/_authenticated/hardware/-components/SensorGroupCard.tsx",
     name: "SensorGroupCardShell",
   },
   {
-    file: "components/cards/SensorGroupCard.tsx",
+    file: "routes/_authenticated/hardware/-components/SensorGroupCard.tsx",
     name: "SensorGroupCardLive",
     hooks: { useQuery: 1 },
   },
@@ -409,17 +413,23 @@ const hookContracts: HookContract[] = [
     name: "MountTable",
     hooks: { useSuspenseQuery: 1 },
   },
-  { file: "components/cards/MountCard.tsx", name: "MountCard" },
   {
-    file: "components/cards/MountCard.tsx",
+    file: "routes/_authenticated/storage/-components/shares/MountCard.tsx",
+    name: "MountCard",
+  },
+  {
+    file: "routes/_authenticated/storage/-components/shares/MountCard.tsx",
     name: "MountCardLiveContent",
     hooks: { useQuery: 1 },
   },
 
   // Standalone unit panel shell and its sole polling body.
-  { file: "components/cards/UnitInfoPanelCard.tsx", name: "UnitInfoPanel" },
   {
-    file: "components/cards/UnitInfoPanelCard.tsx",
+    file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
+    name: "UnitInfoPanel",
+  },
+  {
+    file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
     name: "UnitInfoPanelLive",
     hooks: { useSuspenseQuery: 1 },
   },
@@ -519,7 +529,7 @@ const selectContracts: SelectContract[] = [
     select: "selectNetworkInterface",
   },
   {
-    file: "components/cards/NetworkInterfaceCard.tsx",
+    file: "routes/_authenticated/network/-components/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceCardContent",
     hook: "useQuery",
     select: "selectNetworkInterface",
@@ -531,7 +541,7 @@ const selectContracts: SelectContract[] = [
     select: "selectPeerIdentities",
   },
   {
-    file: "components/cards/WireguardPeerCard.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
     name: "usePeer",
     hook: "useQuery",
     select: "selectPeer",
@@ -543,7 +553,7 @@ const selectContracts: SelectContract[] = [
     select: "selectLiveSensorGroupIdentities",
   },
   {
-    file: "components/cards/SensorGroupCard.tsx",
+    file: "routes/_authenticated/hardware/-components/SensorGroupCard.tsx",
     name: "SensorGroupCardLive",
     hook: "useQuery",
     select: "selectGroup",
@@ -555,7 +565,7 @@ const selectContracts: SelectContract[] = [
     select: "selectMountIdentities",
   },
   {
-    file: "components/cards/MountCard.tsx",
+    file: "routes/_authenticated/storage/-components/shares/MountCard.tsx",
     name: "MountCardLiveContent",
     hook: "useQuery",
     select: "selectMount",
@@ -591,7 +601,7 @@ const edgeContracts: EdgeContract[] = [
     renders: ["ContainerResourceDetails"],
   },
   {
-    file: "components/docker/ContainerResourceDetails.tsx",
+    file: "routes/_authenticated/docker/-components/containers/ContainerResourceDetails.tsx",
     name: "ContainerResourceDetails",
     renders: ["ContainerCard"],
   },
@@ -615,7 +625,7 @@ const edgeContracts: EdgeContract[] = [
     ],
   },
   {
-    file: "components/cards/NetworkInterfaceCard.tsx",
+    file: "routes/_authenticated/network/-components/NetworkInterfaceCard.tsx",
     name: "NetworkInterfaceCard",
     renders: ["FrostedCard", "NetworkInterfaceCardContent"],
   },
@@ -625,7 +635,7 @@ const edgeContracts: EdgeContract[] = [
     renders: ["WireguardPeerCard"],
   },
   {
-    file: "components/cards/WireguardPeerCard.tsx",
+    file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
     name: "WireguardPeerCard",
     renders: [
       "FrostedCard",
@@ -640,7 +650,7 @@ const edgeContracts: EdgeContract[] = [
     renders: ["SensorGroupCard"],
   },
   {
-    file: "components/cards/SensorGroupCard.tsx",
+    file: "routes/_authenticated/hardware/-components/SensorGroupCard.tsx",
     name: "SensorGroupCardShell",
     renders: ["FrostedCard", "SensorGroupCardLive"],
   },
@@ -680,12 +690,12 @@ const edgeContracts: EdgeContract[] = [
     renders: ["MountCard"],
   },
   {
-    file: "components/cards/MountCard.tsx",
+    file: "routes/_authenticated/storage/-components/shares/MountCard.tsx",
     name: "MountCard",
     renders: ["FrostedCard", "MountCardLiveContent"],
   },
   {
-    file: "components/cards/UnitInfoPanelCard.tsx",
+    file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
     name: "UnitInfoPanel",
     renders: ["FrostedCard", "UnitInfoPanelLive"],
   },
@@ -738,7 +748,8 @@ describe("card query ownership", () => {
   });
 
   it("keeps WireGuard live children on the selected peer cache observer", () => {
-    const file = "components/cards/WireguardPeerCard.tsx";
+    const file =
+      "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx";
     const shell = findNamedFunction({ file, name: "WireguardPeerCard" });
     expect(
       directCalls(shell, new Set(["usePeer"])),
@@ -772,20 +783,23 @@ describe("card query ownership", () => {
         name: "NetworkInterfaceConfigurationCards",
       },
       {
-        file: "components/cards/NetworkInterfaceCard.tsx",
+        file: "routes/_authenticated/network/-components/NetworkInterfaceCard.tsx",
         name: "NetworkInterfaceCardContent",
       },
       {
-        file: "components/cards/NetworkInterfaceCard.tsx",
+        file: "routes/_authenticated/network/-components/NetworkInterfaceCard.tsx",
         name: "NetworkInterfaceRates",
       },
-      { file: "components/cards/WireguardPeerCard.tsx", name: "usePeer" },
       {
-        file: "components/cards/SensorGroupCard.tsx",
+        file: "routes/_authenticated/network/-components/wireguard/WireguardPeerCard.tsx",
+        name: "usePeer",
+      },
+      {
+        file: "routes/_authenticated/hardware/-components/SensorGroupCard.tsx",
         name: "SensorGroupCardLive",
       },
       {
-        file: "components/cards/MountCard.tsx",
+        file: "routes/_authenticated/storage/-components/shares/MountCard.tsx",
         name: "MountCardLiveContent",
       },
       {
@@ -845,7 +859,7 @@ describe("card query ownership", () => {
         name: "MountTable",
       },
       {
-        file: "components/cards/UnitInfoPanelCard.tsx",
+        file: "routes/_authenticated/services/-components/UnitInfoPanel.tsx",
         name: "UnitInfoPanelLive",
       },
       {

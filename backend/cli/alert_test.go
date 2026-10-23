@@ -77,7 +77,8 @@ func TestAutoUpdateAlertPolicyMatrix(t *testing.T) {
 	}
 }
 
-func TestAutoUpdateAlertTruncatesLongPackageList(t *testing.T) {
+// The message is cut to alerts.MaxMessageLen by alerts.Raise, not here.
+func TestAutoUpdateAlertLongPackageList(t *testing.T) {
 	pkgs := make([]string, 0, 1000)
 	for range 1000 {
 		pkgs = append(pkgs, "package-with-a-long-name-"+strings.Repeat("x", 20))
@@ -86,14 +87,8 @@ func TestAutoUpdateAlertTruncatesLongPackageList(t *testing.T) {
 	if !ok {
 		t.Fatal("expected an alert")
 	}
-	if len(got.Message) > alerts.MaxMessageLen {
-		t.Fatalf("message length %d exceeds %d", len(got.Message), alerts.MaxMessageLen)
-	}
-	if !strings.HasSuffix(got.Message, "…") {
-		t.Fatalf("truncated message should end with an ellipsis: %q", got.Message[len(got.Message)-10:])
-	}
-	if !strings.Contains(got.Title, "1000 packages") {
-		t.Fatalf("title = %q", got.Title)
+	if !strings.Contains(got.Title, "1000 packages") || !strings.HasSuffix(got.Message, pkgs[len(pkgs)-1]) {
+		t.Fatalf("title = %q message tail = %q", got.Title, got.Message[len(got.Message)-40:])
 	}
 }
 

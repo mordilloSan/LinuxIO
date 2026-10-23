@@ -10,13 +10,13 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 )
 
 // runUpdates keeps argument and dispatch behavior testable without contacting Docker.
-var runUpdates = docker.RunScheduledContainerUpdates
-var runOperation = docker.RunDurableDockerUpdate
+var runUpdates = dockerupdate.RunScheduled
+var runOperation = dockerupdate.RunDurable
 var configureLogging = logging.Configure
 
 func main() {
@@ -97,7 +97,7 @@ func parseOperationArgs(args []string, stderr io.Writer) (string, bool) {
 }
 
 func parseRunArgs(args []string, stderr io.Writer) (string, bool) {
-	configPath := docker.DockerUpdateConfigPath
+	configPath := dockerupdate.ConfigPath
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--config" {
 			fmt.Fprintf(stderr, "linuxio-docker-update: run: unknown argument %q\n", args[i])

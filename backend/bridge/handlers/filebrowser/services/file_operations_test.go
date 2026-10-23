@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
-
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
@@ -22,7 +20,7 @@ func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
 	dstPath := filepath.Join(tmpDir, "destination-known-size.txt")
 
 	var reported []int64
-	err := MoveFileWithCallbacks(srcFile, dstPath, false, &ipc.OperationCallbacks{
+	err := MoveFileWithCallbacks(srcFile, dstPath, false, &OperationCallbacks{
 		Progress: func(n int64) {
 			reported = append(reported, n)
 		},
@@ -163,7 +161,7 @@ func TestCopyFileWithCallbacksPreservesSymlinks(t *testing.T) {
 
 	destDir := filepath.Join(tmpDir, "dest")
 	var progressed int64
-	err := CopyFileWithCallbacks(srcDir, destDir, false, &ipc.OperationCallbacks{
+	err := CopyFileWithCallbacks(srcDir, destDir, false, &OperationCallbacks{
 		Progress: func(n int64) {
 			progressed += n
 		},
@@ -424,7 +422,7 @@ func TestCopyFileWithCallbacksPreservesHardlinks(t *testing.T) {
 
 	destDir := filepath.Join(tmpDir, "dest")
 	var progressed int64
-	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, &ipc.OperationCallbacks{
+	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, &OperationCallbacks{
 		Progress: func(n int64) { progressed += n },
 	}))
 

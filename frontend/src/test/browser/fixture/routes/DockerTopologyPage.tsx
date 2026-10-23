@@ -5,16 +5,15 @@ import { linuxio } from "@/api";
 import {
   capabilitiesQueryKey,
   wireFromCapabilityState,
-  type CapabilitiesResponse,
 } from "@/api/capabilities";
-import { AuthContext } from "@/contexts/AuthContext";
-import DockerTopologyPage from "@/routes/_authenticated/docker/-components/DockerTopologyPage";
+import { ANONYMOUS_USER_ID } from "@/api/user-scope";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
+import DockerTopologyPage from "@/routes/_authenticated/docker/-components/topology/DockerTopologyPage";
 import {
   topologyLive,
   topologyContainers,
   topologyNetworks,
 } from "@/test/dockerTopologyFixture";
-import type { AuthContextType } from "@/types/auth";
 
 import { seedDockerIcons } from "../dockerIcons";
 
@@ -32,13 +31,13 @@ const auth: AuthContextType = {
   refreshCapabilities: async () =>
     wireFromCapabilityState({
       monitoringAvailable: true,
-    }) as CapabilitiesResponse,
+    }),
   sessionExpired: () => {},
   signIn: async () => {},
   signOut: async () => {},
 };
 queryClient.setQueryData(
-  capabilitiesQueryKey("anonymous"),
+  capabilitiesQueryKey(ANONYMOUS_USER_ID),
   wireFromCapabilityState({ monitoringAvailable: true }),
 );
 queryClient.setQueryData(

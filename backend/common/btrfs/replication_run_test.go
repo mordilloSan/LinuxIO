@@ -447,10 +447,11 @@ func TestRecordReplicationOutcomeCancelledAndTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored[0].LastRun == nil || stored[0].LastError == nil || len(*stored[0].LastError) != alerts.MaxMessageLen {
+	if stored[0].LastRun == nil || stored[0].LastError == nil || len(*stored[0].LastError) != 3*alerts.MaxMessageLen {
 		t.Fatalf("stored = %+v", stored[0])
 	}
-	if doc, _ := alerts.Load(); len(doc.Alerts) != 1 {
+	// LastError keeps the full error; alerts truncates its own copy.
+	if doc, _ := alerts.Load(); len(doc.Alerts) != 1 || len(doc.Alerts[0].Message) > alerts.MaxMessageLen {
 		t.Fatalf("alerts = %+v, want one despite the cancelled ctx", doc.Alerts)
 	}
 }

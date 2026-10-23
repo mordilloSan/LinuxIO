@@ -6,7 +6,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 var Routes = routeBindings(runtime.Runtime{}).Routes()
@@ -14,12 +13,10 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	handlers := systemHandlers{rt: rt}
 	return apischema.Bindings(
-		apischema.Call[apischema.NoRequest, apischema.CapabilitiesResponse]("system.get_capabilities", apischema.RetrySafe()).Handle(handlers.handleGetCapabilities),
 		apischema.Call[apischema.NoRequest, *apischema.CPUInfoResponse]("system.get_cpu_info", apischema.RetrySafe()).Handle(handleGetCPUInfo),
 		apischema.Call[apischema.NoRequest, apischema.MotherboardInfo]("system.get_motherboard_info", apischema.RetrySafe()).Handle(handleGetMotherboardInfo),
 		apischema.Call[apischema.NoRequest, apischema.HostInfo]("system.get_host_info", apischema.RetrySafe()).Handle(handleGetHostInfo),
 		apischema.Call[apischema.NoRequest, []apischema.GpuDevice]("system.get_gpu_info", apischema.RetrySafe()).Handle(handleGetGPUInfo),
-		apischema.Call[apischema.NoRequest, *apischema.UpdatesFastResponse]("system.get_updates_fast").Handle(handleGetUpdatesFast),
 		apischema.Call[apischema.NoRequest, *apischema.SystemInfo]("system.get_system_info", apischema.RetrySafe()).Handle(handleGetSystemInfo),
 		apischema.Call[apischema.NoRequest, []apischema.PCIDevice]("system.get_pci_devices", apischema.RetrySafe()).Handle(handleGetPCIDevices),
 		apischema.Call[apischema.NoRequest, []apischema.MemoryModule]("system.get_memory_modules", apischema.RetrySafe()).Handle(handleGetMemoryModules),
@@ -37,14 +34,6 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	routeBindings(rt).Register(router)
 }
 
-func (h systemHandlers) handleGetCapabilities(ctx context.Context, _ apischema.NoRequest) (apischema.CapabilitiesResponse, error) {
-	var user session.User
-	if h.rt.Session != nil {
-		user = h.rt.Session.User
-	}
-	return buildCapabilitiesResponse(ctx, user)
-}
-
 func handleGetCPUInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.CPUInfoResponse, error) {
 	return FetchCPUInfo(ctx)
 }
@@ -59,10 +48,6 @@ func handleGetHostInfo(ctx context.Context, _ apischema.NoRequest) (apischema.Ho
 
 func handleGetGPUInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.GpuDevice, error) {
 	return FetchGPUInfo(ctx)
-}
-
-func handleGetUpdatesFast(ctx context.Context, _ apischema.NoRequest) (*apischema.UpdatesFastResponse, error) {
-	return GetUpdatesFast(ctx)
 }
 
 func handleGetSystemInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.SystemInfo, error) {

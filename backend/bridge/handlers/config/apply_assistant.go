@@ -6,10 +6,10 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
-func applyAssistantSettingsUpdate(dst *bridgeconfig.Assistant, payload *apischema.ConfigAssistantPayload) error {
+func applyAssistantSettingsUpdate(dst *userconfig.Assistant, payload *apischema.ConfigAssistantPayload) error {
 	if payload.Agent == nil {
 		return nil
 	}

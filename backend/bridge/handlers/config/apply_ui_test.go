@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 func TestApplyUISettingsUpdateUsesReplacementShape(t *testing.T) {
@@ -16,7 +16,7 @@ func TestApplyUISettingsUpdateUsesReplacementShape(t *testing.T) {
 	fontSize := 18
 	primary := "#123456"
 
-	replacement := bridgeconfig.DefaultUIPreferences()
+	replacement := userconfig.DefaultUIPreferences()
 	err := applyUISettingsUpdate(&replacement, &apischema.ConfigUISetPayload{
 		Theme:            &theme,
 		PrimaryColor:     &primary,
@@ -25,9 +25,9 @@ func TestApplyUISettingsUpdateUsesReplacementShape(t *testing.T) {
 		TerminalFontSize: &fontSize,
 	})
 	require.NoError(t, err)
-	defaults := bridgeconfig.DefaultUIPreferences()
-	require.Equal(t, bridgeconfig.ThemeDark, replacement.Theme)
-	require.Equal(t, bridgeconfig.CSSColor(primary), replacement.PrimaryColor)
+	defaults := userconfig.DefaultUIPreferences()
+	require.Equal(t, userconfig.ThemeDark, replacement.Theme)
+	require.Equal(t, userconfig.CSSColor(primary), replacement.PrimaryColor)
 	require.Equal(t, navigation, replacement.NavigationMode)
 	require.True(t, replacement.SidebarCollapsed)
 	require.Equal(t, fontSize, replacement.TerminalFontSize)
@@ -38,11 +38,11 @@ func TestApplyUISettingsUpdateUsesReplacementShape(t *testing.T) {
 
 func TestApplyUISettingsUpdateClearsOmittedOverrides(t *testing.T) {
 	theme := "LIGHT"
-	replacement := bridgeconfig.DefaultUIPreferences()
+	replacement := userconfig.DefaultUIPreferences()
 	require.NoError(t, applyUISettingsUpdate(&replacement, &apischema.ConfigUISetPayload{Theme: &theme}))
-	require.Equal(t, bridgeconfig.ThemeLight, replacement.Theme)
-	require.Equal(t, bridgeconfig.CSSColor("#2196f3"), replacement.PrimaryColor)
-	require.Equal(t, bridgeconfig.DefaultUIPreferences().ThemeColors, replacement.ThemeColors)
+	require.Equal(t, userconfig.ThemeLight, replacement.Theme)
+	require.Equal(t, userconfig.CSSColor("#2196f3"), replacement.PrimaryColor)
+	require.Equal(t, userconfig.DefaultUIPreferences().ThemeColors, replacement.ThemeColors)
 	require.False(t, replacement.SidebarCollapsed)
 	require.Empty(t, replacement.HiddenCards)
 	require.Empty(t, replacement.ViewModes)

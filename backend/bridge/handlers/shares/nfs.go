@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 const exportsFile = "/etc/exports"
@@ -24,7 +25,7 @@ var (
 )
 
 func CheckNFSServerAvailability() (bool, error) {
-	_, err := findServerCommand("exportfs")
+	_, err := hostcmd.LookPath("exportfs")
 	if err != nil {
 		return false, fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)
 	}
@@ -245,7 +246,7 @@ func parseExportLine(line string) (apischema.NFSExport, error) {
 func getActiveExports(ctx context.Context) map[string]bool {
 	active := make(map[string]bool)
 
-	exportfs, findErr := findServerCommand("exportfs")
+	exportfs, findErr := hostcmd.LookPath("exportfs")
 	if findErr != nil {
 		slog.Debug("exportfs inspection skipped", "error", findErr)
 		return active
@@ -297,7 +298,7 @@ func formatExportLine(path string, clients []apischema.NFSClient) string {
 
 // applyNFSExports runs exportfs -ra to apply changes
 func applyNFSExports(ctx context.Context) error {
-	exportfs, findErr := findServerCommand("exportfs")
+	exportfs, findErr := hostcmd.LookPath("exportfs")
 	if findErr != nil {
 		return fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)
 	}

@@ -31,3 +31,32 @@ export const getDedupedPorts = (container: ContainerInfo): ContainerPort[] => {
       (a, b) => a.PrivatePort - b.PrivatePort || a.Type.localeCompare(b.Type),
     );
 };
+
+/** Bind and named-volume mounts; tmpfs and other mount types are hidden. */
+export const getContainerMounts = (container: ContainerInfo) =>
+  (container.Mounts ?? []).filter(
+    (mount) => mount.Type === "bind" || mount.Type === "volume",
+  );
+
+/** `host:container/proto`, or `container/proto` when the port is unpublished. */
+export const formatContainerPort = (port: ContainerPort) =>
+  port.PublicPort
+    ? `${port.PublicPort}:${port.PrivatePort}/${port.Type}`
+    : `${port.PrivatePort}/${port.Type}`;
+
+/** Compose service name from its label, `-` for containers outside Compose. */
+export const getContainerServiceName = (container: ContainerInfo) =>
+  container.Labels?.["com.docker.compose.service"] || "-";
+
+/** Compact age such as `45s`, `12m`, `3h 5m` or `2d 4h`; `-` for future times. */
+export const formatContainerUptime = (createdUnix: number) => {
+  const secs = Math.floor(Date.now() / 1000) - createdUnix;
+  if (secs < 0) return "-";
+  if (secs < 60) return `${secs}s`;
+  const minutes = Math.floor(secs / 60) % 60;
+  const hours = Math.floor(secs / 3600) % 24;
+  const days = Math.floor(secs / 86400);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+};

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
@@ -48,7 +49,7 @@ var (
 // installed. It backs both the share-management preflight and the system
 // capability registry entry for Samba.
 func CheckSambaServerAvailability() (bool, error) {
-	if _, err := findServerCommand("smbd"); err != nil {
+	if _, err := hostcmd.LookPath("smbd"); err != nil {
 		return false, fmt.Errorf("smbd not found (install %s)", sambaServerInstallHint)
 	}
 	return true, nil

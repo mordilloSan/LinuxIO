@@ -6,7 +6,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import InfoRow from "@/components/ui/InfoRow";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formatters";
 
 const BtrfsSpaceCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => (
   <FrostedCard>

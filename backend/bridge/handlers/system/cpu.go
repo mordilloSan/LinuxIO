@@ -11,15 +11,16 @@ import (
 	"github.com/shirou/gopsutil/v4/cpu"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 )
 
-var cpuInfoCache hwSnapshotCache[*apischema.CPUInfoResponse]
+var cpuInfoCache hwprobe.SnapshotCache[*apischema.CPUInfoResponse]
 
 func FetchCPUInfo(ctx context.Context) (*apischema.CPUInfoResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return cpuInfoCache.get(func() (*apischema.CPUInfoResponse, error) {
+	return cpuInfoCache.Get(func() (*apischema.CPUInfoResponse, error) {
 		info, err := cpu.InfoWithContext(ctx)
 		if err != nil {
 			return nil, err

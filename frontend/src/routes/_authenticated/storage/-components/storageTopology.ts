@@ -12,7 +12,7 @@ import { getContainerName } from "@/utils/dockerContainer";
 export interface StorageSelection {
   node?: string;
 }
-export interface StorageUse {
+interface StorageUse {
   source: string;
   destination: string;
   readOnly?: boolean;
@@ -35,7 +35,7 @@ export interface StorageNode {
   column: number;
   top: number;
 }
-export interface StorageEdge {
+interface StorageEdge {
   from: string;
   to: string;
   path: string;

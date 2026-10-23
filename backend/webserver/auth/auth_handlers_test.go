@@ -2,7 +2,6 @@ package auth
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,7 +11,8 @@ import (
 
 	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/authclient"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
 )
 
 // --- helpers ---------------------------------------------------------------
@@ -25,7 +25,6 @@ func newRouterForTests(h *Handlers) *http.ServeMux {
 
 	// private (with session middleware)
 	mux.Handle("POST /auth/logout", h.SM.RequireSession(http.HandlerFunc(h.Logout)))
-	mux.Handle("GET /api/update-info", h.SM.RequireSession(http.HandlerFunc(h.UpdateInfo)))
 
 	return mux
 }
@@ -83,27 +82,13 @@ func assertLoginOmitsCapabilities(t *testing.T, resp map[string]any) {
 	}
 }
 
-func sessionCookie(t *testing.T, sm *session.Manager, privileged bool) *http.Cookie {
-	t.Helper()
-	id, err := sm.NewSessionID()
-	if err != nil {
-		t.Fatalf("new session ID: %v", err)
-	}
-	if _, err := sm.CreateSession(id, session.User{Username: "test", UID: 1000, GID: 1000}, privileged); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	w := httptest.NewRecorder()
-	sm.WriteCookie(w, id)
-	return extractCookie(t, w, sm.CookieName())
-}
-
 // --- tests -----------------------------------------------------------------
 
 func TestLoginRejectsNonCanonicalJSON(t *testing.T) {
 	oldStart := startBridge
 	t.Cleanup(func() { startBridge = oldStart })
 
-	sm := session.NewManager(session.DefaultConfig)
+	sm := sessions.NewManager(sessions.DefaultConfig)
 	t.Cleanup(sm.Close)
 	handler := newRouterForTests(&Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)})
 	tests := []struct {
@@ -120,7 +105,7 @@ func TestLoginRejectsNonCanonicalJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			bridgeStarted := false
-			startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
+			startBridge = func(*sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
 				bridgeStarted = true
 				return nil, fmt.Errorf("unexpected bridge start")
 			}
@@ -155,7 +140,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}()
 
 	var gotRemoteHost string
-	startBridge = func(sm *session.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *sessions.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
 		gotRemoteHost = remoteHost
 		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 		if err != nil {
@@ -164,8 +149,8 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 		return sess, nil
 	}
 	// Manager + handlers
-	cfg := session.DefaultConfig
-	sm := session.NewManager(cfg)
+	cfg := sessions.DefaultConfig
+	sm := sessions.NewManager(cfg)
 	h := &Handlers{SM: sm, Verbose: true, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -208,176 +193,11 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}
 }
 
-func TestUpdateInfo_MissingSessionReturns401ThroughMiddleware(t *testing.T) {
-	sm := session.NewManager(session.DefaultConfig)
-	t.Cleanup(sm.Close)
-	mux := http.NewServeMux()
-	RegisterAuthRoutes(mux, sm, false)
-
-	w := doJSON(mux, http.MethodGet, "/api/update-info", nil)
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("want 401, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestUpdateInfo_UnprivilegedReturns204WithoutChecking(t *testing.T) {
-	oldCheck := checkForUpdate
-	t.Cleanup(func() { checkForUpdate = oldCheck })
-	called := false
-	checkForUpdate = func(context.Context) *UpdateInfo {
-		called = true
-		return &UpdateInfo{Available: true}
-	}
-
-	sm := session.NewManager(session.DefaultConfig)
-	t.Cleanup(sm.Close)
-	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
-	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, false))
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
-	}
-	if called {
-		t.Fatal("unprivileged update request invoked checkForUpdate")
-	}
-	if w.Body.Len() != 0 {
-		t.Fatalf("want empty 204 body, got %q", w.Body.String())
-	}
-}
-
-func TestUpdateInfo_PrivilegedNilReturns204(t *testing.T) {
-	oldCheck := checkForUpdate
-	t.Cleanup(func() { checkForUpdate = oldCheck })
-	called := false
-	checkForUpdate = func(ctx context.Context) *UpdateInfo {
-		called = true
-		if ctx == nil {
-			t.Fatal("checkForUpdate received nil context")
-		}
-		return nil
-	}
-
-	sm := session.NewManager(session.DefaultConfig)
-	t.Cleanup(sm.Close)
-	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
-	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, true))
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("want 204, got %d: %s", w.Code, w.Body.String())
-	}
-	if !called {
-		t.Fatal("privileged update request did not invoke checkForUpdate")
-	}
-	if w.Body.Len() != 0 {
-		t.Fatalf("want empty 204 body, got %q", w.Body.String())
-	}
-}
-
-func TestUpdateInfo_PrivilegedResultReturnsExactJSON(t *testing.T) {
-	oldCheck := checkForUpdate
-	t.Cleanup(func() { checkForUpdate = oldCheck })
-	want := &UpdateInfo{
-		Available:      true,
-		CurrentVersion: "v1.2.3",
-		LatestVersion:  "v1.3.0",
-		ReleaseURL:     "https://example.test/linuxio/releases/v1.3.0",
-	}
-	checkForUpdate = func(context.Context) *UpdateInfo { return want }
-
-	sm := session.NewManager(session.DefaultConfig)
-	t.Cleanup(sm.Close)
-	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
-	w := doJSON(newRouterForTests(h), http.MethodGet, "/api/update-info", nil, sessionCookie(t, sm, true))
-	if w.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
-	}
-	var got UpdateInfo
-	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode update response: %v", err)
-	}
-	if got != *want {
-		t.Fatalf("update response = %+v, want %+v", got, *want)
-	}
-}
-
-func TestClientRemoteHost_UsesForwardedForFromTrustedProxy(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
-	req.RemoteAddr = "172.18.0.4:49832"
-	req.Header.Set("X-Forwarded-For", "203.0.113.9, 172.18.0.4")
-
-	if got := clientRemoteHost(req); got != "203.0.113.9" {
-		t.Fatalf("remote host = %q, want %q", got, "203.0.113.9")
-	}
-}
-
-func TestClientRemoteHost_UsesRightmostUntrustedForwardedFor(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
-	req.RemoteAddr = "127.0.0.1:49832"
-	req.Header.Set("X-Forwarded-For", "127.0.0.1, 192.168.1.239")
-
-	if got := clientRemoteHost(req); got != "192.168.1.239" {
-		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
-	}
-}
-
-func TestClientRemoteHost_FallsBackToRealIPWhenForwardedForOnlyHasTrustedProxy(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
-	req.RemoteAddr = "127.0.0.1:49832"
-	req.Header.Set("X-Forwarded-For", "127.0.0.1")
-	req.Header.Set("X-Real-IP", "192.168.1.239")
-
-	if got := clientRemoteHost(req); got != "192.168.1.239" {
-		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
-	}
-}
-
-func TestClientRemoteHost_IgnoresForwardedForFromUntrustedPeer(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
-	req.RemoteAddr = "203.0.113.10:49832"
-	req.Header.Set("X-Forwarded-For", "198.51.100.7")
-
-	if got := clientRemoteHost(req); got != "203.0.113.10" {
-		t.Fatalf("remote host = %q, want %q", got, "203.0.113.10")
-	}
-}
-
-func TestClientRemoteHost_UsesCustomTrustedProxyCIDR(t *testing.T) {
-	t.Setenv(trustedProxyCIDRsEnv, "10.10.0.0/16")
-
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
-	req.RemoteAddr = "10.10.1.20:49832"
-	req.Header.Set("X-Real-IP", "198.51.100.7")
-
-	if got := clientRemoteHost(req); got != "198.51.100.7" {
-		t.Fatalf("remote host = %q, want %q", got, "198.51.100.7")
-	}
-}
-
-func TestClientRemoteHost_ParsesRFCForwardedHeader(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
-	req.RemoteAddr = "172.18.0.4:49832"
-	req.Header.Set("Forwarded", `for="[2001:db8::1]:443";proto=https`)
-
-	if got := clientRemoteHost(req); got != "2001:db8::1" {
-		t.Fatalf("remote host = %q, want %q", got, "2001:db8::1")
-	}
-}
-
-func TestClientRemoteHost_FallsBackToForwardedWhenEarlierHeadersOnlyHaveTrustedProxy(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
-	req.RemoteAddr = "127.0.0.1:49832"
-	req.Header.Set("X-Forwarded-For", "127.0.0.1")
-	req.Header.Set("X-Real-IP", "127.0.0.1")
-	req.Header.Set("Forwarded", `for=127.0.0.1, for=192.168.1.239`)
-
-	if got := clientRemoteHost(req); got != "192.168.1.239" {
-		t.Fatalf("remote host = %q, want %q", got, "192.168.1.239")
-	}
-}
-
 func TestLogin_Success_OmitsCapabilities(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *sessions.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		if err != nil {
 			return nil, err
@@ -385,8 +205,8 @@ func TestLogin_Success_OmitsCapabilities(t *testing.T) {
 		return sess, nil
 	}
 
-	cfg := session.DefaultConfig
-	sm := session.NewManager(cfg)
+	cfg := sessions.DefaultConfig
+	sm := sessions.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -407,14 +227,14 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
-		return nil, &bridge.AuthError{
+	startBridge = func(*sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+		return nil, &authclient.AuthError{
 			Code:    authipc.ResultAuthFailed,
 			Message: "authentication failed",
 		}
 	}
-	cfg := session.DefaultConfig
-	sm := session.NewManager(cfg)
+	cfg := sessions.DefaultConfig
+	sm := sessions.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -443,14 +263,14 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
-		return nil, &bridge.AuthError{
+	startBridge = func(*sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+		return nil, &authclient.AuthError{
 			Code:    authipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
 		}
 	}
-	cfg := session.DefaultConfig
-	sm := session.NewManager(cfg)
+	cfg := sessions.DefaultConfig
+	sm := sessions.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -480,7 +300,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 	// reached, which (per Login) only happens after the semaphore is acquired.
 	block := make(chan struct{})
 	entered := make(chan struct{}, 1)
-	startBridge = func(*session.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(*sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
 		select {
 		case entered <- struct{}{}:
 		default:
@@ -490,8 +310,8 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 	}
 	defer close(block)
 
-	cfg := session.DefaultConfig
-	sm := session.NewManager(cfg)
+	cfg := sessions.DefaultConfig
+	sm := sessions.NewManager(cfg)
 	// Semaphore of 1 so one in-flight login saturates it
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, 1)}
 	r := newRouterForTests(h)
@@ -525,8 +345,8 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 
 func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	// Minimal happy path to get a session cookie:
-	cfg := session.DefaultConfig
-	sm := session.NewManager(cfg)
+	cfg := sessions.DefaultConfig
+	sm := sessions.NewManager(cfg)
 	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
@@ -534,7 +354,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(sm *session.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(sm *sessions.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
 		return sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie

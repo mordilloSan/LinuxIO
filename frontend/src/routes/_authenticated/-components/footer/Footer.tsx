@@ -5,7 +5,9 @@ import { CACHE_TTL_MS, linuxio } from "@/api";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 
 import DevToolsButton from "./DevToolsButton";
-import { NavbarNotificationsDropdown } from "../navbar/NavbarNotificationsDropdown";
+import { NotificationsBell } from "./NotificationsBell";
+
+import "./footer.css";
 
 function Footer() {
   const { data } = useQuery({
@@ -66,7 +68,7 @@ function Footer() {
             <DevToolsButton />
           </ErrorBoundary>
           <ErrorBoundary>
-            <NavbarNotificationsDropdown />
+            <NotificationsBell />
           </ErrorBoundary>
         </div>
       </div>

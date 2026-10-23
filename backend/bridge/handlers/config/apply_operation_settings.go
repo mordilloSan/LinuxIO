@@ -1,25 +1,27 @@
 package config
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
-func applyJobSettingsUpdate(jobs *bridgeconfig.PersistedJobSettings, payload *apischema.ConfigJobSettingsPayload) error {
-	if err := applyOptionalNonNegativeInt(&jobs.ProgressMinIntervalMs, payload.ProgressMinIntervalMs, "jobs.progressMinIntervalMs"); err != nil {
-		return err
+func applyJobSettingsUpdate(jobs *userconfig.PersistedJobSettings, payload *apischema.ConfigJobSettingsPayload) error {
+	if payload.HeavyArchiveConcurrency != nil && *payload.HeavyArchiveConcurrency <= 0 {
+		return errors.New("jobs.heavyArchiveConcurrency must be > 0")
 	}
-	if err := applyOptionalNonNegativeInt(&jobs.NotificationMinIntervalMs, payload.NotificationMinIntervalMs, "jobs.notificationMinIntervalMs"); err != nil {
-		return err
+	next := *jobs
+	applyOptionalInt(&next.ProgressMinIntervalMs, payload.ProgressMinIntervalMs)
+	applyOptionalInt(&next.NotificationMinIntervalMs, payload.NotificationMinIntervalMs)
+	applyOptionalInt(&next.ProgressMinBytesMB, payload.ProgressMinBytesMB)
+	applyOptionalInt(&next.HeavyArchiveConcurrency, payload.HeavyArchiveConcurrency)
+	applyOptionalInt(&next.ArchiveCompressionWorkers, payload.ArchiveCompressionWorkers)
+	applyOptionalInt(&next.ArchiveExtractWorkers, payload.ArchiveExtractWorkers)
+	if errs := userconfig.ValidateJobSettings(next); len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
 	}
-	if err := applyOptionalNonNegativeInt(&jobs.ProgressMinBytesMB, payload.ProgressMinBytesMB, "jobs.progressMinBytesMB"); err != nil {
-		return err
-	}
-	if err := applyOptionalPositiveInt(&jobs.HeavyArchiveConcurrency, payload.HeavyArchiveConcurrency, "jobs.heavyArchiveConcurrency"); err != nil {
-		return err
-	}
-	if err := applyOptionalNonNegativeInt(&jobs.ArchiveCompressionWorkers, payload.ArchiveCompressionWorkers, "jobs.archiveCompressionWorkers"); err != nil {
-		return err
-	}
-	return applyOptionalNonNegativeInt(&jobs.ArchiveExtractWorkers, payload.ArchiveExtractWorkers, "jobs.archiveExtractWorkers")
+	*jobs = next
+	return nil
 }

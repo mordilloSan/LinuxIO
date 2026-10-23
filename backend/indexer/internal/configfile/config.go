@@ -14,17 +14,20 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
-const (
-	DefaultConfigPath = "/etc/linuxio/indexer/config.yaml"
-	DefaultDBPath     = "/var/lib/linuxio/indexer/indexer.db"
-	SearchLimit       = 100
-)
+const DefaultConfigPath = version.ConfigDir + "/indexer/config.yaml"
 
-var mandatoryExcludePaths = []string{"/proc", "/dev", "/sys", "/var/lib/linuxio/indexer", "/mnt/c"}
+// mandatoryExcludePaths are never indexed and cannot be removed through the
+// file or the API, so virtual filesystems and the database cannot index
+// themselves.
+var mandatoryExcludePaths = []string{"/proc", "/dev", "/sys", version.DataDir + "/indexer", "/mnt/c"}
 
+// Config and Patch are the operator settings. The on-disk YAML and the /config
+// wire body deliberately share one shape, so they are the api types rather
+// than a second struct with a converter.
 type Config = api.IndexerConfig
 type Patch = api.IndexerConfigPatch
 

@@ -16,11 +16,12 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // ScrubRecordPath stores the last scrub LinuxIO ran on each filesystem,
 // keyed by UUID; the kernel keeps no history of its own.
-var ScrubRecordPath = "/var/lib/linuxio/btrfs-scrub.json"
+var ScrubRecordPath = version.DataDir + "/btrfs-scrub.json"
 
 // progsScrubDir is where btrfs-progs records the scrubs it ran, such as the
 // btrfsmaintenance timer's, as scrub.status.<uuid> files.

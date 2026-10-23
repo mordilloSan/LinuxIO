@@ -10,28 +10,27 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import { useAccessContext } from "@/hooks/useCapabilities";
 import { useConfigValue } from "@/hooks/useConfig";
-import AssistantSettingsSection from "@/routes/_authenticated/-components/navbar/AssistantSettingsSection";
-import CapabilityManagerSection from "@/routes/_authenticated/-components/navbar/CapabilityManagerSection";
-import DockerSettingsSection from "@/routes/_authenticated/-components/navbar/DockerSettingsSection";
-import IndexerSettingsSection from "@/routes/_authenticated/-components/navbar/IndexerSettingsSection";
-import MonitoringSettingsSection from "@/routes/_authenticated/-components/navbar/MonitoringSettingsSection";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import NavbarCustomizer from "@/routes/_authenticated/-components/navbar/NavbarCustomizer";
-import NotificationSettingsSection from "@/routes/_authenticated/-components/navbar/NotificationSettingsSection";
-import PowerSettingsSection from "@/routes/_authenticated/-components/navbar/PowerSettingsSection";
-import ThemeColorsSection from "@/routes/_authenticated/-components/navbar/ThemeColorsSection";
-import UpdateSettings, {
-  useUpdateSettingsState,
-} from "@/routes/_authenticated/updates/-components/UpdateSettings";
-import { useAppMediaQuery } from "@/theme";
 import { up } from "@/theme/breakpoints";
 import { getDialogSurfaceStyles } from "@/theme/surfaces";
 
+import AssistantSettingsSection from "./AssistantSettingsSection";
+import CapabilityManagerSection from "./CapabilityManagerSection";
 import DockAccentGradientEditor from "./DockAccentGradientEditor";
+import DockerSettingsSection from "./docker/DockerSettingsSection";
+import IndexerSettingsSection from "./IndexerSettingsSection";
+import MonitoringSettingsSection from "./MonitoringSettingsSection";
+import NotificationSettingsSection from "./NotificationSettingsSection";
+import PowerSettingsSection from "./PowerSettingsSection";
 import {
   DEFAULT_SETTINGS_TAB,
   PRIVILEGED_SETTINGS_TABS,
   SETTINGS_TABS,
 } from "./settingsTabs";
+import ThemeColorsSection from "./ThemeColorsSection";
+import UpdateSettings, { useUpdateSettingsState } from "./UpdateSettings";
+
 import "./settings-page.css";
 
 const settingsRouteApi = getRouteApi("/_authenticated/settings");
@@ -54,7 +53,7 @@ const NAVIGATION_MODE_OPTIONS: readonly {
 ];
 
 const SettingsPage = () => {
-  const isDesktop = useAppMediaQuery(up("md"));
+  const isDesktop = useMediaQuery(up("md"));
   const { privileged, dockerAvailable, nodeAvailable, tunedAvailable } =
     useAccessContext();
   const [themeMode, setThemeMode] = useConfigValue("theme");

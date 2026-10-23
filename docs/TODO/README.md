@@ -16,4 +16,4 @@ Each active plan has its own document:
   `make setup '.SHELLFLAGS=-ec'`, then run `make ci-frontend-deps` and
   `make check-frontend-quiet` before closing this item.
 
-Finished and rejected work is retained in [Completed or closed TODOs](./completed.md).
+Other plans: [package-managed installation](./packaging.md) and [scheduled scripts](./scheduled-execution.md).

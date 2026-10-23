@@ -8,7 +8,7 @@ import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { partitionUpdatesByAvailability } from "@/utils/packageUpdates";
+import { partitionUpdatesByAvailability } from "@/routes/_authenticated/updates/-components/packageUpdates";
 
 import { usePackageUpdateController } from "./PackageUpdateController";
 import UpdateStatus from "./UpdateStatus";

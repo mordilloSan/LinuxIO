@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/base64"
 	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -80,4 +81,233 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 
 	routeBindings(rt, handlers).Register(router)
 	recoverDockerUpdates(rt, router)
+}
+
+func (h dockerHandlers) handleListContainers(ctx context.Context, _ apischema.NoRequest) ([]apischema.ContainerInfo, error) {
+	return ListContainers(ctx)
+}
+
+func (h dockerHandlers) handleInspectContainer(ctx context.Context, req apischema.ContainerIDRequest) (apischema.ContainerInspectInfo, error) {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return apischema.ContainerInspectInfo{}, err
+	}
+	return InspectContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleStartContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return StartContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleStopContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return StopContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleRestartContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return RestartContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handlePauseContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return PauseContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleUnpauseContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return UnpauseContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleKillContainer(ctx context.Context, req apischema.ContainerIDRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return KillContainer(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleRemoveContainer(ctx context.Context, req apischema.ContainerRemoveRequest) error {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return err
+	}
+	return RemoveContainer(ctx, req.ContainerID, req.Force)
+}
+
+func (h dockerHandlers) handleCreateContainer(ctx context.Context, req apischema.ContainerCreateRequest) (apischema.ContainerConfigurationResult, error) {
+	return CreateConfiguredContainer(ctx, req)
+}
+
+func (h dockerHandlers) handleEditContainer(ctx context.Context, req apischema.ContainerEditRequest) (apischema.ContainerConfigurationResult, error) {
+	if err := validateContainerID(req.ContainerID); err != nil {
+		return apischema.ContainerConfigurationResult{}, err
+	}
+	return EditConfiguredContainer(ctx, req)
+}
+
+func (h dockerHandlers) handleStartAllStopped(ctx context.Context, _ apischema.NoRequest) (apischema.DockerStartedFailedResponse, error) {
+	return StartAllStopped(ctx)
+}
+
+func (h dockerHandlers) handleStopAllRunning(ctx context.Context, _ apischema.NoRequest) (apischema.DockerStoppedFailedResponse, error) {
+	return StopAllRunning(ctx)
+}
+
+func (h dockerHandlers) handleCheckUpdates(ctx context.Context, _ apischema.NoRequest) (apischema.DockerUpdateCheckResult, error) {
+	return RefreshDockerImageUpdates(ctx)
+}
+
+func (h dockerHandlers) handleCheckContainerUpdate(ctx context.Context, req apischema.ContainerIDRequest) (apischema.DockerUpdateCheckResult, error) {
+	if req.ContainerID == "" {
+		return apischema.DockerUpdateCheckResult{}, bridgeipc.ErrInvalidArgs
+	}
+	return RefreshContainerImageUpdate(ctx, req.ContainerID)
+}
+
+func (h dockerHandlers) handleGetContainerAutoUpdate(ctx context.Context, _ apischema.NoRequest) (apischema.DockerContainerAutoUpdateState, error) {
+	return GetContainerAutoUpdate(ctx)
+}
+
+func (h dockerHandlers) handleSetContainerAutoUpdate(ctx context.Context, req apischema.DockerContainerAutoUpdateOptions) (apischema.DockerContainerAutoUpdateState, error) {
+	return SetContainerAutoUpdate(ctx, req)
+}
+
+func (h dockerHandlers) handleListImages(ctx context.Context, _ apischema.NoRequest) ([]apischema.DockerImage, error) {
+	return ListImages(ctx)
+}
+
+// The delete/create handlers below are void: their routes declare NoResponse, so
+// the docker object or status string their domain functions return was never
+// reachable — and on a Task route it lingered in the snapshot instead.
+func (h dockerHandlers) handleDeleteImage(ctx context.Context, req apischema.ImageIDRequest) error {
+	_, err := DeleteImage(ctx, req.ImageID)
+	return err
+}
+
+func (h dockerHandlers) handleListNetworks(ctx context.Context, _ apischema.NoRequest) ([]apischema.DockerNetwork, error) {
+	return ListDockerNetworks(ctx)
+}
+
+func (h dockerHandlers) handleCreateNetwork(ctx context.Context, req apischema.DockerNetworkCreateRequest) error {
+	return CreateDockerNetwork(ctx, req)
+}
+
+func (h dockerHandlers) handleDeleteNetwork(ctx context.Context, req apischema.IDRequest) error {
+	return DeleteDockerNetwork(ctx, req.ID)
+}
+
+func (h dockerHandlers) handleConnectNetwork(ctx context.Context, req apischema.DockerNetworkConnectRequest) error {
+	return ConnectDockerNetwork(ctx, req)
+}
+
+func (h dockerHandlers) handleDisconnectNetwork(ctx context.Context, req apischema.DockerNetworkDisconnectRequest) error {
+	return DisconnectDockerNetwork(ctx, req)
+}
+
+func (h dockerHandlers) handleListVolumes(ctx context.Context, _ apischema.NoRequest) ([]apischema.DockerVolume, error) {
+	return ListVolumes(ctx)
+}
+
+func (h dockerHandlers) handleCreateVolume(ctx context.Context, req apischema.DockerVolumeCreateRequest) error {
+	return CreateVolume(ctx, req)
+}
+
+func (h dockerHandlers) handleDeleteVolume(ctx context.Context, req apischema.NameRequest) error {
+	return DeleteVolume(ctx, req.Name)
+}
+
+func (h dockerHandlers) handleListComposeProjects(ctx context.Context, _ apischema.NoRequest) ([]*apischema.ComposeProject, error) {
+	return ListComposeProjects(ctx, h.rt.Username(), h.rt.Store)
+}
+
+func (h dockerHandlers) handleGetComposeProject(ctx context.Context, req apischema.ProjectNameRequest) (*apischema.ComposeProject, error) {
+	return GetComposeProject(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
+}
+
+func (h dockerHandlers) handleComposeUp(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeUp(ctx, h.rt.Username(), h.rt.Store, req.ProjectName, "")
+}
+
+func (h dockerHandlers) handleComposeDown(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeDown(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
+}
+
+func (h dockerHandlers) handleComposeStop(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeStop(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
+}
+
+func (h dockerHandlers) handleComposeRestart(ctx context.Context, req apischema.ProjectNameRequest) (apischema.ComposeActionResult, error) {
+	return ComposeRestart(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
+}
+
+func (h dockerHandlers) handleDeleteStack(ctx context.Context, req apischema.DeleteStackRequest) (apischema.DeleteStackResult, error) {
+	options := DeleteStackOptions{
+		DeleteFile:      req.DeleteFile,
+		DeleteDirectory: req.DeleteDirectory,
+	}
+	result, err := DeleteStack(ctx, h.rt.Username(), h.rt.Store, req.ProjectName, options)
+	return result, err
+}
+
+func (h dockerHandlers) handleGetDockerFolders(ctx context.Context, _ apischema.NoRequest) (apischema.DockerFoldersResponse, error) {
+	return GetDockerFolders(ctx, h.rt.Username(), h.rt.Store)
+}
+
+func (h dockerHandlers) handleValidateCompose(ctx context.Context, req apischema.ValidateComposeRequest) (apischema.ValidateComposeResponse, error) {
+	return ValidateComposeFile(ctx, req.Content, req.EnvContent, req.WorkingDir)
+}
+
+func (h dockerHandlers) handleGetComposeFilePath(ctx context.Context, req apischema.StackNameRequest) (apischema.ComposeFilePathResponse, error) {
+	return GetComposeFilePath(ctx, h.rt.Username(), h.rt.Store, req.StackName)
+}
+
+func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req apischema.DirPathRequest) (apischema.DirectoryValidationResult, error) {
+	return ValidateStackDirectory(ctx, req.DirPath)
+}
+
+func (h dockerHandlers) handleDeleteComposeStack(ctx context.Context, req apischema.ProjectNameRequest) error {
+	return DeleteComposeStack(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
+}
+
+func (h dockerHandlers) handleGetIconURI(ctx context.Context, req apischema.IdentifierRequest) (apischema.DockerIconURIResponse, error) {
+	uri, err := GetIconURI(ctx, req.Identifier)
+	return apischema.DockerIconURIResponse{URI: uri}, err
+}
+
+func (h dockerHandlers) handleGetIcon(ctx context.Context, req apischema.IdentifierRequest) (apischema.DockerIconDataResponse, error) {
+	data, err := GetIcon(ctx, req.Identifier)
+	if err != nil {
+		return apischema.DockerIconDataResponse{}, err
+	}
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return apischema.DockerIconDataResponse{Data: encoded}, nil
+}
+
+func (h dockerHandlers) handleGetIconInfo(ctx context.Context, req apischema.IdentifierRequest) (apischema.DockerIconInfoResponse, error) {
+	info := GetIconInfo(ctx, req.Identifier)
+	return apischema.DockerIconInfoResponse{Type: string(info.Type), Identifier: info.Identifier, Cached: info.Cached}, nil
+}
+
+func (h dockerHandlers) handleClearIconCache(ctx context.Context, _ apischema.NoRequest) (apischema.MessageResponse, error) {
+	if err := ClearIconCache(ctx); err != nil {
+		return apischema.MessageResponse{}, err
+	}
+	return apischema.MessageResponse{Message: "Icon cache cleared successfully"}, nil
+}
+
+func (h dockerHandlers) handleGetDockerInfo(ctx context.Context, _ apischema.NoRequest) (*apischema.DockerSystemInfo, error) {
+	return GetDockerInfo(ctx)
+}
+
+func (h dockerHandlers) handleSystemPrune(ctx context.Context, req apischema.DockerSystemPruneRequest) (*apischema.DockerSystemPruneResponse, error) {
+	return SystemPrune(ctx, req)
 }

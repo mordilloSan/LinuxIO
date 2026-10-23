@@ -47,6 +47,12 @@ dismissed_at       nullable
 seen               map of uid -> occurrence_count that uid has seen
 ```
 
+The store normalises what it is given instead of rejecting it: the key is
+lower-cased, characters outside `[a-z0-9._-]` become `-`, a leading `.`, `_`
+or `-` gets an `x` prefix, and it is cut to 64 characters; title and message
+are truncated to their limits with an ellipsis. Callers do not normalise.
+A blank title, a bad severity, source or link are still errors.
+
 Lifecycle:
 
 - **Raise** with a new `(source, key)` creates an active record.
@@ -72,9 +78,9 @@ incomplete checks leave the record alone.
 |---|---|---|---|
 | Automatic updates | `ExecStopPost=` drop-in on the provider's upgrade service, running `linuxio alert auto-update` | A run that matches the configured policy: failed, installed packages, or always | Never; each run is a new occurrence of the one `auto-update/run` record |
 | Docker update outcome | `linuxio-docker-update` worker, already root | A scheduled update fails or the replacement container is not healthy. One record per container name | The next successful update of that container |
-| Btrfs health | `linuxio btrfs-health run` every ten minutes, and the `storage.btrfs_list` bridge route | `btrfs/health-<uuid>`, `btrfs/scrub-<uuid>`, `btrfs/space-<uuid>`, `btrfs/offline-<uuid>`; see [Btrfs management](./btrfs.md#filesystem-health) | The next check that shows the condition cleared, or the pool gone |
-| Btrfs snapshots | `linuxio btrfs-snapshot` (hourly timer, pre-update hook, Run now) | `btrfs/snapshot-<uuid8>-<path>`: a failed snapshot or an unmounted filesystem | The next successful run for that rule |
-| Btrfs replication | `linuxio btrfs-snapshot run` and Run now | `btrfs/replication-<job id>`: a failed replication run | The next successful run of that job |
+| Btrfs health | `linuxio-btrfs-timer health run` every ten minutes, and the `storage.btrfs_list` bridge route | `btrfs/health-<uuid>`, `btrfs/scrub-<uuid>`, `btrfs/space-<uuid>`, `btrfs/offline-<uuid>`; see [Btrfs management](./btrfs.md#filesystem-health) | The next check that shows the condition cleared, or the pool gone |
+| Btrfs snapshots | `linuxio-btrfs-timer snapshot` (hourly timer, pre-update hook, Run now) | `btrfs/snapshot-<uuid8>-<path>`: a failed snapshot or an unmounted filesystem | The next successful run for that rule |
+| Btrfs replication | `linuxio-btrfs-timer snapshot run` and Run now | `btrfs/replication-<job id>`: a failed replication run | The next successful run of that job |
 
 Later sources follow the same shape: a root process that already knows the
 outcome calls `alerts.Raise` or `alerts.Resolve`, or a unit drop-in runs
@@ -139,8 +145,8 @@ can replace its cache without a second round trip.
 | `alerts.mark_seen` | `{ ids }` | `AlertList` |
 | `alerts.mark_all_seen` | none | `AlertList` |
 | `alerts.dismiss` | `{ id }` | `AlertList` |
-| `alerts.get_notifications` | none | `NotificationSettings` without the password |
-| `alerts.set_notifications` | `NotificationSettings` | the saved settings |
+| `alerts.get_notifications` | none | `NotificationSettingsView` (no password) |
+| `alerts.set_notifications` | `NotificationSettings` | `NotificationSettingsView` |
 | `alerts.test_notifications` | none | success, or the delivery error |
 
 `AlertList` is `{ alerts, unseen }`. `alerts` excludes dismissed records.

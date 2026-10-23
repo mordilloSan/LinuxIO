@@ -1,21 +1,14 @@
 import { motion } from "motion/react";
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import type { TableCardViewMode } from "@/api";
-import { RoutedTabSearch } from "@/components/tabbar";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
-import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import {
   useReorderableSurface,
   type ReorderableSurface,
-} from "@/hooks/useReorderableSurface";
+} from "@/components/reorder/useReorderableSurface";
+import { RoutedTabSearch } from "@/components/tabbar";
+import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
+import { useClearSelectionOnEscape } from "@/hooks/useClearSelectionOnEscape";
 import {
   EASING_STANDARD,
   TRANSITION_DURATION_STANDARD_MS,
@@ -74,24 +67,7 @@ function UnitListTab<T extends UnitListItem>({
     (name: string | null) => onSelectedChange(name),
     [onSelectedChange],
   );
-  const handleEscapeKey = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      !expanded ||
-      (event.key !== "Escape" && event.key !== "Esc") ||
-      event.defaultPrevented ||
-      document.querySelector(OVERLAY_ROOT_SELECTOR)
-    ) {
-      return;
-    }
-
-    setExpanded(null);
-    event.preventDefault();
-  });
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleEscapeKey);
-    return () => window.removeEventListener("keydown", handleEscapeKey);
-  }, []);
+  useClearSelectionOnEscape(Boolean(expanded), () => setExpanded(null));
 
   // The alphabetical sort is only the starting order: a saved manual order wins
   // over it, and anything the user never moved stays alphabetical.

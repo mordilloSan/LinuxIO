@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 func TestApplyAssistantSettingsUpdate(t *testing.T) {
-	var cfg bridgeconfig.Settings
+	var cfg userconfig.Settings
 
 	claude := " claude "
 	require.NoError(t, applyConfigPayload(&cfg, &apischema.ConfigSetPayload{Assistant: &apischema.ConfigAssistantPayload{Agent: &claude}}))
@@ -28,7 +28,7 @@ func TestApplyAssistantSettingsUpdate(t *testing.T) {
 }
 
 func TestAppConfigToAPIIncludesAssistant(t *testing.T) {
-	cfg := bridgeconfig.Settings{Assistant: bridgeconfig.Assistant{Agent: "gemini"}}
-	api := appConfigToAPI(cfg, bridgeconfig.StorageMode("home"))
+	cfg := userconfig.Settings{Assistant: userconfig.Assistant{Agent: "gemini"}}
+	api := appConfigToAPI(cfg, userconfig.StorageMode("home"))
 	require.Equal(t, "gemini", api.Assistant.Agent)
 }

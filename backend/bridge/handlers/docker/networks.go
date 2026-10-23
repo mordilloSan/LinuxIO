@@ -15,15 +15,16 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 )
 
 // List all networks
 func ListDockerNetworks(ctx context.Context) ([]apischema.DockerNetwork, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {
@@ -171,11 +172,11 @@ func isDockerDefaultNetwork(name string) bool {
 }
 
 func DeleteDockerNetwork(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return deleteDockerNetwork(ctx, cli, id)
 }
 
@@ -205,11 +206,11 @@ func CreateDockerNetwork(ctx context.Context, request apischema.DockerNetworkCre
 	if err != nil {
 		return bridgeipc.NewError(err.Error(), 400)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	if _, err := cli.NetworkCreate(ctx, name, options); err != nil {
 		return fmt.Errorf("failed to create network %q: %w", name, err)
@@ -266,11 +267,11 @@ func ConnectDockerNetwork(ctx context.Context, request apischema.DockerNetworkCo
 	if err != nil {
 		return bridgeipc.NewError(err.Error(), 400)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	connectOptions := client.NetworkConnectOptions{Container: containerID}
 	if len(aliases) > 0 {
 		connectOptions.EndpointConfig = &network.EndpointSettings{Aliases: aliases}
@@ -286,11 +287,11 @@ func DisconnectDockerNetwork(ctx context.Context, request apischema.DockerNetwor
 	if err != nil {
 		return bridgeipc.NewError(err.Error(), 400)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	if _, err := cli.NetworkDisconnect(ctx, networkID, client.NetworkDisconnectOptions{Container: containerID}); err != nil {
 		return fmt.Errorf("disconnect container from network: %w", err)
 	}
@@ -325,11 +326,11 @@ func networkConnectionInput(networkID, containerID string, aliases []string) (st
 // BridgeNames returns the Linux bridge interface names backing Docker's
 // bridge-driver networks, so other host views can hide them.
 func BridgeNames(ctx context.Context) (map[string]struct{}, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {

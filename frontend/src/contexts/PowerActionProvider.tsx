@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { webserverResponds } from "@/api/webserver";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppTypography from "@/components/ui/AppTypography";
 import { GAP_MD } from "@/theme/constants";
@@ -42,12 +43,8 @@ export const PowerActionProvider = ({ children }: { children: ReactNode }) => {
       requestController = controller;
       requestTimeout = setTimeout(() => controller.abort(), 10_000);
       try {
-        const response = await fetch("/api/version", {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (response.ok && !cancelled) {
+        const responds = await webserverResponds(controller.signal);
+        if (responds && !cancelled) {
           redirectToSignIn();
         } else if (!cancelled) {
           schedulePoll();

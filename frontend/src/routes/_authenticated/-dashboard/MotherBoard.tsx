@@ -7,10 +7,12 @@ import {
   type MonitoringLive,
   type SensorGroup,
 } from "@/api";
-import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
 import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
+import DashboardCard, {
+  CardBadge,
+} from "@/routes/_authenticated/-dashboard/DashboardCard";
 
 import DashboardStatRows from "./DashboardStatRows";
 import { formatSensorLabel } from "./sensors";

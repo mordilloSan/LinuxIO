@@ -67,9 +67,9 @@ vi.mock("@/hooks/useAuth", () => ({
   default: () => ({ user: { name: "admin" } }),
 }));
 
-vi.mock("./CreateUserDialog", () => ({ CreateUserDialog: () => null }));
-vi.mock("./EditUserDialog", () => ({ EditUserDialog: () => null }));
-vi.mock("./ChangePasswordDialog", () => ({ ChangePasswordDialog: () => null }));
+vi.mock("./CreateUserDialog", () => ({ default: () => null }));
+vi.mock("./EditUserDialog", () => ({ default: () => null }));
+vi.mock("./ChangePasswordDialog", () => ({ default: () => null }));
 
 vi.mock("sonner", () => ({
   toast: {

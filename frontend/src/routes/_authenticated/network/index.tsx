@@ -2,14 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
+import BridgeHandoffDialog from "@/components/network/BridgeHandoffDialog";
+import CreateBridgeDialog from "@/components/network/CreateBridgeDialog";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalHandoffOperationId, optionalString } from "@/routes/-search";
 
-import BridgeHandoffDialog from "./-components/BridgeHandoffDialog";
-import CreateBridgeDialog from "./-components/CreateBridgeDialog";
 import NetworkInterfaceList from "./-components/NetworkInterfaceList";
 
 function NetworkInterfacesPage() {

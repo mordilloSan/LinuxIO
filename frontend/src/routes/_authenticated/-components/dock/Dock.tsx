@@ -6,11 +6,11 @@ import {
 import type { CSSProperties } from "react";
 
 import type { ConfigDockAccentGradient, DockTileColors } from "@/api";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
+import { useAppUpdateInProgress } from "@/hooks/useAppUpdater";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useUpdateCanNavigate } from "@/hooks/useLinuxIOUpdater";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useAppTheme } from "@/theme";
-import { fromHsl, lighten, toHsl } from "@/utils/color";
+import { fromHsl, lighten, toHsl } from "@/theme/colorUtils";
 
 import DockItem from "./DockItem";
 import { sampleDockAccentColor, type TileGradient } from "./dockPalette";
@@ -20,6 +20,7 @@ import {
 } from "./useDockMagnification";
 import type { SidebarItem } from "../sidebar/types";
 import { useSidebarItems } from "../sidebar/useSidebarItems";
+
 import "@/components/reorder/reorder.css";
 import "./dock.css";
 
@@ -105,7 +106,7 @@ const gradientFor = (
 const getNavItemId = (item: SidebarItem) => item.to;
 
 const Dock = () => {
-  const canNavigate = useUpdateCanNavigate();
+  const canNavigate = !useAppUpdateInProgress();
   const surface = useReorderableSurface({
     disabled: !canNavigate,
     getId: getNavItemId,

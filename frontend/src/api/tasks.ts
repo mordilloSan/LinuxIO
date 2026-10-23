@@ -1,7 +1,7 @@
 import { call } from "./calls";
+import { LinuxIOError } from "./errors";
 import type { TaskSnapshot } from "./generated/linuxio-types";
 import { openTaskWatchStream } from "./linuxio";
-import { LinuxIOError } from "./linuxio-core";
 import { waitForStreamResult } from "./stream-helpers";
 import { isTerminalTaskState } from "./task-state";
 

@@ -1,14 +1,8 @@
 package api
 
 import (
-	procmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/process"
+	processmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/process"
 	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
-)
-
-const (
-	APISocketPath     = "/run/linuxio/monitoring/api.sock"
-	ControlSocketPath = "/run/linuxio/monitoring/control.sock"
-	RouteLive         = "/api/v1/live"
 )
 
 type Live struct {
@@ -171,9 +165,9 @@ type LiveSmart struct {
 
 // Process, Program, and ProcessCount are aliases of the daemon domain records
 // exposed here so bridge clients never need to import monitoring/internal.
-type Process = procmodel.Process
-type Program = procmodel.Program
-type ProcessCount = procmodel.Count
+type Process = processmodel.Process
+type Program = processmodel.Program
+type ProcessCount = processmodel.Count
 
 type LiveContainers struct {
 	CapturedAtMs int64           `json:"captured_at_ms"`

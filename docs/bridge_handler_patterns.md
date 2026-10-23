@@ -16,7 +16,7 @@ Put those in named files beside it, for example:
 
 - `handler_state.go` for small adapter state structs
 - `*_operation.go` for mutation/Task orchestration
-- domain-specific files such as `timers.go`, `health.go`, `config_operations.go`, or `terminal_session.go`
+- domain-specific files such as `timers.go`, `health.go`, `config_operations.go`, or `host_session.go`
 
 Every Call adapter in `handlers.go` receives a typed request. A result-bearing
 adapter returns `(Result, error)`; the compiler checks `Result` against the type
@@ -134,20 +134,43 @@ namespace.
 
 ## Where Shared Code Lives
 
-Handler families are leaves. They import `apischema`, `bridge/internal/*`,
-`common/*` and the daemon `api` packages, never each other, except for the
-composition edges listed with a reason in
-`backend/bridge/handlers/import_boundary_test.go` (capability probes, the
-indexer client, logind logoff). Code two families need is a library:
+`backend/bridge/handlers/import_boundary_test.go` encodes the layering rules;
+this section states them in words:
+
+- **Handler families are leaves.** A route family (`docker`, `storage`,
+  `capabilities`, ...) lives in `backend/bridge/handlers/<family>`. It imports
+  `apischema`, `bridge/internal/*`, `common/*` and the daemon `api` packages
+  (`indexer/api`, `monitoring/api`), and nothing outside `bridge/handlers`
+  imports a family, apart from the composition root (`bridge/cmd`) and the
+  contract generator (`bridge/internal/apigen`), which read the registry in
+  `bridge/handlers/register.go`. Families never import the registry.
+- **Families do not import each other**, except for the edges listed with a
+  reason in `allowedHandlerEdges` (capability probes, the indexer and
+  monitoring clients, logind logoff on account deletion, the Docker
+  mount-ordering drop-in). A new edge needs a one-line reason there; code two
+  families need is a library instead.
+- **`common` never imports a process tree.** `backend/common/*` imports only
+  other `common` packages.
+- **The webserver imports only `common` and its own packages.**
+- **Daemons import only `common` and their own tree.** `indexer` and
+  `monitoring` keep their internals private; the bridge reaches them only
+  through `indexer/api` and `monitoring/api`.
+- **Worker binaries import only `common`.** This covers `cli`, `docker-update`
+  and `btrfs-timer`.
+
+Where a shared library goes depends on who needs it:
 
 | Needed by | Home | Examples |
 |-----------|------|----------|
-| Several bridge families only | `backend/bridge/internal/<name>` | `usercmd`, `acpagents`, `loginhistory`, `transientunit` |
-| The bridge and another binary (CLI, workers, daemons) | `backend/common/<name>` | `systemd`, `dbusclient`, `btrfs`, `alerts` |
+| One route family | `backend/bridge/handlers/<family>` | everything a family alone uses |
+| Several bridge families only | `backend/bridge/internal/<name>` | `usercmd`, `acpagents`, `loginhistory`, `transientunit`, `bridgeipc`, `goroutinelabel`, `streamrelay`, `dockerclient`, `userconfig`, `apigen` |
+| The bridge and another binary (CLI, workers, daemons) | `backend/common/<name>` | `systemd`, `dbusclient`, `btrfs`, `alerts`, `atomicfile`, `hostcmd`, `hwprobe`, `iolimit`, `osrelease`, `updatestatus`, `dockerupdate`, `version` |
 
-The same test keeps `backend/common` from importing a process tree, the
-webserver on `common` only, and the bridge reaching the daemons only through
-`indexer/api` and `monitoring/api`.
+There is no catch-all `utils` package; each shared helper lives in a package
+named for its responsibility. The Docker worker side (scheduled and durable
+updates) lives in `common/dockerupdate`, shared by the `docker-update` binary
+and the bridge. The `capabilities` family owns `system.get_capabilities`
+and the capability registry that `packages` reads to install them.
 
 ## File Naming
 
@@ -156,7 +179,7 @@ Handler packages should name files after the domain operation they implement, no
 | Location | Allowed naming | Avoid |
 |----------|----------------|-------|
 | `backend/bridge/internal/bridgeipc` | Framework terms such as `tasks.go`, `task_primitives.go`, `router.go` | Domain-specific handler code |
-| `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `log_follow_operation.go`, `terminal_session.go`, `smart_test_operation.go` | Generic `tasks.go`, `stream.go`, `rpc.go`, `handler.go` |
+| `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `package_update_operation.go`, `journal_follow.go`, `host_session.go`, `smart_test_operation.go` | Generic `tasks.go`, `stream.go`, `rpc.go`, `handler.go` |
 
 Use `operation` for Task-backed mutations or long-running work, `follow` for
 log/watch Channels, and `session` for bidirectional Channels. The route mode

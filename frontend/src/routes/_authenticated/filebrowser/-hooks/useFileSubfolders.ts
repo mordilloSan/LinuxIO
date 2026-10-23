@@ -1,0 +1,70 @@
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+
+import { linuxio, type SubfolderData } from "@/api";
+
+import {
+  getDirectorySizeError,
+  getDirectorySizeQueryOptions,
+  isDirectorySizeUnavailable,
+  shouldEnableDirectorySizeQuery,
+  shouldSkipSizeCalculation,
+} from "./useFileDirectorySizeBase";
+
+interface UseSubfoldersResult {
+  error: Error | null;
+  isLoading: boolean;
+  isUnavailable: boolean;
+  subfolders: SubfolderData[];
+  subfoldersMap: Map<string, SubfolderData>;
+}
+
+/**
+ * Hook to fetch all direct child folders with their sizes for a given path.
+ *
+ * @param path - The parent directory path
+ * @param enabled - Whether the query should run
+ * @returns Subfolders array and a map for quick lookup by path
+ */
+export const useFileSubfolders = (
+  path: string,
+  enabled: boolean = true,
+): UseSubfoldersResult => {
+  // Skip size calculation for system directories
+  const shouldSkip = shouldSkipSizeCalculation(path);
+  const queryEnabled = shouldEnableDirectorySizeQuery(
+    enabled,
+    path,
+    shouldSkip,
+  );
+
+  const { data, isLoading, error } = useQuery({
+    ...linuxio.filebrowser.subfolders({ path }),
+    enabled: queryEnabled,
+    ...getDirectorySizeQueryOptions(),
+  });
+
+  // Create a stable array reference (avoid new empty array on each render)
+  const subfolders = useMemo(() => data?.subfolders ?? [], [data?.subfolders]);
+
+  // Create a memoized map for quick lookup by path
+  const subfoldersMap = useMemo(() => {
+    const map = new Map<string, SubfolderData>();
+    subfolders.forEach((subfolder) => {
+      map.set(subfolder.path, subfolder);
+    });
+    return map;
+  }, [subfolders]);
+
+  const derivedError = getDirectorySizeError(error, shouldSkip);
+
+  const isUnavailable = isDirectorySizeUnavailable(error, shouldSkip);
+
+  return {
+    subfolders,
+    subfoldersMap,
+    isLoading: queryEnabled ? isLoading : false,
+    error: derivedError,
+    isUnavailable,
+  };
+};

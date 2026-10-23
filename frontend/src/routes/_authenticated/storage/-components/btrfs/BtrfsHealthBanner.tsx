@@ -9,11 +9,11 @@ import {
   type BtrfsScrubStatus,
   type TaskProgress,
 } from "@/api";
+import { STATUS_COLOR } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { STATUS_COLOR } from "@/routes/_authenticated/vm/-components/vmCards";
-import { formatDate } from "@/utils/formaters";
+import { formatDate } from "@/utils/formatters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import { deviceErrorCount } from "./BtrfsDevicesCard";

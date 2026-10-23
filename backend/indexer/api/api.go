@@ -25,13 +25,6 @@ const (
 	EventComplete = "complete"
 	EventError    = "error"
 
-	StatusOK                  = 200
-	StatusAccepted            = 202
-	StatusBadRequest          = 400
-	StatusForbidden           = 403
-	StatusConflict            = 409
-	StatusInternalServerError = 500
-
 	MinSearchQueryRunes = 3
 )
 
@@ -111,10 +104,6 @@ type SubfolderResult struct {
 	Name    string    `json:"name"`
 	Size    int64     `json:"size"`
 	ModTime time.Time `json:"mod_time"`
-}
-
-type Stats struct {
-	DatabaseSize int64 `json:"database_size"`
 }
 
 type WorkStartedEvent struct {

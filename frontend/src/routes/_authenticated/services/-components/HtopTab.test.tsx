@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { topologyLive } from "@/test/dockerTopologyFixture";
 import { render, screen } from "@/test/render";
 
-import { formatHtopUptime, HtopHeader } from "./HtopTab";
+import { HtopHeader } from "./HtopTab";
 
 const GiB = 1024 ** 3;
 
@@ -63,12 +63,5 @@ describe("HtopHeader", () => {
     ]);
     expect(widths(screen.getByRole("meter", { name: "Swp" }))).toEqual(["25%"]);
     expect(screen.getByText("—")).toBeInTheDocument();
-  });
-});
-
-describe("formatHtopUptime", () => {
-  it("prints htop's clock, with days only when there are some", () => {
-    expect(formatHtopUptime(59)).toBe("00:00:59");
-    expect(formatHtopUptime(86_400 + 61)).toBe("1 day, 00:01:01");
   });
 });

@@ -18,7 +18,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 var (
@@ -32,7 +31,7 @@ func relPath(p string) string {
 
 // CopyFileWithCallbacks copies a file or directory with progress callbacks.
 // It handles both files and directories, copying recursively as needed.
-func CopyFileWithCallbacks(source, dest string, overwrite bool, opts *ipc.OperationCallbacks) error {
+func CopyFileWithCallbacks(source, dest string, overwrite bool, opts *OperationCallbacks) error {
 	source = fsroot.CleanAbsPath(source)
 	dest = fsroot.CleanAbsPath(dest)
 
@@ -45,7 +44,7 @@ func CopyFileWithCallbacks(source, dest string, overwrite bool, opts *ipc.Operat
 	return copyWithCallbacksAndRoot(root, source, dest, overwrite, opts)
 }
 
-func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrite bool, opts *ipc.OperationCallbacks) error {
+func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrite bool, opts *OperationCallbacks) error {
 	// Validate the copy operation before executing
 	if err := validateMoveDestination(root, source, dest); err != nil {
 		return err
@@ -89,9 +88,9 @@ const preservedModeBits = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeS
 // inside directories, as rsync does, instead of failing the whole transfer.
 const specialFileTypes = os.ModeNamedPipe | os.ModeSocket | os.ModeDevice | os.ModeCharDevice
 
-func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks, state *copyState) error {
+func copyEntryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
-		return ipc.ErrAborted
+		return ErrAborted
 	}
 
 	mode := info.Mode()
@@ -150,9 +149,9 @@ func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) er
 }
 
 // copySingleFileWithCallbacks handles copying a single file with progress callbacks.
-func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks, state *copyState) error {
+func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
-		return ipc.ErrAborted
+		return ErrAborted
 	}
 
 	if !info.Mode().IsRegular() {
@@ -200,9 +199,9 @@ func copySingleFileWithCallbacks(root *fsroot.FSRoot, source, dest string, info 
 }
 
 // copyDirectoryWithCallbacks handles copying directories recursively with progress callbacks.
-func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *ipc.OperationCallbacks, state *copyState) error {
+func copyDirectoryWithCallbacks(root *fsroot.FSRoot, source, dest string, info os.FileInfo, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
-		return ipc.ErrAborted
+		return ErrAborted
 	}
 
 	srcDir, err := root.Root.Open(relPath(source))
@@ -395,7 +394,7 @@ type MoveFileOptions struct {
 // MoveFileWithCallbacks moves a file from src to dst with progress callbacks.
 // By default, the rename system call is used. If src and dst point to different volumes,
 // the file copy with callbacks is used as a fallback, followed by deletion of the source.
-func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) error {
+func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *OperationCallbacks, moveOpts MoveFileOptions) error {
 	src = fsroot.CleanAbsPath(src)
 	dst = fsroot.CleanAbsPath(dst)
 
@@ -411,7 +410,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	}
 
 	if opts.IsCancelled() {
-		return ipc.ErrAborted
+		return ErrAborted
 	}
 
 	srcInfo, err := root.Root.Lstat(relPath(src))
@@ -433,7 +432,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	}
 
 	if opts.IsCancelled() {
-		return ipc.ErrAborted
+		return ErrAborted
 	}
 
 	// Delete source after successful copy
@@ -445,7 +444,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *ipc.OperationC
 	return nil
 }
 
-func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *ipc.OperationCallbacks, moveOpts MoveFileOptions) bool {
+func tryRenameMove(root *fsroot.FSRoot, src, dst string, opts *OperationCallbacks, moveOpts MoveFileOptions) bool {
 	if err := root.Root.Rename(relPath(src), relPath(dst)); err != nil {
 		return false
 	}

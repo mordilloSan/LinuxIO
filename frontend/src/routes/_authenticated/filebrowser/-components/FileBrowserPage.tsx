@@ -1,10 +1,9 @@
 import { getRouteApi } from "@tanstack/react-router";
 
-import FileBrowserContent from "@/components/filebrowser/FileBrowserContent";
-import FileBrowserDialogs from "@/components/filebrowser/FileBrowserDialogs";
-import { useFileBrowserController } from "@/hooks/filebrowser/useFileBrowserController";
-
 import FileBrowserBreadcrumbs from "./FileBrowserBreadcrumbs";
+import FileBrowserContent from "./FileBrowserContent";
+import FileBrowserDialogs from "./FileBrowserDialogs";
+import { useFileBrowserController } from "../-hooks/useFileBrowserController";
 
 const fileBrowserRouteApi = getRouteApi("/_authenticated/filebrowser/$");
 // Keep the header slot stable. This leaf subscribes to `_splat` itself, so a
@@ -30,5 +29,5 @@ const FileBrowserPage = () => {
   );
 };
 
-export type { ViewMode } from "@/types/filebrowser";
+export type { ViewMode } from "../-types";
 export default FileBrowserPage;

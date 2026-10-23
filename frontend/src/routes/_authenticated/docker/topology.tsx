@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import DockerTopologyPage from "./-components/DockerTopologyPage";
+import DockerTopologyPage from "./-components/topology/DockerTopologyPage";
 
 export const Route = createFileRoute("/_authenticated/docker/topology")({
   validateSearch: (search) => ({

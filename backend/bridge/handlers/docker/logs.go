@@ -2,19 +2,19 @@ package docker
 
 import (
 	"context"
-	"encoding/binary"
-	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"regexp"
 
+	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -29,7 +29,7 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 	if req.ContainerID == "" {
 		err := bridgeipc.NewError("missing containerID", 400)
 		slog.Error("invalid docker logs request", "component", "docker", "route", routeDockerLogsFollow, "error", err)
-		return writeDockerLogError(stream, err)
+		return streamrelay.WriteError(stream, 0, err)
 	}
 	tail := "100"
 	if req.Tail != nil && *req.Tail != "" {
@@ -37,11 +37,11 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 	}
 	slog.Debug("starting docker log channel", "component", "docker", "route", routeDockerLogsFollow, "container", req.ContainerID, "mode", tail)
 
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to get docker client", "route", routeDockerLogsFollow, "container", req.ContainerID)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	// TTY containers return raw bytes instead of the stdout/stderr multiplexed stream.
 	inspect, err := cli.ContainerInspect(ctx, req.ContainerID, client.ContainerInspectOptions{})
@@ -70,44 +70,41 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
 }
 
+// streamDockerLogs relays one container's logs as data frames with ANSI
+// escapes stripped.
 func streamDockerLogs(ctx context.Context, stream net.Conn, reader io.Reader, tty bool) error {
-	readFrame := readDockerLogFrame
-	buf := make([]byte, 8)
-	if tty {
-		readFrame = readDockerRawLogChunk
-		buf = make([]byte, 32*1024)
+	out := dockerLogFrameWriter{stream: stream}
+	err := demuxContainerLogs(reader, tty, out, out)
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		payload, done, err := readFrame(reader, buf)
-		if err != nil {
-			slog.Debug("docker log follow ended with read error", "component", "docker", "route", routeDockerLogsFollow, "error", err)
-			return err
-		}
-		if done {
-			break
-		}
-		if len(payload) == 0 {
-			continue
-		}
-		if err := relay.WriteRelayFrame(stream, &relay.StreamFrame{Opcode: relay.OpStreamData, StreamID: 0, Payload: payload}); err != nil {
-			return err
-		}
+	if err != nil {
+		slog.Debug("docker log follow ended with read error", "component", "docker", "route", routeDockerLogsFollow, "error", err)
 	}
-
-	return nil
+	return err
 }
 
-func writeDockerLogError(stream net.Conn, err error) error {
-	code := 500
-	var bridgeErr *bridgeipc.Error
-	if errors.As(err, &bridgeErr) && bridgeErr.Code != 0 {
-		code = bridgeErr.Code
+// demuxContainerLogs copies one container's log stream into stdout and stderr.
+// TTY containers return raw bytes; the others are stdout/stderr multiplexed.
+func demuxContainerLogs(reader io.Reader, tty bool, stdout, stderr io.Writer) error {
+	if tty {
+		_, err := io.Copy(stdout, reader)
+		return err
 	}
-	return relay.WriteResultErrorAndClose(stream, 0, err.Error(), code)
+	_, err := stdcopy.StdCopy(stdout, stderr, reader)
+	return err
+}
+
+// dockerLogFrameWriter sends every Write as one data frame, minus ANSI escapes.
+// shortcut: an ANSI sequence split across two writes is not stripped, buffer the tail if that shows up.
+type dockerLogFrameWriter struct{ stream net.Conn }
+
+func (w dockerLogFrameWriter) Write(p []byte) (int, error) {
+	payload := dockerLogANSIRegex.ReplaceAll(p, nil)
+	if len(payload) == 0 {
+		return len(p), nil
+	}
+	return len(p), relay.WriteRelayFrame(w.stream, &relay.StreamFrame{Opcode: relay.OpStreamData, StreamID: 0, Payload: payload})
 }
 
 // writeDockerLogErrorUnlessCanceled reports err to the Channel and the log. A
@@ -116,50 +113,10 @@ func writeDockerLogError(stream net.Conn, err error) error {
 func writeDockerLogErrorUnlessCanceled(ctx context.Context, stream net.Conn, err error, msg string, attrs ...any) error {
 	attrs = append([]any{"component", "docker"}, attrs...)
 	attrs = append(attrs, "error", err)
-	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+	if streamrelay.Canceled(ctx, err) {
 		slog.Debug(msg+" (channel closed)", attrs...)
-		return relay.WriteStreamClose(stream, 0)
+	} else {
+		slog.Error(msg, attrs...)
 	}
-	slog.Error(msg, attrs...)
-	return writeDockerLogError(stream, err)
-}
-
-func readDockerLogFrame(reader io.Reader, header []byte) ([]byte, bool, error) {
-	if _, err := io.ReadFull(reader, header); err != nil {
-		if err == io.EOF || errors.Is(err, context.Canceled) {
-			return nil, true, nil
-		}
-		return nil, false, fmt.Errorf("read header: %w", err)
-	}
-
-	size := int(binary.BigEndian.Uint32(header[4:]))
-	if size == 0 {
-		return nil, false, nil
-	}
-
-	data := make([]byte, size)
-	if _, err := io.ReadFull(reader, data); err != nil {
-		if err == io.EOF || errors.Is(err, context.Canceled) {
-			return nil, true, nil
-		}
-		return nil, false, fmt.Errorf("read data: %w", err)
-	}
-
-	return dockerLogANSIRegex.ReplaceAll(data, nil), false, nil
-}
-
-// readDockerRawLogChunk reads the unframed log stream Docker returns for TTY containers.
-// ponytail: an ANSI sequence split across two chunks is not stripped; buffer the tail if that shows up.
-func readDockerRawLogChunk(reader io.Reader, buf []byte) ([]byte, bool, error) {
-	n, err := reader.Read(buf)
-	if n > 0 {
-		return dockerLogANSIRegex.ReplaceAll(buf[:n], nil), false, nil
-	}
-	if err == nil {
-		return nil, false, nil
-	}
-	if err == io.EOF || errors.Is(err, context.Canceled) {
-		return nil, true, nil
-	}
-	return nil, false, fmt.Errorf("read data: %w", err)
+	return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, err)
 }

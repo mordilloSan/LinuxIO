@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import DockerComposePage from "./-components/DockerComposePage";
+import DockerComposePage from "./-components/compose/DockerComposePage";
 
 export const Route = createFileRoute("/_authenticated/docker/compose")({
   validateSearch: (search) => ({

@@ -7,7 +7,7 @@ func TestRenderTimerHourlyPersistent(t *testing.T) {
 	if got := string(RenderTimer()); got != timer {
 		t.Errorf("RenderTimer =\n%q\nwant\n%q", got, timer)
 	}
-	const unit = "[Unit]\nDescription=LinuxIO btrfs timeline snapshots\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio btrfs-snapshot run\n"
+	const unit = "[Unit]\nDescription=LinuxIO btrfs timeline snapshots\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio-btrfs-timer snapshot run\n"
 	if got := string(RenderUnit()); got != unit {
 		t.Errorf("RenderUnit =\n%q\nwant\n%q", got, unit)
 	}

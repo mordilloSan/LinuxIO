@@ -14,17 +14,18 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-func handleGetRsyncSSH(ctx context.Context, req apischema.RsyncSSHRequest) (apischema.RsyncSSHStatus, error) {
-	if req.Port < 1 || req.Port > 65535 {
+// CheckRsyncSSH reports whether local SSH answers on port.
+func CheckRsyncSSH(ctx context.Context, port int) (apischema.RsyncSSHStatus, error) {
+	if port < 1 || port > 65535 {
 		return apischema.RsyncSSHStatus{}, errors.New("SSH port must be between 1 and 65535")
 	}
-	err := probeRsyncSSH(ctx, req.Port)
+	err := probeRsyncSSH(ctx, port)
 	if ctx.Err() != nil {
 		return apischema.RsyncSSHStatus{}, ctx.Err()
 	}
-	status := apischema.RsyncSSHStatus{Available: err == nil, Port: req.Port}
+	status := apischema.RsyncSSHStatus{Available: err == nil, Port: port}
 	if err != nil {
-		status.Error = apischema.Optional(fmt.Sprintf("SSH did not respond on local port %d. Check the SSH service and its listening address in Services. This check does not test access from the NAS.", req.Port))
+		status.Error = apischema.Optional(fmt.Sprintf("SSH did not respond on local port %d. Check the SSH service and its listening address in Services. This check does not test access from the NAS.", port))
 	}
 	return status, nil
 }

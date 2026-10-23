@@ -1,6 +1,8 @@
 package cli
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestMainRejectsUnknownCommand(t *testing.T) {
 	if code := Main([]string{"menu"}); code != 1 {

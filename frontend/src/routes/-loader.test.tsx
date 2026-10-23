@@ -34,10 +34,9 @@ import { scopedConfigQueryKey } from "@/api/config-query";
 import linuxio from "@/api/generated/client";
 import type { DirectoryListing } from "@/api/generated/linuxio-types";
 import {
-  isLiveUpdateBlocked,
-  publishLiveUpdateBlocked,
-} from "@/contexts/UpdateContext";
-import { fileBrowserListingQueryOptions } from "@/hooks/filebrowser/fileBrowserListingQueryOptions";
+  isAppUpdateInProgress,
+  publishAppUpdateInProgress,
+} from "@/contexts/appUpdateInProgress";
 import type { LinuxIORouterContext } from "@/routes/-auth";
 import {
   LOADER_FRESHNESS,
@@ -45,6 +44,7 @@ import {
   loadRouteUIConfig,
   startRouteQueryPrefetches,
 } from "@/routes/-loader";
+import { fileBrowserListingQueryOptions } from "@/routes/_authenticated/filebrowser/-hooks/fileBrowserListingQueryOptions";
 
 function createClient(queryCache?: QueryCache) {
   return new QueryClient({
@@ -118,8 +118,8 @@ describe("loadRouteQueries", () => {
   it("defers readiness and queries while updates block route loading", async () => {
     const queryFn = vi.fn().mockResolvedValue("ready");
     const queryOptions = { queryKey: ["blocked"], queryFn };
-    const context = createRouterContext(createClient(), isLiveUpdateBlocked);
-    const releaseUpdateBlock = publishLiveUpdateBlocked({}, true);
+    const context = createRouterContext(createClient(), isAppUpdateInProgress);
+    const releaseUpdateBlock = publishAppUpdateInProgress({}, true);
     const loading = loadRouteQueries(createLoaderArgs(context), [queryOptions]);
 
     try {
