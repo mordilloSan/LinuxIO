@@ -81,6 +81,22 @@ func validateImportDisk(rawPath string) (string, error) {
 	return path, nil
 }
 
+// validateVMDKDisk accepts only sparse-extent VMDKs (magic "KDMV", which OVA
+// exports use). Text descriptors can name arbitrary host files as FLAT extents,
+// and qemu-img would copy them into the converted disk.
+func validateVMDKDisk(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	var magic [4]byte
+	if _, readErr := io.ReadFull(file, magic[:]); readErr != nil || string(magic[:]) != "KDMV" {
+		return badRequestf("VMDK must be a sparse or streamOptimized image; flat and split VMDK descriptors are not supported")
+	}
+	return nil
+}
+
 func createManagedImportStorage(ctx context.Context, conn libvirtConn, pool libvirt.StoragePool, volumeName string, req apischema.VMCreateRequest, report vmCreateReporter) (createdVMStorage, error) {
 	var sizeGB int
 	var legacyBoot bool
@@ -118,8 +134,13 @@ func importDiskFile(ctx context.Context, source, volumePath string, minDiskGB in
 		legacyBoot = ovfLegacyBoot(ovf)
 	}
 	format := importDiskFormats[strings.ToLower(filepath.Ext(source))]
-	if format == "qcow2" {
+	switch format {
+	case "qcow2":
 		if err = validateTemplateDisk(ctx, source); err != nil {
+			return 0, false, fmt.Errorf("inspect imported image: %w", err)
+		}
+	case "vmdk":
+		if err = validateVMDKDisk(source); err != nil {
 			return 0, false, fmt.Errorf("inspect imported image: %w", err)
 		}
 	}

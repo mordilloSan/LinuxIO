@@ -164,11 +164,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: at the end of `GetStats`, delete entries for ids not in `validIds`.
   - Behaviour change: none.
 
-- [ ] **16. VMDK import lets a crafted descriptor read host files into the guest disk**
+- [x] **16. VMDK import lets a crafted descriptor read host files into the guest disk**
   `backend/bridge/handlers/virt/import_disk.go:21-28,120-130` (qcow2-only guard), `templates.go:257-285` (`validateTemplateDisk`)
   - Verified `[host]`: a descriptor with `RW 8 FLAT "/abs/path/file" 0` converted with `qemu-img convert -f vmdk` on this machine produced an image containing that file's bytes (scratchpad test, harmless files). An OVA's disk is the realistic route.
   - Fix: require the `KDMV` magic at offset 0 for `.vmdk` (direct and OVA-extracted); reject text descriptors. Test with a descriptor file.
   - Behaviour change: flat/split VMDK descriptors are rejected; sparse and streamOptimized (what OVA exports use) still import.
+  - Done 2026-10-23: `validateVMDKDisk` requires the `KDMV` magic; `importDiskFile` runs it for `.vmdk` (direct and OVA-extracted) before `qemu-img convert`. Test: `TestImportDiskFileRejectsVMDKDescriptor`. Limit: only the magic is checked; an embedded descriptor inside a sparse file is not inspected.
 
 - [ ] **17a. New share directories are created 0700**
   `backend/bridge/handlers/shares/samba.go:71,141`, `nfs.go:85` (`MkdirAll(path, 0755)`), `backend/bridge/cmd/root.go:74` (`Umask(0o077)`)
