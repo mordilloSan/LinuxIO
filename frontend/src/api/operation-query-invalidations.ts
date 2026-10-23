@@ -38,6 +38,7 @@ const FILEBROWSER_LISTING_KEYS = [
   endpointQueryPrefix("filebrowser.dir_size"),
   endpointQueryPrefix("filebrowser.subfolders"),
 ];
+const TRASH_LIST_KEYS = [endpointQueryPrefix("filebrowser.trash_list")];
 const FILEBROWSER_PERMISSION_KEYS = [
   endpointQueryPrefix("filebrowser.resource_stat"),
 ];
@@ -114,7 +115,12 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "filebrowser.copy_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.move_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.delete_batch": FILEBROWSER_LISTING_KEYS,
-  "filebrowser.trash_batch": FILEBROWSER_LISTING_KEYS,
+  "filebrowser.trash_batch": [...FILEBROWSER_LISTING_KEYS, ...TRASH_LIST_KEYS],
+  "filebrowser.trash_restore": [
+    ...FILEBROWSER_LISTING_KEYS,
+    ...TRASH_LIST_KEYS,
+  ],
+  "filebrowser.trash_purge": TRASH_LIST_KEYS,
   "filebrowser.chmod_batch": FILEBROWSER_PERMISSION_KEYS,
   "filebrowser.upload": FILEBROWSER_LISTING_KEYS,
   "filebrowser.upload_batch": FILEBROWSER_LISTING_KEYS,

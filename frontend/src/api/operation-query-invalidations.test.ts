@@ -99,6 +99,18 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     ]);
   });
 
+  it("refreshes the Trash listing after trash, restore and purge", () => {
+    const trashList = ["linuxio", "filebrowser", "trash_list"];
+    for (const route of ["trash_batch", "trash_restore", "trash_purge"]) {
+      expect(
+        OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
+      ).toContainEqual(trashList);
+    }
+    expect(
+      OPERATION_QUERY_INVALIDATIONS["filebrowser.trash_restore"],
+    ).toContainEqual(["linuxio", "filebrowser", "list_directory"]);
+  });
+
   it("does not invalidate an open text document from file mutations", () => {
     expect(
       Object.values(OPERATION_QUERY_INVALIDATIONS)

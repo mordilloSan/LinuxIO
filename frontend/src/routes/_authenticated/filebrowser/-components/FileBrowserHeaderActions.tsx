@@ -14,6 +14,7 @@ import { useIsIndexing } from "@/tasks/useIsIndexing";
 import { iconSize } from "@/theme/constants";
 
 import FileBrowserSearch from "./FileBrowserSearch";
+import TrashDialog from "./TrashDialog";
 import type { ViewMode } from "../-types";
 
 interface FileBrowserHeaderActionsProps {
@@ -45,6 +46,7 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
   );
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =
     useState<HTMLElement | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
   const isIndexing = useIsIndexing();
@@ -101,6 +103,16 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
         loading={isIndexing}
         onClick={handleIndexer}
       />
+      <AppActionIconButton
+        ariaLabel="Trash"
+        icon="mdi:trash-can-outline"
+        iconSize={20}
+        label="Trash"
+        onClick={() => {
+          onDone?.();
+          setTrashOpen(true);
+        }}
+      />
     </>
   );
   const viewAction = (onDone?: () => void) => (
@@ -114,8 +126,17 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
     />
   );
 
+  const trashDialog = (
+    <TrashDialog onClose={() => setTrashOpen(false)} open={trashOpen} />
+  );
+
   if (!isMobile) {
-    return <HeaderActions options={optionActions()} view={viewAction()} />;
+    return (
+      <>
+        <HeaderActions options={optionActions()} view={viewAction()} />
+        {trashDialog}
+      </>
+    );
   }
 
   const headerActionHost = headerActionSlot?.host ?? null;
@@ -185,6 +206,7 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
           />
         </div>
       </AppPopover>
+      {trashDialog}
     </>
   );
 

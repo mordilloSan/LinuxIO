@@ -23,7 +23,7 @@ import {
 } from "./useFileConflicts";
 import { useListingInvalidation } from "./useListingInvalidation";
 
-const FILES_TOAST_META = {
+export const FILES_TOAST_META = {
   label: "Open files",
   params: { _splat: "" },
   to: "/filebrowser/$",

@@ -200,6 +200,14 @@ export function useRecoveredTasks(
             const processed = data?.processed ?? 0;
             return `Moving ${processed} item${processed === 1 ? "" : "s"} to Trash`;
           }
+          case TaskTypes.TASK_TYPE_FILE_TRASH_RESTORE: {
+            const processed = data?.processed ?? 0;
+            return `Restoring ${processed} item${processed === 1 ? "" : "s"} from Trash`;
+          }
+          case TaskTypes.TASK_TYPE_FILE_TRASH_PURGE: {
+            const processed = data?.processed ?? 0;
+            return `Deleting ${processed} item${processed === 1 ? "" : "s"} from Trash`;
+          }
           case TaskTypes.TASK_TYPE_DOCKER_COMPOSE:
             return (
               message ??
@@ -340,7 +348,9 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
         case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH:
         case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH:
-        case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH: {
+        case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH:
+        case TaskTypes.TASK_TYPE_FILE_TRASH_RESTORE:
+        case TaskTypes.TASK_TYPE_FILE_TRASH_PURGE: {
           if (
             activeFileTransferTaskIdsRef.current.has(task.id) ||
             tasks.get(task.id)

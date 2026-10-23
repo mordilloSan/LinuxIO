@@ -77,13 +77,29 @@ func fileTaskBindings(store *userconfig.UserStore, owner uploadOwner) apischema.
 			},
 			bridgeipc.TaskDefault,
 		),
-		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.trash_batch", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgeipc.TaskMetadata {
-			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
-		})).Run(
+		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.trash_batch", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(pathBatchMetadata)).Run(
 			func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
 				return runTrashBatchTask(ctx, task, store, req, owner)
 			},
 			bridgeipc.TaskDefault,
+		),
+		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.trash_restore", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(pathBatchMetadata)).Run(
+			func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
+				return runTrashRestoreTask(ctx, task, store, req, owner)
+			},
+			bridgeipc.TaskDefault,
+		),
+		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.trash_purge", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(pathBatchMetadata)).Run(
+			func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
+				return runTrashPurgeTask(ctx, task, store, req, owner)
+			},
+			bridgeipc.TaskDefault,
+		),
+		// The trash belongs to the session user, which only these bindings know.
+		apischema.Call[apischema.NoRequest, apischema.TrashListResponse]("filebrowser.trash_list", apischema.RetrySafe()).Handle(
+			func(ctx context.Context, _ apischema.NoRequest) (apischema.TrashListResponse, error) {
+				return listTrash(ctx, owner)
+			},
 		),
 		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgeipc.TaskMetadata {
 			path := ""
@@ -131,6 +147,10 @@ func fileTaskBindings(store *userconfig.UserStore, owner uploadOwner) apischema.
 			bridgeipc.TaskDefault,
 		),
 	)
+}
+
+func pathBatchMetadata(req apischema.BatchPathRequest) bridgeipc.TaskMetadata {
+	return bridgeipc.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 }
 
 func RegisterTaskRoutes(router *bridgeipc.Router, store *userconfig.UserStore, owner uploadOwner) {

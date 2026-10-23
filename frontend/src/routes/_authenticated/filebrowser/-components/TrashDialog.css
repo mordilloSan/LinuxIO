@@ -1,0 +1,52 @@
+.trash-dialog__toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--app-space-8);
+  margin-bottom: var(--app-space-8);
+}
+
+.trash-dialog__list,
+.trash-dialog__skeletons {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.trash-dialog__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trash-dialog__skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+}
+
+.trash-dialog__row {
+  align-items: center;
+  border-radius: var(--app-radius-base);
+  cursor: pointer;
+  display: flex;
+  gap: var(--app-space-12);
+  padding: var(--app-space-6) var(--app-space-8);
+}
+
+.trash-dialog__row:hover {
+  background-color: color-mix(in srgb, currentColor, transparent 94%);
+}
+
+.trash-dialog__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.trash-dialog__meta {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}

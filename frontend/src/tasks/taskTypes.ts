@@ -15,6 +15,10 @@ export const TASK_TYPE_FILE_COPY_BATCH = taskType("filebrowser.copy_batch");
 export const TASK_TYPE_FILE_MOVE_BATCH = taskType("filebrowser.move_batch");
 export const TASK_TYPE_FILE_DELETE_BATCH = taskType("filebrowser.delete_batch");
 export const TASK_TYPE_FILE_TRASH_BATCH = taskType("filebrowser.trash_batch");
+export const TASK_TYPE_FILE_TRASH_RESTORE = taskType(
+  "filebrowser.trash_restore",
+);
+export const TASK_TYPE_FILE_TRASH_PURGE = taskType("filebrowser.trash_purge");
 export const TASK_TYPE_FILE_INDEXER = taskType("filebrowser.index");
 export const TASK_TYPE_FILE_UPLOAD = taskType("filebrowser.upload");
 export const TASK_TYPE_FILE_UPLOAD_BATCH = taskType("filebrowser.upload_batch");

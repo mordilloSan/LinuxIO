@@ -2977,6 +2977,19 @@ export interface TimezoneRequest {
   timezone: string;
 }
 
+export interface TrashEntry {
+  path: string;
+  name: string;
+  originalPath: string;
+  deletedAt: string;
+  isDir: boolean;
+  size: number;
+}
+
+export interface TrashListResponse {
+  entries: TrashEntry[];
+}
+
 export interface TunedProfile {
   active: boolean;
   description?: string;
@@ -3834,6 +3847,19 @@ export interface LinuxIOSchema {
       result: SubfoldersResponse;
     };
     trash_batch: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: FileBatchResult;
+      progress: TaskProgress<CountProgress>;
+    };
+    trash_list: { input: []; request: void; result: TrashListResponse };
+    trash_purge: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: FileBatchResult;
+      progress: TaskProgress<CountProgress>;
+    };
+    trash_restore: {
       input: [paths: string[]];
       request: BatchPathRequest;
       result: FileBatchResult;
@@ -4877,6 +4903,7 @@ export interface LinuxIOCallSchema {
     request: PathRequest;
     result: SubfoldersResponse;
   };
+  "filebrowser.trash_list": { request: void; result: TrashListResponse };
   "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
   "hostname.set_hostname": { request: HostnameRequest; result: void };
   "indexer.get_config": { request: void; result: IndexerConfig };

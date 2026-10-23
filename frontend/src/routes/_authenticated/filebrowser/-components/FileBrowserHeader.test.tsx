@@ -101,6 +101,15 @@ describe("FileBrowserHeader", () => {
     expect(onSaveFile).toHaveBeenCalledOnce();
   });
 
+  it("offers the Trash next to Index filesystem", () => {
+    render(<FileBrowserHeader {...defaultProps} showQuickSave={false} />);
+
+    expect(
+      screen.getByRole("button", { name: "Index filesystem" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
+  });
+
   it("uses the shared view mode toggle", async () => {
     const onSwitchView = vi.fn();
     const { user } = render(
@@ -245,6 +254,9 @@ describe("FileBrowserHeader", () => {
     );
     expect(mobileActions).toContainElement(
       screen.getByRole("button", { name: "Index filesystem" }),
+    );
+    expect(mobileActions).toContainElement(
+      screen.getByRole("button", { name: "Trash" }),
     );
     await user.click(screen.getByRole("button", { name: "Search" }));
 

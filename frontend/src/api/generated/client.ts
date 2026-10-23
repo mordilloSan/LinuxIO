@@ -148,6 +148,15 @@ const linuxio = {
       kind: "field",
       field: "paths",
     }),
+    trash_list: defineCall("filebrowser.trash_list"),
+    trash_purge: createTaskEndpoint("filebrowser", "trash_purge", {
+      kind: "field",
+      field: "paths",
+    }),
+    trash_restore: createTaskEndpoint("filebrowser", "trash_restore", {
+      kind: "field",
+      field: "paths",
+    }),
     upload: createTaskEndpoint("filebrowser", "upload", { kind: "object" }),
     upload_batch: createTaskEndpoint("filebrowser", "upload_batch", {
       kind: "object",

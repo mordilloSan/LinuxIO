@@ -97,6 +97,21 @@ type ExistsBatchResponse struct {
 	Existing []ExistsBatchItem `json:"existing"`
 }
 
+// TrashEntry is one item in the session user's trash. Path is where it sits
+// now (under a trash "files" directory) and is what restore and purge take.
+type TrashEntry struct {
+	Path         string `json:"path"`
+	Name         string `json:"name"`
+	OriginalPath string `json:"originalPath"` // empty when no .trashinfo records it
+	DeletedAt    string `json:"deletedAt"`    // RFC 3339; empty when unknown
+	IsDir        bool   `json:"isDir"`
+	Size         int64  `json:"size"`
+}
+
+type TrashListResponse struct {
+	Entries []TrashEntry `json:"entries"`
+}
+
 type ActionSourceDestinationRequest struct {
 	Action string `json:"action"`
 	Source string `json:"src"`
