@@ -91,7 +91,7 @@ labels:
   - "io.linuxio.container.icon=https://example.com/my-icon.svg"
 ```
 
-URL icons are fetched with a 10 second timeout and a 5 MB response-size limit.
+URL icons are fetched with a 10 second timeout and a 5 MB response-size limit. Because the label can come from any image, LinuxIO never connects to loopback or link-local addresses for an icon (also not after a redirect); LAN and public hosts are fine.
 
 ### Local Files
 
@@ -103,6 +103,8 @@ labels:
 ```
 
 Local file icons are not fetched from the network and do not fall back to the Docker icon if the file is missing.
+
+Names (plain, `di:`, `si:` and local files) must be a single path component made of letters, digits, `.`, `_` and `-`, not starting with a dot. Anything else, such as `../x.png` or `a/b`, is treated as unknown and shows the bundled Docker icon.
 
 ## Complete Example
 

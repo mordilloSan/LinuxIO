@@ -41,12 +41,13 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: none for UI flows. API requests with commas, spaces or control characters inside one option get 400. fstab inode changes on write (temp + rename).
   - Done 2026-10-23: all three fstab writers go through `writeFstab` → `atomicfile.Write(…, 0o644)`; `addToFstab`/`removeFromFstab` skip comment lines; `cleanMountOptions` now splits comma-joined entries and rejects whitespace/control characters (returns an error); CIFS wraps it in `cifsCustomOptions` with the sensitive-key check, NFS uses it alone (NFS legitimately needs `sec=`). Tests in `fstab_test.go`.
 
-- [ ] **3. Container label becomes a file path and a URL with no validation** *(re-rated: should-fix, see note)*
+- [x] **3. Container label becomes a file path and a URL with no validation** *(re-rated: should-fix, see note)*
   `backend/bridge/handlers/docker/icons.go:82-116` (`parseIconIdentifier`), `:135`, `:385` (`filepath.Join(userIconsDir, value)`), `:240-262` (`fetchURLIcon`), `container.go:254-257`
   - Verified `[source]`: identifier comes from the image label `io.linuxio.container.icon`; the UI requests `docker.get_icon_uri` for every container (`frontend/src/hooks/useDockerIcon.ts:13`). Anything ending in `.png/.svg/.jpg/.jpeg/.webp` is read via `filepath.Join`, which collapses `..`, so `../../../../x.png` reads any such file the bridge can read. `http(s)://` identifiers are fetched by the bridge (5 MB cap).
   - Note on severity: the bytes go back only to the logged-in user, who can already read files and run `curl` through the UI. The real exposure is a GET-based SSRF from the host, triggered just by rendering a container whose image ships the label. Hardening, not privilege escalation.
   - Fix: `^[a-z0-9][a-z0-9._-]*$` for `si:`/`di:`/derived names; `filepath.IsLocal` and no `/` for file names; for URLs resolve the host and reject loopback/private/link-local, with `CheckRedirect`. Table test. Check `docs/docker-icons.md` for the documented forms.
   - Behaviour change: identifiers with `/`, `..`, odd characters, or URLs to internal addresses fall back to the bundled Docker icon.
+  - Done 2026-10-23: `parseIconIdentifier` requires names and file names to match `^[A-Za-z0-9][A-Za-z0-9._-]*$` (else `IconTypeUnknown`); the icon `http.Client` dials through `refuseLocalDial`, which rejects loopback, link-local and unspecified addresses (covers redirects and DNS rebinding). Private LAN hosts stay allowed on purpose — homelab icon servers are a real use. Tests: `TestParseIconIdentifierRejectsUnsafeNames`, `TestRefuseLocalDial`. `docs/docker-icons.md` updated.
 
 - [ ] **4. Login holds one of 8 auth slots while reading an unbounded body with no timeout**
   `backend/webserver/auth/auth.go:48-59`, `backend/webserver/cmd/root.go:124-127`

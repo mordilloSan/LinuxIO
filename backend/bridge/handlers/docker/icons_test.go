@@ -213,3 +213,40 @@ func TestJoinFetchErrorsOnlyMissesWhenAllSourcesMiss(t *testing.T) {
 		t.Fatalf("joinFetchErrors(miss, outage) = %v, want only the outage", err)
 	}
 }
+
+func TestParseIconIdentifierRejectsUnsafeNames(t *testing.T) {
+	for _, tc := range []struct {
+		identifier string
+		wantType   IconType
+		wantValue  string
+	}{
+		{"nginx", IconTypeDerived, "nginx"},
+		{"si:react", IconTypeSimpleIcon, "react"},
+		{"dashboard-icon:plex", IconTypeDashboardIcon, "plex"},
+		{"my-icon.svg", IconTypeFile, "my-icon.svg"},
+		{"https://example.com/icon.svg", IconTypeURL, "https://example.com/icon.svg"},
+		{"../../../../etc/x.png", IconTypeUnknown, ""},
+		{"si:../x", IconTypeUnknown, ""},
+		{"a/b", IconTypeUnknown, ""},
+		{".hidden.svg", IconTypeUnknown, ""},
+		{"", IconTypeUnknown, ""},
+	} {
+		gotType, gotValue := parseIconIdentifier(tc.identifier)
+		if gotType != tc.wantType || gotValue != tc.wantValue {
+			t.Errorf("parseIconIdentifier(%q) = (%s, %q), want (%s, %q)", tc.identifier, gotType, gotValue, tc.wantType, tc.wantValue)
+		}
+	}
+}
+
+func TestRefuseLocalDial(t *testing.T) {
+	for _, address := range []string{"127.0.0.1:80", "[::1]:443", "169.254.169.254:80", "0.0.0.0:80"} {
+		if err := refuseLocalDial("tcp", address, nil); err == nil {
+			t.Errorf("refuseLocalDial(%q) = nil, want error", address)
+		}
+	}
+	for _, address := range []string{"93.184.216.34:443", "192.168.1.10:80", "[2606:4700::1]:443"} {
+		if err := refuseLocalDial("tcp", address, nil); err != nil {
+			t.Errorf("refuseLocalDial(%q) = %v, want nil", address, err)
+		}
+	}
+}

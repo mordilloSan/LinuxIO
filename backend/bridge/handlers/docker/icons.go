@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -37,8 +40,33 @@ const (
 	httpClientTimeout = 10 * time.Second
 )
 
+// Icon identifiers come from container labels, so an image can name any
+// file or URL. Names are confined to one path component, and the client
+// refuses to dial loopback and link-local addresses (the host's own services
+// and cloud metadata), including after a redirect.
 var httpClient = &http.Client{
 	Timeout: httpClientTimeout,
+	Transport: &http.Transport{
+		Proxy:       http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{Timeout: httpClientTimeout, Control: refuseLocalDial}).DialContext,
+	},
+}
+
+var validIconName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func refuseLocalDial(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return err
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("icon source address %s is not allowed", host)
+	}
+	return nil
 }
 
 // errIconNotFound marks a definite upstream 404, as opposed to a network
@@ -95,26 +123,12 @@ func initIconCache() error {
 	return nil
 }
 
-// parseIconIdentifier determines the type and value of an icon identifier
+// parseIconIdentifier determines the type and value of an icon identifier.
+// A name or file that is not a single safe path component is unknown, so it
+// can neither escape the cache and user directories nor reach the CDNs.
 func parseIconIdentifier(identifier string) (IconType, string) {
 	if identifier == "" {
 		return IconTypeUnknown, ""
-	}
-
-	// Check for simple-icon prefix (si:nginx)
-	if name, ok := strings.CutPrefix(identifier, "si:"); ok {
-		return IconTypeSimpleIcon, name
-	}
-	if name, ok := strings.CutPrefix(identifier, "simple-icon:"); ok {
-		return IconTypeSimpleIcon, name
-	}
-
-	// Check for dashboard-icon prefix (di:nginx)
-	if name, ok := strings.CutPrefix(identifier, "di:"); ok {
-		return IconTypeDashboardIcon, name
-	}
-	if name, ok := strings.CutPrefix(identifier, "dashboard-icon:"); ok {
-		return IconTypeDashboardIcon, name
 	}
 
 	// Check for HTTP(S) URL
@@ -122,16 +136,27 @@ func parseIconIdentifier(identifier string) (IconType, string) {
 		return IconTypeURL, identifier
 	}
 
-	// Check for file path (ends with image extension)
-	lowerIdent := strings.ToLower(identifier)
-	if strings.HasSuffix(lowerIdent, ".svg") || strings.HasSuffix(lowerIdent, ".png") ||
-		strings.HasSuffix(lowerIdent, ".jpg") || strings.HasSuffix(lowerIdent, ".jpeg") ||
-		strings.HasSuffix(lowerIdent, ".webp") {
-		return IconTypeFile, identifier
+	iconType, name := IconTypeDerived, identifier
+	switch {
+	case strings.HasPrefix(identifier, "si:"), strings.HasPrefix(identifier, "simple-icon:"):
+		iconType, name = IconTypeSimpleIcon, identifier[strings.IndexByte(identifier, ':')+1:]
+	case strings.HasPrefix(identifier, "di:"), strings.HasPrefix(identifier, "dashboard-icon:"):
+		iconType, name = IconTypeDashboardIcon, identifier[strings.IndexByte(identifier, ':')+1:]
+	case hasImageExtension(identifier):
+		iconType = IconTypeFile
 	}
+	if !validIconName.MatchString(name) {
+		return IconTypeUnknown, ""
+	}
+	return iconType, name
+}
 
-	// Otherwise, treat as a name to derive (will try dashboard-icons first)
-	return IconTypeDerived, identifier
+func hasImageExtension(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".svg", ".png", ".jpg", ".jpeg", ".webp":
+		return true
+	}
+	return false
 }
 
 // cacheEntry is a cached icon or a remembered miss. mtime is when the answer
