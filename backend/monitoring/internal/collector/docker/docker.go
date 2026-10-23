@@ -198,6 +198,7 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 		}
 		stats = append(stats, value)
 	}
+	dm.pruneBaselinesLocked()
 	dm.containerStatsMutex.Unlock()
 
 	dm.cycleNetworkDeltasForCacheTime(cacheTimeMs)
@@ -619,6 +620,21 @@ func (dm *Manager) ReseedFromCollector(cacheTimeMs, collectorKey uint16) {
 	}
 	if tracker := dm.networkRecvTrackers[collectorKey]; tracker != nil {
 		dm.networkRecvTrackers[cacheTimeMs] = tracker.Clone()
+	}
+}
+
+// pruneBaselinesLocked drops the CPU and network baselines of containers that
+// are no longer listed, across every cache key. The caller holds
+// containerStatsMutex.
+func (dm *Manager) pruneBaselinesLocked() {
+	for _, byID := range dm.lastCpuContainer {
+		maps.DeleteFunc(byID, func(id string, _ uint64) bool { _, ok := dm.validIds[id]; return !ok })
+	}
+	for _, byID := range dm.lastCpuSystem {
+		maps.DeleteFunc(byID, func(id string, _ uint64) bool { _, ok := dm.validIds[id]; return !ok })
+	}
+	for _, byID := range dm.lastNetworkReadTime {
+		maps.DeleteFunc(byID, func(id string, _ time.Time) bool { _, ok := dm.validIds[id]; return !ok })
 	}
 }
 

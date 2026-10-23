@@ -140,29 +140,33 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: dir sizes become case-sensitive (correct); blank queries return nothing (was 100 arbitrary newest entries).
   - Done 2026-10-23: `DirDetails` and `appendSearchBaseFilter` use `subtreeBounds` range filters (indexed, case-sensitive); `SearchEntriesUnder` returns empty when no term is non-blank; `SubtreeLikePattern` removed. Tests: `TestDirDetailsIsCaseSensitive`, `TestSearchEntriesUnderBlankTermsReturnNothing`.
 
-- [ ] **14a. Monitoring: `statfs` runs under the app mutex**
+- [x] **14a. Monitoring: `statfs` runs under the app mutex**
   `backend/monitoring/internal/live/filesystems.go:53-90`, `app/live.go:140` (passes the `App` as the `sync.Locker`)
   - Verified `[source]+[lib]`: gopsutil `UsageWithContext` ignores ctx (`disk/disk_unix.go:13`); a hung NFS mount blocks in D-state while holding the lock; the collector tick blocks behind it.
   - Fix: take the tracked snapshot under the lock, run the statfs calls outside it, guard `f.cache` with its own small mutex.
   - Behaviour change: none in data; the daemon stays responsive with a stale NAS.
+  - Done 2026-10-23: `Filesystems.Info` holds the app lock only for `freshTrackedFilesystems`, runs statfs outside it, cache guarded by `Filesystems.mu`. Test: `TestFilesystemInfoDoesNotHoldAppLockDuringUsage`.
 
-- [ ] **14b. Failing SMART refresh retries every tick, inline in the collector**
+- [x] **14b. Failing SMART refresh retries every tick, inline in the collector**
   `backend/monitoring/internal/app/runtime.go:403,413-425,451`, `collector/smart/smart.go:81-91`
   - Verified `[source]`: `MarkRefreshed` only after success, so `RefreshDue` stays true; `smartctl --scan`/`-a` (15 s timeout each) runs on every tick on hosts with no SMART data, blocking the collector goroutine.
   - Fix: `MarkRefreshed` regardless of result; run the refresh from its own goroutine owned by `collectorWG`.
   - Behaviour change: a failed refresh is retried once per `smart_refresh_interval`; SMART data timing shifts slightly.
+  - Done 2026-10-23: `refreshSmart` calls `MarkRefreshed` regardless of the result; `runSmartRefresher` goroutine on `collectorWG` (1-minute due check) replaces the inline `refreshSmartIfDue`; the first refresh now runs just after startup instead of inside it. Test: `TestFailedSmartRefreshWaitsOneInterval`.
 
-- [ ] **15a. Network total bandwidth underflows when an interface disappears**
+- [x] **15a. Network total bandwidth underflows when an interface disappears**
   `backend/monitoring/internal/collector/network/network.go:264-271` (`computeBytesPerSecond`), `:273-295` (`applyNetworkTotals`)
   - Verified `[source]`: `(sum now − sum before)` on `uint64` over the NICs present now; per-NIC deltas (L232-247) already tolerate resets. On VM stop (`vnetN` gone) → WARN, `Initialize()` wipes all baselines, 0 sample stored.
   - Fix: sum the per-NIC `upDelta`/`downDelta`; delete `computeBytesPerSecond` and the reset path.
   - Behaviour change: no spurious zero/WARN on NIC removal; otherwise identical numbers.
+  - Done 2026-10-23: `sumAndTrackPerNicDeltas` returns the summed per-NIC rates; `computeBytesPerSecond`, `applyNetworkTotals` and the 10 GB/s reset path are gone; `ioStats` keeps only `Time`. Test: `TestSumAndTrackPerNicDeltasToleratesVanishedInterface`.
 
-- [ ] **15b. Docker per-container baselines are never pruned for removed containers**
+- [x] **15b. Docker per-container baselines are never pruned for removed containers**
   `backend/monitoring/internal/collector/docker/docker.go:625-640` (only `deleteContainerStatsSync`), `:140` (called only for still-listed containers)
   - Verified `[source]`: three `map[uint16]map[string]…` grow with every container ever seen per cache key; `ReseedFromCollector` clones them.
   - Fix: at the end of `GetStats`, delete entries for ids not in `validIds`.
   - Behaviour change: none.
+  - Done 2026-10-23: `pruneBaselinesLocked` at the end of `GetStats` under `containerStatsMutex`. Test: `TestPruneBaselinesDropsRemovedContainersAcrossCacheKeys`.
 
 - [x] **16. VMDK import lets a crafted descriptor read host files into the guest disk**
   `backend/bridge/handlers/virt/import_disk.go:21-28,120-130` (qcow2-only guard), `templates.go:257-285` (`validateTemplateDisk`)

@@ -39,6 +39,10 @@ type httpRuntime struct {
 	plugins          []string
 }
 
+// smartDueCheckInterval is how often the SMART goroutine checks whether the
+// configured refresh interval has elapsed.
+const smartDueCheckInterval = time.Minute
+
 type ListenerOptions struct {
 	Name       string
 	Address    string
@@ -153,6 +157,12 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 			a.runCollector(ctx, opts.CollectorInterval, collectorIntervalUpdates)
 		})
 	})
+
+	if a.smartManager != nil {
+		collectorWG.Go(func() {
+			pprof.Do(runCtx, pprof.Labels("component", "smart"), a.runSmartRefresher)
+		})
+	}
 
 	hupCh := make(chan os.Signal, 1)
 	signal.Notify(hupCh, syscall.SIGHUP)
@@ -398,9 +408,6 @@ func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	a.lastCollectedMs.Store(capturedAt)
 	a.rememberTelemetry(data.ContainerTelemetry, time.UnixMilli(capturedAt))
 
-	// SMART refresh failures are logged when the refresh state changes so
-	// persistent probe failures do not emit the same warning every cycle.
-	_ = a.refreshSmartIfDue(ctx, now)
 	if err := a.store.RunMaintenance(now); err != nil {
 		return fmt.Errorf("maintenance failed: %w", err)
 	}
@@ -410,18 +417,24 @@ func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-func (a *App) refreshSmartIfDue(ctx context.Context, now time.Time) error {
-	if a.smartManager == nil {
-		return nil
-	}
+// runSmartRefresher refreshes SMART data off the collector goroutine: smartctl
+// can take 15 s per device. Failures are logged when the refresh state changes
+// so persistent probe failures do not emit the same warning every cycle.
+func (a *App) runSmartRefresher(ctx context.Context) {
+	ticker := time.NewTicker(smartDueCheckInterval)
+	defer ticker.Stop()
 
-	if !a.smartManager.RefreshDue(now) {
-		return nil
+	for {
+		now := time.Now().UTC()
+		if a.smartManager.RefreshDue(now) {
+			a.logSmartRefreshResult(a.refreshSmart(ctx, now, false))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
-
-	err := a.refreshSmart(ctx, now, false)
-	a.logSmartRefreshResult(err)
-	return err
 }
 
 func (a *App) RefreshSmartNow(ctx context.Context) error {
@@ -438,18 +451,16 @@ func (a *App) refreshSmart(ctx context.Context, now time.Time, forceScan bool) e
 		return a.store.WriteSmartDevices(now.UnixMilli(), map[string]smartmodel.SmartData{})
 	}
 
-	if err := a.smartManager.Refresh(ctx, forceScan); err != nil {
-		return err
+	refreshErr := a.smartManager.Refresh(ctx, forceScan)
+	// A failed refresh also waits one interval instead of rescanning every check.
+	a.smartManager.MarkRefreshed(now)
+	if refreshErr != nil {
+		return refreshErr
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := a.store.WriteSmartDevices(now.UnixMilli(), a.smartManager.GetCurrentData()); err != nil {
-		return err
-	}
-
-	a.smartManager.MarkRefreshed(now)
-	return nil
+	return a.store.WriteSmartDevices(now.UnixMilli(), a.smartManager.GetCurrentData())
 }
 
 func (a *App) Listeners() []monitoringapi.ListenerMeta {

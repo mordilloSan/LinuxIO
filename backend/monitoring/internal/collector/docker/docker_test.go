@@ -21,6 +21,22 @@ import (
 
 const defaultCacheTimeMs = uint16(60000)
 
+func TestPruneBaselinesDropsRemovedContainersAcrossCacheKeys(t *testing.T) {
+	at := time.Now()
+	dm := &Manager{
+		validIds:            map[string]struct{}{"keep": {}},
+		lastCpuContainer:    map[uint16]map[string]uint64{1: {"keep": 1, "gone": 2}, 2: {"gone": 3}},
+		lastCpuSystem:       map[uint16]map[string]uint64{1: {"keep": 1, "gone": 2}},
+		lastNetworkReadTime: map[uint16]map[string]time.Time{1: {"keep": at, "gone": at}},
+	}
+
+	dm.pruneBaselinesLocked()
+
+	assert.Equal(t, map[uint16]map[string]uint64{1: {"keep": 1}, 2: {}}, dm.lastCpuContainer)
+	assert.Equal(t, map[uint16]map[string]uint64{1: {"keep": 1}}, dm.lastCpuSystem)
+	assert.Equal(t, map[uint16]map[string]time.Time{1: {"keep": at}}, dm.lastNetworkReadTime)
+}
+
 func testManager(t *testing.T, server *httptest.Server, negotiate bool) *Manager {
 	t.Helper()
 	dm := &Manager{

@@ -17,12 +17,10 @@ import (
 	systemmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 )
 
-// ioStats is the NIC byte-counter baseline of one cache interval.
+// ioStats is the sample-time baseline of one cache interval; the byte-counter
+// baselines live in the per-NIC delta trackers.
 type ioStats struct {
-	BytesRecv uint64
-	BytesSent uint64
-	Time      time.Time
-	Name      string
+	Time time.Time
 }
 
 // Manager owns network interface tracking and per-cache-time NIC delta state.
@@ -115,9 +113,8 @@ func (m *Manager) UpdateStats(ctx context.Context, cacheTimeMs uint16, systemSta
 		m.refreshNetInterfaces(netIO)
 		m.reseedFromCollector(cacheTimeMs)
 		nis, msElapsed := m.loadAndTickNetBaseline(cacheTimeMs)
-		totalBytesSent, totalBytesRecv := m.sumAndTrackPerNicDeltas(cacheTimeMs, msElapsed, netIO, systemStats)
-		bytesSentPerSecond, bytesRecvPerSecond := m.computeBytesPerSecond(msElapsed, totalBytesSent, totalBytesRecv, nis)
-		m.applyNetworkTotals(ctx, cacheTimeMs, netIO, systemStats, nis, totalBytesSent, totalBytesRecv, bytesSentPerSecond, bytesRecvPerSecond)
+		systemStats.Bandwidth[0], systemStats.Bandwidth[1] = m.sumAndTrackPerNicDeltas(cacheTimeMs, msElapsed, netIO, systemStats)
+		m.netIoStats[cacheTimeMs] = nis
 	} else if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
@@ -208,10 +205,12 @@ func (m *Manager) loadAndTickNetBaseline(cacheTimeMs uint16) (netIoStat ioStats,
 	return netIoStat, msElapsed
 }
 
-// sumAndTrackPerNicDeltas accumulates totals and records per-NIC up/down deltas into systemStats
+// sumAndTrackPerNicDeltas records per-NIC up/down rates into systemStats and
+// returns their sums, so an interface that disappears or resets its counters
+// never drives the total negative.
 //
 //nolint:gocognit // Network delta aggregation handles multiple filtering and tracker edge cases.
-func (m *Manager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed uint64, netIO []psutilNet.IOCountersStat, systemStats *systemmodel.Stats) (totalBytesSent, totalBytesRecv uint64) {
+func (m *Manager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed uint64, netIO []psutilNet.IOCountersStat, systemStats *systemmodel.Stats) (totalUp, totalDown uint64) {
 	tracker := m.netInterfaceDeltaTrackers[cacheTimeMs]
 	if tracker == nil {
 		tracker = deltatracker.NewDeltaTracker[string, uint64]()
@@ -223,9 +222,6 @@ func (m *Manager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed uint64, 
 		if _, exists := m.netInterfaces[v.Name]; !exists {
 			continue
 		}
-		totalBytesSent += v.BytesSent
-		totalBytesRecv += v.BytesRecv
-
 		var upDelta, downDelta uint64
 		upKey, downKey := fmt.Sprintf("%sup", v.Name), fmt.Sprintf("%sdown", v.Name)
 		tracker.Set(upKey, v.BytesSent)
@@ -250,6 +246,8 @@ func (m *Manager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed uint64, 
 				downDelta = deltaBytes * 1000 / msElapsed
 			}
 		}
+		totalUp += upDelta
+		totalDown += downDelta
 		systemStats.NetworkInterfaces[v.Name] = [4]uint64{upDelta, downDelta, v.BytesSent, v.BytesRecv}
 		systemStats.NetworkInterfaceCounters[v.Name] = systemmodel.NetworkInterfaceCounters{
 			RxDropped: v.Dropin, RxErrors: v.Errin, RxPackets: v.PacketsRecv,
@@ -257,47 +255,7 @@ func (m *Manager) sumAndTrackPerNicDeltas(cacheTimeMs uint16, msElapsed uint64, 
 		}
 	}
 
-	return totalBytesSent, totalBytesRecv
-}
-
-// computeBytesPerSecond calculates per-second totals from elapsed time and totals
-func (m *Manager) computeBytesPerSecond(msElapsed, totalBytesSent, totalBytesRecv uint64, nis ioStats) (bytesSentPerSecond, bytesRecvPerSecond uint64) {
-	if msElapsed > 0 {
-		bytesSentPerSecond = (totalBytesSent - nis.BytesSent) * 1000 / msElapsed
-		bytesRecvPerSecond = (totalBytesRecv - nis.BytesRecv) * 1000 / msElapsed
-	}
-	return bytesSentPerSecond, bytesRecvPerSecond
-}
-
-// applyNetworkTotals validates and writes computed network stats, or resets on anomaly
-func (m *Manager) applyNetworkTotals(
-	ctx context.Context,
-	cacheTimeMs uint16,
-	netIO []psutilNet.IOCountersStat,
-	systemStats *systemmodel.Stats,
-	nis ioStats,
-	totalBytesSent, totalBytesRecv uint64,
-	bytesSentPerSecond, bytesRecvPerSecond uint64,
-) {
-	if bytesSentPerSecond > 10_000_000_000 || bytesRecvPerSecond > 10_000_000_000 {
-		slog.Warn("Invalid net stats. Resetting.", "sent", bytesSentPerSecond, "recv", bytesRecvPerSecond)
-		for _, v := range netIO {
-			if _, exists := m.netInterfaces[v.Name]; !exists {
-				continue
-			}
-			slog.Info(v.Name, "recv", v.BytesRecv, "sent", v.BytesSent)
-		}
-		m.Initialize(ctx)
-		delete(m.netIoStats, cacheTimeMs)
-		delete(m.netInterfaceDeltaTrackers, cacheTimeMs)
-		systemStats.Bandwidth[0], systemStats.Bandwidth[1] = 0, 0
-		return
-	}
-
-	systemStats.Bandwidth[0], systemStats.Bandwidth[1] = bytesSentPerSecond, bytesRecvPerSecond
-	nis.BytesSent = totalBytesSent
-	nis.BytesRecv = totalBytesRecv
-	m.netIoStats[cacheTimeMs] = nis
+	return totalUp, totalDown
 }
 
 // skipNetworkInterface returns true if the network interface should be ignored.

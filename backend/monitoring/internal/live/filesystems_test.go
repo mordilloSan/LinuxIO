@@ -88,3 +88,29 @@ func TestFilesystemInfoCacheTracksMountIdentityAndDiscovery(t *testing.T) {
 		t.Fatal("vanished mount remained in cache")
 	}
 }
+
+func TestFilesystemInfoDoesNotHoldAppLockDuringUsage(t *testing.T) {
+	oldPartitions, oldUsage := livePartitions, liveDiskUsage
+	var mu sync.Mutex
+	lockedDuringUsage := false
+	livePartitions = func(context.Context, bool) ([]psutilDisk.PartitionStat, error) {
+		return []psutilDisk.PartitionStat{{Device: "/dev/data", Mountpoint: "/data", Fstype: "ext4"}}, nil
+	}
+	liveDiskUsage = func(context.Context, string) (*psutilDisk.UsageStat, error) {
+		if mu.TryLock() {
+			mu.Unlock()
+		} else {
+			lockedDuringUsage = true
+		}
+		return &psutilDisk.UsageStat{Total: 1}, nil
+	}
+	t.Cleanup(func() {
+		livePartitions, liveDiskUsage = oldPartitions, oldUsage
+	})
+
+	filesystems := &Filesystems{}
+	items := filesystems.Info(context.Background(), &mu, fakeTracker{})
+	if len(items) != 1 || lockedDuringUsage {
+		t.Fatalf("items = %#v, app lock held during usage = %v", items, lockedDuringUsage)
+	}
+}

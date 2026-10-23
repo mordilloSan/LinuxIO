@@ -3,6 +3,7 @@ package live
 import (
 	"cmp"
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -29,9 +30,9 @@ type Tracker interface {
 
 // Filesystems lists the mounts for the live payload. The mountpoint is the
 // cache key: several mounts can share a device and mounts can appear or
-// disappear. The zero value is ready to use; the cache is guarded by the mutex
-// passed to Info.
+// disappear. The zero value is ready to use; mu guards the cache.
 type Filesystems struct {
+	mu    sync.Mutex
 	cache map[string]cachedFilesystem
 }
 
@@ -41,44 +42,40 @@ var (
 )
 
 // Info discovers mounts on every uncached live sample while reusing usage
-// values for sleeping non-root filesystems. mu is the lock that guards the
-// tracker's state (the collector's app mutex); Info holds it from partition
-// discovery onwards.
-func (f *Filesystems) Info(ctx context.Context, mu sync.Locker, tracker Tracker) []monitoringapi.FilesystemInfo {
+// values for sleeping non-root filesystems. appMu is the lock that guards the
+// tracker's state (the collector's app mutex); Info holds it only to read the
+// tracker, never across statfs, which blocks on a dead hard-mounted share.
+func (f *Filesystems) Info(ctx context.Context, appMu sync.Locker, tracker Tracker) []monitoringapi.FilesystemInfo {
 	partitions, err := livePartitions(ctx, true)
 	if err != nil {
 		return []monitoringapi.FilesystemInfo{}
 	}
+	partitions = slices.DeleteFunc(partitions, isPseudoFS)
 
-	mu.Lock()
-	defer mu.Unlock()
-	if f.cache == nil {
-		f.cache = make(map[string]cachedFilesystem)
-	}
-	fsStats, usageCache := tracker.Tracked(), tracker.UsageCacheDuration()
 	now := time.Now()
+	appMu.Lock()
+	usageCache := tracker.UsageCacheDuration()
+	fresh := freshTrackedFilesystems(tracker.Tracked(), partitions, now)
+	appMu.Unlock()
+
+	f.mu.Lock()
+	previous := maps.Clone(f.cache)
+	f.mu.Unlock()
+	cache := make(map[string]cachedFilesystem, len(partitions))
 	items := make([]monitoringapi.FilesystemInfo, 0, len(partitions))
-	seenMounts := make(map[string]struct{}, len(partitions))
 	for _, partition := range partitions {
 		if err := ctx.Err(); err != nil {
 			return items
 		}
-		if isPseudoFS(partition) {
-			continue
-		}
 		mountpoint := partition.Mountpoint
-		seenMounts[mountpoint] = struct{}{}
-		cached, found := f.cache[mountpoint]
-		root := mountpoint == "/"
-		tracked := trackedFilesystemStats(fsStats, mountpoint)
-		trackedMatches := tracked != nil && tracked.Device == partition.Device && tracked.FSType == partition.Fstype
-		if trackedMatches && !tracked.UsageAt.IsZero() && now.Sub(tracked.UsageAt) < ReuseWindow {
-			info := filesystemInfoFromTracked(tracked, partition)
-			f.cache[mountpoint] = cachedFilesystem{info: info, at: tracked.UsageAt}
-			items = append(items, info)
+		cached, found := previous[mountpoint]
+		if entry, ok := fresh[mountpoint]; ok {
+			cache[mountpoint] = entry
+			items = append(items, entry.info)
 			continue
 		}
-		if info, ok := reusableCachedFilesystem(cached, found, partition, root, usageCache, now); ok {
+		if info, ok := reusableCachedFilesystem(cached, found, partition, mountpoint == "/", usageCache, now); ok {
+			cache[mountpoint] = cached
 			items = append(items, info)
 			continue
 		}
@@ -87,21 +84,36 @@ func (f *Filesystems) Info(ctx context.Context, mu sync.Locker, tracker Tracker)
 		if err != nil {
 			// A mount may disappear between partition discovery and usage. Keep
 			// serving the other mounts in this optional live section.
+			if found {
+				cache[mountpoint] = cached
+			}
 			continue
 		}
 		info := filesystemInfoFromUsage(partition, usage)
-		f.cache[mountpoint] = cachedFilesystem{info: info, at: now}
+		cache[mountpoint] = cachedFilesystem{info: info, at: time.Now()}
 		items = append(items, info)
 	}
-	for mountpoint := range f.cache {
-		if _, seen := seenMounts[mountpoint]; !seen {
-			delete(f.cache, mountpoint)
-		}
-	}
+	f.mu.Lock()
+	f.cache = cache
+	f.mu.Unlock()
 	slices.SortFunc(items, func(a, b monitoringapi.FilesystemInfo) int {
 		return cmp.Or(strings.Compare(a.Mountpoint, b.Mountpoint), strings.Compare(a.Device, b.Device))
 	})
 	return items
+}
+
+// freshTrackedFilesystems copies the collector's recent usage figures out from
+// under the app mutex, keyed by mountpoint.
+func freshTrackedFilesystems(fsStats map[string]*systemmodel.FsStats, partitions []psutilDisk.PartitionStat, now time.Time) map[string]cachedFilesystem {
+	fresh := make(map[string]cachedFilesystem)
+	for _, partition := range partitions {
+		tracked := trackedFilesystemStats(fsStats, partition.Mountpoint)
+		if tracked == nil || tracked.Device != partition.Device || tracked.FSType != partition.Fstype || tracked.UsageAt.IsZero() || now.Sub(tracked.UsageAt) >= ReuseWindow {
+			continue
+		}
+		fresh[partition.Mountpoint] = cachedFilesystem{info: filesystemInfoFromTracked(tracked, partition), at: tracked.UsageAt}
+	}
+	return fresh
 }
 
 func reusableCachedFilesystem(cached cachedFilesystem, found bool, partition psutilDisk.PartitionStat, root bool, duration time.Duration, now time.Time) (monitoringapi.FilesystemInfo, bool) {

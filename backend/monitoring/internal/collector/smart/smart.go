@@ -76,15 +76,15 @@ func (sm *Manager) SetRefreshInterval(interval time.Duration) {
 	sm.refreshInterval = interval
 }
 
-// RefreshDue reports whether no refresh has succeeded yet or the last one is at
-// least one refresh interval old at now.
+// RefreshDue reports whether no refresh has been attempted yet or the last one
+// is at least one refresh interval old at now.
 func (sm *Manager) RefreshDue(now time.Time) bool {
 	sm.Lock()
 	defer sm.Unlock()
 	return sm.lastRefresh.IsZero() || now.Sub(sm.lastRefresh) >= sm.refreshInterval
 }
 
-// MarkRefreshed records a successful refresh at now.
+// MarkRefreshed records a refresh attempt, successful or not, at now.
 func (sm *Manager) MarkRefreshed(now time.Time) {
 	sm.Lock()
 	defer sm.Unlock()
