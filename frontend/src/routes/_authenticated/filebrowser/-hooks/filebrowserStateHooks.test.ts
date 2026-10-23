@@ -19,7 +19,7 @@ describe("filebrowser state hooks", () => {
       };
       result.current.actions.openCreateFile();
       result.current.actions.openCreateFolder();
-      result.current.actions.requestDelete(["/tmp/old.txt"]);
+      result.current.actions.requestDelete(["/tmp/old.txt"], "trash");
       result.current.actions.showDetails(["/tmp/old.txt"], [item]);
       result.current.actions.openPermissions({
         isDirectory: false,
@@ -70,17 +70,27 @@ describe("filebrowser state hooks", () => {
   it("closes the delete dialog and clears the pending paths together", () => {
     const { result } = renderHook(() => useFileDialogs());
 
-    act(() => result.current.actions.requestDelete(["/tmp/old.txt"]));
+    act(() => result.current.actions.requestDelete(["/tmp/old.txt"], "trash"));
     act(() => result.current.actions.closeDelete());
 
     expect(result.current.deleteDialog).toBe(false);
     expect(result.current.pendingDeletePaths).toEqual([]);
   });
 
+  it("remembers the requested delete mode", () => {
+    const { result } = renderHook(() => useFileDialogs());
+
+    act(() =>
+      result.current.actions.requestDelete(["/tmp/old.txt"], "permanent"),
+    );
+
+    expect(result.current.deleteMode).toBe("permanent");
+  });
+
   it("clears pending delete paths without closing the dialog", () => {
     const { result } = renderHook(() => useFileDialogs());
 
-    act(() => result.current.actions.requestDelete(["/tmp/old.txt"]));
+    act(() => result.current.actions.requestDelete(["/tmp/old.txt"], "trash"));
     act(() => result.current.actions.clearPendingDelete());
 
     expect(result.current.deleteDialog).toBe(true);

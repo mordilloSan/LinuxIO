@@ -56,7 +56,13 @@ func ensureResourcePostType(root *fsroot.FSRoot, req resourcePostRequest) error 
 }
 
 func createDirectoryResource(ctx context.Context, root *fsroot.FSRoot, req resourcePostRequest) (any, error) {
-	if stat, statErr := root.Root.Stat(req.relPath); statErr == nil && !stat.IsDir() && req.override {
+	// MkdirAll would accept an existing folder and the chmod below would then
+	// rewrite its mode, so an existing folder has to be refused here.
+	if stat, statErr := root.Root.Stat(req.relPath); statErr == nil {
+		if stat.IsDir() {
+			return nil, fmt.Errorf("bad_request:folder already exists")
+		}
+		// ensureResourcePostType only lets a file through with override set.
 		if removeErr := root.Root.Remove(req.relPath); removeErr != nil {
 			slog.Debug("error removing existing file for directory create", "path", req.cleanPath, "error", removeErr)
 			return nil, fmt.Errorf("bad_request:%w", removeErr)

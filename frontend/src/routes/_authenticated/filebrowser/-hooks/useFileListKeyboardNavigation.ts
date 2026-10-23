@@ -10,6 +10,7 @@ interface UseFileListKeyboardNavigationProps {
   focusedIndex: number;
   global?: boolean; // Listen to document events instead of container events
   onDelete?: () => void;
+  onDeletePermanently?: () => void;
   onFocusChange: (index: number) => void;
   onRename?: () => void;
   onSelectionChange: (paths: Set<string>) => void;
@@ -23,6 +24,7 @@ export const useFileListKeyboardNavigation = ({
   onFocusChange,
   onSelectionChange,
   onDelete,
+  onDeletePermanently,
   onRename,
   global = false,
 }: UseFileListKeyboardNavigationProps) => {
@@ -51,11 +53,13 @@ export const useFileListKeyboardNavigation = ({
       return;
     }
 
-    // Delete key to delete selected items
+    // Delete moves the selection to the trash; Shift+Delete removes it for good
     if (e.key === "Delete") {
       e.preventDefault();
-      if (onDelete) {
-        onDelete();
+      if (e.shiftKey) {
+        onDeletePermanently?.();
+      } else {
+        onDelete?.();
       }
       return;
     }

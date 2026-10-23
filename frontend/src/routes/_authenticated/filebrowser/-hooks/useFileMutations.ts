@@ -13,8 +13,9 @@ import {
   useCallMutation,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { describeBatchFailures } from "@/tasks/batchFailures";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
-import { joinPath } from "@/utils/path";
+import { joinPath, parentPath, stripTrailingSlash } from "@/utils/path";
 
 import {
   CONFLICT_PROMPT_CANCELLED,
@@ -70,6 +71,8 @@ export const useFileMutations = ({
   const [renameProgress, setRenameProgress] =
     useState<TaskProgress<FileProgress> | null>(null);
   const [deleteProgress, setDeleteProgress] =
+    useState<TaskProgress<CountProgress> | null>(null);
+  const [trashProgress, setTrashProgress] =
     useState<TaskProgress<CountProgress> | null>(null);
   const [permissionsProgress, setPermissionsProgress] =
     useState<TaskProgress<CountProgress> | null>(null);
@@ -127,6 +130,33 @@ export const useFileMutations = ({
     [createFolderMutation, createPending, normalizedPath],
   );
 
+  // The listing changed even when some items failed, so refresh it and close
+  // the dialog either way; failures are named in the error toast.
+  const reportRemoval = (
+    result: FileBatchResult | undefined,
+    verb: "delete" | "trash",
+  ) => {
+    invalidateListing();
+    onDeleteSuccess?.();
+    const failed = result?.failed ?? [];
+    if (failed.length > 0) {
+      const count = `${failed.length} item${failed.length === 1 ? "" : "s"}`;
+      toast.error(
+        verb === "trash"
+          ? `Failed to move ${count} to Trash`
+          : `Failed to delete ${count}`,
+        { description: describeBatchFailures(failed) },
+      );
+      return;
+    }
+    const moved = result?.succeeded ?? 0;
+    toast.success(
+      verb === "trash"
+        ? `Moved ${moved} item${moved === 1 ? "" : "s"} to Trash`
+        : "Items deleted successfully",
+    );
+  };
+
   // One batch task deletes the whole selection; the bridge loops server-side
   // and reports per-item failures in the result.
   const deleteBatchAction =
@@ -137,16 +167,7 @@ export const useFileMutations = ({
       onProgress: setDeleteProgress,
       success: (result) => {
         setDeleteProgress(null);
-        const failed = result?.failed ?? [];
-        if (failed.length > 0) {
-          toast.error(
-            `Failed to delete ${failed.length} item${failed.length === 1 ? "" : "s"}`,
-          );
-          return;
-        }
-        invalidateListing();
-        onDeleteSuccess?.();
-        toast.success("Items deleted successfully");
+        reportRemoval(result, "delete");
       },
       error: (error) => {
         setDeleteProgress(null);
@@ -161,6 +182,33 @@ export const useFileMutations = ({
       return deleteBatchAction.mutateAsync({ paths });
     },
     [deleteBatchAction],
+  );
+
+  // Same shape as delete, but moves into the FreeDesktop trash.
+  const trashBatchAction = linuxio.filebrowser.trash_batch.useTaskStreamAction({
+    closeMessage: "Trash task stream closed before completion",
+    // invalidateListing below is more precise than the manifest entry.
+    invalidates: [],
+    onProgress: setTrashProgress,
+    success: (result) => {
+      setTrashProgress(null);
+      reportRemoval(result, "trash");
+    },
+    error: (error) => {
+      setTrashProgress(null);
+      toast.error(
+        getMutationErrorMessage(error, "Failed to move items to Trash"),
+      );
+    },
+  });
+
+  const trashItems = useCallback(
+    async (paths: string[]): Promise<FileBatchResult | undefined> => {
+      if (!paths.length || trashBatchAction.isPending) return;
+      setTrashProgress(null);
+      return trashBatchAction.mutateAsync({ paths });
+    },
+    [trashBatchAction],
   );
 
   const compressItems = useCallback(
@@ -296,30 +344,48 @@ export const useFileMutations = ({
   // the user per collision (overwrite/skip). Returns the sources to transfer
   // plus whether any overwrite was chosen; throws CONFLICT_PROMPT_CANCELLED
   // when the user dismissed the prompt, and returns null when every item was
-  // skipped (nothing to do).
+  // skipped (nothing to do). Items already in destinationDir are a no-op for a
+  // move; a copy keeps them (the bridge names the copy "name (copy)") but
+  // never asks to overwrite an item with itself.
   const resolvePasteCollisions = useCallback(
     async (
       sourcePaths: string[],
       destinationDir: string,
+      action: "copy" | "move",
     ): Promise<{ sources: string[]; overwrite: boolean } | null> => {
-      if (!resolveCollisions) {
-        return { sources: sourcePaths, overwrite: false };
+      const destination = stripTrailingSlash(destinationDir);
+      const isSameFolder = (path: string) => parentPath(path) === destination;
+      const candidates =
+        action === "move"
+          ? sourcePaths.filter((path) => !isSameFolder(path))
+          : sourcePaths;
+      if (!candidates.length) {
+        toast.info("Items are already in this folder");
+        return null;
+      }
+      const checked = candidates.filter((path) => !isSameFolder(path));
+      if (!resolveCollisions || !checked.length) {
+        return { sources: candidates, overwrite: false };
       }
       const baseName = (path: string) =>
         path.replace(/\/+$/, "").split("/").pop() || path;
       const resolution = await resolveCollisions(
-        sourcePaths,
+        checked,
         (path) => joinPath(destinationDir, baseName(path)),
         destinationDir,
       );
       if (!resolution) {
         throw CONFLICT_PROMPT_CANCELLED;
       }
-      if (!resolution.kept.length) {
+      const kept = new Set(resolution.kept);
+      const sources = candidates.filter(
+        (path) => kept.has(path) || isSameFolder(path),
+      );
+      if (!sources.length) {
         toast.info("All items skipped");
         return null;
       }
-      return { sources: resolution.kept, overwrite: resolution.overwrite };
+      return { sources, overwrite: resolution.overwrite };
     },
     [resolveCollisions, toast],
   );
@@ -330,7 +396,11 @@ export const useFileMutations = ({
         throw new Error("No paths provided");
       }
       try {
-        const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
+        const plan = await resolvePasteCollisions(
+          sourcePaths,
+          destinationDir,
+          "copy",
+        );
         if (!plan) {
           return;
         }
@@ -358,7 +428,11 @@ export const useFileMutations = ({
         throw new Error("No paths provided");
       }
       try {
-        const plan = await resolvePasteCollisions(sourcePaths, destinationDir);
+        const plan = await resolvePasteCollisions(
+          sourcePaths,
+          destinationDir,
+          "move",
+        );
         if (!plan) {
           return;
         }
@@ -386,6 +460,9 @@ export const useFileMutations = ({
     deleteItems,
     deletePending: deleteBatchAction.isPending,
     deleteProgress,
+    trashItems,
+    trashPending: trashBatchAction.isPending,
+    trashProgress,
     compressItems,
     extractArchive,
     changePermissions,

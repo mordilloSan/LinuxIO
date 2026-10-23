@@ -16,6 +16,7 @@ function Harness({
   focusedIndex = -1,
   global = false,
   onDelete = vi.fn(),
+  onDeletePermanently = vi.fn(),
   onFocusChange = vi.fn(),
   onRename = vi.fn(),
   onSelectionChange = vi.fn(),
@@ -23,6 +24,7 @@ function Harness({
   focusedIndex?: number;
   global?: boolean;
   onDelete?: () => void;
+  onDeletePermanently?: () => void;
   onFocusChange?: (index: number) => void;
   onRename?: () => void;
   onSelectionChange?: (paths: Set<string>) => void;
@@ -35,6 +37,7 @@ function Harness({
     focusedIndex,
     global,
     onDelete,
+    onDeletePermanently,
     onFocusChange,
     onRename,
     onSelectionChange,
@@ -114,6 +117,22 @@ describe("useFileListKeyboardNavigation", () => {
 
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onRename).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends Shift+Delete to the permanent delete shortcut only", () => {
+    const onDelete = vi.fn();
+    const onDeletePermanently = vi.fn();
+
+    render(
+      <Harness onDelete={onDelete} onDeletePermanently={onDeletePermanently} />,
+    );
+    fireEvent.keyDown(screen.getByTestId("files"), {
+      key: "Delete",
+      shiftKey: true,
+    });
+
+    expect(onDeletePermanently).toHaveBeenCalledTimes(1);
+    expect(onDelete).not.toHaveBeenCalled();
   });
 
   it("does not intercept keyboard shortcuts while typing in inputs", () => {

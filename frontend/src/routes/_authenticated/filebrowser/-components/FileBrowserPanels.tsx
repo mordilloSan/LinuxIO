@@ -564,7 +564,9 @@ export const FileBrowserConflictDialog = ({
       </AppDialogTitle>
       <AppDialogContent>
         <AppTypography style={{ marginBottom: 8 }} variant="body2">
-          Choose what to do with each item in {prompt?.destination}. Skipped
+          Choose what to do with each item in {prompt?.destination}. Overwrite
+          replaces the existing file. Merge keeps the existing folder and
+          replaces only the files inside it that have the same name. Skipped
           items are left untouched.
         </AppTypography>
         <div
@@ -586,7 +588,7 @@ export const FileBrowserConflictDialog = ({
             onClick={() => setAll("overwrite")}
             size="small"
           >
-            Overwrite all
+            Overwrite / merge all
           </AppButton>
         </div>
         <ul
@@ -622,7 +624,7 @@ export const FileBrowserConflictDialog = ({
                 {isDir ? "/" : ""}
               </AppTypography>
               {choiceButton(path, "skip", "Skip")}
-              {choiceButton(path, "overwrite", "Overwrite")}
+              {choiceButton(path, "overwrite", isDir ? "Merge" : "Overwrite")}
             </li>
           ))}
         </ul>

@@ -57,6 +57,7 @@ const contentProps: FileBrowserContentProps = {
     onCancelRename: vi.fn(),
     onConfirmRename: vi.fn(),
     onDelete: vi.fn(),
+    onDeletePermanently: vi.fn(),
     onDownloadFile: vi.fn(),
     onOpenDirectory: vi.fn(),
     onSelectedPathsChange: vi.fn(),

@@ -77,6 +77,14 @@ func fileTaskBindings(store *userconfig.UserStore, owner uploadOwner) apischema.
 			},
 			bridgeipc.TaskDefault,
 		),
+		apischema.TaskRunner[apischema.BatchPathRequest, FileBatchResult]("filebrowser.trash_batch", apischema.SessionTask(), apischema.WithTaskProgress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
+		})).Run(
+			func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
+				return runTrashBatchTask(ctx, task, store, req, owner)
+			},
+			bridgeipc.TaskDefault,
+		),
 		apischema.TaskRunner[apischema.OptionalPathRequest, indexer.IndexerResult]("filebrowser.index", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgeipc.TaskMetadata {
 			path := ""
 			if req.Path != nil {

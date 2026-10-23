@@ -11,7 +11,7 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import type { BackgroundTaskActions } from "@/tasks/types";
 import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
 
-import type { DialogsSlice } from "./useFileDialogs";
+import type { DeleteMode, DialogsSlice } from "./useFileDialogs";
 import type { EditorSlice } from "./useFileEditor";
 import { useFilePathUtilities } from "./useFilePathUtilities";
 import type { ViewSlice } from "./useFileViewState";
@@ -38,6 +38,8 @@ interface UseFileBrowserItemActionsParams {
   createFolder: (folderName: string) => Promise<void>;
   deleteItems: (paths: string[]) => Promise<FileBatchResult | undefined>;
   deletePending?: boolean;
+  trashItems: (paths: string[]) => Promise<FileBatchResult | undefined>;
+  trashPending?: boolean;
   dialogs: DialogsSlice;
   editor: EditorSlice;
   handleOpenDirectory: (path: string) => void;
@@ -57,6 +59,8 @@ export const useFileBrowserItemActions = ({
   createFolder,
   deleteItems,
   deletePending = false,
+  trashItems,
+  trashPending = false,
   dialogs,
   editor,
   handleOpenDirectory,
@@ -75,6 +79,7 @@ export const useFileBrowserItemActions = ({
   });
   const {
     actions: dialogActions,
+    deleteMode,
     pendingDeletePaths,
     permissionsDialog,
   } = dialogs;
@@ -236,30 +241,54 @@ export const useFileBrowserItemActions = ({
     handleStartInlineRename();
   }, [handleStartInlineRename]);
 
-  const handleDelete = useCallback(() => {
-    closeContextMenu();
-    const paths = Array.from(selectedPaths);
-    if (paths.length > 0) {
-      dialogActions.requestDelete(paths);
-    } else {
-      toast.error("No items selected");
-    }
-  }, [dialogActions, closeContextMenu, selectedPaths, toast]);
+  const requestDelete = useCallback(
+    (mode: DeleteMode) => {
+      closeContextMenu();
+      const paths = Array.from(selectedPaths);
+      if (paths.length > 0) {
+        dialogActions.requestDelete(paths, mode);
+      } else {
+        toast.error("No items selected");
+      }
+    },
+    [dialogActions, closeContextMenu, selectedPaths, toast],
+  );
+
+  const handleDelete = useCallback(
+    () => requestDelete("trash"),
+    [requestDelete],
+  );
+  const handleDeletePermanently = useCallback(
+    () => requestDelete("permanent"),
+    [requestDelete],
+  );
 
   const handleConfirmDelete = useCallback(async () => {
     if (!pendingDeletePaths.length) {
       return;
     }
-    if (deletePending) return;
+    if (deleteMode === "trash" ? trashPending : deletePending) return;
     try {
-      const result = await deleteItems(pendingDeletePaths);
-      if (result && result.failed.length === 0) {
+      const result = await (deleteMode === "trash" ? trashItems : deleteItems)(
+        pendingDeletePaths,
+      );
+      // The mutation refreshes the listing and names per-item failures in a
+      // toast, so the dialog is done once a result came back.
+      if (result) {
         dialogActions.closeDelete();
       }
     } catch {
       // The mutation owns error feedback; retain the dialog for retry.
     }
-  }, [deleteItems, deletePending, dialogActions, pendingDeletePaths]);
+  }, [
+    deleteItems,
+    deleteMode,
+    deletePending,
+    dialogActions,
+    pendingDeletePaths,
+    trashItems,
+    trashPending,
+  ]);
 
   const handleCloseDeleteDialog = useCallback(() => {
     dialogActions.closeDelete();
@@ -339,6 +368,7 @@ export const useFileBrowserItemActions = ({
     handleCreateFile,
     handleCreateFolder,
     handleDelete,
+    handleDeletePermanently,
     handleDoubleClickFile,
     handleDownloadCurrent,
     handleDownloadDetail,

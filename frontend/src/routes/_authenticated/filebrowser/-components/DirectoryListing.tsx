@@ -31,6 +31,7 @@ interface DirectoryListingProps {
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void;
   onDelete?: () => void;
+  onDeletePermanently?: () => void;
   onDownloadFile: (item: FileItem) => void;
   onOpenDirectory: (path: string) => void;
   onSelectedPathsChange: (paths: Set<string>) => void;
@@ -59,6 +60,7 @@ const DirectoryListing = ({
   onSelectedPathsChange,
   isContextMenuOpen,
   onDelete,
+  onDeletePermanently,
   renamingPath,
   renamePendingPath,
   renameProgressPct,
@@ -180,6 +182,7 @@ const DirectoryListing = ({
     onFocusChange: focusIndexFromKeyboard,
     onSelectionChange: onSelectedPathsChange,
     onDelete: onDelete,
+    onDeletePermanently,
     onRename: onStartRename,
     global: true, // Enable global keyboard navigation
   });

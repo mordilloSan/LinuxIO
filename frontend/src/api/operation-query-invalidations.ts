@@ -114,6 +114,7 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "filebrowser.copy_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.move_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.delete_batch": FILEBROWSER_LISTING_KEYS,
+  "filebrowser.trash_batch": FILEBROWSER_LISTING_KEYS,
   "filebrowser.chmod_batch": FILEBROWSER_PERMISSION_KEYS,
   "filebrowser.upload": FILEBROWSER_LISTING_KEYS,
   "filebrowser.upload_batch": FILEBROWSER_LISTING_KEYS,

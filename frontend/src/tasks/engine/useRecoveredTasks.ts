@@ -196,6 +196,10 @@ export function useRecoveredTasks(
             const processed = data?.processed ?? 0;
             return `Deleting ${processed} item${processed === 1 ? "" : "s"}`;
           }
+          case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH: {
+            const processed = data?.processed ?? 0;
+            return `Moving ${processed} item${processed === 1 ? "" : "s"} to Trash`;
+          }
           case TaskTypes.TASK_TYPE_DOCKER_COMPOSE:
             return (
               message ??
@@ -335,7 +339,8 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_FILE_UPLOAD_BATCH:
         case TaskTypes.TASK_TYPE_FILE_ARCHIVE:
         case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH:
-        case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH: {
+        case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH:
+        case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH: {
           if (
             activeFileTransferTaskIdsRef.current.has(task.id) ||
             tasks.get(task.id)

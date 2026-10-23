@@ -84,6 +84,7 @@ function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
     createFileDialog: false,
     createFolderDialog: false,
     deleteDialog: false,
+    deleteMode: "trash",
     detailTarget: null,
     pendingDeletePaths: [],
     permissionsDialog: null,
@@ -144,6 +145,7 @@ function setup(overrides: Partial<Params> = {}) {
     createFile: vi.fn().mockResolvedValue(undefined),
     createFolder: vi.fn().mockResolvedValue(undefined),
     deleteItems: vi.fn().mockResolvedValue(successfulBatchResult),
+    trashItems: vi.fn().mockResolvedValue(successfulBatchResult),
     dialogs: dialogsSlice(),
     editor: editorSlice(),
     handleOpenDirectory: vi.fn(),
@@ -312,16 +314,24 @@ describe("useFileBrowserItemActions", () => {
   });
 
   describe("delete flow", () => {
-    it("stages selected paths for deletion", () => {
+    it("stages selected paths for the trash or permanent deletion", () => {
       const { result, params } = setup({
         selectedPaths: new Set(["/srv/projects/a"]),
       });
 
       act(() => result.current.handleDelete());
+      act(() => result.current.handleDeletePermanently());
 
-      expect(params.dialogs.actions.requestDelete).toHaveBeenCalledWith([
-        "/srv/projects/a",
-      ]);
+      expect(params.dialogs.actions.requestDelete).toHaveBeenNthCalledWith(
+        1,
+        ["/srv/projects/a"],
+        "trash",
+      );
+      expect(params.dialogs.actions.requestDelete).toHaveBeenNthCalledWith(
+        2,
+        ["/srv/projects/a"],
+        "permanent",
+      );
     });
 
     it("warns when deleting with nothing selected", () => {
@@ -336,29 +346,45 @@ describe("useFileBrowserItemActions", () => {
       expect(params.dialogs.actions.requestDelete).not.toHaveBeenCalled();
     });
 
-    it("closes the delete dialog only after a successful batch settles", async () => {
+    it("moves to the trash in trash mode and closes the dialog", async () => {
       const { result, params } = setup({
         dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
       });
 
       await act(async () => result.current.handleConfirmDelete());
 
-      expect(params.deleteItems).toHaveBeenCalledWith(["/srv/projects/a"]);
+      expect(params.trashItems).toHaveBeenCalledWith(["/srv/projects/a"]);
+      expect(params.deleteItems).not.toHaveBeenCalled();
       expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
     });
 
-    it("retains the delete dialog after failure or a partial result", async () => {
+    it("deletes permanently in permanent mode and closes the dialog", async () => {
+      const { result, params } = setup({
+        dialogs: dialogsSlice({
+          deleteMode: "permanent",
+          pendingDeletePaths: ["/srv/projects/a"],
+        }),
+      });
+
+      await act(async () => result.current.handleConfirmDelete());
+
+      expect(params.deleteItems).toHaveBeenCalledWith(["/srv/projects/a"]);
+      expect(params.trashItems).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes the dialog on a partial result but retains it after a throw", async () => {
       const failedResult = {
         failed: [{ error: "denied", path: "/srv/projects/a" }],
         succeeded: 0,
         total: 1,
       };
       const failed = setup({
-        deleteItems: vi.fn().mockRejectedValue(new Error("delete failed")),
+        trashItems: vi.fn().mockRejectedValue(new Error("delete failed")),
         dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
       });
       const partial = setup({
-        deleteItems: vi.fn().mockResolvedValue(failedResult),
+        trashItems: vi.fn().mockResolvedValue(failedResult),
         dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
       });
 
@@ -366,7 +392,9 @@ describe("useFileBrowserItemActions", () => {
       await act(async () => partial.result.current.handleConfirmDelete());
 
       expect(failed.params.dialogs.actions.closeDelete).not.toHaveBeenCalled();
-      expect(partial.params.dialogs.actions.closeDelete).not.toHaveBeenCalled();
+      expect(partial.params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(
+        1,
+      );
     });
 
     it("ignores confirmation when there are no pending paths", async () => {
@@ -376,7 +404,7 @@ describe("useFileBrowserItemActions", () => {
 
       await act(async () => result.current.handleConfirmDelete());
 
-      expect(params.deleteItems).not.toHaveBeenCalled();
+      expect(params.trashItems).not.toHaveBeenCalled();
     });
 
     it("clears pending paths when the delete dialog closes", () => {

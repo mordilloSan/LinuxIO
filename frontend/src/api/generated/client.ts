@@ -144,6 +144,10 @@ const linuxio = {
     resource_stat: defineCallWithRequest("filebrowser.resource_stat"),
     search: defineCallWithRequest("filebrowser.search"),
     subfolders: defineCallWithRequest("filebrowser.subfolders"),
+    trash_batch: createTaskEndpoint("filebrowser", "trash_batch", {
+      kind: "field",
+      field: "paths",
+    }),
     upload: createTaskEndpoint("filebrowser", "upload", { kind: "object" }),
     upload_batch: createTaskEndpoint("filebrowser", "upload_batch", {
       kind: "object",

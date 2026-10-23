@@ -20,6 +20,7 @@ interface ContextMenuProps {
   onCreateFolder: () => void;
   onCut: () => void;
   onDelete: () => void;
+  onDeletePermanently: () => void;
   onDownload: () => void;
   onExtract?: () => void;
   onOpenContainingFolder?: () => void;
@@ -42,6 +43,7 @@ const ContextMenu = ({
   onCut,
   onPaste,
   onDelete,
+  onDeletePermanently,
   onDownload,
   onUpload,
   onRename,
@@ -187,12 +189,20 @@ const ContextMenu = ({
       <AppDivider />
 
       <AppMenuItem
-        danger
         disabled={!hasSelection}
         onClick={onDelete}
         startAdornment={<Icon icon="mdi:delete" />}
       >
         Delete
+      </AppMenuItem>
+
+      <AppMenuItem
+        danger
+        disabled={!hasSelection}
+        onClick={onDeletePermanently}
+        startAdornment={<Icon icon="mdi:delete-forever" />}
+      >
+        Delete permanently
       </AppMenuItem>
     </AppMenu>
   );

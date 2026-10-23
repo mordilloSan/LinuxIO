@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -85,14 +86,54 @@ func TestMoveFileWithCallbacks(t *testing.T) {
 	})
 }
 
-func TestTransferOntoAncestorReplacesIt(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		transfer func(src, dst string) error
-	}{
-		{"move", func(src, dst string) error { return MoveFileWithCallbacks(src, dst, true, nil, MoveFileOptions{}) }},
-		{"copy", func(src, dst string) error { return CopyFileWithCallbacks(src, dst, true, nil) }},
-	} {
+var transferKinds = []struct {
+	name       string
+	transfer   func(src, dst string, overwrite bool, opts *OperationCallbacks) error
+	sourceKept bool
+}{
+	{"move", func(src, dst string, overwrite bool, opts *OperationCallbacks) error {
+		return MoveFileWithCallbacks(src, dst, overwrite, opts, MoveFileOptions{})
+	}, false},
+	{"copy", CopyFileWithCallbacks, true},
+}
+
+func TestTransferMergesIntoExistingDirectory(t *testing.T) {
+	for _, tc := range transferKinds {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			src := createTestDir(t, tmpDir, "src")
+			createTestFile(t, src, "a.txt", []byte("new"))
+			createTestFile(t, createTestDir(t, src, "sub"), "c.txt", []byte("c"))
+			dst := createTestDir(t, tmpDir, "dst")
+			createTestFile(t, dst, "a.txt", []byte("old"))
+			createTestFile(t, dst, "b.txt", []byte("b"))
+			createTestFile(t, createTestDir(t, dst, "sub"), "d.txt", []byte("d"))
+
+			err := tc.transfer(src, dst, false, nil)
+			require.Error(t, err, "an existing folder is never touched without overwrite")
+			assert.Equal(t, "old", readString(t, filepath.Join(dst, "a.txt")))
+
+			require.NoError(t, tc.transfer(src, dst, true, nil))
+
+			assert.Equal(t, "new", readString(t, filepath.Join(dst, "a.txt")), "same-named files are replaced")
+			assert.Equal(t, "b", readString(t, filepath.Join(dst, "b.txt")), "other files in the folder are kept")
+			assert.Equal(t, "c", readString(t, filepath.Join(dst, "sub", "c.txt")), "subfolders merge too")
+			assert.Equal(t, "d", readString(t, filepath.Join(dst, "sub", "d.txt")))
+			_, err = os.Lstat(src)
+			if tc.sourceKept {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, fs.ErrNotExist, "a merged move removes the emptied source")
+			}
+			entries, err := os.ReadDir(tmpDir)
+			require.NoError(t, err)
+			assert.Len(t, entries, map[bool]int{true: 2, false: 1}[tc.sourceKept], "no aside is left behind")
+		})
+	}
+}
+
+func TestTransferOntoAncestorMergesIt(t *testing.T) {
+	for _, tc := range transferKinds {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			outer := createTestDir(t, tmpDir, "foo")
@@ -100,40 +141,96 @@ func TestTransferOntoAncestorReplacesIt(t *testing.T) {
 			inner := createTestDir(t, outer, "foo")
 			createTestFile(t, inner, "keep.txt", []byte("keep"))
 
-			require.NoError(t, tc.transfer(inner, outer))
+			require.NoError(t, tc.transfer(inner, outer, true, nil))
 
-			content, err := os.ReadFile(filepath.Join(outer, "keep.txt"))
-			require.NoError(t, err)
-			assert.Equal(t, []byte("keep"), content, "outer is replaced by the inner tree")
-			_, err = os.Lstat(filepath.Join(outer, "old.txt"))
-			require.ErrorIs(t, err, fs.ErrNotExist, "old outer content is gone")
-			entries, err := os.ReadDir(tmpDir)
-			require.NoError(t, err)
-			assert.Len(t, entries, 1, "no aside is left behind")
+			assert.Equal(t, "keep", readString(t, filepath.Join(outer, "keep.txt")))
+			assert.Equal(t, "old", readString(t, filepath.Join(outer, "old.txt")), "the outer folder keeps its own files")
+			_, err := os.Lstat(inner)
+			if tc.sourceKept {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, fs.ErrNotExist)
+			}
 		})
 	}
 }
 
+func TestCopyRemovesPartialDestinationOnFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	src := createTestDir(t, tmpDir, "src")
+	createTestFile(t, src, "a.txt", []byte("aaaa"))
+	createTestFile(t, src, "b.txt", []byte("bbbb"))
+	dest := filepath.Join(tmpDir, "dest")
+
+	progressed := false
+	err := CopyFileWithCallbacks(src, dest, false, &OperationCallbacks{
+		Progress: func(int64) { progressed = true },
+		Cancel:   func() bool { return progressed },
+	})
+	require.ErrorIs(t, err, ErrAborted)
+
+	_, err = os.Lstat(dest)
+	require.ErrorIs(t, err, fs.ErrNotExist, "a cancelled copy leaves nothing under the final name")
+	assert.Equal(t, "aaaa", readString(t, filepath.Join(src, "a.txt")))
+	assert.Equal(t, "bbbb", readString(t, filepath.Join(src, "b.txt")))
+}
+
+func TestMoveAcrossFilesystemsRemovesEachSourceAfterItsCopy(t *testing.T) {
+	other := otherFilesystemDir(t)
+	tmpDir := t.TempDir()
+	src := createTestDir(t, tmpDir, "src")
+	createTestFile(t, src, "a.txt", []byte("aaaa"))
+	createTestFile(t, src, "b.txt", []byte("bbbb"))
+	dest := filepath.Join(other, "moved")
+
+	// Cancel as soon as the first file (in directory order) has left the source.
+	err := MoveFileWithCallbacks(src, dest, false, &OperationCallbacks{
+		Cancel: func() bool { return len(dirNames(t, src)) < 2 },
+	}, MoveFileOptions{})
+	require.ErrorIs(t, err, ErrAborted)
+
+	contents := map[string]string{"a.txt": "aaaa", "b.txt": "bbbb"}
+	movedNames, leftNames := dirNames(t, dest), dirNames(t, src)
+	require.Len(t, movedNames, 1, "the moved file stays at the destination")
+	require.Len(t, leftNames, 1, "the unmoved file stays at the source")
+	assert.NotEqual(t, movedNames[0], leftNames[0], "no file is in both places or in neither")
+	assert.Equal(t, contents[movedNames[0]], readString(t, filepath.Join(dest, movedNames[0])))
+	assert.Equal(t, contents[leftNames[0]], readString(t, filepath.Join(src, leftNames[0])))
+
+	require.NoError(t, MoveFileWithCallbacks(src, dest, true, nil, MoveFileOptions{}))
+	assert.ElementsMatch(t, []string{"a.txt", "b.txt"}, dirNames(t, dest))
+	_, err = os.Lstat(src)
+	require.ErrorIs(t, err, fs.ErrNotExist, "the emptied source folder is removed")
+}
+
+func dirNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
+}
+
 func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 	tmpDir := t.TempDir()
-	src := createTestFile(t, tmpDir, "src.txt", []byte("new"))
+	createTestFile(t, tmpDir, "src.txt", []byte("new"))
 	dst := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 	root, err := fsroot.Open()
 	require.NoError(t, err)
 	defer root.Close()
 
-	readFrom, finish, err := prepareDestination(root, src, dst, false, true)
+	finish, err := prepareDestination(root, dst, true, false)
 	require.NoError(t, err)
-	assert.Equal(t, src, readFrom, "a source outside dst stays where it is")
 	_, err = os.Lstat(dst)
 	require.ErrorIs(t, err, fs.ErrNotExist, "destination is moved aside for the transfer")
 
 	finish(errors.New("transfer failed"))
-	content, err := os.ReadFile(dst)
-	require.NoError(t, err)
-	assert.Equal(t, []byte("old"), content, "failed transfer restores the replaced file")
+	assert.Equal(t, "old", readString(t, dst), "failed transfer restores the replaced file")
 
-	_, finish, err = prepareDestination(root, src, dst, false, true)
+	finish, err = prepareDestination(root, dst, true, false)
 	require.NoError(t, err)
 	finish(nil)
 	entries, err := os.ReadDir(tmpDir)
@@ -141,23 +238,65 @@ func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 	assert.Len(t, entries, 1, "successful transfer removes the replaced file")
 }
 
-func TestPrepareDestinationRelocatesSourceInsideDestination(t *testing.T) {
-	tmpDir := t.TempDir()
-	dst := createTestDir(t, tmpDir, "d")
-	src := createTestDir(t, dst, "child")
+func TestPrepareDestinationRemovesPartialOnlyForCopies(t *testing.T) {
 	root, err := fsroot.Open()
 	require.NoError(t, err)
 	defer root.Close()
 
-	readFrom, finish, err := prepareDestination(root, src, dst, true, true)
-	require.NoError(t, err)
-	assert.NotEqual(t, src, readFrom)
-	_, err = os.Lstat(readFrom)
-	require.NoError(t, err, "source is reachable at its relocated path")
+	for _, tc := range []struct {
+		name          string
+		removePartial bool
+		wantKept      bool
+	}{
+		{"copy", true, false},
+		{"move", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dst := filepath.Join(t.TempDir(), "dst")
+			finish, err := prepareDestination(root, dst, false, tc.removePartial)
+			require.NoError(t, err)
+			createTestFile(t, filepath.Dir(dst), "dst", []byte("partial"))
 
-	finish(errors.New("transfer failed"))
-	_, err = os.Lstat(src)
-	require.NoError(t, err, "failure puts the source back where it was")
+			finish(errors.New("transfer failed"))
+			_, err = os.Lstat(dst)
+			if tc.wantKept {
+				require.NoError(t, err, "a move keeps what already crossed")
+			} else {
+				require.ErrorIs(t, err, fs.ErrNotExist, "a copy drops its partial output")
+			}
+		})
+	}
+}
+
+func readString(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return string(content)
+}
+
+// otherFilesystemDir returns a fresh directory on a different filesystem than
+// t.TempDir(), or skips the test when the host offers none.
+func otherFilesystemDir(t *testing.T) string {
+	t.Helper()
+	base := statSys(t, t.TempDir())
+	for _, candidate := range []string{"/dev/shm", "/run/user/" + strconv.Itoa(os.Getuid()), "/tmp"} {
+		info, err := os.Stat(candidate)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		if st, ok := info.Sys().(*syscall.Stat_t); !ok || st.Dev == base.Dev {
+			continue
+		}
+		dir, err := os.MkdirTemp(candidate, "linuxio-xdev-*")
+		if err != nil {
+			continue
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		return dir
+	}
+	t.Skip("no second filesystem available for a cross-device move")
+	return ""
 }
 
 func TestCopyFileWithCallbacks(t *testing.T) {

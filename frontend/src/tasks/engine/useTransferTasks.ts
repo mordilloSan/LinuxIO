@@ -10,6 +10,7 @@ import {
   openTaskWatchStream,
 } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
+import { batchFailures, describeBatchFailures } from "@/tasks/batchFailures";
 import * as TaskTypes from "@/tasks/taskTypes";
 import {
   createProgressSpeedCalculator,
@@ -289,7 +290,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     onComplete?: () => void,
   ) => {
     const getSpeed = createProgressSpeedCalculator();
-    return runStreamResult<void, TaskProgress<FileProgress>>({
+    return runStreamResult<unknown, TaskProgress<FileProgress>>({
       open: () => openTaskWatchStream(id),
       signal: abortController.signal,
       closeOnAbort: "none",
@@ -320,8 +321,17 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
           );
         }
       },
-      onSuccess: () => {
-        toast.success(`${descriptor.done} ${labelBase}`);
+      onSuccess: (result) => {
+        // Copy/move report per-item failures in the result; archives have none.
+        const failed = batchFailures(result);
+        if (failed.length > 0) {
+          toast.error(
+            `${descriptor.done} ${labelBase} with ${failed.length} failure${failed.length === 1 ? "" : "s"}`,
+            { description: describeBatchFailures(failed) },
+          );
+        } else {
+          toast.success(`${descriptor.done} ${labelBase}`);
+        }
         onComplete?.();
       },
       onError: (error: unknown) => {
@@ -410,7 +420,8 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       onComplete,
     );
     if (descriptor.awaitCompletion) {
-      return completion;
+      await completion;
+      return;
     }
     void completion;
   };

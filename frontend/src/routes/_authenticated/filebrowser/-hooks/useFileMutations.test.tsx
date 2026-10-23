@@ -16,14 +16,18 @@ const mocks = vi.hoisted(() => ({
   startCopy: vi.fn(),
   startExtraction: vi.fn(),
   startMove: vi.fn(),
+  resolveCollisions: vi.fn(),
+  taskOptions: {} as Record<string, { success?: (result: unknown) => void }>,
 }));
 
-function taskEndpoint() {
+function taskEndpoint(name?: string) {
   return {
-    useTaskStreamAction: () => ({
-      isPending: false,
-      mutateAsync: mocks.mutateAsync,
-    }),
+    useTaskStreamAction: (options?: {
+      success?: (result: unknown) => void;
+    }) => {
+      if (name && options) mocks.taskOptions[name] = options;
+      return { isPending: false, mutateAsync: mocks.mutateAsync };
+    },
   };
 }
 
@@ -34,7 +38,8 @@ vi.mock("@/api", async (importOriginal) => {
     linuxio: {
       filebrowser: {
         chmod_batch: taskEndpoint(),
-        delete_batch: taskEndpoint(),
+        delete_batch: taskEndpoint("delete"),
+        trash_batch: taskEndpoint("trash"),
         resource_patch: taskEndpoint(),
         resource_post: {},
       },
@@ -91,6 +96,140 @@ describe("useFileMutations", () => {
       action: "rename",
       dst: "/srv/projects/renamed.txt",
       src: "/srv/projects/original.txt",
+    });
+  });
+
+  describe("delete and trash feedback", () => {
+    const failedResult = {
+      failed: [{ error: "permission denied", path: "/srv/projects/a.txt" }],
+      succeeded: 1,
+      total: 2,
+    };
+
+    it("starts the trash task with the selected paths", async () => {
+      const { result } = renderHook(() =>
+        useFileMutations({ normalizedPath: "/srv/projects" }),
+      );
+
+      await act(async () => {
+        await result.current.trashItems(["/srv/projects/a.txt"]);
+      });
+
+      expect(mocks.mutateAsync).toHaveBeenCalledWith({
+        paths: ["/srv/projects/a.txt"],
+      });
+    });
+
+    it.each(["delete", "trash"])(
+      "refreshes the listing and names failed items on a partial %s",
+      (name) => {
+        const onDeleteSuccess = vi.fn();
+        renderHook(() =>
+          useFileMutations({
+            normalizedPath: "/srv/projects",
+            onDeleteSuccess,
+          }),
+        );
+
+        mocks.taskOptions[name].success?.(failedResult);
+
+        expect(mocks.invalidateListing).toHaveBeenCalledTimes(1);
+        expect(onDeleteSuccess).toHaveBeenCalledTimes(1);
+        expect(mocks.toast.error).toHaveBeenCalledWith(
+          expect.stringContaining("1 item"),
+          { description: "a.txt: permission denied" },
+        );
+        expect(mocks.toast.success).not.toHaveBeenCalled();
+      },
+    );
+
+    it("toasts success when the trash task has no failures", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));
+
+      mocks.taskOptions.trash.success?.({ failed: [], succeeded: 2, total: 2 });
+
+      expect(mocks.invalidateListing).toHaveBeenCalledTimes(1);
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Moved 2 items to Trash",
+      );
+    });
+  });
+
+  describe("paste into the item's own folder", () => {
+    const keepAll = async (items: string[]) => ({
+      kept: items,
+      overwrite: false,
+    });
+
+    it("drops same-folder sources of a move and starts nothing when none remain", async () => {
+      const { result } = renderHook(() =>
+        useFileMutations({
+          normalizedPath: "/srv/projects",
+          resolveCollisions: mocks.resolveCollisions,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.moveItems({
+          destinationDir: "/srv/projects/",
+          sourcePaths: ["/srv/projects/a.txt", "/srv/projects/dir/"],
+        });
+      });
+
+      expect(mocks.toast.info).toHaveBeenCalledWith(
+        "Items are already in this folder",
+      );
+      expect(mocks.resolveCollisions).not.toHaveBeenCalled();
+      expect(mocks.startMove).not.toHaveBeenCalled();
+    });
+
+    it("moves only the sources from other folders", async () => {
+      mocks.resolveCollisions.mockImplementation(keepAll);
+      const { result } = renderHook(() =>
+        useFileMutations({
+          normalizedPath: "/srv/projects",
+          resolveCollisions: mocks.resolveCollisions,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.moveItems({
+          destinationDir: "/srv/projects",
+          sourcePaths: ["/srv/projects/a.txt", "/srv/other/b.txt"],
+        });
+      });
+
+      expect(mocks.startMove).toHaveBeenCalledWith(
+        expect.objectContaining({ sources: ["/srv/other/b.txt"] }),
+      );
+    });
+
+    it("keeps same-folder sources in a copy but skips their conflict check", async () => {
+      mocks.resolveCollisions.mockImplementation(keepAll);
+      const { result } = renderHook(() =>
+        useFileMutations({
+          normalizedPath: "/srv/projects",
+          resolveCollisions: mocks.resolveCollisions,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.copyItems({
+          destinationDir: "/srv/projects",
+          sourcePaths: ["/srv/projects/a.txt", "/srv/other/b.txt"],
+        });
+      });
+
+      expect(mocks.resolveCollisions).toHaveBeenCalledWith(
+        ["/srv/other/b.txt"],
+        expect.any(Function),
+        "/srv/projects",
+      );
+      expect(mocks.startCopy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sources: ["/srv/projects/a.txt", "/srv/other/b.txt"],
+        }),
+      );
     });
   });
 });

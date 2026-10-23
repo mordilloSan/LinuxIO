@@ -62,7 +62,7 @@ type batchIndexerUpdate struct {
 // planBatchTransfer validates each source, computes its destination directory
 // landing path and size, and sums a grand total for aggregate progress. Invalid
 // items are returned as failures so the task can still process the rest.
-func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string, sources []string, overwrite bool) ([]batchTransferItem, int64, []FileBatchItemFailure) {
+func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string, sources []string, overwrite bool, action string) ([]batchTransferItem, int64, []FileBatchItemFailure) {
 	items := make([]batchTransferItem, 0, len(sources))
 	failures := make([]FileBatchItemFailure, 0)
 	var grandTotal int64
@@ -80,6 +80,15 @@ func planBatchTransfer(ctx context.Context, root *fsroot.FSRoot, destDir string,
 		}
 
 		dest := filepath.Join(destDir, filepath.Base(src))
+		if dest == src {
+			if action != "copy" {
+				failures = append(failures, FileBatchItemFailure{Path: raw, Error: "already in the destination folder"})
+				continue
+			}
+			// A paste into the item's own folder makes a copy next to it, as
+			// Explorer's "name - Copy" does.
+			dest = generateUniquePath(dest, info.IsDir(), root)
+		}
 		replaced := false
 		if destInfo, derr := root.Root.Lstat(fsroot.ToRel(dest)); derr == nil {
 			if !overwrite {
@@ -125,7 +134,7 @@ func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *user
 		return FileBatchResult{}, err
 	}
 
-	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req.Sources, overwrite)
+	items, grandTotal, failures := planBatchTransfer(ctx, root, destDir, req.Sources, overwrite, action)
 	writeTaskPhaseProgress(task, grandTotal, "preparing")
 
 	// One shared callback/limiter across all items so byte progress accumulates

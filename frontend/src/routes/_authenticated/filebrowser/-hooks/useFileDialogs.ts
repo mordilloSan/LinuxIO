@@ -2,6 +2,8 @@ import { useMemo, useReducer } from "react";
 
 import type { FileItem } from "../-types";
 
+type DeleteMode = "permanent" | "trash";
+
 interface PermissionsDialogState {
   group?: string;
   isDirectory: boolean;
@@ -16,6 +18,7 @@ interface DialogsState {
   createFileDialog: boolean;
   createFolderDialog: boolean;
   deleteDialog: boolean;
+  deleteMode: DeleteMode;
   detailTarget: string[] | null;
   detailItems?: FileItem[];
   pendingDeletePaths: string[];
@@ -34,13 +37,14 @@ type DialogsEvent =
   | { type: "openCreateFile" }
   | { type: "openCreateFolder" }
   | { dialog: PermissionsDialogState; type: "openPermissions" }
-  | { paths: string[]; type: "requestDelete" }
+  | { mode: DeleteMode; paths: string[]; type: "requestDelete" }
   | { items: FileItem[]; paths: string[]; type: "showDetails" };
 
 const initialDialogsState: DialogsState = {
   createFileDialog: false,
   createFolderDialog: false,
   deleteDialog: false,
+  deleteMode: "trash",
   detailTarget: null,
   detailItems: [],
   pendingDeletePaths: [],
@@ -78,7 +82,12 @@ function dialogsReducer(
         permissionsDialogOpen: true,
       };
     case "requestDelete":
-      return { ...state, deleteDialog: true, pendingDeletePaths: event.paths };
+      return {
+        ...state,
+        deleteDialog: true,
+        deleteMode: event.mode,
+        pendingDeletePaths: event.paths,
+      };
     case "showDetails":
       return { ...state, detailItems: event.items, detailTarget: event.paths };
   }
@@ -95,7 +104,7 @@ interface DialogsActions {
   openCreateFile: () => void;
   openCreateFolder: () => void;
   openPermissions: (dialog: PermissionsDialogState) => void;
-  requestDelete: (paths: string[]) => void;
+  requestDelete: (paths: string[], mode: DeleteMode) => void;
   showDetails: (paths: string[], items?: FileItem[]) => void;
 }
 
@@ -124,7 +133,8 @@ export const useFileDialogs = (): DialogsSlice => {
       openCreateFolder: () => dispatch({ type: "openCreateFolder" }),
       openPermissions: (dialog) =>
         dispatch({ dialog, type: "openPermissions" }),
-      requestDelete: (paths) => dispatch({ paths, type: "requestDelete" }),
+      requestDelete: (paths, mode) =>
+        dispatch({ mode, paths, type: "requestDelete" }),
       showDetails: (paths, items = []) =>
         dispatch({ items, paths, type: "showDetails" }),
     }),
@@ -134,4 +144,9 @@ export const useFileDialogs = (): DialogsSlice => {
   return { ...state, actions };
 };
 
-export type { DialogsActions, DialogsSlice, PermissionsDialogState };
+export type {
+  DeleteMode,
+  DialogsActions,
+  DialogsSlice,
+  PermissionsDialogState,
+};

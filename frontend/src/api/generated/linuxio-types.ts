@@ -3833,6 +3833,12 @@ export interface LinuxIOSchema {
       request: PathRequest;
       result: SubfoldersResponse;
     };
+    trash_batch: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: FileBatchResult;
+      progress: TaskProgress<CountProgress>;
+    };
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;

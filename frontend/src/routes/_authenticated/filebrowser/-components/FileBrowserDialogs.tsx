@@ -81,6 +81,7 @@ interface FileBrowserContextMenuProps {
   onCreateFolder: () => void;
   onCut: () => void;
   onDelete: () => void;
+  onDeletePermanently: () => void;
   onDownload: () => void;
   onExtract: () => Promise<void> | void;
   onOpenContainingFolder: () => void;
@@ -117,6 +118,7 @@ interface FileBrowserCreateDialogsProps {
 }
 
 interface FileBrowserDeleteDialogProps {
+  mode: "trash" | "permanent";
   onClose: () => void;
   onConfirm: () => void;
   open: boolean;
@@ -191,6 +193,9 @@ const FileBrowserDialogs = ({
   permissions,
   upload,
 }: FileBrowserDialogsProps) => {
+  const isTrash = deleteDialog.mode === "trash";
+  const deleteCount = deleteDialog.pendingDeletePaths.length;
+  const deleteCountLabel = `${deleteCount} item${deleteCount !== 1 ? "s" : ""}`;
   return (
     <>
       <FileBrowserEditorDialog
@@ -239,6 +244,7 @@ const FileBrowserDialogs = ({
         onCreateFolder={contextMenu.onCreateFolder}
         onCut={contextMenu.onCut}
         onDelete={contextMenu.onDelete}
+        onDeletePermanently={contextMenu.onDeletePermanently}
         onDownload={contextMenu.onDownload}
         onExtract={contextMenu.onExtract}
         onOpenContainingFolder={contextMenu.onOpenContainingFolder}
@@ -288,13 +294,18 @@ const FileBrowserDialogs = ({
       />
 
       <AppConfirmDialog
-        confirmText="Delete"
-        message={`Are you sure you want to delete ${deleteDialog.pendingDeletePaths.length} item${deleteDialog.pendingDeletePaths.length !== 1 ? "s" : ""}?`}
+        confirmText={isTrash ? "Move to Trash" : "Delete"}
+        message={
+          isTrash
+            ? `Move ${deleteCountLabel} to Trash?`
+            : `Permanently delete ${deleteCountLabel}? This cannot be undone.`
+        }
         onClose={deleteDialog.onClose}
         onConfirm={deleteDialog.onConfirm}
         open={deleteDialog.open}
-        title="Delete Items"
-        destructive
+        pendingText={isTrash ? "Moving…" : undefined}
+        title={isTrash ? "Move to Trash" : "Delete permanently"}
+        destructive={!isTrash}
         isPending={deleteDialog.isPending}
         progress={deleteDialog.progress}
       />

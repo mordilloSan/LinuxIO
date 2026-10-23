@@ -96,7 +96,7 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 	if got, want := modes[bridgeipc.ModeCall], 278; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeTask], 25; got != want {
+	if got, want := modes[bridgeipc.ModeTask], 26; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeDuplex], 12; got != want {
@@ -129,8 +129,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 24 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 24 and 1", sessionCount, durableCount)
+	if sessionCount != 25 || durableCount != 1 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 25 and 1", sessionCount, durableCount)
 	}
 }
 
@@ -454,7 +454,7 @@ func TestWithTaskProgressRejectsCallRoutes(t *testing.T) {
 func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 	want := map[string]bool{
 		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
-		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.index": true,
+		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.trash_batch": true, "filebrowser.index": true,
 		"filebrowser.upload": true, "filebrowser.upload_batch": true,
 		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
 		"docker.update_container": true,

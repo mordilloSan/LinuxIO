@@ -113,6 +113,7 @@ export const ROUTE_MODES = {
   "filebrowser.resource_stat": "call",
   "filebrowser.search": "call",
   "filebrowser.subfolders": "call",
+  "filebrowser.trash_batch": "task",
   "filebrowser.upload": "task",
   "filebrowser.upload_batch": "task",
   "filebrowser.users_groups": "call",

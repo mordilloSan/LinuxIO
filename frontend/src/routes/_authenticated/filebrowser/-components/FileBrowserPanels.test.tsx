@@ -5,6 +5,7 @@ import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import { fireEvent, render, screen } from "@/test/render";
 
 import {
+  FileBrowserConflictDialog,
   FileBrowserEditorDialog,
   FileBrowserSaveConflictDialog,
 } from "./FileBrowserPanels";
@@ -87,5 +88,29 @@ describe("file browser editor dialogs", () => {
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("labels the folder conflict choice Merge and keeps Overwrite for files", () => {
+    render(
+      <FileBrowserConflictDialog
+        onCancel={vi.fn()}
+        onResolve={vi.fn()}
+        prompt={{
+          destination: "/srv",
+          conflicts: [
+            { path: "/srv/docs", name: "docs", isDir: true },
+            { path: "/srv/a.txt", name: "a.txt", isDir: false },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Merge" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Overwrite" })).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByRole("button", { name: "Overwrite / merge all" }),
+    ).toBeInTheDocument();
   });
 });

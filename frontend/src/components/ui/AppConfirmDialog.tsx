@@ -25,6 +25,7 @@ interface AppConfirmDialogProps {
   onConfirm: () => void;
   open: boolean;
   isPending?: boolean;
+  pendingText?: string;
   progress?: TaskProgress<ConfirmProgressDetail> | null;
   title: string;
 }
@@ -39,6 +40,7 @@ const AppConfirmDialog = ({
   onClose,
   onConfirm,
   isPending = false,
+  pendingText = "Deleting…",
   progress,
 }: AppConfirmDialogProps) => {
   const handleConfirm: SubmitEventHandler<HTMLFormElement> = (event) => {
@@ -107,7 +109,7 @@ const AppConfirmDialog = ({
             type="submit"
             variant="contained"
           >
-            {isPending ? "Deleting…" : confirmText}
+            {isPending ? pendingText : confirmText}
           </AppButton>
         </AppDialogActions>
       </form>

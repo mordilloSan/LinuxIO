@@ -1,12 +1,41 @@
 package filebrowser
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 )
+
+func TestPlanBatchTransferIntoOwnFolder(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "report.txt")
+	if err := os.WriteFile(file, []byte("report"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	root, err := fsroot.Open()
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer root.Close()
+
+	items, _, failures := planBatchTransfer(context.Background(), root, dir, []string{file}, false, "copy")
+	if len(failures) != 0 || len(items) != 1 {
+		t.Fatalf("copy: items=%d failures=%v", len(items), failures)
+	}
+	if want := filepath.Join(dir, "report (copy).txt"); items[0].dest != want || items[0].replaced {
+		t.Fatalf("copy into own folder: dest=%q replaced=%v, want %q", items[0].dest, items[0].replaced, want)
+	}
+
+	items, _, failures = planBatchTransfer(context.Background(), root, dir, []string{file}, false, "move")
+	if len(items) != 0 || len(failures) != 1 || failures[0].Error != "already in the destination folder" {
+		t.Fatalf("move into own folder: items=%d failures=%v", len(items), failures)
+	}
+}
 
 func TestParseChmodBatchRequest(t *testing.T) {
 	tests := []struct {

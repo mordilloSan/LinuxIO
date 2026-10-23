@@ -61,6 +61,7 @@ interface FileBrowserListingProps {
   onCancelRename: () => void;
   onConfirmRename: (path: string, newName: string) => void | Promise<void>;
   onDelete: () => void;
+  onDeletePermanently: () => void;
   onDownloadFile: (item: FileItem) => void;
   onOpenDirectory: (path: string) => void;
   onSelectedPathsChange: (paths: Set<string>) => void;
@@ -181,6 +182,7 @@ const FileBrowserContent = ({
                 onCancelRename={listing.onCancelRename}
                 onConfirmRename={listing.onConfirmRename}
                 onDelete={listing.onDelete}
+                onDeletePermanently={listing.onDeletePermanently}
                 onDownloadFile={listing.onDownloadFile}
                 onOpenDirectory={listing.onOpenDirectory}
                 onSelectedPathsChange={listing.onSelectedPathsChange}
