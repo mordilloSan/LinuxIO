@@ -399,17 +399,19 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: history shows correct names/versions.
   - Done 2026-10-23: `applyDpkgLogLine` records the new version for `upgrade` lines (`newDpkgLogPatterns`); `parseDnfHistory` splits NEVRA from the right (`splitNEVRA`) and keys by day like dpkg. Tests: `TestApplyDpkgLogLineRecordsNewVersion`, `TestParseDnfHistorySplitsNEVRAAndKeysByDate`. The dnf.log line format is still from documentation, not a real host.
 
-- [ ] **41. LVM listing hides all failures; mount lookup keys on the wrong device name**
+- [x] **41. LVM listing hides all failures; mount lookup keys on the wrong device name**
   `backend/bridge/handlers/storage/lvm.go:26-33,61-66,99-104,112-134`
   - `[worker]`: any `pvs/vgs/lvs` error (incl. not on PATH) → `[]` with no error; `mountMap[lv.LVPath]` uses `/dev/vg/lv` while mountinfo shows `/dev/mapper/vg-lv`. `[unverified]`: confirm the mapper name on a host.
   - Fix: return errors except `exec.ErrNotFound`/exit 5; use `lv_dm_path`; `make([]T, 0)`.
   - Behaviour change: real failures surface instead of "no LVM"; `null` becomes `[]`.
+  - Done 2026-10-23: `lvmReport`/`runLVMCommand` (`hostcmd.LookPath`; only `exec.ErrNotFound` and exit 5 are "no volumes"), `getPVNamesByVG` returns its error, slices are `make([]T, 0)`, mounts matched by `lv_dm_path`. `DeleteLogicalVolume`'s "is mounted" check still compares `lv_path` (safe only because `lvremove` refuses an LV in use). Tests: `TestListLogicalVolumesReturnsCommandError`, `TestListLVMAbsentToolReturnsEmptyList`, `TestListLogicalVolumesMatchesMountByMapperPath`.
 
-- [ ] **42. SMART self-test task never finishes if it misses `in_progress`**
+- [x] **42. SMART self-test task never finishes if it misses `in_progress`**
   `backend/bridge/handlers/storage/smart_test_operation.go:~110-155`
   - `[worker]`: terminal states are ignored until `seenInProgress`; first poll is 15 s after start; no overall deadline.
   - Fix: accept a terminal state after N polls or a deadline.
   - Behaviour change: short tests complete instead of hanging.
+  - Done 2026-10-23: a terminal state is accepted after 3 polls even without `in_progress` (`completed` finishes, `failed`/`aborted` fail, `idle` fails with "never started"); 6 h overall deadline via `context.WithTimeoutCause`. Tests: `TestSmartTestAcceptsTerminalStateAfterNPolls`, `TestSmartTestFailsWhenNeverStarted`, `TestSmartTestDeadlineFailsTask`.
 
 - [x] **43. Download of non-regular files (FIFO, `/dev/zero`)**
   `backend/bridge/handlers/filebrowser/download_stream.go:55-84`

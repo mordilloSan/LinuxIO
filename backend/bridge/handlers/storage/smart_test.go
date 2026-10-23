@@ -1,9 +1,13 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"testing"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestParseSmartTestJSON(t *testing.T) {
@@ -250,5 +254,58 @@ func TestInterpretSmartctlResult(t *testing.T) {
 				t.Errorf("state: got %q, want %q", got.State, tt.wantState)
 			}
 		})
+	}
+}
+
+func newSmartTestState(t *testing.T, poll func(context.Context, string) (SmartTestStatus, error), timeout time.Duration) *smartTestTaskState {
+	t.Helper()
+	orig := pollSmartStatus
+	t.Cleanup(func() { pollSmartStatus = orig })
+	pollSmartStatus = poll
+
+	task, err := bridgeipc.NewTaskService().Create("storage.run_smart_test", nil)
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	return &smartTestTaskState{task: task, device: "sda", testType: "short", interval: time.Millisecond, timeout: timeout}
+}
+
+func TestSmartTestAcceptsTerminalStateAfterNPolls(t *testing.T) {
+	polls := 0
+	state := newSmartTestState(t, func(context.Context, string) (SmartTestStatus, error) {
+		polls++
+		return SmartTestStatus{State: "completed", PercentComplete: 100}, nil
+	}, time.Minute)
+
+	state.pollInitial(t.Context())
+	result, err := state.pollUntilDone(t.Context())
+	if err != nil {
+		t.Fatalf("pollUntilDone: %v", err)
+	}
+	if !result.Success || polls != smartTerminalPolls {
+		t.Fatalf("success=%v polls=%d, want success after %d polls", result.Success, polls, smartTerminalPolls)
+	}
+}
+
+func TestSmartTestFailsWhenNeverStarted(t *testing.T) {
+	state := newSmartTestState(t, func(context.Context, string) (SmartTestStatus, error) {
+		return SmartTestStatus{State: "idle"}, nil
+	}, time.Minute)
+
+	state.pollInitial(t.Context())
+	if _, err := state.pollUntilDone(t.Context()); err == nil {
+		t.Fatal("expected idle self-test to fail after the poll threshold")
+	}
+}
+
+func TestSmartTestDeadlineFailsTask(t *testing.T) {
+	state := newSmartTestState(t, func(context.Context, string) (SmartTestStatus, error) {
+		return SmartTestStatus{State: "in_progress"}, nil
+	}, 20*time.Millisecond)
+
+	_, err := state.pollUntilDone(t.Context())
+	var taskErr *bridgeipc.Error
+	if !errors.As(err, &taskErr) || taskErr.Message != errSmartTestTimeout.Error() {
+		t.Fatalf("err = %v, want timeout task error", err)
 	}
 }

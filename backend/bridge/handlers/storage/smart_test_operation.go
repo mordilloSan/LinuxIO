@@ -64,11 +64,27 @@ func pollInterval(testType string) time.Duration {
 	return 15 * time.Second
 }
 
+// smartTestMaxDuration bounds a self-test task; extended tests can take hours.
+// smartTerminalPolls is how many successful polls must pass before a terminal
+// state counts without in_progress ever having been seen (it may have finished
+// between polls, or never started).
+const (
+	smartTestMaxDuration = 6 * time.Hour
+	smartTerminalPolls   = 3
+)
+
+var errSmartTestTimeout = errors.New("SMART self-test did not finish within the time limit")
+
+// pollSmartStatus is a test seam.
+var pollSmartStatus = PollSmartTestStatus
+
 func runSmartTestTask(ctx context.Context, task *bridgeipc.Task, req apischema.DeviceTestTypeRequest) (SmartTestResult, error) {
 	state := smartTestTaskState{
 		task:     task,
 		device:   req.Device,
 		testType: req.TestType,
+		interval: pollInterval(req.TestType),
+		timeout:  smartTestMaxDuration,
 	}
 	state.reportStart()
 
@@ -84,6 +100,9 @@ type smartTestTaskState struct {
 	task            *bridgeipc.Task
 	device          string
 	testType        string
+	interval        time.Duration
+	timeout         time.Duration
+	polls           int
 	seenInProgress  bool
 	consecutiveErrs int
 }
@@ -101,14 +120,21 @@ func (s *smartTestTaskState) reportStart() {
 func (s *smartTestTaskState) pollInitial(ctx context.Context) {
 	// Immediate first poll, but only emit if it observes in_progress.
 	// Anything else here is almost certainly stale residue.
-	if st, err := PollSmartTestStatus(ctx, s.device); err == nil && st.State == "in_progress" {
+	st, err := pollSmartStatus(ctx, s.device)
+	if err != nil {
+		return
+	}
+	s.polls++
+	if st.State == "in_progress" {
 		s.seenInProgress = true
 		s.emit(st)
 	}
 }
 
 func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult, error) {
-	ticker := time.NewTicker(pollInterval(s.testType))
+	ctx, cancel := context.WithTimeoutCause(ctx, s.timeout, errSmartTestTimeout)
+	defer cancel()
+	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
 	for {
@@ -116,6 +142,9 @@ func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult
 		case <-ctx.Done():
 			// Returning context.Canceled routes to the Task's canceled state,
 			// not markFailed.
+			if errors.Is(context.Cause(ctx), errSmartTestTimeout) {
+				return SmartTestResult{}, bridgeipc.NewError(errSmartTestTimeout.Error(), 500)
+			}
 			return SmartTestResult{}, ctx.Err()
 		case <-ticker.C:
 			result, done, err := s.poll(ctx)
@@ -130,19 +159,20 @@ func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult
 }
 
 func (s *smartTestTaskState) poll(ctx context.Context) (SmartTestResult, bool, error) {
-	st, err := PollSmartTestStatus(ctx, s.device)
+	st, err := pollSmartStatus(ctx, s.device)
 	if err != nil {
 		return SmartTestResult{}, false, s.handlePollError(ctx, err)
 	}
 	s.consecutiveErrs = 0
+	s.polls++
 
-	// Don't accept terminal status until we've actually seen the test run.
-	if !s.seenInProgress && st.State != "in_progress" {
+	if st.State == "in_progress" {
+		s.seenInProgress = true
 		s.emit(st)
 		return SmartTestResult{}, false, nil
 	}
-	if st.State == "in_progress" {
-		s.seenInProgress = true
+	// Early terminal states may be stale residue; trust them after a few polls.
+	if !s.seenInProgress && s.polls < smartTerminalPolls {
 		s.emit(st)
 		return SmartTestResult{}, false, nil
 	}
@@ -150,6 +180,9 @@ func (s *smartTestTaskState) poll(ctx context.Context) (SmartTestResult, bool, e
 	s.emit(st)
 	if s.completed(st) {
 		return s.result(st), true, nil
+	}
+	if st.State == "idle" {
+		return SmartTestResult{}, false, bridgeipc.NewError("SMART self-test never started", 500)
 	}
 	return SmartTestResult{}, false, bridgeipc.NewError(st.Message, 500)
 }
