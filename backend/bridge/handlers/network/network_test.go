@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -253,6 +254,19 @@ func TestResolveNetworkLogUnitMemoizesPerBackend(t *testing.T) {
 	if lookups != lookupsAfterFirst {
 		t.Fatalf("expected the cached answer, saw %d extra lookups", lookups-lookupsAfterFirst)
 	}
+}
+
+func TestResolveNetworkLogUnitIsSafeForConcurrentCallers(t *testing.T) {
+	withInstalledUnits(t, "networking.service")
+	backends := []string{"ifupdown", "netplan", "nmconnection", "systemd-networkd", "ifcfg", ""}
+
+	var wg sync.WaitGroup
+	for range 8 {
+		for _, backend := range backends {
+			wg.Go(func() { resolveNetworkLogUnit(backend) })
+		}
+	}
+	wg.Wait()
 }
 
 func TestLiveInterfaceInfoAlwaysSerialisesArrays(t *testing.T) {

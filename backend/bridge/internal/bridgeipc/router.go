@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -533,6 +534,13 @@ func (r *Router) reserveTaskAdmission(routeName, ownerRouteKey string, policy Ta
 		return false, fmt.Errorf("%w: %s", ErrDuplicateActive, routeName)
 	}
 	canStart := r.canStartLocked(routeName, ownerRouteKey, policy)
+	if !canStart {
+		// Canceled queued tasks keep their entry until promotion; drop them so
+		// they do not count against the limit.
+		r.queuedByRoute[routeName] = slices.DeleteFunc(r.queuedByRoute[routeName], func(q queuedTask) bool {
+			return q.task.IsTerminal()
+		})
+	}
 	if !canStart && (policy.QueueLimit <= 0 || len(r.queuedByRoute[routeName])+r.pendingQueuedByRoute[routeName] >= policy.QueueLimit) {
 		return false, fmt.Errorf("%w: %s", ErrQueueFull, routeName)
 	}

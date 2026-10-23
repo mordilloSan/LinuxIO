@@ -261,17 +261,19 @@ fix, so each item can be accepted or rejected on that basis.
 
 ## C. Should fix (from the sweeps, line-checked, not re-traced)
 
-- [ ] **22. Router: cancelled queued tasks still occupy the route queue**
+- [x] **22. Router: cancelled queued tasks still occupy the route queue**
   `backend/bridge/internal/bridgeipc/router.go:536,577,690-706`, `tasks.go` (`Cancel`)
   - `[source]`: `queuedByRoute` entries are only removed by `dequeueStartLocked`; cancelling 16 queued tasks behind one long task → `ErrQueueFull` (429) until it ends.
   - Fix: prune terminal entries in `reserveTaskAdmission` before the limit check. Router test.
   - Behaviour change: new tasks can start after cancelling queued ones.
+  - Done 2026-10-23: `reserveTaskAdmission` drops terminal entries from `queuedByRoute` before the queue-limit check. Test: `TestRouterCanceledQueuedTasksFreeQueueSlots`.
 
-- [ ] **23. Unsynchronised memo map in `GetNetworkInfo`**
+- [x] **23. Unsynchronised memo map in `GetNetworkInfo`**
   `backend/bridge/handlers/network/log_unit.go:38-66`, `network.go:47`
   - `[source]`: `networkLogUnitCache` is a plain map written on first use; `GetNetworkInfo` runs outside `networkMutationMu` on concurrent request goroutines → possible `fatal error: concurrent map writes` (kills the bridge).
   - Fix: `sync.Mutex` or `sync.OnceValue` per backend.
   - Behaviour change: none.
+  - Done 2026-10-23: `resolveNetworkLogUnit` holds `networkLogUnitCacheMu` for its whole body. Test: `TestResolveNetworkLogUnitIsSafeForConcurrentCallers` (race detector).
 
 - [ ] **24. NTP server strings written into root-owned config unvalidated; `datetime` has no tests**
   `backend/bridge/handlers/datetime/datetime.go:211,365`

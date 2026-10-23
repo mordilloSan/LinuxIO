@@ -463,6 +463,58 @@ func TestRouterCanceledQueuedTaskIsSkippedDuringPromotion(t *testing.T) {
 	waitForRouterSettle(t, router, route.Name)
 }
 
+func TestRouterCanceledQueuedTasksFreeQueueSlots(t *testing.T) {
+	router := NewRouter(NewTaskService())
+	policy := TaskDefault
+	policy.Name = "cancel-frees-queue"
+	policy.MaxActivePerRoute = 1
+	policy.MaxActivePerOwnerRoute = 1
+	policy.QueueLimit = 2
+
+	release := make(chan struct{})
+	route := Route{
+		Name:   "test.cancel.frees.queue",
+		Mode:   ModeTask,
+		Policy: policy,
+		Runner: func(_ context.Context, _ *Task, _ any) (any, error) {
+			<-release
+			return nil, nil
+		},
+	}
+	start := func() (*Task, bool, error) {
+		return router.startOrQueueTask(route, Request{Route: route.Name})
+	}
+
+	active, started, err := start()
+	if err != nil || !started {
+		t.Fatalf("start active = (%v, %t, %v), want started task", active, started, err)
+	}
+	var queued []*Task
+	for range policy.QueueLimit {
+		task, queuedNow, startErr := start()
+		if startErr != nil || queuedNow {
+			t.Fatalf("queue = (%v, %t, %v), want queued task", task, queuedNow, startErr)
+		}
+		queued = append(queued, task)
+	}
+	if _, _, err = start(); !errors.Is(err, ErrQueueFull) {
+		t.Fatalf("start with a full queue error = %v, want ErrQueueFull", err)
+	}
+
+	for _, task := range queued {
+		task.Cancel()
+	}
+	extra, started, err := start()
+	if err != nil || started {
+		t.Fatalf("start after cancel = (%v, %t, %v), want queued task", extra, started, err)
+	}
+
+	close(release)
+	<-active.Done()
+	<-extra.Done()
+	waitForRouterSettle(t, router, route.Name)
+}
+
 func TestRouterPromotionCancellationRefusesReservedTaskStart(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)
