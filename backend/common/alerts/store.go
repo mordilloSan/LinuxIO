@@ -247,8 +247,8 @@ func Raise(ctx context.Context, obs Observation) error {
 // evictIndex picks the oldest dismissed alert, else the oldest alert. The
 // slice is sorted newest-first, so both are found from the end.
 func evictIndex(alerts []Alert) int {
-	for i := len(alerts) - 1; i >= 0; i-- {
-		if alerts[i].DismissedAt != nil {
+	for i, alert := range slices.Backward(alerts) {
+		if alert.DismissedAt != nil {
 			return i
 		}
 	}
