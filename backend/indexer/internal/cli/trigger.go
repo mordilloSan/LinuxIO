@@ -23,7 +23,7 @@ func runIndexTrigger(args []string) int {
 		return flagParseExitCode(err)
 	}
 	if fs.NArg() != 0 {
-		return writeError(fs.Output(), fmt.Sprintf("index trigger does not accept arguments: %s\n", fs.Arg(0)))
+		return writeUsageError(fs.Output(), fmt.Sprintf("index trigger does not accept arguments: %s\n", fs.Arg(0)))
 	}
 
 	if err := logging.Configure("linuxio-indexer", false); err != nil {

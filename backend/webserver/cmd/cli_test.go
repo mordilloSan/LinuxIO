@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ func TestRun_InvokesRunServer(t *testing.T) {
 	var gotCfg ServerConfig
 
 	old := runServerFunc
-	runServerFunc = func(cfg ServerConfig) error {
+	runServerFunc = func(_ context.Context, cfg ServerConfig) error {
 		called = true
 		gotCfg = cfg
 		return nil

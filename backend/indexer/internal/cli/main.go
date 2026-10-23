@@ -22,20 +22,21 @@ const usageText = `linuxio-indexer is managed by LinuxIO and systemd.
 Configuration and operations are available through the LinuxIO interface.
 `
 
-func Main(args []string) int {
-	if len(args) > 0 {
-		switch args[0] {
+// Run executes the linuxio-indexer CLI and returns the process exit code.
+func Run(args []string) int {
+	if len(args) > 1 {
+		switch args[1] {
 		case "--index-mode":
-			return runIndexMode(args[1:])
+			return runIndexMode(args[2:])
 		case "--trigger-index":
-			return runIndexTrigger(args[1:])
+			return runIndexTrigger(args[2:])
 		case "--version":
 			return writeOutput(os.Stdout, "LinuxIO Indexer "+version.Version+"\n")
 		case "--help", "-h":
 			return writeOutput(os.Stdout, usageText)
 		}
 	}
-	return runDaemon(args)
+	return runDaemon(args[1:])
 }
 
 func runDaemon(args []string) int {
@@ -46,7 +47,7 @@ func runDaemon(args []string) int {
 		return flagParseExitCode(err)
 	}
 	if fs.NArg() != 0 {
-		return writeError(fs.Output(), fmt.Sprintf("linuxio-indexer does not accept commands: %s\n", fs.Arg(0)))
+		return writeUsageError(fs.Output(), fmt.Sprintf("linuxio-indexer does not accept commands: %s\n", fs.Arg(0)))
 	}
 
 	if err := logging.Configure("linuxio-indexer", *verbose); err != nil {
@@ -71,32 +72,12 @@ func runDaemon(args []string) int {
 		"include_network_mounts", fileCfg.IncludeNetworkMounts,
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
-	defer signal.Stop(sigCh)
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- d.Run(ctx)
-	}()
-
-	select {
-	case sig := <-sigCh:
-		slog.Info("received signal, initiating graceful shutdown", "signal", sig)
-		cancel()
-		if err := <-errCh; err != nil {
-			slog.Warn("daemon shutdown returned error", "err", err)
-		}
-	case err := <-errCh:
-		if err != nil {
-			slog.Error("daemon exited with error", "err", err)
-			return 1
-		}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := d.Run(ctx); err != nil {
+		slog.Error("daemon exited with error", "err", err)
+		return 1
 	}
-
 	slog.Info("shutdown complete")
 	return 0
 }
@@ -105,7 +86,7 @@ func flagParseExitCode(err error) int {
 	if errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
-	return 1
+	return 2
 }
 
 func writeOutput(w io.Writer, value string) int {
@@ -119,4 +100,10 @@ func writeOutput(w io.Writer, value string) int {
 func writeError(w io.Writer, value string) int {
 	_ = writeOutput(w, value)
 	return 1
+}
+
+// writeUsageError reports a command-line usage error with flag's exit code 2.
+func writeUsageError(w io.Writer, value string) int {
+	_ = writeOutput(w, value)
+	return 2
 }

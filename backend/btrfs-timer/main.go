@@ -16,10 +16,13 @@ const usage = `Usage: linuxio-btrfs-timer snapshot run [--now RFC3339]
        linuxio-btrfs-timer health run`
 
 func main() {
+	os.Exit(run(os.Args))
+}
+
+func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := runCLI(ctx, os.Args[1:], os.Stdout, os.Stderr)
-	stop()
-	os.Exit(code)
+	defer stop()
+	return runCLI(ctx, args[1:], os.Stdout, os.Stderr)
 }
 
 func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {

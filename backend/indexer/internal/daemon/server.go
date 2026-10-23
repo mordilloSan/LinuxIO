@@ -39,9 +39,6 @@ func loadActivatedListener() (net.Listener, error) {
 
 // Run starts the HTTP server and blocks until context is cancelled.
 func (d *daemon) Run(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -100,8 +97,15 @@ func (d *daemon) serveHTTP(ctx context.Context, listener net.Listener) error {
 }
 
 func (d *daemon) shutdownHTTPServers() {
+	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
+	defer cancel()
 	for _, srv := range d.servers {
-		if err := srv.Shutdown(context.Background()); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		err := srv.Shutdown(ctx)
+		if errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("graceful server shutdown timed out; forcing close")
+			err = srv.Close()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Warn("server shutdown error", "err", err)
 		}
 	}

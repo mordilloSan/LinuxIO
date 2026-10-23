@@ -8,12 +8,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/debugserver"
@@ -30,7 +27,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/webserver/ws"
 )
 
-func RunServer(cfg ServerConfig) error {
+// RunServer serves until ctx is cancelled or the server stops on its own.
+func RunServer(ctx context.Context, cfg ServerConfig) error {
 	if err := logging.Configure("linuxio-webserver", cfg.Verbose); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
@@ -42,12 +40,9 @@ func RunServer(cfg ServerConfig) error {
 	if err != nil {
 		return err
 	}
-	quit, done := startHTTPServer(cfg, srv, sm, activity)
+	done := startHTTPServer(cfg, srv, sm, activity)
 
-	serverErr := waitForServerShutdown(quit, done)
-	if serverErr == nil {
-		shutdownHTTPServer(srv)
-	}
+	serverErr := waitForServerShutdown(ctx, srv, done)
 	closeBridgeSessions(sm)
 	sm.Close()
 	slog.Info("server stopped")
@@ -137,10 +132,8 @@ func startHTTPServer(
 	srv *http.Server,
 	sm *sessions.Manager,
 	activity *serverActivity,
-) (chan os.Signal, chan error) {
-	quit := make(chan os.Signal, 1)
+) <-chan error {
 	done := make(chan error, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		handled, err := serveWithSocketActivation(cfg, srv, sm, activity)
@@ -151,7 +144,7 @@ func startHTTPServer(
 		done <- serveWithSelfBind(cfg, srv)
 	}()
 
-	return quit, done
+	return done
 }
 
 func serveWithSocketActivation(
@@ -211,7 +204,7 @@ func serveWithSelfBind(cfg ServerConfig, srv *http.Server) error {
 	}
 	tlsListener := tlsserver.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port)
 	slog.Info("HTTPS server listening", "address", fmt.Sprintf("https://localhost:%d", cfg.Port))
-	if err := srv.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
+	if err := srv.Serve(tlsListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("server error", "error", err)
 		return fmt.Errorf("serve HTTPS: %w", err)
 	}
@@ -230,7 +223,7 @@ func configureServerTLS(srv *http.Server) error {
 }
 
 func serveTLSListener(srv *http.Server, listener net.Listener, stop func(error), errorPrefix string) {
-	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error(errorPrefix, "error", err)
 		stop(fmt.Errorf("%s: %w", errorPrefix, err))
 		return
@@ -238,11 +231,14 @@ func serveTLSListener(srv *http.Server, listener net.Listener, stop func(error),
 	stop(nil)
 }
 
-func waitForServerShutdown(quit <-chan os.Signal, done <-chan error) error {
+// waitForServerShutdown blocks until ctx is cancelled or the server stops on
+// its own (idle exit or failure) and returns the serve result.
+func waitForServerShutdown(ctx context.Context, srv *http.Server, done <-chan error) error {
 	select {
-	case <-quit:
+	case <-ctx.Done():
 		slog.Info("shutdown signal received")
-		return nil
+		shutdownHTTPServer(srv)
+		return <-done
 	case err := <-done:
 		slog.Info("HTTP server stopped, beginning shutdown")
 		return err

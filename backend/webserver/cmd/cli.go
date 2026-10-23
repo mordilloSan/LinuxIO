@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -60,7 +63,9 @@ func Run(args []string) int {
 			return 2
 		}
 
-		if err := runServerFunc(cfg); err != nil {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := runServerFunc(ctx, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
 		}

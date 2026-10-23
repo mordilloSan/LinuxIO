@@ -4,14 +4,14 @@ import (
 	"testing"
 )
 
-func TestMainRejectsUnknownCommand(t *testing.T) {
-	if code := Main([]string{"menu"}); code != 1 {
-		t.Fatalf("exit = %d, want 1", code)
+func TestRunRejectsUnknownCommand(t *testing.T) {
+	if code := Run([]string{"linuxio-monitoring", "menu"}); code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
 	}
 }
 
-func TestMainPrintsVersion(t *testing.T) {
-	if code := Main([]string{"--version"}); code != 0 {
+func TestRunPrintsVersion(t *testing.T) {
+	if code := Run([]string{"linuxio-monitoring", "--version"}); code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 }

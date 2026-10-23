@@ -61,4 +61,7 @@ const (
 	httpReadTimeout       = 30 * time.Second
 	httpIdleTimeout       = 60 * time.Second
 	httpMaxHeaderBytes    = 64 << 10
+	// httpShutdownTimeout bounds graceful Shutdown before open connections
+	// (long-lived SSE streams) are force-closed.
+	httpShutdownTimeout = 5 * time.Second
 )

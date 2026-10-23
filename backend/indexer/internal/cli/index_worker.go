@@ -22,7 +22,7 @@ func runIndexMode(args []string) int {
 		return flagParseExitCode(err)
 	}
 	if fs.NArg() != 0 {
-		return writeError(fs.Output(), "index worker does not accept arguments\n")
+		return writeUsageError(fs.Output(), "index worker does not accept arguments\n")
 	}
 
 	if err := logging.Configure("linuxio-indexer", false); err != nil {

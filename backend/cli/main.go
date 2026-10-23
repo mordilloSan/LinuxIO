@@ -50,7 +50,7 @@ func runCLI(args []string) int {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", cmd)
 		showHelp()
-		return 1
+		return 2
 	}
 }
 
