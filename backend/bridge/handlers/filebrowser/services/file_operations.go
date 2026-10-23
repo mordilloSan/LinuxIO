@@ -62,7 +62,7 @@ func copyWithCallbacksAndRoot(root *fsroot.FSRoot, source, dest string, overwrit
 		}
 	}
 
-	finish, prepErr := prepareDestination(root, info.IsDir(), dest, overwrite)
+	source, finish, prepErr := prepareDestination(root, source, dest, info.IsDir(), overwrite)
 	if prepErr != nil {
 		return prepErr
 	}
@@ -421,7 +421,7 @@ func MoveFileWithCallbacks(src, dst string, overwrite bool, opts *OperationCallb
 		return err
 	}
 
-	finish, err := prepareDestination(root, srcInfo.IsDir(), dst, overwrite)
+	src, finish, err := prepareDestination(root, src, dst, srcInfo.IsDir(), overwrite)
 	if err != nil {
 		return err
 	}
@@ -828,10 +828,6 @@ func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	if src == dst {
 		return fmt.Errorf("source and destination are the same")
 	}
-	// dst above src: clearing dst for an overwrite would delete src with it.
-	if strings.HasPrefix(src, strings.TrimSuffix(dst, "/")+"/") {
-		return fmt.Errorf("destination '%s' contains the source '%s'", dst, src)
-	}
 
 	// Check if source is a directory
 	srcInfo, err := root.Root.Lstat(relPath(src))
@@ -863,32 +859,38 @@ func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	return nil
 }
 
-// prepareDestination clears the way for a transfer onto dst. With overwrite
-// the existing entry is moved aside rather than deleted: the returned finish
-// removes it after a successful transfer and puts it back after a failed one,
-// so a transfer that dies halfway never loses what it was replacing.
-func prepareDestination(root *fsroot.FSRoot, srcIsDir bool, dst string, overwrite bool) (func(error), error) {
+// prepareDestination clears the way for a transfer onto dst and returns the
+// path the source must be read from. With overwrite the existing entry is
+// moved aside rather than deleted: the returned finish removes it after a
+// successful transfer and puts it back after a failed one, so a transfer that
+// dies halfway never loses what it was replacing. A source inside dst moves
+// aside with it, so replacing a directory with one of its own children works;
+// the child is consumed along with the rest of the replaced tree.
+func prepareDestination(root *fsroot.FSRoot, src, dst string, srcIsDir bool, overwrite bool) (string, func(error), error) {
 	dstInfo, err := root.Root.Lstat(relPath(dst))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return func(error) {}, nil
+			return src, func(error) {}, nil
 		}
-		return nil, err
+		return "", nil, err
 	}
 
 	if !overwrite {
-		return nil, fmt.Errorf("destination already exists")
+		return "", nil, fmt.Errorf("destination already exists")
 	}
 
 	if dstInfo.IsDir() != srcIsDir {
-		return nil, fmt.Errorf("destination exists with different type")
+		return "", nil, fmt.Errorf("destination exists with different type")
 	}
 
 	aside := fmt.Sprintf("%s.linuxio-replaced-%d", dst, time.Now().UnixNano())
 	if err := root.Root.Rename(relPath(dst), relPath(aside)); err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return func(transferErr error) {
+	if rest, inside := strings.CutPrefix(src, dst+"/"); inside {
+		src = aside + "/" + rest
+	}
+	return src, func(transferErr error) {
 		if transferErr == nil {
 			if err := root.Root.RemoveAll(relPath(aside)); err != nil {
 				slog.Warn("failed to remove replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", aside, "error", err)

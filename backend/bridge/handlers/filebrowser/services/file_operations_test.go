@@ -85,29 +85,46 @@ func TestMoveFileWithCallbacks(t *testing.T) {
 	})
 }
 
-func TestTransferRejectsDestinationContainingSource(t *testing.T) {
-	tmpDir := t.TempDir()
-	outer := createTestDir(t, tmpDir, "foo")
-	inner := createTestDir(t, outer, "foo")
-	keep := createTestFile(t, inner, "keep.txt", []byte("keep"))
+func TestTransferOntoAncestorReplacesIt(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		transfer func(src, dst string) error
+	}{
+		{"move", func(src, dst string) error { return MoveFileWithCallbacks(src, dst, true, nil, MoveFileOptions{}) }},
+		{"copy", func(src, dst string) error { return CopyFileWithCallbacks(src, dst, true, nil) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			outer := createTestDir(t, tmpDir, "foo")
+			createTestFile(t, outer, "old.txt", []byte("old"))
+			inner := createTestDir(t, outer, "foo")
+			createTestFile(t, inner, "keep.txt", []byte("keep"))
 
-	require.Error(t, MoveFileWithCallbacks(inner, outer, true, nil, MoveFileOptions{}))
-	require.Error(t, CopyFileWithCallbacks(inner, outer, true, nil))
+			require.NoError(t, tc.transfer(inner, outer))
 
-	content, err := os.ReadFile(keep)
-	require.NoError(t, err)
-	assert.Equal(t, []byte("keep"), content, "source must survive a rejected transfer")
+			content, err := os.ReadFile(filepath.Join(outer, "keep.txt"))
+			require.NoError(t, err)
+			assert.Equal(t, []byte("keep"), content, "outer is replaced by the inner tree")
+			_, err = os.Lstat(filepath.Join(outer, "old.txt"))
+			assert.ErrorIs(t, err, fs.ErrNotExist, "old outer content is gone")
+			entries, err := os.ReadDir(tmpDir)
+			require.NoError(t, err)
+			assert.Len(t, entries, 1, "no aside is left behind")
+		})
+	}
 }
 
 func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 	tmpDir := t.TempDir()
+	src := createTestFile(t, tmpDir, "src.txt", []byte("new"))
 	dst := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 	root, err := fsroot.Open()
 	require.NoError(t, err)
 	defer root.Close()
 
-	finish, err := prepareDestination(root, false, dst, true)
+	readFrom, finish, err := prepareDestination(root, src, dst, false, true)
 	require.NoError(t, err)
+	assert.Equal(t, src, readFrom, "a source outside dst stays where it is")
 	_, err = os.Lstat(dst)
 	require.ErrorIs(t, err, fs.ErrNotExist, "destination is moved aside for the transfer")
 
@@ -116,12 +133,31 @@ func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []byte("old"), content, "failed transfer restores the replaced file")
 
-	finish, err = prepareDestination(root, false, dst, true)
+	_, finish, err = prepareDestination(root, src, dst, false, true)
 	require.NoError(t, err)
 	finish(nil)
 	entries, err := os.ReadDir(tmpDir)
 	require.NoError(t, err)
-	assert.Empty(t, entries, "successful transfer removes the replaced file")
+	assert.Len(t, entries, 1, "successful transfer removes the replaced file")
+}
+
+func TestPrepareDestinationRelocatesSourceInsideDestination(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := createTestDir(t, tmpDir, "d")
+	src := createTestDir(t, dst, "child")
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	defer root.Close()
+
+	readFrom, finish, err := prepareDestination(root, src, dst, true, true)
+	require.NoError(t, err)
+	assert.NotEqual(t, src, readFrom)
+	_, err = os.Lstat(readFrom)
+	require.NoError(t, err, "source is reachable at its relocated path")
+
+	finish(errors.New("transfer failed"))
+	_, err = os.Lstat(src)
+	require.NoError(t, err, "failure puts the source back where it was")
 }
 
 func TestCopyFileWithCallbacks(t *testing.T) {
