@@ -237,6 +237,10 @@ func exportPeerFile(interfaceName string, file peerFile) error {
 		return fmt.Errorf("create peer dir: %w", err)
 	}
 	path := peerConfigPath(interfaceName, file.ID)
+	// The exported file holds the only copy of the client's private key.
+	if _, err := os.Lstat(path); err == nil {
+		return fmt.Errorf("peer config %s already exists", path)
+	}
 	if err := writePeerFile(path, file); err != nil {
 		slog.Error("failed to save peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", path, "error", err)
 		return err

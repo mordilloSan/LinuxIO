@@ -177,3 +177,41 @@ func TestAddAndRemovePeerLifecyclePreservesNATHooks(t *testing.T) {
 		t.Fatalf("syncs after remove = %v, want [wgtest wgtest]", env.syncs)
 	}
 }
+
+func TestAddPeerKeepsDisabledPeerAddressAndFile(t *testing.T) {
+	env := newWireGuardTestEnv(t)
+	env.interfaceUp = true
+	writeTestInterface(t, "wgtest", "10.8.0.1/29")
+	ctx := context.Background()
+
+	first, err := AddPeer(ctx, apischema.WireGuardAddPeerRequest{InterfaceName: "wgtest"})
+	if err != nil {
+		t.Fatalf("AddPeer returned error: %v", err)
+	}
+	firstFile, err := readPeerFile(peerConfigPath("wgtest", first))
+	if err != nil {
+		t.Fatalf("readPeerFile returned error: %v", err)
+	}
+	if updateErr := UpdatePeer(ctx, apischema.WireGuardUpdatePeerRequest{InterfaceName: "wgtest", PeerID: first, Enabled: new(false)}); updateErr != nil {
+		t.Fatalf("UpdatePeer returned error: %v", updateErr)
+	}
+
+	second, err := AddPeer(ctx, apischema.WireGuardAddPeerRequest{InterfaceName: "wgtest"})
+	if err != nil {
+		t.Fatalf("AddPeer after disable returned error: %v", err)
+	}
+	if second == first {
+		t.Fatalf("second peer reused id %q of the disabled peer", first)
+	}
+	secondFile, err := readPeerFile(peerConfigPath("wgtest", second))
+	if err != nil {
+		t.Fatalf("readPeerFile returned error: %v", err)
+	}
+	if secondFile.Address == firstFile.Address {
+		t.Fatalf("second peer reused address %q of the disabled peer", firstFile.Address)
+	}
+	again, err := readPeerFile(peerConfigPath("wgtest", first))
+	if err != nil || again.PrivateKey != firstFile.PrivateKey {
+		t.Fatalf("disabled peer file changed: err=%v key_kept=%v", err, again.PrivateKey == firstFile.PrivateKey)
+	}
+}

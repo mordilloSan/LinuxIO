@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
@@ -32,7 +33,13 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 		slog.Error("failed to read interface config", "interface", interfaceName, "error", err)
 		return "", fmt.Errorf("read config: %w", err)
 	}
-	peer, nextIP, err := createNextPeer(cfg)
+	// Disabled peers are gone from the server config but keep their exported
+	// file and address; their IPs and IDs must stay reserved.
+	exported, err := loadExportedPeers(ctx, interfaceName)
+	if err != nil {
+		return "", err
+	}
+	peer, nextIP, err := createNextPeer(cfg, exported)
 	if err != nil {
 		slog.Error("failed to create WireGuard peer", "interface", interfaceName, "error", err)
 		return "", err
@@ -81,7 +88,7 @@ func readPeerEndpointInfo(cfg WireGuardConfig, logPrefix string) (string, string
 	return publicIP, gatewayDNS
 }
 
-func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
+func createNextPeer(cfg WireGuardConfig, exported []PeerInfo) (PeerConfig, string, error) {
 	if len(cfg.Address) == 0 {
 		return PeerConfig{}, "", fmt.Errorf("interface has no address")
 	}
@@ -91,7 +98,11 @@ func createNextPeer(cfg WireGuardConfig) (PeerConfig, string, error) {
 		return PeerConfig{}, "", fmt.Errorf("init IP manager: %w", err)
 	}
 
-	nextIP, peerNumber, err := ipMgr.findNextAvailable(cfg.Peers)
+	used := slices.Clone(cfg.Peers)
+	for _, p := range exported {
+		used = append(used, PeerConfig{AllowedIPs: []string{p.Address}})
+	}
+	nextIP, peerNumber, err := ipMgr.findNextAvailable(used)
 	if err != nil {
 		return PeerConfig{}, "", err
 	}

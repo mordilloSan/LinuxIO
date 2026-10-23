@@ -56,11 +56,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: login bodies over 8 KiB → 400 (limits are 255-byte user / 2047-byte password, so nothing legitimate is affected); slow-body clients are cut off after the deadline.
   - Done 2026-10-23: `Login` decodes the body through `http.MaxBytesReader(8 KiB)` under a 10 s read deadline (`http.NewResponseController`, best effort) *before* taking an `authSem` slot; `web.responseWriter` gained `Unwrap()` so the controller reaches the server's writer. Test: `TestLoginRejectsOversizedBody`.
 
-- [ ] **5. Adding a WireGuard peer reuses a disabled peer's IP and overwrites its key file**
+- [x] **5. Adding a WireGuard peer reuses a disabled peer's IP and overwrites its key file**
   `backend/bridge/handlers/wireguard/add_peer.go:94` (`findNextAvailable(cfg.Peers)`), `update_peer.go:72` (disable → `replacePeerSection(…, nil)`), `peer_file.go:199` (ID = `Peer<offset>`), `:233` (`exportPeerFile` → `SaveTo`, overwrites)
   - Verified `[source]`: used IPs come only from the server config; a disabled peer is removed from it but its exported file (the only copy of the client private key) stays and is still listed by `list_peers` (`loadExportedPeers`). The next add gets the same offset → same `PeerN` ID → same file path → overwritten.
   - Fix: include exported peer files' addresses in the used set (`loadExportedPeers`), and make `exportPeerFile` refuse to overwrite. Test: add, disable, add → different ID and IP.
   - Behaviour change: new peer IDs/IPs skip those held by disabled peers (IDs may become non-contiguous).
+  - Done 2026-10-23: `AddPeer` loads the exported peer files and `createNextPeer` reserves their addresses alongside the server config's; `exportPeerFile` refuses to overwrite an existing peer file. Test: `TestAddPeerKeepsDisabledPeerAddressAndFile`.
 
 - [ ] **6. Every WireGuard rewrite cuts hook lines at `;`/`#` and drops unknown keys**
   `backend/bridge/handlers/wireguard/config.go:23-26,76-79` (`ini.LoadOptions` without `IgnoreInlineComment`), `peer_file.go:73,107`
