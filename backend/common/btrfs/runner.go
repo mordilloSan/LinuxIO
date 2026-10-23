@@ -103,7 +103,7 @@ func runRule(ctx context.Context, rule BtrfsSnapshotRule, now time.Time, kind Sn
 	}
 	// A snapshot that cannot be deleted (e.g. mounted) must not block the rest.
 	var pruneErrs []error
-	for _, s := range Prune(snaps, rule.Keep) {
+	for _, s := range protectReplicationParent(snaps, rule, Prune(snaps, rule.Keep)) {
 		if err := DeleteSnapshot(ctx, rule.UUID, s.Path); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
@@ -114,6 +114,34 @@ func runRule(ctx context.Context, rule BtrfsSnapshotRule, now time.Time, kind Sn
 		report.Pruned = append(report.Pruned, s)
 	}
 	return errors.Join(pruneErrs...)
+}
+
+// protectReplicationParent drops the two newest timeline snapshots from del
+// when an enabled timeline replication job covers the rule: after a send the
+// target holds the previous newest, the incremental parent of the next send,
+// and pruning it locally would force a full send every cycle.
+func protectReplicationParent(snaps []BtrfsSnapshot, rule BtrfsSnapshotRule, del []BtrfsSnapshot) []BtrfsSnapshot {
+	jobs, err := LoadJobs()
+	if err != nil {
+		slog.Warn("failed to load btrfs replication jobs; not protecting the replication parent", "rule", rule.UUID+"/"+rule.Path, "error", err)
+		return del
+	}
+	if !slices.ContainsFunc(jobs, func(j BtrfsReplicationJob) bool {
+		return j.Enabled && j.After == AfterTimeline && j.UUID == rule.UUID && j.Path == rule.Path
+	}) {
+		return del
+	}
+	var timeline []BtrfsSnapshot
+	for _, s := range snaps {
+		if s.Kind == KindTimeline {
+			timeline = append(timeline, s)
+		}
+	}
+	slices.SortStableFunc(timeline, func(a, b BtrfsSnapshot) int { return b.CreatedAt.Compare(a.CreatedAt) })
+	keep := timeline[:min(len(timeline), 2)]
+	return slices.DeleteFunc(del, func(s BtrfsSnapshot) bool {
+		return slices.ContainsFunc(keep, func(k BtrfsSnapshot) bool { return k.Path == s.Path })
+	})
 }
 
 func hasFilesystem(mounts []Mount, uuid string) bool {

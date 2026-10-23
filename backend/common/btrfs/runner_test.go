@@ -3,6 +3,7 @@ package btrfs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -223,6 +224,53 @@ func TestRunPruneContinuesPastUndeletableSnapshot(t *testing.T) {
 	}
 	if len(report.Errors) != 1 || !strings.Contains(report.Errors[0], snap(5*time.Hour)) || !strings.Contains(report.Errors[0], "busy") {
 		t.Fatalf("Errors = %v", report.Errors)
+	}
+}
+
+// With an enabled timeline replication job on the rule, the previous newest
+// snapshot is the next send's incremental parent and survives keep.hourly=1.
+func TestRunKeepsReplicationParent(t *testing.T) {
+	for _, withJob := range []bool{true, false} {
+		t.Run(fmt.Sprintf("job=%v", withJob), func(t *testing.T) {
+			useTempAlerts(t)
+			old := ReplicationPath
+			ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+			t.Cleanup(func() { ReplicationPath = old })
+			if withJob {
+				job := BtrfsReplicationJob{ID: "job", UUID: rootUUID, Path: "@", Enabled: true, After: AfterTimeline}
+				if _, err := UpdateJobs(context.Background(), func(jobs *[]BtrfsReplicationJob) error {
+					*jobs = append(*jobs, job)
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			top := t.TempDir()
+			stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
+			now := snapshotTime
+			snap := func(ago time.Duration) string { return SnapshotPath("@", now.Add(-ago), KindTimeline) }
+			stubRunnerBtrfs(t, top, []subvolumeRow{
+				snapshotSubvolume(1, snap(3*time.Hour)),
+				snapshotSubvolume(2, snap(2*time.Hour)),
+			})
+
+			rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly, Keep: BtrfsKeep{Hourly: 1}}}
+			report, err := Run(context.Background(), rules, now, KindTimeline)
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			var pruned []string
+			for _, s := range report.Pruned {
+				pruned = append(pruned, s.Path)
+			}
+			want := []string{snap(3 * time.Hour), snap(2 * time.Hour)}
+			if withJob {
+				want = want[:1]
+			}
+			if !reflect.DeepEqual(pruned, want) {
+				t.Fatalf("pruned = %v, want %v", pruned, want)
+			}
+		})
 	}
 }
 

@@ -77,11 +77,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: the run report and alert text list every failed snapshot; everything deletable is pruned.
   - Done 2026-10-23: `runRule` keeps pruning past a failed `DeleteSnapshot` and returns `errors.Join` of the failures (`report.Pruned` keeps the successes; a done ctx still returns `ctx.Err()`). Test: `TestRunPruneContinuesPastUndeletableSnapshot`.
 
-- [ ] **7b. Local prune can delete the incremental parent, so replication falls back to full sends**
+- [x] **7b. Local prune can delete the incremental parent, so replication falls back to full sends**
   `backend/btrfs-timer/snapshot.go:58-73` (prune runs before `replicateJobs`), `backend/common/btrfs/replication.go:207` (`ChooseParent` only uses a local snapshot the target already holds)
   - Verified `[source]`: nothing protects the last-sent snapshot (`rg LastSent|protect` finds nothing). With `keep.hourly=1` the previous snapshot is pruned before the send.
   - Fix: either replicate before pruning in the timer pass, or exclude the newest snapshot the target holds from `Prune`'s result for rules that have a replication job.
   - Behaviour change: one extra local snapshot is kept per replicated subvolume, or timer ordering changes.
+  - Done 2026-10-23: no persistence and no timer change — `protectReplicationParent` keeps the two newest timeline snapshots out of the prune result when an enabled timeline replication job matches the rule's (UUID, path); covers the timer pass and the bridge's run-now path, since both go through `Run`. A broken jobs file is logged and pruning proceeds as before. Test: `TestRunKeepsReplicationParent`.
 
 - [ ] **8. `journalctl -n <lines>` takes the user's string as the next argv**
   `backend/bridge/handlers/logs/journal_args.go:155-156`, `service.go:33,59-61`
