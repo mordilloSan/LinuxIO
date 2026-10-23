@@ -36,18 +36,6 @@ func subtreeBounds(path string) (lo, childLo, hi string) {
 	return trimmed, trimmed + "/", trimmed + string('/'+1)
 }
 
-// SubtreeLikePattern returns an escaped LIKE pattern for descendants of path.
-func SubtreeLikePattern(path string) string {
-	if path == "" || path == "/" {
-		return "/%"
-	}
-	trimmed := strings.TrimRight(path, "/")
-	if trimmed == "" {
-		return "/%"
-	}
-	return escapeLikePattern(trimmed) + "/%"
-}
-
 func parentDirKey(path string) string {
 	if path == "" || path == "/" {
 		return "/"

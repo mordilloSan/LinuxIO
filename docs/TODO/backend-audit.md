@@ -127,11 +127,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: `cmd.Stdout/Stderr` writers plus `cmd.WaitDelay`, or `Setpgid` with `cmd.Cancel` signalling the group.
   - Behaviour change: cancel/timeouts actually kill `apt-get`/`dnf` children.
 
-- [ ] **13. Indexer dir-size uses case-insensitive, non-indexed `LIKE`; blank search terms sort the whole table**
+- [x] **13. Indexer dir-size uses case-insensitive, non-indexed `LIKE`; blank search terms sort the whole table**
   `backend/indexer/internal/storage/queries.go:85,146-156` (`appendSearchBaseFilter`, `DirDetails`), `:89-111` (`buildSearchFilter` → `1 = 1`), `paths.go:23-30` (`subtreeBounds`, already explains the LIKE problem)
   - Verified `[source]+[lib]`: SQLite `LIKE` is ASCII case-insensitive by default and no `case_sensitive_like` pragma is set; the two COUNT subqueries scan the whole generation. `q=|||` passes the 3-rune check and all terms trim to empty.
   - Fix: `countEntriesUnderPath`/`subtreeBounds` in `DirDetails` and the base filter; return empty (or 400) when no term is non-blank; delete `SubtreeLikePattern`. Test with `/a/Data` vs `/a/data` and `"|||"`.
   - Behaviour change: dir sizes become case-sensitive (correct); blank queries return nothing (was 100 arbitrary newest entries).
+  - Done 2026-10-23: `DirDetails` and `appendSearchBaseFilter` use `subtreeBounds` range filters (indexed, case-sensitive); `SearchEntriesUnder` returns empty when no term is non-blank; `SubtreeLikePattern` removed. Tests: `TestDirDetailsIsCaseSensitive`, `TestSearchEntriesUnderBlankTermsReturnNothing`.
 
 - [ ] **14a. Monitoring: `statfs` runs under the app mutex**
   `backend/monitoring/internal/live/filesystems.go:53-90`, `app/live.go:140` (passes the `App` as the `sync.Locker`)

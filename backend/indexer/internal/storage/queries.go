@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,6 +24,12 @@ func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string
 	}
 
 	opts := searchquery.Parse(pattern)
+
+	// A query with no non-blank term (e.g. "|||") matches nothing instead of
+	// sorting the whole table.
+	if !slices.ContainsFunc(opts.Terms, func(term string) bool { return strings.TrimSpace(term) != "" }) {
+		return nil, nil
+	}
 
 	// Prefer the FTS5 trigram index when available and the query is eligible:
 	// it answers substring searches from the index instead of scanning every
@@ -82,8 +89,9 @@ func appendSearchBaseFilter(where string, args []any, basePath string) (string, 
 	if basePath == "" || basePath == "/" {
 		return where, args
 	}
-	return where + ` AND (relative_path = ? OR relative_path LIKE ? ESCAPE '\')`,
-		append(args, basePath, SubtreeLikePattern(basePath))
+	lo, childLo, hi := subtreeBounds(basePath)
+	return where + ` AND relative_path >= ? AND relative_path < ? AND (relative_path = ? OR relative_path >= ?)`,
+		append(args, lo, hi, lo, childLo)
 }
 
 func buildSearchFilter(opts searchquery.Options) (string, []any) {
@@ -138,22 +146,25 @@ func (s *Store) DirDetails(ctx context.Context, path string) (totalSize, files, 
 		ctx = context.TODO()
 	}
 
+	lo, childLo, hi := subtreeBounds(path)
 	var size sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT e.size,
 		       COALESCE((SELECT COUNT(*) FROM entries c
 		                 WHERE c.index_id = e.index_id
-		                   AND (c.relative_path = ? OR c.relative_path LIKE ? ESCAPE '\')
+		                   AND c.relative_path >= ? AND c.relative_path < ?
+		                   AND (c.relative_path = ? OR c.relative_path >= ?)
 		                   AND c.type = 'file'), 0),
 		       COALESCE((SELECT COUNT(*) FROM entries c
 		                 WHERE c.index_id = e.index_id
-		                   AND (c.relative_path = ? OR c.relative_path LIKE ? ESCAPE '\')
+		                   AND c.relative_path >= ? AND c.relative_path < ?
+		                   AND (c.relative_path = ? OR c.relative_path >= ?)
 		                   AND c.type = 'directory'), 0)
 		FROM entries e
 		JOIN `+latestGenerationSubquery+` latest
 		  ON latest.id = e.index_id
 		WHERE e.relative_path = ? AND e.type = 'directory'
-	`, path, SubtreeLikePattern(path), path, SubtreeLikePattern(path), path).Scan(&size, &files, &dirs); err != nil {
+	`, lo, hi, lo, childLo, lo, hi, lo, childLo, path).Scan(&size, &files, &dirs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			if initialized, checkErr := s.completedGeneration(ctx); checkErr == nil && !initialized {
 				return 0, 0, 0, ErrNotInitialized

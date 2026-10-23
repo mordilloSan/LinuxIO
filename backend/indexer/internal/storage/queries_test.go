@@ -202,20 +202,56 @@ func TestDeletePathEscapesLikeWildcards(t *testing.T) {
 		t.Fatalf("delete escaped path: %v", err)
 	}
 
-	var deletedCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE relative_path = ? OR relative_path LIKE ? ESCAPE '\'`, "/data%_set", SubtreeLikePattern("/data%_set")).Scan(&deletedCount); err != nil {
+	dirs, files, err := countEntriesUnderPath(ctx, db, indexID, "/data%_set")
+	if err != nil {
 		t.Fatalf("count deleted subtree: %v", err)
 	}
-	if deletedCount != 0 {
+	if deletedCount := dirs + files; deletedCount != 0 {
 		t.Fatalf("deleted subtree count = %d, want 0", deletedCount)
 	}
 
-	var siblingCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE relative_path = ? OR relative_path LIKE ? ESCAPE '\'`, "/dataXXset", SubtreeLikePattern("/dataXXset")).Scan(&siblingCount); err != nil {
+	dirs, files, err = countEntriesUnderPath(ctx, db, indexID, "/dataXXset")
+	if err != nil {
 		t.Fatalf("count sibling subtree: %v", err)
 	}
-	if siblingCount != 2 {
+	if siblingCount := dirs + files; siblingCount != 2 {
 		t.Fatalf("sibling subtree count = %d, want 2", siblingCount)
+	}
+}
+
+func TestDirDetailsIsCaseSensitive(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	seedDirectories(t, ctx, db, indexID, []directorySeed{
+		{path: "/", size: 0},
+		{path: "/a", size: 0},
+		{path: "/a/Data", size: 10},
+		{path: "/a/Data/sub", size: 5},
+		{path: "/a/data", size: 20},
+		{path: "/a/data/sub1", size: 5},
+		{path: "/a/data/sub2", size: 5},
+	})
+
+	_, files, dirs, err := NewStoreWithDB(db, dbPath, nil).DirDetails(ctx, "/a/Data")
+	if err != nil {
+		t.Fatalf("DirDetails: %v", err)
+	}
+	if files != 0 || dirs != 2 {
+		t.Fatalf("/a/Data counts = %d files, %d dirs, want 0 files, 2 dirs", files, dirs)
+	}
+}
+
+func TestSearchEntriesUnderBlankTermsReturnNothing(t *testing.T) {
+	ctx, db, dbPath := setupTestDB(t)
+	indexID := insertTestIndex(t, db)
+	seedDirectories(t, ctx, db, indexID, []directorySeed{{path: "/", size: 0}, {path: "/data", size: 1}})
+
+	results, err := NewStoreWithDB(db, dbPath, nil).SearchEntriesUnder(ctx, "|||", "/", 100)
+	if err != nil {
+		t.Fatalf("SearchEntriesUnder: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("blank query returned %d results, want 0", len(results))
 	}
 }
 
