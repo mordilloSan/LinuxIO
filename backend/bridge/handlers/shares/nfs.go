@@ -2,19 +2,26 @@ package shares
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
-const exportsFile = "/etc/exports"
+// exportsFile is a var so tests can point it at a temporary location;
+// production always uses the standard exports path.
+var exportsFile = "/etc/exports"
 
 const nfsServerInstallHint = "nfs-kernel-server or nfs-utils"
 
@@ -22,6 +29,12 @@ var (
 	validExportPath = regexp.MustCompile(`^/[a-zA-Z0-9/_.-]*$`)
 	exportLineRegex = regexp.MustCompile(`^(\S+)\s+(.+)$`)
 	clientRegex     = regexp.MustCompile(`(\S+?)(\([^)]*\))?\s*`)
+	validNFSHost    = regexp.MustCompile(`^[A-Za-z0-9_.:*/@\[\]-]+$`)
+	validNFSOption  = regexp.MustCompile(`^[a-z_]+(=[0-9A-Za-z_]+)?$`)
+
+	// nfsServerAvailable and applyNFSExports are overridable in tests.
+	nfsServerAvailable = CheckNFSServerAvailability
+	applyNFSExports    = runExportfsReload
 )
 
 func CheckNFSServerAvailability() (bool, error) {
@@ -33,7 +46,7 @@ func CheckNFSServerAvailability() (bool, error) {
 }
 
 func requireNFSServerAvailability() error {
-	ok, err := CheckNFSServerAvailability()
+	ok, err := nfsServerAvailable()
 	if err != nil {
 		return err
 	}
@@ -68,8 +81,9 @@ func CreateNFSShare(ctx context.Context, path string, clients []apischema.NFSCli
 		return err
 	}
 
-	if !validExportPath.MatchString(path) {
-		return fmt.Errorf("invalid export path: %s", path)
+	path, err := validateNFSExport(path, clients)
+	if err != nil {
+		return err
 	}
 
 	exports, err := parseExportsFile()
@@ -77,25 +91,17 @@ func CreateNFSShare(ctx context.Context, path string, clients []apischema.NFSCli
 		return err
 	}
 	for _, e := range exports {
-		if e.Path == path {
+		if filepath.Clean(e.Path) == path {
 			return fmt.Errorf("export already exists for path: %s", path)
 		}
 	}
 
-	if dirErr := os.MkdirAll(path, 0755); dirErr != nil {
+	if dirErr := mkdirShareDir(path); dirErr != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, dirErr)
 	}
 
-	line := formatExportLine(path, clients)
-
-	f, err := os.OpenFile(exportsFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open %s: %w", exportsFile, err)
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(line + "\n"); err != nil {
-		return fmt.Errorf("failed to write to %s: %w", exportsFile, err)
+	if err := appendToConfFile(exportsFile, formatExportLine(path, clients)+"\n"); err != nil {
+		return err
 	}
 	slog.Info("NFS export added", "path", path, "count", len(clients))
 	return applyNFSExports(ctx)
@@ -107,8 +113,9 @@ func UpdateNFSShare(ctx context.Context, path string, clients []apischema.NFSCli
 		return err
 	}
 
-	if !validExportPath.MatchString(path) {
-		return fmt.Errorf("invalid export path: %s", path)
+	path, err := validateNFSExport(path, clients)
+	if err != nil {
+		return err
 	}
 
 	content, err := os.ReadFile(exportsFile)
@@ -127,7 +134,7 @@ func UpdateNFSShare(ctx context.Context, path string, clients []apischema.NFSCli
 			continue
 		}
 		fields := strings.Fields(trimmed)
-		if len(fields) >= 1 && fields[0] == path {
+		if len(fields) >= 1 && filepath.Clean(fields[0]) == path {
 			newLines = append(newLines, newLine)
 			found = true
 		} else {
@@ -139,7 +146,7 @@ func UpdateNFSShare(ctx context.Context, path string, clients []apischema.NFSCli
 		return fmt.Errorf("export not found for path: %s", path)
 	}
 
-	if err := os.WriteFile(exportsFile, []byte(strings.Join(newLines, "\n")), 0644); err != nil {
+	if err := atomicfile.Write(exportsFile, []byte(strings.Join(newLines, "\n")), 0o644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
 	}
 	slog.Info("NFS export updated", "path", path, "count", len(clients))
@@ -176,7 +183,7 @@ func DeleteNFSShare(ctx context.Context, path string) error {
 		return fmt.Errorf("export not found for path: %s", path)
 	}
 
-	if err := os.WriteFile(exportsFile, []byte(strings.Join(newLines, "\n")), 0644); err != nil {
+	if err := atomicfile.Write(exportsFile, []byte(strings.Join(newLines, "\n")), 0o644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
 	}
 	slog.Info("NFS export removed", "path", path)
@@ -283,6 +290,61 @@ func getActiveExports(ctx context.Context) map[string]bool {
 	return active
 }
 
+// validateNFSExport cleans the export path and checks the client list, since
+// every value ends up verbatim in /etc/exports. It returns the cleaned path.
+func validateNFSExport(path string, clients []apischema.NFSClient) (string, error) {
+	if !validExportPath.MatchString(path) {
+		return "", fmt.Errorf("invalid export path: %s", path)
+	}
+	path = filepath.Clean(path)
+	if path == "/" {
+		return "", fmt.Errorf("invalid export path: %s", path)
+	}
+	if len(clients) == 0 {
+		return "", errors.New("export must have at least one client")
+	}
+	for _, c := range clients {
+		if !validNFSHost.MatchString(c.Host) {
+			return "", fmt.Errorf("invalid client host: %q", c.Host)
+		}
+		for _, o := range c.Options {
+			if !validNFSOption.MatchString(o) {
+				return "", fmt.Errorf("invalid export option: %q", o)
+			}
+		}
+	}
+	return path, nil
+}
+
+// mkdirShareDir creates dir with mode 0755 despite the bridge's 0o077 umask so
+// non-root clients can enter it. Existing directories keep their mode.
+func mkdirShareDir(dir string) error {
+	_, statErr := os.Stat(dir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if statErr == nil {
+		return nil
+	}
+	return os.Chmod(dir, 0o755)
+}
+
+// appendToConfFile appends text to path atomically, starting on a fresh line
+// when the existing content does not end with a newline.
+func appendToConfFile(path, text string) error {
+	content, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("failed to read %s: %w", path, err)
+	}
+	if len(content) > 0 && !bytes.HasSuffix(content, []byte("\n")) {
+		content = append(content, '\n')
+	}
+	if err := atomicfile.Write(path, append(content, text...), 0o644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", path, err)
+	}
+	return nil
+}
+
 // formatExportLine builds a /etc/exports line from path and clients
 func formatExportLine(path string, clients []apischema.NFSClient) string {
 	var parts []string
@@ -296,8 +358,8 @@ func formatExportLine(path string, clients []apischema.NFSClient) string {
 	return fmt.Sprintf("%s\t%s", path, strings.Join(parts, " "))
 }
 
-// applyNFSExports runs exportfs -ra to apply changes
-func applyNFSExports(ctx context.Context) error {
+// runExportfsReload runs exportfs -ra to apply changes
+func runExportfsReload(ctx context.Context) error {
 	exportfs, findErr := hostcmd.LookPath("exportfs")
 	if findErr != nil {
 		return fmt.Errorf("exportfs not found (install %s)", nfsServerInstallHint)

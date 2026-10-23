@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -177,5 +178,89 @@ func TestCreateSambaShareCreatesMissingConfAndAppends(t *testing.T) {
 		if !strings.Contains(content, want) {
 			t.Fatalf("smb.conf missing %q:\n%s", want, content)
 		}
+	}
+}
+
+func stubSmbcontrolReload(t *testing.T) {
+	t.Helper()
+	orig := smbcontrolReload
+	t.Cleanup(func() { smbcontrolReload = orig })
+	smbcontrolReload = func(context.Context) ([]byte, error) { return nil, nil }
+}
+
+func TestCreateSambaShareDirectoryIsWorldTraversableDespiteUmask(t *testing.T) {
+	useTempSmbConf(t)
+	stubSambaAvailable(t, true, nil)
+	stubSmbcontrolReload(t)
+	oldUmask := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(oldUmask) })
+
+	root := t.TempDir()
+	existing := filepath.Join(root, "existing")
+	if err := os.Mkdir(existing, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	created := filepath.Join(root, "created")
+
+	for name, path := range map[string]string{"Existing": existing, "Created": created} {
+		if err := CreateSambaShare(context.Background(), name, map[string]string{"path": path}); err != nil {
+			t.Fatalf("CreateSambaShare(%s) error = %v", name, err)
+		}
+	}
+
+	if info, err := os.Stat(created); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("created dir mode = %v (err %v), want 0755", info.Mode().Perm(), err)
+	}
+	if info, err := os.Stat(existing); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("existing dir mode = %v (err %v), want untouched 0700", info.Mode().Perm(), err)
+	}
+}
+
+func TestCreateSambaShareAppendsOnFreshLine(t *testing.T) {
+	confFile := useTempSmbConf(t)
+	stubSambaAvailable(t, true, nil)
+	stubSmbcontrolReload(t)
+
+	if err := os.MkdirAll(filepath.Dir(confFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(confFile, []byte("[global]\n   workgroup = X"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := CreateSambaShare(context.Background(), "Docs", map[string]string{"path": filepath.Join(t.TempDir(), "d")}); err != nil {
+		t.Fatalf("CreateSambaShare() error = %v", err)
+	}
+
+	data, err := os.ReadFile(confFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "workgroup = X\n\n[Docs]\n") {
+		t.Fatalf("share glued to the previous line:\n%s", data)
+	}
+}
+
+func TestSambaUpdateAndDeleteRejectReservedSections(t *testing.T) {
+	confFile := useTempSmbConf(t)
+	stubSambaAvailable(t, true, nil)
+	stubSmbcontrolReload(t)
+
+	if err := os.MkdirAll(filepath.Dir(confFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orig := "[global]\n   workgroup = X\n"
+	if err := os.WriteFile(confFile, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeleteSambaShare(context.Background(), "Global"); err == nil {
+		t.Fatal("DeleteSambaShare(global) error = nil, want reserved-section error")
+	}
+	if err := UpdateSambaShare(context.Background(), "global", "Docs", map[string]string{"path": "/srv/docs"}); err == nil {
+		t.Fatal("UpdateSambaShare(global) error = nil, want reserved-section error")
+	}
+	if data, err := os.ReadFile(confFile); err != nil || string(data) != orig {
+		t.Fatalf("smb.conf changed: %q (err %v)", data, err)
 	}
 }

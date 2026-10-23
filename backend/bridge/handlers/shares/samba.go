@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
@@ -68,7 +69,7 @@ func requireSambaServerAvailability() error {
 
 func ensureSmbConfDir() error {
 	dir := filepath.Dir(smbConfFile)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := mkdirShareDir(dir); err != nil {
 		return fmt.Errorf("failed to create %s: %w", dir, err)
 	}
 	return nil
@@ -138,20 +139,14 @@ func CreateSambaShare(ctx context.Context, name string, properties map[string]st
 		return dirErr
 	}
 
-	if dirErr := os.MkdirAll(path, 0755); dirErr != nil {
+	if dirErr := mkdirShareDir(path); dirErr != nil {
 		return fmt.Errorf("failed to create directory %s: %w", path, dirErr)
 	}
 
 	block := formatSambaSection(name, properties)
 
-	f, err := os.OpenFile(smbConfFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open %s: %w", smbConfFile, err)
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString("\n" + block); err != nil {
-		return fmt.Errorf("failed to write to %s: %w", smbConfFile, err)
+	if err := appendToConfFile(smbConfFile, "\n"+block); err != nil {
+		return err
 	}
 	slog.Info("Samba share created", "name", name, "path", path)
 	return reloadSamba(ctx)
@@ -160,6 +155,9 @@ func CreateSambaShare(ctx context.Context, name string, properties map[string]st
 // UpdateSambaShare replaces a share section in smb.conf and reloads samba.
 // oldName identifies the existing section; newName is the section name to write.
 func UpdateSambaShare(ctx context.Context, oldName, newName string, properties map[string]string) error {
+	if reservedSections[strings.ToLower(oldName)] {
+		return fmt.Errorf("cannot modify reserved section: %s", oldName)
+	}
 	if !validShareName.MatchString(newName) {
 		return fmt.Errorf("invalid share name: %s", newName)
 	}
@@ -205,7 +203,7 @@ func UpdateSambaShare(ctx context.Context, oldName, newName string, properties m
 		return fmt.Errorf("share not found: %s", oldName)
 	}
 
-	if err := os.WriteFile(smbConfFile, []byte(newContent), 0644); err != nil {
+	if err := atomicfile.Write(smbConfFile, []byte(newContent), 0o644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
 	}
 	slog.Info("Samba share updated", "name", oldName, "new_name", newName, "path", path)
@@ -214,6 +212,9 @@ func UpdateSambaShare(ctx context.Context, oldName, newName string, properties m
 
 // DeleteSambaShare removes a share section from smb.conf and reloads samba
 func DeleteSambaShare(ctx context.Context, name string) error {
+	if reservedSections[strings.ToLower(name)] {
+		return fmt.Errorf("cannot modify reserved section: %s", name)
+	}
 	if err := requireSambaServerAvailability(); err != nil {
 		return err
 	}
@@ -228,7 +229,7 @@ func DeleteSambaShare(ctx context.Context, name string) error {
 		return fmt.Errorf("share not found: %s", name)
 	}
 
-	if err := os.WriteFile(smbConfFile, []byte(newContent), 0644); err != nil {
+	if err := atomicfile.Write(smbConfFile, []byte(newContent), 0o644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
 	}
 	slog.Info("Samba share deleted", "name", name)

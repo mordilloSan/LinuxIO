@@ -171,29 +171,33 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: flat/split VMDK descriptors are rejected; sparse and streamOptimized (what OVA exports use) still import.
   - Done 2026-10-23: `validateVMDKDisk` requires the `KDMV` magic; `importDiskFile` runs it for `.vmdk` (direct and OVA-extracted) before `qemu-img convert`. Test: `TestImportDiskFileRejectsVMDKDescriptor`. Limit: only the magic is checked; an embedded descriptor inside a sparse file is not inspected.
 
-- [ ] **17a. New share directories are created 0700**
+- [x] **17a. New share directories are created 0700**
   `backend/bridge/handlers/shares/samba.go:71,141`, `nfs.go:85` (`MkdirAll(path, 0755)`), `backend/bridge/cmd/root.go:74` (`Umask(0o077)`)
   - Verified `[source]`: no chmod after mkdir; `schedules/store.go` already works around the umask.
   - Fix: `Chmod(0o755)` when the directory was newly created.
   - Behaviour change: new share directories are 0755 (non-root clients can enter them).
+  - Done 2026-10-23: `mkdirShareDir` (chmod 0755 only when newly created) in `ensureSmbConfDir`, `CreateSambaShare`, `CreateNFSShare`. Tests: `TestCreateSambaShareDirectoryIsWorldTraversableDespiteUmask`, `TestCreateNFSShareDirectoryIsWorldTraversableDespiteUmask`.
 
-- [ ] **17b. `smb.conf` and `/etc/exports` rewritten with `os.WriteFile`; append may glue lines**
+- [x] **17b. `smb.conf` and `/etc/exports` rewritten with `os.WriteFile`; append may glue lines**
   `samba.go:208,231`, `nfs.go:142,179` (truncating writes), `nfs.go:91`, `samba.go:147` (append without checking the trailing newline)
   - Verified `[source]`. `rsync.go` in the same package already uses `atomicfile` + `filelock`.
   - Fix: `atomicfile.Write(path, data, 0o644)`; for create, read-append-write and prefix `\n` when needed.
   - Behaviour change: file inode changes on write; otherwise none.
+  - Done 2026-10-23: `atomicfile.Write` in Samba/NFS update and delete; `appendToConfFile` (fresh-line append, atomic) for both create paths. Tests: `TestCreateSambaShareAppendsOnFreshLine`, `TestCreateNFSShareAppendsOnFreshLine`, `TestNFSShareRewriteKeepsOtherLines`.
 
-- [ ] **17c. Samba delete/update accept reserved sections (`[global]`, `[homes]`, `[printers]`)**
+- [x] **17c. Samba delete/update accept reserved sections (`[global]`, `[homes]`, `[printers]`)**
   `samba.go:162-166` (checks `newName` only), `:216` (`DeleteSambaShare`, no check)
   - Verified `[source]`.
   - Fix: reserved-name check on `oldName` and `name` at the top of both.
   - Behaviour change: those calls return an error (the UI never offers them).
+  - Done 2026-10-23: reserved check on `oldName` in `UpdateSambaShare` and `name` in `DeleteSambaShare`. Test: `TestSambaUpdateAndDeleteRejectReservedSections`.
 
-- [ ] **17d. NFS export with no clients writes a host-less line; hosts/options unvalidated**
+- [x] **17d. NFS export with no clients writes a host-less line; hosts/options unvalidated**
   `nfs.go:287-296` (`formatExportLine`), `:66-101` (`CreateNFSShare`)
   - Verified `[source]`: `clients: []` writes `"/srv/x\t"`; `parseExportLine` then skips it as malformed, so it is invisible in the UI. Hosts/options with whitespace or `\n` inject extra lines. `[unverified]`: that nfs-utils treats a host-less line as `*` — `exportfs` is not installed here; check `man 5 exports` on a target host before relying on the "world export" claim (the invisible-line part is verified regardless).
   - Fix: require `len(clients) > 0`; validate host (`^[A-Za-z0-9_.:*/@\[\]-]+$`) and options (`^[a-z_]+(=[0-9A-Za-z_]+)?$`); `filepath.Clean` the path and reject `/`.
   - Behaviour change: empty client lists and odd host/option strings → 400.
+  - Done 2026-10-23: `validateNFSExport` (clean path, reject `/`, ≥1 client, host/option regexes) in `CreateNFSShare`/`UpdateNFSShare`; duplicate and update matching compare cleaned paths. `exportsFile`, `nfsServerAvailable`, `applyNFSExports` are now test seams. Tests: `TestNFSShareRejectsUnsafeInput`, `TestCreateNFSShareDuplicateCheckUsesCleanedPath`. `DeleteNFSShare` still matches the raw path.
 
 - [x] **18a. Account existence checks use the login-user listing**
   `backend/bridge/handlers/accounts/passwd.go:83-88` (filter: UID ≥ 1000 or root, login shell), `:128-136` (`GetUser` → `ListUsers`), callers `user_commands.go:77,102,150,169,190`, `groups.go:249`, `user_details.go:65`
