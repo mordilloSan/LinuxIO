@@ -3,6 +3,7 @@ package wireguard
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -17,13 +18,41 @@ const (
 	metaKeyDNS       = "dns"
 )
 
+// interfaceKeys are the [Interface] keys the model carries; any other key is
+// kept verbatim in Extra so a rewrite never changes what wg-quick applies.
+var interfaceKeys = map[string]bool{
+	"PrivateKey": true, "Address": true, "ListenPort": true, "MTU": true,
+	"PreUp": true, "PostUp": true, "PreDown": true, "PostDown": true,
+}
+
+// loadWGINI reads a WireGuard INI the way wg-quick does: a '#' ends a value
+// (`ListenPort = 51820 # main`) while ';' is ordinary text, so a hook such as
+// "cmd1; cmd2" survives. Whole-line comments stay for the metadata parser.
+func loadWGINI(path string, opts ini.LoadOptions) (*ini.File, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if before, _, ok := strings.Cut(line, "#"); ok {
+			lines[i] = before
+		}
+	}
+	opts.IgnoreInlineComment = true
+	return ini.LoadSources(opts, []byte(strings.Join(lines, "\n")))
+}
+
 func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	var cfg WireGuardConfig
 
-	iniFile, err := ini.LoadSources(ini.LoadOptions{
+	iniFile, err := loadWGINI(path, ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
-	}, path)
+	})
 	if err != nil {
 		slog.Error("failed to load WireGuard config", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return cfg, fmt.Errorf("load config: %w", err)
@@ -43,6 +72,14 @@ func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	cfg.PostUp = sectionValues(ifSec, "PostUp")
 	cfg.PreDown = sectionValues(ifSec, "PreDown")
 	cfg.PostDown = sectionValues(ifSec, "PostDown")
+	for _, key := range ifSec.Keys() {
+		if interfaceKeys[key.Name()] {
+			continue
+		}
+		for _, value := range key.ValueWithShadows() {
+			cfg.Extra = append(cfg.Extra, [2]string{key.Name(), value})
+		}
+	}
 
 	meta := parseMetadata(ifSec.Comment)
 	cfg.Host = meta[metaKeyHost]
@@ -76,6 +113,9 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	iniFile := ini.Empty(ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
+		// Without this, ini wraps a value holding ';' in backticks, which
+		// wg-quick's eval runs as command substitution.
+		IgnoreInlineComment: true,
 	})
 
 	// Create Interface section
@@ -102,6 +142,9 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 		for _, hook := range kind.hooks {
 			setKeyIfNotEmpty(ifSec, kind.key, hook)
 		}
+	}
+	for _, kv := range cfg.Extra {
+		setKey(ifSec, kv[0], kv[1])
 	}
 
 	// Create Peer sections

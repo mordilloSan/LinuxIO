@@ -184,3 +184,15 @@ func TestUpdateInterfaceRejectsInvalidValues(t *testing.T) {
 		t.Fatalf("rejected updates must not restart: %v", env.wgQuick)
 	}
 }
+
+func TestCleanLinesRejectsHooksTheConfigCannotCarry(t *testing.T) {
+	for _, bad := range []string{"echo ok # not ok", "echo `date`", "echo a\necho b"} {
+		if _, err := cleanLines([]string{bad}); err == nil {
+			t.Errorf("cleanLines(%q) = nil error, want rejection", bad)
+		}
+	}
+	got, err := cleanLines([]string{" a; b ", ""})
+	if err != nil || !slices.Equal(got, []string{"a; b"}) {
+		t.Fatalf("cleanLines = %v, %v", got, err)
+	}
+}

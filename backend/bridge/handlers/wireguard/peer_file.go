@@ -70,7 +70,7 @@ func formatMetadata(pairs ...[2]string) string {
 }
 
 func readPeerFile(path string) (peerFile, error) {
-	iniFile, err := ini.Load(path)
+	iniFile, err := loadWGINI(path, ini.LoadOptions{})
 	if err != nil {
 		return peerFile{}, fmt.Errorf("load peer config: %w", err)
 	}
@@ -104,7 +104,7 @@ func readPeerFile(path string) (peerFile, error) {
 }
 
 func writePeerFile(path string, p peerFile) error {
-	iniFile := ini.Empty()
+	iniFile := ini.Empty(ini.LoadOptions{IgnoreInlineComment: true})
 
 	ifSec, err := iniFile.NewSection("Interface")
 	if err != nil {

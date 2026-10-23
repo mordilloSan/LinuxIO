@@ -34,6 +34,9 @@ type WireGuardConfig struct {
 	PreDown    []string     `json:"pre_down"`
 	PostDown   []string     `json:"post_down"`
 	Peers      []PeerConfig `json:"peers"`
+	// Extra holds [Interface] keys LinuxIO does not model (Table, FwMark,
+	// SaveConfig, DNS, ...), in file order, so rewrites keep them.
+	Extra [][2]string `json:"-"`
 }
 
 type PeerInfo struct {

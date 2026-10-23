@@ -63,11 +63,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: new peer IDs/IPs skip those held by disabled peers (IDs may become non-contiguous).
   - Done 2026-10-23: `AddPeer` loads the exported peer files and `createNextPeer` reserves their addresses alongside the server config's; `exportPeerFile` refuses to overwrite an existing peer file. Test: `TestAddPeerKeepsDisabledPeerAddressAndFile`.
 
-- [ ] **6. Every WireGuard rewrite cuts hook lines at `;`/`#` and drops unknown keys**
+- [x] **6. Every WireGuard rewrite cuts hook lines at `;`/`#` and drops unknown keys**
   `backend/bridge/handlers/wireguard/config.go:23-26,76-79` (`ini.LoadOptions` without `IgnoreInlineComment`), `peer_file.go:73,107`
   - Verified `[lib]`: ini.v1 `parser.go:280` cuts an unquoted value at the first `#` or `;`; `file.go:464` writes a value containing `#`/`;` wrapped in backticks, which wg-quick's `eval` treats as command substitution. The model has no `Table`, `FwMark`, `SaveConfig`, `DNS` keys, so an adopted config loses them on the first rewrite.
   - Nuance for the fix: wg-quick's own parser strips everything after `#`, so LinuxIO must keep stripping `#` comments itself (e.g. `ListenPort = 51820 # main`) and only preserve `;`. `IgnoreInlineComment: true` plus a manual `#` cut matches wg-quick exactly. Reject `\r\n` in hooks. Longer term, edit the loaded `ini.File` instead of regenerating.
   - Behaviour change: hooks containing `;` survive rewrites. Configs already truncated are not repaired.
+  - Done 2026-10-23: `loadWGINI` strips inline `#` comments on value lines itself (wg-quick semantics, whole-line metadata comments untouched) and loads with `IgnoreInlineComment`, so `;` is plain text; both writers use `IgnoreInlineComment` (no backtick wrapping); unknown `[Interface]` keys (`Table`, `FwMark`, `SaveConfig`, `DNS`, …) round-trip through `WireGuardConfig.Extra`; `cleanLines` rejects hooks containing `#`, backticks or line breaks. Tests: `TestWireGuardConfigKeepsSemicolonHooksInlineCommentsAndUnknownKeys`, `TestCleanLinesRejectsHooksTheConfigCannotCarry`.
 
 - [ ] **7a. Btrfs prune stops at the first snapshot it cannot delete**
   `backend/common/btrfs/runner.go:103-108`

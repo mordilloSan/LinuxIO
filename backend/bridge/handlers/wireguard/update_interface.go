@@ -105,19 +105,24 @@ func applyInterfaceUpdate(cfg *WireGuardConfig, req apischema.WireGuardUpdateInt
 		}
 		cfg.ListenPort = *req.ListenPort
 	}
-	applyInterfaceHooks(cfg, req)
-	return nil
+	return applyInterfaceHooks(cfg, req)
 }
 
-func applyInterfaceHooks(cfg *WireGuardConfig, req apischema.WireGuardUpdateInterfaceRequest) {
+func applyInterfaceHooks(cfg *WireGuardConfig, req apischema.WireGuardUpdateInterfaceRequest) error {
 	for _, hook := range []struct {
 		target *[]string
 		lines  []string
 	}{{&cfg.PreUp, req.PreUp}, {&cfg.PostUp, req.PostUp}, {&cfg.PreDown, req.PreDown}, {&cfg.PostDown, req.PostDown}} {
-		if hook.lines != nil {
-			*hook.target = cleanLines(hook.lines)
+		if hook.lines == nil {
+			continue
 		}
+		lines, err := cleanLines(hook.lines)
+		if err != nil {
+			return err
+		}
+		*hook.target = lines
 	}
+	return nil
 }
 
 // interfaceUsingPort returns the name of another interface config that
@@ -136,14 +141,21 @@ func interfaceUsingPort(self string, port int) string {
 	return ""
 }
 
-func cleanLines(lines []string) []string {
+// cleanLines trims hook lines and rejects what the config file cannot carry:
+// wg-quick cuts a line at '#', ini writes a backtick as a quoted block, and a
+// line break would start a new key.
+func cleanLines(lines []string) ([]string, error) {
 	var result []string
 	for _, line := range lines {
-		if line = strings.TrimSpace(line); line != "" {
-			result = append(result, line)
+		if line = strings.TrimSpace(line); line == "" {
+			continue
 		}
+		if strings.ContainsAny(line, "#`\r\n") {
+			return nil, fmt.Errorf("hook %q may not contain '#', backticks or line breaks", line)
+		}
+		result = append(result, line)
 	}
-	return result
+	return result, nil
 }
 
 // peerRewrite is what an interface change pushes into exported client configs.
