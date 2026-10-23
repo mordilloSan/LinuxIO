@@ -2,6 +2,7 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -187,6 +188,41 @@ func TestRunCollectsPerRuleErrors(t *testing.T) {
 	doc, _ := alerts.Load()
 	if len(doc.Alerts) != 1 || doc.Alerts[0].Severity != alerts.SeverityError {
 		t.Fatalf("alerts = %+v", doc.Alerts)
+	}
+}
+
+// One snapshot that cannot be deleted must not stop the newer ones being
+// pruned; the failure still reaches the report and the alert.
+func TestRunPruneContinuesPastUndeletableSnapshot(t *testing.T) {
+	useTempAlerts(t)
+	top := t.TempDir()
+	stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
+	now := snapshotTime
+	snap := func(ago time.Duration) string { return SnapshotPath("@", now.Add(-ago), KindTimeline) }
+	rows := []subvolumeRow{
+		snapshotSubvolume(1, snap(5*time.Hour)),
+		snapshotSubvolume(2, snap(4*time.Hour)),
+		snapshotSubvolume(3, snap(3*time.Hour)),
+	}
+	stubRunnerBtrfs(t, top, rows)
+	destroy := subvolOps.destroy
+	subvolOps.destroy = func(p string) error {
+		if p == filepath.Join(top, snap(5*time.Hour)) {
+			return errors.New("busy")
+		}
+		return destroy(p)
+	}
+
+	rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly, Keep: BtrfsKeep{Hourly: 1}}}
+	report, err := Run(context.Background(), rules, now, KindTimeline)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(report.Pruned) != 2 || report.Pruned[0].Path != snap(4*time.Hour) || report.Pruned[1].Path != snap(3*time.Hour) {
+		t.Fatalf("Pruned = %+v", report.Pruned)
+	}
+	if len(report.Errors) != 1 || !strings.Contains(report.Errors[0], snap(5*time.Hour)) || !strings.Contains(report.Errors[0], "busy") {
+		t.Fatalf("Errors = %v", report.Errors)
 	}
 }
 

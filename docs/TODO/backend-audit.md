@@ -70,11 +70,12 @@ fix, so each item can be accepted or rejected on that basis.
   - Behaviour change: hooks containing `;` survive rewrites. Configs already truncated are not repaired.
   - Done 2026-10-23: `loadWGINI` strips inline `#` comments on value lines itself (wg-quick semantics, whole-line metadata comments untouched) and loads with `IgnoreInlineComment`, so `;` is plain text; both writers use `IgnoreInlineComment` (no backtick wrapping); unknown `[Interface]` keys (`Table`, `FwMark`, `SaveConfig`, `DNS`, …) round-trip through `WireGuardConfig.Extra`; `cleanLines` rejects hooks containing `#`, backticks or line breaks. Tests: `TestWireGuardConfigKeepsSemicolonHooksInlineCommentsAndUnknownKeys`, `TestCleanLinesRejectsHooksTheConfigCannotCarry`.
 
-- [ ] **7a. Btrfs prune stops at the first snapshot it cannot delete**
+- [x] **7a. Btrfs prune stops at the first snapshot it cannot delete**
   `backend/common/btrfs/runner.go:103-108`
   - Verified `[source]`: `runRule` returns on the first `DeleteSnapshot` error; `Run` records the error, raises the alert and moves to the next rule. A mounted (browsed) oldest snapshot blocks all newer pruning for that rule, every run.
   - Fix: continue the loop, `errors.Join` the failures, keep appending to `report.Pruned`.
   - Behaviour change: the run report and alert text list every failed snapshot; everything deletable is pruned.
+  - Done 2026-10-23: `runRule` keeps pruning past a failed `DeleteSnapshot` and returns `errors.Join` of the failures (`report.Pruned` keeps the successes; a done ctx still returns `ctx.Err()`). Test: `TestRunPruneContinuesPastUndeletableSnapshot`.
 
 - [ ] **7b. Local prune can delete the incremental parent, so replication falls back to full sends**
   `backend/btrfs-timer/snapshot.go:58-73` (prune runs before `replicateJobs`), `backend/common/btrfs/replication.go:207` (`ChooseParent` only uses a local snapshot the target already holds)

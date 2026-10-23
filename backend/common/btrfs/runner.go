@@ -2,6 +2,7 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -100,13 +101,19 @@ func runRule(ctx context.Context, rule BtrfsSnapshotRule, now time.Time, kind Sn
 		// Only BeforeUpdates runs a disabled rule: leave its timeline alone.
 		snaps = slices.DeleteFunc(snaps, func(s BtrfsSnapshot) bool { return s.Kind != KindPreUpdate })
 	}
+	// A snapshot that cannot be deleted (e.g. mounted) must not block the rest.
+	var pruneErrs []error
 	for _, s := range Prune(snaps, rule.Keep) {
 		if err := DeleteSnapshot(ctx, rule.UUID, s.Path); err != nil {
-			return fmt.Errorf("prune %s: %w", s.Path, err)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			pruneErrs = append(pruneErrs, fmt.Errorf("prune %s: %w", s.Path, err))
+			continue
 		}
 		report.Pruned = append(report.Pruned, s)
 	}
-	return nil
+	return errors.Join(pruneErrs...)
 }
 
 func hasFilesystem(mounts []Mount, uuid string) bool {
