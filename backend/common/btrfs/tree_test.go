@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -267,7 +268,10 @@ type opsKernel struct{ calls []string }
 func (k *opsKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 	switch req {
 	case iocSubvolCreate:
-		k.calls = append(k.calls, "create "+path+" "+cstring((*volArgs)(arg).Name[:]))
+		name := cstring((*volArgs)(arg).Name[:])
+		k.calls = append(k.calls, "create "+path+" "+name)
+		// The kernel gives the new root 0777 &^ umask.
+		return os.Mkdir(filepath.Join(path, name), 0o777)
 	case iocSnapDestroy:
 		k.calls = append(k.calls, "destroy "+path+" "+cstring((*volArgs)(arg).Name[:]))
 	case iocSnapCreateV2:
@@ -297,9 +301,12 @@ func TestSubvolumeOpsIssueIoctls(t *testing.T) {
 	fsIoctl = k.ioctl
 	t.Cleanup(func() { fsIoctl = old })
 	src := t.TempDir()
+	top := t.TempDir()
+	oldUmask := unix.Umask(0o077)
+	t.Cleanup(func() { unix.Umask(oldUmask) })
 	limit := uint64(5000)
 	for name, err := range map[string]error{
-		"create":   createSubvolumeAt("/mnt/top/data"),
+		"create":   createSubvolumeAt(filepath.Join(top, "data")),
 		"destroy":  destroySubvolume("/mnt/top/linuxio-snapshots/@/x"),
 		"snapshot": snapshotSubvolumeTo(src, "/mnt/top/linuxio-snapshots/@/y", true),
 		"default":  setDefaultSubvolumeID("/mnt/top", 257),
@@ -313,7 +320,7 @@ func TestSubvolumeOpsIssueIoctls(t *testing.T) {
 	}
 	slices.Sort(k.calls)
 	want := []string{
-		"create /mnt/top data",
+		"create " + top + " data",
 		"default /mnt/top 257",
 		"destroy /mnt/top/linuxio-snapshots/@ x",
 		"limit /mnt/top/@ id=0 flags=1 max=18446744073709551615",
@@ -326,6 +333,9 @@ func TestSubvolumeOpsIssueIoctls(t *testing.T) {
 	}
 	if err := createSubvolumeAt("/mnt/top/" + strings.Repeat("x", 256)); err == nil {
 		t.Fatal("over-long name accepted")
+	}
+	if info, err := os.Stat(filepath.Join(top, "data")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("created subvolume root mode = %v (err %v), want 0755", info.Mode().Perm(), err)
 	}
 }
 

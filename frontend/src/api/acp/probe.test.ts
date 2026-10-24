@@ -84,9 +84,16 @@ describe("probeAssistant", () => {
     expect(conn.close).toHaveBeenCalledTimes(1);
   });
 
-  it("reports logged_in from a pushed status without creating a session", async () => {
+  it("reports logged_in from a pushed status and reads a chat's options", async () => {
+    const modes = { currentModeId: "default", availableModes: [] };
     const { conn, connect } = fakeConnect(
-      {},
+      {
+        newSession: vi.fn(async () => ({
+          sessionId: "s-new",
+          modes,
+          configOptions: [],
+        })),
+      },
       { kind: "account", label: "Claude Max" },
     );
     const probe = await probeAssistant("claude", connect);
@@ -94,15 +101,31 @@ describe("probeAssistant", () => {
       status: "logged_in",
       authStatus: { label: "Claude Max" },
       canLogout: true,
+      chatOptions: { configOptions: [], modes },
     });
-    expect(conn.newSession).not.toHaveBeenCalled();
     expect(conn.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a pushed login when no chat opens", async () => {
+    const { connect } = fakeConnect(
+      {
+        newSession: vi.fn(async () => {
+          throw new Error("busy");
+        }),
+      },
+      { kind: "account", label: "Claude Max" },
+    );
+    expect(await probeAssistant("claude", connect)).toMatchObject({
+      status: "logged_in",
+      chatOptions: null,
+    });
   });
 
   it("treats a pushed status of kind none as auth_required", async () => {
     const { conn, connect } = fakeConnect({}, { kind: "none", label: "" });
     const probe = await probeAssistant("claude", connect);
     expect(probe.status).toBe("auth_required");
+    expect(conn.newSession).not.toHaveBeenCalled();
     expect(conn.close).toHaveBeenCalledTimes(1);
   });
 
@@ -130,7 +153,11 @@ describe("probeAssistant", () => {
     const pending = probeAssistant("claude", connect);
     await vi.advanceTimersByTimeAsync(2000);
     const probe = await pending;
-    expect(probe).toMatchObject({ status: "logged_in", authStatus: null });
+    expect(probe).toMatchObject({
+      status: "logged_in",
+      authStatus: null,
+      chatOptions: { configOptions: [], modes: null },
+    });
     expect(conn.close).toHaveBeenCalledTimes(1);
   });
 

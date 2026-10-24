@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"log/slog"
 	"net/http"
@@ -17,7 +18,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.MarshalWrite(w, v); err != nil {
+	if err := json.MarshalWrite(w, v, jsontext.AllowInvalidUTF8(true)); err != nil {
 		slog.Warn("failed to encode JSON response", "error", err)
 	}
 }

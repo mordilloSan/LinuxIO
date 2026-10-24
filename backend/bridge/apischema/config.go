@@ -30,6 +30,16 @@ type AppConfig struct {
 
 type AssistantSettings struct {
 	Agent string `json:"agent"`
+	// Defaults is keyed by agent id: what a new chat with that agent starts with.
+	Defaults map[string]AssistantChatDefaults `json:"defaults,omitempty"`
+}
+
+// AssistantChatDefaults are the agent's own option values for the model, the
+// effort and the permission mode. An empty value keeps the agent's own choice.
+type AssistantChatDefaults struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort"`
+	Mode   string `json:"mode"`
 }
 
 type AppSettings struct {
@@ -80,6 +90,8 @@ type ConfigSetPayload struct {
 
 type ConfigAssistantPayload struct {
 	Agent *string `json:"agent,omitzero"`
+	// Defaults, when present, replaces every agent's chat defaults.
+	Defaults map[string]AssistantChatDefaults `json:"defaults,omitzero"`
 }
 
 type ConfigAppSettingsPayload struct {

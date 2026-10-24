@@ -12,7 +12,7 @@ import type {
   TaskSnapshot,
 } from "@/api";
 import { capabilitiesQueryKey } from "@/api/capabilities";
-import type { CapabilityInstallOutputLine } from "@/components/dialog/CapabilityInstallDialog";
+import type { InstallOutputLine } from "@/components/terminal/InstallOutputPanel";
 import { createTestQueryClient, render } from "@/test/render";
 
 interface TaskStreamConfig {
@@ -104,7 +104,7 @@ vi.mock("@/components/dialog/CapabilityInstallDialog", () => ({
     message: string;
     onClose: () => void;
     open: boolean;
-    output: CapabilityInstallOutputLine[];
+    output: InstallOutputLine[];
     outputHistoryIncomplete: boolean;
     percentage: number | null;
     running: boolean;

@@ -33,7 +33,10 @@ export default function AssistantFixture() {
     <QueryClientProvider client={queryClient}>
       <ConfigContext value={stubConfig}>
         <main style={{ padding: "var(--app-space-24)", height: "100dvh" }}>
-          <AssistantPage agent="claude" />
+          <AssistantPage
+            agent="claude"
+            chatDefaults={{ model: "opus", effort: "high", mode: "plan" }}
+          />
         </main>
       </ConfigContext>
     </QueryClientProvider>

@@ -47,6 +47,26 @@ func TestCreateNFSShareDirectoryIsWorldTraversableDespiteUmask(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
 }
 
+func TestMkdirShareDirChmodsEveryCreatedLevel(t *testing.T) {
+	oldUmask := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(oldUmask) })
+
+	root := t.TempDir()
+	require.NoError(t, os.Chmod(root, 0o700))
+	parent := filepath.Join(root, "shares")
+	dir := filepath.Join(parent, "public")
+	require.NoError(t, mkdirShareDir(dir))
+
+	for _, d := range []string{parent, dir} {
+		info, err := os.Stat(d)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(), d)
+	}
+	info, err := os.Stat(root)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm(), "existing parent keeps its mode")
+}
+
 func TestCreateNFSShareAppendsOnFreshLine(t *testing.T) {
 	file := useTempExports(t, "/srv/a\t*(ro)")
 

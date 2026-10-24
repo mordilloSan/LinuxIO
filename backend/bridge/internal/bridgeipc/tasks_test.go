@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -724,6 +725,40 @@ func TestProgressReplayShrinksByBytesAfterFirstSubscriber(t *testing.T) {
 			retainedEvents,
 			len(replay),
 		)
+	}
+}
+
+func TestProgressReplayKeepsNewestEventsInOrder(t *testing.T) {
+	registry := NewTaskService()
+	task, _, err := registry.ClaimForOwnerWithIdentity("logs.general.follow", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	total := DefaultTaskProgressReplayLimit*2 + 10
+	for index := range total {
+		task.ReportData(strconv.Itoa(index))
+	}
+
+	_, replay, unsubscribe := task.SubscribeWithReplay(8)
+	defer unsubscribe()
+	if len(replay) != DefaultTaskProgressReplayLimit {
+		t.Fatalf("replay length = %d, want %d", len(replay), DefaultTaskProgressReplayLimit)
+	}
+	wantBytes := 0
+	for offset, event := range replay {
+		want := strconv.Itoa(total - DefaultTaskProgressReplayLimit + offset)
+		payload, ok := event.Progress.(map[string]any)
+		if !ok || payload["data"] != want {
+			t.Fatalf("replay[%d] = %#v, want data %q", offset, event.Progress, want)
+		}
+		wantBytes += len(want)
+	}
+	task.mu.RLock()
+	gotBytes := task.progressLogBytes
+	task.mu.RUnlock()
+	if gotBytes != wantBytes {
+		t.Fatalf("progressLogBytes = %d, want %d", gotBytes, wantBytes)
 	}
 }
 

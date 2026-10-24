@@ -36,7 +36,7 @@ type SwapData struct {
 
 type LoadData struct {
 	LoadAvg [3]float64 `json:"load_average,omitempty"`
-	Battery [2]uint8   `json:"battery,omitzero"`
+	Battery [2]uint16  `json:"battery,omitzero"`
 }
 
 type DiskIOData struct {

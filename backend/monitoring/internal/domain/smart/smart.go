@@ -382,25 +382,25 @@ type SmartStatusNVMe struct {
 }
 
 type NVMeSmartHealthInformationLog struct {
-	NSID                    int64   `json:"nsid,omitzero"`
-	CriticalWarning         uint    `json:"critical_warning"`
-	Temperature             uint8   `json:"temperature"`
-	AvailableSpare          uint    `json:"available_spare"`
-	AvailableSpareThreshold uint    `json:"available_spare_threshold"`
-	PercentageUsed          uint8   `json:"percentage_used"`
-	DataUnitsRead           uint64  `json:"data_units_read"`
-	DataUnitsWritten        uint64  `json:"data_units_written"`
-	HostReads               uint    `json:"host_reads"`
-	HostWrites              uint    `json:"host_writes"`
-	ControllerBusyTime      uint    `json:"controller_busy_time"`
-	PowerCycles             uint16  `json:"power_cycles"`
-	PowerOnHours            uint32  `json:"power_on_hours"`
-	UnsafeShutdowns         uint16  `json:"unsafe_shutdowns"`
-	MediaErrors             uint    `json:"media_errors"`
-	NumErrLogEntries        uint    `json:"num_err_log_entries"`
-	WarningTempTime         uint    `json:"warning_temp_time"`
-	CriticalCompTime        uint    `json:"critical_comp_time"`
-	TemperatureSensors      []uint8 `json:"temperature_sensors"`
+	NSID                    int64  `json:"nsid,omitzero"`
+	CriticalWarning         uint   `json:"critical_warning"`
+	Temperature             uint8  `json:"temperature"`
+	AvailableSpare          uint   `json:"available_spare"`
+	AvailableSpareThreshold uint   `json:"available_spare_threshold"`
+	PercentageUsed          uint8  `json:"percentage_used"`
+	DataUnitsRead           uint64 `json:"data_units_read"`
+	DataUnitsWritten        uint64 `json:"data_units_written"`
+	HostReads               uint   `json:"host_reads"`
+	HostWrites              uint   `json:"host_writes"`
+	ControllerBusyTime      uint   `json:"controller_busy_time"`
+	PowerCycles             uint16 `json:"power_cycles"`
+	PowerOnHours            uint32 `json:"power_on_hours"`
+	UnsafeShutdowns         uint16 `json:"unsafe_shutdowns"`
+	MediaErrors             uint   `json:"media_errors"`
+	NumErrLogEntries        uint   `json:"num_err_log_entries"`
+	WarningTempTime         uint   `json:"warning_temp_time"`
+	CriticalCompTime        uint   `json:"critical_comp_time"`
+	TemperatureSensors      []int  `json:"temperature_sensors"`
 }
 
 type SmartInfoForNvme struct {

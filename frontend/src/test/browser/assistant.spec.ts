@@ -148,6 +148,7 @@ test("chats with a fake ACP agent and approves a permission", async ({
             break;
           case "session/close":
           case "session/delete":
+          case "session/set_mode":
             send({ jsonrpc: "2.0", id: request.id, result: {} });
             break;
           case "session/set_config_option":
@@ -259,18 +260,25 @@ test("chats with a fake ACP agent and approves a permission", async ({
   const input = page.getByLabel("Message");
   await expect(input).toBeEnabled();
 
-  await page.getByRole("button", { name: /^Model:/ }).click();
-  await page.getByRole("menuitem", { name: /Opus/ }).click();
-  await expect
-    .poll(
-      () =>
-        received.find(
-          (message) => message.method === "session/set_config_option",
-        )?.params,
-    )
-    .toMatchObject({ configId: "model", value: "opus" });
+  // A new chat is switched to the Settings defaults before the prompt opens:
+  // Opus and Plan. The fake agent offers no effort, so that one is skipped.
+  await expect(page.getByRole("button", { name: "Mode: Plan" })).toBeVisible();
+  const modelChanges = () =>
+    received
+      .filter((message) => message.method === "session/set_config_option")
+      .map((message) => message.params);
+  expect(modelChanges()).toMatchObject([{ configId: "model", value: "opus" }]);
   await expect(page.getByRole("button", { name: /^Model:/ })).toContainText(
     "Opus",
+  );
+
+  await page.getByRole("button", { name: /^Model:/ }).click();
+  await page.getByRole("menuitem", { name: /Sonnet/ }).click();
+  await expect
+    .poll(() => modelChanges().at(-1))
+    .toMatchObject({ configId: "model", value: "sonnet" });
+  await expect(page.getByRole("button", { name: /^Model:/ })).toContainText(
+    "Sonnet",
   );
 
   await input.fill("how full is the disk?");

@@ -21,6 +21,11 @@ import (
 // Types and defaults
 // -----------------------------------------------------------------------------
 
+var (
+	errSessionNotFound = errors.New("session not found")
+	errSessionExpired  = errors.New("session expired")
+)
+
 type DeleteReason string
 
 const (
@@ -300,14 +305,14 @@ func (m *Manager) validate(id string, refresh bool) (*session.Session, error) {
 	s, ok := m.sessions[id]
 	if !ok {
 		m.mu.Unlock()
-		return nil, errors.New("session not found")
+		return nil, errSessionNotFound
 	}
 	now := time.Now()
 	if reason := expiryReason(s, now); reason != "" {
 		delete(m.sessions, id)
 		m.mu.Unlock()
 		m.deleted([]*session.Session{s}, reason)
-		return nil, fmt.Errorf("session expired")
+		return nil, errSessionExpired
 	}
 	if refresh {
 		m.refreshTiming(s, now)

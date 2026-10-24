@@ -287,16 +287,8 @@ func (m manager) runNow(ctx context.Context, id string) error {
 		if active(state) {
 			return errors.New("script already has an active or queued run")
 		}
-		unit, err := os.ReadFile(filepath.Join(m.store.unitDir, serviceName(id)))
-		if err != nil {
+		if err := m.ensureInstalled(ctx, def, account); err != nil {
 			return err
-		}
-		script, err := os.ReadFile(m.store.scriptPath(def))
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(unit, m.store.renderService(def, account)) || !bytes.Equal(script, []byte(def.Options.Script)) {
-			return errors.New("scheduled script configuration is incomplete; save the task again before running")
 		}
 		// Reload repairs a previously interrupted reload; StartUnit is deliberately
 		// not retried because a lost reply could otherwise execute a short job twice.
@@ -305,6 +297,29 @@ func (m manager) runNow(ctx context.Context, id string) error {
 		}
 		return m.host.start(ctx, serviceName(id))
 	})
+}
+
+// ensureInstalled checks that the unit and script on disk match def. Schedules
+// saved by an older build hash to a different script name, so a missing script
+// is re-applied first; the caller already holds the store lock.
+func (m manager) ensureInstalled(ctx context.Context, def apischema.ScheduleDefinition, account *user.User) error {
+	if _, statErr := os.Stat(m.store.scriptPath(def)); errors.Is(statErr, os.ErrNotExist) {
+		if err := m.apply(ctx, def, account); err != nil {
+			return err
+		}
+	}
+	unit, err := os.ReadFile(filepath.Join(m.store.unitDir, serviceName(def.ID)))
+	if err != nil {
+		return err
+	}
+	script, err := os.ReadFile(m.store.scriptPath(def))
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(unit, m.store.renderService(def, account)) || !bytes.Equal(script, []byte(def.Options.Script)) {
+		return errors.New("scheduled script configuration is incomplete; save the task again before running")
+	}
+	return nil
 }
 
 func (m manager) stop(ctx context.Context, req apischema.ScheduleStopRequest) error {

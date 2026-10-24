@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -305,4 +306,21 @@ func firstCookieValue(setCookie string) string {
 		}
 	}
 	return setCookie[eq+1 : semi]
+}
+
+func TestManager_ValidateSessionReturnsSentinels(t *testing.T) {
+	m := newTestManager(t)
+	defer m.Close()
+
+	if _, err := m.ValidateSession("missing"); !errors.Is(err, errSessionNotFound) {
+		t.Fatalf("unknown session error = %v, want errSessionNotFound", err)
+	}
+
+	s := createTestSession(t, m, session.User{Username: "frank"}, false)
+	m.mu.Lock()
+	m.sessions[s.SessionID].Timing.IdleUntil = time.Now().Add(-time.Second)
+	m.mu.Unlock()
+	if _, err := m.ValidateSession(s.SessionID); !errors.Is(err, errSessionExpired) {
+		t.Fatalf("expired session error = %v, want errSessionExpired", err)
+	}
 }

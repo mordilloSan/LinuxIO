@@ -41,7 +41,7 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 		return "", fmt.Errorf("create peer on %s: %w", interfaceName, err)
 	}
 
-	publicIP, gatewayDNS := readPeerEndpointInfo(cfg, "AddPeer")
+	publicIP, gatewayDNS := readPeerEndpointInfo(ctx, cfg, "AddPeer")
 	file, err := buildPeerFile(peer.Name, req.Name, peer, cfg, publicIP, gatewayDNS)
 	if err != nil {
 		return "", fmt.Errorf("build config for peer %s: %w", peer.Name, err)
@@ -72,8 +72,8 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 
 // readPeerEndpointInfo resolves what a freshly exported peer needs to reach
 // the server: the public IP and, as DNS fallback, the default gateway.
-func readPeerEndpointInfo(cfg WireGuardConfig, logPrefix string) (string, string) {
-	publicIP := resolveEndpointHost(cfg, logPrefix)
+func readPeerEndpointInfo(ctx context.Context, cfg WireGuardConfig, logPrefix string) (string, string) {
+	publicIP := resolveEndpointHost(ctx, cfg, logPrefix)
 	gatewayDNS, err := getDefaultGatewayIPv4Func()
 	if gatewayDNS == "" {
 		slog.Debug("no default gateway DNS found", "operation", logPrefix, "error", err)

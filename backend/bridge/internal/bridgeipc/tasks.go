@@ -649,7 +649,11 @@ func (j *Task) trimProgressLogLocked() {
 		}
 	}
 	if start > 0 {
-		j.progressLog = append([]TaskEvent(nil), j.progressLog[start:]...)
+		// Re-slice instead of copying; clear drops the references so the
+		// dropped payloads can be collected. append reallocates (live events
+		// only) once the shrinking tail capacity runs out.
+		clear(j.progressLog[:start])
+		j.progressLog = j.progressLog[start:]
 	}
 }
 

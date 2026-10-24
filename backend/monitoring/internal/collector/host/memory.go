@@ -32,8 +32,8 @@ func (m *Manager) UpdateCore(ctx context.Context, cacheTimeMs uint16, systemStat
 
 func updateBatteryStats(systemStats *systemmodel.Stats) {
 	if batteryPercent, batteryState, err := GetBatteryStats(); err == nil {
-		systemStats.Battery[0] = batteryPercent
-		systemStats.Battery[1] = batteryState
+		systemStats.Battery[0] = uint16(batteryPercent)
+		systemStats.Battery[1] = uint16(batteryState)
 	}
 }
 

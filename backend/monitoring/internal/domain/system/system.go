@@ -43,7 +43,7 @@ type Stats struct {
 	MaxBandwidth   [2]uint64           `json:"max_bandwidth_bytes_per_second,omitzero"` // [sent bytes, recv bytes]
 	// TODO: remove other load fields in future release in favor of load avg array
 	LoadAvg           [3]float64           `json:"load_average,omitempty"`
-	Battery           [2]uint8             `json:"battery,omitzero"`                      // [percent, charge state, current]
+	Battery           [2]uint16            `json:"battery,omitzero"`                      // [percent, charge state, current]
 	NetworkInterfaces map[string][4]uint64 `json:"network_interfaces,omitempty"`          // [upload bytes/s, download bytes/s, total upload bytes, total download bytes]
 	DiskIO            [2]uint64            `json:"disk_io_bytes_per_second,omitzero"`     // [read bytes, write bytes]
 	MaxDiskIO         [2]uint64            `json:"max_disk_io_bytes_per_second,omitzero"` // [max read bytes, max write bytes]
@@ -165,7 +165,7 @@ type Info struct {
 	BandwidthBytes uint64             `json:"bandwidth_bytes_per_second"`
 	LoadAvg        [3]float64         `json:"load_average,omitempty"`
 	ExtraFsPct     map[string]float64 `json:"extra_filesystem_percent,omitempty"`
-	Battery        [2]uint8           `json:"battery,omitzero"` // [percent, charge state]
+	Battery        [2]uint16          `json:"battery,omitzero"` // [percent, charge state]
 }
 
 // Data that does not change during process lifetime and is not needed in All Systems table

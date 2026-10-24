@@ -111,6 +111,32 @@ func TestHandleAssistantSessionRelaysStdioAndReportsExit(t *testing.T) {
 	}
 }
 
+func TestHandleAssistantSessionReportsExitWithInvalidUTF8Stderr(t *testing.T) {
+	rt, _ := testRuntime(t)
+	fakeAgent(t, "#!/bin/sh\nprintf 'caf\\351' >&2\nexit 1\n")
+
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- HandleAssistantSession(context.Background(), rt, server, apischema.AssistantOpenRequest{Agent: "fake"})
+	}()
+	readData(t, client) // ready
+	var exitLine struct {
+		Stderr string `json:"stderr"`
+	}
+	require.NoError(t, json.Unmarshal(readData(t, client).Payload, &exitLine))
+	require.Equal(t, "caf\ufffd", exitLine.Stderr)
+	readData(t, client) // close
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("handler did not return after the agent exited")
+	}
+}
+
 func TestHandleAssistantSessionDoesNotSignalAfterNormalExit(t *testing.T) {
 	rt, _ := testRuntime(t)
 	fakeAgent(t, "#!/bin/sh\nexit 0\n")

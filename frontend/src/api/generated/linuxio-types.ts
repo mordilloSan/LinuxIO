@@ -169,12 +169,19 @@ export interface AppUpdateRequest {
   version?: string;
 }
 
+export interface AssistantChatDefaults {
+  model: string;
+  effort: string;
+  mode: string;
+}
+
 export interface AssistantOpenRequest {
   agent: string;
 }
 
 export interface AssistantSettings {
   agent: string;
+  defaults?: Record<string, AssistantChatDefaults>;
 }
 
 export type AutoUpdateBackend =
@@ -712,6 +719,7 @@ export interface ConfigAppSettingsPayload {
 
 export interface ConfigAssistantPayload {
   agent?: string;
+  defaults?: Record<string, AssistantChatDefaults>;
 }
 
 export interface ConfigDismissalsPayload {

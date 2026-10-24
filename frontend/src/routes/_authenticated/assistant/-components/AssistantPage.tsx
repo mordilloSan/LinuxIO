@@ -1,9 +1,8 @@
 import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 
-import { useStreamMux } from "@/api";
+import { type AssistantChatDefaults, useStreamMux } from "@/api";
 import { ASSISTANT_AGENTS, type AssistantAgentId } from "@/api/acp/agents";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
@@ -14,7 +13,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useHeaderActionSlot } from "@/hooks/useHeaderActionSlot";
 import {
   readPersistedState,
   writePersistedState,
@@ -43,13 +41,14 @@ const isFontSize = (value: unknown): value is number =>
 
 export default function AssistantPage({
   agent,
+  chatDefaults,
 }: {
   agent: AssistantAgentId | null;
+  chatDefaults?: AssistantChatDefaults;
 }) {
   const { isOpen } = useStreamMux();
   const state = useAssistantState();
   const navigate = useNavigate();
-  const slot = useHeaderActionSlot();
   const agentLabel =
     ASSISTANT_AGENTS.find((entry) => entry.id === agent)?.label ?? agent;
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
@@ -69,6 +68,11 @@ export default function AssistantPage({
     setOwnFontSize(next);
     writePersistedState(FONT_SIZE_KEY, next);
   };
+
+  // Ahead of connect, so the first chat already starts on them.
+  useEffect(() => {
+    assistantStore.setChatDefaults(chatDefaults);
+  }, [chatDefaults]);
 
   useEffect(() => {
     if (agent && isOpen) void assistantStore.connect(agent);
@@ -188,11 +192,9 @@ export default function AssistantPage({
       className="assistant"
       style={{ "--app-font-size-body": `${fontSize}px` } as CSSProperties}
     >
-      {slot?.host ? (
-        createPortal(actions, slot.host)
-      ) : (
-        <div className="assistant__actions">{actions}</div>
-      )}
+      {/* Like the terminal: the chat's icons sit in the page above it, not
+          in the shell header. */}
+      <div className="assistant__actions">{actions}</div>
       <AppMenu
         anchorEl={historyAnchor}
         ariaLabel="Previous chats"

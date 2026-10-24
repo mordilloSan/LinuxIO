@@ -69,12 +69,21 @@ func nameArgs(path string) (volArgs, error) {
 	return args, nil
 }
 
+// createSubvolumeAt creates an empty subvolume at path. The kernel applies the
+// bridge's 077 umask to the new root, so it is chmodded 0755 like
+// `btrfs subvolume create` run from a root shell; snapshots keep their source's mode.
 func createSubvolumeAt(path string) error {
 	args, err := nameArgs(path)
 	if err != nil {
 		return err
 	}
-	return fsIoctl(filepath.Dir(path), iocSubvolCreate, unsafe.Pointer(&args))
+	if err = fsIoctl(filepath.Dir(path), iocSubvolCreate, unsafe.Pointer(&args)); err != nil {
+		return err
+	}
+	if err = os.Chmod(path, 0o755); err != nil {
+		return fmt.Errorf("chmod %s: %w", path, err)
+	}
+	return nil
 }
 
 func destroySubvolume(path string) error {

@@ -255,3 +255,20 @@ func TestTimestampsUseInjectedClock(t *testing.T) {
 		t.Fatalf("first occurrence = %v, want %v", doc.Alerts[0].FirstOccurrence, fixed)
 	}
 }
+
+func TestRaiseRepairsInvalidUTF8(t *testing.T) {
+	useTempStore(t)
+	o := obs("a")
+	o.Title = "caf\xe9"
+	o.Message = "bad \xff byte"
+	if err := Raise(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Alerts) != 1 || doc.Alerts[0].Title != "caf�" || doc.Alerts[0].Message != "bad � byte" {
+		t.Fatalf("unexpected alerts %+v", doc.Alerts)
+	}
+}

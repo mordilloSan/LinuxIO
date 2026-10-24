@@ -91,6 +91,9 @@ func TestRunReportsRuleAlreadyRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = release() }()
+	oldWait := snapshotLockWait
+	snapshotLockWait = 50 * time.Millisecond
+	t.Cleanup(func() { snapshotLockWait = oldWait })
 
 	rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly}}
 	report, err := Run(context.Background(), rules, snapshotTime, KindTimeline)
@@ -99,6 +102,30 @@ func TestRunReportsRuleAlreadyRunning(t *testing.T) {
 	}
 	if len(report.Errors) != 1 || !strings.Contains(report.Errors[0], "already running") || len(report.Taken) != 0 || len(*calls) != 0 {
 		t.Fatalf("report = %+v, calls = %v", report, *calls)
+	}
+}
+
+// A run that overlaps another holding the filesystem lock waits for it
+// instead of failing, so a pre-update snapshot is not lost to the timer.
+func TestRunWaitsForRuleLock(t *testing.T) {
+	useTempAlerts(t)
+	top := t.TempDir()
+	stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
+	stubRunnerBtrfs(t, top, nil)
+	release, err := filelock.AcquireExclusive(context.Background(), RulesPath+"."+rootUUID+".lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := time.AfterFunc(300*time.Millisecond, func() { _ = release() })
+	defer released.Stop()
+
+	rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", BeforeUpdates: true}}
+	report, err := Run(context.Background(), rules, snapshotTime, KindPreUpdate)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(report.Errors) != 0 || len(report.Taken) != 1 {
+		t.Fatalf("report = %+v, want one snapshot and no errors", report)
 	}
 }
 

@@ -202,7 +202,7 @@ func (batch *currentPluginBatch) addPayload(plugin string, payload any) {
 		batch.setError(plugin, fmt.Errorf("plugin %q returned no data", plugin))
 		return
 	}
-	encoded, err := json.Marshal(payload)
+	encoded, err := json.Marshal(payload, encodeOpts)
 	if err != nil {
 		batch.setError(plugin, err)
 		return
@@ -357,15 +357,15 @@ func (a *App) collectProcessPluginPayloadsWithIdentities(ctx context.Context, id
 	}
 	containerTelemetry := containertelemetry.Aggregate(identities, processes, a.gpuProcessSamples())
 
-	processRaw, err := json.Marshal(liveProcessesData{Count: count, Items: processes})
+	processRaw, err := json.Marshal(liveProcessesData{Count: count, Items: processes}, encodeOpts)
 	if err != nil {
 		return nil, err
 	}
-	programsRaw, err := json.Marshal(programs)
+	programsRaw, err := json.Marshal(programs, encodeOpts)
 	if err != nil {
 		return nil, err
 	}
-	containerTelemetryRaw, err := json.Marshal(containerTelemetry)
+	containerTelemetryRaw, err := json.Marshal(containerTelemetry, encodeOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +416,7 @@ func (a *App) collectSystemPlugin(ctx context.Context, plugin string, sampleKey 
 	if !ok {
 		return 0, nil, fmt.Errorf("unknown plugin %q", plugin)
 	}
-	raw, err := json.Marshal(payload)
+	raw, err := json.Marshal(payload, encodeOpts)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -444,7 +444,7 @@ func (a *App) currentSmartRecords() []store.SmartDeviceRecord {
 }
 
 func marshalCurrentPlugin(payload any) (int64, jsontext.Value, error) {
-	raw, err := json.Marshal(payload)
+	raw, err := json.Marshal(payload, encodeOpts)
 	if err != nil {
 		return 0, nil, err
 	}

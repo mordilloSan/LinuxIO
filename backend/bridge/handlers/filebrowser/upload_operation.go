@@ -99,7 +99,9 @@ func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes
 // Ownership goes first because a chown clears setuid and setgid bits.
 func restoreUploadedFile(root *fsroot.FSRoot, rel string, attrs uploadAttributes) error {
 	if attrs.hasExisting {
-		if err := root.Root.Chown(rel, attrs.uid, attrs.gid); err != nil {
+		// Only root may hand files to other users or groups; an unprivileged
+		// session keeps its own ownership, as cp -p does (see chownLike).
+		if err := root.Root.Chown(rel, attrs.uid, attrs.gid); err != nil && !errors.Is(err, os.ErrPermission) {
 			return fmt.Errorf("restore upload ownership: %w", err)
 		}
 		if err := root.Root.Chmod(rel, attrs.mode); err != nil {

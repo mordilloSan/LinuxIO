@@ -451,6 +451,9 @@ func cacheIcon(iconType IconType, identifier string, data []byte) error {
 // cacheMissingIcon remembers that no upstream source has the identifier.
 func cacheMissingIcon(iconType IconType, identifier string) error {
 	path := missingMarkerPath(iconType, identifier)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory: %w", err)
+	}
 	if err := os.WriteFile(path, nil, 0644); err != nil {
 		return fmt.Errorf("failed to write miss marker: %w", err)
 	}
@@ -478,11 +481,6 @@ func detectIconExtension(data []byte) string {
 func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 	if identifier == "" {
 		return nil, fmt.Errorf("empty icon identifier")
-	}
-
-	// Initialize cache directories
-	if err := initIconCache(); err != nil {
-		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", err)
 	}
 
 	maybeSweepIconCache(ctx)

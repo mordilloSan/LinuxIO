@@ -315,6 +315,23 @@ func TestScheduledStandaloneDependenciesInspectEachContainerOnce(t *testing.T) {
 	}
 }
 
+func TestStandaloneCreateOptionsPreservesHealthcheck(t *testing.T) {
+	inspect := standaloneTestInspect()
+	inspect.Config.Healthcheck = &container.HealthConfig{
+		Test:     []string{"CMD", "true"},
+		Interval: 30 * time.Second,
+		Timeout:  5 * time.Second,
+	}
+
+	options, err := StandaloneCreateOptions(inspect, "nginx:latest", "web")
+	if err != nil {
+		t.Fatalf("StandaloneCreateOptions: %v", err)
+	}
+	if !reflect.DeepEqual(options.Config.Healthcheck, inspect.Config.Healthcheck) {
+		t.Fatalf("healthcheck = %#v, want %#v", options.Config.Healthcheck, inspect.Config.Healthcheck)
+	}
+}
+
 func TestStandaloneCreateOptionsCopiesRuntimeConfiguration(t *testing.T) {
 	inspect := standaloneTestInspect()
 	inspect.Config.Env = []string{"PORT=8080"}

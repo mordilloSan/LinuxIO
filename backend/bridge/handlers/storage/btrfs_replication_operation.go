@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -47,6 +48,9 @@ func runBtrfsReplicationTask(ctx context.Context, task *bridgeipc.Task, req apis
 	})
 	if err := btrfs.RecordReplicationOutcome(ctx, job, runErr); err != nil {
 		slog.Warn("failed to record btrfs replication outcome", "id", job.ID, "error", err)
+	}
+	if errors.Is(runErr, btrfs.ErrAlreadyRunning) {
+		return btrfs.BtrfsReplicationResult{}, fmt.Errorf("%w: replication for job %s is already running", bridgeipc.ErrConflict, job.ID)
 	}
 	if runErr != nil {
 		return btrfs.BtrfsReplicationResult{}, fmt.Errorf("replicate btrfs job %s (%s %s): %w", job.ID, job.UUID, job.Path, runErr)

@@ -3,6 +3,7 @@ package docker
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/moby/moby/client"
 
@@ -25,6 +27,10 @@ import (
 )
 
 const routeDockerLogsFollowAll = "docker.logs.follow_all"
+
+// maxDockerLogLineBytes caps the carried partial line; a longer line without a
+// newline is emitted as several records.
+const maxDockerLogLineBytes = 1 << 20
 
 // dockerLogRecord is one NDJSON line on the merged log Channel.
 type dockerLogRecord struct {
@@ -73,6 +79,15 @@ func (w *dockerLogLineWriter) Write(p []byte) (int, error) {
 		w.appendRecord(&frame, data[:idx])
 		data = data[idx+1:]
 	}
+	for len(data) > maxDockerLogLineBytes {
+		// Cut on a rune boundary so a multi-byte rune is not split across records.
+		cut := maxDockerLogLineBytes
+		for cut > maxDockerLogLineBytes-utf8.UTFMax && !utf8.RuneStart(data[cut]) {
+			cut--
+		}
+		w.appendRecord(&frame, data[:cut])
+		data = data[cut:]
+	}
 	if len(data) > 0 {
 		w.partial = append([]byte(nil), data...)
 	}
@@ -105,7 +120,7 @@ func (w *dockerLogLineWriter) appendRecord(frame *bytes.Buffer, raw []byte) {
 	if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
 		ts, text = "", line
 	}
-	encoded, err := json.Marshal(dockerLogRecord{ID: w.id, Name: w.name, TS: ts, Line: text, Stderr: w.stderr})
+	encoded, err := json.Marshal(dockerLogRecord{ID: w.id, Name: w.name, TS: ts, Line: text, Stderr: w.stderr}, jsontext.AllowInvalidUTF8(true))
 	if err != nil {
 		return
 	}

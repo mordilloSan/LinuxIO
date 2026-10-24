@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -107,6 +108,7 @@ func loadPeerRuntimeStats(interfaceName string) (map[string]peerRuntimeStats, er
 			TxBps:             txBps,
 		}
 	}
+	pruneRates(interfaceName, stats)
 
 	return stats, nil
 }
@@ -171,4 +173,19 @@ func computeRates(iface, pub string, rx, tx int64, now time.Time) (rxBps, txBps 
 	}
 
 	return float64(rx-prev.rx) / dt, float64(tx-prev.tx) / dt
+}
+
+// pruneRates drops the iface's cached samples for peers not in keep; a nil keep drops them all.
+func pruneRates(iface string, keep map[string]peerRuntimeStats) {
+	prefix := iface + "|"
+
+	rateMu.Lock()
+	defer rateMu.Unlock()
+
+	for key := range rateCache {
+		pub, ok := strings.CutPrefix(key, prefix)
+		if _, kept := keep[pub]; ok && !kept {
+			delete(rateCache, key)
+		}
+	}
 }

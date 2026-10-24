@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -38,7 +39,7 @@ func newSSEWriter(w http.ResponseWriter) (*sseWriter, error) {
 
 // SendEvent sends an SSE event with the given event type and payload.
 func (s *sseWriter) SendEvent(event string, data any) error {
-	jsonData, err := json.Marshal(data)
+	jsonData, err := json.Marshal(data, jsontext.AllowInvalidUTF8(true))
 	if err != nil {
 		return err
 	}

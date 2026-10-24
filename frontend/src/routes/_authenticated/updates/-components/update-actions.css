@@ -1,0 +1,7 @@
+.update-actions__output {
+  margin-top: var(--app-space-8);
+}
+
+.update-actions__output.install-output--expanded {
+  min-height: calc(var(--install-output-toggle-height) + 240px);
+}

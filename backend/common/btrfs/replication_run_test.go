@@ -255,8 +255,8 @@ func TestReplicateRemovesPartialCopyBeforeSend(t *testing.T) {
 	}
 }
 
-// A second run of the same job while another process holds its lock reports
-// "already running" and touches nothing.
+// A second run of the same job while another process holds its lock returns
+// ErrAlreadyRunning and touches nothing.
 func TestReplicateAlreadyRunning(t *testing.T) {
 	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
 	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, nil)
@@ -269,9 +269,12 @@ func TestReplicateAlreadyRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = release() }()
+	oldWait := replicationLockWait
+	replicationLockWait = 50 * time.Millisecond
+	t.Cleanup(func() { replicationLockWait = oldWait })
 	_, err = Replicate(context.Background(), job, nil)
-	if err == nil || !strings.Contains(err.Error(), "already running") {
-		t.Fatalf("err = %v, want already running", err)
+	if !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("err = %v, want ErrAlreadyRunning", err)
 	}
 	if len(s.calls) != 0 || len(s.mutations) != 0 {
 		t.Fatalf("calls %q, mutations %q; want none", s.calls, s.mutations)
@@ -452,6 +455,39 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 	if stored, _ = LoadJobs(); stored[0].LastError != nil {
 		t.Fatalf("LastError not cleared: %+v", stored[0])
+	}
+}
+
+// A job whose lock another run holds is skipped: no error, LastError or alert.
+func TestRunReplicationSkipsAlreadyRunning(t *testing.T) {
+	useTempAlerts(t)
+	oldPath, oldReplicate := ReplicationPath, replicate
+	ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+	t.Cleanup(func() { ReplicationPath, replicate = oldPath, oldReplicate })
+	replicate = func(context.Context, BtrfsReplicationJob, func(int64)) (BtrfsReplicationResult, error) {
+		return BtrfsReplicationResult{}, fmt.Errorf("replication for this job: %w", ErrAlreadyRunning)
+	}
+	jobs := []BtrfsReplicationJob{{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true}}
+	saveJobs(t, jobs)
+
+	if errs := RunReplication(context.Background(), jobs); len(errs) != 0 {
+		t.Fatalf("errs = %v, want none", errs)
+	}
+	stored, err := LoadJobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored[0].LastRun != nil || stored[0].LastError != nil {
+		t.Fatalf("stored = %+v, want untouched", stored[0])
+	}
+	if doc, _ := alerts.Load(); len(doc.Alerts) != 0 {
+		t.Fatalf("alerts = %+v, want none", doc.Alerts)
+	}
+	if err := RecordReplicationOutcome(context.Background(), jobs[0], fmt.Errorf("x: %w", ErrAlreadyRunning)); err != nil {
+		t.Fatalf("RecordReplicationOutcome: %v", err)
+	}
+	if stored, _ = LoadJobs(); stored[0].LastRun != nil || stored[0].LastError != nil {
+		t.Fatalf("stored = %+v, want untouched", stored[0])
 	}
 }
 

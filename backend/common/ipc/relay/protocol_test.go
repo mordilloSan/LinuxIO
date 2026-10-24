@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -235,5 +236,56 @@ func TestParseStreamOpenPayloadRejectsUnknownMembers(t *testing.T) {
 	_, err := ParseStreamOpenPayload([]byte(`{"route":"system.get_cpu_info","extra":true}`))
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("ParseStreamOpenPayload() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestWriteResultOKEncodesOnce(t *testing.T) {
+	cases := []struct {
+		name string
+		data any
+		want string
+	}{
+		{name: "struct", data: struct {
+			N []int `json:"n"`
+		}{}, want: `{"status":"ok","data":{"n":[]}}`},
+		{name: "nil", data: nil, want: `{"status":"ok"}`},
+		{name: "raw", data: jsontext.Value(`{"a":1}`), want: `{"status":"ok","data":{"a":1}}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := WriteResultOK(&buf, 7, tc.data); err != nil {
+				t.Fatalf("WriteResultOK() error = %v", err)
+			}
+			frame, err := ReadRelayFrame(&buf)
+			if err != nil {
+				t.Fatalf("ReadRelayFrame() error = %v", err)
+			}
+			if frame.Opcode != OpStreamResult || frame.StreamID != 7 || string(frame.Payload) != tc.want {
+				t.Fatalf("frame = %#x/%d %s, want %s", frame.Opcode, frame.StreamID, frame.Payload, tc.want)
+			}
+		})
+	}
+}
+
+func TestWriteFramesReplaceInvalidUTF8(t *testing.T) {
+	writers := map[string]func(io.Writer) error{
+		"progress": func(w io.Writer) error { return WriteProgress(w, 7, map[string]string{"line": "caf\xe9"}) },
+		"result":   func(w io.Writer) error { return WriteResultError(w, 7, "caf\xe9.txt", 500) },
+	}
+	for name, write := range writers {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := write(&buf); err != nil {
+				t.Fatalf("write error = %v", err)
+			}
+			frame, err := ReadRelayFrame(&buf)
+			if err != nil {
+				t.Fatalf("ReadRelayFrame() error = %v", err)
+			}
+			if !strings.Contains(string(frame.Payload), "caf�") {
+				t.Fatalf("payload = %q, want U+FFFD replacement", frame.Payload)
+			}
+		})
 	}
 }

@@ -68,4 +68,46 @@ describe("UpdateStatus", () => {
       screen.queryByRole("button", { name: "Cancel update" }),
     ).not.toBeInTheDocument();
   });
+
+  it("keeps the package manager output behind a toggle, also after a failure", async () => {
+    const output = [
+      { id: 0, stream: "stdout" as const, text: "Unpacking gh (2.103.2) ..." },
+      { id: 1, stream: "stdout" as const, text: "dpkg: error processing gh" },
+    ];
+    const { user } = render(
+      <UpdateStatus
+        {...baseProps}
+        error="Failed to update gh: PackageKit error 1"
+        output={output}
+        updatingPackage={null}
+      />,
+    );
+
+    expect(
+      screen.getByText("Failed to update gh: PackageKit error 1"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Show update output" }),
+    );
+    expect(screen.getByText("dpkg: error processing gh")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Hide update output" }),
+    ).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("shows no output toggle before the package manager has written anything", () => {
+    render(
+      <UpdateStatus
+        {...baseProps}
+        isUpdating
+        output={[]}
+        status="Download"
+        updatingPackage="nginx"
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Show update output" }),
+    ).not.toBeInTheDocument();
+  });
 });

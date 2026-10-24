@@ -51,7 +51,11 @@ export const usePackageUpdater = () => {
   const handleProgress = useCallback((data: PackageUpdateProgress) => {
     dispatch({ type: "progress", percentage: data.percentage });
     switch (data.type) {
+      // Transaction phases only drive the status line; the log below the bar
+      // keeps backend messages (failures, snapshots) that would otherwise flash by.
       case "item_progress":
+      case "package":
+      case "status":
         if (data.package_id) {
           dispatch({
             type: "package",
@@ -62,28 +66,6 @@ export const usePackageUpdater = () => {
           dispatch({ type: "status", status: data.status });
         }
         break;
-      case "package":
-        if (data.package_id) {
-          const packageName = extractPackageName(data.package_id);
-          dispatch({
-            type: "package",
-            packageName,
-            status: data.status,
-            event: data.status ? `${data.status}: ${packageName}` : undefined,
-          });
-        } else if (data.status) {
-          dispatch({ type: "status", status: data.status });
-        }
-        break;
-      case "status":
-        if (data.status) {
-          dispatch({
-            type: "status",
-            status: data.status,
-            event: data.status,
-          });
-        }
-        break;
       case "message": {
         const message = data.message || data.status;
         if (message) {
@@ -91,6 +73,9 @@ export const usePackageUpdater = () => {
         }
         break;
       }
+      case "output":
+        if (data.message) dispatch({ type: "output", line: data.message });
+        break;
       case "percentage":
         break;
     }
@@ -104,7 +89,7 @@ export const usePackageUpdater = () => {
           ? extractPackageName(request.packageIds[0])
           : "Resuming updates...",
       status: "Resuming update transaction",
-      event: "Resuming update transaction",
+      recovered: true,
     });
   }, []);
 
@@ -124,7 +109,6 @@ export const usePackageUpdater = () => {
         type: "start",
         packageName: initialLabel,
         status: "Initializing",
-        event: "Initializing update transaction",
       });
       await pending;
     },

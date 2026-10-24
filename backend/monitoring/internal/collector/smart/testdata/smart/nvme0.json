@@ -244,7 +244,8 @@
     "media_errors": 0,
     "num_err_log_entries": 0,
     "warning_temp_time": 0,
-    "critical_comp_time": 0
+    "critical_comp_time": 0,
+    "temperature_sensors": [61, 44]
   },
   "spare_available": {
     "current_percent": 100,

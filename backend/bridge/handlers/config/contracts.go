@@ -20,7 +20,7 @@ func appConfigToAPI(value userconfig.Settings, storageMode userconfig.StorageMod
 			ProgressMinBytesMB: value.Jobs.ProgressMinBytesMB, HeavyArchiveConcurrency: value.Jobs.HeavyArchiveConcurrency,
 			ArchiveCompressionWorkers: value.Jobs.ArchiveCompressionWorkers, ArchiveExtractWorkers: value.Jobs.ArchiveExtractWorkers,
 		},
-		Assistant:   apischema.AssistantSettings{Agent: value.Assistant.Agent},
+		Assistant:   apischema.AssistantSettings{Agent: value.Assistant.Agent, Defaults: assistantDefaultsToAPI(value.Assistant.Defaults)},
 		StorageMode: apischema.ConfigStorageMode(storageMode),
 	}
 	if value.AppSettings.ChunkSizeMB != 0 {
@@ -28,6 +28,17 @@ func appConfigToAPI(value userconfig.Settings, storageMode userconfig.StorageMod
 	}
 	if value.Dismissals != nil {
 		result.Dismissals = &apischema.Dismissals{UncleanShutdownBootID: optionalString(value.Dismissals.UncleanShutdownBootID), FailedLoginAlertID: optionalString(value.Dismissals.FailedLoginAlertID)}
+	}
+	return result
+}
+
+func assistantDefaultsToAPI(value map[string]userconfig.AssistantDefaults) map[string]apischema.AssistantChatDefaults {
+	if value == nil {
+		return nil
+	}
+	result := make(map[string]apischema.AssistantChatDefaults, len(value))
+	for agent, defaults := range value {
+		result[agent] = apischema.AssistantChatDefaults(defaults)
 	}
 	return result
 }

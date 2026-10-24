@@ -13,16 +13,24 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
-// runLockWait is how long a run waits for another process working on the same
-// job or filesystem before reporting it as already running.
-const runLockWait = 2 * time.Second
+// ErrAlreadyRunning reports that another process holds the run lock of the
+// job or filesystem: a skipped run, not a failure.
+var ErrAlreadyRunning = errors.New("already running")
+
+// Wait bounds for the run lock, variables so tests can shorten them. A
+// snapshot waits out the timer's run, since a pre-update snapshot must not be
+// lost to an overlap; a replication is skipped quickly, its send can take hours.
+var (
+	snapshotLockWait    = 5 * time.Minute
+	replicationLockWait = 2 * time.Second
+)
 
 // runLocked runs fn under an exclusive cross-process lock, so the timer and a
 // manual run never work on the same job or filesystem at once.
-func runLocked(ctx context.Context, lockPath, what string, fn func() error) error {
-	err := filelock.RunExclusive(ctx, lockPath, fn, filelock.WithDirPermissions(0o700), filelock.WithTimeout(runLockWait))
+func runLocked(ctx context.Context, lockPath, what string, wait time.Duration, fn func() error) error {
+	err := filelock.RunExclusive(ctx, lockPath, fn, filelock.WithDirPermissions(0o700), filelock.WithTimeout(wait))
 	if errors.Is(err, filelock.ErrTimeout) {
-		return fmt.Errorf("%s is already running", what)
+		return fmt.Errorf("%s: %w", what, ErrAlreadyRunning)
 	}
 	return err
 }
@@ -63,7 +71,7 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 			continue
 		}
 		if err == nil {
-			err = runLocked(ctx, RulesPath+"."+rule.UUID+".lock", "a snapshot run for this filesystem", func() error {
+			err = runLocked(ctx, RulesPath+"."+rule.UUID+".lock", "snapshot run for this filesystem", snapshotLockWait, func() error {
 				return runRule(ctx, rule, now, kind, &report)
 			})
 		}

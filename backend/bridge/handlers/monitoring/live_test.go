@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -50,5 +51,25 @@ func TestMonitoringLiveHandlerReturnsZeroWhenDaemonUnavailable(t *testing.T) {
 	}
 	if live.CapturedAtMs != 0 || live.CPU.Percent != 0 || live.Memory.TotalBytes != 0 {
 		t.Fatalf("live = %+v, want zero payload", live)
+	}
+}
+
+func TestGetAPIBoundsReplySize(t *testing.T) {
+	const limit = 16
+	body := `{"a":"` + strings.Repeat("x", limit-8) + `"}` // exactly limit bytes
+	payload := body
+	withTestAPIClient(t, func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, payload), nil
+	})
+
+	var out map[string]string
+	if err := getAPI(context.Background(), "/x", limit, &out); err != nil {
+		t.Fatalf("limit-sized reply: %v", err)
+	}
+
+	payload = body + " "
+	err := getAPI(context.Background(), "/x", limit, &out)
+	if !errors.Is(err, errOversize) || errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "exceeds 16 bytes") {
+		t.Fatalf("oversized reply err = %v, want exceeds 16 bytes without ErrUnavailable", err)
 	}
 }

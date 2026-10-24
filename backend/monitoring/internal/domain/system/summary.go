@@ -19,7 +19,7 @@ type Summary struct {
 	Temperatures  map[string]float64 `json:"temperatures,omitempty"`
 	DiskPercent   float64            `json:"disk_percent,omitzero"`
 	GPUPercent    float64            `json:"gpu_percent,omitzero"`
-	Battery       [2]uint8           `json:"battery,omitzero"`
+	Battery       [2]uint16          `json:"battery,omitzero"`
 	AgentVersion  string             `json:"agent_version,omitempty"`
 }
 
@@ -65,7 +65,7 @@ func NewSummary(data *CombinedData) Summary {
 	if summary.DiskPercent == 0 {
 		summary.DiskPercent = data.Info.DiskPct
 	}
-	if summary.Battery == [2]uint8{} {
+	if summary.Battery == [2]uint16{} {
 		summary.Battery = data.Stats.Battery
 	}
 

@@ -13,8 +13,13 @@ const access = {
 } satisfies AccessPolicy;
 
 function AssistantRoute() {
-  const { agent } = useAssistantSettings();
-  return <AssistantPage agent={agent || null} />;
+  const { agent, defaults } = useAssistantSettings();
+  return (
+    <AssistantPage
+      agent={agent || null}
+      chatDefaults={agent ? defaults[agent] : undefined}
+    />
+  );
 }
 
 export const Route = createFileRoute("/_authenticated/assistant")({

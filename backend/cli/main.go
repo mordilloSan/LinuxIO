@@ -42,7 +42,7 @@ func runCLI(args []string) int {
 	case "btrfs-snapshot", "btrfs-health": // hidden; see btrfs_snapshot.go
 		return runBtrfsCompat(cmd, cmdArgs)
 	case "version":
-		showVersion(cmdArgs)
+		showVersion(ctx, cmdArgs)
 		return 0
 	case "help", "-h", "--help":
 		showHelp()

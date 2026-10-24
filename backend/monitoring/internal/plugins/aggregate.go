@@ -272,7 +272,7 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 		return sum, nil
 	}
 	averageScalarStats(sum, count)
-	sum.Battery[0] = uint8(batterySum / int(count))
+	sum.Battery[0] = uint16(batterySum / int(count))
 	averageNetworkInterfaces(sum, uint64(count))
 	averageTemperatures(sum, count)
 	averageFilesystems(sum, count)

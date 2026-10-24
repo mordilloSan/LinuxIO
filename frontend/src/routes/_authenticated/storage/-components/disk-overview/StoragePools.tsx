@@ -28,7 +28,11 @@ import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formatters";
 
 import { driveIcon } from "./DriveCard";
-import { buildStorageLayout, fsTypeLabel } from "./storagePools";
+import {
+  buildStorageLayout,
+  deviceTypeLabel,
+  fsTypeLabel,
+} from "./storagePools";
 import type { DriveInfo } from "./types";
 import {
   findBackingDrive,
@@ -239,10 +243,11 @@ interface StoragePoolsProps {
 
 /**
  * Every drive and every mounted filesystem, drawn as disks -> pool -> volumes
- * for btrfs pools, disk -> volumes for plain partitions and source -> volumes
- * for network shares and mapper devices. The selected pool's health, disk and
- * RAID management and settings sit below. Pools need btrfs and privilege; the
- * rest does not.
+ * for btrfs pools and RAID, LVM or mapper devices, disk -> volumes for plain
+ * partitions and source -> volumes for network shares and devices with no
+ * drive found under them. The selected pool's health, disk and RAID
+ * management and settings sit below. Pools need btrfs and privilege; the rest
+ * does not.
  */
 const StoragePools = ({
   drives,
@@ -266,6 +271,9 @@ const StoragePools = ({
     enabled: poolsEnabled,
     refetchInterval: 10000,
   });
+  const { data: topology, isPending: isTopologyPending } = useQuery(
+    linuxio.storage.get_topology,
+  );
   const [dialog, setDialog] = useState<PoolDialog | null>(null);
   const closeDialog = () => setDialog(null);
   const { mutate: createPool, isPending: isCreating } = useCallMutation(
@@ -290,7 +298,13 @@ const StoragePools = ({
     driveStacks,
     sourceStacks,
     idleDrives: unpooled,
-  } = buildStorageLayout(btrfs, filesystems, drives, nfsMounts);
+  } = buildStorageLayout(
+    btrfs,
+    filesystems,
+    drives,
+    nfsMounts,
+    topology?.devices ?? [],
+  );
   // Disks of an unmounted pool are drawn under it, not as idle.
   const offlineDrives = new Set(
     offline.flatMap((pool) =>
@@ -302,9 +316,9 @@ const StoragePools = ({
   const idleDrives = unpooled.filter((drive) => !offlineDrives.has(drive.name));
   const selected = poolStacks.find(({ fs }) => fs.uuid === selectedPool);
 
-  // Until the pools load, btrfs volumes would sit under their drives and then
-  // jump into their pool; draw nothing rather than that flicker.
-  if (poolsEnabled && isPending) return null;
+  // Until the pools and block-device tree load, volumes would sit under the
+  // wrong drive or source and then jump; draw nothing rather than that flicker.
+  if ((poolsEnabled && isPending) || isTopologyPending) return null;
 
   if (drives.length === 0 && filesystems.length === 0 && btrfs.length === 0) {
     return (
@@ -490,30 +504,81 @@ const StoragePools = ({
             </div>
           );
         })}
-        {sourceStacks.map(({ key, label, network, volumes }) => (
-          <div className="storage-pools__stack" key={key}>
-            <div className="storage-pools__card storage-pools__disks">
-              <div className="storage-pools__disk">
-                <Icon
-                  className="storage-pools__icon"
-                  height={24}
-                  icon={network ? "mdi:server-network" : "mdi:layers-outline"}
-                  width={24}
-                />
-                <span className="storage-pools__name">
-                  <AppTypography noWrap variant="body2">
+        {sourceStacks.map(
+          ({
+            drives: members,
+            key,
+            label,
+            network,
+            sizeBytes,
+            type,
+            volumes,
+          }) =>
+            members.length > 0 ? (
+              <div className="storage-pools__stack" key={key}>
+                <div className="storage-pools__card storage-pools__disks">
+                  {members.map((drive) => (
+                    <DiskRow
+                      caption={drive.model}
+                      drive={drive}
+                      key={drive.name}
+                      name={drive.name}
+                      onInspectDrive={onInspectDrive}
+                      sizeBytes={drive.sizeBytes}
+                    />
+                  ))}
+                </div>
+                <Connector />
+                <div className="storage-pools__card storage-pools__pool">
+                  <Icon
+                    className="storage-pools__icon"
+                    height={36}
+                    icon="mdi:layers-outline"
+                    width={36}
+                  />
+                  <AppTypography fontWeight={600} noWrap variant="body2">
                     {label}
                   </AppTypography>
+                  <AppChip
+                    color="primary"
+                    label={deviceTypeLabel(type)}
+                    size="small"
+                    variant="soft"
+                  />
                   <AppTypography color="text.secondary" variant="caption">
-                    {network ? "Network share" : "No physical disk found"}
+                    {formatFileSize(sizeBytes)}
                   </AppTypography>
-                </span>
+                </div>
+                <Connector count={volumes.length} />
+                <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
               </div>
-            </div>
-            <Connector count={volumes.length} span />
-            <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
-          </div>
-        ))}
+            ) : (
+              <div className="storage-pools__stack" key={key}>
+                <div className="storage-pools__card storage-pools__disks">
+                  <div className="storage-pools__disk">
+                    <Icon
+                      className="storage-pools__icon"
+                      height={24}
+                      icon={
+                        network ? "mdi:server-network" : "mdi:layers-outline"
+                      }
+                      width={24}
+                    />
+                    <span className="storage-pools__name">
+                      <AppTypography noWrap variant="body2">
+                        {label}
+                      </AppTypography>
+                      <AppTypography color="text.secondary" variant="caption">
+                        {network ? "Network share" : "No physical disk found"}
+                      </AppTypography>
+                    </span>
+                  </div>
+                </div>
+                <Connector count={volumes.length} span />
+                <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
+              </div>
+            ),
+        )}
       </div>
       {idleDrives.length > 0 && (
         <>

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -553,4 +554,31 @@ func TestWriteSnapshotHonoursHistoryEvery(t *testing.T) {
 	mem, err = store.PluginHistory(ctx, plugins.Mem, resolution1m, 0, end, 10)
 	require.NoError(t, err)
 	assert.Len(t, mem, 3)
+}
+
+func TestOpenStoreAppliesPragmasToAnyConnectionAndEscapesPath(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "a b#c?d%e")
+	require.NoError(t, os.Mkdir(dataDir, 0o700))
+
+	store, err := OpenStore(dataDir)
+	require.NoError(t, err)
+	defer store.Close()
+
+	_, err = os.Stat(filepath.Join(dataDir, "metrics.db"))
+	require.NoError(t, err)
+	entries, err := os.ReadDir(filepath.Dir(dataDir))
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "no stray database at a truncated path")
+
+	// A discarded connection (released as bad by Raw) is replaced by one that must carry the settings too.
+	conn, err := store.db.Conn(context.Background())
+	require.NoError(t, err)
+	require.ErrorIs(t, conn.Raw(func(any) error { return driver.ErrBadConn }), driver.ErrBadConn)
+
+	want := map[string]string{"busy_timeout": "5000", "synchronous": "1", "foreign_keys": "1", "journal_mode": "wal"}
+	for pragma, expected := range want {
+		var got string
+		require.NoError(t, store.db.QueryRow("PRAGMA "+pragma).Scan(&got))
+		assert.Equal(t, expected, got, pragma)
+	}
 }

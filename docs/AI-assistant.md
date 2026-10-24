@@ -51,6 +51,11 @@ commands come from the ACP registry. The browser only ever sends an agent id;
 it never supplies a command, and unknown ids are rejected before anything
 spawns. Settings: `config.get` returns `assistant.agent`; `config.set`
 `{assistant:{agent}}` stores it (empty clears, unknown ids error).
+`assistant.defaults` maps an agent id to the `model`, `effort` and `mode` a
+new chat starts with; `config.set {assistant:{defaults}}` replaces the whole
+map (unknown ids and values with control characters or over 128 bytes error).
+An agent with no entry gets LinuxIO's starting point, which exists only for
+`claude`: `opus`, `high`, `auto`.
 
 ## Client behavior
 
@@ -73,6 +78,14 @@ advertises the matching capability.
   turn runs). Changing one sends `session/set_config_option` or
   `session/set_mode` and replaces the local options with the agent's reply.
   Pieces the agent does not offer are hidden.
+- **Chat defaults.** Settings → Assistant lists the models, effort levels and
+  permission modes from a chat the probe opens, so a new model shows up as
+  soon as the agent offers it, with no LinuxIO release. The values stored are
+  the agent's own ids (`opus` stays the newest Opus). Each new chat (not a
+  reopened one) is switched to them with `session/set_config_option` (model
+  before effort, whose levels depend on the model) and `session/set_mode`
+  before the prompt is enabled. A value the agent does not offer, or refuses,
+  leaves the agent's own choice; empty means the agent's own choice.
 - **Status line.** While a turn runs, a line above the composer shows a spinner,
   a verb that cycles every 4 s (Thinking, Working, Reading, Checking,
   Pondering, Reviewing) and the elapsed time. It, and its timers, exist only
@@ -134,7 +147,8 @@ advertises the matching capability.
 Login state belongs to the agent CLI, not LinuxIO. The Settings tab probes it:
 it sends `initialize`, waits up to 2 s for an `_auth/status_update`, and
 otherwise tries `session/new`, mapping JSON-RPC error `-32000` to "not logged
-in". Agent-handled auth methods call `authenticate`; `logout` is offered when
+in". When logged in it keeps (or, after a pushed status, opens) that session to
+read the chat defaults' choices. Agent-handled auth methods call `authenticate`; `logout` is offered when
 the agent advertises it.
 
 Terminal-type auth methods navigate to `/terminal` with the agent and args in

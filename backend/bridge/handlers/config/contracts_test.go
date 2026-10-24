@@ -25,6 +25,10 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 			ArchiveCompressionWorkers: 5,
 			ArchiveExtractWorkers:     6,
 		},
+		Assistant: userconfig.Assistant{
+			Agent:    "claude",
+			Defaults: map[string]userconfig.AssistantDefaults{"claude": {Model: "opus", Effort: "high", Mode: "auto"}, "codex": {}},
+		},
 		Dismissals: &userconfig.PersistedDismissals{
 			UncleanShutdownBootID: "boot-id",
 			FailedLoginAlertID:    "login-id",

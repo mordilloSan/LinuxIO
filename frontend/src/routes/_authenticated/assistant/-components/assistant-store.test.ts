@@ -78,6 +78,7 @@ const selectOption = (value: string) => ({
 
 beforeEach(() => {
   assistantStore.disconnect();
+  assistantStore.setChatDefaults(undefined);
 });
 
 describe("assistantStore", () => {
@@ -101,6 +102,86 @@ describe("assistantStore", () => {
     await assistantStore.connect("claude");
     expect(conn.newSession).toHaveBeenCalled();
     expect(assistantStore.getState().sessionId).toBe("s-new");
+  });
+
+  it("starts a new chat on the defaults from Settings", async () => {
+    const options = (model: string, effort: string) => [
+      {
+        id: "model",
+        name: "Model",
+        type: "select" as const,
+        category: "model",
+        currentValue: model,
+        options: [
+          { value: "sonnet", name: "Sonnet" },
+          { value: "opus", name: "Opus" },
+        ],
+      },
+      {
+        id: "effort",
+        name: "Effort",
+        type: "select" as const,
+        category: "thought_level",
+        currentValue: effort,
+        options: [
+          { value: "high", name: "High" },
+          { value: "xhigh", name: "Extra high" },
+        ],
+      },
+    ];
+    const modes = (currentModeId: string) => ({
+      currentModeId,
+      availableModes: [
+        { id: "default", name: "Manual" },
+        { id: "auto", name: "Auto" },
+      ],
+    });
+    let current = options("sonnet", "xhigh");
+    let mode = "default";
+    const { conn, connector } = fakeConnection({
+      listSessions: vi.fn(async () => []),
+      newSession: vi.fn(async () => ({
+        sessionId: "s-new",
+        modes: modes(mode),
+        configOptions: current,
+      })),
+      setConfigOption: vi.fn(async (_sessionId, configId, value) => {
+        const [model, effort] = current.map((option) =>
+          option.id === configId ? String(value) : option.currentValue,
+        );
+        current = options(model, effort);
+        return current;
+      }),
+      setMode: vi.fn(async (_sessionId, modeId) => {
+        mode = modeId;
+      }),
+    });
+    assistantStore.setChatDefaults({
+      model: "opus",
+      effort: "high",
+      mode: "auto",
+    });
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    expect(vi.mocked(conn.setConfigOption).mock.calls).toEqual([
+      ["s-new", "model", "opus"],
+      ["s-new", "effort", "high"],
+    ]);
+    expect(conn.setMode).toHaveBeenCalledWith("s-new", "auto");
+    expect(assistantStore.getState()).toMatchObject({
+      configOptions: [{ currentValue: "opus" }, { currentValue: "high" }],
+      modes: { currentModeId: "auto" },
+    });
+
+    // A chat that already starts on the defaults is left alone, and an empty
+    // default keeps the agent's own choice.
+    vi.mocked(conn.setConfigOption).mockClear();
+    vi.mocked(conn.setMode).mockClear();
+    assistantStore.setChatDefaults({ model: "opus", effort: "", mode: "" });
+    current = options("opus", "xhigh");
+    await assistantStore.newSession();
+    expect(conn.setConfigOption).not.toHaveBeenCalled();
+    expect(conn.setMode).not.toHaveBeenCalled();
   });
 
   it("marks auth_required when session creation needs a login", async () => {

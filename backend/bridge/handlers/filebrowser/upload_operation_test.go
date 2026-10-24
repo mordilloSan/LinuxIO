@@ -107,21 +107,24 @@ func TestUploadTaskCommitKeepsRestrictiveTargetMode(t *testing.T) {
 	require.Equal(t, "new", string(content))
 }
 
-func TestUploadTaskCommitFailsWhenOwnershipCannotBeRestored(t *testing.T) {
+func TestUploadTaskCommitIgnoresOwnershipPermissionError(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can chown to any owner")
 	}
-	target := filepath.Join(t.TempDir(), "secret.env")
-	require.NoError(t, os.WriteFile(target, []byte("old"), 0o600))
+	target := filepath.Join(t.TempDir(), "shared.env")
+	require.NoError(t, os.WriteFile(target, []byte("old"), 0o640))
 
 	code, err := commitTestUpload(t, target, "new", true, func(transfer *uploadTransferTask) {
 		transfer.attrs.uid = 0
 	})
-	require.Error(t, err)
-	require.Equal(t, 500, code)
-	content, readErr := os.ReadFile(target)
-	require.NoError(t, readErr)
-	require.Equal(t, "old", string(content))
+	require.NoError(t, err)
+	require.Equal(t, 0, code)
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o640), info.Mode().Perm())
+	content, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "new", string(content))
 }
 
 func TestUploadTaskCommitDoesNotReplaceFileCreatedAfterStart(t *testing.T) {

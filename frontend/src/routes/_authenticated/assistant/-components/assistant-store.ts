@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import { useSyncExternalStore } from "react";
 
+import type { AssistantChatDefaults } from "@/api";
 import {
   type AssistantAgentId,
   type AssistantConnection,
@@ -269,6 +270,57 @@ const errorMessage = (error: unknown) =>
       ? String(error.message)
       : String(error);
 
+// What a new chat starts with (Settings → Assistant); the page keeps it in
+// step with the config.
+let chatDefaults: AssistantChatDefaults | undefined;
+
+// Applies chatDefaults to a chat that was just created. The model goes first:
+// switching it rebuilds the effort levels. Best effort: anything the agent
+// does not offer or refuses stays at the agent's own choice.
+async function withChatDefaults(
+  conn: AssistantConnection,
+  opened: SessionOpenResult,
+): Promise<Pick<SessionOpenResult, "configOptions" | "modes">> {
+  let { configOptions, modes } = opened;
+  const defaults = chatDefaults;
+  if (!defaults) return { configOptions, modes };
+  // An agent without session modes may offer the mode as a config option.
+  const wanted: Array<[category: string, value: string]> = [
+    ["model", defaults.model],
+    ["thought_level", defaults.effort],
+  ];
+  if (!modes) wanted.push(["mode", defaults.mode]);
+  try {
+    for (const [category, value] of wanted) {
+      const option = configOptions.find((entry) => entry.category === category);
+      if (!value || option?.type !== "select" || option.currentValue === value)
+        continue;
+      const values = option.options.flatMap((entry) =>
+        "group" in entry ? entry.options : [entry],
+      );
+      if (!values.some((entry) => entry.value === value)) continue;
+      configOptions = await conn.setConfigOption(
+        opened.sessionId,
+        option.id,
+        value,
+      );
+    }
+    const mode = defaults.mode;
+    if (
+      modes &&
+      mode &&
+      modes.currentModeId !== mode &&
+      modes.availableModes.some((entry) => entry.id === mode)
+    ) {
+      await conn.setMode(opened.sessionId, mode);
+      modes = { ...modes, currentModeId: mode };
+    }
+  } catch {
+    // What the agent last answered still describes the chat.
+  }
+  return { configOptions, modes };
+}
+
 async function openSession(
   conn: AssistantConnection,
   isCurrent: () => boolean,
@@ -295,6 +347,7 @@ async function openSession(
       opened = await conn.newSession();
       if (!isCurrent()) return;
       setState({ ...sessionReset(), sessionId: opened.sessionId });
+      opened = { ...opened, ...(await withChatDefaults(conn, opened)) };
     }
     flushUpdates();
     // The open response is authoritative; replayed history may be older.
@@ -398,6 +451,10 @@ export const assistantStore = {
     return () => {
       listeners.delete(listener);
     };
+  },
+
+  setChatDefaults(defaults: AssistantChatDefaults | undefined) {
+    chatDefaults = defaults;
   },
 
   async connect(agent: AssistantAgentId) {
@@ -756,12 +813,13 @@ export const assistantStore = {
     void dropSide();
     try {
       const opened = await conn.newSession();
+      const { configOptions, modes } = await withChatDefaults(conn, opened);
       if (!isCurrent()) return;
       setState({
         ...sessionReset(),
         sessionId: opened.sessionId,
-        modes: opened.modes,
-        configOptions: opened.configOptions,
+        modes,
+        configOptions,
         status: "ready",
       });
       const sessions = await conn.listSessions();

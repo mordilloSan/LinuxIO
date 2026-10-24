@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_INSTALL_OUTPUT_LINES } from "@/components/terminal/InstallOutputPanel";
+
 import {
   initialPackageUpdateState,
   packageUpdateReducer,
@@ -11,7 +13,6 @@ describe("packageUpdateReducer", () => {
       type: "start",
       packageName: "nginx",
       status: "Initializing",
-      event: "Initializing update transaction",
     });
     state = packageUpdateReducer(state, { type: "progress", percentage: 60 });
     state = packageUpdateReducer(state, { type: "progress", percentage: 40 });
@@ -41,12 +42,53 @@ describe("packageUpdateReducer", () => {
     ]);
   });
 
+  it("bounds package manager output, flags the gap, and keeps it after a failure", () => {
+    let state = packageUpdateReducer(initialPackageUpdateState, {
+      type: "start",
+      packageName: "nginx",
+      status: "Initializing",
+    });
+    for (let index = 0; index <= MAX_INSTALL_OUTPUT_LINES; index += 1) {
+      state = packageUpdateReducer(state, {
+        type: "output",
+        line: `line ${index}`,
+      });
+    }
+
+    expect(state.output).toHaveLength(MAX_INSTALL_OUTPUT_LINES);
+    expect(state.output[0]).toEqual({
+      id: 1,
+      stream: "stdout",
+      text: "line 1",
+    });
+    expect(state.output.at(-1)?.id).toBe(MAX_INSTALL_OUTPUT_LINES);
+    expect(state.outputHistoryIncomplete).toBe(true);
+
+    const failed = packageUpdateReducer(state, { type: "failed", error: "x" });
+    expect(failed.output).toBe(state.output);
+
+    const restarted = packageUpdateReducer(failed, {
+      type: "start",
+      packageName: "nginx",
+      status: "Initializing",
+    });
+    expect(restarted.output).toEqual([]);
+    expect(restarted.outputHistoryIncomplete).toBe(false);
+    expect(
+      packageUpdateReducer(failed, {
+        type: "start",
+        packageName: "nginx",
+        status: "Resuming update transaction",
+        recovered: true,
+      }).outputHistoryIncomplete,
+    ).toBe(true);
+  });
+
   it("completes immediately and gives errors and cancellation terminal state", () => {
     const running = packageUpdateReducer(initialPackageUpdateState, {
       type: "start",
       packageName: "nginx",
       status: "Initializing",
-      event: "Initializing update transaction",
     });
     const complete = packageUpdateReducer(running, { type: "complete" });
 
@@ -56,7 +98,6 @@ describe("packageUpdateReducer", () => {
       status: null,
       updatingPackage: null,
     });
-    expect(complete.eventLog.at(-1)).toBe("Finished");
     expect(packageUpdateReducer(running, { type: "canceled" })).toMatchObject({
       error: "Update cancelled",
       phase: "idle",

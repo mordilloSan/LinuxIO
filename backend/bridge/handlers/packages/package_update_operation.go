@@ -31,7 +31,7 @@ func RegisterTaskRoutes(router *bridgeipc.Router) {
 
 // PkgUpdateProgress represents progress for package update operations.
 type PkgUpdateProgress struct {
-	Type           string  `json:"type"`                      // "item_progress", "package", "status", "percentage", "message"
+	Type           string  `json:"type"`                      // "item_progress", "package", "status", "percentage", "message", "output" (a dpkg terminal line in Message)
 	PackageID      string  `json:"package_id,omitempty"`      // Current package being processed
 	PackageSummary string  `json:"package_summary,omitempty"` // Package summary from Package(...) signal
 	Status         string  `json:"status,omitempty"`          // Status description (e.g., "Downloading", "Installing")
@@ -72,6 +72,12 @@ type pkgUpdateReporter func(*PkgUpdateProgress) error
 
 func taskPkgUpdateReporter(task *bridgeipc.Task) pkgUpdateReporter {
 	return func(p *PkgUpdateProgress) error {
+		if p.Type == "output" {
+			// Like capability installer output: direct watchers only, never
+			// durable task state or a tasks.events notification.
+			task.ReportTransientProgress(p.ProgressEnvelope())
+			return nil
+		}
 		task.ReportProgress(*p)
 		return nil
 	}
@@ -196,12 +202,12 @@ func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apische
 
 	// A snapshot failure is reported but never blocks the update.
 	snapshotReport, snapshotErr := preUpdateSnapshot(ctx)
-	if len(snapshotReport.Taken) > 0 || len(snapshotReport.Errors) > 0 || snapshotErr != nil {
-		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "Took btrfs pre-update snapshot"})
+	if len(snapshotReport.Taken) > 0 {
+		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "message", Status: "Took btrfs pre-update snapshot"})
 	}
 	if msg := preUpdateSnapshotProblems(snapshotReport, snapshotErr); msg != "" {
 		slog.Warn("btrfs pre-update snapshot problems; applying package updates anyway", "problems", msg)
-		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "btrfs pre-update snapshot failed: " + msg})
+		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "message", Status: "btrfs pre-update snapshot failed: " + msg})
 	}
 
 	if err := updatePackagesWithProgress(ctx, req.PackageIDs, report); err != nil {
@@ -300,13 +306,15 @@ func updateOnePackageWithProgress(
 ) error {
 	// Flag 0 = no special flags (install normally).
 	slog.Debug("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_id", packageID)
+	termLog := openAptTermLog()
+	defer termLog.Close()
 	if err := trans.Call("UpdatePackages", uint64(0), []string{packageID}); err != nil {
 		return err
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	return awaitPackageUpdateSignals(waitCtx, trans.Signals(), scalePackageProgress(report, index, total))
+	return awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, scalePackageProgress(report, index, total))
 }
 
 func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpdateReporter {
@@ -326,9 +334,17 @@ func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpd
 	}
 }
 
-func awaitPackageUpdateSignals(ctx context.Context, signals <-chan *dbusclient.Signal, report pkgUpdateReporter) error {
+// awaitPackageUpdateSignals relays one transaction's signals, and termLog's
+// dpkg lines (nil termLog: none), on this goroutine so reporters need no locks.
+func awaitPackageUpdateSignals(ctx context.Context, signals <-chan *dbusclient.Signal, termLog *aptTermLog, report pkgUpdateReporter) error {
 	var lastWorkStatus uint32
 	var transactionErr error
+	var poll <-chan time.Time
+	if termLog != nil {
+		ticker := time.NewTicker(aptTermLogPollInterval)
+		defer ticker.Stop()
+		poll = ticker.C
+	}
 	for {
 		select {
 		case sig, ok := <-signals:
@@ -341,12 +357,17 @@ func awaitPackageUpdateSignals(ctx context.Context, signals <-chan *dbusclient.S
 				&lastWorkStatus,
 				&transactionErr,
 			)
+			if done || err != nil {
+				reportAptTermLog(report, termLog)
+			}
 			if err != nil {
 				return err
 			}
 			if done {
 				return nil
 			}
+		case <-poll:
+			reportAptTermLog(report, termLog)
 		case <-ctx.Done():
 			return ctx.Err()
 		}

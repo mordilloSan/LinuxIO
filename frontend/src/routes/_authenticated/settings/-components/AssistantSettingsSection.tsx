@@ -1,7 +1,9 @@
+import type * as acp from "@agentclientprotocol/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import type { AssistantChatDefaults } from "@/api";
 import { ASSISTANT_AGENTS, isAssistantAgentId } from "@/api/acp/agents";
 import {
   type AssistantProbe,
@@ -20,8 +22,63 @@ import AppButton from "@/components/ui/AppButton";
 import AppSelect from "@/components/ui/AppSelect";
 import { useAssistantSettings, useConfig } from "@/hooks/useConfig";
 
+interface Choice {
+  value: string;
+  name: string;
+}
+
+/** The values of the agent's select option in one category, groups flattened. */
+function selectChoices(
+  options: acp.SessionConfigOption[],
+  category: string,
+): Choice[] | null {
+  const option = options.find((entry) => entry.category === category);
+  if (option?.type !== "select") return null;
+  return option.options
+    .flatMap((entry) => ("group" in entry ? entry.options : [entry]))
+    .map(({ value, name }) => ({ value, name }));
+}
+
+// The agent's own "Default" entry is what "Agent default" already means.
+const withoutAgentDefault = (choices: Choice[] | null) =>
+  choices?.filter((choice) => choice.value !== "default") ?? null;
+
+function DefaultSelect({
+  choices,
+  label,
+  onChange,
+  value,
+}: {
+  choices: Choice[] | null;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  if (!choices) return null;
+  const listed = choices.some((choice) => choice.value === value);
+  return (
+    <AppSelect
+      fullWidth
+      label={label}
+      onChange={(event) => onChange(event.target.value)}
+      value={value}
+    >
+      <option value="">Agent default</option>
+      {/* A saved value the agent no longer lists stays visible. */}
+      {value && !listed ? <option value={value}>{value}</option> : null}
+      {choices.map((choice) => (
+        <option key={choice.value} value={choice.value}>
+          {choice.name}
+        </option>
+      ))}
+    </AppSelect>
+  );
+}
+
+const NO_DEFAULTS: AssistantChatDefaults = { model: "", effort: "", mode: "" };
+
 export default function AssistantSettingsSection() {
-  const { agent } = useAssistantSettings();
+  const { agent, defaults } = useAssistantSettings();
   const { updateConfig } = useConfig();
   const navigate = useNavigate();
   const [attempt, setAttempt] = useState(0);
@@ -73,6 +130,17 @@ export default function AssistantSettingsSection() {
         toast.error(error instanceof Error ? error.message : "Log out failed"),
       );
   };
+
+  const chatDefaults = (agent && defaults[agent]) || NO_DEFAULTS;
+  const saveDefault = (field: keyof AssistantChatDefaults, value: string) => {
+    if (!agent) return;
+    updateConfig({
+      assistant: {
+        defaults: { ...defaults, [agent]: { ...chatDefaults, [field]: value } },
+      },
+    });
+  };
+  const chatOptions = probe?.chatOptions;
 
   const loggedIn = probe?.status === "logged_in";
   const statusLabel = probing
@@ -202,6 +270,50 @@ export default function AssistantSettingsSection() {
                 {probe.error ? `: ${probe.error}` : ""}.
               </AppAlert>
             ) : null}
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {chatOptions ? (
+        <SectionCard
+          icon="mdi:tune-variant"
+          subtitle="What a new chat starts with, from the agent's own choices"
+          title="Chat defaults"
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--app-space-12)",
+            }}
+          >
+            <DefaultSelect
+              choices={withoutAgentDefault(
+                selectChoices(chatOptions.configOptions, "model"),
+              )}
+              label="Model"
+              onChange={(value) => saveDefault("model", value)}
+              value={chatDefaults.model}
+            />
+            <DefaultSelect
+              choices={withoutAgentDefault(
+                selectChoices(chatOptions.configOptions, "thought_level"),
+              )}
+              label="Effort"
+              onChange={(value) => saveDefault("effort", value)}
+              value={chatDefaults.effort}
+            />
+            <DefaultSelect
+              choices={
+                chatOptions.modes?.availableModes.map(({ id, name }) => ({
+                  value: id,
+                  name,
+                })) ?? selectChoices(chatOptions.configOptions, "mode")
+              }
+              label="Permissions"
+              onChange={(value) => saveDefault("mode", value)}
+              value={chatDefaults.mode}
+            />
           </div>
         </SectionCard>
       ) : null}

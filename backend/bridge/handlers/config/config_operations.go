@@ -16,6 +16,7 @@ func GetConfigForUser(ctx context.Context, username string, store *userconfig.Us
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 	cfg.Jobs = userconfig.EffectiveJobSettings(cfg.Jobs)
+	cfg.Assistant.Defaults = userconfig.EffectiveAssistantDefaults(cfg.Assistant.Defaults)
 	slog.Debug("loaded user config", "component", "config", "user", username, "path", cfgPath)
 	return cfg, nil
 }

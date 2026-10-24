@@ -12,6 +12,7 @@ func cloneSettings(in *Settings) *Settings {
 	out := *in
 	out.AppSettings = in.AppSettings
 	out.Docker = cloneDocker(in.Docker)
+	out.Assistant.Defaults = maps.Clone(in.Assistant.Defaults)
 	if in.Dismissals != nil {
 		dismissals := *in.Dismissals
 		out.Dismissals = &dismissals
