@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 const (
@@ -41,11 +42,6 @@ type BtrfsReplicationResult struct {
 // replicate is swapped by tests.
 var replicate = Replicate
 
-// shellQuote single-quotes s for the remote shell ssh hands its command to.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
 // targetCommand runs btrfs args on the job's target, locally or over ssh. The
 // last arg is a path; over ssh it is the only quoted, user-supplied word.
 func targetCommand(ctx context.Context, job BtrfsReplicationJob, args ...string) (string, error) {
@@ -53,7 +49,7 @@ func targetCommand(ctx context.Context, job BtrfsReplicationJob, args ...string)
 		return runBtrfs(ctx, args...)
 	}
 	remote := append([]string{"btrfs"}, args[:len(args)-1]...)
-	remote = append(remote, shellQuote(args[len(args)-1]))
+	remote = append(remote, hostcmd.ShellQuote(args[len(args)-1]))
 	return runCommand(ctx, "ssh", append(SSHArgs(job), remote...)...)
 }
 
@@ -139,7 +135,7 @@ func targetExists(ctx context.Context, job BtrfsReplicationJob) (bool, error) {
 		}
 		return true, nil
 	}
-	_, err := runCommand(ctx, "ssh", append(SSHArgs(job), "test", "-e", shellQuote(p))...)
+	_, err := runCommand(ctx, "ssh", append(SSHArgs(job), "test", "-e", hostcmd.ShellQuote(p))...)
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return false, nil
@@ -265,7 +261,7 @@ func onTarget(remote []BtrfsSnapshot, snap BtrfsSnapshot) bool {
 func sendReceive(ctx context.Context, job BtrfsReplicationJob, snap, parent string, progress func(int64)) (int64, error) {
 	recvName, recvArgs := "btrfs", []string{"receive", job.Target.Path}
 	if job.Target.Kind == TargetSSH {
-		recvName, recvArgs = "ssh", append(SSHArgs(job), "btrfs", "receive", shellQuote(job.Target.Path))
+		recvName, recvArgs = "ssh", append(SSHArgs(job), "btrfs", "receive", hostcmd.ShellQuote(job.Target.Path))
 	}
 	recvPath, err := findCommand(recvName)
 	if err != nil {
@@ -372,14 +368,14 @@ func RecordReplicationOutcome(ctx context.Context, job BtrfsReplicationJob, runE
 		msg := runErr.Error()
 		lastErr = &msg
 		sum := sha256.Sum256([]byte(msg))
-		raiseAlert(ctx, alerts.Observation{
-			Source: alertSource, Key: key, Severity: alerts.SeverityError,
+		raise(ctx, alerts.Observation{
+			Key: key, Severity: alerts.SeverityError,
 			Title:        "Replication failed for " + job.Path,
 			Message:      msg,
 			Link:         "/storage/snapshots?fs=" + job.UUID,
 			OccurrenceID: hex.EncodeToString(sum[:8]),
 		})
-	} else if err := alerts.Resolve(ctx, alertSource, key); err != nil {
+	} else if err := alerts.Resolve(ctx, AlertSource, key); err != nil {
 		slog.Warn("failed to resolve btrfs replication alert", "job", job.ID, "error", err)
 	}
 	_, err := UpdateJobs(ctx, func(jobs *[]BtrfsReplicationJob) error {

@@ -3335,7 +3335,6 @@ export interface WireGuardAddInterfaceRequest {
   host?: string;
   dns?: string;
   mtu?: string;
-  peersJson?: string;
   numPeers?: string;
 }
 
@@ -5374,7 +5373,6 @@ export interface LinuxIOStreamSchema {
   "assistant.open": AssistantOpenRequest;
   "container.open": ContainerOpenRequest;
   "control.app_update": AppUpdateRequest;
-  "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.logs.follow_all": DockerLogsFollowAllRequest;
   "filebrowser.download_stream": PathRequest;

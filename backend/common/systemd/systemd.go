@@ -21,75 +21,35 @@ func requireUnitName(name string) error {
 }
 
 func StartUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
 	return callUnitJob(ctx, name, "StartUnit", "start")
 }
 
 func StopUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
 	return callUnitJob(ctx, name, "StopUnit", "stop")
 }
 
 func RestartUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
 	return callUnitJob(ctx, name, "RestartUnit", "restart")
 }
 
 func ReloadUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
 	return callUnitJob(ctx, name, "ReloadUnit", "reload")
 }
 
 func EnableUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
-	names := []string{name}
-	if err := enableUnitFiles(ctx, names); err != nil {
-		return err
-	}
-	return DaemonReload(ctx)
+	return unitFilesOp(ctx, name, "EnableUnitFiles", "enable", []any{true}, new(bool))
 }
 
 func DisableUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
-	names := []string{name}
-	if err := disableUnitFiles(ctx, names); err != nil {
-		return err
-	}
-	return DaemonReload(ctx)
+	return unitFilesOp(ctx, name, "DisableUnitFiles", "disable", nil)
 }
 
 func MaskUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
-	names := []string{name}
-	if err := maskUnitFiles(ctx, names); err != nil {
-		return err
-	}
-	return DaemonReload(ctx)
+	return unitFilesOp(ctx, name, "MaskUnitFiles", "mask", []any{true})
 }
 
 func UnmaskUnit(ctx context.Context, name string) error {
-	if err := requireUnitName(name); err != nil {
-		return err
-	}
-	names := []string{name}
-	if err := unmaskUnitFiles(ctx, names); err != nil {
-		return err
-	}
-	return DaemonReload(ctx)
+	return unitFilesOp(ctx, name, "UnmaskUnitFiles", "unmask", nil)
 }
 
 func ResetFailedUnit(ctx context.Context, name string) error {
@@ -108,7 +68,7 @@ func GetUnitFileState(ctx context.Context, name string) (string, error) {
 	}
 	var state string
 	if err := managerIface.CallStore(ctx, "GetUnitFileState", dbusclient.CallPolicy{}, []any{name}, &state); err != nil {
-		return "", err
+		return "", fmt.Errorf("get unit file state %s: %w", name, err)
 	}
 	return state, nil
 }
@@ -207,6 +167,9 @@ func ListUnitsWithPrefix(ctx context.Context, prefix string) ([]UnitStatus, erro
 }
 
 func callUnitJob(ctx context.Context, name, method, operation string) error {
+	if err := requireUnitName(name); err != nil {
+		return err
+	}
 	var job dbusclient.ObjectPath
 	if err := managerIface.CallStore(ctx, method, dbusclient.CallPolicy{}, []any{name, "replace"}, &job); err != nil {
 		return fmt.Errorf("%s unit %s: %w", operation, name, err)
@@ -214,60 +177,17 @@ func callUnitJob(ctx context.Context, name, method, operation string) error {
 	return nil
 }
 
-func enableUnitFiles(ctx context.Context, names []string) error {
-	var carriesInstallInfo bool
-	var changes [][]any
-	if err := managerIface.CallStore(
-		ctx,
-		"EnableUnitFiles",
-		dbusclient.CallPolicy{},
-		[]any{names, false, true},
-		&carriesInstallInfo,
-		&changes,
-	); err != nil {
-		return fmt.Errorf("enable unit files %s: %w", strings.Join(names, ", "), err)
+// unitFilesOp runs a systemd *UnitFiles method for one unit, then reloads the
+// manager. extraArgs follow the (names, runtime) pair; extraOut receives any
+// results that precede the changes list.
+func unitFilesOp(ctx context.Context, name, method, operation string, extraArgs []any, extraOut ...any) error {
+	if err := requireUnitName(name); err != nil {
+		return err
 	}
-	return nil
-}
-
-func disableUnitFiles(ctx context.Context, names []string) error {
 	var changes [][]any
-	if err := managerIface.CallStore(
-		ctx,
-		"DisableUnitFiles",
-		dbusclient.CallPolicy{},
-		[]any{names, false},
-		&changes,
-	); err != nil {
-		return fmt.Errorf("disable unit files %s: %w", strings.Join(names, ", "), err)
+	args := append([]any{[]string{name}, false}, extraArgs...)
+	if err := managerIface.CallStore(ctx, method, dbusclient.CallPolicy{}, args, append(extraOut, &changes)...); err != nil {
+		return fmt.Errorf("%s unit files %s: %w", operation, name, err)
 	}
-	return nil
-}
-
-func maskUnitFiles(ctx context.Context, names []string) error {
-	var changes [][]any
-	if err := managerIface.CallStore(
-		ctx,
-		"MaskUnitFiles",
-		dbusclient.CallPolicy{},
-		[]any{names, false, true},
-		&changes,
-	); err != nil {
-		return fmt.Errorf("mask unit files %s: %w", strings.Join(names, ", "), err)
-	}
-	return nil
-}
-
-func unmaskUnitFiles(ctx context.Context, names []string) error {
-	var changes [][]any
-	if err := managerIface.CallStore(
-		ctx,
-		"UnmaskUnitFiles",
-		dbusclient.CallPolicy{},
-		[]any{names, false},
-		&changes,
-	); err != nil {
-		return fmt.Errorf("unmask unit files %s: %w", strings.Join(names, ", "), err)
-	}
-	return nil
+	return DaemonReload(ctx)
 }

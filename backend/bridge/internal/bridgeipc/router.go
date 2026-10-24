@@ -260,7 +260,7 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 	route, ok := r.lookup(req.Route)
 	if !ok {
 		err := fmt.Errorf("%w: %s", ErrRouteNotFound, req.Route)
-		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
+		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
 		return err
 	}
 	// Label only the canonical registered route. req.Route is client-controlled
@@ -268,14 +268,14 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 	ctx = goroutinelabel.With(ctx, "route", route.Name)
 	if route.Privileged && (req.Session == nil || !req.Session.Privileged) {
 		err := fmt.Errorf("%w: privileged route %s requires elevated bridge", ErrForbidden, req.Route)
-		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
+		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
 		return err
 	}
 	if route.Decode != nil {
 		decoded, err := route.Decode(req.RawRequest)
 		if err != nil {
 			err = fmt.Errorf("%w: %s: %v", ErrInvalidArgs, req.Route, err)
-			_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
+			_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
 			return err
 		}
 		req.DecodedValue = decoded
@@ -402,7 +402,7 @@ func (r *Router) dispatchCall(ctx context.Context, stream net.Conn, route Route,
 	defer cleanup()
 	result, err := route.Call(ctx, request)
 	if err != nil {
-		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
+		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
 		return err
 	}
 	return relay.WriteResultOKAndClose(stream, 0, result)
@@ -411,7 +411,7 @@ func (r *Router) dispatchCall(ctx context.Context, stream net.Conn, route Route,
 func (r *Router) dispatchTask(ctx context.Context, stream net.Conn, route Route, req Request) error {
 	task, started, err := r.startOrQueueTask(route, req)
 	if err != nil {
-		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), statusCode(err))
+		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
 		return err
 	}
 	if started {
@@ -586,7 +586,7 @@ func (r *Router) startOrEnqueueClaimedTask(route Route, owner TaskOwner, task *T
 	if r.pendingQueuedByRoute[route.Name] > 0 {
 		r.pendingQueuedByRoute[route.Name]--
 	}
-	// An active task may have finished while CreateForOwner was running. Promote
+	// An active task may have finished while ClaimForOwnerWithIdentity was running. Promote
 	// from the real FIFO queue now so this reservation cannot strand the task.
 	next := r.dequeueStartLocked(route.Name)
 	r.mu.Unlock()
@@ -743,7 +743,8 @@ func (o TaskOwner) key(lifetime TaskLifetime) string {
 	}
 }
 
-func statusCode(err error) int {
+// StatusCode is the wire status code of err: the bridgeipc.Error code when set, else a code for the known sentinels, else 500.
+func StatusCode(err error) int {
 	if err == nil {
 		return 0
 	}

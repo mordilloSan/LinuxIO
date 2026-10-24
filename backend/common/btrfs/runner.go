@@ -27,8 +27,6 @@ func runLocked(ctx context.Context, lockPath, what string, fn func() error) erro
 	return err
 }
 
-const alertSource = "btrfs"
-
 // RunReport summarises one pass over the snapshot rules.
 type RunReport struct {
 	Taken   []BtrfsSnapshot `json:"taken"`
@@ -55,8 +53,8 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 		err := mountsErr
 		if err == nil && !hasFilesystem(mounts, rule.UUID) {
 			report.Skipped = append(report.Skipped, id)
-			raiseAlert(ctx, alerts.Observation{
-				Source: alertSource, Key: key, Severity: alerts.SeverityWarning,
+			raise(ctx, alerts.Observation{
+				Key: key, Severity: alerts.SeverityWarning,
 				Title:        "Snapshot skipped for " + rule.Path,
 				Message:      "Filesystem " + rule.UUID + " is not mounted",
 				Link:         "/storage/snapshots?fs=" + rule.UUID,
@@ -74,8 +72,8 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 				return report, ctxErr
 			}
 			report.Errors = append(report.Errors, id+": "+err.Error())
-			raiseAlert(ctx, alerts.Observation{
-				Source: alertSource, Key: key, Severity: alerts.SeverityError,
+			raise(ctx, alerts.Observation{
+				Key: key, Severity: alerts.SeverityError,
 				Title:        "Snapshot failed for " + rule.Path,
 				Message:      err.Error(),
 				Link:         "/storage/snapshots?fs=" + rule.UUID,
@@ -83,7 +81,7 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 			})
 			continue
 		}
-		if err := alerts.Resolve(ctx, alertSource, key); err != nil {
+		if err := alerts.Resolve(ctx, AlertSource, key); err != nil {
 			slog.Warn("failed to resolve btrfs snapshot alert", "rule", id, "error", err)
 		}
 	}
@@ -183,9 +181,3 @@ func snapshotAlertKey(uuid, path string) string {
 }
 
 func truncate(s string, n int) string { return s[:min(len(s), n)] }
-
-func raiseAlert(ctx context.Context, obs alerts.Observation) {
-	if err := alerts.Raise(ctx, obs); err != nil {
-		slog.Warn("failed to raise btrfs snapshot alert", "key", obs.Key, "error", err)
-	}
-}

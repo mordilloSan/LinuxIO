@@ -34,7 +34,7 @@ func TestArchiveTaskRegistersTransferBeforeSlowStartup(t *testing.T) {
 
 	registry := bridgeipc.NewTaskService()
 	req := apischema.FileArchiveRequest{Format: "zip", Paths: []string{dir}}
-	task, err := registry.Create(routeArchive, req)
+	task, _, err := registry.ClaimForOwnerWithIdentity(routeArchive, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -71,10 +71,10 @@ func TestArchiveTaskRegistersTransferBeforeSlowStartup(t *testing.T) {
 
 func TestArchiveDownloadProgressIncludesArtifactName(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
-	task, err := registry.Create(routeArchive, apischema.FileArchiveRequest{
+	task, _, err := registry.ClaimForOwnerWithIdentity(routeArchive, apischema.FileArchiveRequest{
 		Format: "zip",
 		Paths:  []string{"/photos"},
-	})
+	}, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

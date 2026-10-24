@@ -11,6 +11,7 @@ import (
 	"os"
 	"sync"
 
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
@@ -67,8 +68,13 @@ func StartBridge(ctx context.Context, sm *sessions.Manager, sessionID, username,
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
 	}
 	slog.Debug("Auth daemon available, using socket-based auth")
-	req := authclient.BuildRequest(username, sessionID, password, remoteHost, verbose)
-	result, err := authclient.Authenticate(ctx, req)
+	result, err := authclient.Authenticate(ctx, &authipc.AuthRequest{
+		User:       username,
+		Password:   password,
+		SessionID:  sessionID,
+		RemoteHost: remoteHost,
+		Verbose:    verbose,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("auth daemon failed: %w", err)
 	}
@@ -104,13 +110,7 @@ func attachBridgeSession(sm *sessions.Manager, sess *session.Session, conn net.C
 }
 
 func registerYamuxSession(sm *sessions.Manager, sess *session.Session, yamuxSession *relay.YamuxSession) {
-	var old *relay.YamuxSession
 	yamuxSessions.Lock()
-	if existing, exists := yamuxSessions.sessions[sess.SessionID]; exists {
-		old = existing
-	}
-	// Publish the replacement before closing the old session so its callback
-	// cannot remove or terminate the new mapping.
 	yamuxSessions.sessions[sess.SessionID] = yamuxSession
 	yamuxSessions.Unlock()
 
@@ -118,8 +118,6 @@ func registerYamuxSession(sm *sessions.Manager, sess *session.Session, yamuxSess
 	// already closed, so register it without holding yamuxSessions.Lock.
 	yamuxSession.SetOnClose(func() {
 		yamuxSessions.Lock()
-		// Only this session may remove the mapping. In particular, an old
-		// session closing after replacement must not remove the new session.
 		current, present := yamuxSessions.sessions[sess.SessionID]
 		if present && current == yamuxSession {
 			delete(yamuxSessions.sessions, sess.SessionID)
@@ -135,10 +133,6 @@ func registerYamuxSession(sm *sessions.Manager, sess *session.Session, yamuxSess
 		// deletion which closes the WebSocket.
 		sm.DeleteSession(sess.SessionID, sessions.ReasonBridgeFailure)
 	})
-
-	if old != nil {
-		_ = old.Close()
-	}
 }
 
 // ============================================================================

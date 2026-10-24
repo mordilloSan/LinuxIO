@@ -119,14 +119,3 @@ func Authenticate(ctx context.Context, req *authipc.AuthRequest) (*AuthResult, e
 		Privileged: privileged,
 	}, nil
 }
-
-// BuildRequest creates a Request from auth parameters.
-func BuildRequest(username, sessionID, password, remoteHost string, verbose bool) *authipc.AuthRequest {
-	return &authipc.AuthRequest{
-		User:       username,
-		Password:   password,
-		SessionID:  sessionID,
-		RemoteHost: remoteHost,
-		Verbose:    verbose,
-	}
-}

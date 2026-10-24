@@ -107,7 +107,7 @@ func TestDurableDockerRecoveryReusesPersistedResultWithoutRelaunch(t *testing.T)
 	}
 
 	service := bridgeipc.NewTaskService()
-	task, err := service.CreateForOwnerWithLifetime(dockerUpdateRoute, apischema.DockerContainerUpdateRequest{RunID: claim.ID, ContainerID: claim.Target}, bridgeipc.TaskOwner{SessionID: "session", Username: "alice", UID: claim.UID}, bridgeipc.TaskLifetimeDurable)
+	task, _, err := service.ClaimForOwnerWithIdentity(dockerUpdateRoute, apischema.DockerContainerUpdateRequest{RunID: claim.ID, ContainerID: claim.Target}, bridgeipc.TaskOwner{SessionID: "session", Username: "alice", UID: claim.UID}, bridgeipc.TaskLifetimeDurable, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create task: %v", err)
 	}

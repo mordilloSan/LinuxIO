@@ -15,7 +15,7 @@ import (
 func newDaemonWithDB(t *testing.T) (*daemon, *sql.DB) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "indexer.db")
-	db, err := storage.OpenContext(context.Background(), dbPath, storage.DefaultOpenOptions())
+	db, err := storage.OpenContext(context.Background(), dbPath)
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}

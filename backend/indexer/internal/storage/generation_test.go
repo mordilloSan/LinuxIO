@@ -11,7 +11,7 @@ import (
 func TestFullScanGenerationPublication(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "gen.db")
-	db, err := OpenContext(context.Background(), dbPath, DefaultOpenOptions())
+	db, err := OpenContext(context.Background(), dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestBeginGenerationDiscardsUnpublishedLeftovers(t *testing.T) {
 func TestPruneOldIndexesCountOnly(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "index.db")
-	db, openErr := OpenContext(context.Background(), dbPath, DefaultOpenOptions())
+	db, openErr := OpenContext(context.Background(), dbPath)
 	if openErr != nil {
 		t.Fatalf("open db: %v", openErr)
 	}
@@ -175,7 +175,7 @@ func TestPruneOldIndexesReclaimsFreelist(t *testing.T) {
 func TestPruneKeepsNewestOnLastIndexedTie(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "index.db")
-	db, openErr := OpenContext(context.Background(), dbPath, DefaultOpenOptions())
+	db, openErr := OpenContext(context.Background(), dbPath)
 	if openErr != nil {
 		t.Fatalf("open db: %v", openErr)
 	}

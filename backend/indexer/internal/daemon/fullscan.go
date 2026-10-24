@@ -80,7 +80,7 @@ func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, pro
 	if progress != nil {
 		progress.Step("Opening database")
 	}
-	store, err := storage.OpenStore(ctx, dbPath, storage.DefaultOpenOptions(), indexing.SameFile)
+	store, err := storage.OpenStore(ctx, dbPath, indexing.SameFile)
 	if err != nil {
 		return IndexRunStats{}, fmt.Errorf("open database: %w", err)
 	}

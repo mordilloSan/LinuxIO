@@ -22,7 +22,6 @@ func YamuxConfig() *yamux.Config {
 // YamuxSession wraps a yamux session with connection tracking
 type YamuxSession struct {
 	*yamux.Session
-	conn           net.Conn
 	mu             sync.Mutex
 	closed         bool
 	onClose        func()
@@ -36,10 +35,7 @@ func NewYamuxServer(conn net.Conn) (*YamuxSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	ys := &YamuxSession{
-		Session: session,
-		conn:    conn,
-	}
+	ys := &YamuxSession{Session: session}
 	ys.watchClose()
 	return ys, nil
 }
@@ -51,10 +47,7 @@ func NewYamuxClient(conn net.Conn) (*YamuxSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	ys := &YamuxSession{
-		Session: session,
-		conn:    conn,
-	}
+	ys := &YamuxSession{Session: session}
 	ys.watchClose()
 	return ys, nil
 }

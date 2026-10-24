@@ -102,6 +102,5 @@ type WireGuardAddInterfaceRequest struct {
 	Host       *string `json:"host,omitempty"`
 	DNS        *string `json:"dns,omitempty"`
 	MTU        *string `json:"mtu,omitempty"`
-	PeersJSON  *string `json:"peersJson,omitempty"`
 	NumPeers   *string `json:"numPeers,omitempty"`
 }

@@ -96,29 +96,3 @@ func TestRegisterYamuxSessionAlreadyClosedDoesNotDeadlock(t *testing.T) {
 		t.Fatal("already-closed yamux session was retained")
 	}
 }
-
-func TestOldYamuxCloseDoesNotRemoveReplacement(t *testing.T) {
-	manager := newTestManager(t)
-	oldSession, err := manager.CreateSession("replacement", session.User{Username: "test"}, false)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	oldYamux, _ := newYamuxPair(t)
-	newYamux, _ := newYamuxPair(t)
-	registerYamuxSession(manager, oldSession, oldYamux)
-	newSession := &session.Session{SessionID: oldSession.SessionID}
-	registerYamuxSession(manager, newSession, newYamux)
-
-	yamuxSessions.RLock()
-	current := yamuxSessions.sessions[newSession.SessionID]
-	yamuxSessions.RUnlock()
-	if current != newYamux {
-		t.Fatal("old session close removed replacement mapping")
-	}
-	if _, err := manager.ValidateSession(oldSession.SessionID); err != nil {
-		t.Fatalf("old session close terminated owning session: %v", err)
-	}
-
-	CloseYamuxSession(newSession.SessionID)
-}

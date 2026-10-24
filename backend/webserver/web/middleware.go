@@ -62,12 +62,7 @@ func requestLogValues(requestPath string) (kind string, label string, displayPat
 }
 
 func isStaticAsset(requestPath string) bool {
-	switch requestPath {
-	case "/favicon.ico", "/manifest.json", "/robots.txt":
-		return true
-	}
-	return strings.HasPrefix(requestPath, "/favicon-") ||
-		strings.HasPrefix(requestPath, "/apple-touch-icon")
+	return requestPath == "/manifest.json" || strings.HasPrefix(requestPath, "/favicon-")
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code.

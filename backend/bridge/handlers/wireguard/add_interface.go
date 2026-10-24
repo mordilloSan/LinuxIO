@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,7 +23,6 @@ type addInterfaceRequest struct {
 	host       string
 	dns        []string
 	mtu        int
-	peers      []PeerConfig
 	numPeers   int
 }
 
@@ -43,7 +41,10 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		return nil, fmt.Errorf("check interface config: %w", statErr)
 	}
 
-	peers, err := resolveInterfacePeers(req)
+	var peers []PeerConfig
+	if req.numPeers > 0 {
+		peers, err = generatePeers(req.addresses[0], req.numPeers)
+	}
 	if err != nil {
 		slog.Error("failed to generate interface peers", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("generate peers: %w", err)
@@ -114,11 +115,6 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 		return addInterfaceRequest{}, fmt.Errorf("port %d is already used by %s", listenPort, other)
 	}
 
-	peers, err := parseOptionalPeersValue(req.PeersJSON)
-	if err != nil {
-		return addInterfaceRequest{}, fmt.Errorf("invalid peers JSON: %w", err)
-	}
-
 	host := ""
 	if req.Host != nil {
 		host = strings.TrimSpace(*req.Host)
@@ -144,16 +140,8 @@ func parseAddInterfaceRequest(req apischema.WireGuardAddInterfaceRequest) (addIn
 		host:       host,
 		dns:        dns,
 		mtu:        mtu,
-		peers:      peers,
 		numPeers:   parseOptionalIntValue(req.NumPeers, 0),
 	}, nil
-}
-
-func resolveInterfacePeers(req addInterfaceRequest) ([]PeerConfig, error) {
-	if len(req.peers) > 0 || req.numPeers <= 0 {
-		return req.peers, nil
-	}
-	return generatePeers(req.addresses[0], req.numPeers)
 }
 
 func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []PeerConfig) WireGuardConfig {
@@ -274,19 +262,4 @@ func parseOptionalIntString(raw string, defaultVal int) int {
 		}
 	}
 	return defaultVal
-}
-
-func parseOptionalPeersValue(raw *string) ([]PeerConfig, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	switch *raw {
-	case "", "null", "[]":
-		return nil, nil
-	}
-	var peers []PeerConfig
-	if err := json.Unmarshal([]byte(*raw), &peers); err != nil {
-		return nil, err
-	}
-	return peers, nil
 }

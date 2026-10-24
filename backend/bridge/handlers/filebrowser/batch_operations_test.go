@@ -32,7 +32,7 @@ func readString(t *testing.T, path string) string {
 
 func newBatchTask(t *testing.T, route string, req any) *bridgeipc.Task {
 	t.Helper()
-	task, err := bridgeipc.NewTaskService().Create(route, req)
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(route, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

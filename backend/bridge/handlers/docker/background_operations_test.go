@@ -96,7 +96,7 @@ func installFakeDocker(t *testing.T, body string) {
 
 func newComposeTestTask(t *testing.T) *bridgeipc.Task {
 	t.Helper()
-	task, err := bridgeipc.NewTaskService().Create("docker.compose", nil)
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity("docker.compose", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create compose task: %v", err)
 	}

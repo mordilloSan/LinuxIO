@@ -388,24 +388,6 @@ func TestReplicateFailureRemovesPartialCopy(t *testing.T) {
 	}
 }
 
-func TestShellQuote(t *testing.T) {
-	for in, want := range map[string]string{
-		"":            "''",
-		"/srv/backup": "'/srv/backup'",
-		"it's":        `'it'\''s'`,
-		"$(rm -rf /)": "'$(rm -rf /)'",
-		"a b\nc":      "'a b\nc'",
-		"''":          `''\'''\'''`,
-	} {
-		if got := shellQuote(in); got != want {
-			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
-		}
-		if out, err := exec.Command("sh", "-c", "printf '%s' "+shellQuote(in)).Output(); err != nil || string(out) != in {
-			t.Errorf("sh round trip of %q = %q, %v", in, out, err)
-		}
-	}
-}
-
 func TestRunReplicationRecordsOutcome(t *testing.T) {
 	useTempAlerts(t)
 	oldPath, oldReplicate := ReplicationPath, replicate

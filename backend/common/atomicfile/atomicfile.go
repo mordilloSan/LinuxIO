@@ -19,7 +19,7 @@ func Write(path string, data []byte, mode fs.FileMode, ownership ...int) error {
 		return errors.New("file ownership requires both uid and gid")
 	}
 	if len(ownership) == 2 {
-		if err := validateOwnership(ownership[0], ownership[1]); err != nil {
+		if err := ValidateOwnership(ownership[0], ownership[1]); err != nil {
 			return fmt.Errorf("validate file ownership: %w", err)
 		}
 	}
@@ -63,7 +63,8 @@ func Write(path string, data []byte, mode fs.FileMode, ownership ...int) error {
 	return fsyncDir(dir)
 }
 
-func validateOwnership(uid, gid int) error {
+// ValidateOwnership rejects negative uid or gid values.
+func ValidateOwnership(uid, gid int) error {
 	if uid < 0 {
 		return fmt.Errorf("uid %d is invalid: must be non-negative", uid)
 	}

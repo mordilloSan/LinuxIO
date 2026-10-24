@@ -130,7 +130,7 @@ func TestUpsertAndDeletePropagatesSizes(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "index.db")
 
-	db, err := OpenContext(context.Background(), dbPath, DefaultOpenOptions())
+	db, err := OpenContext(context.Background(), dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

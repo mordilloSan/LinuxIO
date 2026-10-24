@@ -159,10 +159,10 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischem
 		return apischema.SearchResponse{}, fmt.Errorf("error searching files: %w", err)
 	}
 
-	return searchResponseFromIndexer(req.Query, results), nil
+	return searchResponseFromIndexer(results), nil
 }
 
-func searchResponseFromIndexer(_ string, results []indexerSearchResult) apischema.SearchResponse {
+func searchResponseFromIndexer(results []indexerSearchResult) apischema.SearchResponse {
 	response := apischema.SearchResponse{Results: make([]apischema.SearchResult, 0, len(results))}
 	for _, result := range results {
 		response.Results = append(response.Results, searchResultFromIndexer(result))

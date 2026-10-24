@@ -19,7 +19,7 @@ func (b *NetworkdBackend) Name() string {
 }
 
 func DetectNetworkdBackend(env Environment, iface string) (ConfigBackend, error) {
-	paths, err := globSorted(filepath.Join(env.NetworkdDir, "*.network"))
+	paths, err := filepath.Glob(filepath.Join(env.NetworkdDir, "*.network"))
 	if err != nil {
 		return nil, err
 	}

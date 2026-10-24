@@ -14,7 +14,7 @@ func TestOpenStoreRecoveringQuarantinesConfirmedCorruption(t *testing.T) {
 		t.Fatalf("write corrupt database: %v", err)
 	}
 
-	store, err := OpenStoreRecovering(context.Background(), dbPath, DefaultOpenOptions(), nil)
+	store, err := OpenStoreRecovering(context.Background(), dbPath, nil)
 	if err != nil {
 		t.Fatalf("OpenStoreRecovering: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestOpenStoreRecoveringQuarantinesIncompatibleSchema(t *testing.T) {
 		t.Fatalf("close legacy db: %v", closeErr)
 	}
 
-	store, err := OpenStoreRecovering(context.Background(), dbPath, DefaultOpenOptions(), nil)
+	store, err := OpenStoreRecovering(context.Background(), dbPath, nil)
 	if err != nil {
 		t.Fatalf("OpenStoreRecovering: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestOpenStoreRecoveringPreservesOperationalFailure(t *testing.T) {
 	if err := os.Mkdir(dbPath, 0o700); err != nil {
 		t.Fatalf("mkdir database path: %v", err)
 	}
-	if store, err := OpenStoreRecovering(context.Background(), dbPath, DefaultOpenOptions(), nil); err == nil {
+	if store, err := OpenStoreRecovering(context.Background(), dbPath, nil); err == nil {
 		_ = store.Close()
 		t.Fatal("OpenStoreRecovering accepted a directory")
 	}

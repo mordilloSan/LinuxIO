@@ -257,14 +257,13 @@ func TestStoreMovesAsideCorruptDatabaseAndRecreatesSchema(t *testing.T) {
 	require.NoError(t, store.WriteSnapshot(time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
 }
 
-func TestStoreDatabaseIntegrityAndVacuum(t *testing.T) {
+func TestStoreDatabaseIntegrity(t *testing.T) {
 	s, err := OpenStore(t.TempDir())
 	require.NoError(t, err)
 	defer s.Close()
 
 	require.NoError(t, s.WriteSnapshot(time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
 	require.NoError(t, s.IntegrityCheck())
-	require.NoError(t, s.Vacuum())
 }
 
 func TestStoreUnknownPluginHistory(t *testing.T) {

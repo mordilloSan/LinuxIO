@@ -270,7 +270,7 @@ func setupTestDB(t *testing.T) (context.Context, *sql.DB, string) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
-	db, err := OpenContext(context.Background(), dbPath, DefaultOpenOptions())
+	db, err := OpenContext(context.Background(), dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

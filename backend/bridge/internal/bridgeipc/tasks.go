@@ -61,11 +61,6 @@ type TaskOwner struct {
 	UID       uint32 `json:"uid,omitempty"`
 }
 
-// Empty reports whether the TaskOwner is unset (all fields empty).
-func (o TaskOwner) Empty() bool {
-	return o.SessionID == "" && o.Username == "" && o.UID == 0
-}
-
 // MatchesSession reports whether o and other refer to the same exact session.
 func (o TaskOwner) MatchesSession(other TaskOwner) bool {
 	return o.SessionID != "" && other.SessionID != "" && o.SessionID == other.SessionID
@@ -283,22 +278,6 @@ func (r *TaskService) AttachData(ctx context.Context, task *Task, stream net.Con
 	return attacher(ctx, task, stream, request)
 }
 
-// Create creates a new unowned task in the registry.
-func (r *TaskService) Create(taskType string, request any) (*Task, error) {
-	return r.CreateForOwner(taskType, request, TaskOwner{})
-}
-
-// CreateForOwner creates a new session-scoped task owned by the specified owner.
-func (r *TaskService) CreateForOwner(taskType string, request any, owner TaskOwner, metadata ...*TaskMetadata) (*Task, error) {
-	return r.CreateForOwnerWithLifetime(taskType, request, owner, TaskLifetimeSession, metadata...)
-}
-
-// CreateForOwnerWithLifetime creates a new task with an explicit owner scope.
-func (r *TaskService) CreateForOwnerWithLifetime(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, metadata ...*TaskMetadata) (*Task, error) {
-	task, _, err := r.ClaimForOwnerWithIdentity(taskType, request, owner, lifetime, TaskIdentity{}, metadata...)
-	return task, err
-}
-
 // ClaimForOwnerWithIdentity creates a Task or returns the existing Task for an
 // identical stable identity. A reused ID with a different route, owner scope,
 // or fingerprint is rejected instead of being treated as a retry.
@@ -390,22 +369,6 @@ func (r *TaskService) GetForOwner(id string, owner TaskOwner) (*Task, bool) {
 	return task, true
 }
 
-// List returns snapshots of all tasks in the registry.
-func (r *TaskService) List() []TaskSnapshot {
-	r.mu.RLock()
-	tasks := make([]*Task, 0, len(r.tasks))
-	for _, task := range r.tasks {
-		tasks = append(tasks, task)
-	}
-	r.mu.RUnlock()
-
-	snapshots := make([]TaskSnapshot, 0, len(tasks))
-	for _, task := range tasks {
-		snapshots = append(snapshots, task.Snapshot())
-	}
-	return snapshots
-}
-
 // ListForOwner returns snapshots of all tasks belonging to the owner.
 func (r *TaskService) ListForOwner(owner TaskOwner) []TaskSnapshot {
 	r.mu.RLock()
@@ -422,18 +385,6 @@ func (r *TaskService) ListForOwner(owner TaskOwner) []TaskSnapshot {
 		}
 	}
 	return filtered
-}
-
-// ListActive returns snapshots of all queued and running tasks.
-func (r *TaskService) ListActive() []TaskSnapshot {
-	all := r.List()
-	active := all[:0]
-	for _, snapshot := range all {
-		if snapshot.State == TaskStateQueued || snapshot.State == TaskStateRunning {
-			active = append(active, snapshot)
-		}
-	}
-	return active
 }
 
 // ListActiveForOwner returns snapshots of all queued and running tasks belonging to the owner.
@@ -702,12 +653,6 @@ func (j *Task) trimProgressLogLocked() {
 	}
 }
 
-// Subscribe returns a channel that receives task events, and an unsubscribe function.
-func (j *Task) Subscribe(buffer int) (<-chan TaskEvent, func()) {
-	ch, _, unsubscribe := j.SubscribeWithReplay(buffer)
-	return ch, unsubscribe
-}
-
 // SubscribeWithReplay returns a channel that receives task events, prior progress
 // events for replay, and an unsubscribe function. The replay contains up to
 // DefaultTaskProgressReplayLimit recent progress events.
@@ -745,7 +690,7 @@ func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEv
 
 func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 	// Every field is set explicitly rather than inherited. A task context is
-	// rooted at context.Background (see CreateForOwner), and a queued task is
+	// rooted at context.Background (see ClaimForOwnerWithIdentity), and a queued task is
 	// promoted by whichever goroutine finished the task ahead of it, so an
 	// inherited label set would name the wrong session. The routeRunner timeout
 	// goroutine picks these up from here.

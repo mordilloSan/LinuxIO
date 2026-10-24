@@ -147,7 +147,6 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
         host: host.trim() || undefined,
         dns: dnsStr,
         mtu: mtu.trim() || "0",
-        peersJson: "[]",
         numPeers: String(peers),
       },
       {

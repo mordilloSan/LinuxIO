@@ -44,7 +44,7 @@ func New(cfg configfile.Config, configPath string) (*daemon, error) {
 		configPath = configfile.DefaultPath()
 	}
 
-	store, err := storage.OpenStoreRecovering(context.Background(), storage.DefaultDBPath, storage.DefaultOpenOptions(), indexing.SameFile)
+	store, err := storage.OpenStoreRecovering(context.Background(), storage.DefaultDBPath, indexing.SameFile)
 	if err != nil {
 		return nil, err
 	}

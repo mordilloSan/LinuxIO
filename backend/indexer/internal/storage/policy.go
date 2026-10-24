@@ -36,17 +36,3 @@ const (
 	// delete triggers are bypassed in favour of one rebuild.
 	ftsPruneBypassEntries = 50000
 )
-
-// DefaultOpenOptions are the fixed SQLite connection options.
-func DefaultOpenOptions() OpenOptions {
-	return OpenOptions{
-		BusyTimeout:     5 * time.Second,
-		JournalMode:     "WAL",
-		Synchronous:     "OFF",
-		AutoVacuum:      "INCREMENTAL",
-		MaxOpenConns:    5,
-		MaxIdleConns:    2,
-		ConnMaxIdleTime: 5 * time.Minute,
-		StmtCacheSize:   16,
-	}
-}

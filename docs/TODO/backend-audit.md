@@ -471,21 +471,36 @@ fix, so each item can be accepted or rejected on that basis.
 
 ## E. Lean (delete / merge; grep-verified by the sweeps)
 
-- [ ] **79.** `docker.delete_compose_stack` + `DeleteComposeStack`, `deleteComposeFiles`, `tryRemoveEmptyDir` — no frontend caller (only generated metadata), duplicates `delete_stack` — `backend/bridge/handlers/docker/compose.go:1432-1524`, `handlers.go:49,277-279` (~95 lines; needs `make generate`).
-- [ ] **80.** `PeersJSON` / `parseOptionalPeersValue` — frontend only sends `numPeers`; unvalidated input path — `wireguard/add_interface.go:94,250-264`, `apischema/wireguard.go:105` (~20 lines; hardening win; `make generate`).
-- [ ] **81.** Eight near-identical `common/systemd/systemd.go` wrappers each calling `requireUnitName` — fold into `callUnitJob`/one `unitFilesOp` (~60 lines).
-- [ ] **82.** Indexer `OpenOptions`/`NormalizeOpenOptions` — only ever `DefaultOpenOptions()` (`fullscan.go:83`, `daemon.go`); `policy.go` says values are fixed (~40 lines). Also monitoring `store.Vacuum` (`store/store.go:315`) called only from its own test.
-- [ ] **83.** Dead `bridgeipc` surface: `TaskOwner.Empty` (`tasks.go:65`), `TaskService.List` (`:394`), `ListActive` (`:428`); `Create`/`CreateForOwner`/`CreateForOwnerWithLifetime`, `Task.Subscribe`/`SubscribeWithReplay` only used by tests (~60 lines; convert tests).
-- [ ] **84.** `systemd/timer_time.go:19` `timerNextElapseUsec` and `:31` `timerNextElapseVariantUsec` — same algorithm; keep one.
-- [ ] **85.** `validateOwnership` byte-identical in `common/atomicfile/atomicfile.go:66` and `common/filelock/filelock.go:135`.
-- [ ] **86.** Btrfs `alertSource`/`raiseAlert` (`runner.go:14,135`) duplicate `AlertSource`/`raise` (`health.go:16,28`) (~8 lines).
-- [ ] **87.** Two `shellQuote` helpers with different rules — `common/btrfs/replication_run.go:~40`, `cli/journal.go:~25`.
-- [ ] **88.** `globSorted` hand-rolled O(n²) sort — `network/internal/ifconfig/types.go:118-135`; `filepath.Glob` already sorts per directory.
-- [ ] **89.** `docker/container.go`: seven one-method interfaces (`containerStarter`…`containerRemover`) exist only so tests can check an `fmt.Errorf` wrap.
-- [ ] **90.** `session.Session.Capabilities` never set or read (`common/session/session.go`); `authipc.MaxError` unreferenced (`common/ipc/auth/auth.go:23`); `YamuxSession.conn` stored never read (`common/ipc/relay/yamux.go:24`); `authclient.BuildRequest` single-caller struct fill (`webserver/authclient/client.go:111`); `registerYamuxSession` `old != nil` branch unreachable (`webserver/bridge/bridge.go:94-105`); embedded `Logo.png` unreferenced and `isStaticAsset` labels for files that do not exist (`webserver/web`).
-- [ ] **91.** `EditorFileInfo.IsRegularFile/Size/CanOpenAsText` read only by tests (`filebrowser/services/safe_open.go:30-37`); `RunSmartTest` result map discarded by its only caller (`storage/smart.go:18-59`); `searchResponseFromIndexer(_ string, …)` unused param; `deleteBatchItem`'s `ok` always true; `detachedIndexerUpdates` waited on only in tests.
-- [ ] **92.** `streamrelay.ErrorCode` used only inside `streamrelay/errors.go`; `bridgeipc.statusCode` does the same mapping (merge).
-- [ ] **93.** `indexer/daemon/sse.go` declares both `sseEventWriter` and `sseEventSender`, differing only by `SendError`.
+- [x] **79.** `docker.delete_compose_stack` + `DeleteComposeStack`, `deleteComposeFiles`, `tryRemoveEmptyDir` — no frontend caller (only generated metadata), duplicates `delete_stack` — `backend/bridge/handlers/docker/compose.go:1432-1524`, `handlers.go:49,277-279` (~95 lines; needs `make generate`).
+  - Done 2026-10-24: removed `DeleteComposeStack`, `deleteComposeFiles`, `tryRemoveEmptyDir`, `handleDeleteComposeStack` and the `docker.delete_compose_stack` route; call-route count in `TestAllTaskRoutesUseTaskRunner` bumped; client regenerated.
+- [x] **80.** `PeersJSON` / `parseOptionalPeersValue` — frontend only sends `numPeers`; unvalidated input path — `wireguard/add_interface.go:94,250-264`, `apischema/wireguard.go:105` (~20 lines; hardening win; `make generate`).
+  - Done 2026-10-24: removed `WireGuardAddInterfaceRequest.PeersJSON`, `parseOptionalPeersValue`, `resolveInterfacePeers`; `AddInterface` calls `generatePeers` inline. The frontend *did* send `peersJson: "[]"` (`CreateInterfaceButton.tsx`) — that line is removed and the client regenerated.
+- [x] **81.** Eight near-identical `common/systemd/systemd.go` wrappers each calling `requireUnitName` — fold into `callUnitJob`/one `unitFilesOp` (~60 lines).
+  - Done 2026-10-24: `callUnitJob` checks the unit name; one `unitFilesOp` replaces the four `*UnitFiles` helpers; `GetUnitFileState` now wraps its error. Existing tests cover it.
+- [x] **82.** Indexer `OpenOptions`/`NormalizeOpenOptions` — only ever `DefaultOpenOptions()` (`fullscan.go:83`, `daemon.go`); `policy.go` says values are fixed (~40 lines). Also monitoring `store.Vacuum` (`store/store.go:315`) called only from its own test.
+  - Done 2026-10-24: `OpenOptions`/`NormalizeOpenOptions`/`DefaultOpenOptions` replaced by constants and DSN literals (same values); monitoring `Store.Vacuum` and its test call removed.
+- [x] **83.** Dead `bridgeipc` surface: `TaskOwner.Empty` (`tasks.go:65`), `TaskService.List` (`:394`), `ListActive` (`:428`); `Create`/`CreateForOwner`/`CreateForOwnerWithLifetime`, `Task.Subscribe`/`SubscribeWithReplay` only used by tests (~60 lines; convert tests).
+  - Done 2026-10-24: deleted `TaskOwner.Empty`, `TaskService.List/ListActive/Create/CreateForOwner/CreateForOwnerWithLifetime` and `Task.Subscribe`; tests converted to `ClaimForOwnerWithIdentity` / `subscribeWithReplayStatus`. `Task.SubscribeWithReplay` kept: tests in `handlers/packages` and `handlers/docker` use it.
+- [x] **84.** `systemd/timer_time.go:19` `timerNextElapseUsec` and `:31` `timerNextElapseVariantUsec` — same algorithm; keep one.
+  - Done 2026-10-24: the variant-property implementation is now `timerNextElapseUsec`; the generic-property duplicate is deleted.
+- [x] **85.** `validateOwnership` byte-identical in `common/atomicfile/atomicfile.go:66` and `common/filelock/filelock.go:135`.
+  - Done 2026-10-24: `atomicfile.ValidateOwnership` exported; the `filelock` copy deleted.
+- [x] **86.** Btrfs `alertSource`/`raiseAlert` (`runner.go:14,135`) duplicate `AlertSource`/`raise` (`health.go:16,28`) (~8 lines).
+  - Done 2026-10-24: `alertSource`/`raiseAlert` removed; `runner.go` and `RecordReplicationOutcome` use `AlertSource`/`raise`.
+- [x] **87.** Two `shellQuote` helpers with different rules — `common/btrfs/replication_run.go:~40`, `cli/journal.go:~25`.
+  - Done 2026-10-24: both quoted a POSIX sh word; one strict `hostcmd.ShellQuote` replaces them (the cli `sg -c` string now quotes every argument; same argv). `TestShellQuote` moved to `hostcmd`.
+- [x] **88.** `globSorted` hand-rolled O(n²) sort — `network/internal/ifconfig/types.go:118-135`; `filepath.Glob` already sorts per directory.
+  - Done 2026-10-24: `globSorted` removed; the four ifconfig backends call `filepath.Glob` (single-directory patterns, already lexical).
+- [x] **89.** `docker/container.go`: seven one-method interfaces (`containerStarter`…`containerRemover`) exist only so tests can check an `fmt.Errorf` wrap.
+  - Kept 2026-10-24: the only way to drop the interfaces deleted the tests pinning `kill` → `SIGKILL` and `remove` → `Force`; the interfaces are that test seam, so they stay.
+- [x] **90.** `session.Session.Capabilities` never set or read (`common/session/session.go`); `authipc.MaxError` unreferenced (`common/ipc/auth/auth.go:23`); `YamuxSession.conn` stored never read (`common/ipc/relay/yamux.go:24`); `authclient.BuildRequest` single-caller struct fill (`webserver/authclient/client.go:111`); `registerYamuxSession` `old != nil` branch unreachable (`webserver/bridge/bridge.go:94-105`); embedded `Logo.png` unreferenced and `isStaticAsset` labels for files that do not exist (`webserver/web`).
+  - Done 2026-10-24: removed `Session.Capabilities`, `authipc.MaxError`, `YamuxSession.conn`, `authclient.BuildRequest` (inlined), the unreachable `registerYamuxSession` branch (+ its test) and the dead `isStaticAsset` labels. `Logo.png` kept: the embed dir is vite output and `README.md` uses `frontend/public/Logo.png`.
+- [x] **91.** `EditorFileInfo.IsRegularFile/Size/CanOpenAsText` read only by tests (`filebrowser/services/safe_open.go:30-37`); `RunSmartTest` result map discarded by its only caller (`storage/smart.go:18-59`); `searchResponseFromIndexer(_ string, …)` unused param; `deleteBatchItem`'s `ok` always true; `detachedIndexerUpdates` waited on only in tests.
+  - Done 2026-10-24: removed `EditorFileInfo.IsRegularFile/Size/CanOpenAsText`, the `RunSmartTest` result map, the unused `searchResponseFromIndexer` param and `deleteBatchItem`'s always-true `ok`. `detachedIndexerUpdates` kept: seven tests sync on it.
+- [x] **92.** `streamrelay.ErrorCode` used only inside `streamrelay/errors.go`; `bridgeipc.statusCode` does the same mapping (merge).
+  - Done 2026-10-24: `streamrelay.ErrorCode` removed; `bridgeipc.StatusCode` exported and used by `streamrelay.WriteError`. Stream-relay errors now carry the sentinel codes (400/403/404/409/429/504) instead of 500 — the union of the two mappings.
+- [x] **93.** `indexer/daemon/sse.go` declares both `sseEventWriter` and `sseEventSender`, differing only by `SendError`.
+  - Not applicable 2026-10-24: `*sseWriter` implements only `SendEvent`, so the two interfaces are not duplicates; collapsing them does not compile without adding code.
 
 ## F. Consistency patterns to unify (one convention each; fix when touching the file, or as one sweep)
 

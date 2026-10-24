@@ -46,7 +46,6 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.ValidateComposeRequest, apischema.ValidateComposeResponse]("docker.validate_compose", apischema.RetrySafe()).Handle(handlers.handleValidateCompose),
 		apischema.Call[apischema.StackNameRequest, apischema.ComposeFilePathResponse]("docker.get_compose_file_path", apischema.RetrySafe()).Handle(handlers.handleGetComposeFilePath),
 		apischema.Call[apischema.DirPathRequest, apischema.DirectoryValidationResult]("docker.validate_stack_directory", apischema.RetrySafe()).Handle(handlers.handleValidateStackDirectory),
-		apischema.Call[apischema.ProjectNameRequest, apischema.NoResponse]("docker.delete_compose_stack", apischema.NoEndpoint()).HandleVoid(handlers.handleDeleteComposeStack),
 		apischema.Call[apischema.NoRequest, apischema.DockerDaemonConfig]("docker.get_daemon_config", apischema.RetrySafe()).Handle(handlers.handleGetDaemonConfig),
 		apischema.Call[apischema.DockerDaemonConfig, apischema.DockerDaemonConfigSetResult]("docker.set_daemon_config", apischema.Privileged()).Handle(handlers.handleSetDaemonConfig),
 		apischema.Call[apischema.NoRequest, *apischema.DockerSystemInfo]("docker.get_docker_info", apischema.RetrySafe()).Handle(handlers.handleGetDockerInfo),
@@ -272,10 +271,6 @@ func (h dockerHandlers) handleGetComposeFilePath(ctx context.Context, req apisch
 
 func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req apischema.DirPathRequest) (apischema.DirectoryValidationResult, error) {
 	return ValidateStackDirectory(ctx, req.DirPath)
-}
-
-func (h dockerHandlers) handleDeleteComposeStack(ctx context.Context, req apischema.ProjectNameRequest) error {
-	return DeleteComposeStack(ctx, h.rt.Username(), h.rt.Store, req.ProjectName)
 }
 
 func (h dockerHandlers) handleGetIconURI(ctx context.Context, req apischema.IdentifierRequest) (apischema.DockerIconURIResponse, error) {

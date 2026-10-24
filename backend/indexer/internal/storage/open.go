@@ -8,99 +8,39 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type OpenOptions struct {
-	BusyTimeout     time.Duration
-	JournalMode     string
-	Synchronous     string
-	AutoVacuum      string
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxIdleTime time.Duration
-	// StmtCacheSize is the number of prepared statements the driver caches
-	// per connection (go-sqlite3 _stmt_cache_size); 0 disables the cache.
-	StmtCacheSize int
-}
+// Fixed SQLite connection settings. WAL allows concurrent readers while
+// streaming writes happen; auto_vacuum=INCREMENTAL lets pruning reclaim
+// deleted generations. stmtCacheSize is go-sqlite3's per-connection
+// prepared statement cache.
+const (
+	busyTimeoutMillis = 5000
+	stmtCacheSize     = 16
+	maxOpenConns      = 5
+	maxIdleConns      = 2
+	connMaxIdleTime   = 5 * time.Minute
+)
 
-func NormalizeOpenOptions(opts OpenOptions) (OpenOptions, error) {
-	defaults := DefaultOpenOptions()
-	if opts.JournalMode == "" {
-		opts.JournalMode = defaults.JournalMode
-	}
-	if opts.Synchronous == "" {
-		opts.Synchronous = defaults.Synchronous
-	}
-	if opts.AutoVacuum == "" {
-		opts.AutoVacuum = defaults.AutoVacuum
-	}
-
-	if opts.BusyTimeout < 0 {
-		return OpenOptions{}, fmt.Errorf("db busy timeout must be non-negative")
-	}
-	if opts.MaxOpenConns < 0 {
-		return OpenOptions{}, fmt.Errorf("db max open conns must be non-negative")
-	}
-	if opts.MaxIdleConns < 0 {
-		return OpenOptions{}, fmt.Errorf("db max idle conns must be non-negative")
-	}
-	if opts.ConnMaxIdleTime < 0 {
-		return OpenOptions{}, fmt.Errorf("db conn max idle time must be non-negative")
-	}
-	if opts.StmtCacheSize < 0 {
-		return OpenOptions{}, fmt.Errorf("db stmt cache size must be non-negative")
-	}
-	opts.JournalMode = strings.ToUpper(strings.TrimSpace(opts.JournalMode))
-	opts.Synchronous = strings.ToUpper(strings.TrimSpace(opts.Synchronous))
-	opts.AutoVacuum = strings.ToUpper(strings.TrimSpace(opts.AutoVacuum))
-	if !slices.Contains([]string{"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}, opts.JournalMode) {
-		return OpenOptions{}, fmt.Errorf("invalid db journal mode %q", opts.JournalMode)
-	}
-	if !slices.Contains([]string{"OFF", "NORMAL", "FULL", "EXTRA"}, opts.Synchronous) {
-		return OpenOptions{}, fmt.Errorf("invalid db synchronous %q", opts.Synchronous)
-	}
-	if !slices.Contains([]string{"NONE", "FULL", "INCREMENTAL"}, opts.AutoVacuum) {
-		return OpenOptions{}, fmt.Errorf("invalid db auto vacuum %q", opts.AutoVacuum)
-	}
-	return opts, nil
-}
-
-// OpenContext creates (or reuses) a SQLite database with the supplied options
-// and ensures the schema exists, honoring ctx cancellation.
-func OpenContext(parent context.Context, path string, opts OpenOptions) (*sql.DB, error) {
+// OpenContext creates (or reuses) a SQLite database and ensures the schema exists, honoring ctx cancellation.
+func OpenContext(parent context.Context, path string) (*sql.DB, error) {
 	if parent == nil {
 		parent = context.TODO()
 	}
 	if path == "" {
 		path = defaultDBPath
 	}
-	if opts == (OpenOptions{}) {
-		opts = DefaultOpenOptions()
-	}
-	opts, err := NormalizeOpenOptions(opts)
-	if err != nil {
-		return nil, err
-	}
 
-	// Use WAL for concurrent readers while streaming writes happen.
-	// auto_vacuum=INCREMENTAL allows pruning to reclaim deleted generations.
 	// The path is URI-escaped (keeping '/' literal) inside a file: URI so that
 	// reserved characters like '?' or '#' in filenames cannot be misparsed as
 	// DSN parameters.
 	escapedPath := strings.ReplaceAll(url.PathEscape(path), "%2F", "/")
-	dsn := fmt.Sprintf("file:%s?_busy_timeout=%d&_foreign_keys=on&_journal_mode=%s&_synchronous=%s&_auto_vacuum=%s&_stmt_cache_size=%d",
-		escapedPath,
-		int(opts.BusyTimeout/time.Millisecond),
-		opts.JournalMode,
-		opts.Synchronous,
-		opts.AutoVacuum,
-		opts.StmtCacheSize,
-	)
+	dsn := fmt.Sprintf("file:%s?_busy_timeout=%d&_foreign_keys=on&_journal_mode=WAL&_synchronous=OFF&_auto_vacuum=INCREMENTAL&_stmt_cache_size=%d",
+		escapedPath, busyTimeoutMillis, stmtCacheSize)
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
@@ -110,7 +50,7 @@ func OpenContext(parent context.Context, path string, opts OpenOptions) (*sql.DB
 	defer cancel()
 
 	var journalMode string
-	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode = `+opts.JournalMode+`;`).Scan(&journalMode); err != nil {
+	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode = WAL;`).Scan(&journalMode); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			slog.Warn("failed to close DB after journal mode setup error", "err", closeErr)
 		}
@@ -119,10 +59,10 @@ func OpenContext(parent context.Context, path string, opts OpenOptions) (*sql.DB
 
 	// Configure connection pool for WAL mode concurrent access
 	// WAL mode allows multiple readers + 1 writer simultaneously
-	db.SetMaxOpenConns(opts.MaxOpenConns)
-	db.SetMaxIdleConns(opts.MaxIdleConns)
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
 	db.SetConnMaxLifetime(0)
-	db.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
+	db.SetConnMaxIdleTime(connMaxIdleTime)
 
 	if err := initSchema(ctx, db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
@@ -136,8 +76,8 @@ func OpenContext(parent context.Context, path string, opts OpenOptions) (*sql.DB
 
 // OpenStore opens the cache at path. sameFile is the filesystem check the
 // hardlink accounting needs; see SameFileFunc.
-func OpenStore(ctx context.Context, path string, opts OpenOptions, sameFile SameFileFunc) (*Store, error) {
-	db, err := OpenContext(ctx, path, opts)
+func OpenStore(ctx context.Context, path string, sameFile SameFileFunc) (*Store, error) {
+	db, err := OpenContext(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -148,8 +88,8 @@ func OpenStore(ctx context.Context, path string, opts OpenOptions, sameFile Same
 // rebuildable cache only when SQLite confirms corruption or the schema is
 // incompatible. Operational failures (busy, timeout, and I/O errors) preserve
 // the last good cache.
-func OpenStoreRecovering(ctx context.Context, path string, opts OpenOptions, sameFile SameFileFunc) (*Store, error) {
-	db, err := OpenContext(ctx, path, opts)
+func OpenStoreRecovering(ctx context.Context, path string, sameFile SameFileFunc) (*Store, error) {
+	db, err := OpenContext(ctx, path)
 	if err != nil {
 		var reason string
 		switch {
@@ -163,7 +103,7 @@ func OpenStoreRecovering(ctx context.Context, path string, opts OpenOptions, sam
 		if err = quarantineDatabaseFiles(path, reason); err != nil {
 			return nil, fmt.Errorf("quarantine %s database: %w", reason, err)
 		}
-		if db, err = OpenContext(ctx, path, opts); err != nil {
+		if db, err = OpenContext(ctx, path); err != nil {
 			return nil, err
 		}
 	}

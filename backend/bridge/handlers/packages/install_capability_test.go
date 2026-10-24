@@ -18,7 +18,7 @@ import (
 
 func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
-	task, err := registry.Create("system.install_capability", nil)
+	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 	}
 
 	registry := bridgeipc.NewTaskService()
-	task, err := registry.Create("system.install_capability", nil)
+	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

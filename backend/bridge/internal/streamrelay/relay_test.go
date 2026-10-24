@@ -152,11 +152,11 @@ func TestRunStopsWhenContextIsCanceled(t *testing.T) {
 }
 
 func TestWriteErrorUsesBridgeCode(t *testing.T) {
-	if got := ErrorCode(bridgeipc.NewError("bad", 400)); got != 400 {
-		t.Fatalf("ErrorCode(bridge 400) = %d", got)
+	if got := bridgeipc.StatusCode(bridgeipc.NewError("bad", 400)); got != 400 {
+		t.Fatalf("bridgeipc.StatusCode(bridge 400) = %d", got)
 	}
-	if got := ErrorCode(errors.New("boom")); got != 500 {
-		t.Fatalf("ErrorCode(plain) = %d", got)
+	if got := bridgeipc.StatusCode(errors.New("boom")); got != 500 {
+		t.Fatalf("bridgeipc.StatusCode(plain) = %d", got)
 	}
 	var buf bytes.Buffer
 	if err := WriteError(&buf, 0, bridgeipc.NewError("bad", 404)); err != nil {

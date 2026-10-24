@@ -312,11 +312,6 @@ func (s *Store) IntegrityCheck() error {
 	return checkDBIntegrity(s.db)
 }
 
-func (s *Store) Vacuum() error {
-	_, err := s.db.Exec("VACUUM")
-	return err
-}
-
 func checkDBIntegrity(db *sql.DB) error {
 	rows, err := db.Query("PRAGMA quick_check")
 	if err != nil {

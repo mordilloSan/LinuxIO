@@ -88,7 +88,7 @@ func runSmartTestTask(ctx context.Context, task *bridgeipc.Task, req apischema.D
 	}
 	state.reportStart()
 
-	if _, err := RunSmartTest(ctx, req.Device, req.TestType); err != nil {
+	if err := RunSmartTest(ctx, req.Device, req.TestType); err != nil {
 		return SmartTestResult{}, bridgeipc.NewError(err.Error(), 500)
 	}
 

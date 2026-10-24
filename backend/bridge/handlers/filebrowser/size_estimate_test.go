@@ -30,7 +30,7 @@ func lastFileProgress(t *testing.T, task *bridgeipc.Task) FileProgress {
 func TestTaskPhaseCallbacksReportIndeterminateUntilSizeLands(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
 	req := apischema.FileCompressRequest{TargetPath: "/tmp/x.zip", Format: "zip", Paths: []string{"/tmp"}}
-	task, err := registry.Create("filebrowser.compress", req)
+	task, _, err := registry.ClaimForOwnerWithIdentity("filebrowser.compress", req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestTaskPhaseCallbacksReportIndeterminateUntilSizeLands(t *testing.T) {
 func TestTaskPhaseCallbacksStaySilentForKnownZeroTotal(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
 	req := apischema.FileCompressRequest{TargetPath: "/tmp/x.zip", Format: "zip", Paths: []string{"/tmp"}}
-	task, err := registry.Create("filebrowser.compress", req)
+	task, _, err := registry.ClaimForOwnerWithIdentity("filebrowser.compress", req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

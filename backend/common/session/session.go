@@ -68,11 +68,10 @@ type CapabilitiesError struct {
 // auth daemon and the bridge. The webserver-only manager lives in
 // backend/webserver/sessions.
 type Session struct {
-	SessionID    string                `json:"session_id"`
-	User         User                  `json:"user"`
-	Privileged   bool                  `json:"privileged"`
-	Capabilities CapabilitiesAvailable `json:"capabilities"`
-	Timing       Timing                `json:"timing"`
+	SessionID  string `json:"session_id"`
+	User       User   `json:"user"`
+	Privileged bool   `json:"privileged"`
+	Timing     Timing `json:"timing"`
 }
 
 // DiagnosticRef returns a stable, non-secret correlation value for a session

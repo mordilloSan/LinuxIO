@@ -338,7 +338,7 @@ func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanIte
 	return items, grandTotal, failures
 }
 
-func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string, base, total int64, indeterminate bool, limiter *progressThrottle) (int64, bool, *FileBatchItemFailure, error) {
+func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string, base, total int64, indeterminate bool, limiter *progressThrottle) (int64, *FileBatchItemFailure, error) {
 	count, err := services.DeleteFilesWithProgress(ctx, path, services.DeleteOptions{
 		Progress: func(p int64) {
 			cur, pct, ok := limiter.Set(base+p, total)
@@ -355,13 +355,13 @@ func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string
 		},
 	})
 	if errors.Is(err, context.Canceled) {
-		return count, false, nil, err
+		return count, nil, err
 	}
 	if err != nil {
 		slog.Debug("batch delete item failed", "path", path, "error", err)
-		return count, false, &FileBatchItemFailure{Path: raw, Error: err.Error()}, nil
+		return count, &FileBatchItemFailure{Path: raw, Error: err.Error()}, nil
 	}
-	return count, true, nil, nil
+	return count, nil, nil
 }
 
 // runDeleteBatchTask deletes many paths as a single task. It resolves entry
@@ -390,7 +390,7 @@ func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userco
 			return FileBatchResult{}, context.Canceled
 		}
 
-		count, ok, failure, err := deleteBatchItem(ctx, task, item.path, item.raw, processed, grandTotal, indeterminate, limiter)
+		count, failure, err := deleteBatchItem(ctx, task, item.path, item.raw, processed, grandTotal, indeterminate, limiter)
 		// count reflects entries actually removed, even when the item failed
 		// partway through, so aggregate progress stays monotonic.
 		processed += count
@@ -401,9 +401,7 @@ func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userco
 			failures = append(failures, *failure)
 			continue
 		}
-		if ok {
-			succeeded++
-		}
+		succeeded++
 
 		updates = append(updates, item.path)
 	}

@@ -15,9 +15,9 @@ var validDeviceNameRe = regexp.MustCompile(`^(sd[a-z]|hd[a-z]|nvme\d+n\d+)$`)
 
 // RunSmartTest starts a SMART self-test on the specified device.
 // testType can be "short" or "long" (extended).
-func RunSmartTest(ctx context.Context, device, testType string) (map[string]any, error) {
+func RunSmartTest(ctx context.Context, device, testType string) error {
 	if !validDeviceNameRe.MatchString(device) {
-		return nil, errors.New("invalid device name")
+		return errors.New("invalid device name")
 	}
 
 	// Validate test type
@@ -28,12 +28,12 @@ func RunSmartTest(ctx context.Context, device, testType string) (map[string]any,
 	case "long":
 		smartTestArg = "long"
 	default:
-		return nil, fmt.Errorf("invalid test type: %s (use 'short' or 'long')", testType)
+		return fmt.Errorf("invalid test type: %s (use 'short' or 'long')", testType)
 	}
 
 	smartctlPath, err := exec.LookPath("smartctl")
 	if err != nil {
-		return nil, fmt.Errorf("smartctl not found: %w", err)
+		return fmt.Errorf("smartctl not found: %w", err)
 	}
 
 	// Run the self-test
@@ -45,17 +45,11 @@ func RunSmartTest(ctx context.Context, device, testType string) (map[string]any,
 		outStr := string(out)
 		if !strings.Contains(outStr, "Testing has begun") &&
 			!strings.Contains(outStr, "Self-test routine") {
-			return nil, fmt.Errorf("smartctl self-test failed for %s: %w\nOutput: %s", device, err, outStr)
+			return fmt.Errorf("smartctl self-test failed for %s: %w\nOutput: %s", device, err, outStr)
 		}
 	}
 
-	return map[string]any{
-		"success": true,
-		"device":  device,
-		"test":    testType,
-		"message": fmt.Sprintf("SMART %s self-test started on /dev/%s", testType, device),
-		"output":  string(out),
-	}, nil
+	return nil
 }
 
 // SmartTestStatus represents the current state of a SMART self-test on a drive.

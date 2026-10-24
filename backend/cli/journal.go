@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 func journalctlCommand(args []string, pendingGroup string) *exec.Cmd {
@@ -21,24 +23,9 @@ func journalctlShellCommand(args []string) string {
 	parts := make([]string, 0, len(args)+1)
 	parts = append(parts, "journalctl")
 	for _, arg := range args {
-		parts = append(parts, shellQuote(arg))
+		parts = append(parts, hostcmd.ShellQuote(arg))
 	}
 	return strings.Join(parts, " ")
-}
-
-func shellQuote(arg string) string {
-	if arg == "" {
-		return "''"
-	}
-	if strings.IndexFunc(arg, func(r rune) bool {
-		return !((r >= 'a' && r <= 'z') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') ||
-			strings.ContainsRune("@%_+=:,./-", r))
-	}) == -1 {
-		return arg
-	}
-	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
 }
 
 func journalTermsForMode(mode string) []string {

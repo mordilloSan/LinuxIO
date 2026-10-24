@@ -26,7 +26,7 @@ func (c *shutdownTestConn) Close() error {
 func TestShutdownBridgeCancelsBeforeClosingTransport(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
 	const sessionID = "shutdown-test"
-	task, err := registry.CreateForOwner("test", nil, bridgeipc.TaskOwner{SessionID: sessionID})
+	task, _, err := registry.ClaimForOwnerWithIdentity("test", nil, bridgeipc.TaskOwner{SessionID: sessionID}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("CreateForOwner: %v", err)
 	}

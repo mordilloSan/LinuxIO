@@ -82,7 +82,7 @@ func TestSearchResultFromIndexerRecognizesDirectory(t *testing.T) {
 }
 
 func TestSearchResponseFromIndexerReturnsNonNilEmptyResults(t *testing.T) {
-	got := searchResponseFromIndexer("report", nil)
+	got := searchResponseFromIndexer(nil)
 	if got.Results == nil {
 		t.Fatalf("response = %#v, want non-nil empty results", got)
 	}

@@ -25,7 +25,7 @@ func DetectNetplanBackend(env Environment, iface string) (ConfigBackend, error) 
 	var matches []string
 	var kinds []string
 	for _, pattern := range []string{"*.yaml", "*.yml"} {
-		paths, err := globSorted(filepath.Join(env.NetplanDir, pattern))
+		paths, err := filepath.Glob(filepath.Join(env.NetplanDir, pattern))
 		if err != nil {
 			return nil, err
 		}

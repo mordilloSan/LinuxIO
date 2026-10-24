@@ -17,18 +17,6 @@ var (
 )
 
 func timerNextElapseUsec(session dbusclient.SystemSession, unit dbusclient.BusObject) (uint64, bool) {
-	if next, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "NextElapseUSecRealtime"); ok && next > 0 {
-		return next, true
-	}
-	if next, ok := getUint64Property(session, unit, dbusclient.SystemdTimerIface, "NextElapseUSecMonotonic"); ok && next > 0 {
-		if converted, ok := monotonicTimerUsecToRealtimeUsec(next); ok {
-			return converted, true
-		}
-	}
-	return 0, false
-}
-
-func timerNextElapseVariantUsec(session dbusclient.SystemSession, unit dbusclient.BusObject) (uint64, bool) {
 	if val, err := dbusclient.GetVariantProperty(session.Context(), unit, dbusclient.SystemdTimerIface, "NextElapseUSecRealtime"); err == nil {
 		if next, ok := val.Value().(uint64); ok && next > 0 {
 			return next, true

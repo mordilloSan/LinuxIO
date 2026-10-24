@@ -20,7 +20,6 @@ const (
 	MaxPassword   = 2048
 	MaxSessionID  = 64
 	MaxRemoteHost = 256
-	MaxError      = 256
 )
 
 type AuthResultCode uint8

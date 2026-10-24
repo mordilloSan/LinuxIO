@@ -19,3 +19,8 @@ func OutputError(name string, args []string, output []byte, err error) error {
 	}
 	return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, text)
 }
+
+// ShellQuote single-quotes s as one word for a POSIX sh command line.
+func ShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}

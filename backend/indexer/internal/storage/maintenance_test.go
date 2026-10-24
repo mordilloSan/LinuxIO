@@ -8,7 +8,7 @@ import (
 )
 
 func TestReleaseSQLiteMemorySucceeds(t *testing.T) {
-	db, err := OpenContext(context.Background(), filepath.Join(t.TempDir(), "index.db"), DefaultOpenOptions())
+	db, err := OpenContext(context.Background(), filepath.Join(t.TempDir(), "index.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -24,7 +24,7 @@ func TestReleaseSQLiteMemorySucceeds(t *testing.T) {
 }
 
 func TestReleaseSQLiteMemoryReportsFailures(t *testing.T) {
-	db, err := OpenContext(context.Background(), filepath.Join(t.TempDir(), "index.db"), DefaultOpenOptions())
+	db, err := OpenContext(context.Background(), filepath.Join(t.TempDir(), "index.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

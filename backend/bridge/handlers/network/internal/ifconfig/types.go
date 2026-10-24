@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/netdbus"
@@ -113,24 +112,6 @@ func ExistingMode(path string, fallback fs.FileMode) fs.FileMode {
 		return fallback
 	}
 	return info.Mode().Perm()
-}
-
-func globSorted(pattern string) ([]string, error) {
-	paths, err := filepath.Glob(pattern)
-	if err != nil {
-		return nil, err
-	}
-	if len(paths) <= 1 {
-		return paths, nil
-	}
-	for i := 0; i < len(paths)-1; i++ {
-		for j := i + 1; j < len(paths); j++ {
-			if paths[j] < paths[i] {
-				paths[i], paths[j] = paths[j], paths[i]
-			}
-		}
-	}
-	return paths, nil
 }
 
 func Unsupportedf(format string, args ...any) error {

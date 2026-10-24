@@ -127,7 +127,7 @@ func writeErrorResponse(w io.Writer, code authipc.AuthResultCode, message string
 func TestAuthenticateSuccess(t *testing.T) {
 	ln := listenAuthSocket(t)
 
-	req := BuildRequest("alice", "sess-1", "s3cret", "10.0.0.1", true)
+	req := &authipc.AuthRequest{User: "alice", SessionID: "sess-1", Password: "s3cret", RemoteHost: "10.0.0.1", Verbose: true}
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -146,7 +146,7 @@ func TestAuthenticateSuccess(t *testing.T) {
 		if got.User != req.User || got.Password != req.Password ||
 			got.SessionID != req.SessionID || got.RemoteHost != req.RemoteHost ||
 			got.Verbose != req.Verbose {
-			serverErr <- errors.New("decoded request did not match BuildRequest output")
+			serverErr <- errors.New("decoded request did not match the sent request")
 			return
 		}
 
@@ -207,7 +207,7 @@ func TestAuthenticateUnauthorized(t *testing.T) {
 		serverErr <- writeErrorResponse(conn, authipc.ResultAuthFailed, "authentication failed")
 	}()
 
-	req := BuildRequest("bob", "sess-2", "wrong", "10.0.0.2", false)
+	req := &authipc.AuthRequest{User: "bob", SessionID: "sess-2", Password: "wrong", RemoteHost: "10.0.0.2", Verbose: false}
 	result, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
@@ -249,7 +249,7 @@ func TestAuthenticateErrorEmptyMessage(t *testing.T) {
 		serverErr <- writeErrorResponse(conn, authipc.ResultInternalError, "")
 	}()
 
-	req := BuildRequest("carol", "sess-3", "pw", "10.0.0.3", false)
+	req := &authipc.AuthRequest{User: "carol", SessionID: "sess-3", Password: "pw", RemoteHost: "10.0.0.3", Verbose: false}
 	_, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
@@ -288,7 +288,7 @@ func TestAuthenticateTruncatedResponse(t *testing.T) {
 		serverErr <- err
 	}()
 
-	req := BuildRequest("dave", "sess-4", "pw", "10.0.0.4", false)
+	req := &authipc.AuthRequest{User: "dave", SessionID: "sess-4", Password: "pw", RemoteHost: "10.0.0.4", Verbose: false}
 	_, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
@@ -307,7 +307,7 @@ func TestAuthenticateDialFailure(t *testing.T) {
 	authSocketPath = filepath.Join(t.TempDir(), "does-not-exist.sock")
 	t.Cleanup(func() { authSocketPath = prev })
 
-	req := BuildRequest("erin", "sess-5", "pw", "10.0.0.5", false)
+	req := &authipc.AuthRequest{User: "erin", SessionID: "sess-5", Password: "pw", RemoteHost: "10.0.0.5", Verbose: false}
 	_, err := Authenticate(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected an error")
@@ -340,7 +340,7 @@ func TestAuthenticateBadMagicResponse(t *testing.T) {
 		serverErr <- err
 	}()
 
-	req := BuildRequest("frank", "sess-6", "pw", "10.0.0.6", false)
+	req := &authipc.AuthRequest{User: "frank", SessionID: "sess-6", Password: "pw", RemoteHost: "10.0.0.6", Verbose: false}
 	_, err := Authenticate(context.Background(), req)
 	if serverErr := <-serverErr; serverErr != nil {
 		t.Fatalf("server: %v", serverErr)
@@ -371,7 +371,7 @@ func TestAuthenticateCancelledContextClosesConnection(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	time.AfterFunc(50*time.Millisecond, cancel)
 
-	_, err := Authenticate(ctx, BuildRequest("bob", "sess-c", "pw", "10.0.0.2", false))
+	_, err := Authenticate(ctx, &authipc.AuthRequest{User: "bob", SessionID: "sess-c", Password: "pw", RemoteHost: "10.0.0.2", Verbose: false})
 	if err == nil {
 		t.Fatal("expected an error after cancellation")
 	}

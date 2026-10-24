@@ -263,7 +263,7 @@ func newSmartTestState(t *testing.T, poll func(context.Context, string) (SmartTe
 	t.Cleanup(func() { pollSmartStatus = orig })
 	pollSmartStatus = poll
 
-	task, err := bridgeipc.NewTaskService().Create("storage.run_smart_test", nil)
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity("storage.run_smart_test", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

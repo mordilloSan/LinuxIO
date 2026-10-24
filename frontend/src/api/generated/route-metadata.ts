@@ -55,7 +55,6 @@ export const ROUTE_MODES = {
   "docker.create_container": "call",
   "docker.create_network": "call",
   "docker.create_volume": "call",
-  "docker.delete_compose_stack": "call",
   "docker.delete_image": "call",
   "docker.delete_network": "call",
   "docker.delete_stack": "call",

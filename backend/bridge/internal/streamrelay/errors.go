@@ -9,18 +9,9 @@ import (
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
-// ErrorCode is the bridgeipc error code of err, or 500.
-func ErrorCode(err error) int {
-	var bridgeErr *bridgeipc.Error
-	if errors.As(err, &bridgeErr) && bridgeErr.Code != 0 {
-		return bridgeErr.Code
-	}
-	return 500
-}
-
 // WriteError writes err as an error result and closes the stream.
 func WriteError(w io.Writer, streamID uint32, err error) error {
-	return ipc.WriteResultErrorAndClose(w, streamID, err.Error(), ErrorCode(err))
+	return ipc.WriteResultErrorAndClose(w, streamID, err.Error(), bridgeipc.StatusCode(err))
 }
 
 // Canceled reports whether err is the result of the caller going away.

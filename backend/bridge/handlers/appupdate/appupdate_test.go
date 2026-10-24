@@ -155,7 +155,7 @@ func TestExecuteAppUpdateRelaysOutputBeforeRestart(t *testing.T) {
 	restartSystemdUnit = recordSuccessfulRestart(t, statusPath, restarted)
 
 	task := newSessionUpdateTask(t)
-	events, unsubscribe := task.Subscribe(8)
+	events, _, unsubscribe := task.SubscribeWithReplay(8)
 	defer unsubscribe()
 	if !task.Start(func(ctx context.Context, runningTask *bridgeipc.Task, _ any) (any, error) {
 		return executeAppUpdate(ctx, testRuntime(), runningTask, testRunID, "v2.3.4")
@@ -339,11 +339,11 @@ func configurePipedUpdateTest(t *testing.T, statusPath string) func() {
 
 func newSessionUpdateTask(t *testing.T) *bridgeipc.Task {
 	t.Helper()
-	task, err := bridgeipc.NewTaskService().CreateForOwner(routeAppUpdate, nil, bridgeipc.TaskOwner{
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeAppUpdate, nil, bridgeipc.TaskOwner{
 		SessionID: "session-a",
 		Username:  "alice",
 		UID:       1000,
-	})
+	}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create Task: %v", err)
 	}
