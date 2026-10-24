@@ -2,7 +2,7 @@ package logs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"os/exec"
 	"strings"
 	"testing"

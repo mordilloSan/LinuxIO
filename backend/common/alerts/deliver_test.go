@@ -3,7 +3,7 @@ package alerts
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net"
 	"net/http"
@@ -20,7 +20,7 @@ func webhookSink(t *testing.T) (string, func() []map[string]string) {
 	var got []map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			t.Errorf("decode webhook: %v", err)
 		}
 		mu.Lock()

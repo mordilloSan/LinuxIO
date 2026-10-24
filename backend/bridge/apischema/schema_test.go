@@ -2,9 +2,8 @@ package apischema_test
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
+	"encoding/json/v2"
 	"errors"
 	"reflect"
 	"testing"
@@ -372,8 +371,8 @@ func assertContainerRequestDecode(
 	t.Helper()
 	decoded, err := spec.Decode(raw)
 	if wantSemanticError {
-		if _, ok := errors.AsType[*jsonv2.SemanticError](err); !ok {
-			t.Fatalf("Decode() error = %v, want *jsonv2.SemanticError", err)
+		if _, ok := errors.AsType[*json.SemanticError](err); !ok {
+			t.Fatalf("Decode() error = %v, want *json.SemanticError", err)
 		}
 		return
 	}

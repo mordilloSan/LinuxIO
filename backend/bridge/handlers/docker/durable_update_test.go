@@ -2,8 +2,8 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"path/filepath"
 	"reflect"

@@ -2,7 +2,7 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"io/fs"
@@ -32,7 +32,7 @@ func TestDockerComposeIndexerNotificationsUseSharedEntryContract(t *testing.T) {
 		requests = append(requests, req.Clone(req.Context()))
 		if req.Body != nil {
 			var entry indexerapi.EntryRequest
-			if err := json.NewDecoder(req.Body).Decode(&entry); err != nil {
+			if err := json.UnmarshalRead(req.Body, &entry); err != nil {
 				t.Fatalf("decode indexer entry: %v", err)
 			}
 			entries = append(entries, entry)

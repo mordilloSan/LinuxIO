@@ -2,7 +2,7 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -50,7 +50,7 @@ func decodeCommandRequest(t *testing.T, req *http.Request) monitoringapi.Command
 		t.Fatalf("path = %s, want %s", req.URL.Path, monitoringapi.RouteCommand)
 	}
 	var decoded monitoringapi.CommandRequest
-	if err := json.NewDecoder(req.Body).Decode(&decoded); err != nil {
+	if err := json.UnmarshalRead(req.Body, &decoded); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
 	return decoded

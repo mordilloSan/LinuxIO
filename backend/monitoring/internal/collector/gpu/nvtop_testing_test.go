@@ -1,7 +1,7 @@
 package gpu
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 )
 
 // parseNvtopData parses a single nvtop JSON snapshot payload.

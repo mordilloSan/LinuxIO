@@ -2,8 +2,8 @@ package httpapi
 
 import (
 	"bytes"
-	"encoding/json"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"reflect"
 	"testing"
 
@@ -106,7 +106,5 @@ func mustMarshal(t *testing.T, v any) jsontext.Value {
 
 func decodeStrict(t *testing.T, raw []byte, target any) {
 	t.Helper()
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	require.NoError(t, decoder.Decode(target))
+	require.NoError(t, json.UnmarshalRead(bytes.NewReader(raw), target, json.RejectUnknownMembers(true)))
 }

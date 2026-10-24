@@ -2,7 +2,7 @@ package filebrowser
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -38,7 +38,7 @@ func recordIndexerRequests(t *testing.T) *[]recordedIndexerRequest {
 		recorded := recordedIndexerRequest{method: req.Method, path: req.URL.Path, query: req.URL.RawQuery}
 		if req.Body != nil {
 			var entry indexerapi.EntryRequest
-			if err := json.NewDecoder(req.Body).Decode(&entry); err != nil {
+			if err := json.UnmarshalRead(req.Body, &entry); err != nil {
 				t.Fatalf("decode indexer request: %v", err)
 			}
 			recorded.entry = &entry

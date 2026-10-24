@@ -3,7 +3,7 @@ package relay
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"strings"

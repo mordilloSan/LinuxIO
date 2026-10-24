@@ -3,7 +3,7 @@ package virt
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"os/user"

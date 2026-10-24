@@ -3,8 +3,8 @@ package daemon
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -155,9 +155,7 @@ func TestConfigViewMatchesTheSharedWireType(t *testing.T) {
 	require.NoError(t, err)
 
 	var wire monitoringapi.MonitoringConfig
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	require.NoError(t, decoder.Decode(&wire))
+	require.NoError(t, json.UnmarshalRead(bytes.NewReader(encoded), &wire, json.RejectUnknownMembers(true)))
 	reencoded, err := json.Marshal(wire)
 	require.NoError(t, err)
 	assert.JSONEq(t, string(encoded), string(reencoded))

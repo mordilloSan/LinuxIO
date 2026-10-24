@@ -3,7 +3,7 @@ package auth
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +33,7 @@ func newRouterForTests(h *Handlers) *http.ServeMux {
 func doJSON(r http.Handler, method, path string, body any, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
 	if body != nil {
-		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		if err := json.MarshalWrite(&buf, body); err != nil {
 			panic(fmt.Sprintf("encode test request body: %v", err))
 		}
 	}

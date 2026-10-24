@@ -31,7 +31,7 @@ var allowedHandlerEdges = map[string]map[string]string{
 // TestImportBoundaries keeps the layering docs/bridge_handler_patterns.md
 // describes: handler families are leaves, common never imports a process
 // tree, the webserver imports only common, and the bridge reaches the daemons
-// only through their api packages. Production code uses encoding/json/v2, never v1.
+// only through their api packages. All code, tests included, uses encoding/json/v2, never v1.
 func TestImportBoundaries(t *testing.T) {
 	root := filepath.Join("..", "..")
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -44,17 +44,17 @@ func TestImportBoundaries(t *testing.T) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		return checkFileImports(t, root, path)
+		return checkFileImports(t, root, path, strings.HasSuffix(path, "_test.go"))
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func checkFileImports(t *testing.T, root, path string) error {
+func checkFileImports(t *testing.T, root, path string, testFile bool) error {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		return err
@@ -71,7 +71,8 @@ func checkFileImports(t *testing.T, root, path string) error {
 			t.Errorf("%s imports encoding/json: use encoding/json/v2 (jsontext.Value for raw JSON)", rel)
 			continue
 		}
-		if !strings.HasPrefix(dep, modulePrefix) {
+		// Tests may cross layers; only the codec rule applies to them.
+		if testFile || !strings.HasPrefix(dep, modulePrefix) {
 			continue
 		}
 		dep = strings.TrimPrefix(dep, modulePrefix)

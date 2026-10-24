@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/json/jsontext"
 	"errors"
 	"sync"
@@ -62,7 +61,7 @@ func TestCurrentPluginGathersEveryPlugin(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotZero(t, capturedAt)
 			assert.NotEmpty(t, raw)
-			assert.True(t, json.Valid(raw), "raw plugin payload should be valid JSON: %s", raw)
+			assert.True(t, raw.IsValid(), "raw plugin payload should be valid JSON: %s", raw)
 		})
 	}
 }
@@ -85,12 +84,12 @@ func TestProcessProgramAndContainerTelemetryPluginsCollectFresh(t *testing.T) {
 	processCapturedAt, processRaw, err := agent.CurrentPlugin(context.Background(), plugins.Processes)
 	require.NoError(t, err)
 	assert.NotZero(t, processCapturedAt)
-	require.True(t, json.Valid(processRaw))
+	require.True(t, processRaw.IsValid())
 
 	programCapturedAt, programRaw, err := agent.CurrentPlugin(context.Background(), plugins.Programs)
 	require.NoError(t, err)
 	assert.NotZero(t, programCapturedAt)
-	assert.True(t, json.Valid(programRaw))
+	assert.True(t, programRaw.IsValid())
 
 	telemetryCapturedAt, telemetryRaw, err := agent.CurrentPlugin(context.Background(), plugins.ContainerTelemetry)
 	require.NoError(t, err)
@@ -240,7 +239,7 @@ func TestCurrentPluginsCollectsOneRequestScopedBatch(t *testing.T) {
 	for _, plugin := range names {
 		raw, ok := payloads[plugin]
 		require.True(t, ok, "missing %s payload", plugin)
-		assert.True(t, json.Valid(raw), "invalid %s payload: %s", plugin, raw)
+		assert.True(t, raw.IsValid(), "invalid %s payload: %s", plugin, raw)
 	}
 }
 
