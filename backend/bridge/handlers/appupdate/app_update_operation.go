@@ -136,19 +136,15 @@ func finishCanceledUpdate(runID string, ownerUID uint32, startedAt, finishedAt i
 func finishFailedUpdate(runID string, ownerUID uint32, version string, relay *taskOutputWriter, startedAt, finishedAt int64, err error) error {
 	exitCode := 1
 	errMsg := err.Error()
-	// Embed the error in the MESSAGE field so it shows up under `journalctl -o cat`,
-	// and keep the structured `error=` field for verbose/JSON consumers.
-	slog.Error(fmt.Sprintf("app update install script failed: %v", err), "component", "control", "subsystem", "app_update", "run_id", runID, "version", version, "error", err)
 	_, _ = fmt.Fprintf(relay, "ERROR: %s\n", errMsg)
 	writeUpdateStatusWithLog(runID, ownerUID, updatestatus.StatusError, &exitCode, errMsg, startedAt, finishedAt, "final")
-	return bridgeipc.NewError(fmt.Sprintf("update failed: %s", errMsg), exitCode)
+	return bridgeipc.NewError(fmt.Sprintf("update to %s failed (run %s): %s", version, runID, errMsg), exitCode)
 }
 
 func finishSuccessfulUpdate(runID string, ownerUID uint32, task *bridgeipc.Task, relay *taskOutputWriter, startedAt, finishedAt int64) error {
 	exitCode := 0
 	if err := writeStatusFile(runID, ownerUID, updatestatus.StatusOK, &exitCode, "", startedAt, finishedAt); err != nil {
 		message := fmt.Sprintf("persist completed update status: %v", err)
-		slog.Error(message, "component", "control", "subsystem", "app_update", "run_id", runID, "error", err)
 		_, _ = fmt.Fprintf(relay, "ERROR: %s\n", message)
 		return bridgeipc.NewError(message, 500)
 	}

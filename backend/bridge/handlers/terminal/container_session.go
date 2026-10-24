@@ -18,10 +18,8 @@ import (
 func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, stream net.Conn, req apischema.ContainerOpenRequest) error {
 	sess := rt.Session
 	if req.ContainerID == "" || req.Shell == "" {
-		err := fmt.Errorf("missing containerID or shell")
-		slog.Error("invalid container terminal request", "error", err)
 		streamrelay.WriteClose(stream)
-		return err
+		return fmt.Errorf("invalid container terminal request: missing containerID or shell")
 	}
 	cols, rows := initialSize(req.Cols, req.Rows)
 	slog.Debug("starting container terminal stream", "container", req.ContainerID, "shell", req.Shell, "user", sess.User.Username)
@@ -31,24 +29,21 @@ func HandleContainerTerminalSession(parent context.Context, rt runtime.Runtime, 
 
 	cli, err := dockerclient.Get()
 	if err != nil {
-		slog.Error("container terminal docker client error", "error", err)
 		streamrelay.WriteClose(stream)
-		return err
+		return fmt.Errorf("container terminal docker client: %w", err)
 	}
 	defer dockerclient.Release(cli)
 
 	execResp, err := createContainerExec(ctx, cli, req.ContainerID, req.Shell, cols, rows)
 	if err != nil {
-		slog.Error("container terminal exec create failed", "container", req.ContainerID, "shell", req.Shell, "error", err)
 		streamrelay.WriteClose(stream)
-		return err
+		return fmt.Errorf("container terminal exec create (container %s, shell %s): %w", req.ContainerID, req.Shell, err)
 	}
 
 	attachResp, err := attachContainerExec(ctx, cli, execResp.ID, cols, rows)
 	if err != nil {
-		slog.Error("container terminal exec attach failed", "container", req.ContainerID, "exec_id", execResp.ID, "error", err)
 		streamrelay.WriteClose(stream)
-		return err
+		return fmt.Errorf("container terminal exec attach (container %s, exec %s): %w", req.ContainerID, execResp.ID, err)
 	}
 	defer attachResp.Close()
 

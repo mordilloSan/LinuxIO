@@ -41,7 +41,6 @@ func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime
 func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, string, error) {
 	serviceName := strings.TrimSpace(req.ServiceName)
 	if serviceName == "" {
-		slog.Error("[ServiceLogs] empty service name")
 		return "", "", bridgeipc.NewError("empty service name", 400)
 	}
 	if strings.Contains(serviceName, "@.") {

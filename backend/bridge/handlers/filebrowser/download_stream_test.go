@@ -93,8 +93,8 @@ func TestStreamFileDownloadRejectsNonRegular(t *testing.T) {
 				t.Fatalf("result = %#v, want status error code 400", result)
 			}
 			readFileDownloadFrame(t, client, relay.OpStreamClose)
-			if err := <-done; err != nil {
-				t.Fatalf("streamFileDownload: %v", err)
+			if err := <-done; err == nil {
+				t.Fatal("streamFileDownload returned nil, want the rejection back for the router to log")
 			}
 		})
 	}

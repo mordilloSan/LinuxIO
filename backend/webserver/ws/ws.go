@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -148,23 +148,11 @@ func isExpectedWSClose(err error) bool {
 			return true
 		}
 	}
-	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "use of closed network connection") ||
-		strings.Contains(errStr, "i/o timeout")
+	return errors.Is(err, net.ErrClosed) || errors.Is(err, os.ErrDeadlineExceeded)
 }
 
 func isExpectedStreamReadClose(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, yamux.ErrStreamReset) || errors.Is(err, yamux.ErrStreamClosed) {
-		return true
-	}
-	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "use of closed network connection") ||
-		strings.Contains(errStr, "i/o timeout") ||
-		strings.Contains(errStr, "stream reset") ||
-		strings.Contains(errStr, "stream closed")
+	return errors.Is(err, io.EOF) || errors.Is(err, yamux.ErrStreamReset) || errors.Is(err, yamux.ErrStreamClosed)
 }
 
 // AuthMiddleware validates the session for WebSocket connections.

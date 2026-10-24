@@ -2,6 +2,8 @@ package wireguard
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"slices"
 	"testing"
@@ -105,7 +107,7 @@ func assertPathExists(t *testing.T, path string) {
 func assertPathMissing(t *testing.T, path string) {
 	t.Helper()
 
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("%s still exists or stat failed unexpectedly: %v", path, err)
 	}
 }

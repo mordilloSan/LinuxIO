@@ -46,23 +46,19 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) 
 		for _, d := range req.Devices {
 			part, partErr := btrfs.PartitionDisk(ctx, d)
 			if partErr != nil {
-				slog.Error("btrfs pool partitioning failed", "device", d, "error", partErr)
-				return btrfs.BtrfsFilesystem{}, partErr
+				return btrfs.BtrfsFilesystem{}, fmt.Errorf("partition %s for btrfs pool: %w", d, partErr)
 			}
 			members = append(members, part)
 		}
 	}
 	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force)
 	if err != nil {
-		slog.Error("btrfs pool create failed", "label", req.Label, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
 	if err := btrfs.MountPool(members[0], req.Mountpoint, false); err != nil {
-		slog.Error("btrfs pool mount failed", "uuid", uuid, "error", err)
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s was created but not mounted: %w", uuid, err)
 	}
 	if err := addToFstab("UUID="+uuid, req.Mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
-		slog.Error("btrfs pool fstab update failed", "uuid", uuid, "error", err)
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s is mounted but could not be added to /etc/fstab: %w", uuid, err)
 	}
 	slog.Info("created btrfs pool", "uuid", uuid, "mountpoint", req.Mountpoint)
@@ -117,8 +113,7 @@ func checkPoolMountpoint(mountpoint string, devices []apischema.StorageBlockDevi
 func DestroyBtrfsPool(ctx context.Context, uuid string) error {
 	devices, err := poolDevicesForDestroy(ctx, uuid)
 	if err != nil {
-		slog.Error("btrfs pool destroy refused", "uuid", uuid, "error", err)
-		return err
+		return fmt.Errorf("destroy btrfs pool %s: %w", uuid, err)
 	}
 	slog.Info("destroying btrfs pool", "uuid", uuid, "devices", devices)
 	for mountpoint, entry := range getFstabEntries() {
@@ -130,8 +125,7 @@ func DestroyBtrfsPool(ctx context.Context, uuid string) error {
 	}
 	for _, d := range devices {
 		if err := btrfs.WipeDevice(d); err != nil {
-			slog.Error("btrfs pool wipe failed", "uuid", uuid, "device", d, "error", err)
-			return err
+			return fmt.Errorf("wipe %s of btrfs pool %s: %w", d, uuid, err)
 		}
 	}
 	slog.Info("destroyed btrfs pool", "uuid", uuid)
@@ -217,8 +211,7 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 	}
 	slog.Info("mounting btrfs pool", "uuid", pool.UUID, "mountpoint", mountpoint, "degraded", req.Degraded)
 	if err := btrfs.MountPool(pool.Devices[0], mountpoint, req.Degraded); err != nil {
-		slog.Error("btrfs pool mount failed", "uuid", pool.UUID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s at %s: %w", pool.UUID, mountpoint, err)
 	}
 	if persist {
 		if err := addToFstab("UUID="+pool.UUID, mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
@@ -255,8 +248,7 @@ func ListOfflinePools(ctx context.Context) ([]btrfs.BtrfsOfflinePool, error) {
 func GrowBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Info("growing btrfs device", "uuid", req.UUID, "device", req.DeviceID)
 	if err := btrfs.GrowDevice(ctx, req.UUID, req.DeviceID); err != nil {
-		slog.Error("btrfs device grow failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("grow btrfs device %d of %s: %w", req.DeviceID, req.UUID, err)
 	}
 	return btrfs.FindFilesystem(ctx, req.UUID)
 }
@@ -265,8 +257,7 @@ func GrowBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceRequest) (btr
 func SetBtrfsLabel(ctx context.Context, req apischema.BtrfsLabelRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Info("relabeling btrfs filesystem", "uuid", req.UUID, "label", req.Label)
 	if err := btrfs.SetLabel(ctx, req.UUID, req.Label); err != nil {
-		slog.Error("btrfs relabel failed", "uuid", req.UUID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("relabel btrfs filesystem %s to %q: %w", req.UUID, req.Label, err)
 	}
 	return btrfs.FindFilesystem(ctx, req.UUID)
 }

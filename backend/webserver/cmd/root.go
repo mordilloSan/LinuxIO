@@ -92,7 +92,6 @@ func (a *serverActivity) touch() {
 func newHTTPServer(cfg ServerConfig, sm *sessions.Manager) (*http.Server, *serverActivity, error) {
 	ui, err := web.UI()
 	if err != nil {
-		slog.Error("failed to mount embedded frontend", "error", err)
 		return nil, nil, fmt.Errorf("mount embedded frontend: %w", err)
 	}
 
@@ -199,13 +198,11 @@ func serveWithSelfBind(cfg ServerConfig, srv *http.Server) error {
 
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
-		slog.Error("listen failed", "address", srv.Addr, "error", err)
 		return fmt.Errorf("listen %s: %w", srv.Addr, err)
 	}
 	tlsListener := tlsserver.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port)
 	slog.Info("HTTPS server listening", "address", fmt.Sprintf("https://localhost:%d", cfg.Port))
 	if err := srv.Serve(tlsListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("server error", "error", err)
 		return fmt.Errorf("serve HTTPS: %w", err)
 	}
 	return nil
@@ -215,7 +212,6 @@ func configureServerTLS(srv *http.Server) error {
 	certificateDir := filepath.Join(version.WebserverStateDir, "certificates")
 	cert, err := tlsserver.LoadOrCreateSelfSignedCert(certificateDir)
 	if err != nil {
-		slog.Error("failed to load managed certificate", "directory", certificateDir, "error", err)
 		return fmt.Errorf("load managed TLS certificate: %w", err)
 	}
 	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
@@ -224,7 +220,6 @@ func configureServerTLS(srv *http.Server) error {
 
 func serveTLSListener(srv *http.Server, listener net.Listener, stop func(error), errorPrefix string) {
 	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error(errorPrefix, "error", err)
 		stop(fmt.Errorf("%s: %w", errorPrefix, err))
 		return
 	}

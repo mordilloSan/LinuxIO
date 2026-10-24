@@ -200,6 +200,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apische
 		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "Took btrfs pre-update snapshot"})
 	}
 	if msg := preUpdateSnapshotProblems(snapshotReport, snapshotErr); msg != "" {
+		slog.Warn("btrfs pre-update snapshot problems; applying package updates anyway", "problems", msg)
 		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "btrfs pre-update snapshot failed: " + msg})
 	}
 

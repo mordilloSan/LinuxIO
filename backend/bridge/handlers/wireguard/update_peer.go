@@ -58,8 +58,7 @@ func UpdatePeer(ctx context.Context, req apischema.WireGuardUpdatePeerRequest) e
 	}
 
 	if err = writePeerFile(path, file); err != nil {
-		slog.Error("failed to write peer config", "interface", req.InterfaceName, "peer", req.PeerID, "error", err)
-		return err
+		return fmt.Errorf("write peer config: %w", err)
 	}
 
 	section, err := file.serverSection()
@@ -72,13 +71,11 @@ func UpdatePeer(ctx context.Context, req apischema.WireGuardUpdatePeerRequest) e
 		replacePeerSection(&cfg, oldPublicKey, nil)
 	}
 	if err := WriteWireGuardConfig(configPath(req.InterfaceName), cfg); err != nil {
-		slog.Error("failed to write interface config", "interface", req.InterfaceName, "peer", req.PeerID, "error", err)
 		return fmt.Errorf("write config: %w", err)
 	}
 
 	if err := syncRunningInterface(ctx, req.InterfaceName); err != nil {
-		slog.Error("failed to sync running interface after updating peer", "interface", req.InterfaceName, "peer", req.PeerID, "error", err)
-		return err
+		return fmt.Errorf("sync %s after updating peer %s: %w", req.InterfaceName, req.PeerID, err)
 	}
 	slog.Info("WireGuard peer updated", "interface", req.InterfaceName, "peer", req.PeerID, "enabled", file.Enabled)
 	return nil

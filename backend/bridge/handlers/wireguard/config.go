@@ -43,7 +43,11 @@ func loadWGINI(path string, opts ini.LoadOptions) (*ini.File, error) {
 		}
 	}
 	opts.IgnoreInlineComment = true
-	return ini.LoadSources(opts, []byte(strings.Join(lines, "\n")))
+	f, err := ini.LoadSources(opts, []byte(strings.Join(lines, "\n")))
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return f, nil
 }
 
 func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
@@ -54,7 +58,6 @@ func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 		AllowShadows:           true,
 	})
 	if err != nil {
-		slog.Error("failed to load WireGuard config", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return cfg, fmt.Errorf("load config: %w", err)
 	}
 
@@ -121,7 +124,6 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	// Create Interface section
 	ifSec, err := iniFile.NewSection("Interface")
 	if err != nil {
-		slog.Error("failed to create WireGuard interface section", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return fmt.Errorf("create interface section: %w", err)
 	}
 
@@ -157,7 +159,6 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 
 	// Save file
 	if err := iniFile.SaveTo(path); err != nil {
-		slog.Error("failed to save WireGuard config", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return fmt.Errorf("save config: %w", err)
 	}
 	slog.Info("wrote WireGuard config", "component", "wireguard", "subsystem", "config", "path", path)

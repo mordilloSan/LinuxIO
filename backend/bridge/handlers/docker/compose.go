@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -1074,7 +1075,7 @@ func ValidateStackDirectory(ctx context.Context, dirPath string) (apischema.Dire
 	if err == nil {
 		return validateExistingStackDirectory(ctx, dirPath, info)
 	}
-	if !os.IsNotExist(err) {
+	if !errors.Is(err, fs.ErrNotExist) {
 		result.Error = fmt.Sprintf("Error accessing path: %v", err)
 		return result, nil
 	}
@@ -1082,7 +1083,7 @@ func ValidateStackDirectory(ctx context.Context, dirPath string) (apischema.Dire
 		result.Exists = true
 		result.Error = "Path exists but is not a directory"
 		return result, nil
-	} else if !os.IsNotExist(err) {
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		result.Error = fmt.Sprintf("Error accessing path: %v", err)
 		return result, nil
 	}
@@ -1117,7 +1118,7 @@ func validateCreatableStackDirectory(ctx context.Context, dirPath string) (apisc
 	}
 	parentInfo, err := os.Stat(parentDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			result.Error = "Parent directory does not exist"
 		} else {
 			result.Error = fmt.Sprintf("Error accessing parent directory: %v", err)
@@ -1251,7 +1252,7 @@ func findCanonicalComposeFileInDir(dir string) (composeFileCandidate, bool, erro
 		if err == nil {
 			return candidate, true, nil
 		}
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, fs.ErrNotExist) {
 			return composeFileCandidate{}, false, err
 		}
 	}

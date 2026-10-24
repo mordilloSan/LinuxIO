@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -358,8 +360,7 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (apischema.StorageMountRe
 		_ = removeFromFstab(p.mountpoint)
 		_ = deleteCredentialsFile(p.mountpoint)
 		message := commandFailureMessage(out, err)
-		slog.Error("CIFS mount failed", "source", source, "mountpoint", p.mountpoint, "message", message)
-		return apischema.StorageMountResult{}, fmt.Errorf("mount failed: %s", message)
+		return apischema.StorageMountResult{}, fmt.Errorf("mount CIFS share %s on %s failed: %s", source, p.mountpoint, message)
 	}
 	slog.Info("CIFS share mounted", "source", source, "mountpoint", p.mountpoint)
 	return mountResult(p.mountpoint, ""), nil
@@ -458,8 +459,7 @@ func rollbackFailedCIFSRemount(
 			slog.Warn("failed to restore previous CIFS mount after remount failure", "mountpoint", mountpoint, "error", rmErr)
 		}
 	}
-	slog.Error("CIFS remount failed", "mountpoint", mountpoint, "message", message)
-	return fmt.Errorf("remount failed: %s", message)
+	return fmt.Errorf("remount CIFS share on %s failed: %s", mountpoint, message)
 }
 
 // preserveCIFSAuthOption returns the auth-bearing option (guest or
@@ -534,7 +534,7 @@ func credentialsFilePath(mountpoint string) string {
 }
 
 func deleteCredentialsFile(mountpoint string) error {
-	if err := os.Remove(credentialsFilePath(mountpoint)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(credentialsFilePath(mountpoint)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil

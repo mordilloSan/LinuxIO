@@ -49,8 +49,7 @@ func runBtrfsReplicationTask(ctx context.Context, task *bridgeipc.Task, req apis
 		slog.Warn("failed to record btrfs replication outcome", "id", job.ID, "error", err)
 	}
 	if runErr != nil {
-		slog.Error("btrfs replication failed", "id", job.ID, "uuid", job.UUID, "path", job.Path, "error", runErr)
-		return btrfs.BtrfsReplicationResult{}, runErr
+		return btrfs.BtrfsReplicationResult{}, fmt.Errorf("replicate btrfs job %s (%s %s): %w", job.ID, job.UUID, job.Path, runErr)
 	}
 	slog.Info("replicated btrfs snapshots", "id", job.ID, "upToDate", result.UpToDate, "bytes", result.Bytes, "pruned", result.Pruned)
 	return result, nil

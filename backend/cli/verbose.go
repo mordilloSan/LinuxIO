@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -108,7 +110,7 @@ func disableVerbose(parent context.Context) int {
 	}
 
 	for _, dropin := range verboseDropins {
-		if err := os.Remove(dropin.path); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(dropin.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			fmt.Fprintf(os.Stderr, "Failed to remove drop-in file: %v\n", err)
 			fmt.Fprintln(os.Stderr, "This command requires sudo")
 			return 1

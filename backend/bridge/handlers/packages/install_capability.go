@@ -318,7 +318,7 @@ func (o *capabilityProcessOutput) read(stream string, reader io.Reader) {
 		if err == nil || errors.Is(err, bufio.ErrBufferFull) {
 			continue
 		}
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			o.mu.Lock()
 			if o.readErr == nil {
 				o.readErr = err

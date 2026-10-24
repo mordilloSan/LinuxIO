@@ -15,21 +15,18 @@ import (
 
 func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([]PeerInfo, error) {
 	if req.InterfaceName == "" {
-		slog.Error("invalid list peers request")
 		return nil, fmt.Errorf("usage: list_exported_peers <interface>")
 	}
 
 	interfaceName := req.InterfaceName
 	if err := validateInterfaceName(interfaceName); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	slog.Debug("listing exported peers", "interface", interfaceName)
 
 	peers, err := loadExportedPeers(ctx, interfaceName)
 	if err != nil {
-		slog.Error("failed to read exported peers", "interface", interfaceName, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("read exported peers of %s: %w", interfaceName, err)
 	}
 
 	statsByPub, err := loadPeerRuntimeStats(interfaceName)

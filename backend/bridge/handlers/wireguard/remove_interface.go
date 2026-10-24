@@ -2,7 +2,9 @@ package wireguard
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 
@@ -11,13 +13,11 @@ import (
 
 func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
 	if req.Name == "" {
-		slog.Error("invalid remove interface request")
 		return nil, fmt.Errorf("usage: remove_interface <name>")
 	}
 
 	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	slog.Info("removing WireGuard interface", "interface", name)
@@ -32,10 +32,9 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	// Remove config file
 	cfgPath := configPath(name)
 	if err := os.Remove(cfgPath); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			slog.Warn("interface config already missing", "interface", name, "path", cfgPath)
 		} else {
-			slog.Error("failed to remove interface config", "interface", name, "path", cfgPath, "error", err)
 			return nil, fmt.Errorf("remove config: %w", err)
 		}
 	} else {
@@ -44,7 +43,7 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 
 	// Remove peer directory (best-effort)
 	peerDir := peerDirPath(name)
-	if err := os.RemoveAll(peerDir); err != nil && !os.IsNotExist(err) {
+	if err := os.RemoveAll(peerDir); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		slog.Warn("failed to remove peer directory", "interface", name, "path", peerDir, "error", err)
 	} else {
 		slog.Info("removed peer directory", "interface", name, "path", peerDir)

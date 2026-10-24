@@ -29,7 +29,6 @@ type addInterfaceRequest struct {
 func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRequest) (any, error) {
 	req, err := parseAddInterfaceRequest(request)
 	if err != nil {
-		slog.Error("invalid add interface arguments", "error", err)
 		return nil, err
 	}
 
@@ -46,33 +45,28 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 		peers, err = generatePeers(req.addresses[0], req.numPeers)
 	}
 	if err != nil {
-		slog.Error("failed to generate interface peers", "interface", req.name, "error", err)
-		return nil, fmt.Errorf("generate peers: %w", err)
+		return nil, fmt.Errorf("generate peers for %s: %w", req.name, err)
 	}
 
 	privKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
-		slog.Error("failed to generate WireGuard private key", "interface", req.name, "error", err)
-		return nil, fmt.Errorf("generate private key: %w", err)
+		return nil, fmt.Errorf("generate private key for %s: %w", req.name, err)
 	}
 
 	cfg := buildInterfaceConfig(req, privKey.String(), peers)
 	publicIP, gatewayDNS := readInterfaceEndpointInfo(cfg, "AddInterface", req.egressNic)
 	if err := exportInterfacePeerConfigs(req.name, peers, cfg, req.addresses[0], publicIP, gatewayDNS); err != nil {
-		slog.Error("failed to export interface peer configs", "interface", req.name, "error", err)
 		// No interface config exists yet, so these files would only block a retry.
 		_ = os.RemoveAll(peerDirPath(req.name))
-		return nil, err
+		return nil, fmt.Errorf("export peer configs for %s: %w", req.name, err)
 	}
 
 	// Write main config, including wg-quick NAT hooks for boot persistence.
 	if err := WriteWireGuardConfig(configPath(req.name), cfg); err != nil {
-		slog.Error("failed to write WireGuard interface config", "interface", req.name, "error", err)
 		return nil, fmt.Errorf("write config: %w", err)
 	}
 
 	if err := bringUpInterface(ctx, req.name); err != nil {
-		slog.Error("failed to set up WireGuard interface", "interface", req.name, "error", err)
 		return nil, err
 	}
 	slog.Info("WireGuard interface created and brought up", "interface", req.name)
@@ -159,9 +153,9 @@ func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []Pe
 }
 
 func readInterfaceEndpointInfo(cfg WireGuardConfig, logPrefix, egressNic string) (string, string) {
-	gatewayDNS, _ := getGatewayForInterfaceIPv4Func(egressNic)
+	gatewayDNS, err := getGatewayForInterfaceIPv4Func(egressNic)
 	if gatewayDNS == "" {
-		slog.Debug("no gateway DNS found for interface", "operation", logPrefix, "interface", egressNic)
+		slog.Debug("no gateway DNS found for interface", "operation", logPrefix, "interface", egressNic, "error", err)
 	}
 	return resolveEndpointHost(cfg, logPrefix), gatewayDNS
 }
@@ -206,8 +200,7 @@ func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardCo
 func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 	ipMgr, err := newIPManager(serverAddr)
 	if err != nil {
-		slog.Error("failed to initialize peer IP manager", "component", "wireguard", "path", serverAddr, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("init IP manager: %w", err)
 	}
 
 	peers := make([]PeerConfig, 0, count)
@@ -219,7 +212,6 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 
 		privKey, err := wgtypes.GeneratePrivateKey()
 		if err != nil {
-			slog.Error("failed to generate peer key", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "error", err)
 			return nil, fmt.Errorf("generate key for peer %d: %w", i, err)
 		}
 

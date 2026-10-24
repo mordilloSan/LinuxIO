@@ -48,11 +48,7 @@ func validateBridgeHash(bridgePath string) error {
 	actualHash := hex.EncodeToString(h.Sum(nil))
 
 	if actualHash != expectedHash {
-		slog.Error("bridge binary hash mismatch - possible tampering",
-			"expected", expectedHash,
-			"actual", actualHash,
-			"path", bridgePath)
-		return fmt.Errorf("bridge integrity check failed: hash mismatch")
+		return fmt.Errorf("bridge integrity check failed: %s hash %s does not match the expected %s (possible tampering)", bridgePath, actualHash, expectedHash)
 	}
 	slog.Debug("bridge hash validated", "hash", actualHash[:16]+"...")
 	return nil

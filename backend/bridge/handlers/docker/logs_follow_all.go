@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
@@ -139,7 +141,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 
 	cli, err := dockerclient.Get()
 	if err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to get docker client", "route", routeDockerLogsFollowAll)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("get docker client for merged logs: %w", err))
 	}
 	defer dockerclient.Release(cli)
 
@@ -149,7 +151,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	})
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to list containers for logs", "route", routeDockerLogsFollowAll)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("list containers for merged logs: %w", err))
 	}
 
 	listedAt := time.Now().UnixNano()
@@ -169,7 +171,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	eventsErr := attachStartedContainers(ctx, events, listed, listedAt, follow)
 	followers.Wait()
 	if eventsErr != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, eventsErr, "docker event stream failed", "route", routeDockerLogsFollowAll)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("docker event stream: %w", eventsErr))
 	}
 	if ctx.Err() != nil {
 		return relay.WriteStreamClose(stream, 0)

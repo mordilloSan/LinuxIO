@@ -14,13 +14,11 @@ import (
 
 func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string, error) {
 	if req.InterfaceName == "" {
-		slog.Error("invalid add peer request")
 		return "", fmt.Errorf("usage: add_peer <interface> [name]")
 	}
 
 	interfaceName := req.InterfaceName
 	if err := validateInterfaceName(interfaceName); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", interfaceName, "error", err)
 		return "", fmt.Errorf("invalid interface name: %w", err)
 	}
 	if err := validatePeerName(req.Name); err != nil {
@@ -30,8 +28,7 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 
 	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
 	if err != nil {
-		slog.Error("failed to read interface config", "interface", interfaceName, "error", err)
-		return "", fmt.Errorf("read config: %w", err)
+		return "", fmt.Errorf("read interface config: %w", err)
 	}
 	// Disabled peers are gone from the server config but keep their exported
 	// file and address; their IPs and IDs must stay reserved.
@@ -41,15 +38,13 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 	}
 	peer, nextIP, err := createNextPeer(cfg, exported)
 	if err != nil {
-		slog.Error("failed to create WireGuard peer", "interface", interfaceName, "error", err)
-		return "", err
+		return "", fmt.Errorf("create peer on %s: %w", interfaceName, err)
 	}
 
 	publicIP, gatewayDNS := readPeerEndpointInfo(cfg, "AddPeer")
 	file, err := buildPeerFile(peer.Name, req.Name, peer, cfg, publicIP, gatewayDNS)
 	if err != nil {
-		slog.Error("failed to build peer config", "interface", interfaceName, "peer", peer.Name, "error", err)
-		return "", err
+		return "", fmt.Errorf("build config for peer %s: %w", peer.Name, err)
 	}
 	if err = exportPeerFile(interfaceName, file); err != nil {
 		return "", fmt.Errorf("export peer config: %w", err)
@@ -64,13 +59,11 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 		if rmErr := os.Remove(peerConfigPath(interfaceName, file.ID)); rmErr != nil {
 			slog.Warn("rollback failed while removing peer config", "interface", interfaceName, "peer", file.ID, "error", rmErr)
 		}
-		slog.Error("failed to write updated interface config", "interface", interfaceName, "error", err)
 		return "", fmt.Errorf("write config: %w", err)
 	}
 
 	if err := syncRunningInterface(ctx, interfaceName); err != nil {
-		slog.Error("failed to sync running interface after adding peer", "interface", interfaceName, "peer", file.ID, "error", err)
-		return "", err
+		return "", fmt.Errorf("sync %s after adding peer %s: %w", interfaceName, file.ID, err)
 	}
 
 	slog.Info("peer added to interface", "interface", interfaceName, "peer", file.ID, "path", nextIP, "running", isInterfaceUpFunc(interfaceName))
@@ -81,9 +74,9 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 // the server: the public IP and, as DNS fallback, the default gateway.
 func readPeerEndpointInfo(cfg WireGuardConfig, logPrefix string) (string, string) {
 	publicIP := resolveEndpointHost(cfg, logPrefix)
-	gatewayDNS, _ := getDefaultGatewayIPv4Func()
+	gatewayDNS, err := getDefaultGatewayIPv4Func()
 	if gatewayDNS == "" {
-		slog.Debug("no default gateway DNS found", "operation", logPrefix)
+		slog.Debug("no default gateway DNS found", "operation", logPrefix, "error", err)
 	}
 	return publicIP, gatewayDNS
 }

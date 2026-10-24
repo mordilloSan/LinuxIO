@@ -194,7 +194,7 @@ func DeleteNFSShare(ctx context.Context, path string) error {
 func parseExportsFile() ([]apischema.NFSExport, error) {
 	file, err := os.Open(exportsFile)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return []apischema.NFSExport{}, nil
 		}
 		return nil, err

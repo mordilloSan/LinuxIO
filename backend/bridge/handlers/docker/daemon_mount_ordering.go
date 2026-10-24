@@ -2,7 +2,9 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -48,7 +50,7 @@ func ensureSystemdDropInDir(path string) error {
 
 func removeDockerMountOrderingDropIn(ctx context.Context, path string) error {
 	if err := os.Remove(path); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("remove docker service drop-in: %w", err)

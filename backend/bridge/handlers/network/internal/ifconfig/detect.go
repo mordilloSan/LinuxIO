@@ -3,6 +3,7 @@ package ifconfig
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +52,7 @@ func ReadConfigBestEffort(env Environment, iface string) (InterfaceConfig, bool,
 func detectIfcfgBackend(env Environment, iface string) (ConfigBackend, error) {
 	path := filepath.Join(env.IfcfgDir, "ifcfg-"+iface)
 	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err

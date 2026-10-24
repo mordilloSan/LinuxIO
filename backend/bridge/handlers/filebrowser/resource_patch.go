@@ -2,10 +2,11 @@ package filebrowser
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -84,7 +85,7 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest) err
 		return fmt.Errorf("bad_request:source and destination are the same")
 	case err == nil:
 		return fmt.Errorf("bad_request:destination exists")
-	case os.IsNotExist(err):
+	case errors.Is(err, fs.ErrNotExist):
 		return nil
 	default:
 		slog.Debug("error stating destination", "path", req.realDest, "error", err)
@@ -171,14 +172,14 @@ func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 
 	// Try "name (copy).ext" first
 	newPath := filepath.Join(dir, name+" (copy)"+ext)
-	if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); os.IsNotExist(err) {
+	if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); errors.Is(err, fs.ErrNotExist) {
 		return newPath
 	}
 
 	// Try "name (copy 2).ext", "name (copy 3).ext", etc.
 	for i := 2; i < 1000; i++ {
 		newPath = filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, i, ext))
-		if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); os.IsNotExist(err) {
+		if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); errors.Is(err, fs.ErrNotExist) {
 			return newPath
 		}
 	}

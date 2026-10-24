@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -27,9 +28,7 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 	ctx, cleanup := bridgeipc.ReceiveOnlyChannelContext(parent, stream)
 	defer cleanup()
 	if req.ContainerID == "" {
-		err := bridgeipc.NewError("missing containerID", 400)
-		slog.Error("invalid docker logs request", "component", "docker", "route", routeDockerLogsFollow, "error", err)
-		return streamrelay.WriteError(stream, 0, err)
+		return streamrelay.WriteError(stream, 0, bridgeipc.NewError("missing containerID", 400))
 	}
 	tail := "100"
 	if req.Tail != nil && *req.Tail != "" {
@@ -39,14 +38,14 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 
 	cli, err := dockerclient.Get()
 	if err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to get docker client", "route", routeDockerLogsFollow, "container", req.ContainerID)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("get docker client for container %s logs: %w", req.ContainerID, err))
 	}
 	defer dockerclient.Release(cli)
 
 	// TTY containers return raw bytes instead of the stdout/stderr multiplexed stream.
 	inspect, err := cli.ContainerInspect(ctx, req.ContainerID, client.ContainerInspectOptions{})
 	if err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to inspect container for logs", "route", routeDockerLogsFollow, "container", req.ContainerID)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("inspect container %s for logs: %w", req.ContainerID, err))
 	}
 	tty := inspect.Container.Config != nil && inspect.Container.Config.Tty
 
@@ -60,12 +59,12 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 
 	reader, err := cli.ContainerLogs(ctx, req.ContainerID, options)
 	if err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to get container logs", "route", routeDockerLogsFollow, "container", req.ContainerID)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("get container %s logs: %w", req.ContainerID, err))
 	}
 	defer reader.Close()
 
 	if err := streamDockerLogs(ctx, stream, reader, tty); err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "container log stream failed", "route", routeDockerLogsFollow, "container", req.ContainerID)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("container %s log stream: %w", req.ContainerID, err))
 	}
 	return relay.WriteResultOKAndClose(stream, 0, map[string]any{"status": "stopped"})
 }
@@ -105,18 +104,4 @@ func (w dockerLogFrameWriter) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	return len(p), relay.WriteRelayFrame(w.stream, &relay.StreamFrame{Opcode: relay.OpStreamData, StreamID: 0, Payload: payload})
-}
-
-// writeDockerLogErrorUnlessCanceled reports err to the Channel and the log. A
-// Channel the client already closed is not a failure: it is logged at debug
-// and the stream is just closed.
-func writeDockerLogErrorUnlessCanceled(ctx context.Context, stream net.Conn, err error, msg string, attrs ...any) error {
-	attrs = append([]any{"component", "docker"}, attrs...)
-	attrs = append(attrs, "error", err)
-	if streamrelay.Canceled(ctx, err) {
-		slog.Debug(msg+" (channel closed)", attrs...)
-	} else {
-		slog.Error(msg, attrs...)
-	}
-	return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, err)
 }

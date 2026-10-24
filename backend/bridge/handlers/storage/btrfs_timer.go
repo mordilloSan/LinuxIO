@@ -196,8 +196,7 @@ func SaveBtrfsSnapshotRule(ctx context.Context, rule btrfs.BtrfsSnapshotRule) (b
 	slog.Info("setting btrfs snapshot rule", "uuid", rule.UUID, "path", rule.Path, "enabled", rule.Enabled)
 	rules, err := setBtrfsSnapshotRule(ctx, rule)
 	if err != nil {
-		slog.Error("failed to set btrfs snapshot rule", "uuid", rule.UUID, "path", rule.Path, "error", err)
-		return btrfs.BtrfsSnapshotRules{}, err
+		return btrfs.BtrfsSnapshotRules{}, fmt.Errorf("set btrfs snapshot rule for %s in %s: %w", rule.Path, rule.UUID, err)
 	}
 	return btrfsSnapshotRules(ctx, rules), nil
 }
@@ -210,8 +209,7 @@ func DeleteBtrfsSnapshotRule(ctx context.Context, uuid, path string) (btrfs.Btrf
 		return nil
 	})
 	if err != nil {
-		slog.Error("failed to delete btrfs snapshot rule", "uuid", uuid, "path", path, "error", err)
-		return btrfs.BtrfsSnapshotRules{}, err
+		return btrfs.BtrfsSnapshotRules{}, fmt.Errorf("delete btrfs snapshot rule for %s in %s: %w", path, uuid, err)
 	}
 	return btrfsSnapshotRules(ctx, rules), nil
 }

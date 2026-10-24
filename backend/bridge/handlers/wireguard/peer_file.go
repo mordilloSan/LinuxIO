@@ -233,7 +233,6 @@ func buildPeerFile(id, name string, peer PeerConfig, ifaceCfg WireGuardConfig, p
 func exportPeerFile(interfaceName string, file peerFile) error {
 	peerDir := peerDirPath(interfaceName)
 	if err := os.MkdirAll(peerDir, 0o700); err != nil {
-		slog.Error("failed to create peer directory", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", peerDir, "error", err)
 		return fmt.Errorf("create peer dir: %w", err)
 	}
 	path := peerConfigPath(interfaceName, file.ID)
@@ -242,7 +241,6 @@ func exportPeerFile(interfaceName string, file peerFile) error {
 		return fmt.Errorf("peer config %s already exists", path)
 	}
 	if err := writePeerFile(path, file); err != nil {
-		slog.Error("failed to save peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", path, "error", err)
 		return err
 	}
 	slog.Info("wrote peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", path)

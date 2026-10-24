@@ -31,7 +31,7 @@ func closeWithLog(name string, closer io.Closer) {
 }
 
 func removeWithLog(root *fsroot.FSRoot, path string) {
-	if err := root.Root.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := root.Root.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		slog.Debug("failed to remove archive path", "component", "filebrowser", "subsystem", "archive", "path", path, "error", err)
 	}
 }
@@ -201,7 +201,7 @@ func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, er
 	var total int64
 	for {
 		header, err := tarReader.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -259,10 +259,9 @@ func CreateZip(tmpDirPath string, opts *OperationCallbacks, skipPath string, fil
 			fileOpen = false
 			if errors.Is(addErr, ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
-			} else {
-				slog.Error("failed to add file to zip", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
+				return addErr
 			}
-			return addErr
+			return fmt.Errorf("add %s to zip: %w", fname, addErr)
 		}
 	}
 
@@ -336,10 +335,9 @@ func CreateTarGz(tmpDirPath string, opts *OperationCallbacks, skipPath string, c
 			fileOpen = false
 			if errors.Is(addErr, ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
-			} else {
-				slog.Error("failed to add file to tar.gz", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
+				return addErr
 			}
-			return addErr
+			return fmt.Errorf("add %s to tar.gz: %w", fname, addErr)
 		}
 	}
 
@@ -580,7 +578,7 @@ func extractTarGz(root *fsroot.FSRoot, dest *os.Root, archivePath, destination s
 		}
 
 		header, err := tarReader.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -820,7 +818,7 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 	if err != nil {
 		// If we get "is a directory" error, this is likely a symlink to a directory
 		// that wasn't properly detected. Skip it gracefully.
-		if strings.Contains(err.Error(), "is a directory") {
+		if errors.Is(err, syscall.EISDIR) {
 			return nil
 		}
 		return err
@@ -882,7 +880,7 @@ func copyWithCallbacks(dst io.Writer, src io.Reader, opts *OperationCallbacks) e
 			}
 			opts.ReportProgress(int64(n))
 		}
-		if rerr == io.EOF {
+		if errors.Is(rerr, io.EOF) {
 			return nil
 		}
 		if rerr != nil {

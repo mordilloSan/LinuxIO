@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -70,7 +71,7 @@ func decodeIndexProcessOutput(stdout io.Reader, onEvent func(indexWireEvent)) (*
 	for {
 		var evt indexWireEvent
 		if err := decoder.Decode(&evt); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return summary, nil
 			}
 			return nil, fmt.Errorf("decode index subprocess output: %w", err)

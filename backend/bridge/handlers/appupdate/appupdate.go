@@ -232,8 +232,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	slog.Debug("computed install script checksum", "component", "control", "subsystem", "app_update", "checksum", actualChecksum)
 
 	if actualChecksum != expectedChecksum {
-		slog.Error("install script checksum mismatch", "component", "control", "subsystem", "app_update", "expected_checksum", expectedChecksum, "actual_checksum", actualChecksum)
-		return fmt.Errorf("checksum verification failed: script integrity compromised")
+		return fmt.Errorf("checksum verification failed: script integrity compromised (expected %s, got %s)", expectedChecksum, actualChecksum)
 	}
 	slog.Info("checksum verified successfully")
 

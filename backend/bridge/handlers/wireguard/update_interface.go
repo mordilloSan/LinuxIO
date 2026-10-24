@@ -51,8 +51,7 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 	restart := serverChanged && isInterfaceUpFunc(req.Name)
 
 	if restart {
-		if out, err := runWGQuickCommand(ctx, "down", req.Name); err != nil {
-			slog.Error("failed to bring down WireGuard interface before update", "interface", req.Name, "error", err, "output", out)
+		if _, err := runWGQuickCommand(ctx, "down", req.Name); err != nil {
 			return fmt.Errorf("bring down interface: %w", err)
 		}
 	}
@@ -60,8 +59,7 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 		return fmt.Errorf("write config: %w", err)
 	}
 	if restart {
-		if out, err := runWGQuickCommand(ctx, "up", req.Name); err != nil {
-			slog.Error("failed to bring up WireGuard interface after update", "interface", req.Name, "error", err, "output", out)
+		if _, err := runWGQuickCommand(ctx, "up", req.Name); err != nil {
 			return fmt.Errorf("interface %s is down: bring up failed: %w", req.Name, err)
 		}
 	}
@@ -226,8 +224,10 @@ func defaultClientDNS(cfg WireGuardConfig) []string {
 	if len(cfg.DNS) > 0 {
 		return cfg.DNS
 	}
-	if gateway, _ := getDefaultGatewayIPv4Func(); gateway != "" {
-		return []string{gateway}
+	gateway, err := getDefaultGatewayIPv4Func()
+	if gateway == "" {
+		slog.Debug("no default gateway for client DNS", "error", err)
+		return nil
 	}
-	return nil
+	return []string{gateway}
 }

@@ -43,8 +43,10 @@ func resolveTrashUser(owner uploadOwner) (trashUser, error) {
 
 func trashUserOrError(owner uploadOwner) (trashUser, error) {
 	u, err := resolveTrashUser(owner)
-	if err != nil || u.home == "" {
-		slog.Warn("trash: cannot resolve home directory", "error", err)
+	if err != nil {
+		return u, bridgeipc.NewError(fmt.Sprintf("cannot resolve home directory for trash: %v", err), 500)
+	}
+	if u.home == "" {
 		return u, bridgeipc.NewError("cannot resolve home directory for trash", 500)
 	}
 	return u, nil

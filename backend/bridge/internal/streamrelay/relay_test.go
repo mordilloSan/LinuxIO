@@ -159,8 +159,9 @@ func TestWriteErrorUsesBridgeCode(t *testing.T) {
 		t.Fatalf("bridgeipc.StatusCode(plain) = %d", got)
 	}
 	var buf bytes.Buffer
-	if err := WriteError(&buf, 0, bridgeipc.NewError("bad", 404)); err != nil {
-		t.Fatal(err)
+	want := bridgeipc.NewError("bad", 404)
+	if err := WriteError(&buf, 0, want); !errors.Is(err, want) {
+		t.Fatalf("WriteError returned %v, want the written error back", err)
 	}
 	result, err := ipc.ReadRelayFrame(&buf)
 	if err != nil || result.Opcode != ipc.OpStreamResult {

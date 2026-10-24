@@ -104,7 +104,7 @@ func copyDownloadFile(ctx context.Context, stream net.Conn, file io.Reader) erro
 				return err
 			}
 		}
-		if readErr == io.EOF {
+		if errors.Is(readErr, io.EOF) {
 			return nil
 		}
 		if readErr != nil {

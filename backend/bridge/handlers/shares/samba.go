@@ -3,7 +3,9 @@ package shares
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -240,7 +242,7 @@ func DeleteSambaShare(ctx context.Context, name string) error {
 func parseSmbConf() (map[string]map[string]string, error) {
 	file, err := os.Open(smbConfFile)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return map[string]map[string]string{}, nil
 		}
 		return nil, fmt.Errorf("failed to open %s: %w", smbConfFile, err)

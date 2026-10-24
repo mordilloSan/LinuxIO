@@ -94,8 +94,7 @@ func runBtrfsRollbackTask(ctx context.Context, task *bridgeipc.Task, req apische
 		task.ReportProgress(BtrfsRollbackProgress{Step: step, Total: len(plan.Steps), Message: msg})
 	})
 	if err != nil {
-		slog.Error("btrfs rollback failed", "uuid", req.UUID, "source", source, "snapshot", req.SnapshotPath, "error", err)
-		return btrfs.BtrfsRollbackResult{}, err
+		return btrfs.BtrfsRollbackResult{}, fmt.Errorf("roll back btrfs subvolume %s of %s to snapshot %s: %w", source, req.UUID, req.SnapshotPath, err)
 	}
 	slog.Info("rolled back btrfs subvolume", "uuid", req.UUID, "source", source, "rebootRequired", res.RebootRequired, "remounted", res.Remounted)
 	return res, nil

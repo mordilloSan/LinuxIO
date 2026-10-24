@@ -2,6 +2,7 @@ package userconfig
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 
 	"github.com/goccy/go-yaml"
@@ -16,7 +17,7 @@ func regularFileExists(path string) (bool, error) {
 		}
 		return info.Mode().IsRegular(), nil
 	}
-	if os.IsNotExist(err) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
 	return false, err

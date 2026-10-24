@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"time"
 
@@ -87,8 +86,7 @@ func handleTestNotifications(ctx context.Context, _ apischema.NoRequest) (apisch
 		return apischema.SuccessResponse{}, errors.New("no notification channel is configured")
 	}
 	if err := store.Send(ctx, n, store.TestAlert()); err != nil {
-		slog.Warn("test notification failed", "error", err)
-		return apischema.SuccessResponse{}, err
+		return apischema.SuccessResponse{}, fmt.Errorf("send test notification: %w", err)
 	}
 	return apischema.SuccessResponse{Success: true}, nil
 }

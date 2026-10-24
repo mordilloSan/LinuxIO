@@ -46,7 +46,6 @@ func UnmountFilesystem(ctx context.Context, mountpoint string) (apischema.Storag
 	slog.Info("unmounting filesystem", "mountpoint", mountpoint)
 	result, err := unmountFilesystem(ctx, mountpoint)
 	if err != nil {
-		slog.Error("failed to unmount filesystem", "mountpoint", mountpoint, "error", err)
 		return apischema.StorageMountResult{}, err
 	}
 	slog.Info("filesystem unmounted", "mountpoint", mountpoint)
@@ -55,7 +54,7 @@ func UnmountFilesystem(ctx context.Context, mountpoint string) (apischema.Storag
 
 func unmountFilesystem(ctx context.Context, mountpoint string) (apischema.StorageMountResult, error) {
 	if !validPath.MatchString(mountpoint) {
-		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
+		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint %q", mountpoint)
 	}
 
 	if isProtectedMount(mountpoint) {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"maps"
 	"slices"
 	"strings"
@@ -723,6 +722,5 @@ func wrapRollbackError(operation string, err error) error {
 	if err == nil {
 		return nil
 	}
-	slog.Error("standalone Docker update rollback step failed", "operation", operation, "error", err)
 	return fmt.Errorf("rollback %s: %w", operation, err)
 }

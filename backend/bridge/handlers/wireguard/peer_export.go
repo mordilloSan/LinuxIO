@@ -33,11 +33,9 @@ func readPeerExport(ctx context.Context, req apischema.WireGuardPeerRequest) (pe
 		return peerFile{}, "", fmt.Errorf("usage: <interface> <peerId>")
 	}
 	if err := validateInterfaceName(req.InterfaceName); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", req.InterfaceName, "error", err)
 		return peerFile{}, "", fmt.Errorf("invalid interface name: %w", err)
 	}
 	if err := validateInterfaceName(req.PeerID); err != nil {
-		slog.Error("invalid WireGuard peer id", "peer", req.PeerID, "error", err)
 		return peerFile{}, "", fmt.Errorf("invalid peer id: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
@@ -47,7 +45,6 @@ func readPeerExport(ctx context.Context, req apischema.WireGuardPeerRequest) (pe
 	peerPath := peerConfigPath(req.InterfaceName, req.PeerID)
 	raw, err := os.ReadFile(peerPath)
 	if err != nil {
-		slog.Error("failed to read peer config", "path", peerPath, "error", err)
 		return peerFile{}, "", fmt.Errorf("read peer config: %w", err)
 	}
 	file, err := readPeerFile(peerPath)
@@ -65,8 +62,7 @@ func PeerQRCode(ctx context.Context, req apischema.WireGuardPeerRequest) (apisch
 
 	png, err := qrcode.Encode(content, qrcode.Medium, 256)
 	if err != nil {
-		slog.Error("failed to generate peer QR code", "interface", req.InterfaceName, "peer", req.PeerID, "error", err)
-		return apischema.QRCodeResponse{}, fmt.Errorf("generate QR code: %w", err)
+		return apischema.QRCodeResponse{}, fmt.Errorf("generate QR code for %s/%s: %w", req.InterfaceName, req.PeerID, err)
 	}
 
 	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)

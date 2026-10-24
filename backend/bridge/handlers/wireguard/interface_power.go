@@ -20,17 +20,14 @@ var (
 
 func UpInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
 	if req.Name == "" {
-		slog.Error("invalid up interface request")
 		return nil, fmt.Errorf("usage: up_interface <name>")
 	}
 	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	out, err := runWGQuickCommand(ctx, "up", name)
 	if err != nil {
-		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", out)
 		return nil, fmt.Errorf("bring up interface: %w", err)
 	}
 
@@ -43,18 +40,15 @@ func UpInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
 
 func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
 	if req.Name == "" {
-		slog.Error("invalid down interface request")
 		return nil, fmt.Errorf("usage: down_interface <name>")
 	}
 
 	name := req.Name
 	if err := validateInterfaceName(name); err != nil {
-		slog.Error("invalid WireGuard interface name", "interface", name, "error", err)
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
 	out, err := runWGQuickCommand(ctx, "down", name)
 	if err != nil {
-		slog.Error("failed to bring down WireGuard interface", "interface", name, "error", err, "output", out)
 		return nil, fmt.Errorf("bring down interface: %w", err)
 	}
 	slog.Info("WireGuard interface brought down", "interface", name)
@@ -65,9 +59,8 @@ func DownInterface(ctx context.Context, req apischema.NameRequest) (any, error) 
 }
 
 func bringUpInterface(ctx context.Context, name string) error {
-	out, err := runWGQuickCommand(ctx, "up", name)
+	_, err := runWGQuickCommand(ctx, "up", name)
 	if err != nil {
-		slog.Error("failed to bring up WireGuard interface", "interface", name, "error", err, "output", out)
 		return fmt.Errorf("bring up interface: %w", err)
 	}
 	return nil

@@ -16,7 +16,6 @@ func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error)
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
 	files, err := filepath.Glob(pattern)
 	if err != nil {
-		slog.Error("failed to list WireGuard interface configs", "path", pattern, "error", err)
 		return nil, fmt.Errorf("list interfaces: %w", err)
 	}
 

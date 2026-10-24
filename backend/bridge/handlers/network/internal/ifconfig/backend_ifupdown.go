@@ -2,7 +2,9 @@ package ifconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +34,7 @@ func detectIfupdownBackend(env Environment, iface string) (ConfigBackend, error)
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
 			return nil, err

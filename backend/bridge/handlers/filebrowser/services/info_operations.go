@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -152,7 +153,7 @@ func readDirectoryEntries(ctx context.Context, root *fsroot.FSRoot, dir *os.File
 				return err
 			}
 		}
-		if readErr == io.EOF {
+		if errors.Is(readErr, io.EOF) {
 			return nil
 		}
 		if readErr != nil {

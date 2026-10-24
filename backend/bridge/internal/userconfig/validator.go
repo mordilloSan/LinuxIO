@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -16,20 +15,17 @@ import (
 // caller unchanged; parseCoreConfig never rewrites. Only the startup read
 // (loadCoreOrQuarantineOwned) quarantines and replaces an invalid document;
 // core mutations leave it untouched.
-func parseCoreConfig(raw []byte, path, base string) (*Settings, error) {
+func parseCoreConfig(raw []byte, base string) (*Settings, error) {
 	if err := validateSingleYAMLDocument(raw); err != nil {
-		logYAMLError(err, path)
 		return nil, err
 	}
 
 	cfg := defaultSettings(base)
 	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
-		logYAMLError(err, path)
 		return nil, err
 	}
 	if errs := validateSettings(cfg); len(errs) > 0 {
 		err := errors.New(strings.Join(errs, "; "))
-		logYAMLError(err, path)
 		return nil, err
 	}
 	return cfg, nil
@@ -37,21 +33,18 @@ func parseCoreConfig(raw []byte, path, base string) (*Settings, error) {
 
 // parseUIConfig decodes one UI document over the backend defaults. This keeps
 // old sparse UI documents readable while making the runtime value complete.
-func parseUIConfig(raw []byte, path string) (*UIPreferences, error) {
+func parseUIConfig(raw []byte) (*UIPreferences, error) {
 	if err := validateSingleYAMLDocument(raw); err != nil {
-		logYAMLError(err, path)
 		return nil, err
 	}
 
 	ui := DefaultUIPreferences()
 	if err := yaml.UnmarshalWithOptions(raw, &ui, yaml.Strict()); err != nil {
-		logYAMLError(err, path)
 		return nil, err
 	}
 	ui.ViewModes = normalizeViewModesForDefault(ui.ViewModes)
 	if errs := validateUIPreferences(&ui); len(errs) > 0 {
 		err := errors.New(strings.Join(errs, "; "))
-		slog.Error("UI config validation failed", "component", "config", "path", path, "error", err)
 		return nil, err
 	}
 	return &ui, nil
@@ -201,16 +194,4 @@ func (p *UIPreferences) themeColorsValue(mode PersistedTheme) *ThemeColors {
 		return p.ThemeColors.Light
 	}
 	return p.ThemeColors.Dark
-}
-
-func logYAMLError(err error, path string) {
-	if syntaxErr, ok := errors.AsType[*yaml.SyntaxError](err); ok {
-		if tok := syntaxErr.GetToken(); tok != nil {
-			slog.Error("config syntax error", "component", "config", "path", path, "line", tok.Position.Line, "column", tok.Position.Column, "detail", syntaxErr.GetMessage())
-			return
-		}
-		slog.Error("config syntax error", "component", "config", "path", path, "detail", syntaxErr.GetMessage())
-		return
-	}
-	slog.Error("config parse error", "component", "config", "path", path, "error", err)
 }

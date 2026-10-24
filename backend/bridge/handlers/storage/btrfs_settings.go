@@ -88,8 +88,7 @@ func fstabHasCompression(entry fstabEntry, c btrfs.BtrfsCompression) bool {
 func SetBtrfsQuotas(ctx context.Context, req apischema.BtrfsQuotaRequest) (btrfs.BtrfsSettings, error) {
 	slog.Info("setting btrfs quotas", "uuid", req.UUID, "enabled", req.Enabled)
 	if err := btrfs.SetQuotas(ctx, req.UUID, req.Enabled); err != nil {
-		slog.Error("failed to set btrfs quotas", "uuid", req.UUID, "error", err)
-		return btrfs.BtrfsSettings{}, err
+		return btrfs.BtrfsSettings{}, fmt.Errorf("set btrfs quotas of %s: %w", req.UUID, err)
 	}
 	return GetBtrfsSettings(ctx, req.UUID)
 }
@@ -99,9 +98,9 @@ func LimitBtrfsQgroup(ctx context.Context, req apischema.BtrfsQgroupLimitRequest
 	slog.Info("setting btrfs qgroup limit", "uuid", req.UUID, "path", req.Path)
 	sv, err := btrfs.SetQgroupLimit(ctx, req.UUID, req.Path, req.MaxReferencedBytes)
 	if err != nil {
-		slog.Error("failed to set btrfs qgroup limit", "uuid", req.UUID, "path", req.Path, "error", err)
+		return sv, fmt.Errorf("set btrfs qgroup limit of %s in %s: %w", req.Path, req.UUID, err)
 	}
-	return sv, err
+	return sv, nil
 }
 
 // ApplyBtrfsCompression sets the filesystem compression and returns the
@@ -109,8 +108,7 @@ func LimitBtrfsQgroup(ctx context.Context, req apischema.BtrfsQgroupLimitRequest
 func ApplyBtrfsCompression(ctx context.Context, req apischema.BtrfsCompressionRequest) (btrfs.BtrfsSettings, error) {
 	slog.Info("setting btrfs compression", "uuid", req.UUID, "algorithm", req.Algorithm)
 	if err := setBtrfsCompression(ctx, req); err != nil {
-		slog.Error("failed to set btrfs compression", "uuid", req.UUID, "error", err)
-		return btrfs.BtrfsSettings{}, err
+		return btrfs.BtrfsSettings{}, fmt.Errorf("set btrfs compression of %s: %w", req.UUID, err)
 	}
 	return GetBtrfsSettings(ctx, req.UUID)
 }
@@ -120,9 +118,9 @@ func SetBtrfsSubvolumeCompression(ctx context.Context, req apischema.BtrfsSubvol
 	slog.Info("setting btrfs subvolume compression", "uuid", req.UUID, "path", req.Path, "algorithm", req.Algorithm)
 	sv, err := btrfs.SetSubvolumeCompression(ctx, req.UUID, req.Path, req.Algorithm)
 	if err != nil {
-		slog.Error("failed to set btrfs subvolume compression", "uuid", req.UUID, "path", req.Path, "error", err)
+		return sv, fmt.Errorf("set btrfs compression of subvolume %s in %s: %w", req.Path, req.UUID, err)
 	}
-	return sv, err
+	return sv, nil
 }
 
 // setBtrfsCompression remounts the filesystem with the compression option and

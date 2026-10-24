@@ -254,8 +254,30 @@ func (r *Router) Duplex(name string, handler DuplexFunc, opts ...RouteOption) {
 
 // Dispatch routes an incoming request to the appropriate handler based on the
 // request route, enforcing privilege checks and logging request lifecycle events.
-func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) error {
+func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) (dispatchErr error) {
 	req.Owner = ownerFromSession(req.Session)
+	startedAt := time.Now()
+	routeName := ""
+	defer func() {
+		// A failed route is logged here and nowhere else: handlers return
+		// errors instead of logging them.
+		msg, level := "route completed", slog.LevelDebug
+		switch {
+		case dispatchErr == nil:
+		case errors.Is(dispatchErr, context.Canceled):
+			msg, level = "route canceled", slog.LevelInfo
+		default:
+			msg, level = "route failed", failureLevel(dispatchErr)
+		}
+		if dispatchErr != nil {
+			msg += ": " + dispatchErr.Error() // in MESSAGE too, so plain journalctl shows the reason
+		}
+		slog.Log(ctx, level, msg,
+			"route", routeName,
+			"user", req.Owner.Username,
+			"duration", time.Since(startedAt),
+			"error", dispatchErr)
+	}()
 
 	route, ok := r.lookup(req.Route)
 	if !ok {
@@ -266,6 +288,7 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 	// Label only the canonical registered route. req.Route is client-controlled
 	// and must not be copied into production diagnostics before validation.
 	ctx = goroutinelabel.With(ctx, "route", route.Name)
+	routeName = route.Name
 	if route.Privileged && (req.Session == nil || !req.Session.Privileged) {
 		err := fmt.Errorf("%w: privileged route %s requires elevated bridge", ErrForbidden, req.Route)
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
@@ -281,7 +304,6 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 		req.DecodedValue = decoded
 	}
 
-	startedAt := time.Now()
 	slog.Debug("route started",
 		"route", req.Route,
 		"mode", route.Mode,
@@ -300,16 +322,6 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) err
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), 500)
 	}
 
-	outcome := "success"
-	if err != nil {
-		outcome = "failure"
-	}
-	slog.Debug("route completed",
-		"route", req.Route,
-		"mode", route.Mode,
-		"outcome", outcome,
-		"duration", time.Since(startedAt),
-		"error", err)
 	return err
 }
 
@@ -744,6 +756,15 @@ func (o TaskOwner) key(lifetime TaskLifetime) string {
 }
 
 // StatusCode is the wire status code of err: the bridgeipc.Error code when set, else a code for the known sentinels, else 500.
+// failureLevel maps a failed route or task to its log level: server faults
+// are errors, client mistakes are warnings.
+func failureLevel(err error) slog.Level {
+	if StatusCode(err) >= 500 {
+		return slog.LevelError
+	}
+	return slog.LevelWarn
+}
+
 func StatusCode(err error) int {
 	if err == nil {
 		return 0

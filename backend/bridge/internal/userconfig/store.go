@@ -458,7 +458,7 @@ func readCoreLatest(path, base string) (*Settings, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg, parseErr := parseCoreConfig(raw, path, base)
+	cfg, parseErr := parseCoreConfig(raw, base)
 	if parseErr == nil {
 		return cfg, nil
 	}
@@ -527,7 +527,7 @@ func readUILatestOwned(path string, owner fileOwnership) (*UIPreferences, error)
 	if err != nil {
 		return nil, err
 	}
-	ui, parseErr := parseUIConfig(raw, path)
+	ui, parseErr := parseUIConfig(raw)
 	if parseErr == nil {
 		return ui, nil
 	}

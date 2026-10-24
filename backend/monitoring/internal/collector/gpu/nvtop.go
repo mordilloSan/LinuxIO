@@ -3,6 +3,7 @@ package gpu
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"math"
@@ -273,7 +274,7 @@ func (gm *Manager) collectNvtopStats(ctx context.Context, interval string, updat
 	for {
 		var snapshots []nvtopSnapshot
 		if err := decoder.Decode(&snapshots); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				if foundValid {
 					return nil
 				}

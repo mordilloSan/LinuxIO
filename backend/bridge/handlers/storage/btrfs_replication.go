@@ -48,8 +48,7 @@ func CheckBtrfsReplicationHost(ctx context.Context, req apischema.BtrfsSSHTrustR
 	slog.Info("checking btrfs replication host key", "host", req.Host, "port", req.Port, "confirm", req.Confirm)
 	trust, err := trustBtrfsReplicationHost(ctx, req)
 	if err != nil {
-		slog.Error("failed to check btrfs replication host key", "host", req.Host, "port", req.Port, "error", err)
-		return btrfs.BtrfsSSHTrust{}, err
+		return btrfs.BtrfsSSHTrust{}, fmt.Errorf("check btrfs replication host key of %s:%d: %w", req.Host, req.Port, err)
 	}
 	return trust, nil
 }
@@ -76,8 +75,7 @@ func SaveBtrfsReplicationJob(ctx context.Context, job btrfs.BtrfsReplicationJob)
 	slog.Info("setting btrfs replication job", "id", job.ID, "uuid", job.UUID, "path", job.Path, "target", job.Target.Kind)
 	jobs, err := setBtrfsReplicationJob(ctx, job)
 	if err != nil {
-		slog.Error("failed to set btrfs replication job", "id", job.ID, "uuid", job.UUID, "path", job.Path, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("set btrfs replication job %s (%s %s): %w", job.ID, job.UUID, job.Path, err)
 	}
 	return jobs, nil
 }
@@ -90,8 +88,7 @@ func DeleteBtrfsReplicationJob(ctx context.Context, id string) ([]btrfs.BtrfsRep
 		return nil
 	})
 	if err != nil {
-		slog.Error("failed to delete btrfs replication job", "id", id, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("delete btrfs replication job %s: %w", id, err)
 	}
 	return jobs, nil
 }
@@ -101,8 +98,7 @@ func DeleteBtrfsReplicationJob(ctx context.Context, id string) ([]btrfs.BtrfsRep
 func EnsureBtrfsReplicationSSHKey(ctx context.Context) (btrfs.BtrfsSSHKey, error) {
 	pub, err := btrfs.EnsureSSHKey(ctx)
 	if err != nil {
-		slog.Error("failed to prepare btrfs replication ssh key", "error", err)
-		return btrfs.BtrfsSSHKey{}, err
+		return btrfs.BtrfsSSHKey{}, fmt.Errorf("prepare btrfs replication ssh key: %w", err)
 	}
 	return btrfs.BtrfsSSHKey{PublicKey: pub}, nil
 }

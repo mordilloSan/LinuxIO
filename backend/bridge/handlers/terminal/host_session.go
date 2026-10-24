@@ -39,9 +39,8 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 	}
 	cmd, err := usercmd.Command(ctx, sess.User, argv[0], argv[1:]...)
 	if err != nil {
-		slog.Error("failed to look up terminal user", "user", sess.User.Username, "error", err)
 		streamrelay.WriteClose(stream)
-		return fmt.Errorf("lookup user: %w", err)
+		return fmt.Errorf("look up terminal user %s: %w", sess.User.Username, err)
 	}
 	cmd.Env = append(cmd.Env,
 		"TERM=xterm-256color",
@@ -60,9 +59,8 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		slog.Error("failed to start terminal PTY", "user", sess.User.Username, "error", err)
 		streamrelay.WriteClose(stream)
-		return err
+		return fmt.Errorf("start terminal PTY for user %s: %w", sess.User.Username, err)
 	}
 
 	if err := pty.Setsize(ptmx, &pty.Winsize{Cols: safeUint16(cols), Rows: safeUint16(rows)}); err != nil {

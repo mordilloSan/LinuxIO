@@ -22,7 +22,6 @@ func getDefaultGatewayIPv4() (string, error) {
 func getGatewayForInterfaceIPv4(iface string) (string, error) {
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
-		slog.Error("failed to lookup interface", "component", "wireguard", "interface", iface, "error", err)
 		return "", fmt.Errorf("lookup interface %s: %w", iface, err)
 	}
 	return getGatewayFromNetlink(link.Attrs().Index)
@@ -40,7 +39,6 @@ func getGatewayFromNetlink(linkIndex int) (string, error) {
 
 	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, filter, mask)
 	if err != nil {
-		slog.Error("failed to list routes", "component", "wireguard", "subsystem", "netlink", "error", err)
 		return "", fmt.Errorf("list routes: %w", err)
 	}
 

@@ -93,8 +93,7 @@ func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgeipc.Task, req api
 	slog.Info("removing btrfs device", "uuid", req.UUID, "device", req.DeviceID)
 	task.ReportProgress(BtrfsOpProgress{Op: "remove", Message: fmt.Sprintf("Moving data off device %d", req.DeviceID)})
 	if err := btrfs.RemoveDevice(ctx, req.UUID, req.DeviceID); err != nil {
-		slog.Error("btrfs device remove failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("remove btrfs device %d of %s: %w", req.DeviceID, req.UUID, err)
 	}
 	slog.Info("removed btrfs device", "uuid", req.UUID, "device", req.DeviceID)
 	return btrfs.FindFilesystem(ctx, req.UUID)
@@ -108,13 +107,11 @@ func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req ap
 	slog.Info("replacing btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
 	task.ReportProgress(BtrfsOpProgress{Op: "replace", Message: fmt.Sprintf("Replacing device %d with %s", req.DeviceID, req.NewDevice)})
 	if err := btrfs.Replace(ctx, req.UUID, req.DeviceID, req.NewDevice, progressReporter(task, "replace", "Replacing")); err != nil {
-		slog.Error("btrfs replace failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("replace btrfs device %d of %s with %s: %w", req.DeviceID, req.UUID, req.NewDevice, err)
 	}
 	fs, err := btrfs.ReplaceResult(ctx, req.UUID, req.DeviceID, req.NewDevice)
 	if err != nil {
-		slog.Error("btrfs replace failed", "uuid", req.UUID, "device", req.DeviceID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("replace btrfs device %d of %s with %s: %w", req.DeviceID, req.UUID, req.NewDevice, err)
 	}
 	// A bigger replacement disk is grown into right away.
 	if i := slices.IndexFunc(fs.Devices, func(d btrfs.BtrfsDevice) bool { return d.ID == req.DeviceID }); i >= 0 && fs.Devices[i].Growable {
@@ -133,13 +130,11 @@ func runBtrfsBalanceTask(ctx context.Context, task *bridgeipc.Task, req apischem
 	task.ReportProgress(BtrfsOpProgress{Op: "balance", Message: "Balance started"})
 	opts := btrfs.BalanceOptions{DataProfile: req.DataProfile, MetadataProfile: req.MetadataProfile, DataUsageMax: req.DataUsage}
 	if err := btrfs.Balance(ctx, req.UUID, opts, progressReporter(task, "balance", "Balancing")); err != nil {
-		slog.Error("btrfs balance failed", "uuid", req.UUID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("balance btrfs filesystem %s: %w", req.UUID, err)
 	}
 	fs, err := btrfs.BalanceResult(ctx, req.UUID, req.DataProfile, req.MetadataProfile)
 	if err != nil {
-		slog.Error("btrfs balance failed", "uuid", req.UUID, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("balance btrfs filesystem %s: %w", req.UUID, err)
 	}
 	slog.Info("balanced btrfs filesystem", "uuid", req.UUID)
 	return fs, nil
@@ -151,8 +146,7 @@ func runBtrfsScrubTask(ctx context.Context, task *bridgeipc.Task, req apischema.
 	report := progressReporter(task, "scrub", "Scrubbing")
 	status, err := btrfs.Scrub(ctx, req.UUID, func(s btrfs.BtrfsScrubStatus) { report(s.Percent) })
 	if err != nil {
-		slog.Error("btrfs scrub failed", "uuid", req.UUID, "status", status.Status, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("scrub btrfs filesystem %s (status %q): %w", req.UUID, status.Status, err)
 	}
 	slog.Info("scrubbed btrfs filesystem", "uuid", req.UUID, "errors", status.ErrorCount, "uncorrectable", status.UncorrectableErrors)
 	return btrfs.FindFilesystem(ctx, req.UUID)
@@ -173,8 +167,7 @@ func AddBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (b
 	}
 	slog.Info("adding btrfs device", "uuid", req.UUID, "device", req.Device, "force", req.Force)
 	if err := btrfs.AddDevice(ctx, req.UUID, req.Device, req.Force); err != nil {
-		slog.Error("failed to add btrfs device", "uuid", req.UUID, "device", req.Device, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("add btrfs device %s to %s: %w", req.Device, req.UUID, err)
 	}
 	return btrfs.FindFilesystem(ctx, req.UUID)
 }
@@ -183,8 +176,7 @@ func AddBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (b
 func CancelBtrfsBalance(ctx context.Context, uuid string) error {
 	slog.Info("canceling btrfs balance", "uuid", uuid)
 	if err := btrfs.BalanceCancel(ctx, uuid); err != nil {
-		slog.Error("failed to cancel btrfs balance", "uuid", uuid, "error", err)
-		return err
+		return fmt.Errorf("cancel btrfs balance of %s: %w", uuid, err)
 	}
 	return nil
 }
@@ -193,8 +185,7 @@ func CancelBtrfsBalance(ctx context.Context, uuid string) error {
 func CancelBtrfsScrub(ctx context.Context, uuid string) error {
 	slog.Info("canceling btrfs scrub", "uuid", uuid)
 	if err := btrfs.ScrubCancel(ctx, uuid); err != nil {
-		slog.Error("failed to cancel btrfs scrub", "uuid", uuid, "error", err)
-		return err
+		return fmt.Errorf("cancel btrfs scrub of %s: %w", uuid, err)
 	}
 	return nil
 }

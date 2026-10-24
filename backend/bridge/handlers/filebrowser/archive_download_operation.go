@@ -201,7 +201,7 @@ func (t *archiveTransferTask) streamChunks(stream net.Conn, file io.Reader) (don
 			}
 		}
 
-		if readErr == io.EOF {
+		if errors.Is(readErr, io.EOF) {
 			break
 		}
 		if readErr != nil {

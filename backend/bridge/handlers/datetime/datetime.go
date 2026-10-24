@@ -2,7 +2,9 @@ package datetime
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -213,7 +215,7 @@ func (timesyncdBackend) GetServers(context.Context) ([]string, error) {
 
 func (timesyncdBackend) SetServers(ctx context.Context, servers []string) error {
 	if len(servers) == 0 {
-		if err := os.Remove(timesyncdManagedConf); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(timesyncdManagedConf); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 		return restartFirstService(ctx, []string{"systemd-timesyncd.service"})
@@ -256,7 +258,7 @@ func (b chronyBackend) SetServers(ctx context.Context, servers []string) error {
 		return restartFirstService(ctx, chronyServiceCandidates)
 	}
 	if len(servers) == 0 {
-		if err := os.Remove(b.managedPath); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(b.managedPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 		return restartFirstService(ctx, chronyServiceCandidates)
@@ -270,7 +272,7 @@ func (b chronyBackend) SetServers(ctx context.Context, servers []string) error {
 
 func (b chronyBackend) writeInlineManagedServers(servers []string) error {
 	data, err := os.ReadFile(b.mainPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	lines := strings.Split(string(data), "\n")
@@ -282,7 +284,7 @@ func (b chronyBackend) writeInlineManagedServers(servers []string) error {
 func parseTimesyncdServers(path string) ([]string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -312,7 +314,7 @@ func parseTimesyncdServers(path string) ([]string, bool, error) {
 func parseChronyServersFromFile(path string) ([]string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -324,7 +326,7 @@ func parseChronyServersFromFile(path string) ([]string, bool, error) {
 func parseChronyInlineManagedServers(path string) ([]string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, err

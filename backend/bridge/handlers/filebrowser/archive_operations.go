@@ -73,11 +73,13 @@ func normalizeArchiveTargetPath(destination, extension string) string {
 	return targetPath
 }
 
+var errArchiveDestinationIsDir = errors.New("destination is a directory")
+
 func prepareArchiveTarget(root *fsroot.FSRoot, targetPath string) (targetRel, tempRel, tempPath string, err error) {
 	targetRel = fsroot.ToRel(targetPath)
 	if info, statErr := root.Root.Stat(targetRel); statErr == nil {
 		if info.IsDir() {
-			return "", "", "", fmt.Errorf("destination is a directory")
+			return "", "", "", errArchiveDestinationIsDir
 		}
 	}
 
@@ -176,7 +178,7 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	if err != nil {
 		status := 500
 		message := fmt.Sprintf("cannot prepare archive target: %v", err)
-		if strings.Contains(err.Error(), "destination is a directory") {
+		if errors.Is(err, errArchiveDestinationIsDir) {
 			status = 400
 			message = "destination is a directory"
 		}

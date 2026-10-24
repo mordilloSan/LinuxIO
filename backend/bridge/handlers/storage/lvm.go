@@ -176,23 +176,19 @@ func ListLogicalVolumes(ctx context.Context) ([]apischema.LogicalVolume, error) 
 func CreateLogicalVolume(ctx context.Context, vgName, lvName, size string) (apischema.SuccessPathResponse, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
-		slog.Warn("invalid volume group name", "volume_group", vgName)
 		return apischema.SuccessPathResponse{}, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
-		slog.Warn("invalid logical volume name", "name", lvName)
 		return apischema.SuccessPathResponse{}, fmt.Errorf("invalid logical volume name")
 	}
 	if !validSize.MatchString(size) {
-		slog.Warn("invalid logical volume size", "size", size)
 		return apischema.SuccessPathResponse{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
 	slog.Info("creating logical volume", "volume_group", vgName, "name", lvName, "size", size)
 	cmd := exec.CommandContext(ctx, "lvcreate", "-L", size, "-n", lvName, vgName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		slog.Error("lvcreate failed", "volume_group", vgName, "name", lvName, "output", strings.TrimSpace(string(out)))
-		return apischema.SuccessPathResponse{}, fmt.Errorf("lvcreate failed: %s", strings.TrimSpace(string(out)))
+		return apischema.SuccessPathResponse{}, fmt.Errorf("lvcreate %s/%s failed: %w: %s", vgName, lvName, err, strings.TrimSpace(string(out)))
 	}
 	path := fmt.Sprintf("/dev/%s/%s", vgName, lvName)
 	slog.Info("logical volume created", "path", path, "size", size)
@@ -206,11 +202,9 @@ func CreateLogicalVolume(ctx context.Context, vgName, lvName, size string) (apis
 func DeleteLogicalVolume(ctx context.Context, vgName, lvName string) (apischema.SuccessResponse, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
-		slog.Warn("invalid volume group name", "volume_group", vgName)
 		return apischema.SuccessResponse{}, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
-		slog.Warn("invalid logical volume name", "name", lvName)
 		return apischema.SuccessResponse{}, fmt.Errorf("invalid logical volume name")
 	}
 
@@ -220,16 +214,14 @@ func DeleteLogicalVolume(ctx context.Context, vgName, lvName string) (apischema.
 	partitions, _ := disk.Partitions(true)
 	for _, p := range partitions {
 		if p.Device == lvPath {
-			slog.Warn("cannot delete mounted logical volume", "path", lvPath, "mountpoint", p.Mountpoint)
-			return apischema.SuccessResponse{}, fmt.Errorf("logical volume is mounted at %s - unmount first", p.Mountpoint)
+			return apischema.SuccessResponse{}, fmt.Errorf("logical volume %s is mounted at %s - unmount first", lvPath, p.Mountpoint)
 		}
 	}
 	slog.Info("deleting logical volume", "path", lvPath)
 	cmd := exec.CommandContext(ctx, "lvremove", "-f", lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		slog.Error("lvremove failed", "path", lvPath, "output", strings.TrimSpace(string(out)))
-		return apischema.SuccessResponse{}, fmt.Errorf("lvremove failed: %s", strings.TrimSpace(string(out)))
+		return apischema.SuccessResponse{}, fmt.Errorf("lvremove %s failed: %w: %s", lvPath, err, strings.TrimSpace(string(out)))
 	}
 	slog.Info("logical volume deleted", "path", lvPath)
 	return apischema.SuccessResponse{Success: true}, nil
@@ -239,15 +231,12 @@ func DeleteLogicalVolume(ctx context.Context, vgName, lvName string) (apischema.
 func ResizeLogicalVolume(ctx context.Context, vgName, lvName, newSize string) (apischema.SuccessResponse, error) {
 	// Validate inputs
 	if !validVGName.MatchString(vgName) {
-		slog.Warn("invalid volume group name", "volume_group", vgName)
 		return apischema.SuccessResponse{}, fmt.Errorf("invalid volume group name")
 	}
 	if !validLVName.MatchString(lvName) {
-		slog.Warn("invalid logical volume name", "name", lvName)
 		return apischema.SuccessResponse{}, fmt.Errorf("invalid logical volume name")
 	}
 	if !validSize.MatchString(newSize) {
-		slog.Warn("invalid logical volume size", "size", newSize)
 		return apischema.SuccessResponse{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
 
@@ -257,8 +246,7 @@ func ResizeLogicalVolume(ctx context.Context, vgName, lvName, newSize string) (a
 	cmd := exec.CommandContext(ctx, "lvresize", "-r", "-L", newSize, lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		slog.Error("lvresize failed", "path", lvPath, "output", strings.TrimSpace(string(out)))
-		return apischema.SuccessResponse{}, fmt.Errorf("lvresize failed: %s", strings.TrimSpace(string(out)))
+		return apischema.SuccessResponse{}, fmt.Errorf("lvresize %s failed: %w: %s", lvPath, err, strings.TrimSpace(string(out)))
 	}
 	slog.Info("logical volume resized", "path", lvPath, "size", newSize)
 	return apischema.SuccessResponse{Success: true}, nil

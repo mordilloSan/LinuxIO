@@ -702,6 +702,13 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 
 	result, err := runner(ctx, j, request)
 	if err != nil {
+		// A failed task is logged here and nowhere else: runners return
+		// errors instead of logging them.
+		msg, level := "task failed", failureLevel(err)
+		if errors.Is(err, context.Canceled) {
+			msg, level = "task canceled", slog.LevelInfo
+		}
+		slog.Log(ctx, level, msg+": "+err.Error(), "task_id", j.id, "task_type", j.typ, "user", j.owner.Username, "error", err)
 		if errors.Is(err, context.DeadlineExceeded) {
 			j.markFailed(NewError("operation timed out", 504))
 			return

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"regexp"
@@ -182,7 +183,7 @@ func (s *managedMountStore) load() (map[string]managedMountEntry, error) {
 
 	data, err := os.ReadFile(s.path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return entries, nil
 		}
 		return nil, err
@@ -219,7 +220,7 @@ func (s *managedMountStore) save(entries map[string]managedMountEntry) error {
 	}
 
 	if len(stored) == 0 {
-		if err := os.Remove(s.path); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(s.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 		return nil

@@ -17,27 +17,23 @@ type ipManager struct {
 func newIPManager(serverCIDR string) (*ipManager, error) {
 	ip, ipNet, err := net.ParseCIDR(strings.TrimSpace(serverCIDR))
 	if err != nil {
-		slog.Error("failed to parse server CIDR", "component", "wireguard", "path", serverCIDR, "error", err)
 		return nil, fmt.Errorf("invalid CIDR %q: %w", serverCIDR, err)
 	}
 
 	// Ensure IPv4 only
 	v4 := ip.To4()
 	if v4 == nil {
-		slog.Error("server CIDR is not IPv4", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("IPv6 addresses are not supported: %s", serverCIDR)
 	}
 
 	maskBits, totalBits := ipNet.Mask.Size()
 	if totalBits != 32 {
-		slog.Error("unexpected IPv4 mask size", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("invalid IPv4 mask for %s", serverCIDR)
 	}
 
 	// Only support subnets within a /24 boundary (mask >= 24)
 	// This simplifies IP math to last-octet operations
 	if maskBits < 24 {
-		slog.Error("wireguard subnet is too large", "component", "wireguard", "path", serverCIDR, "mode", "max-/24")
 		return nil, fmt.Errorf("subnet too large: max supported is /24, got /%d", maskBits)
 	}
 
@@ -46,7 +42,6 @@ func newIPManager(serverCIDR string) (*ipManager, error) {
 	// For /28: hostBits=4, maxHost=14 (2^4-2)
 	hostBits := 32 - maskBits
 	if hostBits < 2 {
-		slog.Error("wireguard subnet is too small for peer allocation", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("subnet too small: need at least /30, got /%d", maskBits)
 	}
 	maxHost := (1 << hostBits) - 2 // -2 for network and broadcast
@@ -54,14 +49,12 @@ func newIPManager(serverCIDR string) (*ipManager, error) {
 	// Server is always at host offset 1 (first usable IP)
 	// Peers start at offset 2 (minHostOffset)
 	if maxHost < minHostOffset {
-		slog.Error("wireguard subnet has no room for peers", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("subnet /%d too small: no room for peers after server", maskBits)
 	}
 
 	// Get network base address
 	netBase := ipNet.IP.To4()
 	if netBase == nil {
-		slog.Error("failed to determine network base", "component", "wireguard", "path", serverCIDR)
 		return nil, fmt.Errorf("could not determine network base for %s", serverCIDR)
 	}
 
@@ -81,8 +74,7 @@ func (m *ipManager) findNextAvailable(peers []PeerConfig) (string, int, error) {
 			return m.makeIP(offset), offset, nil
 		}
 	}
-	slog.Error("no available IPs in subnet", "component", "wireguard", "subsystem", "ip_manager", "path", m.netBase.String(), "error", fmt.Errorf("max host offset: %d", m.maxHost))
-	return "", 0, fmt.Errorf("no available IPs in subnet")
+	return "", 0, fmt.Errorf("no available IPs in subnet %s/%d", m.netBase, m.maskBits)
 }
 
 func (m *ipManager) buildUsedIPMap(peers []PeerConfig) map[int]bool {

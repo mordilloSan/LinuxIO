@@ -999,7 +999,7 @@ func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	// Check if destination parent directory exists
 	dstParent := filepath.Dir(dst)
 	if dstParent != "." && dstParent != "/" {
-		if _, err := root.Root.Stat(relPath(dstParent)); os.IsNotExist(err) {
+		if _, err := root.Root.Stat(relPath(dstParent)); errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("destination directory does not exist: '%s'", dstParent)
 		}
 	}

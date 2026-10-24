@@ -162,10 +162,18 @@ func TestMountCIFSRollsBackOnMountFailure(t *testing.T) {
 	env.runErr = errors.New("mount error 13: permission denied")
 	mp := filepath.Join(env.tmp, "mnt", "media")
 
-	if _, err := MountCIFS(context.Background(), cifsMountParams{
-		server: "nas", share: "media", mountpoint: mp, username: "u", password: "p",
-	}); err == nil {
+	const pw = "hunter2-secret"
+	_, err := MountCIFS(context.Background(), cifsMountParams{
+		server: "nas", share: "media", mountpoint: mp, username: "u", password: pw,
+	})
+	if err == nil {
 		t.Fatal("MountCIFS() error = nil, want mount failure")
+	}
+	if strings.Contains(err.Error(), pw) {
+		t.Fatalf("returned error leaked the password: %v", err)
+	}
+	if !strings.Contains(err.Error(), mp) || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("returned error missing mountpoint or cause: %v", err)
 	}
 	if strings.Contains(readFstab(t), mp) {
 		t.Fatalf("fstab entry not rolled back after mount failure:\n%s", readFstab(t))

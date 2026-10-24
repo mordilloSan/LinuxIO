@@ -21,9 +21,8 @@ func syncRunningInterface(ctx context.Context, name string) error {
 		return nil
 	}
 
-	out, err := syncWireGuardConfigFunc(ctx, name)
+	_, err := syncWireGuardConfigFunc(ctx, name)
 	if err != nil {
-		slog.Error("failed to sync WireGuard interface config", "interface", name, "error", err, "output", out)
 		return fmt.Errorf("sync config: %w", err)
 	}
 	slog.Info("synced WireGuard interface from config", "interface", name)

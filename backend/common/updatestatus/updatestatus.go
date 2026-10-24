@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
@@ -72,7 +73,7 @@ func Write(r Record) error {
 func Read() (*Record, error) {
 	data, err := os.ReadFile(Path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err

@@ -80,7 +80,7 @@ func TestInitializeCreatesMissingFilesIndependently(t *testing.T) {
 	ui, err := readUIConfigStrict(uiPath)
 	require.NoError(t, err)
 	require.Empty(t, ui)
-	require.Equal(t, DefaultUIPreferences(), *parseUIFromRaw(t, []byte("{}"), uiPath))
+	require.Equal(t, DefaultUIPreferences(), *parseUIFromRaw(t, []byte("{}")))
 	raw, err := os.ReadFile(uiPath)
 	require.NoError(t, err)
 	require.Equal(t, "{}\n", string(raw))
@@ -343,9 +343,9 @@ func TestUIPreferencesMarshalWritesCompleteSnapshot(t *testing.T) {
 	require.Equal(t, ui, *reloaded)
 }
 
-func parseUIFromRaw(t *testing.T, raw []byte, path string) *UIPreferences {
+func parseUIFromRaw(t *testing.T, raw []byte) *UIPreferences {
 	t.Helper()
-	ui, err := parseUIConfig(raw, path)
+	ui, err := parseUIConfig(raw)
 	require.NoError(t, err)
 	return ui
 }
