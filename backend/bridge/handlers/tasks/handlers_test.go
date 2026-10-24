@@ -2,7 +2,7 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"io"
 	"net"
@@ -23,7 +23,7 @@ func dispatchRouteError(t *testing.T, router *bridgeipc.Router, route string) er
 	defer server.Close()
 	return router.Dispatch(context.Background(), server, bridgeipc.Request{
 		Route:      route,
-		RawRequest: json.RawMessage("1"),
+		RawRequest: jsontext.Value("1"),
 	})
 }
 

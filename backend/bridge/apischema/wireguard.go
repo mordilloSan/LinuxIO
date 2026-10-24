@@ -21,20 +21,20 @@ type Peer struct {
 	ClientAllowedIPs    []string `json:"client_allowed_ips"`
 	DNS                 []string `json:"dns"`
 	Enabled             bool     `json:"enabled"`
-	Endpoint            *string  `json:"endpoint,omitempty"`
+	Endpoint            *string  `json:"endpoint,omitzero"`
 	ID                  string   `json:"id"`
-	LastHandshake       *string  `json:"last_handshake,omitempty"`
-	LastHandshakeUnix   *int64   `json:"last_handshake_unix,omitempty"`
+	LastHandshake       *string  `json:"last_handshake,omitzero"`
+	LastHandshakeUnix   *int64   `json:"last_handshake_unix,omitzero"`
 	MTU                 int      `json:"mtu"`
 	Name                string   `json:"name"`
-	PersistentKeepalive *int     `json:"persistent_keepalive,omitempty"`
-	PresharedKey        *string  `json:"preshared_key,omitempty"`
+	PersistentKeepalive *int     `json:"persistent_keepalive,omitzero"`
+	PresharedKey        *string  `json:"preshared_key,omitzero"`
 	PublicKey           string   `json:"public_key"`
-	RXBPS               *float64 `json:"rx_bps,omitempty"`
-	RXBytes             *int64   `json:"rx_bytes,omitempty"`
+	RXBPS               *float64 `json:"rx_bps,omitzero"`
+	RXBytes             *int64   `json:"rx_bytes,omitzero"`
 	ServerAllowedIPs    []string `json:"server_allowed_ips"`
-	TXBPS               *float64 `json:"tx_bps,omitempty"`
-	TXBytes             *int64   `json:"tx_bytes,omitempty"`
+	TXBPS               *float64 `json:"tx_bps,omitzero"`
+	TXBytes             *int64   `json:"tx_bytes,omitzero"`
 }
 
 type PeerConfigDownload struct {
@@ -67,13 +67,13 @@ type WireGuardAddPeerRequest struct {
 type WireGuardUpdatePeerRequest struct {
 	InterfaceName       string   `json:"interfaceName"`
 	PeerID              string   `json:"peerId"`
-	Name                *string  `json:"name,omitempty"`
-	Enabled             *bool    `json:"enabled,omitempty"`
+	Name                *string  `json:"name,omitzero"`
+	Enabled             *bool    `json:"enabled,omitzero"`
 	ClientAllowedIPs    []string `json:"clientAllowedIPs,omitempty"`
 	ServerAllowedIPs    []string `json:"serverAllowedIPs,omitempty"`
 	DNS                 []string `json:"dns,omitempty"`
-	MTU                 *int     `json:"mtu,omitempty"`
-	PersistentKeepalive *int     `json:"persistentKeepalive,omitempty"`
+	MTU                 *int     `json:"mtu,omitzero"`
+	PersistentKeepalive *int     `json:"persistentKeepalive,omitzero"`
 	PresharedKey        string   `json:"presharedKey,omitempty"`
 	RegenerateKeys      bool     `json:"regenerateKeys,omitzero"`
 }
@@ -84,10 +84,10 @@ type WireGuardUpdatePeerRequest struct {
 // hook kind.
 type WireGuardUpdateInterfaceRequest struct {
 	Name       string   `json:"name"`
-	Host       *string  `json:"host,omitempty"`
+	Host       *string  `json:"host,omitzero"`
 	DNS        []string `json:"dns,omitempty"`
-	MTU        *int     `json:"mtu,omitempty"`
-	ListenPort *int     `json:"listenPort,omitempty"`
+	MTU        *int     `json:"mtu,omitzero"`
+	ListenPort *int     `json:"listenPort,omitzero"`
 	PreUp      []string `json:"preUp,omitempty"`
 	PostUp     []string `json:"postUp,omitempty"`
 	PreDown    []string `json:"preDown,omitempty"`
@@ -99,8 +99,8 @@ type WireGuardAddInterfaceRequest struct {
 	Addresses  string  `json:"addresses"`
 	ListenPort string  `json:"listenPort"`
 	EgressNic  string  `json:"egressNic"`
-	Host       *string `json:"host,omitempty"`
-	DNS        *string `json:"dns,omitempty"`
-	MTU        *string `json:"mtu,omitempty"`
-	NumPeers   *string `json:"numPeers,omitempty"`
+	Host       *string `json:"host,omitzero"`
+	DNS        *string `json:"dns,omitzero"`
+	MTU        *string `json:"mtu,omitzero"`
+	NumPeers   *string `json:"numPeers,omitzero"`
 }

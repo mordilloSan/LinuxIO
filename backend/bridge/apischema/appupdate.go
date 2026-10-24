@@ -10,5 +10,5 @@ type VersionResponse struct {
 
 type AppUpdateRequest struct {
 	RunID   string  `json:"runId"`
-	Version *string `json:"version,omitempty"`
+	Version *string `json:"version,omitzero"`
 }

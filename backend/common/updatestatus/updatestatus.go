@@ -3,7 +3,7 @@
 package updatestatus
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -35,10 +35,10 @@ type Record struct {
 	ID         string `json:"id"`
 	OwnerUID   uint32 `json:"owner_uid"`
 	Status     string `json:"status"`
-	ExitCode   *int   `json:"exit_code,omitempty"`
+	ExitCode   *int   `json:"exit_code,omitzero"`
 	Error      string `json:"error,omitempty"`
-	StartedAt  *int64 `json:"started_at,omitempty"`
-	FinishedAt *int64 `json:"finished_at,omitempty"`
+	StartedAt  *int64 `json:"started_at,omitzero"`
+	FinishedAt *int64 `json:"finished_at,omitzero"`
 }
 
 // Valid reports whether the record is a current-version, internally
@@ -61,7 +61,7 @@ func (r Record) Valid() bool {
 
 // Write atomically replaces the record at Path.
 func Write(r Record) error {
-	data, err := json.Marshal(r)
+	data, err := json.Marshal(r, json.Deterministic(true))
 	if err != nil {
 		return err
 	}

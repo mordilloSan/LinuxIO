@@ -3,6 +3,7 @@ package durabletask
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"os"
@@ -119,7 +120,7 @@ func TestStoreAppliesTypedExecutorResult(t *testing.T) {
 		State:      StateFailed,
 		ExitCode:   17,
 		FinishedAt: time.Date(2026, 8, 10, 12, 1, 0, 0, time.UTC),
-		Result:     json.RawMessage(`{"containerId":"new-id","updated":true}`),
+		Result:     jsontext.Value(`{"containerId":"new-id","updated":true}`),
 		Error:      "installer failed",
 	}
 	data, err := json.Marshal(result)

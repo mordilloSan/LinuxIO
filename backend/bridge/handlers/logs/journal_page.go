@@ -2,7 +2,7 @@ package logs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os/exec"
 	"strconv"
@@ -155,7 +155,7 @@ func GetGeneralLogEntry(ctx context.Context, cursor string) (map[string]any, err
 		return nil, errors.New("journal entry not found")
 	}
 	var entry map[string]any
-	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+	if err := json.Unmarshal([]byte(line), &entry, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, err
 	}
 	return entry, nil

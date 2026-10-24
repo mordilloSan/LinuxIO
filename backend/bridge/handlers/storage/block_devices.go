@@ -2,7 +2,8 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -41,7 +42,7 @@ type topologyBlockDevice struct {
 	KernelName  string                `json:"kname"`
 	Path        string                `json:"path"`
 	Type        string                `json:"type"`
-	Size        json.Number           `json:"size"`
+	Size        jsontext.Value        `json:"size"`
 	FSType      string                `json:"fstype"`
 	Mountpoints []string              `json:"mountpoints"`
 	Model       string                `json:"model"`
@@ -84,7 +85,7 @@ func parseBlockDevices(data []byte) ([]apischema.StorageBlockDevice, error) {
 	var report struct {
 		Devices []topologyBlockDevice `json:"blockdevices"`
 	}
-	if err := json.Unmarshal(data, &report); err != nil {
+	if err := json.Unmarshal(data, &report, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, fmt.Errorf("parse block devices: %w", err)
 	}
 	devices := map[string]*apischema.StorageBlockDevice{}
@@ -116,7 +117,7 @@ func collectBlockDevice(raw topologyBlockDevice, parent string, devices map[stri
 	}
 	device := devices[raw.Path]
 	if device == nil {
-		size, err := strconv.ParseUint(raw.Size.String(), 10, 64)
+		size, err := strconv.ParseUint(strings.Trim(string(raw.Size), `"`), 10, 64)
 		if err != nil {
 			return fmt.Errorf("parse size of %s: %w", raw.Path, err)
 		}

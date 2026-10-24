@@ -1,7 +1,8 @@
 package daemon
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -31,11 +32,11 @@ type indexWireEvent struct {
 // WireProgress is the IndexProgress the index-mode subprocess uses: it
 // serializes progress as indexWireEvent lines for the parent daemon.
 type WireProgress struct {
-	enc *json.Encoder
+	enc *jsontext.Encoder
 }
 
 func NewWireProgress(w io.Writer) *WireProgress {
-	return &WireProgress{enc: json.NewEncoder(w)}
+	return &WireProgress{enc: jsontext.NewEncoder(w)}
 }
 
 func (p *WireProgress) Step(message string) {
@@ -60,17 +61,17 @@ func (p *WireProgress) Summary(stats IndexRunStats) {
 }
 
 func (p *WireProgress) emit(evt indexWireEvent) {
-	if err := p.enc.Encode(evt); err != nil {
+	if err := json.MarshalEncode(p.enc, evt); err != nil {
 		slog.Warn("failed to emit index progress event", "err", err)
 	}
 }
 
 func decodeIndexProcessOutput(stdout io.Reader, onEvent func(indexWireEvent)) (*IndexRunStats, error) {
-	decoder := json.NewDecoder(stdout)
+	decoder := jsontext.NewDecoder(stdout)
 	var summary *IndexRunStats
 	for {
 		var evt indexWireEvent
-		if err := decoder.Decode(&evt); err != nil {
+		if err := json.UnmarshalDecode(decoder, &evt); err != nil {
 			if errors.Is(err, io.EOF) {
 				return summary, nil
 			}

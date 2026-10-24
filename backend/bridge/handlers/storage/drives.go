@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 )
@@ -34,7 +34,7 @@ func FetchDriveInfo(ctx context.Context) ([]DriveInfo, error) {
 	}
 
 	var parsed LSBLKOutput
-	if err := json.Unmarshal(out, &parsed); err != nil {
+	if err := json.Unmarshal(out, &parsed, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, fmt.Errorf("failed to parse lsblk output: %w", err)
 	}
 

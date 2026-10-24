@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -230,7 +231,7 @@ func TestHandleConfigSetWaitsForTheConfigLock(t *testing.T) {
 	executor := newConfigOnlyExecutor(t, config.Default())
 	// An interval of zero fails validation after the file is loaded, so the
 	// handler exercises its locked section without reaching the runtime reload.
-	req := monitoringapi.CommandRequest{Command: "config.set", Params: json.RawMessage(`{"collector_interval":"0s"}`)}
+	req := monitoringapi.CommandRequest{Command: "config.set", Params: jsontext.Value(`{"collector_interval":"0s"}`)}
 
 	finishedWhileLocked, response := runWhileConfigLocked(t, executor, func() monitoringapi.CommandResponse[any] {
 		return executor.handleConfigSet(context.Background(), req).Response
@@ -298,7 +299,7 @@ func TestApplyConfigSetParamsRejectsHistoryIntervalBelowTick(t *testing.T) {
 
 func TestHandleConfigSetRejectsUnknownParams(t *testing.T) {
 	executor := newConfigOnlyExecutor(t, config.Default())
-	req := monitoringapi.CommandRequest{Command: "config.set", Params: json.RawMessage(`{"not_a_key":true}`)}
+	req := monitoringapi.CommandRequest{Command: "config.set", Params: jsontext.Value(`{"not_a_key":true}`)}
 
 	response := executor.handleConfigSet(context.Background(), req).Response
 	require.NotNil(t, response.Error)

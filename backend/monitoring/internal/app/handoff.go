@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/collector"
@@ -17,8 +18,8 @@ type collectorRun = collector.Run[*collectorAPISample]
 
 type collectorAPISample struct {
 	capturedAt int64
-	payloads   map[string]json.RawMessage
-	summary    json.RawMessage
+	payloads   map[string]jsontext.Value
+	summary    jsontext.Value
 }
 
 func (a *App) beginCollectorRun() *collectorRun {
@@ -59,7 +60,7 @@ func newCollectorAPISample(capturedAt int64, data *systemmodel.CombinedData) (*c
 	}
 
 	payloadValues := plugins.Snapshot(data)
-	payloads := make(map[string]json.RawMessage, len(payloadValues)+2)
+	payloads := make(map[string]jsontext.Value, len(payloadValues)+2)
 	for plugin, payload := range payloadValues {
 		raw, err := json.Marshal(payload)
 		if err != nil {
@@ -91,12 +92,12 @@ func newCollectorAPISample(capturedAt int64, data *systemmodel.CombinedData) (*c
 	}, nil
 }
 
-func (sample *collectorAPISample) pluginPayload(plugin string) (json.RawMessage, bool) {
+func (sample *collectorAPISample) pluginPayload(plugin string) (jsontext.Value, bool) {
 	raw, ok := sample.payloads[plugin]
 	if !ok {
 		return nil, false
 	}
-	return json.RawMessage(append([]byte(nil), raw...)), true
+	return jsontext.Value(append([]byte(nil), raw...)), true
 }
 
 func (sample *collectorAPISample) systemSummary() (systemmodel.Summary, error) {

@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"time"
 
 	containermodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
@@ -39,8 +39,8 @@ func HistoryResolutionStep(resolution string) (time.Duration, bool) {
 }
 
 type HistoryItem struct {
-	CapturedAt int64           `json:"captured_at"`
-	Stats      json.RawMessage `json:"stats"`
+	CapturedAt int64          `json:"captured_at"`
+	Stats      jsontext.Value `json:"stats"`
 }
 
 // HistoryResponse is the body of RouteHistory; Stats is decoded per plugin

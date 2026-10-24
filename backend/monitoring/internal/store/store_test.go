@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"os"
@@ -89,10 +90,10 @@ func TestWriteSmartDevicesPersistsCompactData(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 
-	var envelopes []map[string]json.RawMessage
+	var envelopes []map[string]jsontext.Value
 	require.NoError(t, json.Unmarshal(records[0].Stats, &envelopes))
 	require.Len(t, envelopes, 1)
-	var persisted map[string]json.RawMessage
+	var persisted map[string]jsontext.Value
 	require.NoError(t, json.Unmarshal(envelopes[0]["Data"], &persisted))
 	require.Len(t, persisted, 9)
 	for _, field := range []string{"model_name", "serial_number", "firmware_version", "capacity_bytes", "smart_status", "disk_name", "disk_type", "temperature_celsius", "attributes"} {

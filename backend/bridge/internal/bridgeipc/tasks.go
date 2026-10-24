@@ -77,26 +77,26 @@ func (o TaskOwner) MatchesDurable(other TaskOwner) bool {
 type TaskSnapshot struct {
 	ID         string        `json:"id"`
 	Type       string        `json:"type"`
-	Metadata   *TaskMetadata `json:"metadata,omitempty"`
+	Metadata   *TaskMetadata `json:"metadata,omitzero"`
 	Owner      TaskOwner     `json:"owner"`
 	State      TaskState     `json:"state"`
-	Progress   *TaskProgress `json:"progress,omitempty"`
-	Result     any           `json:"result,omitempty"`
-	Error      *Error        `json:"error,omitempty"`
+	Progress   *TaskProgress `json:"progress,omitzero"`
+	Result     any           `json:"result,omitzero"`
+	Error      *Error        `json:"error,omitzero"`
 	CreatedAt  time.Time     `json:"created_at"`
-	StartedAt  *time.Time    `json:"started_at,omitempty"`
+	StartedAt  *time.Time    `json:"started_at,omitzero"`
 	UpdatedAt  time.Time     `json:"updated_at"`
-	FinishedAt *time.Time    `json:"finished_at,omitempty"`
+	FinishedAt *time.Time    `json:"finished_at,omitzero"`
 }
 
 // TaskProgress is the common snapshot-retained progress envelope. Generic Task
 // consumers use the summary fields; route-specific consumers decode Detail
 // through the progress type declared by the route.
 type TaskProgress struct {
-	Percentage *int   `json:"percentage,omitempty"`
+	Percentage *int   `json:"percentage,omitzero"`
 	Phase      string `json:"phase,omitempty"`
 	Message    string `json:"message,omitempty"`
-	Detail     any    `json:"detail,omitempty"`
+	Detail     any    `json:"detail,omitzero"`
 }
 
 // ProgressDetail maps a route-owned detail value into the common envelope.
@@ -143,9 +143,9 @@ const (
 type TaskEvent struct {
 	Type      TaskEventType `json:"type"`
 	Task      TaskSnapshot  `json:"task"`
-	Progress  any           `json:"progress,omitempty"`
-	Result    any           `json:"result,omitempty"`
-	Error     *Error        `json:"error,omitempty"`
+	Progress  any           `json:"progress,omitzero"`
+	Result    any           `json:"result,omitzero"`
+	Error     *Error        `json:"error,omitzero"`
 	transient bool
 }
 
@@ -165,7 +165,7 @@ type TaskIdentityBuilder func(request any) (TaskIdentity, error)
 var ErrTaskIdentityConflict = errors.New("task identity conflict")
 
 type TaskDataAttachRequest struct {
-	Offset *string `json:"offset,omitempty"`
+	Offset *string `json:"offset,omitzero"`
 }
 
 type TaskService struct {

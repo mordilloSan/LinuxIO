@@ -32,8 +32,8 @@ const (
 
 // BtrfsReplicationResult is the outcome of one replication of a job.
 type BtrfsReplicationResult struct {
-	Sent     *BtrfsSnapshot `json:"sent,omitempty"`
-	Parent   *BtrfsSnapshot `json:"parent,omitempty"`
+	Sent     *BtrfsSnapshot `json:"sent,omitzero"`
+	Parent   *BtrfsSnapshot `json:"parent,omitzero"`
 	Bytes    int64          `json:"bytes"`
 	Pruned   int            `json:"pruned"`
 	UpToDate bool           `json:"upToDate"`

@@ -2,7 +2,8 @@ package smart
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strconv"
 	"strings"
 )
@@ -73,10 +74,10 @@ type AtaSmartAttributes struct {
 // string and status details needed by the storage UI without retaining raw
 // JSON in the daemon API.
 type SmartValue struct {
-	Value            *int   `json:"value,omitempty"`
+	Value            *int   `json:"value,omitzero"`
 	String           string `json:"string,omitempty"`
-	Passed           *bool  `json:"passed,omitempty"`
-	RemainingPercent *int   `json:"remaining_percent,omitempty"`
+	Passed           *bool  `json:"passed,omitzero"`
+	RemainingPercent *int   `json:"remaining_percent,omitzero"`
 }
 
 func (v *SmartValue) UnmarshalJSON(data []byte) error {
@@ -115,7 +116,7 @@ type SmartPowerOnTime struct {
 }
 
 type SmartSelfTestLog struct {
-	Standard *SmartSelfTestStandardLog `json:"standard,omitempty"`
+	Standard *SmartSelfTestStandardLog `json:"standard,omitzero"`
 }
 
 type SmartSelfTestStandardLog struct {
@@ -128,23 +129,23 @@ type SmartSelfTestStandardLog struct {
 
 type SmartSelfTestEntry struct {
 	Num           int         `json:"num,omitzero"`
-	Type          *SmartValue `json:"type,omitempty"`
-	Status        *SmartValue `json:"status,omitempty"`
+	Type          *SmartValue `json:"type,omitzero"`
+	Status        *SmartValue `json:"status,omitzero"`
 	LifetimeHours uint64      `json:"lifetime_hours,omitzero"`
 }
 
 type NVMeSelfTestLog struct {
-	CurrentSelfTestOp                *SmartValue            `json:"current_self_test_op,omitempty"`
-	CurrentSelfTestCompletionPercent *SmartValue            `json:"current_self_test_completion_percent,omitempty"`
-	CurrentSelfTestOperation         *SmartValue            `json:"current_self_test_operation,omitempty"`
-	CurrentSelfTestCompletion        *SmartValue            `json:"current_self_test_completion,omitempty"`
+	CurrentSelfTestOp                *SmartValue            `json:"current_self_test_op,omitzero"`
+	CurrentSelfTestCompletionPercent *SmartValue            `json:"current_self_test_completion_percent,omitzero"`
+	CurrentSelfTestOperation         *SmartValue            `json:"current_self_test_operation,omitzero"`
+	CurrentSelfTestCompletion        *SmartValue            `json:"current_self_test_completion,omitzero"`
 	Table                            []NVMeSelfTestLogEntry `json:"table,omitempty"`
 }
 
 type NVMeSelfTestLogEntry struct {
-	PowerOnHours   *SmartValue `json:"power_on_hours,omitempty"`
-	SelfTestCode   *SmartValue `json:"self_test_code,omitempty"`
-	SelfTestResult *SmartValue `json:"self_test_result,omitempty"`
+	PowerOnHours   *SmartValue `json:"power_on_hours,omitzero"`
+	SelfTestCode   *SmartValue `json:"self_test_code,omitzero"`
+	SelfTestResult *SmartValue `json:"self_test_result,omitzero"`
 }
 
 type NVMeVersionInfo struct {
@@ -163,7 +164,7 @@ type AtaDeviceStatisticsPage struct {
 
 type AtaDeviceStatisticsEntry struct {
 	Name  string `json:"name"`
-	Value *int64 `json:"value,omitempty"`
+	Value *int64 `json:"value,omitzero"`
 }
 
 type AtaSmartAttribute struct {
@@ -183,8 +184,8 @@ type RawValue struct {
 
 func (r *RawValue) UnmarshalJSON(data []byte) error {
 	var tmp struct {
-		Value  json.RawMessage `json:"value"`
-		String string          `json:"string"`
+		Value  jsontext.Value `json:"value"`
+		String string         `json:"string"`
 	}
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
@@ -307,11 +308,11 @@ type SmartInfoForSata struct {
 	ScsiProduct         string             `json:"scsi_product"`
 	SmartStatus         SmartStatusInfo    `json:"smart_status"`
 	AtaSmartAttributes  AtaSmartAttributes `json:"ata_smart_attributes"`
-	AtaSmartSelfTestLog *SmartSelfTestLog  `json:"ata_smart_self_test_log,omitempty"`
-	AtaDeviceStatistics json.RawMessage    `json:"ata_device_statistics"`
+	AtaSmartSelfTestLog *SmartSelfTestLog  `json:"ata_smart_self_test_log,omitzero"`
+	AtaDeviceStatistics jsontext.Value     `json:"ata_device_statistics"`
 	Temperature         TemperatureInfo    `json:"temperature"`
-	PowerOnTime         *SmartPowerOnTime  `json:"power_on_time,omitempty"`
-	PowerCycleCount     *uint64            `json:"power_cycle_count,omitempty"`
+	PowerOnTime         *SmartPowerOnTime  `json:"power_on_time,omitzero"`
+	PowerCycleCount     *uint64            `json:"power_cycle_count,omitzero"`
 }
 
 type ScsiErrorCounter struct {
@@ -413,11 +414,11 @@ type SmartInfoForNvme struct {
 	SmartStatus                   SmartStatusInfoNvme            `json:"smart_status"`
 	NVMeVersion                   NVMeVersionInfo                `json:"nvme_version"`
 	NVMeNumberOfNamespaces        uint64                         `json:"nvme_number_of_namespaces"`
-	NVMeSmartHealthInformationLog *NVMeSmartHealthInformationLog `json:"nvme_smart_health_information_log,omitempty"`
+	NVMeSmartHealthInformationLog *NVMeSmartHealthInformationLog `json:"nvme_smart_health_information_log,omitzero"`
 	Temperature                   TemperatureInfoNvme            `json:"temperature"`
-	PowerCycleCount               *uint64                        `json:"power_cycle_count,omitempty"`
-	PowerOnTime                   *PowerOnTimeInfoNvme           `json:"power_on_time,omitempty"`
-	NVMeSelfTestLog               *NVMeSelfTestLog               `json:"nvme_self_test_log,omitempty"`
+	PowerCycleCount               *uint64                        `json:"power_cycle_count,omitzero"`
+	PowerOnTime                   *PowerOnTimeInfoNvme           `json:"power_on_time,omitzero"`
+	NVMeSelfTestLog               *NVMeSelfTestLog               `json:"nvme_self_test_log,omitzero"`
 }
 
 type TemperatureInfoNvme struct {
@@ -441,14 +442,14 @@ type SmartData struct {
 	// The following fields are live-only compatibility data for the storage UI.
 	// WriteSmartDevices projects them out of persisted history JSON so existing
 	// records retain their compact shape.
-	Device                        *DeviceInfo                    `json:"device,omitempty"`
-	AtaSmartSelfTestLog           *SmartSelfTestLog              `json:"ata_smart_self_test_log,omitempty"`
-	NVMeVersion                   *NVMeVersionInfo               `json:"nvme_version,omitempty"`
-	NVMeNumberOfNamespaces        *uint64                        `json:"nvme_number_of_namespaces,omitempty"`
-	NVMeSmartHealthInformationLog *NVMeSmartHealthInformationLog `json:"nvme_smart_health_information_log,omitempty"`
-	NVMeSelfTestLog               *NVMeSelfTestLog               `json:"nvme_self_test_log,omitempty"`
-	PowerOnTime                   *SmartPowerOnTime              `json:"power_on_time,omitempty"`
-	PowerCycleCount               *uint64                        `json:"power_cycle_count,omitempty"`
+	Device                        *DeviceInfo                    `json:"device,omitzero"`
+	AtaSmartSelfTestLog           *SmartSelfTestLog              `json:"ata_smart_self_test_log,omitzero"`
+	NVMeVersion                   *NVMeVersionInfo               `json:"nvme_version,omitzero"`
+	NVMeNumberOfNamespaces        *uint64                        `json:"nvme_number_of_namespaces,omitzero"`
+	NVMeSmartHealthInformationLog *NVMeSmartHealthInformationLog `json:"nvme_smart_health_information_log,omitzero"`
+	NVMeSelfTestLog               *NVMeSelfTestLog               `json:"nvme_self_test_log,omitzero"`
+	PowerOnTime                   *SmartPowerOnTime              `json:"power_on_time,omitzero"`
+	PowerCycleCount               *uint64                        `json:"power_cycle_count,omitzero"`
 }
 
 type SmartAttribute struct {

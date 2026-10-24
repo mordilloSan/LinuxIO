@@ -2,7 +2,8 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -33,7 +34,7 @@ func UpdateConfig(ctx context.Context, patch apischema.MonitoringConfigPatch) (a
 	return cfg, resp.RestartRequired, nil
 }
 
-func decodeConfig(data json.RawMessage) (apischema.MonitoringConfig, error) {
+func decodeConfig(data jsontext.Value) (apischema.MonitoringConfig, error) {
 	var cfg apischema.MonitoringConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return apischema.MonitoringConfig{}, fmt.Errorf("decode monitoring config: %w", err)

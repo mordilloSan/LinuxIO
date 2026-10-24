@@ -31,11 +31,11 @@ type BtrfsSubvolume struct {
 	IsSnapshot      bool       `json:"isSnapshot"`
 	CreatedAt       *time.Time `json:"createdAt"`
 	Mountpoint      *string    `json:"mountpoint"`
-	ReferencedBytes *uint64    `json:"referencedBytes,omitempty"`
-	ExclusiveBytes  *uint64    `json:"exclusiveBytes,omitempty"`
+	ReferencedBytes *uint64    `json:"referencedBytes,omitzero"`
+	ExclusiveBytes  *uint64    `json:"exclusiveBytes,omitzero"`
 	// MaxReferencedBytes is the qgroup size limit; nil when unlimited or
 	// quota data is unavailable.
-	MaxReferencedBytes *uint64 `json:"maxReferencedBytes,omitempty"`
+	MaxReferencedBytes *uint64 `json:"maxReferencedBytes,omitzero"`
 }
 
 // subvolumeRow is one subvolume as read from the root tree, or one parsed

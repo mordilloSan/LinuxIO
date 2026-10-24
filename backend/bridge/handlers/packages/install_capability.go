@@ -32,8 +32,8 @@ import (
 type InstallCapabilityProgress struct {
 	Stage      string                   `json:"stage"`
 	Message    string                   `json:"message"`
-	Percentage *uint32                  `json:"percentage,omitempty"`
-	Output     *InstallCapabilityOutput `json:"output,omitempty"`
+	Percentage *uint32                  `json:"percentage,omitzero"`
+	Output     *InstallCapabilityOutput `json:"output,omitzero"`
 }
 
 // InstallCapabilityOutput is one ordered record from a capability installer.

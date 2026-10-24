@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,7 +31,7 @@ type fakeSmartRefresher struct {
 }
 
 func (r fakeSmartRefresher) RefreshSmartNow(context.Context) error {
-	r.current.plugins[plugins.Smart] = json.RawMessage(`[]`)
+	r.current.plugins[plugins.Smart] = jsontext.Value(`[]`)
 	return nil
 }
 
@@ -50,7 +51,7 @@ func (fakeCommandExecutor) ExecuteCommand(_ context.Context, req monitoringapi.C
 
 type fakeCurrentReader struct {
 	capturedAt   int64
-	plugins      map[string]json.RawMessage
+	plugins      map[string]jsontext.Value
 	pluginErrors map[string]error
 	calls        map[string]int
 	summary      systemmodel.Summary
@@ -64,15 +65,15 @@ type batchCurrentReader struct {
 	batchPlugins []string
 }
 
-func (r *batchCurrentReader) CurrentPlugin(ctx context.Context, plugin string) (int64, json.RawMessage, error) {
+func (r *batchCurrentReader) CurrentPlugin(ctx context.Context, plugin string) (int64, jsontext.Value, error) {
 	r.currentCalls++
 	return r.base.CurrentPlugin(ctx, plugin)
 }
 
-func (r *batchCurrentReader) CurrentPlugins(_ context.Context, plugins []string) (int64, map[string]json.RawMessage, map[string]error) {
+func (r *batchCurrentReader) CurrentPlugins(_ context.Context, plugins []string) (int64, map[string]jsontext.Value, map[string]error) {
 	r.batchCalls++
 	r.batchPlugins = append([]string(nil), plugins...)
-	payloads := make(map[string]json.RawMessage, len(plugins))
+	payloads := make(map[string]jsontext.Value, len(plugins))
 	errorsByPlugin := make(map[string]error)
 	for _, plugin := range plugins {
 		if err := r.base.pluginErrors[plugin]; err != nil {
@@ -90,7 +91,7 @@ func (r *batchCurrentReader) SystemSummary(ctx context.Context) (int64, systemmo
 	return r.base.SystemSummary(ctx)
 }
 
-func (r fakeCurrentReader) CurrentPlugin(_ context.Context, plugin string) (int64, json.RawMessage, error) {
+func (r fakeCurrentReader) CurrentPlugin(_ context.Context, plugin string) (int64, jsontext.Value, error) {
 	if r.calls != nil {
 		r.calls[plugin]++
 	}
@@ -100,7 +101,7 @@ func (r fakeCurrentReader) CurrentPlugin(_ context.Context, plugin string) (int6
 	if raw, ok := r.plugins[plugin]; ok {
 		return r.capturedAt, raw, nil
 	}
-	return r.capturedAt, json.RawMessage(`{}`), nil
+	return r.capturedAt, jsontext.Value(`{}`), nil
 }
 
 func (r fakeCurrentReader) SystemSummary(_ context.Context) (int64, systemmodel.Summary, error) {
@@ -122,7 +123,7 @@ func newHTTPTestServer(t *testing.T) *Server {
 	data := storetest.SampleCombinedData(55)
 	require.NoError(t, store.WriteSnapshot(capturedAt, data))
 
-	payloads := make(map[string]json.RawMessage)
+	payloads := make(map[string]jsontext.Value)
 	for name, payload := range plugins.Snapshot(data) {
 		raw, marshalErr := json.Marshal(payload)
 		require.NoError(t, marshalErr)
@@ -194,8 +195,8 @@ func TestCurrentRoutesUseCurrentReaderAndHistoryUsesStore(t *testing.T) {
 
 	current := &fakeCurrentReader{
 		capturedAt: 123,
-		plugins: map[string]json.RawMessage{
-			plugins.CPU: json.RawMessage(`{"cpu_percent":99}`),
+		plugins: map[string]jsontext.Value{
+			plugins.CPU: jsontext.Value(`{"cpu_percent":99}`),
 		},
 		summary: systemmodel.Summary{Hostname: "live-host", CPUPercent: 99},
 	}
@@ -316,7 +317,7 @@ func TestHistoryQueryValidationAndLimit(t *testing.T) {
 	}{
 		{name: "negative limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=-1", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
 		{name: "oversized limit", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&limit=1001", status: http.StatusBadRequest, body: `"error":"invalid limit"`},
-		{name: "from after to", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&from=20&to=10", status: http.StatusBadRequest, body: `"error":"from must be \u003c= to"`},
+		{name: "from after to", method: http.MethodGet, path: "/api/v1/cpu/history?resolution=1m&from=20&to=10", status: http.StatusBadRequest, body: `"error":"from must be <= to"`},
 		{name: "unknown plugin", method: http.MethodGet, path: "/api/v1/nope/history?resolution=1m", status: http.StatusNotFound, body: "404 page not found"},
 		{name: "method not allowed", method: http.MethodPost, path: "/api/v1/cpu/history?resolution=1m", status: http.StatusMethodNotAllowed, body: `"error":"method not allowed"`},
 	}
@@ -351,7 +352,7 @@ func TestEmptyStoreCurrentRouteReturnsNotFound(t *testing.T) {
 		Metrics: store,
 		Current: fakeCurrentReader{
 			pluginErrors: map[string]error{plugins.CPU: sql.ErrNoRows},
-			plugins:      map[string]json.RawMessage{plugins.Smart: json.RawMessage(`[]`)},
+			plugins:      map[string]jsontext.Value{plugins.Smart: jsontext.Value(`[]`)},
 		},
 		DataDir: tmpDir,
 	})
@@ -467,8 +468,8 @@ func TestAllRouteReturnsPartialDataAndPluginErrors(t *testing.T) {
 		Metrics: store,
 		Current: fakeCurrentReader{
 			capturedAt: 123,
-			plugins: map[string]json.RawMessage{
-				plugins.Mem: json.RawMessage(`{"memory_gb":16}`),
+			plugins: map[string]jsontext.Value{
+				plugins.Mem: jsontext.Value(`{"memory_gb":16}`),
 			},
 			pluginErrors: map[string]error{
 				plugins.CPU: errors.New("private failure details"),
@@ -498,8 +499,8 @@ func TestAllRouteBatchesCurrentReads(t *testing.T) {
 
 	current := &batchCurrentReader{base: fakeCurrentReader{
 		capturedAt: 123,
-		plugins: map[string]json.RawMessage{
-			plugins.Mem: json.RawMessage(`{"memory_gb":16}`),
+		plugins: map[string]jsontext.Value{
+			plugins.Mem: jsontext.Value(`{"memory_gb":16}`),
 		},
 		pluginErrors: map[string]error{
 			plugins.CPU: errors.New("private failure details"),

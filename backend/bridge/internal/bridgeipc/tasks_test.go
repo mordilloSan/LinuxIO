@@ -3,6 +3,7 @@ package bridgeipc
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"net"
 	"strings"
@@ -194,13 +195,13 @@ func TestPublicTaskSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 		t.Fatalf("CreateForOwner: %v", err)
 	}
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.get", Session: sess, RawRequest: json.RawMessage(`{"taskId":"` + task.ID() + `"}`)})
+		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.get", Session: sess, RawRequest: jsontext.Value(`{"taskId":"` + task.ID() + `"}`)})
 	}))
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.list", Session: sess, RawRequest: json.RawMessage(`{}`)})
+		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.list", Session: sess, RawRequest: jsontext.Value(`{}`)})
 	}))
 	assertNoRequestLeak(t, relayResultData(t, func(stream net.Conn) error {
-		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.cancel", Session: sess, RawRequest: json.RawMessage(`{"taskId":"` + task.ID() + `"}`)})
+		return router.Dispatch(context.Background(), stream, Request{Route: "tasks.cancel", Session: sess, RawRequest: jsontext.Value(`{"taskId":"` + task.ID() + `"}`)})
 	}))
 	task.mu.RLock()
 	if task.request != nil {

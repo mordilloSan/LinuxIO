@@ -2,7 +2,8 @@ package btrfs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -104,7 +105,7 @@ func updateListFile[T any](ctx context.Context, path string, load func() ([]T, e
 		if items == nil {
 			items = []T{}
 		}
-		data, err := json.MarshalIndent(doc(items), "", "  ")
+		data, err := json.Marshal(doc(items), jsontext.WithIndent("  "), json.Deterministic(true))
 		if err != nil {
 			return fmt.Errorf("marshal %s: %w", path, err)
 		}

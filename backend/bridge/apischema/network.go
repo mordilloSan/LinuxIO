@@ -4,7 +4,7 @@ type NetworkInterface struct {
 	// Carrier is nil when the kernel will not answer: virtual interfaces have
 	// no carrier attribute, and reading it on a down link fails. Nil means
 	// "unknown", never "no link".
-	Carrier *bool `json:"carrier,omitempty"`
+	Carrier *bool `json:"carrier,omitzero"`
 	// ConfigBackend names the on-disk configuration source the bridge detected
 	// for this interface (netplan, nmconnection, systemd-networkd, ifupdown,
 	// ifcfg). Empty when no backend claims it.
@@ -12,12 +12,12 @@ type NetworkInterface struct {
 	DNS           []string `json:"dns"`
 	// DNSOptions is nil when the config backend cannot set search domains or
 	// keep static DNS servers alongside DHCP.
-	DNSOptions *NetworkDNSOptions `json:"dns_options,omitempty"`
+	DNSOptions *NetworkDNSOptions `json:"dns_options,omitzero"`
 	Driver     string             `json:"driver,omitempty"`
 	Duplex     string             `json:"duplex"`
 	Gateway    string             `json:"gateway"`
 	IPv4       []string           `json:"ipv4"`
-	IPv4Method *string            `json:"ipv4_method,omitempty"`
+	IPv4Method *string            `json:"ipv4_method,omitzero"`
 	// LogUnit is the installed systemd unit whose journal covers this
 	// interface's stack, resolved from ConfigBackend. Empty when none of the
 	// candidate units exist, which is the signal to offer no log view.
@@ -28,7 +28,7 @@ type NetworkInterface struct {
 	OperState string `json:"operstate"`
 	// Optional reports whether boot skips waiting for this link to come
 	// online. Nil when the config backend cannot express it.
-	Optional *bool  `json:"optional,omitempty"`
+	Optional *bool  `json:"optional,omitzero"`
 	Speed    string `json:"speed"`
 	State    int    `json:"state"`
 	Type     string `json:"type"`

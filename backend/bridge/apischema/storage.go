@@ -10,10 +10,10 @@ type ApiDisk struct {
 	RO    bool   `json:"ro"`
 	// Rotational is true for spinning disks, false for SSD and NVMe.
 	Rotational bool    `json:"rotational"`
-	Serial     *string `json:"serial,omitempty"`
+	Serial     *string `json:"serial,omitzero"`
 	Size       string  `json:"size"`
-	Type       *string `json:"type,omitempty"`
-	Vendor     *string `json:"vendor,omitempty"`
+	Type       *string `json:"type,omitzero"`
+	Vendor     *string `json:"vendor,omitzero"`
 }
 
 // StorageBlockDevice describes kernel-reported backing relationships. A device
@@ -111,8 +111,8 @@ type CIFSMount struct {
 
 type StorageMountResult struct {
 	Success    bool    `json:"success"`
-	Mountpoint *string `json:"mountpoint,omitempty"`
-	Warning    *string `json:"warning,omitempty"`
+	Mountpoint *string `json:"mountpoint,omitzero"`
+	Warning    *string `json:"warning,omitzero"`
 }
 
 // BtrfsMaintenanceTask is one btrfsmaintenance timer (scrub, balance, trim,
@@ -131,7 +131,7 @@ type BtrfsMaintenanceSchedule struct {
 
 type StorageWarningResult struct {
 	Success bool    `json:"success"`
-	Warning *string `json:"warning,omitempty"`
+	Warning *string `json:"warning,omitzero"`
 }
 
 type ServerRequest struct {
@@ -180,7 +180,7 @@ type BtrfsSubvolumeRequest struct {
 
 type BtrfsSnapshotsRequest struct {
 	UUID string  `json:"uuid"`
-	Path *string `json:"path,omitempty"`
+	Path *string `json:"path,omitzero"`
 }
 
 type BtrfsSnapshotRequest struct {
@@ -233,7 +233,7 @@ type BtrfsQgroupLimitRequest struct {
 type BtrfsCompressionRequest struct {
 	UUID      string `json:"uuid"`
 	Algorithm string `json:"algorithm"`
-	Level     *int   `json:"level,omitempty"`
+	Level     *int   `json:"level,omitzero"`
 	Force     bool   `json:"force"`
 }
 
@@ -266,9 +266,9 @@ type BtrfsDeviceReplaceRequest struct {
 // balanced.
 type BtrfsBalanceRequest struct {
 	UUID            string  `json:"uuid"`
-	DataProfile     *string `json:"dataProfile,omitempty"`
-	MetadataProfile *string `json:"metadataProfile,omitempty"`
-	DataUsage       *int    `json:"dataUsage,omitempty"`
+	DataProfile     *string `json:"dataProfile,omitzero"`
+	MetadataProfile *string `json:"metadataProfile,omitzero"`
+	DataUsage       *int    `json:"dataUsage,omitzero"`
 }
 
 type BtrfsLabelRequest struct {

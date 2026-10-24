@@ -2,7 +2,7 @@ package bridgeipc
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -39,11 +39,11 @@ var (
 type CallFunc func(ctx context.Context, request Request) (any, error)
 type DuplexFunc func(ctx context.Context, stream net.Conn, request Request) error
 
-type RequestDecoder func(raw json.RawMessage) (any, error)
+type RequestDecoder func(raw jsontext.Value) (any, error)
 
 type Request struct {
 	Route        string
-	RawRequest   json.RawMessage
+	RawRequest   jsontext.Value
 	DecodedValue any
 	Session      *session.Session
 	Owner        TaskOwner

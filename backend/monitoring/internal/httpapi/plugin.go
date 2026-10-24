@@ -3,7 +3,8 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -39,19 +40,19 @@ type pluginInfo struct {
 }
 
 type rawDataResponse struct {
-	CapturedAt int64           `json:"captured_at"`
-	Data       json.RawMessage `json:"data"`
+	CapturedAt int64          `json:"captured_at"`
+	Data       jsontext.Value `json:"data"`
 }
 
 type rawItemsResponse struct {
-	CapturedAt int64           `json:"captured_at"`
-	Items      json.RawMessage `json:"items"`
+	CapturedAt int64          `json:"captured_at"`
+	Items      jsontext.Value `json:"items"`
 }
 
 type rawProcessesResponse struct {
-	CapturedAt int64           `json:"captured_at"`
-	Count      json.RawMessage `json:"count,omitempty"`
-	Items      json.RawMessage `json:"items"`
+	CapturedAt int64          `json:"captured_at"`
+	Count      jsontext.Value `json:"count,omitzero"`
+	Items      jsontext.Value `json:"items"`
 }
 
 type currentPlugin struct {
@@ -336,14 +337,14 @@ func (p currentPlugin) Current(ctx context.Context) (any, error) {
 	return p.response(capturedAt, raw)
 }
 
-func (p currentPlugin) response(capturedAt int64, raw json.RawMessage) (any, error) {
+func (p currentPlugin) response(capturedAt int64, raw jsontext.Value) (any, error) {
 	switch p.kind {
 	case "items":
 		return rawItemsResponse{CapturedAt: capturedAt, Items: normalizeItemsRaw(raw)}, nil
 	case "processes":
 		var payload struct {
-			Count json.RawMessage `json:"count"`
-			Items json.RawMessage `json:"items"`
+			Count jsontext.Value `json:"count"`
+			Items jsontext.Value `json:"items"`
 		}
 		if err := json.Unmarshal(raw, &payload); err != nil {
 			return nil, err
@@ -358,7 +359,7 @@ func (p currentPlugin) response(capturedAt int64, raw json.RawMessage) (any, err
 	}
 }
 
-func pluginCurrentResponse(plugin Plugin, capturedAt int64, raw json.RawMessage) (any, error) {
+func pluginCurrentResponse(plugin Plugin, capturedAt int64, raw jsontext.Value) (any, error) {
 	switch p := plugin.(type) {
 	case currentPlugin:
 		return p.response(capturedAt, raw)
@@ -375,7 +376,7 @@ func (p refreshCurrentPlugin) Refresh(ctx context.Context) error {
 
 func (p currentPlugin) history(ctx context.Context, resolution string, from, to int64, limit int) (any, error) {
 	var (
-		records []store.HistoryRecord[json.RawMessage]
+		records []store.HistoryRecord[jsontext.Value]
 		err     error
 	)
 	records, err = p.historyReader.PluginHistory(ctx, p.name, resolution, from, to, limit)
@@ -406,9 +407,9 @@ func pluginResponseKind(name string) string {
 	}
 }
 
-func normalizeItemsRaw(raw json.RawMessage) json.RawMessage {
+func normalizeItemsRaw(raw jsontext.Value) jsontext.Value {
 	if len(raw) == 0 || string(raw) == "null" {
-		return json.RawMessage("[]")
+		return jsontext.Value("[]")
 	}
 	return raw
 }

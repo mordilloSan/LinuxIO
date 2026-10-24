@@ -4,7 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -242,7 +242,7 @@ func qcow2VirtualSizeGB(ctx context.Context, path string) (int, error) {
 	var info struct {
 		VirtualSize int64 `json:"virtual-size"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &info); err != nil {
+	if err := json.Unmarshal(stdout.Bytes(), &info, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return 0, fmt.Errorf("parse qemu-img info: %w", err)
 	}
 	const gib = 1 << 30

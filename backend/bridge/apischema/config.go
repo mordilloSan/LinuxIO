@@ -13,7 +13,7 @@ type ConfigSetResult struct {
 
 type AppConfig struct {
 	AppSettings AppSettings       `json:"appSettings"`
-	Dismissals  *Dismissals       `json:"dismissals,omitempty"`
+	Dismissals  *Dismissals       `json:"dismissals,omitzero"`
 	Assistant   AssistantSettings `json:"assistant"`
 	Docker      DockerSettings    `json:"docker"`
 	Jobs        JobSettings       `json:"jobs"`
@@ -25,7 +25,7 @@ type AssistantSettings struct {
 }
 
 type AppSettings struct {
-	ChunkSizeMB     *int `json:"chunkSizeMB,omitempty"`
+	ChunkSizeMB     *int `json:"chunkSizeMB,omitzero"`
 	ShowHiddenFiles bool `json:"showHiddenFiles"`
 }
 
@@ -43,7 +43,7 @@ type UIConfig struct {
 	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`
 	TerminalFontSize        int                             `json:"terminalFontSize"`
 	Theme                   Theme                           `json:"theme"`
-	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
+	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitzero"`
 	ViewModes               map[string]TableCardViewMode    `json:"viewModes"`
 	ViewModeDefault         TableCardViewMode               `json:"viewModeDefault"`
 }
@@ -58,76 +58,76 @@ type JobSettings struct {
 }
 
 type Dismissals struct {
-	FailedLoginAlertID    *string `json:"failedLoginAlertId,omitempty"`
-	UncleanShutdownBootID *string `json:"uncleanShutdownBootId,omitempty"`
+	FailedLoginAlertID    *string `json:"failedLoginAlertId,omitzero"`
+	UncleanShutdownBootID *string `json:"uncleanShutdownBootId,omitzero"`
 }
 
 type ConfigSetPayload struct {
-	AppSettings *ConfigAppSettingsPayload `json:"appSettings,omitempty"`
-	Docker      *ConfigDockerPayload      `json:"docker,omitempty"`
-	Jobs        *ConfigJobSettingsPayload `json:"jobs,omitempty"`
-	Dismissals  *ConfigDismissalsPayload  `json:"dismissals,omitempty"`
-	Assistant   *ConfigAssistantPayload   `json:"assistant,omitempty"`
+	AppSettings *ConfigAppSettingsPayload `json:"appSettings,omitzero"`
+	Docker      *ConfigDockerPayload      `json:"docker,omitzero"`
+	Jobs        *ConfigJobSettingsPayload `json:"jobs,omitzero"`
+	Dismissals  *ConfigDismissalsPayload  `json:"dismissals,omitzero"`
+	Assistant   *ConfigAssistantPayload   `json:"assistant,omitzero"`
 }
 
 type ConfigAssistantPayload struct {
-	Agent *string `json:"agent,omitempty"`
+	Agent *string `json:"agent,omitzero"`
 }
 
 type ConfigAppSettingsPayload struct {
-	ShowHiddenFiles *bool `json:"showHiddenFiles,omitempty"`
-	ChunkSizeMB     *int  `json:"chunkSizeMB,omitempty"`
+	ShowHiddenFiles *bool `json:"showHiddenFiles,omitzero"`
+	ChunkSizeMB     *int  `json:"chunkSizeMB,omitzero"`
 }
 
 // ConfigUISetPayload replaces the user's UI preferences. A missing field
 // resets that preference to the backend default.
 type ConfigUISetPayload struct {
-	Theme                   *string                         `json:"theme,omitempty"`
-	PrimaryColor            *string                         `json:"primaryColor,omitempty"`
-	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitempty"`
-	SidebarCollapsed        *bool                           `json:"sidebarCollapsed,omitempty"`
-	NavigationMode          *string                         `json:"navigationMode,omitempty"`
-	DockTileColors          *string                         `json:"dockTileColors,omitempty"`
-	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitempty"`
+	Theme                   *string                         `json:"theme,omitzero"`
+	PrimaryColor            *string                         `json:"primaryColor,omitzero"`
+	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitzero"`
+	SidebarCollapsed        *bool                           `json:"sidebarCollapsed,omitzero"`
+	NavigationMode          *string                         `json:"navigationMode,omitzero"`
+	DockTileColors          *string                         `json:"dockTileColors,omitzero"`
+	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitzero"`
 	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
-	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitempty"`
-	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitempty"`
+	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitzero"`
+	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitzero"`
 	ViewModes               map[string]string               `json:"viewModes,omitempty"`
 	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
-	TerminalFontSize        *int                            `json:"terminalFontSize,omitempty"`
+	TerminalFontSize        *int                            `json:"terminalFontSize,omitzero"`
 }
 
 type ConfigDockAccentGradient struct {
-	StartColor *string `json:"startColor,omitempty"`
-	EndColor   *string `json:"endColor,omitempty"`
+	StartColor *string `json:"startColor,omitzero"`
+	EndColor   *string `json:"endColor,omitzero"`
 	RangeStart int     `json:"rangeStart"`
 	RangeEnd   int     `json:"rangeEnd"`
 }
 
 type ConfigThemeColorsByModePayload struct {
-	Light *ConfigThemeColorsPayload `json:"light,omitempty"`
-	Dark  *ConfigThemeColorsPayload `json:"dark,omitempty"`
+	Light *ConfigThemeColorsPayload `json:"light,omitzero"`
+	Dark  *ConfigThemeColorsPayload `json:"dark,omitzero"`
 }
 
 type ConfigThemeColorsPayload struct {
-	BackgroundDefault               *string `json:"backgroundDefault,omitempty"`
-	BackgroundPaper                 *string `json:"backgroundPaper,omitempty"`
-	HeaderBackground                *string `json:"headerBackground,omitempty"`
-	FooterBackground                *string `json:"footerBackground,omitempty"`
-	SidebarBackground               *string `json:"sidebarBackground,omitempty"`
-	CardBackground                  *string `json:"cardBackground,omitempty"`
-	DialogBorder                    *string `json:"dialogBorder,omitempty"`
-	DialogGlow                      *string `json:"dialogGlow,omitempty"`
-	DialogBackdrop                  *string `json:"dialogBackdrop,omitempty"`
-	CodeBackground                  *string `json:"codeBackground,omitempty"`
-	CodeText                        *string `json:"codeText,omitempty"`
-	ChartRx                         *string `json:"chartRx,omitempty"`
-	ChartTx                         *string `json:"chartTx,omitempty"`
-	ChartNeutral                    *string `json:"chartNeutral,omitempty"`
-	FileBrowserSurface              *string `json:"fileBrowserSurface,omitempty"`
-	FileBrowserChrome               *string `json:"fileBrowserChrome,omitempty"`
-	FileBrowserBreadcrumbBackground *string `json:"fileBrowserBreadcrumbBackground,omitempty"`
-	FileBrowserBreadcrumbText       *string `json:"fileBrowserBreadcrumbText,omitempty"`
+	BackgroundDefault               *string `json:"backgroundDefault,omitzero"`
+	BackgroundPaper                 *string `json:"backgroundPaper,omitzero"`
+	HeaderBackground                *string `json:"headerBackground,omitzero"`
+	FooterBackground                *string `json:"footerBackground,omitzero"`
+	SidebarBackground               *string `json:"sidebarBackground,omitzero"`
+	CardBackground                  *string `json:"cardBackground,omitzero"`
+	DialogBorder                    *string `json:"dialogBorder,omitzero"`
+	DialogGlow                      *string `json:"dialogGlow,omitzero"`
+	DialogBackdrop                  *string `json:"dialogBackdrop,omitzero"`
+	CodeBackground                  *string `json:"codeBackground,omitzero"`
+	CodeText                        *string `json:"codeText,omitzero"`
+	ChartRx                         *string `json:"chartRx,omitzero"`
+	ChartTx                         *string `json:"chartTx,omitzero"`
+	ChartNeutral                    *string `json:"chartNeutral,omitzero"`
+	FileBrowserSurface              *string `json:"fileBrowserSurface,omitzero"`
+	FileBrowserChrome               *string `json:"fileBrowserChrome,omitzero"`
+	FileBrowserBreadcrumbBackground *string `json:"fileBrowserBreadcrumbBackground,omitzero"`
+	FileBrowserBreadcrumbText       *string `json:"fileBrowserBreadcrumbText,omitzero"`
 }
 
 type ConfigDockerDashboardSections struct {
@@ -149,19 +149,19 @@ type ConfigHardwareSections struct {
 
 type ConfigDockerPayload struct {
 	Folders                 []string `json:"folders,omitempty"`
-	RequireMountsForFolders *bool    `json:"requireMountsForFolders,omitempty"`
+	RequireMountsForFolders *bool    `json:"requireMountsForFolders,omitzero"`
 }
 
 type ConfigJobSettingsPayload struct {
-	ProgressMinIntervalMs     *int `json:"progressMinIntervalMs,omitempty"`
-	NotificationMinIntervalMs *int `json:"notificationMinIntervalMs,omitempty"`
-	ProgressMinBytesMB        *int `json:"progressMinBytesMB,omitempty"`
-	HeavyArchiveConcurrency   *int `json:"heavyArchiveConcurrency,omitempty"`
-	ArchiveCompressionWorkers *int `json:"archiveCompressionWorkers,omitempty"`
-	ArchiveExtractWorkers     *int `json:"archiveExtractWorkers,omitempty"`
+	ProgressMinIntervalMs     *int `json:"progressMinIntervalMs,omitzero"`
+	NotificationMinIntervalMs *int `json:"notificationMinIntervalMs,omitzero"`
+	ProgressMinBytesMB        *int `json:"progressMinBytesMB,omitzero"`
+	HeavyArchiveConcurrency   *int `json:"heavyArchiveConcurrency,omitzero"`
+	ArchiveCompressionWorkers *int `json:"archiveCompressionWorkers,omitzero"`
+	ArchiveExtractWorkers     *int `json:"archiveExtractWorkers,omitzero"`
 }
 
 type ConfigDismissalsPayload struct {
-	UncleanShutdownBootID *string `json:"uncleanShutdownBootId,omitempty"`
-	FailedLoginAlertID    *string `json:"failedLoginAlertId,omitempty"`
+	UncleanShutdownBootID *string `json:"uncleanShutdownBootId,omitzero"`
+	FailedLoginAlertID    *string `json:"failedLoginAlertId,omitzero"`
 }

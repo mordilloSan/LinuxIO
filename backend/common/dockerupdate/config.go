@@ -1,7 +1,8 @@
 package dockerupdate
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -85,7 +86,7 @@ func (s containerAutoUpdateStore) writeOptions(opts DockerContainerAutoUpdateOpt
 		UpdateStopped:  opts.UpdateStopped,
 		ReviveStopped:  opts.ReviveStopped,
 	}
-	configBytes, err := json.MarshalIndent(document, "", "  ")
+	configBytes, err := json.Marshal(document, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return fmt.Errorf("encode Docker update config: %w", err)
 	}

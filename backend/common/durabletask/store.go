@@ -6,7 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -81,12 +82,12 @@ type Record struct {
 	State              State            `json:"state"`
 	CreatedAt          time.Time        `json:"created_at"`
 	UpdatedAt          time.Time        `json:"updated_at"`
-	StartedAt          *time.Time       `json:"started_at,omitempty"`
-	FinishedAt         *time.Time       `json:"finished_at,omitempty"`
-	CancelRequestedAt  *time.Time       `json:"cancel_requested_at,omitempty"`
+	StartedAt          *time.Time       `json:"started_at,omitzero"`
+	FinishedAt         *time.Time       `json:"finished_at,omitzero"`
+	CancelRequestedAt  *time.Time       `json:"cancel_requested_at,omitzero"`
 	Progress           []Progress       `json:"progress,omitempty"`
-	Result             json.RawMessage  `json:"result,omitempty"`
-	Error              *StructuredError `json:"error,omitempty"`
+	Result             jsontext.Value   `json:"result,omitzero"`
+	Error              *StructuredError `json:"error,omitzero"`
 	LogCursor          string           `json:"log_cursor,omitempty"`
 }
 
@@ -110,8 +111,8 @@ type ExecutorResult struct {
 	// Result is the route-owned typed terminal payload. It is deliberately
 	// opaque to the durable store; route code validates and decodes it after
 	// ApplyExecutorResult persists it.
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  string          `json:"error,omitempty"`
+	Result jsontext.Value `json:"result,omitzero"`
+	Error  string         `json:"error,omitempty"`
 }
 
 type Store struct {
@@ -456,7 +457,7 @@ func (s *Store) writeRecord(record Record) error {
 	if err := validateRecord(record); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(record, "", "  ")
+	data, err := json.Marshal(record, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return fmt.Errorf("encode durable operation %s: %w", record.ID, err)
 	}

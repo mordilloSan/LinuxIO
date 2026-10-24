@@ -6,7 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -388,7 +388,7 @@ func (gm *Manager) parseNvidiaData(output []byte) bool {
 // parseAmdData parses the output of rocm-smi and updates the GPUData map
 func (gm *Manager) parseAmdData(output []byte) bool {
 	var rocmSmiInfo map[string]RocmSmiJson
-	if err := json.Unmarshal(output, &rocmSmiInfo); err != nil || len(rocmSmiInfo) == 0 {
+	if err := json.Unmarshal(output, &rocmSmiInfo, json.MatchCaseInsensitiveNames(true)); err != nil || len(rocmSmiInfo) == 0 {
 		return false
 	}
 	gm.Lock()

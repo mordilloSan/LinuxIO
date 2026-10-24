@@ -2,7 +2,7 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"

@@ -2,8 +2,8 @@ package schedules
 
 import (
 	"context"
-	"encoding/json"
-	jsonv2 "encoding/json/v2"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -89,7 +89,7 @@ func (s store) definition(id string) (apischema.ScheduleDefinition, error) {
 		return doc.Definition, err
 	}
 	defer f.Close()
-	if err := jsonv2.UnmarshalRead(io.LimitReader(f, maxDefinitionBytes+1), &doc, jsonv2.RejectUnknownMembers(true)); err != nil {
+	if err := json.UnmarshalRead(io.LimitReader(f, maxDefinitionBytes+1), &doc, json.RejectUnknownMembers(true)); err != nil {
 		return doc.Definition, err
 	}
 	if doc.Version != 1 || doc.Definition.ID != id {
@@ -103,7 +103,7 @@ func (s store) save(def apischema.ScheduleDefinition) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(definitionDocument{Version: 1, Definition: def}, "", "  ")
+	data, err := json.Marshal(definitionDocument{Version: 1, Definition: def}, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}

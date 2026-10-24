@@ -3,7 +3,7 @@ package apischema
 type Service struct {
 	ActiveEnterTimestamp   int64   `json:"active_enter_timestamp"`
 	ActiveState            string  `json:"active_state"`
-	Description            *string `json:"description,omitempty"`
+	Description            *string `json:"description,omitzero"`
 	InactiveEnterTimestamp int64   `json:"inactive_enter_timestamp"`
 	LoadState              string  `json:"load_state"`
 	Name                   string  `json:"name"`
@@ -12,30 +12,30 @@ type Service struct {
 }
 
 type UnitInfo struct {
-	ActiveEnterTimestamp   *int64   `json:"ActiveEnterTimestamp,omitempty"`
-	ActiveState            *string  `json:"ActiveState,omitempty"`
+	ActiveEnterTimestamp   *int64   `json:"ActiveEnterTimestamp,omitzero"`
+	ActiveState            *string  `json:"ActiveState,omitzero"`
 	After                  []string `json:"After,omitempty"`
 	Before                 []string `json:"Before,omitempty"`
 	Conflicts              []string `json:"Conflicts,omitempty"`
-	Description            *string  `json:"Description,omitempty"`
-	ExecMainStatus         *int     `json:"ExecMainStatus,omitempty"`
-	FragmentPath           *string  `json:"FragmentPath,omitempty"`
-	ID                     *string  `json:"Id,omitempty"`
-	InactiveEnterTimestamp *int64   `json:"InactiveEnterTimestamp,omitempty"`
-	LastTriggerUSec        *int64   `json:"LastTriggerUSec,omitempty"`
+	Description            *string  `json:"Description,omitzero"`
+	ExecMainStatus         *int     `json:"ExecMainStatus,omitzero"`
+	FragmentPath           *string  `json:"FragmentPath,omitzero"`
+	ID                     *string  `json:"Id,omitzero"`
+	InactiveEnterTimestamp *int64   `json:"InactiveEnterTimestamp,omitzero"`
+	LastTriggerUSec        *int64   `json:"LastTriggerUSec,omitzero"`
 	Listen                 []string `json:"Listen,omitempty"`
-	LoadState              *string  `json:"LoadState,omitempty"`
-	MainPID                *int     `json:"MainPID,omitempty"`
-	MemoryCurrent          *int64   `json:"MemoryCurrent,omitempty"`
-	NAccepted              *int     `json:"NAccepted,omitempty"`
-	NConnections           *int     `json:"NConnections,omitempty"`
-	NextElapseUSec         *int64   `json:"NextElapseUSec,omitempty"`
+	LoadState              *string  `json:"LoadState,omitzero"`
+	MainPID                *int     `json:"MainPID,omitzero"`
+	MemoryCurrent          *int64   `json:"MemoryCurrent,omitzero"`
+	NAccepted              *int     `json:"NAccepted,omitzero"`
+	NConnections           *int     `json:"NConnections,omitzero"`
+	NextElapseUSec         *int64   `json:"NextElapseUSec,omitzero"`
 	PartOf                 []string `json:"PartOf,omitempty"`
 	Requires               []string `json:"Requires,omitempty"`
-	SubState               *string  `json:"SubState,omitempty"`
+	SubState               *string  `json:"SubState,omitzero"`
 	TriggeredBy            []string `json:"TriggeredBy,omitempty"`
-	Unit                   *string  `json:"Unit,omitempty"`
-	UnitFileState          *string  `json:"UnitFileState,omitempty"`
+	Unit                   *string  `json:"Unit,omitzero"`
+	UnitFileState          *string  `json:"UnitFileState,omitzero"`
 	WantedBy               []string `json:"WantedBy,omitempty"`
 	Wants                  []string `json:"Wants,omitempty"`
 }
@@ -43,7 +43,7 @@ type UnitInfo struct {
 type Timer struct {
 	ActiveEnterTimestamp   int64   `json:"active_enter_timestamp"`
 	ActiveState            string  `json:"active_state"`
-	Description            *string `json:"description,omitempty"`
+	Description            *string `json:"description,omitzero"`
 	InactiveEnterTimestamp int64   `json:"inactive_enter_timestamp"`
 	LastTriggerUSec        int64   `json:"last_trigger_usec"`
 	LoadState              string  `json:"load_state"`
@@ -57,7 +57,7 @@ type Timer struct {
 type Socket struct {
 	ActiveEnterTimestamp   int64    `json:"active_enter_timestamp"`
 	ActiveState            string   `json:"active_state"`
-	Description            *string  `json:"description,omitempty"`
+	Description            *string  `json:"description,omitzero"`
 	InactiveEnterTimestamp int64    `json:"inactive_enter_timestamp"`
 	Listen                 []string `json:"listen"`
 	LoadState              string   `json:"load_state"`

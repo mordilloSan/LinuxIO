@@ -23,17 +23,17 @@ type IndexerTimerSetResult struct {
 }
 
 type IndexerDaemonStatus struct {
-	ActiveOperation   *string `json:"active_operation,omitempty"`
-	ActiveOperationID *string `json:"active_operation_id,omitempty"`
-	ActivePath        *string `json:"active_path,omitempty"`
+	ActiveOperation   *string `json:"active_operation,omitzero"`
+	ActiveOperationID *string `json:"active_operation_id,omitzero"`
+	ActivePath        *string `json:"active_path,omitzero"`
 	DatabaseSize      int64   `json:"database_size"`
-	LastIndexed       *string `json:"last_indexed,omitempty"`
+	LastIndexed       *string `json:"last_indexed,omitzero"`
 	NumDirs           int     `json:"num_dirs"`
 	NumFiles          int     `json:"num_files"`
 	Running           bool    `json:"running"`
 	Status            string  `json:"status"`
 	TotalSize         int64   `json:"total_size"`
-	Warning           *string `json:"warning,omitempty"`
+	Warning           *string `json:"warning,omitzero"`
 }
 
 type IntervalRequest struct {

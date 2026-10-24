@@ -58,7 +58,7 @@ type RollbackPlan struct {
 // takes effect there after a reboot.
 type BtrfsRollbackResult struct {
 	RebootRequired bool     `json:"rebootRequired"`
-	LeftoverPath   *string  `json:"leftoverPath,omitempty"`
+	LeftoverPath   *string  `json:"leftoverPath,omitzero"`
 	Remounted      bool     `json:"remounted"`
 	SkippedMounts  []string `json:"skippedMounts,omitempty"`
 }

@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"os/exec"
@@ -282,7 +282,7 @@ func ParseWtmpdbOutput(username string, output []byte) ([]Login, error) {
 	username = strings.TrimSpace(username)
 
 	var decoded wtmpdbOutput
-	if err := json.Unmarshal(output, &decoded); err != nil {
+	if err := json.Unmarshal(output, &decoded, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, err
 	}
 
@@ -328,7 +328,7 @@ func fetchWtmpdbPreviousBootStatus(ctx context.Context) (previousBootStatus, err
 
 func parseWtmpdbPreviousBootStatus(output []byte) (previousBootStatus, error) {
 	var decoded wtmpdbOutput
-	if err := json.Unmarshal(output, &decoded); err != nil {
+	if err := json.Unmarshal(output, &decoded, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return previousBootStatus{}, err
 	}
 

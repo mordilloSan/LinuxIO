@@ -3,7 +3,7 @@ package live
 import (
 	"context"
 	"encoding/csv"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math"
 	"os"
@@ -145,7 +145,7 @@ func liveGPUFromEntry(entry map[string]any) (monitoringapi.LiveGPU, error) {
 	if err != nil {
 		return device, err
 	}
-	return device, json.Unmarshal(data, &device)
+	return device, json.Unmarshal(data, &device, json.MatchCaseInsensitiveNames(true))
 }
 
 func mergeNvidiaStats(entry map[string]any, stats nvidiaGPUStats) {

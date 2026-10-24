@@ -2,7 +2,7 @@ package apischema
 
 type TunedProfile struct {
 	Active      bool    `json:"active"`
-	Description *string `json:"description,omitempty"`
+	Description *string `json:"description,omitzero"`
 	Name        string  `json:"name"`
 	Recommended bool    `json:"recommended"`
 }
@@ -10,7 +10,7 @@ type TunedProfile struct {
 type PowerStatus struct {
 	ActiveProfile             string         `json:"active_profile"`
 	Backend                   string         `json:"backend"`
-	Error                     *string        `json:"error,omitempty"`
+	Error                     *string        `json:"error,omitzero"`
 	InstallCommand            string         `json:"install_command"`
 	Notes                     []string       `json:"notes,omitempty"`
 	PackageName               string         `json:"package_name"`

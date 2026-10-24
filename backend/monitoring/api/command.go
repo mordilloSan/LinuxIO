@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 )
 
 // Command names accepted by POST RouteCommand on control.sock.
@@ -31,21 +31,21 @@ func Commands() []string {
 }
 
 type CommandRequest struct {
-	Command   string          `json:"command"`
-	Params    json.RawMessage `json:"params,omitempty"`
-	RequestID string          `json:"request_id,omitempty"`
+	Command   string         `json:"command"`
+	Params    jsontext.Value `json:"params,omitzero"`
+	RequestID string         `json:"request_id,omitempty"`
 }
 
 // CommandResponse is the command envelope. The daemon fills Data with typed
-// payloads (T = any); clients keep it raw (T = json.RawMessage) and decode it
+// payloads (T = any); clients keep it raw (T = jsontext.Value) and decode it
 // per command.
 type CommandResponse[T any] struct {
 	OK              bool          `json:"ok"`
 	Command         string        `json:"command"`
 	RequestID       string        `json:"request_id,omitempty"`
 	RestartRequired bool          `json:"restart_required,omitzero"`
-	Data            T             `json:"data,omitempty"`
-	Error           *CommandError `json:"error,omitempty"`
+	Data            T             `json:"data,omitzero"`
+	Error           *CommandError `json:"error,omitzero"`
 }
 
 type CommandError struct {
@@ -83,13 +83,13 @@ type MonitoringConfig struct {
 // MonitoringConfigPatch is the config.set parameter object. Listeners require
 // a daemon restart to take effect.
 type MonitoringConfigPatch struct {
-	CollectorInterval    *string               `json:"collector_interval,omitempty"`
-	DiskUsageCache       *string               `json:"disk_usage_cache,omitempty"`
-	History              *string               `json:"history,omitempty"`
-	HistoryIntervals     *map[string]string    `json:"history_intervals,omitempty"` // replaces the whole map
-	HistoryRetention     *string               `json:"history_retention,omitempty"`
-	Listeners            *[]MonitoringListener `json:"listeners,omitempty"`
-	SmartRefreshInterval *string               `json:"smart_refresh_interval,omitempty"`
+	CollectorInterval    *string               `json:"collector_interval,omitzero"`
+	DiskUsageCache       *string               `json:"disk_usage_cache,omitzero"`
+	History              *string               `json:"history,omitzero"`
+	HistoryIntervals     *map[string]string    `json:"history_intervals,omitzero"` // replaces the whole map
+	HistoryRetention     *string               `json:"history_retention,omitzero"`
+	Listeners            *[]MonitoringListener `json:"listeners,omitzero"`
+	SmartRefreshInterval *string               `json:"smart_refresh_interval,omitzero"`
 }
 
 type MonitoringConfigMeta struct {

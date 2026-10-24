@@ -2,7 +2,7 @@ package dockerupdate
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -197,12 +197,12 @@ func writeDockerUpdateExecutorResult(
 			errorMessage = "operation canceled"
 		}
 	}
-	payload, marshalErr := json.Marshal(result)
+	payload, marshalErr := json.Marshal(result, json.Deterministic(true))
 	if marshalErr != nil {
 		return fmt.Errorf("encode durable Docker update result: %w", marshalErr)
 	}
 	executorResult := durabletask.ExecutorResult{ID: operationID, State: state, ExitCode: exitCode, FinishedAt: time.Now().UTC(), Result: payload, Error: errorMessage}
-	data, marshalErr := json.Marshal(executorResult)
+	data, marshalErr := json.Marshal(executorResult, json.Deterministic(true))
 	if marshalErr != nil {
 		return fmt.Errorf("encode durable Docker executor result: %w", marshalErr)
 	}

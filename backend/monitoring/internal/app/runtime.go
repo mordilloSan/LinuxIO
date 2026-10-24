@@ -614,7 +614,7 @@ func (a *App) setSmartRefreshInterval(interval time.Duration) {
 	}
 	a.Lock()
 	defer a.Unlock()
-	a.host.Details.SmartInterval = interval
+	a.host.Details.SmartInterval = int64(interval)
 	if a.smartManager != nil {
 		a.smartManager.SetRefreshInterval(interval)
 	}

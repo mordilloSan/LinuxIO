@@ -23,7 +23,7 @@ type BtrfsSettings struct {
 // mount. The caller that knows /etc/fstab fills FstabPersisted.
 type BtrfsCompression struct {
 	Algorithm      string `json:"algorithm"` // none|zstd|lzo|zlib
-	Level          *int   `json:"level,omitempty"`
+	Level          *int   `json:"level,omitzero"`
 	Force          bool   `json:"force"`
 	FstabPersisted bool   `json:"fstabPersisted"`
 }

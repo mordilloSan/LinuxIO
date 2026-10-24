@@ -11,34 +11,34 @@ type CPUInfoResponse struct {
 
 type GpuDevice struct {
 	Address                string   `json:"address"`
-	BootVGA                *bool    `json:"boot_vga,omitempty"`
-	ClassName              *string  `json:"class_name,omitempty"`
+	BootVGA                *bool    `json:"boot_vga,omitzero"`
+	ClassName              *string  `json:"class_name,omitzero"`
 	DeviceID               string   `json:"device_id"`
 	Driver                 string   `json:"driver"`
-	DriverModule           *string  `json:"driver_module,omitempty"`
-	DriverVersion          *string  `json:"driver_version,omitempty"`
-	DRMCard                *string  `json:"drm_card,omitempty"`
-	BoostFreqMHz           *float64 `json:"boost_freq_mhz,omitempty"`
-	GTTTotalBytes          *uint64  `json:"gtt_total_bytes,omitempty"`
-	MaxFreqMHz             *float64 `json:"max_freq_mhz,omitempty"`
-	MaxLinkSpeed           *string  `json:"max_link_speed,omitempty"`
-	MaxLinkWidth           *string  `json:"max_link_width,omitempty"`
-	MemoryTotalBytes       *uint64  `json:"memory_total_bytes,omitempty"`
-	MinFreqMHz             *float64 `json:"min_freq_mhz,omitempty"`
+	DriverModule           *string  `json:"driver_module,omitzero"`
+	DriverVersion          *string  `json:"driver_version,omitzero"`
+	DRMCard                *string  `json:"drm_card,omitzero"`
+	BoostFreqMHz           *float64 `json:"boost_freq_mhz,omitzero"`
+	GTTTotalBytes          *uint64  `json:"gtt_total_bytes,omitzero"`
+	MaxFreqMHz             *float64 `json:"max_freq_mhz,omitzero"`
+	MaxLinkSpeed           *string  `json:"max_link_speed,omitzero"`
+	MaxLinkWidth           *string  `json:"max_link_width,omitzero"`
+	MemoryTotalBytes       *uint64  `json:"memory_total_bytes,omitzero"`
+	MinFreqMHz             *float64 `json:"min_freq_mhz,omitzero"`
 	Model                  string   `json:"model"`
-	NUMANode               *int     `json:"numa_node,omitempty"`
-	ProgrammingInterface   *string  `json:"programming_interface,omitempty"`
-	RawClass               *string  `json:"raw_class,omitempty"`
+	NUMANode               *int     `json:"numa_node,omitzero"`
+	ProgrammingInterface   *string  `json:"programming_interface,omitzero"`
+	RawClass               *string  `json:"raw_class,omitzero"`
 	Revision               string   `json:"revision"`
-	RP0FreqMHz             *float64 `json:"rp0_freq_mhz,omitempty"`
-	RP1FreqMHz             *float64 `json:"rp1_freq_mhz,omitempty"`
-	RPNFreqMHz             *float64 `json:"rpn_freq_mhz,omitempty"`
-	SubclassName           *string  `json:"subclass_name,omitempty"`
+	RP0FreqMHz             *float64 `json:"rp0_freq_mhz,omitzero"`
+	RP1FreqMHz             *float64 `json:"rp1_freq_mhz,omitzero"`
+	RPNFreqMHz             *float64 `json:"rpn_freq_mhz,omitzero"`
+	SubclassName           *string  `json:"subclass_name,omitzero"`
 	Subsystem              string   `json:"subsystem"`
 	SubsystemID            string   `json:"subsystem_id"`
 	Vendor                 string   `json:"vendor"`
 	VendorID               string   `json:"vendor_id"`
-	VisibleMemoryTotalByte *uint64  `json:"visible_memory_total_bytes,omitempty"`
+	VisibleMemoryTotalByte *uint64  `json:"visible_memory_total_bytes,omitzero"`
 }
 
 type MotherboardInfo struct {
@@ -77,8 +77,8 @@ type SystemInfo struct {
 }
 
 type SystemLastLogin struct {
-	Source   *string `json:"source,omitempty"`
-	Terminal *string `json:"terminal,omitempty"`
+	Source   *string `json:"source,omitzero"`
+	Terminal *string `json:"terminal,omitzero"`
 	Time     string  `json:"time"`
 	Username string  `json:"username"`
 }
@@ -88,18 +88,18 @@ type SystemFailedLoginAlert struct {
 	ID            string           `json:"id"`
 	LatestEvent   AccountUserLogin `json:"latestEvent"`
 	LatestEventID string           `json:"latestEventId"`
-	Scope         *string          `json:"scope,omitempty"`
+	Scope         *string          `json:"scope,omitzero"`
 	Username      string           `json:"username"`
 }
 
 type SystemHealthSummary struct {
-	FailedLoginAlert      *SystemFailedLoginAlert `json:"failedLoginAlert,omitempty"`
+	FailedLoginAlert      *SystemFailedLoginAlert `json:"failedLoginAlert,omitzero"`
 	FailedServices        []string                `json:"failedServices,omitempty"`
 	FailedServicesCount   int                     `json:"failedServicesCount"`
-	LastLogin             *SystemLastLogin        `json:"lastLogin,omitempty"`
+	LastLogin             *SystemLastLogin        `json:"lastLogin,omitzero"`
 	RunningServicesCount  int                     `json:"runningServicesCount"`
 	UncleanShutdown       bool                    `json:"uncleanShutdown"`
-	UncleanShutdownBootID *string                 `json:"uncleanShutdownBootId,omitempty"`
+	UncleanShutdownBootID *string                 `json:"uncleanShutdownBootId,omitzero"`
 	UpdatesAvailable      int                     `json:"updatesAvailable"`
 	UpToDate              bool                    `json:"upToDate"`
 }
@@ -137,5 +137,5 @@ type BootIDRequest struct {
 }
 
 type FailedLoginEventsRequest struct {
-	Limit *string `json:"limit,omitempty"`
+	Limit *string `json:"limit,omitzero"`
 }

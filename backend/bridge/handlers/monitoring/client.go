@@ -5,7 +5,8 @@ package monitoring
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -123,26 +124,26 @@ func getAPI(ctx context.Context, path string, limit int64, out any) error {
 // runCommand posts one command to the daemon's command API and returns the
 // decoded envelope. Daemon-reported failures (ok=false) surface as errors with
 // the daemon's message.
-func runCommand(ctx context.Context, command string, params any) (monitoringapi.CommandResponse[json.RawMessage], error) {
+func runCommand(ctx context.Context, command string, params any) (monitoringapi.CommandResponse[jsontext.Value], error) {
 	body := monitoringapi.CommandRequest{Command: command}
 	if params != nil {
 		raw, err := json.Marshal(params)
 		if err != nil {
-			return monitoringapi.CommandResponse[json.RawMessage]{}, fmt.Errorf("encode %s params: %w", command, err)
+			return monitoringapi.CommandResponse[jsontext.Value]{}, fmt.Errorf("encode %s params: %w", command, err)
 		}
 		body.Params = raw
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return monitoringapi.CommandResponse[json.RawMessage]{}, fmt.Errorf("encode %s request: %w", command, err)
+		return monitoringapi.CommandResponse[jsontext.Value]{}, fmt.Errorf("encode %s request: %w", command, err)
 	}
 
 	rep, err := postCommand(ctx, payload)
 	if err != nil {
-		return monitoringapi.CommandResponse[json.RawMessage]{}, err
+		return monitoringapi.CommandResponse[jsontext.Value]{}, err
 	}
 
-	var decoded monitoringapi.CommandResponse[json.RawMessage]
+	var decoded monitoringapi.CommandResponse[jsontext.Value]
 	if err := json.Unmarshal(rep.Body, &decoded); err != nil {
 		return decoded, fmt.Errorf("decode %s response (%s): %w", command, rep.Status, err)
 	}

@@ -37,9 +37,9 @@ const (
 )
 
 type ContainerPort struct {
-	IP          *string `json:"IP,omitempty"`
+	IP          *string `json:"IP,omitzero"`
 	PrivatePort int     `json:"PrivatePort"`
-	PublicPort  *int    `json:"PublicPort,omitempty"`
+	PublicPort  *int    `json:"PublicPort,omitzero"`
 	Type        string  `json:"Type"`
 }
 
@@ -57,25 +57,25 @@ type ContainerMount struct {
 type ContainerEndpoint struct {
 	Aliases           []string `json:"Aliases,omitempty"`
 	Gateway           string   `json:"Gateway"`
-	GlobalIPv6Address *string  `json:"GlobalIPv6Address,omitempty"`
+	GlobalIPv6Address *string  `json:"GlobalIPv6Address,omitzero"`
 	IPAddress         string   `json:"IPAddress"`
-	MACAddress        *string  `json:"MacAddress,omitempty"`
+	MACAddress        *string  `json:"MacAddress,omitzero"`
 }
 
 type ContainerMetrics struct {
-	BlockReadBytesPerSecond      *float64               `json:"block_read_bytes_per_second,omitempty"`
-	BlockWriteBytesPerSecond     *float64               `json:"block_write_bytes_per_second,omitempty"`
-	CapturedAtMs                 *int64                 `json:"captured_at_ms,omitempty"`
-	CPUPercent                   *float64               `json:"cpu_percent,omitempty"`
-	MemoryLimitBytes             *uint64                `json:"memory_limit_bytes,omitempty"`
-	MemoryUsageBytes             *uint64                `json:"memory_usage_bytes,omitempty"`
-	NetworkReceiveBytesPerSecond *float64               `json:"network_receive_bytes_per_second,omitempty"`
-	NetworkSendBytesPerSecond    *float64               `json:"network_send_bytes_per_second,omitempty"`
+	BlockReadBytesPerSecond      *float64               `json:"block_read_bytes_per_second,omitzero"`
+	BlockWriteBytesPerSecond     *float64               `json:"block_write_bytes_per_second,omitzero"`
+	CapturedAtMs                 *int64                 `json:"captured_at_ms,omitzero"`
+	CPUPercent                   *float64               `json:"cpu_percent,omitzero"`
+	MemoryLimitBytes             *uint64                `json:"memory_limit_bytes,omitzero"`
+	MemoryUsageBytes             *uint64                `json:"memory_usage_bytes,omitzero"`
+	NetworkReceiveBytesPerSecond *float64               `json:"network_receive_bytes_per_second,omitzero"`
+	NetworkSendBytesPerSecond    *float64               `json:"network_send_bytes_per_second,omitzero"`
 	Status                       ContainerMetricsStatus `json:"status"`
 }
 
 type ContainerHostConfig struct {
-	NetworkMode *string `json:"NetworkMode,omitempty"`
+	NetworkMode *string `json:"NetworkMode,omitzero"`
 }
 
 type ContainerNetworkSettings struct {
@@ -84,24 +84,24 @@ type ContainerNetworkSettings struct {
 
 type ContainerInfo struct {
 	Created           int64                     `json:"Created"`
-	HostConfig        *ContainerHostConfig      `json:"HostConfig,omitempty"`
-	Icon              *string                   `json:"icon,omitempty"`
+	HostConfig        *ContainerHostConfig      `json:"HostConfig,omitzero"`
+	Icon              *string                   `json:"icon,omitzero"`
 	ID                string                    `json:"Id"`
 	Image             string                    `json:"Image"`
 	Labels            map[string]string         `json:"Labels,omitempty"`
-	Metrics           *ContainerMetrics         `json:"metrics,omitempty"`
+	Metrics           *ContainerMetrics         `json:"metrics,omitzero"`
 	Mounts            []ContainerMount          `json:"Mounts,omitempty"`
 	Names             []string                  `json:"Names"`
-	NetworkSettings   *ContainerNetworkSettings `json:"NetworkSettings,omitempty"`
+	NetworkSettings   *ContainerNetworkSettings `json:"NetworkSettings,omitzero"`
 	Ports             []ContainerPort           `json:"Ports,omitempty"`
 	State             string                    `json:"State"`
 	Status            string                    `json:"Status"`
-	UpdateAvailable   *bool                     `json:"updateAvailable,omitempty"`
-	UpdateCheckedAt   *int64                    `json:"updateCheckedAt,omitempty"`
-	UpdateCheckReason *string                   `json:"updateCheckReason,omitempty"`
-	UpdateCheckState  *DockerUpdateCheckState   `json:"updateCheckState,omitempty"`
-	UpdateError       *string                   `json:"updateError,omitempty"`
-	URL               *string                   `json:"url,omitempty"`
+	UpdateAvailable   *bool                     `json:"updateAvailable,omitzero"`
+	UpdateCheckedAt   *int64                    `json:"updateCheckedAt,omitzero"`
+	UpdateCheckReason *string                   `json:"updateCheckReason,omitzero"`
+	UpdateCheckState  *DockerUpdateCheckState   `json:"updateCheckState,omitzero"`
+	UpdateError       *string                   `json:"updateError,omitzero"`
+	URL               *string                   `json:"url,omitzero"`
 }
 
 type ContainerInspectState struct {
@@ -144,7 +144,7 @@ type ContainerInspectInfo struct {
 	Created          string                         `json:"created"`
 	Entrypoint       []string                       `json:"entrypoint,omitempty"`
 	Environment      []ContainerEnvironmentVariable `json:"environment,omitempty"`
-	Health           *ContainerInspectHealth        `json:"health,omitempty"`
+	Health           *ContainerInspectHealth        `json:"health,omitzero"`
 	ID               string                         `json:"id"`
 	Image            string                         `json:"image"`
 	ImageID          string                         `json:"imageId"`
@@ -166,24 +166,24 @@ type ContainerConfigurationResult struct {
 }
 
 type DockerImage struct {
-	Containers        *int                    `json:"Containers,omitempty"`
+	Containers        *int                    `json:"Containers,omitzero"`
 	Created           int64                   `json:"Created"`
 	ID                string                  `json:"Id"`
 	Labels            map[string]string       `json:"Labels,omitempty"`
 	RepoDigests       []string                `json:"RepoDigests,omitempty"`
 	RepoTags          []string                `json:"RepoTags"`
 	Size              int64                   `json:"Size"`
-	UpdateAvailable   *bool                   `json:"updateAvailable,omitempty"`
-	UpdateCheckReason *string                 `json:"updateCheckReason,omitempty"`
-	UpdateCheckState  *DockerUpdateCheckState `json:"updateCheckState,omitempty"`
+	UpdateAvailable   *bool                   `json:"updateAvailable,omitzero"`
+	UpdateCheckReason *string                 `json:"updateCheckReason,omitzero"`
+	UpdateCheckState  *DockerUpdateCheckState `json:"updateCheckState,omitzero"`
 }
 
 type DockerNetworkContainer struct {
 	EndpointID  string  `json:"EndpointID,omitempty"`
 	Name        string  `json:"Name"`
-	IPv4Address *string `json:"IPv4Address,omitempty"`
-	IPv6Address *string `json:"IPv6Address,omitempty"`
-	MACAddress  *string `json:"MacAddress,omitempty"`
+	IPv4Address *string `json:"IPv4Address,omitzero"`
+	IPv6Address *string `json:"IPv6Address,omitzero"`
+	MACAddress  *string `json:"MacAddress,omitzero"`
 }
 
 type DockerNetworkIPAMConfig struct {
@@ -203,13 +203,13 @@ type DockerNetwork struct {
 	Attachable bool                              `json:"Attachable"`
 	ConfigOnly bool                              `json:"ConfigOnly"`
 	Containers map[string]DockerNetworkContainer `json:"Containers,omitempty"`
-	Created    *string                           `json:"Created,omitempty"`
+	Created    *string                           `json:"Created,omitzero"`
 	Driver     string                            `json:"Driver"`
-	EnableIPv4 *bool                             `json:"EnableIPv4,omitempty"`
-	EnableIPv6 *bool                             `json:"EnableIPv6,omitempty"`
+	EnableIPv4 *bool                             `json:"EnableIPv4,omitzero"`
+	EnableIPv6 *bool                             `json:"EnableIPv6,omitzero"`
 	ID         string                            `json:"Id"`
-	Internal   *bool                             `json:"Internal,omitempty"`
-	IPAM       *DockerNetworkIPAM                `json:"IPAM,omitempty"`
+	Internal   *bool                             `json:"Internal,omitzero"`
+	IPAM       *DockerNetworkIPAM                `json:"IPAM,omitzero"`
 	Ingress    bool                              `json:"Ingress"`
 	Labels     map[string]string                 `json:"Labels,omitempty"`
 	Name       string                            `json:"Name"`
@@ -232,16 +232,16 @@ type DockerVolumeContainer struct {
 type DockerVolume struct {
 	ClusterVolume        map[string]any          `json:"ClusterVolume,omitempty"`
 	Containers           []DockerVolumeContainer `json:"Containers,omitempty"`
-	CreatedAt            *string                 `json:"CreatedAt,omitempty"`
+	CreatedAt            *string                 `json:"CreatedAt,omitzero"`
 	Driver               string                  `json:"Driver"`
 	Labels               map[string]string       `json:"Labels,omitempty"`
 	Mountpoint           string                  `json:"Mountpoint"`
 	MountpointAccessible bool                    `json:"MountpointAccessible,omitzero"`
 	Name                 string                  `json:"Name"`
 	Options              map[string]string       `json:"Options,omitempty"`
-	Scope                *string                 `json:"Scope,omitempty"`
+	Scope                *string                 `json:"Scope,omitzero"`
 	Status               map[string]any          `json:"Status,omitempty"`
-	UsageData            *DockerVolumeUsageData  `json:"UsageData,omitempty"`
+	UsageData            *DockerVolumeUsageData  `json:"UsageData,omitzero"`
 }
 
 type DockerSystemInfo struct {
@@ -504,11 +504,11 @@ func (p DockerContainerUpdateProgress) ProgressEnvelope() bridgeipc.TaskProgress
 
 type DockerLogsFollowRequest struct {
 	ContainerID string  `json:"containerId"`
-	Tail        *string `json:"tail,omitempty"`
+	Tail        *string `json:"tail,omitzero"`
 }
 
 type DockerLogsFollowAllRequest struct {
-	Tail *string `json:"tail,omitempty"`
+	Tail *string `json:"tail,omitzero"`
 }
 
 type DockerStartedFailedResponse struct {
@@ -524,7 +524,7 @@ type DockerStoppedFailedResponse struct {
 type DockerComposeRequest struct {
 	Action      string  `json:"action"`
 	ProjectName string  `json:"projectName"`
-	ComposePath *string `json:"composePath,omitempty"`
+	ComposePath *string `json:"composePath,omitzero"`
 }
 
 type DockerSystemPruneRequest struct {

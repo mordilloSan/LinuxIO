@@ -2,7 +2,8 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -230,7 +231,7 @@ func (s *managedMountStore) save(entries map[string]managedMountEntry) error {
 		return stored[i].Mountpoint < stored[j].Mountpoint
 	})
 
-	data, err := json.MarshalIndent(stored, "", "  ")
+	data, err := json.Marshal(stored, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}

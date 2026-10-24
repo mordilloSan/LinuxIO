@@ -3,7 +3,7 @@ package dockerupdate
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -103,7 +103,7 @@ func parseComposeProgress(line string) (*ComposeProgress, bool) {
 		return nil, false
 	}
 	var evt ComposeProgress
-	if err := json.Unmarshal([]byte(line), &evt); err != nil {
+	if err := json.Unmarshal([]byte(line), &evt, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, false
 	}
 	if evt.ID == "" {

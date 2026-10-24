@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -47,11 +48,11 @@ const (
 )
 
 type liveProcessesData struct {
-	Count *processmodel.Count    `json:"count,omitempty"`
+	Count *processmodel.Count    `json:"count,omitzero"`
 	Items []processmodel.Process `json:"items"`
 }
 
-func (a *App) CurrentPlugin(ctx context.Context, plugin string) (int64, json.RawMessage, error) {
+func (a *App) CurrentPlugin(ctx context.Context, plugin string) (int64, jsontext.Value, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, nil, err
 	}
@@ -87,7 +88,7 @@ func (a *App) CurrentPlugin(ctx context.Context, plugin string) (int64, json.Raw
 
 // CurrentPlugins collects a set of live plugins from one request. System
 // plugins share one host sample, but no result is retained after this call.
-func (a *App) CurrentPlugins(ctx context.Context, names []string) (int64, map[string]json.RawMessage, map[string]error) {
+func (a *App) CurrentPlugins(ctx context.Context, names []string) (int64, map[string]jsontext.Value, map[string]error) {
 	batch := newCurrentPluginBatch(names)
 	if err := ctx.Err(); err != nil {
 		batch.failRequested(err)
@@ -150,14 +151,14 @@ func (a *App) fillBatchFromCollectorSample(sample *collectorAPISample, batch *cu
 type currentPluginBatch struct {
 	mu        sync.Mutex
 	requested map[string]bool
-	raw       map[string]json.RawMessage
+	raw       map[string]jsontext.Value
 	errs      map[string]error
 }
 
 func newCurrentPluginBatch(names []string) *currentPluginBatch {
 	batch := &currentPluginBatch{
 		requested: make(map[string]bool, len(names)),
-		raw:       make(map[string]json.RawMessage, len(names)),
+		raw:       make(map[string]jsontext.Value, len(names)),
 		errs:      make(map[string]error),
 	}
 	for _, plugin := range names {
@@ -209,7 +210,7 @@ func (batch *currentPluginBatch) addPayload(plugin string, payload any) {
 	batch.setRaw(plugin, encoded)
 }
 
-func (batch *currentPluginBatch) setRaw(plugin string, raw json.RawMessage) {
+func (batch *currentPluginBatch) setRaw(plugin string, raw jsontext.Value) {
 	batch.mu.Lock()
 	defer batch.mu.Unlock()
 	batch.raw[plugin] = raw
@@ -302,7 +303,7 @@ func (a *App) SystemSummary(ctx context.Context) (int64, systemmodel.Summary, er
 	return capturedAt.UTC().UnixMilli(), systemmodel.NewSummary(data), nil
 }
 
-func (a *App) collectCurrentPlugin(ctx context.Context, plugin string) (int64, json.RawMessage, error) {
+func (a *App) collectCurrentPlugin(ctx context.Context, plugin string) (int64, jsontext.Value, error) {
 	switch plugin {
 	case plugins.Connections:
 		stats, err := network.CollectConnectionStats(ctx)
@@ -346,7 +347,7 @@ func (a *App) collectLiveContainerIdentities(ctx context.Context) ([]containermo
 	return identities, nil
 }
 
-func (a *App) collectProcessPluginPayloadsWithIdentities(ctx context.Context, identities []containermodel.Identity) (map[string]json.RawMessage, error) {
+func (a *App) collectProcessPluginPayloadsWithIdentities(ctx context.Context, identities []containermodel.Identity) (map[string]jsontext.Value, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -368,7 +369,7 @@ func (a *App) collectProcessPluginPayloadsWithIdentities(ctx context.Context, id
 	if err != nil {
 		return nil, err
 	}
-	return map[string]json.RawMessage{
+	return map[string]jsontext.Value{
 		plugins.Processes:          processRaw,
 		plugins.Programs:           programsRaw,
 		plugins.ContainerTelemetry: containerTelemetryRaw,
@@ -405,7 +406,7 @@ func (a *App) collectLiveCurrentData(ctx context.Context, sampleKey uint16, incl
 	return data, nil
 }
 
-func (a *App) collectSystemPlugin(ctx context.Context, plugin string, sampleKey uint16, includeContainers bool) (int64, json.RawMessage, error) {
+func (a *App) collectSystemPlugin(ctx context.Context, plugin string, sampleKey uint16, includeContainers bool) (int64, jsontext.Value, error) {
 	data, capturedAt, err := a.liveCurrentData(ctx, sampleKey, false, includeContainers)
 	if err != nil {
 		return 0, nil, err
@@ -419,7 +420,7 @@ func (a *App) collectSystemPlugin(ctx context.Context, plugin string, sampleKey 
 	if err != nil {
 		return 0, nil, err
 	}
-	return capturedAt.UTC().UnixMilli(), json.RawMessage(append([]byte(nil), raw...)), nil
+	return capturedAt.UTC().UnixMilli(), jsontext.Value(append([]byte(nil), raw...)), nil
 }
 
 func (a *App) currentSmartRecords() []store.SmartDeviceRecord {
@@ -442,7 +443,7 @@ func (a *App) currentSmartRecords() []store.SmartDeviceRecord {
 	return records
 }
 
-func marshalCurrentPlugin(payload any) (int64, json.RawMessage, error) {
+func marshalCurrentPlugin(payload any) (int64, jsontext.Value, error) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return 0, nil, err

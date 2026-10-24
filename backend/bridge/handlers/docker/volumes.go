@@ -2,7 +2,7 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -198,7 +198,7 @@ func opaqueDockerValue(value any) map[string]any {
 		return nil
 	}
 	var result map[string]any
-	if err := json.Unmarshal(raw, &result); err != nil {
+	if err := json.Unmarshal(raw, &result, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil
 	}
 	return result

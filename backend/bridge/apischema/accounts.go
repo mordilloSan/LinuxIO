@@ -26,7 +26,7 @@ type AccountUserLogin struct {
 
 type AccountActiveSession struct {
 	Idle      string `json:"idle,omitempty"`
-	PID       *int   `json:"pid,omitempty"`
+	PID       *int   `json:"pid,omitzero"`
 	SessionID string `json:"sessionId,omitempty"`
 	Source    string `json:"source,omitempty"`
 	StartedAt string `json:"startedAt"`
@@ -36,12 +36,12 @@ type AccountActiveSession struct {
 type AccountPasswordState struct {
 	Error         string `json:"error,omitempty"`
 	Expires       string `json:"expires,omitempty"`
-	ExpiresInDays *int   `json:"expiresInDays,omitempty"`
+	ExpiresInDays *int   `json:"expiresInDays,omitzero"`
 	HasPassword   bool   `json:"hasPassword"`
 	LastChanged   string `json:"lastChanged,omitempty"`
 	Locked        bool   `json:"locked"`
-	MaxDays       *int   `json:"maxDays,omitempty"`
-	WarningDays   *int   `json:"warningDays,omitempty"`
+	MaxDays       *int   `json:"maxDays,omitzero"`
+	WarningDays   *int   `json:"warningDays,omitzero"`
 }
 
 type AccountAdminAccess struct {
@@ -52,12 +52,12 @@ type AccountAdminAccess struct {
 type AccountHomeHealth struct {
 	Error        string `json:"error,omitempty"`
 	Exists       bool   `json:"exists"`
-	GroupGID     *int   `json:"groupGid,omitempty"`
+	GroupGID     *int   `json:"groupGid,omitzero"`
 	GroupName    string `json:"groupName,omitempty"`
 	IsDirectory  bool   `json:"isDirectory"`
 	Mode         string `json:"mode,omitempty"`
 	OwnerMatches bool   `json:"ownerMatches"`
-	OwnerUID     *int   `json:"ownerUid,omitempty"`
+	OwnerUID     *int   `json:"ownerUid,omitzero"`
 }
 
 type AccountSSHAccess struct {
@@ -124,24 +124,24 @@ type TerminateSessionRequest struct {
 type CreateUserRequest struct {
 	Username   string   `json:"username"`
 	Password   string   `json:"password"`
-	FullName   *string  `json:"fullName,omitempty"`
-	HomeDir    *string  `json:"homeDir,omitempty"`
-	Shell      *string  `json:"shell,omitempty"`
+	FullName   *string  `json:"fullName,omitzero"`
+	HomeDir    *string  `json:"homeDir,omitzero"`
+	Shell      *string  `json:"shell,omitzero"`
 	Groups     []string `json:"groups,omitempty"`
-	CreateHome *bool    `json:"createHome,omitempty"`
+	CreateHome *bool    `json:"createHome,omitzero"`
 }
 
 type ModifyUserRequest struct {
 	Username string   `json:"username"`
-	FullName *string  `json:"fullName,omitempty"`
-	HomeDir  *string  `json:"homeDir,omitempty"`
-	Shell    *string  `json:"shell,omitempty"`
+	FullName *string  `json:"fullName,omitzero"`
+	HomeDir  *string  `json:"homeDir,omitzero"`
+	Shell    *string  `json:"shell,omitzero"`
 	Groups   []string `json:"groups,omitempty"`
 }
 
 type CreateGroupRequest struct {
 	Name string `json:"name"`
-	GID  *int   `json:"gid,omitempty"`
+	GID  *int   `json:"gid,omitzero"`
 }
 
 type ModifyGroupMembersRequest struct {

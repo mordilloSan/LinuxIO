@@ -43,25 +43,25 @@ type CapabilitiesAvailable struct {
 }
 
 type CapabilitiesError struct {
-	DockerError           *string `json:"docker_error,omitempty"`
-	DockerUpdatesError    *string `json:"docker_updates_error,omitempty"`
-	MonitoringError       *string `json:"monitoring_error,omitempty"`
-	LMSensorsError        *string `json:"lm_sensors_error,omitempty"`
-	MemoryInventoryError  *string `json:"memory_inventory_error,omitempty"`
-	SmartmontoolsError    *string `json:"smartmontools_error,omitempty"`
-	PackageKitError       *string `json:"packagekit_error,omitempty"`
-	NFSClientError        *string `json:"nfs_client_error,omitempty"`
-	NFSServerError        *string `json:"nfs_server_error,omitempty"`
-	SambaServerError      *string `json:"samba_server_error,omitempty"`
-	SambaClientError      *string `json:"samba_client_error,omitempty"`
-	RsyncError            *string `json:"rsync_error,omitempty"`
-	TunedError            *string `json:"tuned_error,omitempty"`
-	AvahiError            *string `json:"avahi_error,omitempty"`
-	WireGuardError        *string `json:"wireguard_error,omitempty"`
-	LibvirtError          *string `json:"libvirt_error,omitempty"`
-	NodeError             *string `json:"node_error,omitempty"`
-	BtrfsMaintenanceError *string `json:"btrfs_maintenance_error,omitempty"`
-	BtrfsError            *string `json:"btrfs_error,omitempty"`
+	DockerError           *string `json:"docker_error,omitzero"`
+	DockerUpdatesError    *string `json:"docker_updates_error,omitzero"`
+	MonitoringError       *string `json:"monitoring_error,omitzero"`
+	LMSensorsError        *string `json:"lm_sensors_error,omitzero"`
+	MemoryInventoryError  *string `json:"memory_inventory_error,omitzero"`
+	SmartmontoolsError    *string `json:"smartmontools_error,omitzero"`
+	PackageKitError       *string `json:"packagekit_error,omitzero"`
+	NFSClientError        *string `json:"nfs_client_error,omitzero"`
+	NFSServerError        *string `json:"nfs_server_error,omitzero"`
+	SambaServerError      *string `json:"samba_server_error,omitzero"`
+	SambaClientError      *string `json:"samba_client_error,omitzero"`
+	RsyncError            *string `json:"rsync_error,omitzero"`
+	TunedError            *string `json:"tuned_error,omitzero"`
+	AvahiError            *string `json:"avahi_error,omitzero"`
+	WireGuardError        *string `json:"wireguard_error,omitzero"`
+	LibvirtError          *string `json:"libvirt_error,omitzero"`
+	NodeError             *string `json:"node_error,omitzero"`
+	BtrfsMaintenanceError *string `json:"btrfs_maintenance_error,omitzero"`
+	BtrfsError            *string `json:"btrfs_error,omitzero"`
 }
 
 // Session is the cross-process session record shared by the webserver, the

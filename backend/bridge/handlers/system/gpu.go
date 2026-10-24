@@ -2,7 +2,7 @@ package system
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -46,7 +46,7 @@ func gpuDeviceFromEntry(entry map[string]any) (apischema.GpuDevice, error) {
 	if err != nil {
 		return device, err
 	}
-	return device, json.Unmarshal(data, &device)
+	return device, json.Unmarshal(data, &device, json.MatchCaseInsensitiveNames(true))
 }
 
 func enrichGPUStaticFromSysfs(pciAddr string, entry map[string]any) {

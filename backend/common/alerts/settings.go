@@ -1,7 +1,8 @@
 package alerts
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -75,7 +76,7 @@ func SaveNotifications(n NotificationSettings) (NotificationSettings, error) {
 	if n.SMTPUsername == "" {
 		n.SMTPPassword = ""
 	}
-	data, err := json.MarshalIndent(n, "", "  ")
+	data, err := json.Marshal(n, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return NotificationSettings{}, fmt.Errorf("marshal notifications: %w", err)
 	}

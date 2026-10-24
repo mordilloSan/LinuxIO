@@ -4,7 +4,8 @@ package smart
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -381,12 +382,12 @@ func (sm *Manager) filterExcludedDevices(devices []*DeviceInfo) []*DeviceInfo {
 // when the reported device type is ambiguous or missing.
 func detectSmartOutputType(output []byte) string {
 	var hints struct {
-		AtaSmartAttributes            json.RawMessage `json:"ata_smart_attributes"`
-		NVMeSmartHealthInformationLog json.RawMessage `json:"nvme_smart_health_information_log"`
-		ScsiErrorCounterLog           json.RawMessage `json:"scsi_error_counter_log"`
+		AtaSmartAttributes            jsontext.Value `json:"ata_smart_attributes"`
+		NVMeSmartHealthInformationLog jsontext.Value `json:"nvme_smart_health_information_log"`
+		ScsiErrorCounterLog           jsontext.Value `json:"scsi_error_counter_log"`
 	}
 
-	if err := json.Unmarshal(output, &hints); err != nil {
+	if err := json.Unmarshal(output, &hints, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return ""
 	}
 
@@ -405,7 +406,7 @@ func detectSmartOutputType(output []byte) string {
 // hasJSONValue reports whether a JSON payload contains a concrete value. The
 // smartctl output often emits "null" for sections that do not apply, so we
 // only treat non-null content as a hint.
-func hasJSONValue(raw json.RawMessage) bool {
+func hasJSONValue(raw jsontext.Value) bool {
 	if len(raw) == 0 {
 		return false
 	}
@@ -686,7 +687,7 @@ func (sm *Manager) hasDataForDevice(deviceName string) bool {
 func (sm *Manager) parseScan(output []byte) ([]*DeviceInfo, bool) {
 	scan := &scanOutput{}
 
-	if err := json.Unmarshal(output, scan); err != nil {
+	if err := json.Unmarshal(output, scan, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, false
 	}
 
@@ -927,7 +928,7 @@ func (sm *Manager) isVirtualDeviceFromStrings(fields ...string) bool {
 func (sm *Manager) parseSmartForSata(output []byte) (bool, int) {
 	var data smartmodel.SmartInfoForSata
 
-	if err := json.Unmarshal(output, &data); err != nil {
+	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return false, 0
 	}
 
@@ -1024,7 +1025,7 @@ func findAtaDeviceStatisticsValue(data *smartmodel.SmartInfoForSata, ataDeviceSt
 		if len(data.AtaDeviceStatistics) == 0 {
 			return nil
 		}
-		if err := json.Unmarshal(data.AtaDeviceStatistics, ataDeviceStats); err != nil {
+		if err := json.Unmarshal(data.AtaDeviceStatistics, ataDeviceStats, json.MatchCaseInsensitiveNames(true)); err != nil {
 			return nil
 		}
 	}
@@ -1050,7 +1051,7 @@ func findAtaDeviceStatisticsValue(data *smartmodel.SmartInfoForSata, ataDeviceSt
 func (sm *Manager) parseSmartForScsi(output []byte) (bool, int) {
 	var data smartmodel.SmartInfoForScsi
 
-	if err := json.Unmarshal(output, &data); err != nil {
+	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return false, 0
 	}
 
@@ -1143,7 +1144,7 @@ func parseScsiGigabytesProcessed(value string) int64 {
 func (sm *Manager) parseSmartForNvme(output []byte) (bool, int) {
 	data := &smartmodel.SmartInfoForNvme{}
 
-	if err := json.Unmarshal(output, &data); err != nil {
+	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return false, 0
 	}
 

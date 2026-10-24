@@ -12,9 +12,9 @@ import (
 type updateStatusResponse struct {
 	Status     string `json:"status"`
 	ID         string `json:"id,omitempty"`
-	ExitCode   *int   `json:"exit_code,omitempty"`
-	StartedAt  *int64 `json:"started_at,omitempty"`
-	FinishedAt *int64 `json:"finished_at,omitempty"`
+	ExitCode   *int   `json:"exit_code,omitzero"`
+	StartedAt  *int64 `json:"started_at,omitzero"`
+	FinishedAt *int64 `json:"finished_at,omitzero"`
 	Message    string `json:"message,omitempty"`
 }
 

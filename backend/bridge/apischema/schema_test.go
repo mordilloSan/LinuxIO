@@ -323,7 +323,7 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 			if spec.Decode == nil {
 				t.Fatalf("%s has no request decoder", tc.route)
 			}
-			decoded, err := spec.Decode(json.RawMessage(tc.raw))
+			decoded, err := spec.Decode(jsontext.Value(tc.raw))
 			if err != nil {
 				t.Fatalf("requestDecoder() error = %v", err)
 			}
@@ -338,20 +338,20 @@ func TestRequestDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 	spec := mustRoute(t, "docker.start_container")
 	tests := []struct {
 		name               string
-		raw                json.RawMessage
+		raw                jsontext.Value
 		wantContainerID    string
 		wantSemanticError  bool
 		wantSyntacticError bool
 	}{
-		{name: "valid object", raw: json.RawMessage(`{"containerId":"web"}`), wantContainerID: "web"},
-		{name: "unknown field", raw: json.RawMessage(`{"containerId":"web","unexpected":true}`), wantSemanticError: true},
-		{name: "case-mismatched field", raw: json.RawMessage(`{"ContainerId":"web"}`), wantSemanticError: true},
-		{name: "duplicate field", raw: json.RawMessage(`{"containerId":"web","containerId":"db"}`), wantSyntacticError: true},
-		{name: "invalid UTF-8", raw: json.RawMessage("{\"containerId\":\"\xff\"}"), wantSyntacticError: true},
-		{name: "trailing JSON value", raw: json.RawMessage(`{"containerId":"web"} {}`), wantSyntacticError: true},
-		{name: "scalar type mismatch", raw: json.RawMessage(`{"containerId":123}`), wantSemanticError: true},
+		{name: "valid object", raw: jsontext.Value(`{"containerId":"web"}`), wantContainerID: "web"},
+		{name: "unknown field", raw: jsontext.Value(`{"containerId":"web","unexpected":true}`), wantSemanticError: true},
+		{name: "case-mismatched field", raw: jsontext.Value(`{"ContainerId":"web"}`), wantSemanticError: true},
+		{name: "duplicate field", raw: jsontext.Value(`{"containerId":"web","containerId":"db"}`), wantSyntacticError: true},
+		{name: "invalid UTF-8", raw: jsontext.Value("{\"containerId\":\"\xff\"}"), wantSyntacticError: true},
+		{name: "trailing JSON value", raw: jsontext.Value(`{"containerId":"web"} {}`), wantSyntacticError: true},
+		{name: "scalar type mismatch", raw: jsontext.Value(`{"containerId":123}`), wantSemanticError: true},
 		{name: "empty input", raw: nil},
-		{name: "null input", raw: json.RawMessage(`null`)},
+		{name: "null input", raw: jsontext.Value(`null`)},
 	}
 
 	for _, tc := range tests {
@@ -364,7 +364,7 @@ func TestRequestDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 func assertContainerRequestDecode(
 	t *testing.T,
 	spec apischema.RouteSpec,
-	raw json.RawMessage,
+	raw jsontext.Value,
 	wantContainerID string,
 	wantSemanticError bool,
 	wantSyntacticError bool,

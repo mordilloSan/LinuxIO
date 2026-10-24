@@ -36,10 +36,10 @@ type PkgUpdateProgress struct {
 	PackageSummary string  `json:"package_summary,omitempty"` // Package summary from Package(...) signal
 	Status         string  `json:"status,omitempty"`          // Status description (e.g., "Downloading", "Installing")
 	Message        string  `json:"message,omitempty"`         // Rich backend message text when available
-	StatusCode     *uint32 `json:"status_code,omitempty"`     // PackageKit status enum
-	InfoCode       *uint32 `json:"info_code,omitempty"`       // PackageKit info enum (Package signal)
-	Percentage     *uint32 `json:"percentage,omitempty"`      // Overall percentage (0-100, 101=unknown)
-	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
+	StatusCode     *uint32 `json:"status_code,omitzero"`      // PackageKit status enum
+	InfoCode       *uint32 `json:"info_code,omitzero"`        // PackageKit info enum (Package signal)
+	Percentage     *uint32 `json:"percentage,omitzero"`       // Overall percentage (0-100, 101=unknown)
+	ItemPct        *uint32 `json:"item_pct,omitzero"`         // Per-item percentage for ItemProgress
 }
 
 func (p PkgUpdateProgress) ProgressEnvelope() bridgeipc.TaskProgress {

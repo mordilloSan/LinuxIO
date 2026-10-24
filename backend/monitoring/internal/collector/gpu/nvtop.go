@@ -2,7 +2,8 @@ package gpu
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log/slog"
@@ -27,12 +28,12 @@ type nvtopSnapshot struct {
 }
 
 type nvtopProcess struct {
-	PID              json.RawMessage `json:"pid"`
-	GPUUsage         json.RawMessage `json:"gpu_usage"`
-	GPUMemBytesAlloc json.RawMessage `json:"gpu_mem_bytes_alloc"`
-	Encode           json.RawMessage `json:"encode"`
-	Decode           json.RawMessage `json:"decode"`
-	EncodeDecode     json.RawMessage `json:"encode_decode"`
+	PID              jsontext.Value `json:"pid"`
+	GPUUsage         jsontext.Value `json:"gpu_usage"`
+	GPUMemBytesAlloc jsontext.Value `json:"gpu_mem_bytes_alloc"`
+	Encode           jsontext.Value `json:"encode"`
+	Decode           jsontext.Value `json:"decode"`
+	EncodeDecode     jsontext.Value `json:"encode_decode"`
 }
 
 // ProcessSample is one process's GPU usage as reported by a collector.
@@ -47,7 +48,7 @@ type ProcessSample struct {
 	Source            string
 }
 
-func parseNvtopRawNumber(raw json.RawMessage) (float64, bool) {
+func parseNvtopRawNumber(raw jsontext.Value) (float64, bool) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return 0, false
 	}
@@ -63,12 +64,12 @@ func parseNvtopRawNumber(raw json.RawMessage) (float64, bool) {
 	}
 	return 0, false
 }
-func parseNvtopPID(raw json.RawMessage) (int32, bool) {
+func parseNvtopPID(raw jsontext.Value) (int32, bool) {
 	v, ok := parseNvtopRawNumber(raw)
 	return int32(v), ok && v > 0 && v <= math.MaxInt32 && math.Trunc(v) == v
 }
 
-func parseNvtopPercent(raw json.RawMessage) (*float64, bool) {
+func parseNvtopPercent(raw jsontext.Value) (*float64, bool) {
 	v, ok := parseNvtopRawNumber(raw)
 	if !ok || v < 0 || v > 100 {
 		return nil, false
@@ -269,11 +270,11 @@ func (gm *Manager) collectNvtopStats(ctx context.Context, interval string, updat
 	}
 	defer cleanupStartedCommand(cmd, stdout, &err)
 
-	decoder := json.NewDecoder(stdout)
+	decoder := jsontext.NewDecoder(stdout)
 	foundValid := false
 	for {
 		var snapshots []nvtopSnapshot
-		if err := decoder.Decode(&snapshots); err != nil {
+		if err := json.UnmarshalDecode(decoder, &snapshots, json.MatchCaseInsensitiveNames(true)); err != nil {
 			if errors.Is(err, io.EOF) {
 				if foundValid {
 					return nil

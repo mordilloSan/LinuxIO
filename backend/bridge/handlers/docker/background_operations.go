@@ -18,7 +18,7 @@ type ComposeTaskMessage struct {
 	Type     string           `json:"type"`    // "stdout", "stderr", or "progress".
 	Message  string           `json:"message"` // The actual message content (humanized for progress)
 	Code     int              `json:"code,omitzero"`
-	Progress *ComposeProgress `json:"progress,omitempty"` // structured progress for "progress" messages
+	Progress *ComposeProgress `json:"progress,omitzero"` // structured progress for "progress" messages
 }
 
 func (m ComposeTaskMessage) ProgressEnvelope() bridgeipc.TaskProgress {

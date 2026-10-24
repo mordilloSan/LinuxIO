@@ -2,7 +2,7 @@ package bridgeipc
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"io"
 	"net"
@@ -152,9 +152,9 @@ func TestTaskCallPrimitivesHonorCanceledContext(t *testing.T) {
 				t.Fatalf("Create: %v", err)
 			}
 
-			rawRequest := json.RawMessage(`{}`)
+			rawRequest := jsontext.Value(`{}`)
 			if route != "tasks.list" {
-				rawRequest = json.RawMessage(`{"taskId":"` + task.ID() + `"}`)
+				rawRequest = jsontext.Value(`{"taskId":"` + task.ID() + `"}`)
 			}
 
 			ctx, cancel := context.WithCancel(context.Background())

@@ -40,10 +40,10 @@ type BtrfsSnapshot struct {
 	ID              int          `json:"id"`
 	UUID            string       `json:"uuid"`
 	ReceivedUUID    string       `json:"receivedUuid"`
-	ReferencedBytes *uint64      `json:"referencedBytes,omitempty"`
-	ExclusiveBytes  *uint64      `json:"exclusiveBytes,omitempty"`
+	ReferencedBytes *uint64      `json:"referencedBytes,omitzero"`
+	ExclusiveBytes  *uint64      `json:"exclusiveBytes,omitzero"`
 	// MaxReferencedBytes is the qgroup size limit, nil when unlimited.
-	MaxReferencedBytes *uint64 `json:"maxReferencedBytes,omitempty"`
+	MaxReferencedBytes *uint64 `json:"maxReferencedBytes,omitzero"`
 }
 
 var (

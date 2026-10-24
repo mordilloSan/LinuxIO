@@ -6,7 +6,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"log/slog"
 	"os"
@@ -66,13 +66,13 @@ type App struct {
 	telemetry   []containermodel.Telemetry // Container telemetry from the last collector tick
 	telemetryAt time.Time                  // Capture time of that telemetry; zero before the first tick
 
-	collectorRuns   collector.Flight[struct{}, *collectorAPISample]        // The collector pass in flight, for handoff
-	liveRuns        collector.Flight[uint16, liveSample]                   // Newest live collection per sample key
-	liveProcessRuns collector.Flight[struct{}, map[string]json.RawMessage] // Newest live process collection
+	collectorRuns   collector.Flight[struct{}, *collectorAPISample]       // The collector pass in flight, for handoff
+	liveRuns        collector.Flight[uint16, liveSample]                  // Newest live collection per sample key
+	liveProcessRuns collector.Flight[struct{}, map[string]jsontext.Value] // Newest live process collection
 	liveFilesystems live.Filesystems
 	liveSmartPower  live.SmartPower
 	// liveProcessCollect overrides process collection in focused tests.
-	liveProcessCollect func(context.Context) (map[string]json.RawMessage, error)
+	liveProcessCollect func(context.Context) (map[string]jsontext.Value, error)
 	// collectLive overrides the live collection; nil in production, injected by tests.
 	collectLive func(ctx context.Context, key uint16, includeDetails, includeContainers bool) (*systemmodel.CombinedData, error)
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -101,7 +102,7 @@ func TestCurrentPluginsReuseFinishedCollectorProcessSample(t *testing.T) {
 	const capturedAt = int64(1_700_000_000_123)
 	sample := &collectorAPISample{
 		capturedAt: capturedAt,
-		payloads: map[string]json.RawMessage{
+		payloads: map[string]jsontext.Value{
 			plugins.CPU:       []byte(`{"cpu_percent":17}`),
 			plugins.Processes: []byte(`{"count":{"total":99},"items":[]}`),
 		},
@@ -127,7 +128,7 @@ func TestLiveProcessPluginsReuseOneCompletedSample(t *testing.T) {
 	at := time.Now()
 	agent := &App{}
 	run := agent.liveProcessRuns.Begin(struct{}{}, nil)
-	run.Value = map[string]json.RawMessage{
+	run.Value = map[string]jsontext.Value{
 		plugins.Processes: []byte(`{"count":{"total":1},"items":[]}`),
 		plugins.Programs:  []byte(`[]`),
 	}
@@ -155,12 +156,12 @@ func TestLiveProcessPayloadsSharesInFlightSample(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var calls atomic.Int32
-	agent := &App{liveProcessCollect: func(ctx context.Context) (map[string]json.RawMessage, error) {
+	agent := &App{liveProcessCollect: func(ctx context.Context) (map[string]jsontext.Value, error) {
 		calls.Add(1)
 		close(started)
 		select {
 		case <-release:
-			return map[string]json.RawMessage{plugins.Processes: []byte(`[]`)}, nil
+			return map[string]jsontext.Value{plugins.Processes: []byte(`[]`)}, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -193,11 +194,11 @@ func TestLiveProcessPayloadsSharesInFlightSample(t *testing.T) {
 
 func TestLiveProcessPayloadsReplacesFailedSample(t *testing.T) {
 	var calls atomic.Int32
-	agent := &App{liveProcessCollect: func(context.Context) (map[string]json.RawMessage, error) {
+	agent := &App{liveProcessCollect: func(context.Context) (map[string]jsontext.Value, error) {
 		if calls.Add(1) == 1 {
 			return nil, errors.New("process collection failed")
 		}
-		return map[string]json.RawMessage{plugins.Processes: []byte(`[]`)}, nil
+		return map[string]jsontext.Value{plugins.Processes: []byte(`[]`)}, nil
 	}}
 	if _, _, err := agent.currentLiveProcessPayloads(context.Background()); err == nil {
 		t.Fatal("owner must receive process collection failure")

@@ -19,8 +19,8 @@ type VMNIC struct {
 	IPAddresses    []string `json:"ipAddresses,omitempty"`
 	// Target is the host-side tap device while the VM runs.
 	Target                string   `json:"target,omitempty"`
-	ReceiveBytesPerSecond *float64 `json:"receiveBytesPerSecond,omitempty"`
-	SendBytesPerSecond    *float64 `json:"sendBytesPerSecond,omitempty"`
+	ReceiveBytesPerSecond *float64 `json:"receiveBytesPerSecond,omitzero"`
+	SendBytesPerSecond    *float64 `json:"sendBytesPerSecond,omitzero"`
 }
 
 type VMNetwork struct {
@@ -53,18 +53,18 @@ type VirtualMachine struct {
 	Disks      []VMDisk `json:"disks,omitempty"`
 	NICs       []VMNIC  `json:"nics,omitempty"`
 	// Metrics is set only for a VM libvirt reported live stats for.
-	Metrics *VMMetrics `json:"metrics,omitempty"`
+	Metrics *VMMetrics `json:"metrics,omitzero"`
 }
 
 // VMMetrics is one running VM's live usage. CPUPercent is relative to the
 // VM's vCPUs; per-second rates are nil until this bridge has two samples.
 type VMMetrics struct {
-	CPUPercent                   *float64 `json:"cpuPercent,omitempty"`
+	CPUPercent                   *float64 `json:"cpuPercent,omitzero"`
 	MemoryUsedMB                 int      `json:"memoryUsedMB"`
-	NetworkReceiveBytesPerSecond *float64 `json:"networkReceiveBytesPerSecond,omitempty"`
-	NetworkSendBytesPerSecond    *float64 `json:"networkSendBytesPerSecond,omitempty"`
-	DiskReadBytesPerSecond       *float64 `json:"diskReadBytesPerSecond,omitempty"`
-	DiskWriteBytesPerSecond      *float64 `json:"diskWriteBytesPerSecond,omitempty"`
+	NetworkReceiveBytesPerSecond *float64 `json:"networkReceiveBytesPerSecond,omitzero"`
+	NetworkSendBytesPerSecond    *float64 `json:"networkSendBytesPerSecond,omitzero"`
+	DiskReadBytesPerSecond       *float64 `json:"diskReadBytesPerSecond,omitzero"`
+	DiskWriteBytesPerSecond      *float64 `json:"diskWriteBytesPerSecond,omitzero"`
 }
 
 // VMStoragePool is a libvirt storage pool. Sizes are zero while the pool is
@@ -111,7 +111,7 @@ type VMCreateProgress struct {
 	Phase   string `json:"phase"`
 	Message string `json:"message"`
 	Path    string `json:"path,omitempty"`
-	Percent *int   `json:"percent,omitempty"`
+	Percent *int   `json:"percent,omitzero"`
 }
 
 type VMTemplate struct {
@@ -212,8 +212,8 @@ type VMTemplateRequest struct {
 }
 
 type VMPreflightRequest struct {
-	ISOPath       *string         `json:"isoPath,omitempty"`
-	ImportPath    *string         `json:"importPath,omitempty"`
+	ISOPath       *string         `json:"isoPath,omitzero"`
+	ImportPath    *string         `json:"importPath,omitzero"`
 	SourceType    VMSourceType    `json:"sourceType,omitempty"`
 	ImagePresetID VMImagePresetID `json:"imagePresetId,omitempty"`
 	Network       string          `json:"network,omitempty"`

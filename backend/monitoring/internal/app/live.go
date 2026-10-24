@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"time"
 
@@ -30,7 +30,7 @@ func (s *liveSample) covers(includeDetails, includeContainers bool) bool {
 
 type (
 	liveRun        = collector.Run[liveSample]
-	liveProcessRun = collector.Run[map[string]json.RawMessage]
+	liveProcessRun = collector.Run[map[string]jsontext.Value]
 )
 
 // Live returns the LinuxIO-shaped live payload. Same request semantics as any
@@ -185,7 +185,7 @@ func (a *App) detachLiveSampleLocked(data *systemmodel.CombinedData) {
 
 // currentLiveProcessPayloads returns the live process, program and container
 // telemetry payloads, sharing one collection per reuse window.
-func (a *App) currentLiveProcessPayloads(ctx context.Context) (map[string]json.RawMessage, time.Time, error) {
+func (a *App) currentLiveProcessPayloads(ctx context.Context) (map[string]jsontext.Value, time.Time, error) {
 	run, err := a.liveProcessRuns.Do(ctx, struct{}{}, nil,
 		func(run *liveProcessRun) bool { return run.Fresh(live.ReuseWindow) },
 		func(run *liveProcessRun) { a.runLiveProcessCollection(ctx, run) },
@@ -214,10 +214,10 @@ func (a *App) runLiveProcessCollection(ctx context.Context, run *liveProcessRun)
 	run.Value, run.Err = a.collectProcessPluginPayloadsWithIdentities(ctx, identities)
 }
 
-func cloneJSONPayloads(payloads map[string]json.RawMessage) map[string]json.RawMessage {
-	cloned := make(map[string]json.RawMessage, len(payloads))
+func cloneJSONPayloads(payloads map[string]jsontext.Value) map[string]jsontext.Value {
+	cloned := make(map[string]jsontext.Value, len(payloads))
 	for key, payload := range payloads {
-		cloned[key] = append(json.RawMessage(nil), payload...)
+		cloned[key] = append(jsontext.Value(nil), payload...)
 	}
 	return cloned
 }

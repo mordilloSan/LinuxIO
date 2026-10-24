@@ -258,10 +258,19 @@ Required-field meaning remains handler/domain validation; use pointer fields
 only when the wire contract must distinguish an absent value from its zero
 value.
 
-The HTTP login body and indexer configuration patch are separate request
+The HTTP login body, the relay stream-open envelope, the indexer `/add` body and
+configuration patch, and the monitoring `/command` body are separate request
 boundaries, but apply the same strict v2 member and syntax rules directly.
-Response encoding and upstream-service decoding retain the compatible
-`encoding/json` API; in Go 1.27 that API uses the v2 engine with v1 semantics.
+
+All production code uses `encoding/json/v2` (`TestImportBoundaries` rejects a
+v1 import; raw JSON is `jsontext.Value`). Responses therefore follow v2 output
+rules: nil slices encode as `[]` and nil maps as `{}`, never `null`; `<`, `>`
+and `&` are not escaped; struct fields use `omitzero` (omit the Go zero value)
+rather than `omitempty`, which in v2 would also drop `0`, `false`, and empty
+values behind pointers. Decoders of external tool output pass
+`MatchCaseInsensitiveNames(true)`; files LinuxIO persists are written with
+`Deterministic(true)`. `time.Duration` has no v2 representation, so wire
+structs carry `int64` nanoseconds instead.
 
 Retry safety is Go-owned route metadata. Add `apischema.RetrySafe()` only to a
 Call that can be repeated after connection loss without a user-visible

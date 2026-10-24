@@ -16,7 +16,7 @@ type Settings struct {
 	Docker      Docker               `json:"docker" yaml:"docker"`
 	Jobs        PersistedJobSettings `json:"jobs" yaml:"jobs"`
 	Assistant   Assistant            `json:"assistant" yaml:"assistant"`
-	Dismissals  *PersistedDismissals `json:"dismissals,omitempty" yaml:"dismissals,omitempty"`
+	Dismissals  *PersistedDismissals `json:"dismissals,omitzero" yaml:"dismissals,omitempty"`
 }
 
 // UIPreferences holds effective backend-owned UI preferences. The on-disk
@@ -24,7 +24,7 @@ type Settings struct {
 type UIPreferences struct {
 	Theme                   PersistedTheme           `json:"theme" yaml:"theme"`
 	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
-	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitempty" yaml:"themeColors,omitempty"`
+	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitzero" yaml:"themeColors,omitempty"`
 	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
 	NavigationMode          string                   `json:"navigationMode" yaml:"navigationMode"`
 	DockTileColors          string                   `json:"dockTileColors" yaml:"dockTileColors"`
@@ -66,30 +66,30 @@ type HardwareSections struct {
 
 // ThemeColorsByMode holds separate color overrides for light and dark mode
 type ThemeColorsByMode struct {
-	Light *ThemeColors `json:"light,omitempty" yaml:"light,omitempty"`
-	Dark  *ThemeColors `json:"dark,omitempty" yaml:"dark,omitempty"`
+	Light *ThemeColors `json:"light,omitzero" yaml:"light,omitempty"`
+	Dark  *ThemeColors `json:"dark,omitzero" yaml:"dark,omitempty"`
 }
 
 // ThemeColors holds optional per-field color overrides for the UI theme
 type ThemeColors struct {
-	BackgroundDefault               *CSSColor `json:"backgroundDefault,omitempty" yaml:"backgroundDefault,omitempty"`
-	BackgroundPaper                 *CSSColor `json:"backgroundPaper,omitempty" yaml:"backgroundPaper,omitempty"`
-	HeaderBackground                *CSSColor `json:"headerBackground,omitempty" yaml:"headerBackground,omitempty"`
-	FooterBackground                *CSSColor `json:"footerBackground,omitempty" yaml:"footerBackground,omitempty"`
-	SidebarBackground               *CSSColor `json:"sidebarBackground,omitempty" yaml:"sidebarBackground,omitempty"`
-	CardBackground                  *CSSColor `json:"cardBackground,omitempty" yaml:"cardBackground,omitempty"`
-	DialogBorder                    *CSSColor `json:"dialogBorder,omitempty" yaml:"dialogBorder,omitempty"`
-	DialogGlow                      *CSSColor `json:"dialogGlow,omitempty" yaml:"dialogGlow,omitempty"`
-	DialogBackdrop                  *CSSColor `json:"dialogBackdrop,omitempty" yaml:"dialogBackdrop,omitempty"`
-	CodeBackground                  *CSSColor `json:"codeBackground,omitempty" yaml:"codeBackground,omitempty"`
-	CodeText                        *CSSColor `json:"codeText,omitempty" yaml:"codeText,omitempty"`
-	ChartRx                         *CSSColor `json:"chartRx,omitempty" yaml:"chartRx,omitempty"`
-	ChartTx                         *CSSColor `json:"chartTx,omitempty" yaml:"chartTx,omitempty"`
-	ChartNeutral                    *CSSColor `json:"chartNeutral,omitempty" yaml:"chartNeutral,omitempty"`
-	FileBrowserSurface              *CSSColor `json:"fileBrowserSurface,omitempty" yaml:"fileBrowserSurface,omitempty"`
-	FileBrowserChrome               *CSSColor `json:"fileBrowserChrome,omitempty" yaml:"fileBrowserChrome,omitempty"`
-	FileBrowserBreadcrumbBackground *CSSColor `json:"fileBrowserBreadcrumbBackground,omitempty" yaml:"fileBrowserBreadcrumbBackground,omitempty"`
-	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitempty" yaml:"fileBrowserBreadcrumbText,omitempty"`
+	BackgroundDefault               *CSSColor `json:"backgroundDefault,omitzero" yaml:"backgroundDefault,omitempty"`
+	BackgroundPaper                 *CSSColor `json:"backgroundPaper,omitzero" yaml:"backgroundPaper,omitempty"`
+	HeaderBackground                *CSSColor `json:"headerBackground,omitzero" yaml:"headerBackground,omitempty"`
+	FooterBackground                *CSSColor `json:"footerBackground,omitzero" yaml:"footerBackground,omitempty"`
+	SidebarBackground               *CSSColor `json:"sidebarBackground,omitzero" yaml:"sidebarBackground,omitempty"`
+	CardBackground                  *CSSColor `json:"cardBackground,omitzero" yaml:"cardBackground,omitempty"`
+	DialogBorder                    *CSSColor `json:"dialogBorder,omitzero" yaml:"dialogBorder,omitempty"`
+	DialogGlow                      *CSSColor `json:"dialogGlow,omitzero" yaml:"dialogGlow,omitempty"`
+	DialogBackdrop                  *CSSColor `json:"dialogBackdrop,omitzero" yaml:"dialogBackdrop,omitempty"`
+	CodeBackground                  *CSSColor `json:"codeBackground,omitzero" yaml:"codeBackground,omitempty"`
+	CodeText                        *CSSColor `json:"codeText,omitzero" yaml:"codeText,omitempty"`
+	ChartRx                         *CSSColor `json:"chartRx,omitzero" yaml:"chartRx,omitempty"`
+	ChartTx                         *CSSColor `json:"chartTx,omitzero" yaml:"chartTx,omitempty"`
+	ChartNeutral                    *CSSColor `json:"chartNeutral,omitzero" yaml:"chartNeutral,omitempty"`
+	FileBrowserSurface              *CSSColor `json:"fileBrowserSurface,omitzero" yaml:"fileBrowserSurface,omitempty"`
+	FileBrowserChrome               *CSSColor `json:"fileBrowserChrome,omitzero" yaml:"fileBrowserChrome,omitempty"`
+	FileBrowserBreadcrumbBackground *CSSColor `json:"fileBrowserBreadcrumbBackground,omitzero" yaml:"fileBrowserBreadcrumbBackground,omitempty"`
+	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitzero" yaml:"fileBrowserBreadcrumbText,omitempty"`
 }
 
 // DockAccentGradient controls the generated accent palette used by dock tiles.

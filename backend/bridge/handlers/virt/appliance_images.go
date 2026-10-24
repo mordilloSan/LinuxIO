@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -288,7 +288,7 @@ func resolveImagePresetAsset(ctx context.Context, preset vmImagePreset) (vmImage
 			BrowserDownloadURL string `json:"browser_download_url"`
 		} `json:"assets"`
 	}
-	if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&release); decodeErr != nil {
+	if decodeErr := json.UnmarshalRead(io.LimitReader(resp.Body, 2<<20), &release, json.MatchCaseInsensitiveNames(true)); decodeErr != nil {
 		return vmImageAsset{}, decodeErr
 	}
 	for _, asset := range release.Assets {

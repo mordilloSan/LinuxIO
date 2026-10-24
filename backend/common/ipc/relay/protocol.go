@@ -2,8 +2,8 @@ package relay
 
 import (
 	"encoding/binary"
-	"encoding/json"
-	jsonv2 "encoding/json/v2"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -157,8 +157,8 @@ func ReadRelayFrameProgressive(r io.Reader) (*StreamFrame, error) {
 
 // StreamOpenEnvelope is the JSON payload for an OpStreamOpen frame.
 type StreamOpenEnvelope struct {
-	Route   string          `json:"route"`
-	Request json.RawMessage `json:"request"`
+	Route   string         `json:"route"`
+	Request jsontext.Value `json:"request"`
 }
 
 // ParseStreamOpenPayload parses the payload of an OpStreamOpen frame.
@@ -168,14 +168,14 @@ func ParseStreamOpenPayload(payload []byte) (StreamOpenEnvelope, error) {
 	}
 
 	var envelope StreamOpenEnvelope
-	if err := jsonv2.Unmarshal(payload, &envelope, jsonv2.RejectUnknownMembers(true)); err != nil {
+	if err := json.Unmarshal(payload, &envelope, json.RejectUnknownMembers(true)); err != nil {
 		return StreamOpenEnvelope{}, fmt.Errorf("%w: decode stream open payload: %v", ErrInvalidRequest, err)
 	}
 	if envelope.Route == "" {
 		return StreamOpenEnvelope{}, fmt.Errorf("%w: missing route", ErrInvalidRequest)
 	}
 	if len(envelope.Request) == 0 || string(envelope.Request) == "null" {
-		envelope.Request = json.RawMessage("{}")
+		envelope.Request = jsontext.Value("{}")
 	}
 	return envelope, nil
 }
@@ -183,10 +183,10 @@ func ParseStreamOpenPayload(payload []byte) (StreamOpenEnvelope, error) {
 // ResultFrame represents the final result of an operation.
 // Used with OpStreamResult (0x85).
 type ResultFrame struct {
-	Status string          `json:"status"`          // "ok" or "error"
-	Error  string          `json:"error,omitempty"` // Error message if status is "error"
-	Code   int             `json:"code,omitzero"`   // Optional error code
-	Data   json.RawMessage `json:"data,omitempty"`  // Optional result data
+	Status string         `json:"status"`          // "ok" or "error"
+	Error  string         `json:"error,omitempty"` // Error message if status is "error"
+	Code   int            `json:"code,omitzero"`   // Optional error code
+	Data   jsontext.Value `json:"data,omitzero"`   // Optional result data
 }
 
 // WriteProgress writes a progress update to the stream.
@@ -224,7 +224,7 @@ func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
 
 // WriteResultOK is a convenience function for writing a successful result.
 func WriteResultOK(w io.Writer, streamID uint32, data any) error {
-	var rawData json.RawMessage
+	var rawData jsontext.Value
 	if data != nil {
 		b, err := json.Marshal(data)
 		if err != nil {

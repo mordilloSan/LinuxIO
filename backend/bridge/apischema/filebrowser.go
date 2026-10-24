@@ -60,7 +60,7 @@ type SearchResult struct {
 	Name          string `json:"name"`
 	Path          string `json:"path"`
 	Size          int64  `json:"size"`
-	CanOpenAsText *bool  `json:"canOpenAsText,omitempty"`
+	CanOpenAsText *bool  `json:"canOpenAsText,omitzero"`
 }
 
 type SearchResponse struct {
@@ -77,7 +77,7 @@ type UsersGroupsResponse struct {
 type BatchTransferRequest struct {
 	Sources     []string `json:"sources"`
 	Destination string   `json:"destination"`
-	Overwrite   *bool    `json:"overwrite,omitempty"`
+	Overwrite   *bool    `json:"overwrite,omitzero"`
 	// KeepBoth lists sources that land under a unique name ("name (copy)")
 	// when their destination already exists, instead of replacing it.
 	KeepBoth []string `json:"keepBoth,omitempty"`
@@ -135,7 +135,7 @@ type FileChmodBatchRequest struct {
 	Mode      string   `json:"mode"`
 	Owner     string   `json:"owner"`
 	Group     string   `json:"group"`
-	Recursive *bool    `json:"recursive,omitempty"`
+	Recursive *bool    `json:"recursive,omitzero"`
 }
 
 type FileCompressRequest struct {
@@ -146,11 +146,11 @@ type FileCompressRequest struct {
 
 type FileExtractRequest struct {
 	ArchivePath string  `json:"archivePath"`
-	Destination *string `json:"destination,omitempty"`
+	Destination *string `json:"destination,omitzero"`
 }
 
 type OptionalPathRequest struct {
-	Path *string `json:"path,omitempty"`
+	Path *string `json:"path,omitzero"`
 }
 
 type FileResourcePostRequest struct {
@@ -164,15 +164,15 @@ type DirectoryChildrenRequest struct {
 
 type FileSearchRequest struct {
 	Query    string  `json:"query"`
-	Limit    *string `json:"limit,omitempty"`
-	BasePath *string `json:"basePath,omitempty"`
+	Limit    *string `json:"limit,omitzero"`
+	BasePath *string `json:"basePath,omitzero"`
 }
 
 type FileUploadRequest struct {
 	TargetPath      string  `json:"targetPath"`
 	Size            string  `json:"size"`
-	Overwrite       *bool   `json:"overwrite,omitempty"`
-	ExpectedVersion *string `json:"expectedVersion,omitempty"`
+	Overwrite       *bool   `json:"overwrite,omitzero"`
+	ExpectedVersion *string `json:"expectedVersion,omitzero"`
 }
 
 // FileUploadBatchEntry is one file in a batch upload manifest. Path is
@@ -183,7 +183,7 @@ type FileUploadBatchEntry struct {
 	// Modified is the file's RFC 3339 modification time as the client knew it
 	// (the browser's File.lastModified); it is applied to the written file so
 	// uploads keep their dates instead of all being stamped with upload time.
-	Modified *string `json:"modified,omitempty"`
+	Modified *string `json:"modified,omitzero"`
 }
 
 // FileUploadBatchRequest uploads many files into one destination directory as
@@ -198,7 +198,7 @@ type FileUploadBatchRequest struct {
 	Destination string                 `json:"destination"`
 	Files       []FileUploadBatchEntry `json:"files"`
 	Directories []string               `json:"directories,omitempty"`
-	Overwrite   *bool                  `json:"overwrite,omitempty"`
+	Overwrite   *bool                  `json:"overwrite,omitzero"`
 	// KeepBoth lists manifest paths that land under a unique name when their
 	// destination already exists, instead of being skipped or replaced.
 	KeepBoth []string `json:"keepBoth,omitempty"`

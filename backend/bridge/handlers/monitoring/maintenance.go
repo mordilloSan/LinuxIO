@@ -2,7 +2,8 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -33,7 +34,7 @@ func MaintainDatabase(ctx context.Context) (apischema.MonitoringDatabaseResult, 
 	return decodeCommandData[apischema.MonitoringDatabaseResult](monitoringapi.CommandDBMaintain, resp.Data)
 }
 
-func decodeCommandData[T any](command string, data json.RawMessage) (T, error) {
+func decodeCommandData[T any](command string, data jsontext.Value) (T, error) {
 	var result T
 	if err := json.Unmarshal(data, &result); err != nil {
 		return result, fmt.Errorf("decode %s response: %w", command, err)

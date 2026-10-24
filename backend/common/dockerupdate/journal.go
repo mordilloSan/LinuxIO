@@ -2,7 +2,8 @@ package dockerupdate
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -57,7 +58,7 @@ type Journal struct {
 
 func (j Journal) write(tx standaloneUpdateTransaction) error {
 	tx.Version = standaloneUpdateJournalVersion
-	data, err := json.MarshalIndent(tx, "", "  ")
+	data, err := json.Marshal(tx, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return fmt.Errorf("marshal standalone update transaction: %w", err)
 	}

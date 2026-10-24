@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"reflect"
 	"testing"
 
@@ -56,7 +57,7 @@ func TestHistoryStatsPayloadsMatchTheStore(t *testing.T) {
 
 	raw, err := json.Marshal(payloads[plugins.Containers])
 	require.NoError(t, err)
-	var records []json.RawMessage
+	var records []jsontext.Value
 	require.NoError(t, json.Unmarshal(raw, &records))
 	require.Len(t, records, 1)
 	var container monitoringapi.ContainerHistoryRecord
@@ -96,7 +97,7 @@ func TestProcessEnvelopesMatchTheSharedTypes(t *testing.T) {
 	assert.Len(t, programList.Items, 1)
 }
 
-func mustMarshal(t *testing.T, v any) json.RawMessage {
+func mustMarshal(t *testing.T, v any) jsontext.Value {
 	t.Helper()
 	raw, err := json.Marshal(v)
 	require.NoError(t, err)

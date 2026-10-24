@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -113,7 +113,7 @@ type intOrObj struct {
 func (i *intOrObj) UnmarshalJSON(b []byte) error {
 	// Try plain int first.
 	var n int
-	if err := json.Unmarshal(b, &n); err == nil {
+	if err := json.Unmarshal(b, &n, json.MatchCaseInsensitiveNames(true)); err == nil {
 		i.Value = n
 		return nil
 	}
@@ -121,7 +121,7 @@ func (i *intOrObj) UnmarshalJSON(b []byte) error {
 	var obj struct {
 		Value int `json:"value"`
 	}
-	if err := json.Unmarshal(b, &obj); err != nil {
+	if err := json.Unmarshal(b, &obj, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return err
 	}
 	i.Value = obj.Value
@@ -133,7 +133,7 @@ func (i *intOrObj) UnmarshalJSON(b []byte) error {
 // can drive it with canned bytes.
 func parseSmartTestJSON(b []byte) (SmartTestStatus, error) {
 	var out smartctlOutput
-	if err := json.Unmarshal(b, &out); err != nil {
+	if err := json.Unmarshal(b, &out, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return SmartTestStatus{}, fmt.Errorf("parse smartctl json: %w", err)
 	}
 

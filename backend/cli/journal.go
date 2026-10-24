@@ -1,7 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os/exec"
 	"sort"
@@ -124,12 +125,12 @@ func formatJournalEntry(jsonLine string) string {
 
 func parseJournalEntry(jsonLine string) (journalEntry, error) {
 	var entry journalEntry
-	if err := json.Unmarshal([]byte(jsonLine), &entry); err != nil {
+	if err := json.Unmarshal([]byte(jsonLine), &entry, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return journalEntry{}, err
 	}
 
-	var rawFields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(jsonLine), &rawFields); err != nil {
+	var rawFields map[string]jsontext.Value
+	if err := json.Unmarshal([]byte(jsonLine), &rawFields, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return journalEntry{}, err
 	}
 
@@ -208,7 +209,7 @@ func journalMessage(entry journalEntry) string {
 	return builder.String()
 }
 
-func journalRawValue(raw json.RawMessage) string {
+func journalRawValue(raw jsontext.Value) string {
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return ""

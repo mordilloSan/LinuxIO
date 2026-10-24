@@ -2,7 +2,7 @@ package appupdate
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -122,7 +122,7 @@ func fetchLatestRelease(ctx context.Context) (version string, releaseURL string)
 		HTMLURL string `json:"html_url"`
 	}
 
-	if err := json.Unmarshal(body, &release); err != nil {
+	if err := json.Unmarshal(body, &release, json.MatchCaseInsensitiveNames(true)); err != nil {
 		slog.Debug("failed to parse latest release response", "error", err)
 		return "", ""
 	}

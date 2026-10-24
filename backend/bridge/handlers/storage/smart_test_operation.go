@@ -16,7 +16,7 @@ type SmartTestProgress struct {
 	TestType   string `json:"test_type,omitempty"`
 	Status     string `json:"status,omitempty"`
 	Message    string `json:"message,omitempty"`
-	Percentage *int   `json:"percentage,omitempty"`
+	Percentage *int   `json:"percentage,omitzero"`
 }
 
 func (p SmartTestProgress) ProgressEnvelope() bridgeipc.TaskProgress {

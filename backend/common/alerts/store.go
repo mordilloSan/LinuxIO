@@ -4,7 +4,8 @@ package alerts
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -61,7 +62,7 @@ type Alert struct {
 	FirstOccurrence time.Time      `json:"first_occurrence"`
 	LastOccurrence  time.Time      `json:"last_occurrence"`
 	LastObservedAt  time.Time      `json:"last_observed_at"`
-	DismissedAt     *time.Time     `json:"dismissed_at,omitempty"`
+	DismissedAt     *time.Time     `json:"dismissed_at,omitzero"`
 	Seen            map[string]int `json:"seen,omitempty"`
 }
 
@@ -185,7 +186,7 @@ func write(doc Document) error {
 	sort.SliceStable(doc.Alerts, func(i, j int) bool {
 		return doc.Alerts[i].LastOccurrence.After(doc.Alerts[j].LastOccurrence)
 	})
-	data, err := json.MarshalIndent(doc, "", "  ")
+	data, err := json.Marshal(doc, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return fmt.Errorf("marshal alerts: %w", err)
 	}

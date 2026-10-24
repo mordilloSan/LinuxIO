@@ -2,7 +2,8 @@ package dockerupdate
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -200,7 +201,7 @@ func writeUpdateStatusFile(statuses []ImageUpdateStatus) error {
 		Version:  updateStatusVersion,
 		Statuses: compactUpdateStatuses(statuses),
 	}
-	data, err := json.MarshalIndent(doc, "", "  ")
+	data, err := json.Marshal(doc, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return fmt.Errorf("marshal Docker update status: %w", err)
 	}

@@ -1,7 +1,8 @@
 package logs
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strings"
 )
 
@@ -25,14 +26,14 @@ var keepJournalFields = map[string]struct{}{
 // consumes (keepJournalFields + LINUXIO_*), returning the reduced JSON and the
 // entry's cursor. Lines that fail to parse pass through unchanged.
 func trimJournalLine(line string) (trimmed string, cursor string) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(line), &fields); err != nil {
+	var fields map[string]jsontext.Value
+	if err := json.Unmarshal([]byte(line), &fields, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return line, ""
 	}
 	if raw, ok := fields["__CURSOR"]; ok {
-		_ = json.Unmarshal(raw, &cursor)
+		_ = json.Unmarshal(raw, &cursor, json.MatchCaseInsensitiveNames(true))
 	}
-	kept := make(map[string]json.RawMessage, len(keepJournalFields)+4)
+	kept := make(map[string]jsontext.Value, len(keepJournalFields)+4)
 	for key, value := range fields {
 		if _, ok := keepJournalFields[key]; ok || strings.HasPrefix(key, "LINUXIO_") {
 			kept[key] = value

@@ -44,8 +44,8 @@ type IndexerConfig struct {
 // IndexerConfigPatch is a partial /config update. Pointers preserve explicit false,
 // zero, and empty-string values.
 type IndexerConfigPatch struct {
-	ExcludePaths         *[]string `json:"exclude_paths,omitempty" yaml:"exclude_paths,omitempty"`
-	IncludeNetworkMounts *bool     `json:"include_network_mounts,omitempty" yaml:"include_network_mounts,omitempty"`
+	ExcludePaths         *[]string `json:"exclude_paths,omitzero" yaml:"exclude_paths,omitempty"`
+	IncludeNetworkMounts *bool     `json:"include_network_mounts,omitzero" yaml:"include_network_mounts,omitempty"`
 }
 
 type StatusResponse struct {

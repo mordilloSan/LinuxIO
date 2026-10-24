@@ -1,7 +1,7 @@
 package auth
 
 import (
-	jsonv2 "encoding/json/v2"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -57,7 +57,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	// is best effort: test recorders do not support it.
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(loginBodyTimeout))
 	var req LoginRequest
-	if err := jsonv2.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxLoginBodyBytes), &req, jsonv2.RejectUnknownMembers(true)); err != nil {
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxLoginBodyBytes), &req, json.RejectUnknownMembers(true)); err != nil {
 		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}

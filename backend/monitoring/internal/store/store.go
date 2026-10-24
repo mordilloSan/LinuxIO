@@ -4,7 +4,8 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -449,7 +450,7 @@ func compactSmartData(item smartmodel.SmartData) smartmodel.SmartData {
 	}
 }
 
-func (s *Store) PluginHistory(ctx context.Context, plugin, resolution string, from, to int64, limit int) ([]HistoryRecord[json.RawMessage], error) {
+func (s *Store) PluginHistory(ctx context.Context, plugin, resolution string, from, to int64, limit int) ([]HistoryRecord[jsontext.Value], error) {
 	if !plugins.IsName(plugin) {
 		return nil, fmt.Errorf("unknown plugin %q", plugin)
 	}
@@ -460,7 +461,7 @@ func (s *Store) PluginHistory(ctx context.Context, plugin, resolution string, fr
 	if !ok {
 		return nil, fmt.Errorf("invalid resolution %q", resolution)
 	}
-	items := []HistoryRecord[json.RawMessage]{}
+	items := []HistoryRecord[jsontext.Value]{}
 	queryResolution := resolution1m
 	table := pluginHistoryTable(plugin)
 	// Only the newest rows can survive the limit, so bound the JSON scan to
@@ -510,9 +511,9 @@ func (s *Store) PluginHistory(ctx context.Context, plugin, resolution string, fr
 		if err := rows.Scan(&capturedAt, &raw); err != nil {
 			return nil, err
 		}
-		items = append(items, HistoryRecord[json.RawMessage]{
+		items = append(items, HistoryRecord[jsontext.Value]{
 			CapturedAt: capturedAt,
-			Stats:      json.RawMessage(raw),
+			Stats:      jsontext.Value(raw),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -525,12 +526,12 @@ func (s *Store) PluginHistory(ctx context.Context, plugin, resolution string, fr
 	return downsampleHistory(ctx, plugin, items, interval, limit)
 }
 
-func downsampleHistory(ctx context.Context, plugin string, items []HistoryRecord[json.RawMessage], interval time.Duration, limit int) ([]HistoryRecord[json.RawMessage], error) {
+func downsampleHistory(ctx context.Context, plugin string, items []HistoryRecord[jsontext.Value], interval time.Duration, limit int) ([]HistoryRecord[jsontext.Value], error) {
 	if len(items) == 0 {
 		return items, nil
 	}
 	step := interval.Milliseconds()
-	out := make([]HistoryRecord[json.RawMessage], 0)
+	out := make([]HistoryRecord[jsontext.Value], 0)
 	bucketAt := (items[0].CapturedAt / step) * step
 	bucketLatest := items[0].CapturedAt
 	bucketItems := make([]string, 0)
@@ -539,7 +540,7 @@ func downsampleHistory(ctx context.Context, plugin string, items []HistoryRecord
 		if err != nil {
 			return err
 		}
-		out = append(out, HistoryRecord[json.RawMessage]{CapturedAt: bucketLatest, Stats: json.RawMessage(raw)})
+		out = append(out, HistoryRecord[jsontext.Value]{CapturedAt: bucketLatest, Stats: jsontext.Value(raw)})
 		return nil
 	}
 	for _, item := range items {
@@ -618,7 +619,7 @@ func (s *Store) beginSnapshotTick() ([]string, func(plugin string) bool) {
 }
 
 func marshalJSON(v any) (string, error) {
-	raw, err := json.Marshal(v)
+	raw, err := json.Marshal(v, json.Deterministic(true))
 	if err != nil {
 		return "", err
 	}

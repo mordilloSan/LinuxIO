@@ -1,7 +1,8 @@
 package logs
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -38,9 +39,9 @@ func journalPeriodCutoff(value string, now time.Time) (int64, bool) {
 
 func journalLineOlderThan(line string, cutoffMicros int64) bool {
 	var envelope struct {
-		RealtimeTimestamp json.RawMessage `json:"__REALTIME_TIMESTAMP"`
+		RealtimeTimestamp jsontext.Value `json:"__REALTIME_TIMESTAMP"`
 	}
-	if err := json.Unmarshal([]byte(line), &envelope); err != nil ||
+	if err := json.Unmarshal([]byte(line), &envelope, json.MatchCaseInsensitiveNames(true)); err != nil ||
 		len(envelope.RealtimeTimestamp) == 0 {
 		return false
 	}

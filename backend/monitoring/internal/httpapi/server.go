@@ -4,8 +4,8 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	jsonv2 "encoding/json/v2"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -23,14 +23,14 @@ import (
 
 type MetricsReader interface {
 	Path() string
-	PluginHistory(context.Context, string, string, int64, int64, int) ([]store.HistoryRecord[json.RawMessage], error)
+	PluginHistory(context.Context, string, string, int64, int64, int) ([]store.HistoryRecord[jsontext.Value], error)
 	HistoryEnabled(plugin string) bool
 }
 
 type retentionReader interface{ RetentionStrings() map[string]string }
 
 type CurrentReader interface {
-	CurrentPlugin(context.Context, string) (int64, json.RawMessage, error)
+	CurrentPlugin(context.Context, string) (int64, jsontext.Value, error)
 	SystemSummary(context.Context) (int64, systemmodel.Summary, error)
 }
 
@@ -38,7 +38,7 @@ type CurrentReader interface {
 // plugins, allowing samples to be shared within one collection pass. Registries
 // retain the per-plugin CurrentReader path for readers without batching.
 type CurrentBatchReader interface {
-	CurrentPlugins(context.Context, []string) (int64, map[string]json.RawMessage, map[string]error)
+	CurrentPlugins(context.Context, []string) (int64, map[string]jsontext.Value, map[string]error)
 }
 
 type SmartRefresher interface {
@@ -246,7 +246,7 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req monitoringapi.CommandRequest
-	if err := jsonv2.UnmarshalRead(r.Body, &req, jsonv2.RejectUnknownMembers(true)); err != nil {
+	if err := json.UnmarshalRead(r.Body, &req, json.RejectUnknownMembers(true)); err != nil {
 		writeJSON(w, http.StatusBadRequest, monitoringapi.CommandResponse[any]{
 			OK: false,
 			Error: &monitoringapi.CommandError{
@@ -385,7 +385,7 @@ func redactLiveSections(live *monitoringapi.Live, permitted func(string) bool) {
 
 type missingCurrentReader struct{}
 
-func (missingCurrentReader) CurrentPlugin(context.Context, string) (int64, json.RawMessage, error) {
+func (missingCurrentReader) CurrentPlugin(context.Context, string) (int64, jsontext.Value, error) {
 	return 0, nil, errors.New("current provider not configured")
 }
 
@@ -534,5 +534,5 @@ func writeJSON(w http.ResponseWriter, code int, payload any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(payload)
+	_ = json.MarshalWrite(w, payload)
 }

@@ -1,7 +1,6 @@
 package bridgeipc
 
 import (
-	"encoding/json"
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
 	"errors"
@@ -19,20 +18,20 @@ func TestTaskPrimitiveDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 
 	tests := []struct {
 		name               string
-		raw                json.RawMessage
+		raw                jsontext.Value
 		wantTaskID         string
 		wantSemanticError  bool
 		wantSyntacticError bool
 	}{
-		{name: "valid object", raw: json.RawMessage(`{"taskId":"task-1"}`), wantTaskID: "task-1"},
-		{name: "unknown field", raw: json.RawMessage(`{"taskId":"task-1","unexpected":true}`), wantSemanticError: true},
-		{name: "case-mismatched field", raw: json.RawMessage(`{"TaskId":"task-1"}`), wantSemanticError: true},
-		{name: "duplicate field", raw: json.RawMessage(`{"taskId":"task-1","taskId":"task-2"}`), wantSyntacticError: true},
-		{name: "invalid UTF-8", raw: json.RawMessage("{\"taskId\":\"\xff\"}"), wantSyntacticError: true},
-		{name: "trailing JSON value", raw: json.RawMessage(`{"taskId":"task-1"} {}`), wantSyntacticError: true},
-		{name: "scalar type mismatch", raw: json.RawMessage(`{"taskId":123}`), wantSemanticError: true},
+		{name: "valid object", raw: jsontext.Value(`{"taskId":"task-1"}`), wantTaskID: "task-1"},
+		{name: "unknown field", raw: jsontext.Value(`{"taskId":"task-1","unexpected":true}`), wantSemanticError: true},
+		{name: "case-mismatched field", raw: jsontext.Value(`{"TaskId":"task-1"}`), wantSemanticError: true},
+		{name: "duplicate field", raw: jsontext.Value(`{"taskId":"task-1","taskId":"task-2"}`), wantSyntacticError: true},
+		{name: "invalid UTF-8", raw: jsontext.Value("{\"taskId\":\"\xff\"}"), wantSyntacticError: true},
+		{name: "trailing JSON value", raw: jsontext.Value(`{"taskId":"task-1"} {}`), wantSyntacticError: true},
+		{name: "scalar type mismatch", raw: jsontext.Value(`{"taskId":123}`), wantSemanticError: true},
 		{name: "empty input", raw: nil},
-		{name: "null input", raw: json.RawMessage(`null`)},
+		{name: "null input", raw: jsontext.Value(`null`)},
 	}
 
 	for _, tc := range tests {
@@ -45,7 +44,7 @@ func TestTaskPrimitiveDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 func assertTaskPrimitiveDecode(
 	t *testing.T,
 	decode RequestDecoder,
-	raw json.RawMessage,
+	raw jsontext.Value,
 	wantTaskID string,
 	wantSemanticError bool,
 	wantSyntacticError bool,

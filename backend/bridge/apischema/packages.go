@@ -55,8 +55,8 @@ type UpdateHistoryRow struct {
 
 type InstallCapabilityResult struct {
 	Available bool    `json:"available"`
-	Error     *string `json:"error,omitempty"`
-	Warning   *string `json:"warning,omitempty"`
+	Error     *string `json:"error,omitzero"`
+	Warning   *string `json:"warning,omitzero"`
 }
 
 type Update struct {
@@ -72,8 +72,8 @@ type Update struct {
 }
 
 type OfflineUpdatesResponse struct {
-	Status *string `json:"status,omitempty"`
-	Error  *string `json:"error,omitempty"`
+	Status *string `json:"status,omitzero"`
+	Error  *string `json:"error,omitzero"`
 }
 
 type PackageUpdateRequest struct {

@@ -37,13 +37,13 @@ type DockerContainerAutoUpdateTarget struct {
 	Selected        bool    `json:"selected"`
 	State           string  `json:"state"`
 	MutationAllowed bool    `json:"mutationAllowed"`
-	MutationReason  *string `json:"mutationReason,omitempty"`
+	MutationReason  *string `json:"mutationReason,omitzero"`
 }
 
 type DockerContainerAutoUpdateState struct {
 	Available             bool                              `json:"available"`
 	Containers            []DockerContainerAutoUpdateTarget `json:"containers"`
-	Error                 *string                           `json:"error,omitempty"`
+	Error                 *string                           `json:"error,omitzero"`
 	MissingContainerNames []string                          `json:"missing_container_names"`
 	Options               DockerContainerAutoUpdateOptions  `json:"options"`
 	TimerActive           bool                              `json:"timer_active"`

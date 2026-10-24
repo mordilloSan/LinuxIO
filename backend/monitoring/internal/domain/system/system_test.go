@@ -29,6 +29,19 @@ func TestUint8SliceMarshalJSONEncodesNilAsNull(t *testing.T) {
 	}
 }
 
+func TestUint8SliceUnmarshalJSONReadsNumericArray(t *testing.T) {
+	var got Uint8Slice
+	if err := json.Unmarshal([]byte(`[0,87,100]`), &got); err != nil {
+		t.Fatal(err)
+	}
+	if want := (Uint8Slice{0, 87, 100}); string(got) != string(want) {
+		t.Fatalf("Unmarshal = %v, want %v", got, want)
+	}
+	if err := json.Unmarshal([]byte(`[256]`), &got); err == nil {
+		t.Fatal("Unmarshal([256]) succeeded, want overflow error")
+	}
+}
+
 func TestStatsJSONUsesNumericCPUCoreUsage(t *testing.T) {
 	got, err := json.Marshal(Stats{
 		Cpu:           12.5,

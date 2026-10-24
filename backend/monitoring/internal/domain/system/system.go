@@ -4,7 +4,9 @@
 package system
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
+	"fmt"
+	"math"
 	"time"
 
 	containermodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
@@ -69,6 +71,28 @@ func (s Uint8Slice) MarshalJSON() ([]byte, error) {
 		arr[i] = uint16(v)
 	}
 	return json.Marshal(arr)
+}
+
+// UnmarshalJSON reads the numeric array MarshalJSON writes; json/v2 would
+// otherwise expect a base64 string for a byte slice.
+func (s *Uint8Slice) UnmarshalJSON(data []byte) error {
+	var arr []uint16
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	if arr == nil {
+		*s = nil
+		return nil
+	}
+	out := make(Uint8Slice, len(arr))
+	for i, v := range arr {
+		if v > math.MaxUint8 {
+			return fmt.Errorf("value %d at index %d overflows uint8", v, i)
+		}
+		out[i] = uint8(v)
+	}
+	*s = out
+	return nil
 }
 
 // GPUData is one GPU's figures. Address, Temperature and Count are collector
@@ -146,16 +170,16 @@ type Info struct {
 
 // Data that does not change during process lifetime and is not needed in All Systems table
 type Details struct {
-	Hostname      string        `json:"hostname"`
-	Kernel        string        `json:"kernel_version,omitempty"`
-	Cores         int           `json:"cores"`
-	Threads       int           `json:"threads"`
-	CpuModel      string        `json:"cpu_model"`
-	OsName        string        `json:"os_name"`
-	Arch          string        `json:"architecture"`
-	Podman        bool          `json:"podman,omitzero"`
-	MemoryTotal   uint64        `json:"memory_total_bytes"`
-	SmartInterval time.Duration `json:"smart_refresh_interval_nanoseconds,omitzero"`
+	Hostname      string `json:"hostname"`
+	Kernel        string `json:"kernel_version,omitempty"`
+	Cores         int    `json:"cores"`
+	Threads       int    `json:"threads"`
+	CpuModel      string `json:"cpu_model"`
+	OsName        string `json:"os_name"`
+	Arch          string `json:"architecture"`
+	Podman        bool   `json:"podman,omitzero"`
+	MemoryTotal   uint64 `json:"memory_total_bytes"`
+	SmartInterval int64  `json:"smart_refresh_interval_nanoseconds,omitzero"`
 }
 
 // Final data structure returned by the collector.
@@ -163,11 +187,11 @@ type CombinedData struct {
 	Stats              Stats                         `json:"stats"`
 	Info               Info                          `json:"info"`
 	Containers         []*containermodel.Stats       `json:"containers"`
-	Details            *Details                      `json:"details,omitempty"`
-	ProcessCount       *processmodel.Count           `json:"process_count,omitempty"`
+	Details            *Details                      `json:"details,omitzero"`
+	ProcessCount       *processmodel.Count           `json:"process_count,omitzero"`
 	Processes          []processmodel.Process        `json:"processes,omitempty"`
 	Programs           []processmodel.Program        `json:"programs,omitempty"`
 	ContainerTelemetry []containermodel.Telemetry    `json:"container_telemetry,omitempty"`
-	Connections        *networkmodel.ConnectionStats `json:"connections,omitempty"`
+	Connections        *networkmodel.ConnectionStats `json:"connections,omitzero"`
 	IRQs               []networkmodel.IRQStat        `json:"irq,omitempty"`
 }

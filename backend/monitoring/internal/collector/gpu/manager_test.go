@@ -2,7 +2,7 @@ package gpu
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"os"
@@ -359,7 +359,7 @@ func TestUpdateNvtopSnapshotsKeepsDeviceAssociationWhenOrderChanges(t *testing.T
 }
 
 func TestUpdateNvtopProcessSnapshotsParsesKnownZeroAndClearsStaleSamples(t *testing.T) {
-	raw := func(value string) json.RawMessage { return json.RawMessage(value) }
+	raw := func(value string) jsontext.Value { return jsontext.Value(value) }
 	gm := &Manager{GpuDataMap: make(map[string]*systemmodel.GPUData)}
 
 	require.True(t, gm.updateNvtopProcessSnapshots([]nvtopSnapshot{{
@@ -391,7 +391,7 @@ func TestUpdateNvtopProcessSnapshotsParsesKnownZeroAndClearsStaleSamples(t *test
 }
 
 func TestNvtopProcessReplacementPreservesOtherSourcesAndPreference(t *testing.T) {
-	raw := func(value string) json.RawMessage { return json.RawMessage(value) }
+	raw := func(value string) jsontext.Value { return jsontext.Value(value) }
 	gm := &Manager{
 		GpuDataMap:         make(map[string]*systemmodel.GPUData),
 		processSamples:     make(map[string][]ProcessSample),

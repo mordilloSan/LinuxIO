@@ -31,7 +31,7 @@ var allowedHandlerEdges = map[string]map[string]string{
 // TestImportBoundaries keeps the layering docs/bridge_handler_patterns.md
 // describes: handler families are leaves, common never imports a process
 // tree, the webserver imports only common, and the bridge reaches the daemons
-// only through their api packages.
+// only through their api packages. Production code uses encoding/json/v2, never v1.
 func TestImportBoundaries(t *testing.T) {
 	root := filepath.Join("..", "..")
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -67,6 +67,10 @@ func checkFileImports(t *testing.T, root, path string) error {
 	}
 	for _, imp := range file.Imports {
 		dep := strings.Trim(imp.Path.Value, `"`)
+		if dep == "encoding/json" {
+			t.Errorf("%s imports encoding/json: use encoding/json/v2 (jsontext.Value for raw JSON)", rel)
+			continue
+		}
 		if !strings.HasPrefix(dep, modulePrefix) {
 			continue
 		}

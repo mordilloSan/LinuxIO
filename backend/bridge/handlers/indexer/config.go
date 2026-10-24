@@ -3,8 +3,7 @@ package indexer
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	jsonv2 "encoding/json/v2"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -87,7 +86,7 @@ func normalizeConfigPatchPayload(payload []byte) ([]byte, error) {
 	}
 
 	var patch indexerapi.IndexerConfigPatch
-	if err := jsonv2.Unmarshal(payload, &patch, jsonv2.RejectUnknownMembers(true)); err != nil {
+	if err := json.Unmarshal(payload, &patch, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("invalid indexer config JSON: %w", err)
 	}
 

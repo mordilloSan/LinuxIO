@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"testing"
 
@@ -17,7 +17,7 @@ import (
 func TestCollectorRunHandsSampleToExistingWaitersOnly(t *testing.T) {
 	agent := &App{}
 	run := agent.beginCollectorRun()
-	sample := &collectorAPISample{capturedAt: 123, payloads: map[string]json.RawMessage{}}
+	sample := &collectorAPISample{capturedAt: 123, payloads: map[string]jsontext.Value{}}
 
 	type result struct {
 		sample *collectorAPISample

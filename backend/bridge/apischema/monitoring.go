@@ -103,8 +103,8 @@ type MonitoringContainerSample struct {
 	// container's processes by the agent's container_telemetry plugin. Nil when
 	// that plugin has no sample near this point, so the UI can say
 	// "unavailable" instead of drawing a zero line.
-	ReadBytesPerSec  *float64 `json:"read_bytes_per_sec,omitempty"`
-	WriteBytesPerSec *float64 `json:"write_bytes_per_sec,omitempty"`
+	ReadBytesPerSec  *float64 `json:"read_bytes_per_sec,omitzero"`
+	WriteBytesPerSec *float64 `json:"write_bytes_per_sec,omitzero"`
 }
 
 type MonitoringContainerHistoryPoint struct {

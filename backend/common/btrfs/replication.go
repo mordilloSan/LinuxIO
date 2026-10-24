@@ -2,7 +2,7 @@ package btrfs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -61,8 +61,8 @@ type BtrfsReplicationJob struct {
 	KeepOnTarget int                    `json:"keepOnTarget"`
 	Enabled      bool                   `json:"enabled"`
 	After        string                 `json:"after"`
-	LastRun      *time.Time             `json:"lastRun,omitempty"`
-	LastError    *string                `json:"lastError,omitempty"`
+	LastRun      *time.Time             `json:"lastRun,omitzero"`
+	LastError    *string                `json:"lastError,omitzero"`
 }
 
 type jobsDocument struct {

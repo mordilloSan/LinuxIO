@@ -6,7 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -399,7 +399,7 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 		TagName string `json:"tag_name"`
 	}
 
-	if err := json.Unmarshal(body, &release); err != nil {
+	if err := json.Unmarshal(body, &release, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return "", fmt.Errorf("parse response: %w", err)
 	}
 	if release.TagName == "" {

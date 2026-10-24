@@ -2,7 +2,8 @@ package btrfs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -148,7 +149,7 @@ func loadScrubRecord(uuid string) (BtrfsScrubStatus, bool) {
 func saveScrubRecord(uuid string, s BtrfsScrubStatus) {
 	records := loadScrubRecords()
 	records[uuid] = s
-	data, err := json.MarshalIndent(records, "", "  ")
+	data, err := json.Marshal(records, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err == nil {
 		err = os.MkdirAll(filepath.Dir(ScrubRecordPath), 0o755)
 	}

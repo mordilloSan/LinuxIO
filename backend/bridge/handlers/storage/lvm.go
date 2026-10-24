@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -60,7 +60,7 @@ func lvmReport(ctx context.Context, report any, name string, args ...string) err
 		}
 		return hostcmd.OutputError(name, args, out, err)
 	}
-	if parseErr := json.Unmarshal(out, report); parseErr != nil {
+	if parseErr := json.Unmarshal(out, report, json.MatchCaseInsensitiveNames(true)); parseErr != nil {
 		return fmt.Errorf("failed to parse %s output: %w", name, parseErr)
 	}
 	return nil

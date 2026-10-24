@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -136,7 +137,7 @@ func TestReconcileDockerUpdateRejectsMalformedCompletedPayload(t *testing.T) {
 		t.Fatalf("mark running: %v", err)
 	}
 	artifact, err := json.Marshal(durabletask.ExecutorResult{
-		ID: claim.ID, State: durabletask.StateCompleted, FinishedAt: time.Now().UTC(), Result: json.RawMessage(`{}`),
+		ID: claim.ID, State: durabletask.StateCompleted, FinishedAt: time.Now().UTC(), Result: jsontext.Value(`{}`),
 	})
 	if err != nil {
 		t.Fatalf("Marshal artifact: %v", err)
