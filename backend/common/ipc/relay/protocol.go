@@ -208,7 +208,13 @@ func WriteProgress(w io.Writer, streamID uint32, data any) error {
 
 // WriteResultFrame writes a result frame to the stream.
 func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
-	payload, err := json.Marshal(r)
+	return writeResult(w, streamID, r)
+}
+
+// writeResult marshals the whole frame in one pass. Wrapping pre-encoded bytes
+// in a jsontext.Value would make json/v2 parse and re-encode the payload again.
+func writeResult(w io.Writer, streamID uint32, frame any) error {
+	payload, err := json.Marshal(frame)
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
 	}
@@ -224,18 +230,10 @@ func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
 
 // WriteResultOK is a convenience function for writing a successful result.
 func WriteResultOK(w io.Writer, streamID uint32, data any) error {
-	var rawData jsontext.Value
-	if data != nil {
-		b, err := json.Marshal(data)
-		if err != nil {
-			return fmt.Errorf("marshal data: %w", err)
-		}
-		rawData = b
-	}
-	return WriteResultFrame(w, streamID, &ResultFrame{
-		Status: "ok",
-		Data:   rawData,
-	})
+	return writeResult(w, streamID, struct {
+		Status string `json:"status"`
+		Data   any    `json:"data,omitzero"`
+	}{Status: "ok", Data: data})
 }
 
 // WriteResultError is a convenience function for writing an error result.
