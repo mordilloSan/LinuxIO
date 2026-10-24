@@ -1,5 +1,11 @@
 import { Icon } from "@iconify/react";
+import { useRef, useState } from "react";
 
+import "./update-actions.css";
+
+import InstallOutputPanel, {
+  type InstallOutputLine,
+} from "@/components/terminal/InstallOutputPanel";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -14,6 +20,8 @@ interface UpdateActionsProps {
   isUpdating: boolean;
   onCancel?: () => void;
   onClearError?: () => void;
+  output?: InstallOutputLine[];
+  outputHistoryIncomplete?: boolean;
   progress: number;
   status?: string | null;
 }
@@ -25,11 +33,16 @@ const UpdateActions = ({
   progress,
   status,
   eventLog,
+  output = [],
+  outputHistoryIncomplete = false,
   error,
   onClearError,
   onCancel,
 }: UpdateActionsProps) => {
-  // Both branches below are conditional, so an idle section rendered an empty
+  const [showOutput, setShowOutput] = useState(false);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  // Every section below is conditional, so an idle section rendered an empty
   // box whose bottom margin still pushed the package list down — the tab strip
   // owns that gap now (tab-container.css). Bail out instead of painting it.
   if (!error && !isUpdating) {
@@ -135,6 +148,20 @@ const UpdateActions = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* Kept after a failure: the dpkg output is what explains it. */}
+      {output.length > 0 && (
+        <InstallOutputPanel
+          className="update-actions__output"
+          expanded={showOutput}
+          id="package-update-output"
+          label="update output"
+          onToggle={() => setShowOutput((previous) => !previous)}
+          output={output}
+          outputHistoryIncomplete={outputHistoryIncomplete}
+          scrollerRef={outputRef}
+        />
       )}
     </div>
   );

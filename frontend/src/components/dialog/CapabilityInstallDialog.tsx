@@ -1,9 +1,12 @@
 import { Icon } from "@iconify/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import "./capability-install-dialog.css";
 
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import InstallOutputPanel, {
+  type InstallOutputLine,
+} from "@/components/terminal/InstallOutputPanel";
 import AppButton from "@/components/ui/AppButton";
 import {
   AppDialogActions,
@@ -14,21 +17,13 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 
-export type CapabilityInstallOutputStream = "status" | "stderr" | "stdout";
-
-export interface CapabilityInstallOutputLine {
-  id: number;
-  stream: CapabilityInstallOutputStream;
-  text: string;
-}
-
 interface CapabilityInstallDialogProps {
   capabilityLabel: string;
   error: string | null;
   message: string;
   onClose: () => void;
   open: boolean;
-  output: CapabilityInstallOutputLine[];
+  output: InstallOutputLine[];
   outputHistoryIncomplete?: boolean;
   percentage: number | null;
   running: boolean;
@@ -56,15 +51,6 @@ const CapabilityInstallDialog = ({
 }: CapabilityInstallDialogProps) => {
   const [showOutput, setShowOutput] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    if (showOutput && outputBoxRef.current) {
-      outputBoxRef.current.scrollTop = outputBoxRef.current.scrollHeight;
-    }
-    // New output intentionally retriggers scrolling even though only the DOM
-    // height, not the output value itself, is read inside the Effect.
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies
-  }, [output, showOutput]);
 
   const progressVariant = percentage === null ? "indeterminate" : "determinate";
   const outcomeColor = error
@@ -194,68 +180,16 @@ const CapabilityInstallDialog = ({
           </div>
         </div>
 
-        <div
-          className={`capability-install-dialog__output ${
-            showOutput ? "capability-install-dialog__output--expanded" : ""
-          }`.trim()}
-        >
-          <AppButton
-            aria-controls="capability-install-output"
-            aria-expanded={showOutput}
-            className="capability-install-dialog__output-toggle"
-            onClick={() => setShowOutput((previous) => !previous)}
-            type="button"
-          >
-            <Icon
-              className={`capability-install-dialog__chevron ${
-                showOutput ? "capability-install-dialog__chevron--expanded" : ""
-              }`.trim()}
-              height={18}
-              icon="mdi:chevron-right"
-              width={18}
-            />
-            <AppTypography color="text.secondary" variant="caption">
-              {showOutput
-                ? "Hide installation output"
-                : "Show installation output"}
-            </AppTypography>
-          </AppButton>
-          <div className="capability-install-dialog__output-animator">
-            <div
-              aria-hidden={!showOutput}
-              className="capability-install-dialog__output-scroller"
-              id="capability-install-output"
-              ref={outputBoxRef}
-              style={{
-                backgroundColor: "var(--app-code-block-background)",
-                color: "var(--app-code-block-color)",
-              }}
-            >
-              <div className="capability-install-dialog__output-lines">
-                {outputHistoryIncomplete ? (
-                  <div className="capability-install-dialog__output-note">
-                    [status] Earlier output may not have been retained.
-                  </div>
-                ) : null}
-                {output.map((line) => (
-                  <div
-                    className={`capability-install-dialog__output-line capability-install-dialog__output-line--${line.stream}`}
-                    key={line.id}
-                  >
-                    {line.stream === "status"
-                      ? `[status] ${line.text}`
-                      : line.text}
-                  </div>
-                ))}
-                {output.length === 0 && !outputHistoryIncomplete ? (
-                  <div className="capability-install-dialog__output-note">
-                    Waiting for installer output…
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
+        <InstallOutputPanel
+          className="capability-install-dialog__output"
+          expanded={showOutput}
+          id="capability-install-output"
+          label="installation output"
+          onToggle={() => setShowOutput((previous) => !previous)}
+          output={output}
+          outputHistoryIncomplete={outputHistoryIncomplete}
+          scrollerRef={outputBoxRef}
+        />
       </AppDialogContent>
 
       <AppDialogActions>

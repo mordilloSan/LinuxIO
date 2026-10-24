@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { InstallOutputLine } from "@/components/terminal/InstallOutputPanel";
 import { fireEvent, render, screen, waitFor } from "@/test/render";
 
-import CapabilityInstallDialog, {
-  type CapabilityInstallOutputLine,
-} from "./CapabilityInstallDialog";
+import CapabilityInstallDialog from "./CapabilityInstallDialog";
 
 const runningProps = {
   capabilityLabel: "lm-sensors",
@@ -16,7 +15,7 @@ const runningProps = {
     { id: 0, stream: "status", text: "Resolving package names" },
     { id: 1, stream: "stdout", text: "Probing hardware" },
     { id: 2, stream: "stderr", text: "Driver warning" },
-  ] satisfies CapabilityInstallOutputLine[],
+  ] satisfies InstallOutputLine[],
   percentage: 42,
   running: true,
   stage: "install_package",
@@ -43,7 +42,7 @@ describe("CapabilityInstallDialog", () => {
     );
     expect(screen.getByText("Probing hardware")).toBeVisible();
     expect(screen.getByText("Driver warning")).toHaveClass(
-      "capability-install-dialog__output-line--stderr",
+      "install-output__line--stderr",
     );
   });
 

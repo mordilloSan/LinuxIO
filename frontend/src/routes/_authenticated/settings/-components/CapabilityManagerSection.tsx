@@ -15,10 +15,12 @@ import {
   useStreamMux,
 } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import CapabilityInstallDialog, {
-  type CapabilityInstallOutputLine,
-  type CapabilityInstallOutputStream,
-} from "@/components/dialog/CapabilityInstallDialog";
+import CapabilityInstallDialog from "@/components/dialog/CapabilityInstallDialog";
+import {
+  type InstallOutputLine,
+  type InstallOutputStream,
+  MAX_INSTALL_OUTPUT_LINES,
+} from "@/components/terminal/InstallOutputPanel";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
@@ -40,7 +42,6 @@ import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 import "./capability-manager-section.css";
 import "./capability-manager-tokens.css";
 
-const MAX_INSTALL_OUTPUT_LINES = 500;
 const TERMINAL_CONTROL_SEQUENCE = new RegExp(
   String.raw`(?:\u001B\][^\u0007]*(?:\u0007|\u001B\\)|(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]|\u001B[@-_])`,
   "g",
@@ -52,7 +53,7 @@ interface CapabilityInstallRun {
   label: string;
   message: string;
   nextOutputID: number;
-  output: CapabilityInstallOutputLine[];
+  output: InstallOutputLine[];
   outputHistoryIncomplete: boolean;
   percentage: number | null;
   running: boolean;
@@ -65,7 +66,7 @@ interface CapabilityInstallRun {
 
 const installOutputStream = (
   output: InstallCapabilityOutput,
-): CapabilityInstallOutputStream =>
+): InstallOutputStream =>
   output.stream === "stdout" || output.stream === "stderr"
     ? output.stream
     : "status";

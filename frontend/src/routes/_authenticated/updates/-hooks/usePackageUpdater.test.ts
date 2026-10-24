@@ -216,16 +216,12 @@ describe("usePackageUpdater", () => {
     });
     expect(apiMocks.openTaskWatchStream).toHaveBeenCalledWith("task-1");
     expect(result.current.progress).toBe(100);
-    expect(result.current.eventLog).toEqual([
-      "Initializing update transaction",
-      "Installing packages",
-      "Finished",
-    ]);
+    expect(result.current.eventLog).toEqual([]);
     expect(result.current.updatingPackage).toBeNull();
     expect(result.current.status).toBeNull();
   });
 
-  it("uses aggregate progress carried by package failure messages", async () => {
+  it("logs failure messages, not transaction phases, and uses their aggregate progress", async () => {
     apiMocks.updatePackages.mockResolvedValue({
       id: "task-progress-message",
       state: "running",
@@ -235,6 +231,20 @@ describe("usePackageUpdater", () => {
     streamMocks.runStream.mockImplementation(
       (_stream, handlers) =>
         new Promise<void>((resolve) => {
+          handlers.onProgress(
+            packageTaskProgress({
+              type: "status",
+              package_id: "curl;8.0;amd64;ubuntu",
+              status: "Updating package 1 of 2",
+              percentage: 0,
+            }),
+          );
+          handlers.onProgress(
+            packageTaskProgress({
+              type: "output",
+              message: "Unpacking curl (8.1) over (8.0) ...",
+            }),
+          );
           handlers.onProgress(
             packageTaskProgress({
               type: "message",
@@ -255,6 +265,13 @@ describe("usePackageUpdater", () => {
     });
 
     expect(result.current.progress).toBe(50);
+    expect(result.current.updatingPackage).toBe("curl");
+    expect(result.current.eventLog).toEqual([
+      "Failed to update curl. Continuing with remaining updates.",
+    ]);
+    expect(result.current.output).toEqual([
+      { id: 0, stream: "stdout", text: "Unpacking curl (8.1) over (8.0) ..." },
+    ]);
 
     await act(async () => {
       finishStream();

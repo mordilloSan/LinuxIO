@@ -720,12 +720,14 @@ func installPackageWithProgress(ctx context.Context, packageID string, report pk
 		}
 		defer pkgkit.LogClose(session.Context(), trans)
 
+		termLog := openAptTermLog()
+		defer termLog.Close()
 		if err := trans.Call("InstallPackages", uint64(0), []string{packageID}); err != nil {
 			return err
 		}
 
 		waitCtx, cancel := context.WithTimeout(session.Context(), 120*time.Second)
 		defer cancel()
-		return awaitPackageUpdateSignals(waitCtx, trans.Signals(), report)
+		return awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, report)
 	})
 }

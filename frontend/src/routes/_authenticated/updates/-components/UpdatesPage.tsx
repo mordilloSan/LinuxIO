@@ -56,6 +56,8 @@ const AvailableUpdatesPage = () => {
     progress,
     status,
     eventLog,
+    output,
+    outputHistoryIncomplete,
     error,
     clearError,
     isUpdating,
@@ -114,6 +116,8 @@ const AvailableUpdatesPage = () => {
         onCancel={cancelUpdate}
         onClearError={clearError}
         onUpdateOne={updateOne}
+        output={output}
+        outputHistoryIncomplete={outputHistoryIncomplete}
         progress={progress}
         recoveryPending={recoveryPending}
         status={status}

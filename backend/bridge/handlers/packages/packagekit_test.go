@@ -3,6 +3,8 @@ package packages
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -24,9 +26,10 @@ type fakePackage struct {
 }
 
 type fakePackageKit struct {
-	t        *testing.T
-	conn     *godbus.Conn
-	prepared bool
+	t           *testing.T
+	conn        *godbus.Conn
+	prepared    bool
+	termLogPath string
 
 	mu              sync.Mutex
 	nextTransaction int
@@ -55,10 +58,19 @@ func setupFakePackageKit(t *testing.T, prepared bool) *fakePackageKit {
 	bus.SetSystemBus(t)
 
 	conn := bus.OwnName(t, dbusclient.PackageKitBusName)
+	// Lines already in term.log belong to earlier transactions and must not be relayed.
+	termLogPath := filepath.Join(t.TempDir(), "term.log")
+	if err := os.WriteFile(termLogPath, []byte("Setting up earlier (1.0) ...\n"), 0o600); err != nil {
+		t.Fatalf("write term.log: %v", err)
+	}
+	previousTermLogPath := aptTermLogPath
+	aptTermLogPath = termLogPath
+	t.Cleanup(func() { aptTermLogPath = previousTermLogPath })
 	service := &fakePackageKit{
 		t:             t,
 		conn:          conn,
 		prepared:      prepared,
+		termLogPath:   termLogPath,
 		details:       make(map[string][]any),
 		updateErrors:  make(map[string]string),
 		updateHangs:   make(map[string]bool),
@@ -267,9 +279,22 @@ func (tx *fakeTransaction) UpdatePackages(flags uint64, packageIDs []string) *go
 			[]string{},
 		)
 		tx.emit("ItemProgress", packageID, uint32(10), uint32(50))
+		tx.service.appendTermLog("Setting up " + packageID + " ...\n")
 		tx.emit("Finished", uint32(0), uint32(0))
 	})
 	return nil
+}
+
+func (s *fakePackageKit) appendTermLog(text string) {
+	file, err := os.OpenFile(s.termLogPath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		s.t.Errorf("open term.log: %v", err)
+		return
+	}
+	defer file.Close()
+	if _, err := file.WriteString(text); err != nil {
+		s.t.Errorf("append term.log: %v", err)
+	}
 }
 
 func (tx *fakeTransaction) emit(member string, values ...any) {
@@ -409,6 +434,15 @@ func TestUpdatePackagesWithProgressReportsSignals(t *testing.T) {
 	}
 	if !hasProgressType(progress, "package") || !hasProgressType(progress, "status") || !hasProgressType(progress, "percentage") || !hasProgressType(progress, "item_progress") {
 		t.Fatalf("progress frames = %#v", progress)
+	}
+	var output []string
+	for _, frame := range progress {
+		if frame.Type == "output" {
+			output = append(output, frame.Message)
+		}
+	}
+	if want := []string{"Setting up demo;1.2.3;x86_64;repo ..."}; !slices.Equal(output, want) {
+		t.Fatalf("output frames = %#v, want only this transaction's term.log lines %#v", output, want)
 	}
 }
 
@@ -588,7 +622,7 @@ func TestPackageKitSignalLoopsFailOnClosedChannel(t *testing.T) {
 
 	_, _, collectErr := collectUpdatePackages(ctx, newClosed())
 	_, detailErr := collectSingleUpdateDetail(ctx, newClosed(), "pkg;1;amd64;repo")
-	awaitErr := awaitPackageUpdateSignals(ctx, newClosed(), nil)
+	awaitErr := awaitPackageUpdateSignals(ctx, newClosed(), nil, nil)
 	for name, err := range map[string]error{"collectUpdatePackages": collectErr, "collectSingleUpdateDetail": detailErr, "awaitPackageUpdateSignals": awaitErr} {
 		if !errors.Is(err, pkgkit.ErrSignalsClosed) {
 			t.Errorf("%s error = %v, want ErrSignalsClosed", name, err)

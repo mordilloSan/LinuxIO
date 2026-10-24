@@ -475,7 +475,17 @@ func scaleInstallPct(pkgPct, start, end uint32) uint32 {
 func capabilityInstallReporter(task *bridgeipc.Task, pkg string, installStart uint32, installEnd uint32) pkgUpdateReporter {
 	lastGlobal := installStart
 	lastStatus := ""
+	message := func() string {
+		if lastStatus == "" {
+			return fmt.Sprintf("Installing %s", pkg)
+		}
+		return fmt.Sprintf("Installing %s (%s)", pkg, lastStatus)
+	}
 	return func(p *PkgUpdateProgress) error {
+		if p.Type == "output" {
+			reportOutput(task, stageInstallPackage, message(), lastGlobal, InstallCapabilityOutput{Stream: "stdout", Text: p.Message + "\n"})
+			return nil
+		}
 		changed := false
 		if p.Percentage != nil && *p.Percentage <= 100 {
 			lastGlobal = scaleInstallPct(*p.Percentage, installStart, installEnd)
@@ -488,14 +498,10 @@ func capabilityInstallReporter(task *bridgeipc.Task, pkg string, installStart ui
 		if !changed {
 			return nil
 		}
-		msg := fmt.Sprintf("Installing %s", pkg)
-		if lastStatus != "" {
-			msg = fmt.Sprintf("Installing %s (%s)", pkg, lastStatus)
-		}
 		// PackageKit ticks update the phase/percentage header only. A status
 		// output record per tick would flood the raw-output panel with the
 		// transaction's per-dependency status churn.
-		reportProgressDetail(task, stageInstallPackage, msg, lastGlobal, nil)
+		reportProgressDetail(task, stageInstallPackage, message(), lastGlobal, nil)
 		return nil
 	}
 }

@@ -1,0 +1,75 @@
+.install-output {
+  --install-output-toggle-height: 38px;
+
+  min-height: var(--install-output-toggle-height);
+  position: relative;
+  transition:
+    flex-grow var(--app-transition-duration-fast)
+      var(--app-easing-decelerate),
+    min-height var(--app-transition-duration-fast)
+      var(--app-easing-decelerate);
+}
+
+.app-btn.install-output__toggle {
+  align-items: center;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--app-palette-divider);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 4px;
+  height: var(--install-output-toggle-height);
+  justify-content: flex-start;
+  padding: 8px 16px;
+  text-align: left;
+  user-select: none;
+  width: 100%;
+}
+
+.install-output__chevron {
+  flex-shrink: 0;
+  transition: transform var(--app-transition-duration-fast)
+    var(--app-easing-decelerate);
+}
+
+.install-output__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.install-output__animator {
+  inset: var(--install-output-toggle-height) 0 0;
+  overflow: hidden;
+  position: absolute;
+}
+
+.install-output__scroller {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  height: 100%;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.install-output__lines {
+  padding: 8px;
+}
+
+.install-output__line--stderr {
+  color: var(--app-palette-error-main);
+}
+
+.install-output__line--status,
+.install-output__note {
+  color: var(--app-palette-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .install-output,
+  .install-output__chevron {
+    transition: none;
+  }
+}

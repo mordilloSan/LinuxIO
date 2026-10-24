@@ -1,4 +1,5 @@
 import type { Update } from "@/api";
+import type { InstallOutputLine } from "@/components/terminal/InstallOutputPanel";
 
 import UpdateActions from "./UpdateActions";
 import UpdateList from "./UpdateList";
@@ -10,6 +11,8 @@ interface UpdateStatusProps {
   onCancel?: () => void;
   onClearError?: () => void;
   onUpdateOne: (pkg: string) => Promise<void>;
+  output?: InstallOutputLine[];
+  outputHistoryIncomplete?: boolean;
   progress: number;
   recoveryPending?: boolean;
   isUpdating?: boolean;
@@ -25,6 +28,8 @@ const UpdateStatus = ({
   progress,
   status,
   eventLog,
+  output,
+  outputHistoryIncomplete,
   error,
   onClearError,
   onCancel,
@@ -60,6 +65,8 @@ const UpdateStatus = ({
         canCancel={canCancel}
         onCancel={onCancel}
         onClearError={onClearError}
+        output={output}
+        outputHistoryIncomplete={outputHistoryIncomplete}
         progress={progress}
         status={status}
       />
