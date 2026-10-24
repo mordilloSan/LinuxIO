@@ -24,7 +24,7 @@ func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string
 	if err := validatePeerName(req.Name); err != nil {
 		return "", err
 	}
-	slog.Info("adding WireGuard peer", "interface", interfaceName)
+	slog.Debug("adding WireGuard peer", "interface", interfaceName)
 
 	cfg, err := ParseWireGuardConfig(configPath(interfaceName))
 	if err != nil {

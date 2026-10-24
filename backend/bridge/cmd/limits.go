@@ -30,7 +30,7 @@ func logResourceLimit(name string, resource int, units string) {
 	}
 	soft := formatResourceLimit(limit.Cur)
 	hard := formatResourceLimit(limit.Max)
-	slog.Info("bridge resource limit",
+	slog.Debug("bridge resource limit",
 		"resource", name,
 		"soft", soft,
 		"hard", hard,
@@ -56,7 +56,7 @@ func logCgroupLimit(name, filename, units string) {
 		return
 	}
 	limit := formatCgroupLimit(value)
-	slog.Info("bridge cgroup limit",
+	slog.Debug("bridge cgroup limit",
 		"resource", name,
 		"limit", limit,
 		"units", units)

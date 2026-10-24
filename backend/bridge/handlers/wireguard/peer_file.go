@@ -243,6 +243,6 @@ func exportPeerFile(interfaceName string, file peerFile) error {
 	if err := writePeerFile(path, file); err != nil {
 		return err
 	}
-	slog.Info("wrote peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", path)
+	slog.Debug("wrote peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", path)
 	return nil
 }

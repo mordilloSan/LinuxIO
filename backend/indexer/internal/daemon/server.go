@@ -106,7 +106,7 @@ func (d *daemon) shutdownHTTPServers() {
 			err = srv.Close()
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Warn("server shutdown error", "err", err)
+			slog.Warn("server shutdown error", "error", err)
 		}
 	}
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/control"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/loginhistory"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
@@ -30,7 +31,7 @@ import (
 func ListUserLogins(ctx context.Context, username string, limit int) ([]apischema.AccountUserLogin, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		return nil, fmt.Errorf("username is required")
+		return nil, fmt.Errorf("%w: username", bridgeipc.ErrInvalidArgs)
 	}
 	if limit <= 0 {
 		limit = 24
@@ -132,7 +133,7 @@ func getActiveSessions(ctx context.Context, username string) []apischema.Account
 		return nil
 	})
 	if err != nil {
-		slog.Warn("login1 ListSessions failed", "user", username, "err", err)
+		slog.Warn("login1 ListSessions failed", "user", username, "error", err)
 	}
 	return sessions
 }
@@ -191,7 +192,7 @@ func TerminateSession(ctx context.Context, sessionID string, pid int) error {
 	if sessionID != "" {
 		if err := control.Logoff(cmdCtx, sessionID); err != nil {
 			slog.Warn("login1 TerminateSession failed, falling back to kill",
-				"sessionID", sessionID, "pid", pid, "err", err)
+				"sessionID", sessionID, "pid", pid, "error", err)
 		} else {
 			return nil
 		}

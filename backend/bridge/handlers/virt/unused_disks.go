@@ -172,7 +172,7 @@ func deleteUnusedDiskWithConn(conn libvirtConn, path, vmName string) error {
 	}
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return notFoundf("disk %s no longer exists", name)
+		return notFoundf("disk %s", name)
 	}
 	if err != nil {
 		return fmt.Errorf("inspect disk %s: %w", path, err)

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestReloadSambaUsesSmbcontrolWhenAvailable(t *testing.T) {
@@ -254,13 +256,29 @@ func TestSambaUpdateAndDeleteRejectReservedSections(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := DeleteSambaShare(context.Background(), "Global"); err == nil {
-		t.Fatal("DeleteSambaShare(global) error = nil, want reserved-section error")
+	if err := DeleteSambaShare(context.Background(), "Global"); bridgeipc.StatusCode(err) != 403 {
+		t.Fatalf("DeleteSambaShare(global) error = %v, want 403", err)
 	}
-	if err := UpdateSambaShare(context.Background(), "global", "Docs", map[string]string{"path": "/srv/docs"}); err == nil {
-		t.Fatal("UpdateSambaShare(global) error = nil, want reserved-section error")
+	if err := UpdateSambaShare(context.Background(), "global", "Docs", map[string]string{"path": "/srv/docs"}); bridgeipc.StatusCode(err) != 403 {
+		t.Fatalf("UpdateSambaShare(global) error = %v, want 403", err)
 	}
 	if data, err := os.ReadFile(confFile); err != nil || string(data) != orig {
 		t.Fatalf("smb.conf changed: %q (err %v)", data, err)
+	}
+}
+
+func TestSambaShareValidationErrorsAreBadRequests(t *testing.T) {
+	ctx := context.Background()
+	good := map[string]string{"path": "/srv/docs"}
+	for name, err := range map[string]error{
+		"bad name":      CreateSambaShare(ctx, "bad name!", good),
+		"reserved name": CreateSambaShare(ctx, "global", good),
+		"missing path":  CreateSambaShare(ctx, "Docs", map[string]string{}),
+		"bad path":      CreateSambaShare(ctx, "Docs", map[string]string{"path": "relative\npath"}),
+		"update path":   UpdateSambaShare(ctx, "Docs", "Docs", map[string]string{"path": "relative\npath"}),
+	} {
+		if bridgeipc.StatusCode(err) != 400 {
+			t.Errorf("%s: error = %v, want 400", name, err)
+		}
 	}
 }

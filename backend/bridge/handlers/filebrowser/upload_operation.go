@@ -150,10 +150,10 @@ func commitUploadBuffer(root *fsroot.FSRoot, tempRel, finalRel string, overwrite
 func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest, owner uploadOwner) (any, error) {
 	path, expectedSize, overwrite, expectedVersion, err := parseUploadRequest(req)
 	if err != nil {
-		return nil, bridgeipc.NewError(err.Error(), 400)
+		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	if expectedVersion != "" && expectedSize >= services.MaxTextFileBytes {
-		return nil, bridgeipc.NewError("editor save exceeds the maximum text file size", 400)
+		return nil, fmt.Errorf("%w: editor save exceeds the maximum text file size", bridgeipc.ErrInvalidArgs)
 	}
 
 	// Uploads never overwrite unless explicitly told to: fail the conflict
@@ -161,14 +161,14 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 	if !overwrite {
 		root, rootErr := fsroot.Open()
 		if rootErr != nil {
-			return nil, bridgeipc.NewError("failed to access filesystem", 500)
+			return nil, fmt.Errorf("open filesystem root: %w", rootErr)
 		}
 		_, statErr := root.Root.Stat(fsroot.ToRel(filepath.Clean(path)))
 		if closeErr := root.Close(); closeErr != nil {
 			slog.Debug("failed to close filesystem root", "error", closeErr)
 		}
 		if statErr == nil {
-			return nil, bridgeipc.NewError("destination already exists", 409)
+			return nil, fmt.Errorf("%w: destination already exists", bridgeipc.ErrConflict)
 		}
 	}
 

@@ -150,7 +150,7 @@ func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers
 	if err := mergeUpdateStatuses(ctx, statuses); err != nil {
 		return err
 	}
-	slog.Info("scheduled Docker image check complete",
+	slog.Debug("scheduled Docker image check complete",
 		"component", "docker",
 		"subsystem", "update",
 		"checked", result.Checked,

@@ -340,7 +340,7 @@ func (a *App) collectLiveContainerIdentities(ctx context.Context) ([]containermo
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
-			slog.Debug("Container identity collection failed", "err", err)
+			slog.Debug("container identity collection failed", "error", err)
 			identities = nil
 		}
 	}
@@ -394,7 +394,7 @@ func (a *App) collectLiveCurrentData(ctx context.Context, sampleKey uint16, incl
 		} else if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		} else {
-			slog.Debug("Containers", "err", err)
+			slog.Debug("containers collection failed", "error", err)
 		}
 	}
 	a.attachFilesystemStats(data)

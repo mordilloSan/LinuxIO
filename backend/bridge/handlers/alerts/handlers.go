@@ -41,8 +41,10 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 			return notificationsView(n), err
 		}),
 		apischema.Call[apischema.NotificationSettings, apischema.NotificationSettingsView]("alerts.set_notifications", apischema.Privileged()).Handle(func(_ context.Context, req apischema.NotificationSettings) (apischema.NotificationSettingsView, error) {
-			slog.Info("saving alert notification settings", "minSeverity", req.MinSeverity, "webhook", req.WebhookURL != "", "email", req.SMTPHost != "")
 			n, err := store.SaveNotifications(notificationsFromRequest(req))
+			if err == nil {
+				slog.Info("alert notification settings saved", "minSeverity", req.MinSeverity, "webhook", req.WebhookURL != "", "email", req.SMTPHost != "")
+			}
 			return notificationsView(n), err
 		}),
 		apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("alerts.test_notifications", apischema.Privileged()).Handle(handleTestNotifications),

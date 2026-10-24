@@ -13,6 +13,7 @@ import (
 
 	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/authclient"
@@ -58,18 +59,18 @@ const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.
-func StartBridge(ctx context.Context, sm *sessions.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
+func StartBridge(ctx context.Context, sm *sessions.Manager, sessionID, username, password, remoteHost string) (*session.Session, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
 	}
-	slog.Debug("Auth daemon available, using socket-based auth")
+	slog.Debug("auth daemon available, using socket-based auth")
 	result, err := authclient.Authenticate(ctx, &authipc.AuthRequest{
 		User:       username,
 		Password:   password,
 		SessionID:  sessionID,
 		RemoteHost: remoteHost,
-		Verbose:    verbose,
+		Verbose:    logging.DebugEnabled(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("auth daemon failed: %w", err)

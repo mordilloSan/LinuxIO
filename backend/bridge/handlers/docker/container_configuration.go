@@ -30,7 +30,7 @@ var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
 func CreateConfiguredContainer(ctx context.Context, request apischema.ContainerCreateRequest) (apischema.ContainerConfigurationResult, error) {
 	options, err := containerCreateOptions(request.Configuration)
 	if err != nil {
-		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(err.Error(), 400)
+		return apischema.ContainerConfigurationResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 
 	cli, err := dockerclient.Get()
@@ -83,7 +83,7 @@ func createConfiguredContainer(
 
 func EditConfiguredContainer(ctx context.Context, request apischema.ContainerEditRequest) (apischema.ContainerConfigurationResult, error) {
 	if _, err := containerCreateOptions(request.Configuration); err != nil {
-		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(err.Error(), 400)
+		return apischema.ContainerConfigurationResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 
 	cli, err := dockerclient.Get()
@@ -116,13 +116,13 @@ func editConfiguredContainer(
 	}
 	before := inspectResult.Container
 	if before.Config != nil && strings.TrimSpace(before.Config.Labels["com.docker.compose.project"]) != "" {
-		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError("Compose-managed containers must be edited through their stack", 409)
+		return apischema.ContainerConfigurationResult{}, fmt.Errorf("%w: Compose-managed containers must be edited through their stack", bridgeipc.ErrConflict)
 	}
 	if preflightErr := dockerupdate.ValidateStandaloneEdit(ctx, cli, before, journal); preflightErr != nil {
-		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(preflightErr.Error(), 409)
+		return apischema.ContainerConfigurationResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrConflict, preflightErr)
 	}
 	if mountErr := validateEditableContainerMounts(before.Mounts); mountErr != nil {
-		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(mountErr.Error(), 409)
+		return apischema.ContainerConfigurationResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrConflict, mountErr)
 	}
 	if imageErr := ensureContainerImage(ctx, cli, request.Configuration.Image); imageErr != nil {
 		return apischema.ContainerConfigurationResult{}, imageErr
@@ -134,7 +134,7 @@ func editConfiguredContainer(
 	}
 	appendInspectedEditableMounts(options.HostConfig, before.Mounts)
 	if applyErr := applyContainerConfiguration(&options, request.Configuration); applyErr != nil {
-		return apischema.ContainerConfigurationResult{}, bridgeipc.NewError(applyErr.Error(), 400)
+		return apischema.ContainerConfigurationResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, applyErr)
 	}
 
 	after, err := dockerupdate.ReplaceStandalone(ctx, cli, before, options, journal)

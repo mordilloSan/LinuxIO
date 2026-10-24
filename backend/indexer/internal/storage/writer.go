@@ -178,7 +178,7 @@ func (sw *StreamingWriter) writeBatch(batch []indexing.IndexEntry) error {
 	// pins both a pool connection and SQLite's write lock.
 	defer func() {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			slog.Warn("writeBatch rollback failed", "err", rollbackErr)
+			slog.Warn("writeBatch rollback failed", "error", rollbackErr)
 		}
 	}()
 

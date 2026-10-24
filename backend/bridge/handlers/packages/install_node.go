@@ -62,7 +62,7 @@ func installNodeForUser(ctx context.Context, task *bridgeipc.Task, user session.
 			cmd.Stdin = bytes.NewReader(step.stdin)
 		}
 		reportProgress(task, stageInstallPackage, step.message, step.pct)
-		slog.Info("Installing Node.js for the session user.", "user", user.Username, "step", step.message)
+		slog.Debug("installing Node.js for the session user", "user", user.Username, "step", step.message)
 		if err := runCapabilityProcess(ctx, cmd, "bash", func(output InstallCapabilityOutput) {
 			reportOutput(task, stageInstallPackage, step.message, step.pct, output)
 		}); err != nil {

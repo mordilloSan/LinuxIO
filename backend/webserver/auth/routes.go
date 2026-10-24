@@ -11,10 +11,9 @@ import (
 var startBridge = bridge.StartBridge
 
 // RegisterAuthRoutes wires the login and logout endpoints.
-func RegisterAuthRoutes(mux *http.ServeMux, sm *sessions.Manager, verbose bool) {
+func RegisterAuthRoutes(mux *http.ServeMux, sm *sessions.Manager) {
 	h := &Handlers{
 		SM:      sm,
-		Verbose: verbose,
 		authSem: make(chan struct{}, maxConcurrentLogins),
 	}
 

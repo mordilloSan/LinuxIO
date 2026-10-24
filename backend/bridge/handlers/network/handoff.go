@@ -128,10 +128,10 @@ func (s *durableBridgeHandoffService) claimRecord(ctx context.Context, uid uint3
 		ReconcileActive:    s.reconcileActiveRecord,
 	})
 	if errors.Is(err, durabletask.ErrConflict) {
-		return durabletask.Record{}, false, bridgeipc.NewError("operation ID was already used for another network handoff", 409)
+		return durabletask.Record{}, false, fmt.Errorf("%w: operation ID was already used for another network handoff", bridgeipc.ErrConflict)
 	}
 	if errors.Is(err, durabletask.ErrActive) {
-		return durabletask.Record{}, false, bridgeipc.NewError("another network handoff is already active", 409)
+		return durabletask.Record{}, false, fmt.Errorf("%w: another network handoff is already active", bridgeipc.ErrConflict)
 	}
 	if err != nil {
 		return durabletask.Record{}, false, fmt.Errorf("claim durable network handoff: %w", err)
@@ -164,7 +164,7 @@ func (s *durableBridgeHandoffService) Status(ctx context.Context, uid uint32, id
 func (s *durableBridgeHandoffService) getRecord(ctx context.Context, uid uint32, id string) (durabletask.Record, error) {
 	record, err := s.store.Get(ctx, id, uid)
 	if errors.Is(err, durabletask.ErrNotFound) || err == nil && record.Route != bridgeHandoffRoute {
-		return durabletask.Record{}, bridgeipc.NewError("network handoff not found", 404)
+		return durabletask.Record{}, fmt.Errorf("%w: network handoff", bridgeipc.ErrNotFound)
 	}
 	return record, err
 }
@@ -289,10 +289,10 @@ func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id
 		return handoffStatusFromRecord(record, data), nil
 	}
 	if record.State != durabletask.StateRunning {
-		return apischema.NetworkBridgeHandoffStatus{}, bridgeipc.NewError("network handoff is no longer awaiting a decision", 409)
+		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("%w: network handoff is no longer awaiting a decision", bridgeipc.ErrConflict)
 	}
 	if !s.now().UTC().Before(data.Deadline) {
-		return apischema.NetworkBridgeHandoffStatus{}, bridgeipc.NewError("network handoff decision window has elapsed", 409)
+		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("%w: network handoff decision window has elapsed", bridgeipc.ErrConflict)
 	}
 	now := s.now().UTC()
 	_, err = s.store.Update(operationCtx, id, uid, func(current *durabletask.Record) error {
@@ -304,7 +304,7 @@ func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id
 		return nil
 	})
 	if errors.Is(err, durabletask.ErrConflict) {
-		return apischema.NetworkBridgeHandoffStatus{}, bridgeipc.NewError("another network handoff decision is already in progress", 409)
+		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("%w: another network handoff decision is already in progress", bridgeipc.ErrConflict)
 	}
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
@@ -417,7 +417,7 @@ func handoffStatusFromRecord(record durabletask.Record, data bridgeHandoffRecord
 
 func validateHandoffOperationID(value string) error {
 	if err := durabletask.ValidateID(strings.TrimSpace(value)); err != nil {
-		return bridgeipc.NewError(err.Error(), 400)
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	return nil
 }
@@ -427,13 +427,13 @@ func validateHandoffStartRequest(req apischema.NetworkBridgeHandoffRequest) erro
 		return err
 	}
 	if strings.TrimSpace(req.Name) == "" {
-		return bridgeipc.NewError("bridge name is required", 400)
+		return fmt.Errorf("%w: bridge name is required", bridgeipc.ErrInvalidArgs)
 	}
 	if strings.TrimSpace(req.Member) == "" {
-		return bridgeipc.NewError("bridge member interface is required", 400)
+		return fmt.Errorf("%w: bridge member interface is required", bridgeipc.ErrInvalidArgs)
 	}
 	if !req.ConsoleAcknowledged {
-		return bridgeipc.NewError("console or out-of-band recovery must be acknowledged", 400)
+		return fmt.Errorf("%w: console or out-of-band recovery must be acknowledged", bridgeipc.ErrInvalidArgs)
 	}
 	return nil
 }

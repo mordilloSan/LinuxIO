@@ -64,7 +64,7 @@ func (m *Manager) CollectStats(ctx context.Context, identities []containermodel.
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, nil, nil, ctxErr
 		}
-		slog.Warn("process collection failed", "err", err)
+		slog.Warn("process collection failed", "error", err)
 		return &processmodel.Count{}, nil, nil, nil
 	}
 

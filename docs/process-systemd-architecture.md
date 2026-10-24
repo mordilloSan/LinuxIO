@@ -43,7 +43,7 @@ the auth/bridge launch protocol.
 
 | Binary | Supported interactive surface | Managed or private surface |
 |---|---|---|
-| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
+| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
 | `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [-port N] [-verbose]`; used by `linuxio-webserver.service` |
 | `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
 | `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only |
@@ -92,7 +92,8 @@ Key unit facts (see `packaging/systemd/`):
   service writes only its canonical config and `/var/lib/linuxio/indexer`
   state. See the [filesystem indexer guide](./indexer.md).
 - **`linuxio-monitoring.service`** — `Type=simple`, `User=root`,
-  `Restart=on-failure`, `ExecReload` sends `SIGHUP`. It is not socket-activated
+  `Restart=on-failure`, `ExecReload` sends `SIGHUP` (as do the webserver and
+  indexer units; `linuxio verbose` and `logging.set_debug` rely on it). It is not socket-activated
   and has no idle exit, because history must be sampled whether or not a browser
   is connected. systemd owns `RuntimeDirectory`, `StateDirectory` and
   `ConfigurationDirectory` under `linuxio/monitoring`; `ProtectSystem=strict`
@@ -213,9 +214,17 @@ linuxio logs [web|bridge|auth|indexer|monitoring] [N]   # tail journald, filtere
 linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
-linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring
+linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring (SIGHUP reload; open sessions switch at next login); persists across restarts
 linuxio version [--self]    # versions of CLI + each installed component
 ```
+
+Settings drives the same switch through two privileged bridge routes:
+`logging.get_debug` (none → `{ enabled }`) and `logging.set_debug`
+(`{ enabled }` → `{ enabled }`). Both live in `backend/bridge/handlers/config`;
+`set_debug` writes or removes the drop-ins (`backend/common/verbosemode`),
+applies the level to that bridge and signals the monitoring and indexer daemons
+and then the webserver (last, so a unit that restarts instead of reloading does
+not tear the calling bridge down before the others are signalled).
 
 `restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/services.go`). `--full` restarts the whole `linuxio.target`.
 

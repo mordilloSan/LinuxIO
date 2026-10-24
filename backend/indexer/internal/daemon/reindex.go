@@ -16,7 +16,7 @@ import (
 // reindexPathWithProgress reindexes a path and emits progress events.
 func (d *daemon) reindexPathWithProgress(ctx context.Context, operationID, relativePath string, sender sseEventSender) {
 	start := time.Now()
-	slog.Info("starting reindex", "path", relativePath)
+	slog.Debug("starting reindex", "path", relativePath)
 
 	indexID, err := d.store.LatestIndexID(ctx)
 	if err != nil {
@@ -64,7 +64,7 @@ func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativeP
 
 	if indexErr := index.StartIndexingFromPath(ctx, relativePath); indexErr != nil {
 		if closeErr := writer.Close(); closeErr != nil {
-			slog.Warn("failed to close streaming writer after reindex stream error", "err", closeErr)
+			slog.Warn("failed to close streaming writer after reindex stream error", "error", closeErr)
 		}
 		sendSSEError(sender, fmt.Sprintf("indexing failed: %v", indexErr))
 		return

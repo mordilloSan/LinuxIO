@@ -30,7 +30,7 @@ func runIndexTrigger(args []string) int {
 		return writeError(fs.Output(), "linuxio-indexer: initialize logging: "+err.Error()+"\n")
 	}
 	if err := triggerIndex(*socketPath); err != nil {
-		slog.Error("trigger index", "err", err)
+		slog.Error("trigger index", "error", err)
 		return 1
 	}
 	return 0

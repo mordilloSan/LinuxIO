@@ -137,8 +137,7 @@ func TestDeleteUnusedDiskRefusesDisksItMustKeep(t *testing.T) {
 func TestDeleteUnusedDiskRefusesPathsOutsideManagedFolders(t *testing.T) {
 	withUnusedDiskFixture(t)
 	for _, path := range []string{"/etc/linuxio-gone.qcow2", "relative/linuxio-gone.qcow2"} {
-		var bridgeErr *bridgeipc.Error
-		if err := DeleteUnusedDisk(context.Background(), path); !errors.As(err, &bridgeErr) || bridgeErr.Code != 400 {
+		if err := DeleteUnusedDisk(context.Background(), path); bridgeipc.StatusCode(err) != 400 {
 			t.Fatalf("DeleteUnusedDisk(%s) error = %v, want 400", path, err)
 		}
 	}

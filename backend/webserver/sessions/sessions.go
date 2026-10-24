@@ -90,7 +90,7 @@ type Manager struct {
 // Callers should start from DefaultConfig and override fields explicitly.
 func NewManager(cfg SessionConfig) *Manager {
 	m := &Manager{cfg: cfg, sessions: make(map[string]*session.Session)}
-	slog.Info("Session manager ready")
+	slog.Debug("session manager ready")
 	slog.Debug("session timings configured",
 		"idle_timeout", m.cfg.IdleTimeout,
 		"absolute_timeout", m.cfg.AbsoluteTimeout,
@@ -111,7 +111,7 @@ func (m *Manager) Close() {
 		if m.gcStop != nil {
 			close(m.gcStop)
 		}
-		slog.Info("Session manager stopped")
+		slog.Debug("session manager stopped")
 	})
 }
 
@@ -259,7 +259,7 @@ func (m *Manager) CreateSession(id string, user session.User, privileged bool) (
 	m.mu.Unlock()
 
 	m.deleted(evicted, ReasonManual)
-	slog.Info("session created",
+	slog.Debug("session created",
 		"session_ref", session.DiagnosticRef(sess.SessionID),
 		"privileged", privileged)
 	return sess, nil
@@ -439,7 +439,7 @@ func (m *Manager) gcCollect() {
 		collected += len(sessions)
 	}
 	if collected > 0 {
-		slog.Info("session garbage collection completed", "count", collected)
+		slog.Debug("session garbage collection completed", "count", collected)
 	}
 }
 

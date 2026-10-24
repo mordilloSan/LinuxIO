@@ -172,6 +172,10 @@ const linuxio = {
     set_config: defineCallWithRequest("indexer.set_config"),
     set_timer_interval: defineCallWithRequest("indexer.set_timer_interval"),
   },
+  logging: {
+    get_debug: defineCall("logging.get_debug"),
+    set_debug: defineCallWithRequest("logging.set_debug"),
+  },
   logs: {
     general_entry: defineCallWithRequest("logs.general_entry"),
     general_page: defineCallWithRequest("logs.general_page"),

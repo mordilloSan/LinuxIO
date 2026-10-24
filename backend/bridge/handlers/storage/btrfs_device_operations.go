@@ -90,7 +90,7 @@ func progressReporter(task *bridgeipc.Task, op, label string) func(float64) {
 }
 
 func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {
-	slog.Info("removing btrfs device", "uuid", req.UUID, "device", req.DeviceID)
+	slog.Debug("removing btrfs device", "uuid", req.UUID, "device", req.DeviceID)
 	task.ReportProgress(BtrfsOpProgress{Op: "remove", Message: fmt.Sprintf("Moving data off device %d", req.DeviceID)})
 	if err := btrfs.RemoveDevice(ctx, req.UUID, req.DeviceID); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("remove btrfs device %d of %s: %w", req.DeviceID, req.UUID, err)
@@ -104,7 +104,7 @@ func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req ap
 	if err := ensureBtrfsDeviceFree(ctx, req.NewDevice, false); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	slog.Info("replacing btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
+	slog.Debug("replacing btrfs device", "uuid", req.UUID, "device", req.DeviceID, "newDevice", req.NewDevice)
 	task.ReportProgress(BtrfsOpProgress{Op: "replace", Message: fmt.Sprintf("Replacing device %d with %s", req.DeviceID, req.NewDevice)})
 	if err := btrfs.Replace(ctx, req.UUID, req.DeviceID, req.NewDevice, progressReporter(task, "replace", "Replacing")); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("replace btrfs device %d of %s with %s: %w", req.DeviceID, req.UUID, req.NewDevice, err)
@@ -126,7 +126,7 @@ func runBtrfsDeviceReplaceTask(ctx context.Context, task *bridgeipc.Task, req ap
 }
 
 func runBtrfsBalanceTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsBalanceRequest) (btrfs.BtrfsFilesystem, error) {
-	slog.Info("balancing btrfs filesystem", "uuid", req.UUID, "data", profileOrKeep(req.DataProfile), "metadata", profileOrKeep(req.MetadataProfile), "dataUsage", req.DataUsage)
+	slog.Debug("balancing btrfs filesystem", "uuid", req.UUID, "data", profileOrKeep(req.DataProfile), "metadata", profileOrKeep(req.MetadataProfile), "dataUsage", req.DataUsage)
 	task.ReportProgress(BtrfsOpProgress{Op: "balance", Message: "Balance started"})
 	opts := btrfs.BalanceOptions{DataProfile: req.DataProfile, MetadataProfile: req.MetadataProfile, DataUsageMax: req.DataUsage}
 	if err := btrfs.Balance(ctx, req.UUID, opts, progressReporter(task, "balance", "Balancing")); err != nil {
@@ -141,7 +141,7 @@ func runBtrfsBalanceTask(ctx context.Context, task *bridgeipc.Task, req apischem
 }
 
 func runBtrfsScrubTask(ctx context.Context, task *bridgeipc.Task, req apischema.UUIDRequest) (btrfs.BtrfsFilesystem, error) {
-	slog.Info("scrubbing btrfs filesystem", "uuid", req.UUID)
+	slog.Debug("scrubbing btrfs filesystem", "uuid", req.UUID)
 	task.ReportProgress(BtrfsOpProgress{Op: "scrub", Message: "Scrub started"})
 	report := progressReporter(task, "scrub", "Scrubbing")
 	status, err := btrfs.Scrub(ctx, req.UUID, func(s btrfs.BtrfsScrubStatus) { report(s.Percent) })
@@ -165,27 +165,27 @@ func AddBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (b
 	if err := ensureBtrfsDeviceFree(ctx, req.Device, req.Force); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	slog.Info("adding btrfs device", "uuid", req.UUID, "device", req.Device, "force", req.Force)
 	if err := btrfs.AddDevice(ctx, req.UUID, req.Device, req.Force); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("add btrfs device %s to %s: %w", req.Device, req.UUID, err)
 	}
+	slog.Info("btrfs device added", "uuid", req.UUID, "device", req.Device, "force", req.Force)
 	return btrfs.FindFilesystem(ctx, req.UUID)
 }
 
 // CancelBtrfsBalance cancels a running balance.
 func CancelBtrfsBalance(ctx context.Context, uuid string) error {
-	slog.Info("canceling btrfs balance", "uuid", uuid)
 	if err := btrfs.BalanceCancel(ctx, uuid); err != nil {
 		return fmt.Errorf("cancel btrfs balance of %s: %w", uuid, err)
 	}
+	slog.Info("btrfs balance canceled", "uuid", uuid)
 	return nil
 }
 
 // CancelBtrfsScrub cancels a running scrub.
 func CancelBtrfsScrub(ctx context.Context, uuid string) error {
-	slog.Info("canceling btrfs scrub", "uuid", uuid)
 	if err := btrfs.ScrubCancel(ctx, uuid); err != nil {
 		return fmt.Errorf("cancel btrfs scrub of %s: %w", uuid, err)
 	}
+	slog.Info("btrfs scrub canceled", "uuid", uuid)
 	return nil
 }

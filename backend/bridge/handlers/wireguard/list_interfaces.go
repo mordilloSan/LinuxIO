@@ -11,7 +11,7 @@ import (
 )
 
 func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error) {
-	slog.Debug("ListInterfaces: listing interfaces")
+	slog.Debug("listing interfaces", "component", "wireguard")
 
 	pattern := filepath.Join(wgConfigDir, "*"+configExt)
 	files, err := filepath.Glob(pattern)
@@ -53,6 +53,6 @@ func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error)
 			PostDown:    nonNil(cfg.PostDown),
 		})
 	}
-	slog.Info("listed WireGuard interfaces", "count", len(interfaces))
+	slog.Debug("listed WireGuard interfaces", "count", len(interfaces))
 	return interfaces, nil
 }

@@ -193,17 +193,16 @@ func LoadBtrfsSnapshotRules(ctx context.Context) (btrfs.BtrfsSnapshotRules, erro
 
 // SaveBtrfsSnapshotRule stores a snapshot rule and returns the updated rules.
 func SaveBtrfsSnapshotRule(ctx context.Context, rule btrfs.BtrfsSnapshotRule) (btrfs.BtrfsSnapshotRules, error) {
-	slog.Info("setting btrfs snapshot rule", "uuid", rule.UUID, "path", rule.Path, "enabled", rule.Enabled)
 	rules, err := setBtrfsSnapshotRule(ctx, rule)
 	if err != nil {
 		return btrfs.BtrfsSnapshotRules{}, fmt.Errorf("set btrfs snapshot rule for %s in %s: %w", rule.Path, rule.UUID, err)
 	}
+	slog.Info("btrfs snapshot rule set", "uuid", rule.UUID, "path", rule.Path, "enabled", rule.Enabled)
 	return btrfsSnapshotRules(ctx, rules), nil
 }
 
 // DeleteBtrfsSnapshotRule removes a snapshot rule and returns the updated rules.
 func DeleteBtrfsSnapshotRule(ctx context.Context, uuid, path string) (btrfs.BtrfsSnapshotRules, error) {
-	slog.Info("deleting btrfs snapshot rule", "uuid", uuid, "path", path)
 	rules, err := updateBtrfsSnapshotRules(ctx, func(rules *[]btrfs.BtrfsSnapshotRule) error {
 		*rules = btrfs.DeleteRule(*rules, uuid, path)
 		return nil
@@ -211,6 +210,7 @@ func DeleteBtrfsSnapshotRule(ctx context.Context, uuid, path string) (btrfs.Btrf
 	if err != nil {
 		return btrfs.BtrfsSnapshotRules{}, fmt.Errorf("delete btrfs snapshot rule for %s in %s: %w", path, uuid, err)
 	}
+	slog.Info("btrfs snapshot rule deleted", "uuid", uuid, "path", path)
 	return btrfsSnapshotRules(ctx, rules), nil
 }
 
@@ -220,6 +220,10 @@ func RunBtrfsSnapshotRules(ctx context.Context) (btrfs.RunReport, error) {
 	if err != nil {
 		return btrfs.RunReport{}, err
 	}
-	slog.Info("running btrfs snapshot rules", "rules", len(rules))
-	return btrfs.Run(ctx, rules, time.Now(), btrfs.KindTimeline)
+	report, err := btrfs.Run(ctx, rules, time.Now(), btrfs.KindTimeline)
+	if err != nil {
+		return report, err
+	}
+	slog.Info("btrfs snapshot rules ran", "rules", len(rules), "taken", len(report.Taken), "pruned", len(report.Pruned))
+	return report, nil
 }

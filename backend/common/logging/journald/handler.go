@@ -131,6 +131,11 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 		return true
 	})
 
+	// The error reason goes in MESSAGE too, so plain journalctl shows it.
+	if idx, ok := state.index[h.fieldNameForAttr(nil, "error")]; ok && state.fields[idx].Value != "" {
+		state.set("MESSAGE", record.Message+": "+state.fields[idx].Value)
+	}
+
 	return h.sender.Send(state.fields)
 }
 

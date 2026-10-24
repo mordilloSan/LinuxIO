@@ -212,7 +212,7 @@ func RelayHandler(sm *sessions.Manager) http.Handler {
 		if sess == nil {
 			slog.
 				// Should not happen — AuthMiddleware guarantees session in context.
-				Error("RelayHandler: missing session in context")
+				Error("missing session in context", "handler", "relay")
 			return
 		}
 
@@ -238,7 +238,7 @@ func RelayHandler(sm *sessions.Manager) http.Handler {
 			CloseForSession(sess.SessionID)
 			return
 		}
-		slog.Info("WebSocket connected", "user", sess.User.Username, "session_ref", session.DiagnosticRef(sess.SessionID))
+		slog.Debug("WebSocket connected", "user", sess.User.Username, "session_ref", session.DiagnosticRef(sess.SessionID))
 
 		conn.SetPongHandler(func(string) error {
 			slog.Debug("WebSocket pong received", "session_ref", session.DiagnosticRef(sess.SessionID), "deadline", pongWait)
@@ -270,7 +270,7 @@ func RelayHandler(sm *sessions.Manager) http.Handler {
 		relay.wg.Go(relay.pingLoop)
 
 		relay.readLoop(sm, sess)
-		slog.Info("WebSocket disconnected", "user", sess.User.Username, "session_ref", session.DiagnosticRef(sess.SessionID))
+		slog.Debug("WebSocket disconnected", "user", sess.User.Username, "session_ref", session.DiagnosticRef(sess.SessionID))
 	})
 }
 

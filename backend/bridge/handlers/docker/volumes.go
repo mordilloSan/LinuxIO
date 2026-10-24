@@ -221,11 +221,11 @@ func DeleteVolume(ctx context.Context, name string) error {
 func deleteVolume(ctx context.Context, cli volumeRemover, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return bridgeipc.NewError("volume name is required", 400)
+		return fmt.Errorf("%w: volume name is required", bridgeipc.ErrInvalidArgs)
 	}
 	if _, err := cli.VolumeRemove(ctx, name, client.VolumeRemoveOptions{}); err != nil {
 		if errdefs.IsConflict(err) {
-			return bridgeipc.NewError(fmt.Sprintf("volume %q is in use: %v", name, err), 409)
+			return fmt.Errorf("%w: volume %q is in use: %w", bridgeipc.ErrConflict, name, err)
 		}
 		return fmt.Errorf("failed to remove volume %q: %w", name, err)
 	}
@@ -235,7 +235,7 @@ func deleteVolume(ctx context.Context, cli volumeRemover, name string) error {
 func CreateVolume(ctx context.Context, request apischema.DockerVolumeCreateRequest) error {
 	options, err := volumeCreateOptions(request)
 	if err != nil {
-		return bridgeipc.NewError(err.Error(), 400)
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	cli, err := dockerclient.Get()
 	if err != nil {

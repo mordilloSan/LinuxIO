@@ -71,7 +71,7 @@ func ftsModuleAvailable(ctx context.Context, db *sql.DB) bool {
 		return false
 	}
 	if _, err := db.ExecContext(ctx, `DROP TABLE temp.fts5_probe;`); err != nil {
-		slog.Warn("failed to drop fts5 probe table", "err", err)
+		slog.Warn("failed to drop fts5 probe table", "error", err)
 	}
 	return true
 }
@@ -143,7 +143,7 @@ func enableFTS(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
-	slog.Info("FTS5 search index enabled")
+	slog.Debug("FTS5 search index enabled")
 	return nil
 }
 
@@ -192,7 +192,7 @@ func ftsRebuild(ctx context.Context, db *sql.DB) error {
 	}
 	defer func() {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			slog.Warn("fts rebuild rollback failed", "err", rollbackErr)
+			slog.Warn("fts rebuild rollback failed", "error", rollbackErr)
 		}
 	}()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO entries_fts(entries_fts) VALUES ('rebuild');`); err != nil {
@@ -224,7 +224,7 @@ func (s *Store) searchEntriesFTS(ctx context.Context, match, basePath string, li
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			slog.Warn("rows close failed", "query", "search", "err", cerr)
+			slog.Warn("rows close failed", "query", "search", "error", cerr)
 		}
 	}()
 

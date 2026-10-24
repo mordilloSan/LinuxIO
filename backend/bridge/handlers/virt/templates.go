@@ -142,7 +142,7 @@ func (s vmTemplateStore) ensure(ctx context.Context, preset vmImagePreset, templ
 				return record.VMTemplate, nil
 			}
 		}
-		return apischema.VMTemplate{}, notFoundf("saved template %q is no longer available", templateID)
+		return apischema.VMTemplate{}, notFoundf("saved template %q", templateID)
 	}
 	if !refresh && len(records) > 0 {
 		return records[0].VMTemplate, nil

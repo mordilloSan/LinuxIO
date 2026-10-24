@@ -72,7 +72,7 @@ func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, pro
 	if err != nil {
 		return IndexRunStats{}, err
 	}
-	slog.Info("running in index mode",
+	slog.Debug("running in index mode",
 		"include_network_mounts", cfg.IncludeNetworkMounts,
 		"exclude_paths", cfg.ExcludePaths,
 	)
@@ -86,7 +86,7 @@ func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, pro
 	}
 	defer func() {
 		if closeErr := store.Close(); closeErr != nil {
-			slog.Warn("failed to close database", "err", closeErr)
+			slog.Warn("failed to close database", "error", closeErr)
 		}
 	}()
 
@@ -109,7 +109,7 @@ func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, pro
 	}
 	store.CheckpointAndRelease(ctx, "index")
 
-	slog.Info("index complete, subprocess exiting")
+	slog.Debug("index complete, subprocess exiting")
 	runStats.Duration = time.Since(start)
 	return runStats, nil
 }
@@ -133,13 +133,13 @@ func runIndex(ctx context.Context, store *storage.Store, cfg configfile.Config, 
 	if progress != nil {
 		progress.Step("Scanning filesystem")
 	}
-	slog.Info("starting filesystem traversal")
+	slog.Debug("starting filesystem traversal")
 	stopScanProgress := startScanProgress(progress, index)
 	indexErr := index.StartIndexing(ctx)
 	stopScanProgress()
 	if indexErr != nil {
 		if closeErr := writer.Close(); closeErr != nil {
-			slog.Warn("failed to close streaming writer after index error", "err", closeErr)
+			slog.Warn("failed to close streaming writer after index error", "error", closeErr)
 		}
 		return IndexRunStats{}, fmt.Errorf("indexing failed: %w", indexErr)
 	}

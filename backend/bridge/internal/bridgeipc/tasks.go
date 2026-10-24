@@ -708,7 +708,7 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 		if errors.Is(err, context.Canceled) {
 			msg, level = "task canceled", slog.LevelInfo
 		}
-		slog.Log(ctx, level, msg+": "+err.Error(), "task_id", j.id, "task_type", j.typ, "user", j.owner.Username, "error", err)
+		slog.Log(ctx, level, msg, "task_id", j.id, "task_type", j.typ, "user", j.owner.Username, "error", err)
 		if errors.Is(err, context.DeadlineExceeded) {
 			j.markFailed(NewError("operation timed out", 504))
 			return
@@ -721,7 +721,7 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 			j.markFailed(taskErr)
 			return
 		}
-		j.markFailed(NewError(err.Error(), 500))
+		j.markFailed(NewError(err.Error(), StatusCode(err)))
 		return
 	}
 	j.markCompleted(result)

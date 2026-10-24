@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/json/jsontext"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -129,6 +130,21 @@ func TestTaskCompletesAndSnapshotsResult(t *testing.T) {
 	detail, ok := snapshot.Progress.Detail.(map[string]any)
 	if !ok || detail["pct"] != 50 {
 		t.Fatalf("progress detail = %#v, want pct 50", snapshot.Progress.Detail)
+	}
+}
+
+func TestTaskFailureKeepsSentinelStatusCode(t *testing.T) {
+	registry := NewTaskService()
+	task, err := startTestTask(registry, "test.sentinel", nil, TaskOwner{}, func(context.Context, *Task, any) (any, error) {
+		return nil, fmt.Errorf("%w: x", ErrInvalidArgs)
+	})
+	if err != nil {
+		t.Fatalf("startTestTask returned error: %v", err)
+	}
+
+	waitForTaskState(t, task, TaskStateFailed)
+	if got := task.Snapshot().Error; got == nil || got.Code != 400 {
+		t.Fatalf("task error = %#v, want code 400", got)
 	}
 }
 

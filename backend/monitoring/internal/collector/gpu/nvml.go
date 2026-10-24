@@ -115,7 +115,7 @@ type nvmlCollector struct {
 }
 
 func (c *nvmlCollector) init() error {
-	slog.Debug("NVML: Initializing")
+	slog.Debug("initializing collector", "component", "nvml")
 	libPath := getNVMLPath()
 
 	lib, err := openLibrary(libPath)
@@ -264,7 +264,7 @@ func (c *nvmlCollector) collect() {
 		gpu.Address = hwprobe.NormalizePCIAddress(bdf)
 
 		if bdf != "" && !c.isGPUActive(bdf) {
-			slog.Debug("NVML: GPU is suspended, skipping", "bdf", bdf)
+			slog.Debug("GPU is suspended, skipping", "component", "nvml", "bdf", bdf)
 			gpu.Temperature = 0
 			gpu.MemoryUsed = 0
 			continue
@@ -273,13 +273,13 @@ func (c *nvmlCollector) collect() {
 		// Utilization
 		var utilization nvmlUtilization
 		if ret := nvmlDeviceGetUtilizationRates(device, &utilization); ret != nvmlReturn(nvmlSuccess) {
-			slog.Debug("NVML: Utilization failed (GPU likely suspended)", "bdf", bdf, "ret", ret)
+			slog.Debug("utilization failed, GPU likely suspended", "component", "nvml", "bdf", bdf, "ret", ret)
 			gpu.Temperature = 0
 			gpu.MemoryUsed = 0
 			continue
 		}
 
-		slog.Debug("NVML: Collecting data for GPU", "bdf", bdf)
+		slog.Debug("collecting data for GPU", "component", "nvml", "bdf", bdf)
 
 		// Temperature
 		var temp uint32
@@ -292,7 +292,7 @@ func (c *nvmlCollector) collect() {
 				var memory nvmlMemoryV2
 				memory.Version = 0x02000028 // (2 << 24) | 40 bytes
 				if ret := nvmlDeviceGetMemoryInfo(device, uintptr(unsafe.Pointer(&memory))); ret != nvmlReturn(nvmlSuccess) {
-					slog.Debug("NVML: MemoryInfo_v2 failed", "bdf", bdf, "ret", ret)
+					slog.Debug("memory info v2 failed", "component", "nvml", "bdf", bdf, "ret", ret)
 				} else {
 					usedMem = memory.Used
 					totalMem = memory.Total
@@ -300,7 +300,7 @@ func (c *nvmlCollector) collect() {
 			} else {
 				var memory nvmlMemoryV1
 				if ret := nvmlDeviceGetMemoryInfo(device, uintptr(unsafe.Pointer(&memory))); ret != nvmlReturn(nvmlSuccess) {
-					slog.Debug("NVML: MemoryInfo failed", "bdf", bdf, "ret", ret)
+					slog.Debug("memory info failed", "component", "nvml", "bdf", bdf, "ret", ret)
 				} else {
 					usedMem = memory.Used
 					totalMem = memory.Total
@@ -311,7 +311,7 @@ func (c *nvmlCollector) collect() {
 				gpu.MemoryTotal = float64(totalMem) / 1024 / 1024 / mebibytesInAMegabyte
 			}
 		} else {
-			slog.Debug("NVML: Skipping memory info (utilization=0)", "bdf", bdf)
+			slog.Debug("skipping memory info, utilization is 0", "component", "nvml", "bdf", bdf)
 		}
 
 		// Power
@@ -322,7 +322,7 @@ func (c *nvmlCollector) collect() {
 		gpu.Usage += float64(utilization.Gpu)
 		gpu.Power += float64(power) / 1000.0
 		gpu.Count++
-		slog.Debug("NVML: Collected data", "gpu", gpu)
+		slog.Debug("data collected", "component", "nvml", "gpu", gpu)
 	}
 	c.gm.replaceGPUProcessSourceLocked(string(collectorSourceNVML), processesByDevice, true)
 }

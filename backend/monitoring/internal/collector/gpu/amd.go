@@ -54,7 +54,7 @@ func (gm *Manager) collectAmdStats(ctx context.Context) error {
 		return errNoValidData
 	}
 
-	slog.Debug("Using sysfs for AMD GPU data collection")
+	slog.Debug("using sysfs for AMD GPU data collection")
 	return gm.pollAmdStats(ctx, amdGpuPaths, sysfsPollInterval)
 }
 
@@ -96,7 +96,7 @@ func (gm *Manager) pollAmdStats(ctx context.Context, amdGpuPaths []string, pollI
 			if failures > maxFailureRetries {
 				return errNoValidData
 			}
-			slog.Warn("No AMD GPU data from sysfs", "failures", failures)
+			slog.Warn("no AMD GPU data from sysfs", "failures", failures)
 			if !sleepUntilDone(ctx, retryWaitTime) {
 				return ctx.Err()
 			}
@@ -182,7 +182,7 @@ func (gm *Manager) updateAmdGpuData(cardPath string) bool {
 func readSysfsFloat(path string) (float64, error) {
 	val, err := readStringFileLimited(path, 64)
 	if err != nil {
-		slog.Debug("Failed to read sysfs value", "path", path, "error", err)
+		slog.Debug("sysfs value read failed", "path", path, "error", err)
 		return 0, err
 	}
 	return strconv.ParseFloat(val, 64)

@@ -48,7 +48,7 @@ func New(cfg configfile.Config, configPath string) (*daemon, error) {
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("DB connection pool opened")
+	slog.Debug("database connection pool opened")
 	logStoreStatus(store)
 
 	return &daemon{settings: settings{cfg: cfg, path: configPath}, store: store}, nil
@@ -58,19 +58,19 @@ func logStoreStatus(store *storage.Store) {
 	journalCtx, cancel := context.WithTimeout(context.Background(), startupProbeTimeout)
 	defer cancel()
 	if journalMode, err := store.JournalMode(journalCtx); err != nil {
-		slog.Warn("failed to determine database journal_mode", "err", err)
+		slog.Warn("failed to determine database journal_mode", "error", err)
 	} else {
-		slog.Info("database journal_mode", "mode", strings.ToUpper(journalMode))
+		slog.Debug("database journal_mode", "mode", strings.ToUpper(journalMode))
 	}
 
 	latest, err := store.LatestGeneration(context.Background())
 	switch {
 	case err == nil:
-		slog.Info("latest index loaded", "last_indexed", latest.LastIndexed.Format(time.RFC3339), "dirs", latest.NumDirs, "files", latest.NumFiles)
+		slog.Debug("latest index loaded", "last_indexed", latest.LastIndexed.Format(time.RFC3339), "dirs", latest.NumDirs, "files", latest.NumFiles)
 	case errors.Is(err, storage.ErrNoGeneration):
-		slog.Info("no prior index metadata found in database")
+		slog.Debug("no prior index metadata found in database")
 	default:
-		slog.Warn("could not load latest index metadata", "err", err)
+		slog.Warn("could not load latest index metadata", "error", err)
 	}
 }
 
@@ -89,7 +89,7 @@ func (d *daemon) waitBackground() {
 }
 
 func (d *daemon) Close() {
-	slog.Info("shutting down daemon")
+	slog.Debug("shutting down daemon")
 
 	// Signal in-flight background work to cancel before tearing down servers/db.
 	if d.bgCancel != nil {
@@ -105,7 +105,7 @@ func (d *daemon) Close() {
 
 	if d.store != nil {
 		if err := d.store.Close(); err != nil {
-			slog.Warn("database close error", "err", err)
+			slog.Warn("database close error", "error", err)
 		}
 	}
 

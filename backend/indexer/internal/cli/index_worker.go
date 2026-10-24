@@ -28,11 +28,11 @@ func runIndexMode(args []string) int {
 	if err := logging.Configure("linuxio-indexer", false); err != nil {
 		return writeError(os.Stderr, "linuxio-indexer: initialize logging: "+err.Error()+"\n")
 	}
-	slog.Info("indexer starting", "version", version.Version, "mode", "index-worker")
+	slog.Debug("indexer starting", "version", version.Version, "mode", "index-worker")
 
 	fileCfg, err := configfile.Load(*configPath)
 	if err != nil {
-		slog.Error("failed to load config", "config_file", *configPath, "err", err)
+		slog.Error("failed to load config", "config_file", *configPath, "error", err)
 		return 1
 	}
 
@@ -46,7 +46,7 @@ func runIndexMode(args []string) int {
 		wire,
 	)
 	if err != nil {
-		slog.Error("index failed", "err", err)
+		slog.Error("index failed", "error", err)
 		return 1
 	}
 	wire.Summary(stats)

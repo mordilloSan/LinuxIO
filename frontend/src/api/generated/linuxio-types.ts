@@ -1903,6 +1903,14 @@ export interface LiveSmart {
   power?: DiskPowerData;
 }
 
+export interface LoggingDebugRequest {
+  enabled: boolean;
+}
+
+export interface LoggingDebugState {
+  enabled: boolean;
+}
+
 export interface LogicalVolume {
   attributes: string;
   fsType: string;
@@ -3905,6 +3913,15 @@ export interface LinuxIOSchema {
     };
   };
 
+  logging: {
+    get_debug: { input: []; request: void; result: LoggingDebugState };
+    set_debug: {
+      input: [enabled: boolean];
+      request: LoggingDebugRequest;
+      result: LoggingDebugState;
+    };
+  };
+
   logs: {
     general_entry: {
       input: [cursor: string];
@@ -4917,6 +4934,11 @@ export interface LinuxIOCallSchema {
   "indexer.set_timer_interval": {
     request: IntervalRequest;
     result: IndexerTimerSetResult;
+  };
+  "logging.get_debug": { request: void; result: LoggingDebugState };
+  "logging.set_debug": {
+    request: LoggingDebugRequest;
+    result: LoggingDebugState;
   };
   "logs.general_entry": {
     request: GeneralLogEntryRequest;

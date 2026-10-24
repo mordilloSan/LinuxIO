@@ -161,7 +161,7 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	if err := iniFile.SaveTo(path); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
-	slog.Info("wrote WireGuard config", "component", "wireguard", "subsystem", "config", "path", path)
+	slog.Debug("wrote WireGuard config", "component", "wireguard", "subsystem", "config", "path", path)
 	return nil
 }
 

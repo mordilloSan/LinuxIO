@@ -50,6 +50,24 @@ func dispatchResult(t *testing.T, router *Router, req Request) (relay.ResultFram
 	return result, <-errCh
 }
 
+func TestStatusCodeMapsNotFoundAndConflict(t *testing.T) {
+	tests := []struct {
+		err  error
+		want int
+	}{
+		{ErrNotFound, 404},
+		{fmt.Errorf("%w: source path", ErrNotFound), 404},
+		{ErrConflict, 409},
+		{fmt.Errorf("%w: destination already exists", ErrConflict), 409},
+		{fmt.Errorf("%w: %w", ErrInvalidArgs, errors.New("bad name")), 400},
+	}
+	for _, tt := range tests {
+		if got := StatusCode(tt.err); got != tt.want {
+			t.Errorf("StatusCode(%v) = %d, want %d", tt.err, got, tt.want)
+		}
+	}
+}
+
 func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)

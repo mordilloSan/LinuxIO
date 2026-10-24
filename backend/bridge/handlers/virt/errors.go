@@ -7,13 +7,13 @@ import (
 )
 
 func badRequestf(format string, args ...any) error {
-	return bridgeipc.NewError(fmt.Sprintf(format, args...), 400)
+	return fmt.Errorf("%w: %s", bridgeipc.ErrInvalidArgs, fmt.Sprintf(format, args...))
 }
 
 func conflictf(format string, args ...any) error {
-	return bridgeipc.NewError(fmt.Sprintf(format, args...), 409)
+	return fmt.Errorf("%w: %s", bridgeipc.ErrConflict, fmt.Sprintf(format, args...))
 }
 
 func notFoundf(format string, args ...any) error {
-	return bridgeipc.NewError(fmt.Sprintf(format, args...), 404)
+	return fmt.Errorf("%w: %s", bridgeipc.ErrNotFound, fmt.Sprintf(format, args...))
 }

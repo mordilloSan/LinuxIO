@@ -401,6 +401,7 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "monitoring.refresh_smart": [endpointQueryPrefix("monitoring.get_live")],
 
   "updates.set_auto_updates": [endpointQueryPrefix("updates.get_auto_updates")],
+  "logging.set_debug": [endpointQueryPrefix("logging.get_debug")],
 
   "wireguard.add_interface": [endpointQueryPrefix("wireguard.list_interfaces")],
   "wireguard.update_interface": [

@@ -29,22 +29,22 @@ type resourcePatchRequest struct {
 
 func parseResourcePatchRequest(req apischema.ActionSourceDestinationRequest) (resourcePatchRequest, error) {
 	if req.Action == "" || req.Source == "" || req.Dest == "" {
-		return resourcePatchRequest{}, fmt.Errorf("bad_request:missing action, from, or destination")
+		return resourcePatchRequest{}, fmt.Errorf("%w: missing action, from, or destination", bridgeipc.ErrInvalidArgs)
 	}
 
 	src, err := url.QueryUnescape(req.Source)
 	if err != nil {
-		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid source path encoding")
+		return resourcePatchRequest{}, fmt.Errorf("%w: malformed source path encoding", bridgeipc.ErrInvalidArgs)
 	}
 	dst, err := url.QueryUnescape(req.Dest)
 	if err != nil {
-		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid destination path encoding")
+		return resourcePatchRequest{}, fmt.Errorf("%w: malformed destination path encoding", bridgeipc.ErrInvalidArgs)
 	}
 	if dst == "/" || src == "/" {
-		return resourcePatchRequest{}, fmt.Errorf("bad_request:cannot modify root directory")
+		return resourcePatchRequest{}, fmt.Errorf("%w: cannot modify root directory", bridgeipc.ErrInvalidArgs)
 	}
 	if invalidEntryName(filepath.Base(strings.TrimRight(dst, "/"))) {
-		return resourcePatchRequest{}, fmt.Errorf("bad_request:invalid name")
+		return resourcePatchRequest{}, fmt.Errorf("%w: invalid name", bridgeipc.ErrInvalidArgs)
 	}
 
 	return resourcePatchRequest{
@@ -58,8 +58,7 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	dstClean := strings.TrimRight(req.dst, "/")
 	parentDir := filepath.Dir(dstClean)
 	if _, err := root.Root.Stat(fsroot.ToRel(parentDir)); err != nil {
-		slog.Debug("parent directory not found", "path", parentDir, "error", err)
-		return req, fmt.Errorf("bad_request:parent directory not found")
+		return req, fsError("stat parent directory", err)
 	}
 
 	req.realDest = filepath.Join(parentDir, filepath.Base(dstClean))
@@ -69,11 +68,10 @@ func prepareResourcePatch(root *fsroot.FSRoot, req resourcePatchRequest) (resour
 	req.realSrc = fsroot.CleanAbsPath(req.src)
 
 	if _, err := root.Root.Lstat(fsroot.ToRel(req.realSrc)); err != nil {
-		slog.Debug("error getting source info", "path", req.realSrc, "error", err)
-		return req, fmt.Errorf("bad_request:source not found")
+		return req, fsError("stat source", err)
 	}
 	if err := services.CheckNotProtected(root, req.realSrc); err != nil {
-		return req, fmt.Errorf("bad_request:%w", err)
+		return req, fmt.Errorf("%w: %w", bridgeipc.ErrForbidden, err)
 	}
 	return req, validatePatchDestination(root, req)
 }
@@ -82,14 +80,13 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest) err
 	_, err := root.Root.Lstat(fsroot.ToRel(req.realDest))
 	switch {
 	case err == nil && req.realSrc == req.realDest:
-		return fmt.Errorf("bad_request:source and destination are the same")
+		return fmt.Errorf("%w: source and destination are the same", bridgeipc.ErrInvalidArgs)
 	case err == nil:
-		return fmt.Errorf("bad_request:destination exists")
+		return fmt.Errorf("%w: destination already exists", bridgeipc.ErrConflict)
 	case errors.Is(err, fs.ErrNotExist):
 		return nil
 	default:
-		slog.Debug("error stating destination", "path", req.realDest, "error", err)
-		return fmt.Errorf("bad_request:could not stat destination")
+		return fsError("stat destination", err)
 	}
 }
 
@@ -100,7 +97,7 @@ func executeResourcePatch(req resourcePatchRequest, opts *services.OperationCall
 	case "rename", "move":
 		return services.MoveFileWithCallbacks(req.realSrc, req.realDest, false, opts, moveFileOptions(size))
 	default:
-		return fmt.Errorf("bad_request:unsupported action: %s", req.action)
+		return fmt.Errorf("%w: unsupported action: %s", bridgeipc.ErrInvalidArgs, req.action)
 	}
 }
 
@@ -113,7 +110,7 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return apischema.MessageResponse{}, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.MessageResponse{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 
@@ -124,8 +121,7 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 
 	srcInfo, err := root.Root.Lstat(fsroot.ToRel(patchReq.realSrc))
 	if err != nil {
-		slog.Debug("error getting source info", "path", patchReq.realSrc, "error", err)
-		return apischema.MessageResponse{}, fmt.Errorf("bad_request:source not found")
+		return apischema.MessageResponse{}, fsError("stat source", err)
 	}
 
 	// A same-filesystem rename needs neither a size nor a walk.
@@ -136,7 +132,7 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 		size = computeTransferSize(ctx, patchReq.realSrc, srcInfo)
 	}
 	// Send initial progress.
-	slog.Info("starting filebrowser operation",
+	slog.Debug("starting filebrowser operation",
 		"action", patchReq.action,
 		"source", patchReq.realSrc,
 		"destination", patchReq.realDest,
@@ -148,11 +144,11 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 
 	opts := newTaskPhaseCallbacks(ctx, task, nil, size.estimate(), "moving")
 	if err := executeResourcePatch(patchReq, opts, size); err != nil {
-		slog.Debug("error patching resource", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest, "error", err)
-		return apischema.MessageResponse{}, fmt.Errorf("bad_request:%w", err)
+		return apischema.MessageResponse{}, fsError(patchReq.action, err)
 	}
 
 	notifyIndexerAfterPatch(ctx, root, patchReq)
+	slog.Info("filebrowser operation completed", "action", patchReq.action, "source", patchReq.realSrc, "destination", patchReq.realDest)
 	return apischema.MessageResponse{Message: "operation completed"}, nil
 }
 

@@ -252,7 +252,7 @@ func ModifyGroupMembers(ctx context.Context, req apischema.ModifyGroupMembersReq
 	}
 
 	if sameGroupMembers(group.Members, members) {
-		slog.Info("group members unchanged", "group", req.GroupName)
+		slog.Debug("group members unchanged", "group", req.GroupName)
 		return nil
 	}
 

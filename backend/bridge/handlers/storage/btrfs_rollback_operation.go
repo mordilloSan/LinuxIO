@@ -88,9 +88,9 @@ func runBtrfsRollbackTask(ctx context.Context, task *bridgeipc.Task, req apische
 		return btrfs.BtrfsRollbackResult{}, err
 	}
 
-	slog.Info("rolling back btrfs subvolume", "uuid", req.UUID, "source", source, "snapshot", req.SnapshotPath, "steps", len(plan.Steps))
+	slog.Debug("rolling back btrfs subvolume", "uuid", req.UUID, "source", source, "snapshot", req.SnapshotPath, "steps", len(plan.Steps))
 	res, err := btrfs.ExecuteRollback(ctx, req.UUID, plan, func(step int, msg string) {
-		slog.Info("btrfs rollback step", "uuid", req.UUID, "source", source, "step", step+1, "total", len(plan.Steps), "message", msg)
+		slog.Debug("btrfs rollback step", "uuid", req.UUID, "source", source, "step", step+1, "total", len(plan.Steps), "message", msg)
 		task.ReportProgress(BtrfsRollbackProgress{Step: step, Total: len(plan.Steps), Message: msg})
 	})
 	if err != nil {
@@ -114,7 +114,7 @@ func checkRollbackPinned(source string, mounts []btrfs.Mount) error {
 			continue
 		}
 		if entry, ok := fstab[m.Mountpoint]; ok && hasSubvolIDOption(entry.options) {
-			return bridgeipc.NewError(fmt.Sprintf("%s is mounted with subvolid= in /etc/fstab; replace it with subvol=/%s before rolling back", m.Mountpoint, source), 400)
+			return fmt.Errorf("%w: %s is mounted with subvolid= in /etc/fstab; replace it with subvol=/%s before rolling back", bridgeipc.ErrInvalidArgs, m.Mountpoint, source)
 		}
 		if m.Mountpoint != "/" {
 			continue
@@ -125,7 +125,7 @@ func checkRollbackPinned(source string, mounts []btrfs.Mount) error {
 		}
 		for field := range strings.FieldsSeq(string(cmdline)) {
 			if flags, ok := strings.CutPrefix(field, "rootflags="); ok && hasSubvolIDOption(flags) {
-				return bridgeipc.NewError(fmt.Sprintf("/ is mounted with subvolid= in the kernel rootflags; replace it with subvol=/%s before rolling back", source), 400)
+				return fmt.Errorf("%w: / is mounted with subvolid= in the kernel rootflags; replace it with subvol=/%s before rolling back", bridgeipc.ErrInvalidArgs, source)
 			}
 		}
 	}

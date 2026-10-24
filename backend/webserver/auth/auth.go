@@ -25,7 +25,6 @@ const (
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
 	SM      *sessions.Manager
-	Verbose bool
 	authSem chan struct{}
 }
 
@@ -77,7 +76,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remoteHost := web.ClientRemoteHost(r)
-	sess, err := startBridge(r.Context(), h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
+	sess, err := startBridge(r.Context(), h.SM, sessionID, req.Username, req.Password, remoteHost)
 	if err != nil {
 		writeStartBridgeError(w, req.Username, remoteHost, sessionID, err)
 		return
@@ -93,6 +92,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		"component", "auth",
 		"subsystem", "login",
 		"user", sess.User.Username,
+		"session_ref", session.DiagnosticRef(sess.SessionID),
+		"privileged", sess.Privileged,
 		"remote_host", remoteHost)
 
 	response := loginSuccessResponse{
@@ -152,6 +153,6 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 
 	h.SM.DeleteCookie(w)
 	h.SM.DeleteSession(ck.Value, sessions.ReasonLogout)
-	slog.Info("session logout", "cookie_cleared", true)
+	slog.Debug("session logout", "cookie_cleared", true)
 	w.WriteHeader(http.StatusOK)
 }

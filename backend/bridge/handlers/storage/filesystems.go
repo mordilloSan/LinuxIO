@@ -43,7 +43,7 @@ func isProtectedMount(mountpoint string) bool {
 // UnmountFilesystem unmounts a mounted filesystem, refusing protected system
 // mounts.
 func UnmountFilesystem(ctx context.Context, mountpoint string) (apischema.StorageMountResult, error) {
-	slog.Info("unmounting filesystem", "mountpoint", mountpoint)
+	slog.Debug("unmounting filesystem", "mountpoint", mountpoint)
 	result, err := unmountFilesystem(ctx, mountpoint)
 	if err != nil {
 		return apischema.StorageMountResult{}, err

@@ -154,12 +154,12 @@ func defaultExtractDestination(archivePath string) string {
 
 func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileCompressRequest) (FileCompressResult, error) {
 	if req.Format == "" || req.TargetPath == "" || len(req.Paths) == 0 {
-		return FileCompressResult{}, bridgeipc.NewError("missing format, destination, or paths", 400)
+		return FileCompressResult{}, fmt.Errorf("%w: missing format, destination, or paths", bridgeipc.ErrInvalidArgs)
 	}
 
 	extension, err := archiveExtension(req.Format)
 	if err != nil {
-		return FileCompressResult{}, bridgeipc.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
+		return FileCompressResult{}, fmt.Errorf("%w: unsupported format: %s", bridgeipc.ErrInvalidArgs, req.Format)
 	}
 	settings := taskSettingsForTask(ctx, task, store)
 	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
@@ -171,18 +171,15 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	targetPath := normalizeArchiveTargetPath(req.TargetPath, extension)
 	root, err := fsroot.Open()
 	if err != nil {
-		return FileCompressResult{}, bridgeipc.NewError("failed to access filesystem", 500)
+		return FileCompressResult{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 	targetRel, tempRel, tempPath, err := prepareArchiveTarget(root, targetPath)
 	if err != nil {
-		status := 500
-		message := fmt.Sprintf("cannot prepare archive target: %v", err)
 		if errors.Is(err, errArchiveDestinationIsDir) {
-			status = 400
-			message = "destination is a directory"
+			return FileCompressResult{}, fmt.Errorf("%w: destination is a directory", bridgeipc.ErrInvalidArgs)
 		}
-		return FileCompressResult{}, bridgeipc.NewError(message, status)
+		return FileCompressResult{}, fmt.Errorf("prepare archive target: %w", err)
 	}
 
 	size := &sizeEstimate{}
@@ -192,20 +189,20 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	opts := newTaskPhaseCallbacks(ctx, task, store, size, "compressing")
 	err = createArchive(req.Format, tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
 	if errors.Is(err, services.ErrAborted) {
-		slog.Info("compress aborted, cleaning up", "path", targetPath)
+		slog.Debug("compress aborted, cleaning up", "path", targetPath)
 		removeWithDebug(root, tempRel, tempPath)
 		return FileCompressResult{}, abortErr(ctx)
 	}
 	if err != nil {
 		removeWithDebug(root, tempRel, tempPath)
-		return FileCompressResult{}, bridgeipc.NewError(fmt.Sprintf("compression failed: %v", err), 500)
+		return FileCompressResult{}, fmt.Errorf("compression failed: %w", err)
 	}
 	if err := publishArchive(root, tempRel, targetRel); err != nil {
 		removeWithDebug(root, tempRel, tempPath)
 		if errors.Is(err, fs.ErrExist) {
-			return FileCompressResult{}, bridgeipc.NewError("an archive with that name already exists", 409)
+			return FileCompressResult{}, fmt.Errorf("%w: an archive with that name already exists", bridgeipc.ErrConflict)
 		}
-		return FileCompressResult{}, bridgeipc.NewError(fmt.Sprintf("finalize archive: %v", err), 500)
+		return FileCompressResult{}, fmt.Errorf("finalize archive: %w", err)
 	}
 
 	var archiveSize int64
@@ -221,21 +218,21 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileExtractRequest) (FileExtractResult, error) {
 	archivePath, destination, err := parseExtractRequest(req)
 	if err != nil {
-		return FileExtractResult{}, bridgeipc.NewError("missing archive path", 400)
+		return FileExtractResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return FileExtractResult{}, bridgeipc.NewError("failed to access filesystem", 500)
+		return FileExtractResult{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 
 	archiveStat, err := root.Root.Stat(fsroot.ToRel(archivePath))
 	if err != nil {
-		return FileExtractResult{}, bridgeipc.NewError(fmt.Sprintf("archive not found: %v", err), 404)
+		return FileExtractResult{}, fsError("stat archive", err)
 	}
 	if archiveStat.IsDir() {
-		return FileExtractResult{}, bridgeipc.NewError("path is a directory, not an archive", 400)
+		return FileExtractResult{}, fmt.Errorf("%w: path is a directory, not an archive", bridgeipc.ErrInvalidArgs)
 	}
 
 	settings := taskSettingsForTask(ctx, task, store)
@@ -253,7 +250,7 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(totalSize), "extracting")
 	err = services.ExtractArchive(archivePath, destination, opts, archiveExtractWorkers(settings))
 	if errors.Is(err, services.ErrAborted) {
-		slog.Info("extract aborted, cleaning up", "path", destination)
+		slog.Debug("extract aborted, cleaning up", "path", destination)
 		// The destination was created by this task, so it is ours to drop.
 		if removeErr := root.Root.RemoveAll(fsroot.ToRel(destination)); removeErr != nil {
 			slog.Debug("failed to clean up extraction directory", "path", destination, "error", removeErr)
@@ -261,7 +258,7 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 		return FileExtractResult{}, abortErr(ctx)
 	}
 	if err != nil {
-		return FileExtractResult{}, bridgeipc.NewError(fmt.Sprintf("extraction failed: %v", err), 500)
+		return FileExtractResult{}, fmt.Errorf("extraction failed: %w", err)
 	}
 
 	reindexDetached("archive_extract", destination)

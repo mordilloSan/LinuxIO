@@ -34,7 +34,7 @@ func (idx *Index) indexDirectory(ctx context.Context, adjustedPath string) error
 	}
 	defer func() {
 		if closeErr := dir.Close(); closeErr != nil {
-			slog.Warn("failed to close directory", "path", realPath, "err", closeErr)
+			slog.Warn("failed to close directory", "path", realPath, "error", closeErr)
 		}
 	}()
 
@@ -149,9 +149,9 @@ func readableDirEntries(dir *os.File, combinedPath string) ([]os.FileInfo, error
 		}
 		path := combinedPath + entry.Name()
 		if errors.Is(err, os.ErrNotExist) {
-			slog.Debug("skipping deleted filesystem entry", "path", path, "err", err)
+			slog.Debug("skipping deleted filesystem entry", "path", path, "error", err)
 		} else {
-			slog.Warn("cannot inspect filesystem entry; entry missing from scan", "path", path, "err", err)
+			slog.Warn("cannot inspect filesystem entry; entry missing from scan", "path", path, "error", err)
 		}
 	}
 	return files, nil
@@ -203,11 +203,11 @@ func (idx *Index) handleChildDirError(dirPath string, err error) error {
 		return err
 	}
 	if errors.Is(err, ErrNotIndexed) || errors.Is(err, os.ErrNotExist) {
-		slog.Debug("skipping directory", "path", dirPath, "err", err)
+		slog.Debug("skipping directory", "path", dirPath, "error", err)
 		return nil
 	}
 	idx.incrementSkippedDirs()
-	slog.Warn("cannot index directory; subtree missing from scan", "path", dirPath, "err", err)
+	slog.Warn("cannot index directory; subtree missing from scan", "path", dirPath, "error", err)
 	return nil
 }
 

@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
-	"os"
+	"io/fs"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -15,12 +14,31 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
+// fsError classifies a filesystem failure: a missing, existing, forbidden or
+// invalid path is the caller's problem, anything else stays a plain error.
+func fsError(op string, err error) error {
+	var sentinel error
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		sentinel = bridgeipc.ErrNotFound
+	case errors.Is(err, fs.ErrExist):
+		sentinel = bridgeipc.ErrConflict
+	case errors.Is(err, fs.ErrPermission):
+		sentinel = bridgeipc.ErrForbidden
+	case errors.Is(err, fs.ErrInvalid), errors.Is(err, services.ErrEditorFileNotEligible), errors.Is(err, services.ErrEditorFileContainsNUL):
+		sentinel = bridgeipc.ErrInvalidArgs
+	default:
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	return fmt.Errorf("%w: %s: %w", sentinel, op, err)
+}
+
 func listDirectory(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.DirectoryListing{}, err
 	}
 	if req.Path == "" {
-		return apischema.DirectoryListing{}, fmt.Errorf("bad_request:missing path")
+		return apischema.DirectoryListing{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 
 	listing, err := services.ListDirectory(ctx, req.Path)
@@ -28,7 +46,7 @@ func listDirectory(ctx context.Context, req apischema.PathRequest) (apischema.Di
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return apischema.DirectoryListing{}, err
 		}
-		return apischema.DirectoryListing{}, fmt.Errorf("bad_request:%w", err)
+		return apischema.DirectoryListing{}, fsError("list directory", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return apischema.DirectoryListing{}, err
@@ -41,14 +59,14 @@ func directoryChildren(ctx context.Context, req apischema.DirectoryChildrenReque
 		return apischema.DirectoryChildren{}, err
 	}
 	if req.Path == "" {
-		return apischema.DirectoryChildren{}, fmt.Errorf("bad_request:missing path")
+		return apischema.DirectoryChildren{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 	children, err := services.ListDirectoryChildren(ctx, req.Path, req.IncludeFiles)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return apischema.DirectoryChildren{}, err
 		}
-		return apischema.DirectoryChildren{}, fmt.Errorf("bad_request:%w", err)
+		return apischema.DirectoryChildren{}, fsError("list directory children", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return apischema.DirectoryChildren{}, err
@@ -61,14 +79,14 @@ func readText(ctx context.Context, req apischema.PathRequest) (apischema.TextFil
 		return apischema.TextFile{}, err
 	}
 	if req.Path == "" {
-		return apischema.TextFile{}, fmt.Errorf("bad_request:missing path")
+		return apischema.TextFile{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 	file, err := services.ReadEditorFile(ctx, req.Path)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return apischema.TextFile{}, err
 		}
-		return apischema.TextFile{}, fmt.Errorf("bad_request:%w", err)
+		return apischema.TextFile{}, fsError("read text file", err)
 	}
 	return apischema.TextFile{Content: string(file.Content), Version: file.Version, CanSave: file.CanSave}, nil
 }
@@ -105,19 +123,15 @@ func resourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.Re
 		return nil, err
 	}
 	if req.Path == "" {
-		return nil, bridgeipc.NewError("missing path", 400)
+		return nil, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 
 	statData, err := iteminfo.CollectStatInfo(ctx, req.Path)
 	if err != nil {
-		slog.Debug("error collecting stat info", "path", req.Path, "error", err)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, bridgeipc.NewError("path not found", 404)
-		}
-		return nil, fmt.Errorf("error collecting stat info: %w", err)
+		return nil, fsError("collect stat info", err)
 	}
 
 	return statData, nil
@@ -134,8 +148,7 @@ func existsBatch(ctx context.Context, req apischema.BatchPathRequest) (apischema
 
 	root, err := fsroot.Open()
 	if err != nil {
-		slog.Debug("error opening filesystem root", "error", err)
-		return response, fmt.Errorf("bad_request:failed to access filesystem")
+		return response, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 

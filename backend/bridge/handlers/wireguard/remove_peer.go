@@ -21,7 +21,7 @@ func RemovePeer(ctx context.Context, req apischema.WireGuardPeerRequest) error {
 	if err := validateInterfaceName(req.PeerID); err != nil {
 		return fmt.Errorf("invalid peer id: %w", err)
 	}
-	slog.Info("removing WireGuard peer", "interface", req.InterfaceName, "peer", req.PeerID)
+	slog.Debug("removing WireGuard peer", "interface", req.InterfaceName, "peer", req.PeerID)
 
 	peerPath := peerConfigPath(req.InterfaceName, req.PeerID)
 	file, err := readPeerFile(peerPath)

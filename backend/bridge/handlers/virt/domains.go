@@ -67,7 +67,7 @@ func lookupDomain(conn libvirtConn, name string) (libvirt.Domain, error) {
 	case err == nil:
 		return domain, nil
 	case isDomainMissing(err):
-		return libvirt.Domain{}, notFoundf("VM %q not found", name)
+		return libvirt.Domain{}, notFoundf("VM %q", name)
 	default:
 		return libvirt.Domain{}, fmt.Errorf("look up VM %q: %w", name, err)
 	}

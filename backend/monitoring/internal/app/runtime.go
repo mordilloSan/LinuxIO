@@ -16,7 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
+	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/collector"
@@ -87,6 +89,13 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 
+	// Registered before the slow start-up (store, first collection) so a SIGHUP
+	// from a verbose-mode toggle waits in the buffer for the event loop instead
+	// of taking the default action and killing the daemon.
+	hupCh := make(chan os.Signal, 1)
+	signal.Notify(hupCh, syscall.SIGHUP)
+	defer signal.Stop(hupCh)
+
 	historyPlugins, err := plugins.ParseHistory(opts.History)
 	if err != nil {
 		return err
@@ -103,8 +112,8 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 	a.store = persistentStore
-	slog.Info("Database ready", "path", persistentStore.Path())
-	slog.Info("Collector configured",
+	slog.Debug("database ready", "path", persistentStore.Path())
+	slog.Debug("collector configured",
 		"interval", opts.CollectorInterval,
 		"history", historyPlugins,
 		"history_intervals", opts.HistoryIntervals,
@@ -164,10 +173,6 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 		})
 	}
 
-	hupCh := make(chan os.Signal, 1)
-	signal.Notify(hupCh, syscall.SIGHUP)
-	defer signal.Stop(hupCh)
-
 	runErr := a.runEventLoop(runCtx, hupCh, serverErr, opts.ReloadConfig)
 
 	if err := a.shutdownHTTPServers(ctx); err != nil {
@@ -194,21 +199,21 @@ func (a *App) validateAndNormalizeOpts(opts *RunOptions) error {
 
 func (a *App) startHTTPServers(opts RunOptions, serverErr chan<- error) error {
 	if len(opts.Listeners) == 0 {
-		slog.Info("HTTP servers disabled")
+		slog.Debug("HTTP servers disabled")
 		return nil
 	}
 	for _, listenerOpts := range opts.Listeners {
 		if config.IsListenDisabled(listenerOpts.Address) {
-			slog.Info("HTTP listener disabled", "name", listenerOpts.Name, "address", listenerOpts.Address)
+			slog.Debug("HTTP listener disabled", "name", listenerOpts.Name, "address", listenerOpts.Address)
 			continue
 		}
 		listener, err := httpapi.OpenListener(listenerOpts.Address, listenerOpts.Mode)
 		if err != nil {
-			if listenerOpts.BestEffort {
-				slog.Warn("HTTP listener unavailable; continuing", "name", listenerOpts.Name, "address", listenerOpts.Address, "err", err)
-				continue
+			if !listenerOpts.BestEffort {
+				return err
 			}
-			return err
+			slog.Warn("HTTP listener unavailable, continuing", "name", listenerOpts.Name, "address", listenerOpts.Address, "error", err)
+			continue
 		}
 		handler := a.apiServer(opts.CommandExecutor).HandlerFor(a.CollectorInterval, listenerOpts.APIs, listenerOpts.Plugins)
 		var connContext func(context.Context, net.Conn) context.Context
@@ -278,7 +283,7 @@ func (a *App) runEventLoop(ctx context.Context, hupCh <-chan os.Signal, serverEr
 	for running {
 		select {
 		case <-ctx.Done():
-			slog.Info("Shutting down standalone agent")
+			slog.Debug("shutting down standalone agent")
 			running = false
 		case <-hupCh:
 			a.handleSIGHUP(reloadFn)
@@ -293,12 +298,13 @@ func (a *App) runEventLoop(ctx context.Context, hupCh <-chan os.Signal, serverEr
 }
 
 func (a *App) handleSIGHUP(reloadFn func() error) {
+	logging.SetDebug(verbosemode.Enabled())
 	if reloadFn == nil {
-		slog.Info("SIGHUP received; no config reload hook configured")
+		slog.Debug("SIGHUP received; no config reload hook configured")
 		return
 	}
 	if err := reloadFn(); err != nil {
-		slog.Error("Config reload failed", "err", err)
+		slog.Error("config reload failed", "error", err)
 	}
 }
 
@@ -310,7 +316,7 @@ func (a *App) ReloadRuntime(opts ReloadOptions) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("Config reloaded",
+	slog.Info("config reloaded",
 		"interval", interval,
 		"history", historyPlugins,
 		"source", opts.ConfigSource,
@@ -348,7 +354,7 @@ func replaceIntervalUpdate(updates chan time.Duration, interval time.Duration) {
 func (a *App) startManagers(ctx context.Context) {
 	if a.gpuManager != nil {
 		if err := a.gpuManager.Start(ctx); err != nil {
-			slog.Debug("GPU", "err", err)
+			slog.Debug("GPU manager start failed", "error", err)
 			a.gpuManager.Stop()
 		}
 	}
@@ -375,7 +381,7 @@ func (a *App) runCollector(ctx context.Context, interval time.Duration, interval
 			ticker.Reset(nextInterval)
 		case tickTime := <-ticker.C:
 			if err := a.collectAndPersist(ctx, tickTime.UTC()); err != nil {
-				slog.Error("collector tick failed", "err", err)
+				slog.Error("collector tick failed", "error", err)
 			}
 		}
 	}
@@ -491,7 +497,7 @@ func (a *App) StatusMeta() monitoringapi.Status {
 	}
 	var dbSize int64
 	if files, err := store.DatabaseFiles(a.dataDir); err != nil {
-		slog.Debug("database size unavailable", "err", err)
+		slog.Debug("database size unavailable", "error", err)
 	} else {
 		for _, file := range files {
 			dbSize += file.Size
@@ -687,8 +693,8 @@ func (a *App) logSmartRefreshResult(err error) {
 			slog.Info("smart refresh recovered")
 		}
 	case previousError != currentError:
-		slog.Warn("smart refresh failed", "err", err)
+		slog.Warn("smart refresh failed", "error", err)
 	default:
-		slog.Debug("smart refresh still failing", "err", err)
+		slog.Debug("smart refresh still failing", "error", err)
 	}
 }

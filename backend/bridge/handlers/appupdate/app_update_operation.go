@@ -62,14 +62,14 @@ func runAppUpdateTask(ctx context.Context, rt runtime.Runtime, task *bridgeipc.T
 
 func parseAppUpdateRequest(payload apischema.AppUpdateRequest) (appUpdateRequest, error) {
 	if !validRunIDRE.MatchString(payload.RunID) {
-		return appUpdateRequest{}, bridgeipc.NewError("invalid run_id format", 400)
+		return appUpdateRequest{}, fmt.Errorf("%w: run_id format", bridgeipc.ErrInvalidArgs)
 	}
 
 	req := appUpdateRequest{runID: payload.RunID}
 	if payload.Version != nil {
 		req.version = strings.TrimSpace(*payload.Version)
 		if !validReleaseVersionRE.MatchString(req.version) {
-			return appUpdateRequest{}, bridgeipc.NewError("invalid update version", 400)
+			return appUpdateRequest{}, fmt.Errorf("%w: update version", bridgeipc.ErrInvalidArgs)
 		}
 	}
 	return req, nil
@@ -82,23 +82,23 @@ func resolveAppUpdateVersion(ctx context.Context, req appUpdateRequest) (string,
 
 	latest, err := fetchLatestVersion(ctx)
 	if err != nil {
-		return "", bridgeipc.NewError(fmt.Sprintf("failed to fetch latest version: %v", err), 500)
+		return "", fmt.Errorf("fetch latest version: %w", err)
 	}
 	if !validReleaseVersionRE.MatchString(latest) {
-		return "", bridgeipc.NewError("latest release has an invalid version tag", 500)
+		return "", errors.New("latest release has an invalid version tag")
 	}
-	slog.Info("resolved latest app version", "component", "control", "subsystem", "app_update", "run_id", req.runID, "version", latest)
+	slog.Debug("resolved latest app version", "component", "control", "subsystem", "app_update", "run_id", req.runID, "version", latest)
 	return latest, nil
 }
 
 func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, runID, version string) (AppUpdateResult, error) {
-	slog.Info("app update task starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
+	slog.Debug("app update task starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
 
 	ownerUID := task.Owner().UID
 	startedAt := time.Now().Unix()
 	relay := &taskOutputWriter{task: task}
 	if err := writeStatusFile(runID, ownerUID, updatestatus.StatusRunning, nil, "", startedAt, 0); err != nil {
-		return AppUpdateResult{}, bridgeipc.NewError(fmt.Sprintf("persist initial update status: %v", err), 500)
+		return AppUpdateResult{}, fmt.Errorf("persist initial update status: %w", err)
 	}
 
 	reportAppUpdateProgress(task, relay, "preparing", fmt.Sprintf("Downloading and verifying install script for %s...", version))
@@ -118,6 +118,7 @@ func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.T
 	if err := finishSuccessfulUpdate(runID, ownerUID, task, relay, startedAt, finishedAt); err != nil {
 		return AppUpdateResult{}, err
 	}
+	slog.Info("app updated", "component", "control", "subsystem", "app_update", "run_id", runID, "version", version)
 	reloadAndRestartAfterUpdate(runID, task.Done())
 	return AppUpdateResult{ExitCode: 0}, nil
 }
@@ -144,9 +145,9 @@ func finishFailedUpdate(runID string, ownerUID uint32, version string, relay *ta
 func finishSuccessfulUpdate(runID string, ownerUID uint32, task *bridgeipc.Task, relay *taskOutputWriter, startedAt, finishedAt int64) error {
 	exitCode := 0
 	if err := writeStatusFile(runID, ownerUID, updatestatus.StatusOK, &exitCode, "", startedAt, finishedAt); err != nil {
-		message := fmt.Sprintf("persist completed update status: %v", err)
-		_, _ = fmt.Fprintf(relay, "ERROR: %s\n", message)
-		return bridgeipc.NewError(message, 500)
+		err = fmt.Errorf("persist completed update status: %w", err)
+		_, _ = fmt.Fprintf(relay, "ERROR: %s\n", err)
+		return err
 	}
 	reportAppUpdateProgress(task, relay, "installed", "Installation complete")
 	return nil
@@ -154,7 +155,7 @@ func finishSuccessfulUpdate(runID string, ownerUID uint32, task *bridgeipc.Task,
 
 func reloadAndRestartAfterUpdate(runID string, taskDone <-chan struct{}) {
 	ctx, cancel := detachedPostUpdateContext()
-	slog.Info("scheduling service restart", "component", "control", "subsystem", "app_update", "run_id", runID)
+	slog.Debug("scheduling service restart", "component", "control", "subsystem", "app_update", "run_id", runID)
 	go func() {
 		defer cancel()
 		select {

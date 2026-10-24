@@ -184,7 +184,7 @@ func CreateLogicalVolume(ctx context.Context, vgName, lvName, size string) (apis
 	if !validSize.MatchString(size) {
 		return apischema.SuccessPathResponse{}, fmt.Errorf("invalid size format (use e.g., 10G, 500M)")
 	}
-	slog.Info("creating logical volume", "volume_group", vgName, "name", lvName, "size", size)
+	slog.Debug("creating logical volume", "volume_group", vgName, "name", lvName, "size", size)
 	cmd := exec.CommandContext(ctx, "lvcreate", "-L", size, "-n", lvName, vgName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -217,7 +217,7 @@ func DeleteLogicalVolume(ctx context.Context, vgName, lvName string) (apischema.
 			return apischema.SuccessResponse{}, fmt.Errorf("logical volume %s is mounted at %s - unmount first", lvPath, p.Mountpoint)
 		}
 	}
-	slog.Info("deleting logical volume", "path", lvPath)
+	slog.Debug("deleting logical volume", "path", lvPath)
 	cmd := exec.CommandContext(ctx, "lvremove", "-f", lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -242,7 +242,7 @@ func ResizeLogicalVolume(ctx context.Context, vgName, lvName, newSize string) (a
 
 	lvPath := fmt.Sprintf("/dev/%s/%s", vgName, lvName)
 	// Use lvresize -r to also resize filesystem if present.
-	slog.Info("resizing logical volume", "path", lvPath, "size", newSize)
+	slog.Debug("resizing logical volume", "path", lvPath, "size", newSize)
 	cmd := exec.CommandContext(ctx, "lvresize", "-r", "-L", newSize, lvPath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

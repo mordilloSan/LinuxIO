@@ -62,7 +62,7 @@ func (p *WireProgress) Summary(stats IndexRunStats) {
 
 func (p *WireProgress) emit(evt indexWireEvent) {
 	if err := json.MarshalEncode(p.enc, evt); err != nil {
-		slog.Warn("failed to emit index progress event", "err", err)
+		slog.Warn("failed to emit index progress event", "error", err)
 	}
 }
 

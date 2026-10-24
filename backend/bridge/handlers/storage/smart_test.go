@@ -304,8 +304,7 @@ func TestSmartTestDeadlineFailsTask(t *testing.T) {
 	}, 20*time.Millisecond)
 
 	_, err := state.pollUntilDone(t.Context())
-	var taskErr *bridgeipc.Error
-	if !errors.As(err, &taskErr) || taskErr.Message != errSmartTestTimeout.Error() {
+	if !errors.Is(err, errSmartTestTimeout) {
 		t.Fatalf("err = %v, want timeout task error", err)
 	}
 }

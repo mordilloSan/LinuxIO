@@ -30,6 +30,8 @@ const InitialTaskSettleTimeout = 25 * time.Millisecond
 var (
 	ErrInvalidArgs     = errors.New("invalid arguments")
 	ErrForbidden       = errors.New("forbidden")
+	ErrNotFound        = errors.New("not found")
+	ErrConflict        = errors.New("conflict")
 	ErrRouteNotFound   = errors.New("route not found")
 	ErrRateLimited     = errors.New("rate limit exceeded")
 	ErrQueueFull       = errors.New("task queue full")
@@ -269,9 +271,6 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) (di
 		default:
 			msg, level = "route failed", failureLevel(dispatchErr)
 		}
-		if dispatchErr != nil {
-			msg += ": " + dispatchErr.Error() // in MESSAGE too, so plain journalctl shows the reason
-		}
 		slog.Log(ctx, level, msg,
 			"route", routeName,
 			"user", req.Owner.Username,
@@ -303,11 +302,6 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) (di
 		}
 		req.DecodedValue = decoded
 	}
-
-	slog.Debug("route started",
-		"route", req.Route,
-		"mode", route.Mode,
-		"user", req.Owner.Username)
 
 	var err error
 	switch route.Mode {
@@ -778,8 +772,10 @@ func StatusCode(err error) int {
 		return 400
 	case errors.Is(err, ErrForbidden):
 		return 403
-	case errors.Is(err, ErrRouteNotFound):
+	case errors.Is(err, ErrNotFound), errors.Is(err, ErrRouteNotFound):
 		return 404
+	case errors.Is(err, ErrConflict):
+		return 409
 	case errors.Is(err, ErrRateLimited):
 		return 429
 	case errors.Is(err, ErrQueueFull):

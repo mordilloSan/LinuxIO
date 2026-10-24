@@ -353,7 +353,7 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (apischema.StorageMountRe
 	}
 
 	// Password safety: log a fixed summary only — never the options/credentials.
-	slog.Info("mounting CIFS share", "source", source, "mountpoint", p.mountpoint)
+	slog.Debug("mounting CIFS share", "source", source, "mountpoint", p.mountpoint)
 	out, err := cifsMountRunner(ctx, cifsMountCommandTimeout, "mount", p.mountpoint)
 	if err != nil {
 		// Roll back so we never leave a broken boot entry behind.

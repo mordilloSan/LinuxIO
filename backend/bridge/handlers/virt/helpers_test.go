@@ -602,9 +602,8 @@ func cloudSeedTestDomainXML() string {
 // errorCode reads the bridge error code tests assert on; fallback when the
 // error carries none.
 func errorCode(err error, fallback int) int {
-	var bridgeErr *bridgeipc.Error
-	if errors.As(err, &bridgeErr) && bridgeErr.Code != 0 {
-		return bridgeErr.Code
+	if code := bridgeipc.StatusCode(err); code != 500 {
+		return code
 	}
 	return fallback
 }

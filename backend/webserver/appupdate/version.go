@@ -67,7 +67,7 @@ func CheckForUpdate(ctx context.Context) *UpdateInfo {
 
 	// Compare versions properly - only show update if latest is actually newer
 	if ver.IsNewer(latest, current) {
-		slog.Info("update available", "current_version", current, "latest_version", latest)
+		slog.Debug("update available", "current_version", current, "latest_version", latest)
 		return &UpdateInfo{
 			Available:      true,
 			CurrentVersion: current,

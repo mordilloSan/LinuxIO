@@ -204,7 +204,7 @@ func (s *Store) PruneOldIndexes(ctx context.Context, keepLatest int) (PruneStats
 	stats.Duration = time.Since(start).Truncate(time.Millisecond)
 
 	if err := incrementalVacuum(ctx, db); err != nil {
-		slog.Warn("incremental vacuum failed after pruning", "err", err)
+		slog.Warn("incremental vacuum failed after pruning", "error", err)
 	}
 
 	return stats, nil
@@ -221,7 +221,7 @@ func deleteIndexesWithFTSRebuild(ctx context.Context, db *sql.DB, deleteQuery st
 	}
 	defer func() {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			slog.Warn("deleteIndexesWithFTSRebuild rollback failed", "err", rollbackErr)
+			slog.Warn("deleteIndexesWithFTSRebuild rollback failed", "error", rollbackErr)
 		}
 	}()
 

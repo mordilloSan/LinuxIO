@@ -66,7 +66,7 @@ func PeerQRCode(ctx context.Context, req apischema.WireGuardPeerRequest) (apisch
 	}
 
 	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
-	slog.Info("generated peer QR code", "interface", req.InterfaceName, "peer", req.PeerID)
+	slog.Debug("generated peer QR code", "interface", req.InterfaceName, "peer", req.PeerID)
 	return apischema.QRCodeResponse{QRCode: dataURI}, nil
 }
 
@@ -75,7 +75,7 @@ func PeerConfigDownload(ctx context.Context, req apischema.WireGuardPeerRequest)
 	if err != nil {
 		return apischema.PeerConfigDownload{}, err
 	}
-	slog.Info("served peer config download", "interface", req.InterfaceName, "peer", req.PeerID, "size", len(content))
+	slog.Debug("served peer config download", "interface", req.InterfaceName, "peer", req.PeerID, "size", len(content))
 	return apischema.PeerConfigDownload{
 		Content:  content,
 		Filename: peerExportFilename(file.Name, file.ID),

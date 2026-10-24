@@ -52,7 +52,7 @@ func OpenContext(parent context.Context, path string) (*sql.DB, error) {
 	var journalMode string
 	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode = WAL;`).Scan(&journalMode); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
-			slog.Warn("failed to close DB after journal mode setup error", "err", closeErr)
+			slog.Warn("failed to close DB after journal mode setup error", "error", closeErr)
 		}
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func OpenContext(parent context.Context, path string) (*sql.DB, error) {
 
 	if err := initSchema(ctx, db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
-			slog.Warn("failed to close DB after schema init error", "err", closeErr)
+			slog.Warn("failed to close DB after schema init error", "error", closeErr)
 		}
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func quarantineDatabaseFiles(dbPath, reason string) error {
 	}
 	for _, sidecar := range []string{"-wal", "-shm"} {
 		if err := os.Rename(dbPath+sidecar, dbPath+suffix+sidecar); err != nil && !errors.Is(err, os.ErrNotExist) {
-			slog.Warn("failed to quarantine database sidecar", "path", dbPath+sidecar, "err", err)
+			slog.Warn("failed to quarantine database sidecar", "path", dbPath+sidecar, "error", err)
 		}
 	}
 	slog.Warn("database quarantined", "path", dbPath+suffix, "reason", reason)

@@ -3,8 +3,8 @@ package filebrowser
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,12 +58,8 @@ func TestResourceStatReturnsStructuredClientErrors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := resourceStat(context.Background(), apischema.PathRequest{Path: tc.path})
-			var apiErr *bridgeipc.Error
-			if !errors.As(err, &apiErr) {
-				t.Fatalf("resourceStat() error = %v, want *bridgeipc.Error", err)
-			}
-			if apiErr.Code != tc.code {
-				t.Fatalf("resourceStat() code = %d, want %d", apiErr.Code, tc.code)
+			if got := bridgeipc.StatusCode(err); got != tc.code {
+				t.Fatalf("resourceStat() code = %d (%v), want %d", got, err, tc.code)
 			}
 		})
 	}
@@ -121,4 +117,18 @@ func TestExistsBatchReportsExistingPaths(t *testing.T) {
 	if resp.Existing[1].Path != sub || !resp.Existing[1].IsDir {
 		t.Fatalf("existing[1] = %+v", resp.Existing[1])
 	}
+}
+
+func TestFilesystemFailuresMapToStatusSentinels(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+
+	_, missingErr := listDirectory(context.Background(), apischema.PathRequest{Path: filepath.Join(dir, "missing")})
+	_, notDirErr := listDirectory(context.Background(), apischema.PathRequest{Path: file})
+	_, noPathErr := listDirectory(context.Background(), apischema.PathRequest{})
+	require.Equal(t, 404, bridgeipc.StatusCode(missingErr), "%v", missingErr)
+	require.Equal(t, 400, bridgeipc.StatusCode(notDirErr), "%v", notDirErr)
+	require.Equal(t, 400, bridgeipc.StatusCode(noPathErr), "%v", noPathErr)
+	require.Equal(t, 500, bridgeipc.StatusCode(fsError("op", io.ErrUnexpectedEOF)))
 }

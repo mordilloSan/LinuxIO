@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -22,14 +23,14 @@ func TestLoggerMiddlewareLogsAPIRequest(t *testing.T) {
 
 	output := logs.String()
 	requireContains(t, output,
-		"api http succeeded: POST /auth/login",
+		`msg="http request completed"`,
 		"request_kind=api_http",
+		"method=POST",
 		"path=/auth/login",
 		"status=200",
-		"outcome=success",
 		"duration=",
 	)
-	requireNotContains(t, output, "next=", "?next=")
+	requireNotContains(t, output, "next=", "?next=", "outcome=")
 }
 
 func TestLoggerMiddlewareLogsAssetRequest(t *testing.T) {
@@ -45,14 +46,41 @@ func TestLoggerMiddlewareLogsAssetRequest(t *testing.T) {
 
 	output := logs.String()
 	requireContains(t, output,
-		"asset request succeeded: GET /assets/*",
+		`msg="http request completed"`,
 		"request_kind=asset",
+		"method=GET",
 		"path=/assets/*",
 		"status=200",
-		"outcome=success",
 		"duration=",
 	)
-	requireNotContains(t, output, "cache=1", "?cache=1")
+	requireNotContains(t, output, "cache=1", "?cache=1", "outcome=")
+}
+
+func TestLoggerMiddlewareLevels(t *testing.T) {
+	// Swaps slog.Default through captureWebLogs, so it must not run in parallel.
+	for _, tt := range []struct {
+		status int
+		want   []string
+	}{
+		{http.StatusOK, []string{"level=DEBUG", `msg="http request completed"`}},
+		{http.StatusNotFound, []string{"level=WARN", `msg="http request failed"`}},
+		{http.StatusInternalServerError, []string{"level=ERROR", `msg="http request failed"`}},
+	} {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			logs := captureWebLogs(t)
+
+			handler := LoggerMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+			}))
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/x", nil))
+
+			output := logs.String()
+			if got := strings.Count(output, "\n"); got != 1 {
+				t.Fatalf("expected exactly one log record, got %d: %q", got, output)
+			}
+			requireContains(t, output, append(tt.want, "status="+strconv.Itoa(tt.status))...)
+		})
+	}
 }
 
 func captureWebLogs(t *testing.T) *bytes.Buffer {

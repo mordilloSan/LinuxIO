@@ -83,9 +83,9 @@ func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer, tail *o
 	for sc.Scan() {
 		line := ansiRE.ReplaceAllString(sc.Text(), "")
 		if isInfo {
-			slog.Info(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
+			slog.Debug("app update output", "line", line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
 		} else {
-			slog.Error(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
+			slog.Error("app update output", "line", line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
 		}
 		tail.Add(line)
 		if relay != nil {
@@ -217,7 +217,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("download checksum failed: %w", err)
 	}
-	slog.Info("downloaded expected checksum", "component", "control", "subsystem", "app_update", "checksum", expectedChecksum)
+	slog.Debug("downloaded expected checksum", "component", "control", "subsystem", "app_update", "checksum", expectedChecksum)
 
 	// 2) Download install script
 	slog.Debug("downloading install script", "component", "control", "subsystem", "app_update", "path", scriptURL)
@@ -234,7 +234,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	if actualChecksum != expectedChecksum {
 		return fmt.Errorf("checksum verification failed: script integrity compromised (expected %s, got %s)", expectedChecksum, actualChecksum)
 	}
-	slog.Info("checksum verified successfully")
+	slog.Debug("checksum verified successfully")
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
 	if tempUnitTestErr := ensureUpdaterWritablePathDirs(); tempUnitTestErr != nil {
@@ -243,7 +243,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 
 	unit := fmt.Sprintf("linuxio-updater-%d.service", time.Now().UnixNano())
 	systemdRunArgs := buildInstallCommandArgs(unit, scriptArgs(ver)...)
-	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
+	slog.Debug("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
 
 	cmd := exec.CommandContext(ctx, "systemd-run", systemdRunArgs...)
 

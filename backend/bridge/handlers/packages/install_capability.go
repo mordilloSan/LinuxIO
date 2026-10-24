@@ -128,7 +128,7 @@ func RegisterCapabilityTaskRoutes(rt runtime.Runtime, router *bridgeipc.Router) 
 func runInstallCapabilityTask(ctx context.Context, task *bridgeipc.Task, user session.User, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
 	name := strings.TrimSpace(req.Capability)
 	if name == "" {
-		return apischema.InstallCapabilityResult{}, bridgeipc.NewError("capability name required", 400)
+		return apischema.InstallCapabilityResult{}, fmt.Errorf("%w: capability name", bridgeipc.ErrInvalidArgs)
 	}
 
 	result, err := installCapability(ctx, task, user, name)
@@ -136,7 +136,7 @@ func runInstallCapabilityTask(ctx context.Context, task *bridgeipc.Task, user se
 		if ctx.Err() != nil {
 			return apischema.InstallCapabilityResult{}, context.Canceled
 		}
-		return apischema.InstallCapabilityResult{}, bridgeipc.NewError(err.Error(), 500)
+		return apischema.InstallCapabilityResult{}, err
 	}
 	return result, nil
 }
@@ -176,13 +176,13 @@ func installCapability(ctx context.Context, task *bridgeipc.Task, user session.U
 	if service != "" {
 		if spec.Install.EnableService {
 			reportProgress(task, stageEnableService, fmt.Sprintf("Enabling %s", service), pctEnable)
-			slog.Info("Enabling capability service.", "capability", name, "unit", service)
+			slog.Debug("enabling capability service", "capability", name, "unit", service)
 			if err := capabilityEnableService(ctx, service); err != nil {
 				return apischema.InstallCapabilityResult{}, fmt.Errorf("enable %s: %w", service, err)
 			}
 		}
 		reportProgress(task, stageStartService, fmt.Sprintf("Starting %s", service), pctStart)
-		slog.Info("Starting capability service.", "capability", name, "unit", service)
+		slog.Debug("starting capability service", "capability", name, "unit", service)
 		if err := capabilityStartService(ctx, service); err != nil {
 			return apischema.InstallCapabilityResult{}, fmt.Errorf("start %s: %w", service, err)
 		}
@@ -194,6 +194,7 @@ func installCapability(ctx context.Context, task *bridgeipc.Task, user session.U
 
 	reportProgress(task, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
 	available, errMsg := capabilityDetectWithRetry(ctx, spec, user, detectRetryTimeout)
+	slog.Info("capability installed", "capability", name, "available", available)
 	return apischema.InstallCapabilityResult{
 		Available: available,
 		Error:     apischema.Optional(errMsg),
@@ -217,7 +218,7 @@ func installCapabilityPackages(ctx context.Context, task *bridgeipc.Task, capabi
 	for idx, packageName := range packages {
 		installStart, installEnd := packageInstallProgressRange(idx, len(packages))
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing %s", packageName), installStart)
-		slog.Info("Installing capability package.", "capability", capabilityName, "package", packageName)
+		slog.Debug("installing capability package", "capability", capabilityName, "package", packageName)
 		if err := capabilityInstallPackage(ctx, packageName, capabilityInstallReporter(task, packageName, installStart, installEnd)); err != nil {
 			return fmt.Errorf("install %s: %w", packageName, err)
 		}
@@ -233,7 +234,7 @@ func installOptionalCapabilityPackage(ctx context.Context, task *bridgeipc.Task,
 
 	packageName := strings.TrimSpace(spec.OptionalPackageRHEL)
 	reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing optional package %s", packageName), pctInstallEnd)
-	slog.Info("Installing optional capability package.", "capability", capabilityName, "package", packageName)
+	slog.Debug("installing optional capability package", "capability", capabilityName, "package", packageName)
 	err := capabilityInstallPackage(ctx, packageName, capabilityInstallReporter(task, packageName, pctInstallEnd, pctInstallEnd))
 	if err == nil {
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installed optional package %s", packageName), pctInstallEnd)
@@ -257,7 +258,7 @@ func runCapabilityPostInstall(ctx context.Context, task *bridgeipc.Task, command
 	}
 	args := append([]string(nil), command.Args...)
 	reportProgress(task, stagePostInstall, fmt.Sprintf("Running %s %s", command.Name, strings.Join(args, " ")), pctPostInstall)
-	slog.Info("Running capability post-install command.", "command", command.Name, "args", args)
+	slog.Debug("running capability post-install command", "command", command.Name, "args", args)
 	if err := runCapabilityCommand(ctx, command.Name, args, func(output InstallCapabilityOutput) {
 		reportOutput(task, stagePostInstall, fmt.Sprintf("Running %s", command.Name), pctPostInstall, output)
 	}); err != nil {

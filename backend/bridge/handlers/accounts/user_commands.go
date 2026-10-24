@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 // lookupUser is a seam for tests.
@@ -18,7 +19,7 @@ var lookupUser = osuser.Lookup
 // system and nologin accounts that ListUsers filters out.
 func requireUser(username string) error {
 	if _, err := lookupUser(username); err != nil {
-		return fmt.Errorf("user not found: %s: %w", username, err)
+		return fmt.Errorf("%w: user %s: %w", bridgeipc.ErrNotFound, username, err)
 	}
 	return nil
 }
@@ -26,10 +27,10 @@ func requireUser(username string) error {
 // CreateUser creates a new system user
 func CreateUser(ctx context.Context, req apischema.CreateUserRequest) error {
 	if req.Username == "" {
-		return fmt.Errorf("username is required")
+		return fmt.Errorf("%w: username", bridgeipc.ErrInvalidArgs)
 	}
 	if req.Password == "" {
-		return fmt.Errorf("password is required")
+		return fmt.Errorf("%w: password", bridgeipc.ErrInvalidArgs)
 	}
 
 	args := []string{}
@@ -79,11 +80,11 @@ func CreateUser(ctx context.Context, req apischema.CreateUserRequest) error {
 // DeleteUser deletes a system user
 func DeleteUser(ctx context.Context, username string) error {
 	if username == "" {
-		return fmt.Errorf("username is required")
+		return fmt.Errorf("%w: username", bridgeipc.ErrInvalidArgs)
 	}
 
 	if username == "root" {
-		return fmt.Errorf("cannot delete root user")
+		return fmt.Errorf("%w: delete root user", bridgeipc.ErrForbidden)
 	}
 
 	// Check if user exists
@@ -103,11 +104,11 @@ func DeleteUser(ctx context.Context, username string) error {
 // ModifyUser modifies user properties
 func ModifyUser(ctx context.Context, req apischema.ModifyUserRequest) error {
 	if req.Username == "" {
-		return fmt.Errorf("username is required")
+		return fmt.Errorf("%w: username", bridgeipc.ErrInvalidArgs)
 	}
 
 	if req.Username == "root" {
-		return fmt.Errorf("cannot modify root user")
+		return fmt.Errorf("%w: modify root user", bridgeipc.ErrForbidden)
 	}
 
 	// Check if user exists
@@ -158,10 +159,10 @@ func modifyUserArgs(req apischema.ModifyUserRequest) []string {
 // ChangePassword changes a user's password
 func ChangePassword(ctx context.Context, username, password string) error {
 	if username == "" {
-		return fmt.Errorf("username is required")
+		return fmt.Errorf("%w: username", bridgeipc.ErrInvalidArgs)
 	}
 	if password == "" {
-		return fmt.Errorf("password is required")
+		return fmt.Errorf("%w: password", bridgeipc.ErrInvalidArgs)
 	}
 
 	// Check if user exists
@@ -175,11 +176,11 @@ func ChangePassword(ctx context.Context, username, password string) error {
 // LockUser locks a user account
 func LockUser(ctx context.Context, username string) error {
 	if username == "" {
-		return fmt.Errorf("username is required")
+		return fmt.Errorf("%w: username", bridgeipc.ErrInvalidArgs)
 	}
 
 	if username == "root" {
-		return fmt.Errorf("cannot lock root user")
+		return fmt.Errorf("%w: lock root user", bridgeipc.ErrForbidden)
 	}
 
 	// Check if user exists
@@ -199,7 +200,7 @@ func LockUser(ctx context.Context, username string) error {
 // UnlockUser unlocks a user account
 func UnlockUser(ctx context.Context, username string) error {
 	if username == "" {
-		return fmt.Errorf("username is required")
+		return fmt.Errorf("%w: username", bridgeipc.ErrInvalidArgs)
 	}
 
 	// Check if user exists

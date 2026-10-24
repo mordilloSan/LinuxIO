@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -65,8 +67,9 @@ func Run(args []string) int {
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		verbosemode.ReloadOnSIGHUP(ctx)
 		if err := runServerFunc(ctx, cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+			logging.ReportFatal(err)
 			return 1
 		}
 		return 0

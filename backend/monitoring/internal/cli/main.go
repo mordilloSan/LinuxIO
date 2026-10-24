@@ -68,7 +68,7 @@ func runDaemon(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := daemon.Run(ctx, *configPath); err != nil {
-		slog.Error("daemon exited with error", "err", err)
+		slog.Error("daemon exited with error", "error", err)
 		return 1
 	}
 	slog.Info("shutdown complete")

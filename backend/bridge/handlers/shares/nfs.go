@@ -369,6 +369,6 @@ func runExportfsReload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("exportfs -ra failed: %s", strings.TrimSpace(string(out)))
 	}
-	slog.Info("NFS exports applied successfully")
+	slog.Debug("NFS exports applied successfully")
 	return nil
 }

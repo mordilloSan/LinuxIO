@@ -41,12 +41,12 @@ func (c *nvmlCollector) isGPUActive(bdf string) bool {
 	statusPath := filepath.Join("/sys/bus/pci/devices", bdf, "power/runtime_status")
 	status, err := os.ReadFile(statusPath)
 	if err != nil {
-		slog.Debug("NVML: Can't read runtime_status", "bdf", bdf, "err", err)
+		slog.Debug("cannot read runtime_status", "component", "nvml", "bdf", bdf, "error", err)
 		return true // Assume active if we can't read status
 	}
 	statusStr := strings.TrimSpace(string(status))
 	if statusStr != "active" && statusStr != "resuming" {
-		slog.Debug("NVML: GPU not active", "bdf", bdf, "status", statusStr)
+		slog.Debug("GPU not active", "component", "nvml", "bdf", bdf, "status", statusStr)
 		return false
 	}
 
@@ -59,7 +59,7 @@ func (c *nvmlCollector) isGPUActive(bdf string) bool {
 		if err == nil {
 			pstateStr := strings.TrimSpace(string(pstate))
 			if pstateStr != "D0" {
-				slog.Debug("NVML: GPU not in D0 state", "bdf", bdf, "pstate", pstateStr)
+				slog.Debug("GPU not in D0 state", "component", "nvml", "bdf", bdf, "pstate", pstateStr)
 				return false
 			}
 		}

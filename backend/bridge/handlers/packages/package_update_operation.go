@@ -185,7 +185,7 @@ func isRealWorkStatus(status uint32) bool {
 
 func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apischema.PackageUpdateRequest) (PackageUpdateResult, error) {
 	if len(req.PackageIDs) == 0 {
-		return PackageUpdateResult{}, bridgeipc.NewError("no packages specified", 400)
+		return PackageUpdateResult{}, fmt.Errorf("%w: packages", bridgeipc.ErrInvalidArgs)
 	}
 	report := taskPkgUpdateReporter(task)
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
@@ -208,7 +208,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apische
 		if ctx.Err() != nil {
 			return PackageUpdateResult{}, context.Canceled
 		}
-		return PackageUpdateResult{}, bridgeipc.NewError(err.Error(), 500)
+		return PackageUpdateResult{}, err
 	}
 
 	result := PackageUpdateResult{Updated: len(req.PackageIDs)}
@@ -252,6 +252,7 @@ func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, repor
 		pkgkit.LogClose(session.Context(), trans)
 		if err == nil {
 			updated++
+			slog.Debug("package updated", "package_id", packageID)
 			continue
 		}
 		if session.Context().Err() != nil {
@@ -271,6 +272,9 @@ func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, repor
 		})
 	}
 
+	if updated > 0 {
+		slog.Info("packages updated", "count", updated, "failed", len(failures))
+	}
 	if len(failures) == 0 {
 		return nil
 	}
@@ -295,7 +299,7 @@ func updateOnePackageWithProgress(
 	report pkgUpdateReporter,
 ) error {
 	// Flag 0 = no special flags (install normally).
-	slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_id", packageID)
+	slog.Debug("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_id", packageID)
 	if err := trans.Call("UpdatePackages", uint64(0), []string{packageID}); err != nil {
 		return err
 	}
@@ -458,7 +462,7 @@ func packageUpdateSignalError(sig *dbusclient.Signal) error {
 }
 
 func handleFinishedSignal(report pkgUpdateReporter) {
-	slog.Info("Finished signal received")
+	slog.Debug("finished signal received")
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Finished",

@@ -95,7 +95,7 @@ func (m *Manager) Refresh(ctx context.Context, dockerManager ContainerRuntime) {
 	}
 	m.Details.Cores = cores
 	m.Details.Threads = threads
-	slog.Info("Detected CPU", "model", m.Details.CpuModel, "cores", cores, "threads", threads, "arch", m.Details.Arch)
+	slog.Debug("CPU detected", "model", m.Details.CpuModel, "cores", cores, "threads", threads, "arch", m.Details.Arch)
 
 	// total memory
 	m.Details.MemoryTotal = 0
@@ -110,10 +110,10 @@ func (m *Manager) Refresh(ctx context.Context, dockerManager ContainerRuntime) {
 
 	// zfs
 	if _, err := ARCSize(); err != nil {
-		slog.Debug("Capability check", "capability", "zfs_arc", "available", false, "err", err)
+		slog.Debug("capability check failed", "capability", "zfs_arc", "available", false, "error", err)
 	} else {
 		m.zfs = true
-		slog.Debug("Capability check", "capability", "zfs_arc", "available", true)
+		slog.Debug("capability check passed", "capability", "zfs_arc", "available", true)
 	}
 }
 

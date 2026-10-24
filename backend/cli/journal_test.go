@@ -142,22 +142,29 @@ func TestFormatJournalEntryIncludesLinuxIOFields(t *testing.T) {
 	}
 }
 
-func TestFormatJournalEntryIncludesErrorField(t *testing.T) {
-	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"NFS server unavailable","LINUXIO_ERROR":"exportfs not found (install nfs-kernel-server or nfs-utils)"}`)
+func TestFormatJournalEntryDoesNotRepeatErrorField(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"NFS server unavailable: exportfs not found","LINUXIO_ERROR":"exportfs not found"}`)
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	if want := `NFS server unavailable [error="exportfs not found (install nfs-kernel-server or nfs-utils)"]`; !strings.Contains(got, want) {
-		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
+	if !strings.HasSuffix(got, "NFS server unavailable: exportfs not found") || strings.Contains(got, "error=") {
+		t.Fatalf("formatJournalEntry() = %q, want the message once without an error= field", got)
+	}
+}
+
+func TestFormatJournalEntryKeepsMultilineMessage(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"3","MESSAGE":"route failed: first line\nsecond line","LINUXIO_ERROR":"first line\nsecond line"}`)
+	if want := "route failed: first line\nsecond line"; !strings.HasSuffix(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want suffix %q", got, want)
 	}
 }
 
 func TestFormatJournalEntryIncludesBridgeRouteFields(t *testing.T) {
-	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"7","MESSAGE":"route completed","LINUXIO_ROUTE":"system.get_timezones","LINUXIO_MODE":"query","LINUXIO_OUTCOME":"success","LINUXIO_DURATION":"3.2ms","LINUXIO_ARG_COUNT":"0","LINUXIO_USER":"miguelmariz"}`)
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"7","MESSAGE":"route completed","LINUXIO_ROUTE":"system.get_timezones","LINUXIO_DURATION":"3.2ms","LINUXIO_ARG_COUNT":"0","LINUXIO_USER":"miguelmariz"}`)
 	if got == "" {
 		t.Fatal("formatJournalEntry returned empty string")
 	}
-	want := `route completed [arg_count=0 duration=3.2ms mode=query outcome=success route=system.get_timezones user=miguelmariz]`
+	want := `route completed [arg_count=0 duration=3.2ms route=system.get_timezones user=miguelmariz]`
 	if !strings.Contains(got, want) {
 		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
 	}

@@ -169,7 +169,7 @@ func (r *relay) terminate() {
 		}
 		pid := r.cmd.Process.Pid
 		if err := signalGroup(-pid, syscall.SIGHUP); err != nil {
-			slog.Debug("assistant: SIGHUP process group", "error", err)
+			slog.Debug("SIGHUP process group", "component", "assistant", "error", err)
 		}
 		time.AfterFunc(killGrace, func() {
 			select {

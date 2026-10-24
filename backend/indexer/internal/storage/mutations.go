@@ -268,6 +268,6 @@ func cleanupDeletedEntriesUnderPath(ctx context.Context, db dbExecutor, indexID 
 // pins both a pool connection and SQLite's write lock.
 func rollbackTx(tx *sql.Tx, operation string) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-		slog.Warn(operation+" rollback failed", "err", err)
+		slog.Warn("rollback failed", "operation", operation, "error", err)
 	}
 }

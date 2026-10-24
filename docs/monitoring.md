@@ -445,7 +445,9 @@ sudo systemctl restart linuxio-monitoring   # needed for listener changes
 indexer and this daemon: it writes
 `/etc/systemd/system/linuxio-monitoring.service.d/verbose.conf`, which re-runs
 `ExecStart` with `--verbose`. `sudo linuxio verbose disable` removes the
-drop-ins.
+drop-ins. Either change reaches the daemons live (SIGHUP reload, no restart); bridges of
+already-open sessions switch at the next login. It persists across restarts.
+The same switch is in Settings.
 
 If the database has to be recovered manually, stop the service, move
 `/var/lib/linuxio/monitoring/metrics.db*` aside, and start it again — the daemon

@@ -154,7 +154,7 @@ func RequestLoggingEnabled() bool {
 	case "0", "false", "no", "off":
 		return false
 	default:
-		slog.Warn("Invalid HTTP_LOG value; defaulting to enabled", "value", value)
+		slog.Warn("invalid HTTP_LOG value, defaulting to enabled", "value", value)
 		return true
 	}
 }
@@ -431,7 +431,7 @@ func (s *Server) metaResponse(collectorInterval time.Duration) monitoringapi.Sta
 func databaseSizeBytes(dataDir string) int64 {
 	files, err := store.DatabaseFiles(dataDir)
 	if err != nil {
-		slog.Debug("database size unavailable", "err", err)
+		slog.Debug("database size unavailable", "error", err)
 	}
 	var total int64
 	for _, file := range files {
@@ -518,7 +518,7 @@ func publicErrorMessage(err error) string {
 }
 
 func writeInternalError(w http.ResponseWriter, err error) {
-	slog.Error("Internal API error", "err", err)
+	slog.Error("internal API error", "error", err)
 	writeErrorMessage(w, http.StatusInternalServerError, "internal server error")
 }
 

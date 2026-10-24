@@ -58,7 +58,7 @@ func resetBatteryState(sysfsPowerSupplyPath string) {
 			}
 		}
 		if !systemHasBattery {
-			slog.Debug("No battery found", "err", err)
+			slog.Debug("no battery found", "error", err)
 		}
 		return systemHasBattery
 	})

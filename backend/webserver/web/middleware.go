@@ -30,34 +30,36 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
 
-		kind, label, displayPath := requestLogValues(r.URL.Path)
-		outcome, verb := "success", "succeeded"
-		if wrapped.status >= http.StatusBadRequest {
-			outcome, verb = "failure", "failed"
+		kind, displayPath := requestLogValues(r.URL.Path)
+		msg, level := "http request completed", slog.LevelDebug
+		switch {
+		case wrapped.status >= http.StatusInternalServerError:
+			msg, level = "http request failed", slog.LevelError
+		case wrapped.status >= http.StatusBadRequest:
+			msg, level = "http request failed", slog.LevelWarn
 		}
 
-		slog.Debug(label+" "+verb+": "+r.Method+" "+displayPath,
+		slog.Log(r.Context(), level, msg,
 			"request_kind", kind,
 			"method", r.Method,
 			"path", displayPath,
 			"status", wrapped.status,
-			"outcome", outcome,
 			"duration", time.Since(start))
 	})
 }
 
-func requestLogValues(requestPath string) (kind string, label string, displayPath string) {
+func requestLogValues(requestPath string) (kind string, displayPath string) {
 	switch {
 	case requestPath == "/ws":
-		return "websocket", "websocket upgrade", requestPath
+		return "websocket", requestPath
 	case strings.HasPrefix(requestPath, "/auth/"), strings.HasPrefix(requestPath, "/api/"):
-		return "api_http", "api http", requestPath
+		return "api_http", requestPath
 	case strings.HasPrefix(requestPath, "/assets/"):
-		return "asset", "asset request", "/assets/*"
+		return "asset", "/assets/*"
 	case isStaticAsset(requestPath):
-		return "asset", "asset request", requestPath
+		return "asset", requestPath
 	default:
-		return "spa", "spa request", requestPath
+		return "spa", requestPath
 	}
 }
 

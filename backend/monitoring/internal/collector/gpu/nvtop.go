@@ -302,7 +302,7 @@ func (gm *Manager) startNvtopCollector(ctx context.Context, interval string, onF
 			return gm.collectNvtopStats(ctx, interval, true)
 		}, func(err error) bool {
 			gm.clearGPUProcessSource(nvtopCmd)
-			slog.Warn("Error collecting GPU data via nvtop", "err", err)
+			slog.Warn("GPU data collection via nvtop failed", "error", err)
 			if onFailure != nil {
 				onFailure()
 				return false
@@ -318,7 +318,7 @@ func (gm *Manager) startNvtopProcessCollector(ctx context.Context, interval stri
 			return gm.collectNvtopStats(ctx, interval, false)
 		}, func(err error) bool {
 			gm.clearGPUProcessSource(nvtopCmd)
-			slog.Warn("Error collecting GPU process data via nvtop", "err", err)
+			slog.Warn("GPU process data collection via nvtop failed", "error", err)
 			return true
 		})
 	})

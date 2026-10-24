@@ -69,7 +69,7 @@ func (r *Reindex) Commit(ctx context.Context, scanTime int64) (int64, error) {
 		return 0, fmt.Errorf("cleanup deleted entries: %w", err)
 	}
 	if deleted > 0 {
-		slog.Info("cleaned up deleted entries under path", "deleted", deleted, "path", path)
+		slog.Debug("cleaned up deleted entries under path", "deleted", deleted, "path", path)
 	}
 	if err = reconcileHardlinksAfterReindex(ctx, tx, indexID, path, scanTime, r.hardlinks, r.sameFile); err != nil {
 		return 0, fmt.Errorf("reconcile hardlinks: %w", err)

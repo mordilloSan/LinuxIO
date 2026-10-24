@@ -38,10 +38,10 @@ func resolveBatchDestinationDir(root *fsroot.FSRoot, destination string) (string
 	dir := fsroot.CleanAbsPath(destination)
 	info, err := root.Root.Stat(fsroot.ToRel(dir))
 	if err != nil {
-		return "", bridgeipc.NewError("destination directory not found", 404)
+		return "", fsError("stat destination directory", err)
 	}
 	if !info.IsDir() {
-		return "", bridgeipc.NewError("destination is not a directory", 400)
+		return "", fmt.Errorf("%w: destination is not a directory", bridgeipc.ErrInvalidArgs)
 	}
 	return dir, nil
 }
@@ -192,13 +192,13 @@ type batchTransferReconciler func(context.Context, batchIndexerUpdate) error
 
 func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, action, phase string, transfer batchTransferFunc, reconcile batchTransferReconciler) (FileBatchResult, error) {
 	if len(req.Sources) == 0 {
-		return FileBatchResult{}, bridgeipc.NewError("no sources provided", 400)
+		return FileBatchResult{}, fmt.Errorf("%w: no sources provided", bridgeipc.ErrInvalidArgs)
 	}
 	overwrite := req.Overwrite != nil && *req.Overwrite
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return FileBatchResult{}, bridgeipc.NewError("failed to access filesystem", 500)
+		return FileBatchResult{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	rootClosed := false
 	defer func() {
@@ -370,7 +370,7 @@ func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string
 // indeterminate running count instead.
 func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest) (FileBatchResult, error) {
 	if len(req.Paths) == 0 {
-		return FileBatchResult{}, bridgeipc.NewError("no paths provided", 400)
+		return FileBatchResult{}, fmt.Errorf("%w: no paths provided", bridgeipc.ErrInvalidArgs)
 	}
 
 	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
@@ -539,11 +539,11 @@ func chmodBatchItem(ctx context.Context, path string, mode os.FileMode, ownershi
 func runChmodBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileChmodBatchRequest) (FileBatchResult, error) {
 	paths, mode, owner, group, recursive, err := parseChmodBatchRequest(req)
 	if err != nil {
-		return FileBatchResult{}, bridgeipc.NewError(err.Error(), 400)
+		return FileBatchResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	ownership, err := resolveChmodOwnership(owner, group)
 	if err != nil {
-		return FileBatchResult{}, bridgeipc.NewError(err.Error(), 400)
+		return FileBatchResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 
 	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})

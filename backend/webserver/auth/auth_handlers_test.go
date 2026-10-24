@@ -106,7 +106,7 @@ func TestLoginRejectsNonCanonicalJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			bridgeStarted := false
-			startBridge = func(context.Context, *sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+			startBridge = func(context.Context, *sessions.Manager, string, string, string, string) (*session.Session, error) {
 				bridgeStarted = true
 				return nil, fmt.Errorf("unexpected bridge start")
 			}
@@ -141,7 +141,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	}()
 
 	var gotRemoteHost string
-	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, remoteHost string, _ bool) (*session.Session, error) {
+	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, remoteHost string) (*session.Session, error) {
 		gotRemoteHost = remoteHost
 		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, true)
 		if err != nil {
@@ -152,7 +152,7 @@ func TestLogin_Success_WritesSessionCookie_AndReportsPrivileged(t *testing.T) {
 	// Manager + handlers
 	cfg := sessions.DefaultConfig
 	sm := sessions.NewManager(cfg)
-	h := &Handlers{SM: sm, Verbose: true, authSem: make(chan struct{}, maxConcurrentLogins)}
+	h := &Handlers{SM: sm, authSem: make(chan struct{}, maxConcurrentLogins)}
 	r := newRouterForTests(h)
 
 	// Act
@@ -198,7 +198,7 @@ func TestLogin_Success_OmitsCapabilities(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, _ string) (*session.Session, error) {
 		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		if err != nil {
 			return nil, err
@@ -228,7 +228,7 @@ func TestLogin_AuthFailure_MapsTo401_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(context.Context, *sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(context.Context, *sessions.Manager, string, string, string, string) (*session.Session, error) {
 		return nil, &authclient.AuthError{
 			Code:    authipc.ResultAuthFailed,
 			Message: "authentication failed",
@@ -264,7 +264,7 @@ func TestLogin_PasswordExpired_MapsTo403_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(context.Context, *sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(context.Context, *sessions.Manager, string, string, string, string) (*session.Session, error) {
 		return nil, &authclient.AuthError{
 			Code:    authipc.ResultPasswordExpired,
 			Message: "Password has expired. Please change it via SSH or console.",
@@ -301,7 +301,7 @@ func TestLogin_ConcurrencyLimit_Returns503WhenSaturated(t *testing.T) {
 	// reached, which (per Login) only happens after the semaphore is acquired.
 	block := make(chan struct{})
 	entered := make(chan struct{}, 1)
-	startBridge = func(context.Context, *sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(context.Context, *sessions.Manager, string, string, string, string) (*session.Session, error) {
 		select {
 		case entered <- struct{}{}:
 		default:
@@ -355,7 +355,7 @@ func TestLogout_ClearsCookie_AndDeletesSession(t *testing.T) {
 	oldStart := startBridge
 	defer func() { startBridge = oldStart }()
 
-	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, _ string) (*session.Session, error) {
 		return sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 	}
 	// Login to get cookie
@@ -387,7 +387,7 @@ func TestLoginRejectsOversizedBody(t *testing.T) {
 	oldStart := startBridge
 	t.Cleanup(func() { startBridge = oldStart })
 	bridgeStarted := false
-	startBridge = func(context.Context, *sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+	startBridge = func(context.Context, *sessions.Manager, string, string, string, string) (*session.Session, error) {
 		bridgeStarted = true
 		return nil, fmt.Errorf("unexpected bridge start")
 	}
@@ -423,7 +423,7 @@ func TestLogin_InvalidInput_MapsTo400(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			startBridge = func(context.Context, *sessions.Manager, string, string, string, string, bool) (*session.Session, error) {
+			startBridge = func(context.Context, *sessions.Manager, string, string, string, string) (*session.Session, error) {
 				return nil, tt.err
 			}
 			sm := sessions.NewManager(sessions.DefaultConfig)
@@ -451,7 +451,7 @@ func TestLogin_CancelledRequest_LeavesNoSession(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var createdID string
-	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, _ string, _ bool) (*session.Session, error) {
+	startBridge = func(_ context.Context, sm *sessions.Manager, sessionID, username, _, _ string) (*session.Session, error) {
 		createdID = sessionID
 		sess, err := sm.CreateSession(sessionID, session.User{Username: username, UID: 1000, GID: 1000}, false)
 		cancel() // the client disconnects while the bridge is starting

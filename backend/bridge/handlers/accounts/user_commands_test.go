@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestValidateChpasswdInput(t *testing.T) {
@@ -62,11 +63,19 @@ func TestRequireUserAcceptsSystemAccounts(t *testing.T) {
 	}
 
 	require.NoError(t, requireUser("syslog"))
-	require.ErrorContains(t, requireUser("ghost"), "user not found: ghost")
+	require.ErrorIs(t, requireUser("ghost"), bridgeipc.ErrNotFound)
+	require.ErrorContains(t, requireUser("ghost"), "user ghost")
 }
 
 func TestModifyUserArgsEmptyGroupsClearsSecondaryGroups(t *testing.T) {
 	require.Equal(t, []string{"-G", ""}, modifyUserArgs(apischema.ModifyUserRequest{Groups: []string{}}))
 	require.Equal(t, []string{"-G", "a,b"}, modifyUserArgs(apischema.ModifyUserRequest{Groups: []string{"a", "b"}}))
 	require.Empty(t, modifyUserArgs(apischema.ModifyUserRequest{}))
+}
+
+func TestRootUserRefusalsAreForbidden(t *testing.T) {
+	ctx := t.Context()
+	require.ErrorIs(t, DeleteUser(ctx, "root"), bridgeipc.ErrForbidden)
+	require.ErrorIs(t, ModifyUser(ctx, apischema.ModifyUserRequest{Username: "root"}), bridgeipc.ErrForbidden)
+	require.ErrorIs(t, LockUser(ctx, "root"), bridgeipc.ErrForbidden)
 }

@@ -453,7 +453,7 @@ func deleteStackDirectory(ctx context.Context, result apischema.DeleteStackResul
 	result.DirDeleted = true
 	result.DeletedPath = workingDir
 	notifyIndexerForDeletedComposePath(ctx, workingDir)
-	slog.Info("deleted stack directory", "project", projectName, "path", workingDir)
+	slog.Debug("deleted stack directory", "project", projectName, "path", workingDir)
 	return result, nil
 }
 
@@ -470,7 +470,7 @@ func deleteComposeFile(ctx context.Context, result apischema.DeleteStackResult, 
 	result.FilesDeleted = true
 	result.DeletedPath = configFile
 	notifyIndexerForDeletedComposePath(ctx, configFile)
-	slog.Info("deleted compose file", "project", projectName, "path", configFile)
+	slog.Debug("deleted compose file", "project", projectName, "path", configFile)
 	return result, nil
 }
 
@@ -505,7 +505,7 @@ func resolveComposeRestartTarget(ctx context.Context, username string, store *us
 	if err != nil {
 		return "", "", fmt.Errorf("compose file not found: %w", err)
 	}
-	slog.Info("found compose file via search", "project", projectName, "path", configFile)
+	slog.Debug("found compose file via search", "project", projectName, "path", configFile)
 	return configFile, workingDir, nil
 }
 
@@ -563,7 +563,7 @@ func resolveComposeRestartFromConfigFiles(
 		slog.Warn("translated path does not exist", "project", projectName, "translated_path", translatedConfigFile)
 		return "", ""
 	}
-	slog.Info("translated container config path to host path",
+	slog.Debug("translated container config path to host path",
 		"project", projectName,
 		"container_path", configFile,
 		"host_path", translatedConfigFile)
@@ -583,7 +583,7 @@ func resolveComposeRestartFromWorkingDir(ctx context.Context, cli *client.Client
 	for _, fileName := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
 		possiblePath := filepath.Join(translatedWorkingDir, fileName)
 		if _, err := os.Stat(possiblePath); err == nil {
-			slog.Info("found compose file via working_dir translation", "project", projectName, "path", possiblePath)
+			slog.Debug("found compose file via working_dir translation", "project", projectName, "path", possiblePath)
 			return possiblePath, translatedWorkingDir
 		}
 	}
@@ -1425,7 +1425,7 @@ func addOfflineComposeProject(projects map[string]*apischema.ComposeProject, com
 		return
 	}
 	projectName = uniqueComposeProjectName(projectName, projects)
-	slog.Info("discovered offline stack", "project", projectName, "compose_file", composePath)
+	slog.Debug("discovered offline stack", "project", projectName, "compose_file", composePath)
 	projects[projectName] = &apischema.ComposeProject{
 		Name:        projectName,
 		Icon:        extractComposeIcon(composePath),

@@ -55,7 +55,7 @@ func streamFileDownload(parent context.Context, stream net.Conn, req apischema.P
 
 func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	if requestPath == "" {
-		return nil, 0, bridgeipc.NewError("missing file path", 400)
+		return nil, 0, fmt.Errorf("%w: missing file path", bridgeipc.ErrInvalidArgs)
 	}
 
 	root, err := fsroot.Open()
@@ -68,10 +68,7 @@ func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	// O_NONBLOCK keeps a FIFO from blocking the open; it is rejected below.
 	file, err := root.Root.OpenFile(fsroot.ToRel(cleanPath), os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, 0, bridgeipc.NewError("file not found", 404)
-		}
-		return nil, 0, fmt.Errorf("open file: %w", err)
+		return nil, 0, fsError("open file", err)
 	}
 	stat, err := file.Stat()
 	if err != nil {
@@ -80,11 +77,11 @@ func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	}
 	if stat.IsDir() {
 		file.Close()
-		return nil, 0, bridgeipc.NewError("path is a directory, use archive download instead", 400)
+		return nil, 0, fmt.Errorf("%w: path is a directory, use archive download instead", bridgeipc.ErrInvalidArgs)
 	}
 	if !stat.Mode().IsRegular() {
 		file.Close()
-		return nil, 0, bridgeipc.NewError("path is not a regular file", 400)
+		return nil, 0, fmt.Errorf("%w: path is not a regular file", bridgeipc.ErrInvalidArgs)
 	}
 	return file, stat.Size(), nil
 }

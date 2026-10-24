@@ -58,7 +58,7 @@ func newConfigWithEnv(primarySensor, sysSensors, sensorsEnvVal, sensorsTimeout s
 		if d, err := time.ParseDuration(sensorsTimeout); err == nil {
 			timeout = d
 		} else {
-			slog.Warn("Invalid SENSORS_TIMEOUT", "value", sensorsTimeout)
+			slog.Warn("invalid SENSORS_TIMEOUT", "value", sensorsTimeout)
 		}
 	}
 
@@ -73,7 +73,7 @@ func newConfigWithEnv(primarySensor, sysSensors, sensorsEnvVal, sensorsTimeout s
 
 	// Set sensors context (allows overriding sys location for sensors)
 	if sysSensors != "" {
-		slog.Info("SYS_SENSORS", "path", sysSensors)
+		slog.Debug("sensors sys path configured", "path", sysSensors)
 		cfg.envMap = psutilCommon.EnvMap{psutilCommon.HostSysEnvKey: sysSensors}
 	}
 
@@ -112,7 +112,7 @@ func (c *Config) Update(ctx context.Context, systemStats *systemmodel.Stats, inf
 	}
 	// skip if sensors whitelist is set to empty string
 	if c.skipCollection {
-		slog.Debug("Skipping temperature collection")
+		slog.Debug("skipping temperature collection")
 		return nil
 	}
 
@@ -132,14 +132,14 @@ func (c *Config) Update(ctx context.Context, systemStats *systemmodel.Stats, inf
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
-			slog.Warn("Error updating temperatures", "err", err)
+			slog.Warn("temperature update failed", "error", err)
 			if len(systemStats.Temperatures) > 0 {
 				systemStats.Temperatures = make(map[string]float64)
 			}
 			return nil
 		}
 	}
-	slog.Debug("Temperature sensors discovered", "count", len(temps))
+	slog.Debug("temperature sensors discovered", "count", len(temps))
 
 	// return if no sensors
 	if len(temps) == 0 {

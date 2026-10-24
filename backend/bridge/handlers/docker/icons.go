@@ -616,8 +616,6 @@ func GetIconInfo(ctx context.Context, identifier string) IconInfo {
 
 // ClearIconCache removes all cached icons
 func ClearIconCache(ctx context.Context) error {
-	slog.Info("clearing icon cache")
-
 	for _, dir := range remoteIconCacheDirs() {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -631,7 +629,11 @@ func ClearIconCache(ctx context.Context) error {
 		return err
 	}
 	// Recreate directories
-	return initIconCache()
+	if err := initIconCache(); err != nil {
+		return err
+	}
+	slog.Info("icon cache cleared")
+	return nil
 }
 
 // ResolveIconIdentifier resolves an explicit icon identifier, then falls back to the service/container name.

@@ -41,7 +41,7 @@ func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime
 func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, string, error) {
 	serviceName := strings.TrimSpace(req.ServiceName)
 	if serviceName == "" {
-		return "", "", bridgeipc.NewError("empty service name", 400)
+		return "", "", fmt.Errorf("%w: service name", bridgeipc.ErrInvalidArgs)
 	}
 	if strings.Contains(serviceName, "@.") {
 		err := fmt.Errorf("template unit %s does not have logs until instantiated", serviceName)
@@ -50,10 +50,7 @@ func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, st
 			"route", streamTypeServiceLogs,
 			"service", serviceName,
 			"error", err)
-		return "", "", bridgeipc.NewError(
-			"Logs are unavailable for template unit files. Select an instantiated unit instead.",
-			400,
-		)
+		return "", "", fmt.Errorf("%w: logs are unavailable for template unit files, select an instantiated unit instead", bridgeipc.ErrInvalidArgs)
 	}
 	lines := "100"
 	if req.Lines != nil && *req.Lines != "" {

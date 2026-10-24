@@ -6,7 +6,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -253,6 +255,51 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 	}))
 	assert.Empty(t, a.configInfo().HistoryIntervals)
 	assert.NotNil(t, a.configInfo().HistoryIntervals)
+
+	cancel()
+	require.NoError(t, <-errCh)
+}
+
+// A SIGHUP that lands during start-up, before the event loop runs, must be
+// held and handled once the loop starts rather than killing the daemon.
+func TestStartContextHoldsSIGHUPSentDuringStartup(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Keeps the test binary alive if the daemon has not registered its handler.
+	guard := make(chan os.Signal, 1)
+	signal.Notify(guard, syscall.SIGHUP)
+	defer signal.Stop(guard)
+
+	a, err := New(ctx, tmpDir)
+	require.NoError(t, err)
+
+	reloaded := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- a.StartContext(ctx, RunOptions{
+			CollectorInterval: 5 * time.Minute,
+			ReloadConfig: func() error {
+				reloaded <- struct{}{}
+				return nil
+			},
+		})
+	}()
+
+	// The database file appears while StartContext is still collecting its first
+	// sample, well before the event loop.
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(tmpDir, "metrics.db"))
+		return err == nil
+	}, 20*time.Second, time.Millisecond)
+	require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))
+
+	select {
+	case <-reloaded:
+	case <-time.After(20 * time.Second):
+		t.Fatal("SIGHUP sent during start-up was lost")
+	}
 
 	cancel()
 	require.NoError(t, <-errCh)

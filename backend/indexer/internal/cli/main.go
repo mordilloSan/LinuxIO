@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/configfile"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/daemon"
@@ -53,32 +54,39 @@ func runDaemon(args []string) int {
 	if err := logging.Configure("linuxio-indexer", *verbose); err != nil {
 		return writeError(os.Stderr, fmt.Sprintf("linuxio-indexer: initialize logging: %v\n", err))
 	}
+	// SIGHUP is handled before the unbounded store recovery in daemon.New so an
+	// ExecReload during it does not take the default (exit) action. SIGTERM must
+	// keep its default action there, so the stop context starts after daemon.New.
+	hupCtx, stopHUP := context.WithCancel(context.Background())
+	defer stopHUP()
+	verbosemode.ReloadOnSIGHUP(hupCtx)
 	slog.Info("indexer starting", "version", version.Version, "mode", "daemon")
 
 	fileCfg, err := configfile.Load(*configPath)
 	if err != nil {
-		slog.Error("failed to load config", "config_file", *configPath, "err", err)
+		slog.Error("failed to load config", "config_file", *configPath, "error", err)
 		return 1
 	}
 	d, err := daemon.New(fileCfg, *configPath)
 	if err != nil {
-		slog.Error("failed to start daemon", "err", err)
+		slog.Error("failed to start daemon", "error", err)
 		return 1
 	}
 	defer d.Close()
 
-	slog.Info("daemon initialized",
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	slog.Debug("daemon initialized",
 		"config_file", *configPath,
 		"include_network_mounts", fileCfg.IncludeNetworkMounts,
 	)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if err := d.Run(ctx); err != nil {
-		slog.Error("daemon exited with error", "err", err)
+		slog.Error("daemon exited with error", "error", err)
 		return 1
 	}
-	slog.Info("shutdown complete")
+	slog.Debug("shutdown complete")
 	return 0
 }
 
@@ -91,7 +99,7 @@ func flagParseExitCode(err error) int {
 
 func writeOutput(w io.Writer, value string) int {
 	if _, err := io.WriteString(w, value); err != nil {
-		slog.Error("write output", "err", err)
+		slog.Error("write output", "error", err)
 		return 1
 	}
 	return 0

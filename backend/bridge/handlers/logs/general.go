@@ -63,16 +63,14 @@ func streamGeneralLogsChannel(parent context.Context, stream net.Conn, _ runtime
 		newestCursor, count, truncated, err = streamGeneralLogsBacklog(ctx, stream, req)
 		if err != nil {
 			// A canceled context is the routine end of a client-closed stream
-			// (filter change, live toggle, navigating away) landing mid-backlog,
-			// not a failure.
-			level, message := slog.LevelError, "general log backlog failed"
+			// (filter change, live toggle, navigating away) landing mid-backlog.
+			// Any other failure is returned and logged once by the router.
 			if errors.Is(err, context.Canceled) {
-				level, message = slog.LevelDebug, "general log backlog canceled"
+				slog.Debug("general log backlog canceled",
+					"component", "logs",
+					"route", streamTypeGeneralLogs,
+					"error", err)
 			}
-			slog.Log(ctx, level, message,
-				"component", "logs",
-				"route", streamTypeGeneralLogs,
-				"error", err)
 			return writeLogErrorUnlessCanceled(ctx, stream, err)
 		}
 	}

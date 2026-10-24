@@ -23,7 +23,7 @@ func logUnavailableCapability(name, message string) {
 	if message == "" {
 		return
 	}
-	slog.Info(name+" unavailable.", "error", message)
+	slog.Debug("capability unavailable", "capability", name, "error", message)
 }
 
 // setCapabilityField writes (ok, errMsg) into the matching fields of out for
@@ -82,7 +82,7 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 }
 
 func buildCapabilitiesResponse(ctx context.Context, user session.User) (apischema.CapabilitiesResponse, error) {
-	slog.Info("Checking system capabilities.")
+	slog.Debug("checking system capabilities")
 
 	if err := ctx.Err(); err != nil {
 		return apischema.CapabilitiesResponse{}, err
@@ -120,14 +120,14 @@ func buildCapabilitiesResponse(ctx context.Context, user session.User) (apischem
 		logUnavailableCapability(spec.LogName, result.errMsg)
 	}
 
-	slog.Info("Capabilities: " + strings.Join(summary, " ") + ".")
+	slog.Debug("capabilities summary", "summary", strings.Join(summary, " "))
 	timingAttrs := make([]slog.Attr, 0, len(capabilityRegistry)+1)
 	timingAttrs = append(timingAttrs, slog.Int64("capabilities_us", detectionDuration.Microseconds()))
 	for index, spec := range capabilityRegistry {
 		timingAttrs = append(timingAttrs,
 			slog.Int64("capabilities_"+spec.Name+"_us", results[index].duration.Microseconds()))
 	}
-	slog.LogAttrs(ctx, slog.LevelInfo, "capabilities timing", timingAttrs...)
+	slog.LogAttrs(ctx, slog.LevelDebug, "capabilities timing", timingAttrs...)
 
 	return out, nil
 }

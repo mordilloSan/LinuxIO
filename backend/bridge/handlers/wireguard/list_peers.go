@@ -32,11 +32,11 @@ func ListPeers(ctx context.Context, req apischema.InterfaceNameRequest) ([]PeerI
 	statsByPub, err := loadPeerRuntimeStats(interfaceName)
 	if err != nil {
 		slog.Warn("failed to load runtime peer stats", "interface", interfaceName, "error", err)
-		slog.Info("listed exported peers", "interface", interfaceName, "count", len(peers))
+		slog.Debug("listed exported peers", "interface", interfaceName, "count", len(peers))
 		return peers, nil
 	}
 	applyPeerRuntimeStats(peers, statsByPub)
-	slog.Info("listed exported peers with runtime stats", "interface", interfaceName, "count", len(peers))
+	slog.Debug("listed exported peers with runtime stats", "interface", interfaceName, "count", len(peers))
 	return peers, nil
 }
 

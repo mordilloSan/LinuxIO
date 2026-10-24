@@ -512,17 +512,17 @@ func GetUpdateHistory(ctx context.Context) ([]apischema.UpdateHistoryRow, error)
 		return nil, err
 	}
 	if _, err := os.Stat("/var/log/dpkg.log"); err == nil {
-		slog.Debug("Parsing dpkg update history")
+		slog.Debug("parsing dpkg update history")
 		return parseDpkgLogs(ctx), nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat("/var/log/dnf.log"); err == nil {
-		slog.Debug("Parsing dnf update history")
+		slog.Debug("parsing dnf update history")
 		return parseDnfHistory(ctx, "/var/log/dnf.log"), nil
 	}
-	slog.Warn("No known package manager log found")
+	slog.Warn("no known package manager log found")
 	return []apischema.UpdateHistoryRow{}, nil
 }
 

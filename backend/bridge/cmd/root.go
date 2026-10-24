@@ -36,7 +36,7 @@ func run(args []string, stdin *os.File) int {
 	}
 
 	if err := runBridgeProcess(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		logging.ReportFatal(err)
 		return 1
 	}
 	return 0
@@ -53,8 +53,7 @@ func runBridgeProcess() error {
 		// No ack possible: a bootstrap that fails to parse cannot be trusted
 		// to have set the ReadyAck flag, so the launcher learns of this exit
 		// via EOF on the status fd.
-		logBridgeStartupError("failed to initialize bridge session", err)
-		return err
+		return fmt.Errorf("failed to initialize bridge session: %w", err)
 	}
 	status := newStartupStatus(readyAck)
 	// Catch-all: any exit before the startup handoff reports a typed failure
@@ -75,26 +74,20 @@ func runBridgeProcess() error {
 
 	clientConn, err := openClientConnection()
 	if err != nil {
-		logBridgeStartupError("failed to open inherited client connection", err)
 		status.fail("bridge cannot open inherited client connection: " + err.Error())
-		return err
+		return fmt.Errorf("failed to open inherited client connection: %w", err)
 	}
-	slog.Info("bridge connected to inherited client fd", "fd", clientConnFD)
+	slog.Debug("bridge connected to inherited client fd", "fd", clientConnFD)
 
 	userConfig, err := userconfig.OpenUserStore(sess.User.Username, sess.User.UID, sess.User.GID)
 	if err != nil {
-		logBridgeStartupError("failed to open config store", err)
 		status.fail("bridge config store failed: " + err.Error())
-		return err
+		return fmt.Errorf("failed to open config store: %w", err)
 	}
-	slog.Info("config store ready", "user", sess.User.Username, "storage_mode", userConfig.StorageMode(), "path", userConfig.Path(), "ui_path", userConfig.UIPath())
+	slog.Debug("config store ready", "user", sess.User.Username, "storage_mode", userConfig.StorageMode(), "path", userConfig.Path(), "ui_path", userConfig.UIPath())
 
 	rt := runtime.New(sess, userConfig)
 	runBridge(clientConn, rt, status.ready)
 	slog.Info("bridge stopped")
 	return nil
-}
-
-func logBridgeStartupError(message string, err error) {
-	slog.Error(message, "error", err)
 }

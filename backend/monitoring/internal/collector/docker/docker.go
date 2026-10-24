@@ -129,7 +129,7 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 		id := shortContainerID(ctr.ID)
 		name := containerName(&ctr)
 		if dm.shouldExcludeContainer(name) {
-			slog.Debug("Excluding container", "name", name)
+			slog.Debug("excluding container", "name", name)
 			continue
 		}
 
@@ -164,7 +164,7 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 	// Legacy Docker versions require stats requests to be run in one batch.
 	// Retrying failed containers separately preserves the existing behavior.
 	if len(failedContainers) > 0 {
-		slog.Debug("Retrying failed containers", "count", len(failedContainers))
+		slog.Debug("retrying failed containers", "count", len(failedContainers))
 		for _, ctr := range failedContainers {
 			if err := ctx.Err(); err != nil {
 				dm.wg.Wait()
@@ -178,7 +178,7 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 				defer dm.dequeue()
 				pprof.Do(ctx, pprof.Labels("component", "docker", "container", shortContainerID(ctr.ID), "retry", "true"), func(ctx context.Context) {
 					if err := dm.updateContainerStats(ctx, &ctr, cacheTimeMs); err != nil {
-						slog.Error("Error getting container stats", "err", err)
+						slog.Error("container stats lookup failed", "error", err)
 					}
 				})
 			}(*ctr)
@@ -402,11 +402,11 @@ func (dm *Manager) calculateNetworkStats(containerID string, networks map[string
 	sentDelta := sentDeltaRaw * 1000 / uint64(elapsedMs)
 	recvDelta := recvDeltaRaw * 1000 / uint64(elapsedMs)
 	if sentDelta > maxNetworkSpeedBps {
-		slog.Warn("Bad network delta", "container", name)
+		slog.Warn("bad network delta", "container", name)
 		sentDelta = 0
 	}
 	if recvDelta > maxNetworkSpeedBps {
-		slog.Warn("Bad network delta", "container", name)
+		slog.Warn("bad network delta", "container", name)
 		recvDelta = 0
 	}
 	return sentDelta, recvDelta
@@ -665,15 +665,15 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 
 	parsedHost, err := mobyclient.ParseHostURL(dockerHost)
 	if err != nil {
-		slog.Error("Invalid DOCKER_HOST; Docker monitoring disabled", "host", dockerHost, "err", err)
+		slog.Error("invalid DOCKER_HOST, Docker monitoring disabled", "host", dockerHost, "error", err)
 		return nil
 	}
 	if parsedHost.Scheme == "https" {
-		slog.Error("DOCKER_HOST https is not supported; Docker monitoring disabled", "host", dockerHost)
+		slog.Error("unsupported DOCKER_HOST https scheme, Docker monitoring disabled", "host", dockerHost)
 		return nil
 	}
 	if parsedHost.Scheme != "unix" && parsedHost.Scheme != "tcp" && parsedHost.Scheme != "http" {
-		slog.Error("Invalid DOCKER_HOST scheme; Docker monitoring disabled", "scheme", parsedHost.Scheme)
+		slog.Error("invalid DOCKER_HOST scheme, Docker monitoring disabled", "scheme", parsedHost.Scheme)
 		return nil
 	}
 
@@ -681,10 +681,10 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 	if value, set := config.LookupEnv(config.EnvDockerTimeout); set {
 		timeout, err = time.ParseDuration(value)
 		if err != nil {
-			slog.Error("Invalid DOCKER_TIMEOUT; Docker monitoring disabled", "value", value, "err", err)
+			slog.Error("invalid DOCKER_TIMEOUT, Docker monitoring disabled", "value", value, "error", err)
 			return nil
 		}
-		slog.Info("DOCKER_TIMEOUT", "timeout", timeout)
+		slog.Debug("docker timeout configured", "timeout", timeout)
 	}
 
 	var excludeContainers []string
@@ -694,7 +694,7 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 				excludeContainers = append(excludeContainers, trimmed)
 			}
 		}
-		slog.Info("EXCLUDE_CONTAINERS", "patterns", excludeContainers)
+		slog.Debug("excluded container patterns configured", "patterns", excludeContainers)
 	}
 
 	manager := &Manager{
@@ -719,7 +719,7 @@ func NewManager(ctx context.Context, onPodmanDetected func()) *Manager {
 		}),
 	)
 	if err != nil {
-		slog.Error("Invalid Docker client configuration; Docker monitoring disabled", "host", dockerHost, "err", err)
+		slog.Error("invalid Docker client configuration, Docker monitoring disabled", "host", dockerHost, "error", err)
 		return nil
 	}
 
@@ -792,7 +792,7 @@ func (dm *Manager) checkDockerVersion(ctx context.Context) (bool, error) {
 	case dockerMajorVersion(result.Version) > 24:
 		dm.goodDockerVersion = true
 	default:
-		slog.Info("Docker version is outdated; upgrade if possible", "version", result.Version)
+		slog.Warn("Docker version is outdated; upgrade if possible", "version", result.Version)
 	}
 	dm.dockerVersionChecked = true
 	return true, nil
@@ -803,7 +803,7 @@ func (dm *Manager) ensureDockerVersionChecked(ctx context.Context) {
 		return
 	}
 	if _, err := dm.checkDockerVersion(ctx); err != nil {
-		slog.Debug("Failed to get Docker version", "err", err)
+		slog.Debug("Docker version lookup failed", "error", err)
 	}
 }
 

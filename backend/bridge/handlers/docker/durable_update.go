@@ -61,14 +61,14 @@ func dockerUpdateTaskIdentity(payload apischema.DockerContainerUpdateRequest) (b
 
 func parseDockerUpdateRequest(payload apischema.DockerContainerUpdateRequest) (dockerUpdateRequest, error) {
 	if err := durabletask.ValidateID(payload.RunID); err != nil {
-		return dockerUpdateRequest{}, bridgeipc.NewError(err.Error(), 400)
+		return dockerUpdateRequest{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	containerID := strings.TrimSpace(payload.ContainerID)
 	if containerID == "" {
-		return dockerUpdateRequest{}, bridgeipc.NewError("container ID is required", 400)
+		return dockerUpdateRequest{}, fmt.Errorf("%w: container ID is required", bridgeipc.ErrInvalidArgs)
 	}
 	if err := dockerupdate.ValidateTarget(containerID); err != nil {
-		return dockerUpdateRequest{}, bridgeipc.NewError(err.Error(), 400)
+		return dockerUpdateRequest{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	return dockerUpdateRequest{
 		operationID: payload.RunID,
@@ -84,7 +84,7 @@ func runDockerUpdateTask(ctx context.Context, task *bridgeipc.Task, payload apis
 	}
 	owner := task.Owner()
 	if owner.Username == "" || owner.SessionID == "" {
-		return apischema.DockerContainerUpdateResult{}, bridgeipc.NewError("durable Docker update requires an authenticated owner", 403)
+		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("%w: durable Docker update requires an authenticated owner", bridgeipc.ErrForbidden)
 	}
 	store := durabletask.NewStore(dockerUpdateStoreRoot)
 	if ctx.Err() != nil {
@@ -95,7 +95,7 @@ func runDockerUpdateTask(ctx context.Context, task *bridgeipc.Task, payload apis
 		return apischema.DockerContainerUpdateResult{}, err
 	}
 
-	slog.Info("Docker update task claimed", "component", "docker", "subsystem", "update", "operation_id", req.operationID, "uid", owner.UID, "state", record.State)
+	slog.Debug("Docker update task claimed", "component", "docker", "subsystem", "update", "operation_id", req.operationID, "uid", owner.UID, "state", record.State)
 	if ctx.Err() != nil {
 		return cancelDockerUpdate(store, newDockerUpdateExecutor(), record.ID, record.UID)
 	}
@@ -132,10 +132,10 @@ func claimDockerUpdate(ctx context.Context, store *durabletask.Store, req docker
 		ExclusiveRoute:     true,
 	})
 	if errors.Is(err, durabletask.ErrConflict) {
-		return durabletask.Record{}, bridgeipc.NewError("operation ID was already used for another Docker update request", 409)
+		return durabletask.Record{}, fmt.Errorf("%w: operation ID was already used for another Docker update request", bridgeipc.ErrConflict)
 	}
 	if errors.Is(err, durabletask.ErrActive) {
-		return durabletask.Record{}, bridgeipc.NewError("another Docker update is already active", 409)
+		return durabletask.Record{}, fmt.Errorf("%w: another Docker update is already active", bridgeipc.ErrConflict)
 	}
 	if err != nil {
 		return durabletask.Record{}, fmt.Errorf("claim durable Docker update: %w", err)
@@ -214,7 +214,7 @@ func handleDockerUpdateStartFailure(ctx context.Context, task *bridgeipc.Task, s
 		if failErr != nil {
 			return durabletask.Record{}, failErr
 		}
-		return failed, bridgeipc.NewError(dockerupdate.BoundedMessage(startErr.Error()), 500)
+		return failed, errors.New(dockerupdate.BoundedMessage(startErr.Error()))
 	}
 	unknown, unknownErr := unknownDockerUpdateRecord(ctx, store, launching, fmt.Sprintf("transient-unit start outcome is unknown: %v", startErr))
 	if unknownErr != nil {
@@ -528,9 +528,9 @@ func dockerUpdateResultFromRecord(record durabletask.Record) (apischema.DockerCo
 		if record.Error != nil {
 			return result, bridgeipc.NewError(record.Error.Message, record.Error.Code)
 		}
-		return result, bridgeipc.NewError("durable Docker update did not complete", 500)
+		return result, errors.New("durable Docker update did not complete")
 	default:
-		return result, bridgeipc.NewError("durable Docker update is still active", 409)
+		return result, fmt.Errorf("%w: durable Docker update is still active", bridgeipc.ErrConflict)
 	}
 }
 

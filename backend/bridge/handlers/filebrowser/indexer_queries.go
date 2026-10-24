@@ -2,14 +2,13 @@ package filebrowser
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -50,32 +49,27 @@ func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]inde
 // dirSize returns the indexer's cached recursive size of a directory.
 func dirSize(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {
 	if req.Path == "" {
-		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:missing path")
+		return apischema.DirectorySizeData{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.DirectorySizeData{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 
 	// Check if path exists and is a directory
 	stat, err := root.Root.Stat(fsroot.ToRel(req.Path))
 	if err != nil {
-		slog.Debug("error stating directory", "path", req.Path, "error", err)
-		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:directory not found")
+		return apischema.DirectorySizeData{}, fsError("stat directory", err)
 	}
 
 	if !stat.IsDir() {
-		return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:path is not a directory")
+		return apischema.DirectorySizeData{}, fmt.Errorf("%w: path is not a directory", bridgeipc.ErrInvalidArgs)
 	}
 
 	details, err := fetchDirSizeFromIndexer(ctx, req.Path)
 	if err != nil {
-		if errors.Is(err, errIndexerUnavailable) {
-			return apischema.DirectorySizeData{}, fmt.Errorf("bad_request:indexer unavailable")
-		}
-		slog.Debug("error fetching directory details from indexer", "path", req.Path, "error", err)
 		return apischema.DirectorySizeData{}, fmt.Errorf("error fetching directory details: %w", err)
 	}
 
@@ -95,7 +89,7 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:failed to access filesystem")
+		return apischema.SubfoldersResponse{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 
@@ -103,21 +97,16 @@ func subfolders(ctx context.Context, req apischema.PathRequest) (apischema.Subfo
 	if path != "/" {
 		stat, statErr := root.Root.Stat(fsroot.ToRel(path))
 		if statErr != nil {
-			slog.Debug("error stating directory", "path", path, "error", statErr)
-			return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:directory not found")
+			return apischema.SubfoldersResponse{}, fsError("stat directory", statErr)
 		}
 		if !stat.IsDir() {
-			return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:path is not a directory")
+			return apischema.SubfoldersResponse{}, fmt.Errorf("%w: path is not a directory", bridgeipc.ErrInvalidArgs)
 		}
 	}
 
 	// Fetch subfolders from indexer (it will handle path validation)
 	folders, err := fetchSubfoldersFromIndexer(ctx, path)
 	if err != nil {
-		if errors.Is(err, errIndexerUnavailable) {
-			return apischema.SubfoldersResponse{}, fmt.Errorf("bad_request:indexer unavailable")
-		}
-		slog.Debug("error fetching subfolders from indexer", "path", path, "error", err)
 		return apischema.SubfoldersResponse{}, fmt.Errorf("error fetching subfolders: %w", err)
 	}
 
@@ -137,7 +126,7 @@ func subfoldersFromIndexer(folders []indexerSubfolder) []apischema.SubfolderData
 // searchFiles searches for files/directories in the indexer database.
 func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischema.SearchResponse, error) {
 	if !indexerapi.SearchQueryAllowed(req.Query) {
-		return apischema.SearchResponse{}, fmt.Errorf("bad_request:search query must contain at least %d characters", indexerapi.MinSearchQueryRunes)
+		return apischema.SearchResponse{}, fmt.Errorf("%w: search query must contain at least %d characters", bridgeipc.ErrInvalidArgs, indexerapi.MinSearchQueryRunes)
 	}
 
 	limit := "100" // default limit
@@ -152,10 +141,6 @@ func searchFiles(ctx context.Context, req apischema.FileSearchRequest) (apischem
 
 	results, err := searchInIndexer(ctx, req.Query, limit, basePath)
 	if err != nil {
-		if errors.Is(err, errIndexerUnavailable) {
-			return apischema.SearchResponse{}, fmt.Errorf("bad_request:indexer unavailable")
-		}
-		slog.Debug("error searching indexer", "query", req.Query, "base_path", basePath, "error", err)
 		return apischema.SearchResponse{}, fmt.Errorf("error searching files: %w", err)
 	}
 

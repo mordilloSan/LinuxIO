@@ -977,10 +977,10 @@ func TestCountGPUNames(t *testing.T) {
 }
 
 func TestGPUDiscoveryLogMessage(t *testing.T) {
-	assert.Equal(t, "Detected GPU collector", gpuDiscoveryLogMessage("auto", []collectorSource{collectorSourceIntelGpuTop}, ""))
-	assert.Equal(t, "Detected GPU collectors", gpuDiscoveryLogMessage("auto", []collectorSource{collectorSourceNVML, collectorSourceIntelGpuTop}, ""))
+	assert.Equal(t, "GPU collector detected", gpuDiscoveryLogMessage("auto", []collectorSource{collectorSourceIntelGpuTop}, ""))
+	assert.Equal(t, "GPU collectors detected", gpuDiscoveryLogMessage("auto", []collectorSource{collectorSourceNVML, collectorSourceIntelGpuTop}, ""))
 	assert.Equal(t, "GPU monitoring disabled", gpuDiscoveryLogMessage("disabled", nil, "SKIP_GPU=true"))
-	assert.Equal(t, "No GPU collector detected", gpuDiscoveryLogMessage("auto", nil, "no GPU collector detected"))
+	assert.Equal(t, "no GPU collector detected", gpuDiscoveryLogMessage("auto", nil, "no GPU collector detected"))
 }
 
 func TestInitializeSnapshots(t *testing.T) {

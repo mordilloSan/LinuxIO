@@ -67,7 +67,7 @@ func Run(ctx context.Context, configPath string) error {
 	if !loaded {
 		source = "defaults"
 		if created, saveErr := config.SaveIfMissing(configPath, cfg); saveErr != nil {
-			slog.Warn("could not write default config", "path", configPath, "err", saveErr)
+			slog.Warn("could not write default config", "path", configPath, "error", saveErr)
 		} else if created {
 			source = "created"
 		}

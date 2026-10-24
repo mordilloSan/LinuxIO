@@ -226,7 +226,7 @@ func (r *Registry) allCurrentPluginNames() []string {
 }
 
 func recordPluginCurrentError(plugin string, err error, pluginErrors map[string]string, firstErr *error) {
-	slog.Warn("Plugin current read failed", "plugin", plugin, "err", err)
+	slog.Warn("plugin current read failed", "plugin", plugin, "error", err)
 	if *firstErr == nil {
 		*firstErr = err
 	}

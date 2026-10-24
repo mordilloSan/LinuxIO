@@ -199,13 +199,16 @@ cannot prove presence. Use typed fields directly:
 ```go
 func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) error {
     if req.ServiceName == "" {
-        return bridgeipc.NewError("missing service name", 400)
+        return fmt.Errorf("%w: service name", bridgeipc.ErrInvalidArgs)
     }
     return StartUnit(ctx, req.ServiceName)
 }
 ```
 
-Return `bridgeipc.NewError(message, code)` for typed client errors.
+Wrap a status sentinel with `%w` for typed client errors: `ErrInvalidArgs` (400),
+`ErrForbidden` (403), `ErrNotFound` (404), `ErrConflict` (409). The text after
+the sentinel names the subject, not the condition. Use
+`bridgeipc.NewError(message, code)` only for a code no sentinel expresses.
 
 ## Call Retry Safety
 

@@ -40,7 +40,7 @@ func runBtrfsReplicationTask(ctx context.Context, task *bridgeipc.Task, req apis
 	if err != nil {
 		return btrfs.BtrfsReplicationResult{}, err
 	}
-	slog.Info("replicating btrfs snapshots", "id", job.ID, "uuid", job.UUID, "path", job.Path, "target", job.Target.Kind)
+	slog.Debug("replicating btrfs snapshots", "id", job.ID, "uuid", job.UUID, "path", job.Path, "target", job.Target.Kind)
 	task.ReportProgress(BtrfsOpProgress{Op: "send", Message: "Starting replication"})
 	result, runErr := btrfs.Replicate(ctx, job, func(sent int64) {
 		task.ReportProgress(BtrfsOpProgress{Op: "send", Message: fmt.Sprintf("%.1f MiB sent", float64(sent)/(1<<20))})

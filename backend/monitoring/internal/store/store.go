@@ -87,7 +87,7 @@ func OpenStore(dataDir string, options ...Options) (*Store, error) {
 		return nil, err
 	}
 
-	slog.Warn("Moving aside corrupt metrics.db", "path", dbPath, "err", err)
+	slog.Warn("moving aside corrupt metrics.db", "path", dbPath, "error", err)
 	if _, moveErr := moveAsideStoreFiles(dbPath, "corrupt"); moveErr != nil {
 		return nil, fmt.Errorf("open metrics.db failed: %w; move aside failed: %w", err, moveErr)
 	}

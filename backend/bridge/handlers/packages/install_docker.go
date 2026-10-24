@@ -70,7 +70,7 @@ func installDockerEngine(ctx context.Context, task *bridgeipc.Task) error {
 
 	const message = "Running Docker install script"
 	reportProgress(task, stageInstallPackage, message, pctInstallStart)
-	slog.Info("Running Docker install script.", "url", dockerInstallScriptURL)
+	slog.Debug("running Docker install script", "url", dockerInstallScriptURL)
 	if err := runCapabilityCommand(ctx, "sh", []string{file.Name()}, func(output InstallCapabilityOutput) {
 		reportOutput(task, stageInstallPackage, message, pctInstallStart, output)
 	}); err != nil {

@@ -49,7 +49,7 @@ func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgei
 		return
 	}
 	defer ymuxSession.Close()
-	slog.Info("yamux session started", "session_ref", sessionRef)
+	slog.Debug("yamux session started", "session_ref", sessionRef)
 
 	// Track active streams for graceful shutdown.
 	var streamWg sync.WaitGroup
@@ -82,7 +82,7 @@ func handleYamuxSession(ctx context.Context, rt runtime.Runtime, router *bridgei
 
 	// Wait for all streams to complete.
 	streamWg.Wait()
-	slog.Info("yamux session ended", "session_ref", sessionRef)
+	slog.Debug("yamux session ended", "session_ref", sessionRef)
 }
 
 // handleYamuxStream handles a single stream within a yamux session.

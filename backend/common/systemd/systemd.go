@@ -36,6 +36,12 @@ func ReloadUnit(ctx context.Context, name string) error {
 	return callUnitJob(ctx, name, "ReloadUnit", "reload")
 }
 
+// ReloadOrTryRestartUnit reloads a running unit and does nothing for a stopped
+// one. A running unit without ExecReload is restarted instead.
+func ReloadOrTryRestartUnit(ctx context.Context, name string) error {
+	return callUnitJob(ctx, name, "ReloadOrTryRestartUnit", "try-reload-or-restart")
+}
+
 func EnableUnit(ctx context.Context, name string) error {
 	return unitFilesOp(ctx, name, "EnableUnitFiles", "enable", []any{true}, new(bool))
 }

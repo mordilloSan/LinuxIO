@@ -80,7 +80,7 @@ func WithExcludePaths(paths []string) Option {
 // path: the filesystem path to index (e.g., "/", "/home", "/home/user/documents")
 func Initialize(path string, opts ...Option) *Index {
 	idx := newIndex(path, opts...)
-	slog.Info("initialized index", "path", path, "include_network_mounts", idx.includeNetworkMounts, "exclude_paths", idx.excludePaths)
+	slog.Debug("initialized index", "path", path, "include_network_mounts", idx.includeNetworkMounts, "exclude_paths", idx.excludePaths)
 	return idx
 }
 
@@ -123,7 +123,7 @@ func (idx *Index) StartIndexing(ctx context.Context) error {
 		return fmt.Errorf("streaming mode is required; call EnableStreaming with a writer before indexing")
 	}
 
-	slog.Info("starting indexing", "path", idx.Path)
+	slog.Debug("starting indexing", "path", idx.Path)
 
 	err := idx.indexDirectory(ctx, "/")
 	if err != nil {
@@ -135,7 +135,7 @@ func (idx *Index) StartIndexing(ctx context.Context) error {
 	files := idx.NumFiles
 	skipped := idx.skippedDirs
 	idx.mu.RUnlock()
-	slog.Info("completed indexing", "dirs", dirs, "files", files, "skipped_dirs", skipped)
+	slog.Debug("completed indexing", "dirs", dirs, "files", files, "skipped_dirs", skipped)
 	return nil
 }
 
@@ -153,7 +153,7 @@ func (idx *Index) StartIndexingFromPath(ctx context.Context, relativePath string
 		return fmt.Errorf("streaming mode is required; call EnableStreaming with a writer before indexing")
 	}
 
-	slog.Info("starting partial reindex", "path", relativePath)
+	slog.Debug("starting partial reindex", "path", relativePath)
 
 	// Normalize the path
 	normalizedPath := indexerapi.NormalizePath(relativePath)
@@ -167,7 +167,7 @@ func (idx *Index) StartIndexingFromPath(ctx context.Context, relativePath string
 	dirs := idx.NumDirs
 	files := idx.NumFiles
 	idx.mu.RUnlock()
-	slog.Info("completed partial reindex", "dirs", dirs, "files", files)
+	slog.Debug("completed partial reindex", "dirs", dirs, "files", files)
 	return nil
 }
 

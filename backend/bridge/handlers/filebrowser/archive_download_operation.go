@@ -42,13 +42,13 @@ type archiveTransferTask struct {
 
 func runArchiveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileArchiveRequest) (any, error) {
 	if req.Format == "" || len(req.Paths) == 0 {
-		return nil, bridgeipc.NewError("missing format or paths", 400)
+		return nil, fmt.Errorf("%w: missing format or paths", bridgeipc.ErrInvalidArgs)
 	}
 
 	paths := append([]string(nil), req.Paths...)
 	extension, err := archiveExtension(req.Format)
 	if err != nil {
-		return nil, bridgeipc.NewError(fmt.Sprintf("unsupported format: %s", req.Format), 400)
+		return nil, fmt.Errorf("%w: unsupported format: %s", bridgeipc.ErrInvalidArgs, req.Format)
 	}
 	// Register before any slow work. The client opens its data stream as soon
 	// as the start reply carries the task id, and attachFileTransferData only
@@ -167,7 +167,7 @@ func (t *archiveTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAtta
 	}
 
 	t.succeed(stream, FileArchiveResult{ArchiveName: t.archiveName, Size: t.archiveSize, Format: t.format})
-	slog.Info("archive download complete", "count", len(t.paths), "size", t.archiveSize, "format", t.format, "task_id", t.task.ID())
+	slog.Debug("archive download complete", "count", len(t.paths), "size", t.archiveSize, "format", t.format, "task_id", t.task.ID())
 	return nil
 }
 

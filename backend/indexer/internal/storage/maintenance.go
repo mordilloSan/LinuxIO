@@ -57,7 +57,7 @@ func incrementalVacuum(ctx context.Context, db *sql.DB) error {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			slog.Warn("incremental_vacuum rows close failed", "err", closeErr)
+			slog.Warn("incremental_vacuum rows close failed", "error", closeErr)
 		}
 	}()
 	for rows.Next() {
@@ -92,11 +92,11 @@ func ReleaseSQLiteMemory(ctx context.Context, db *sql.DB) error {
 // already succeeded. operation names the write for the log.
 func (s *Store) CheckpointAndRelease(ctx context.Context, operation string) {
 	if stats, err := WALCheckpointTruncate(ctx, s.db); err != nil {
-		slog.Warn("WAL checkpoint failed after "+operation, "err", err)
+		slog.Warn("wal checkpoint failed", "operation", operation, "error", err)
 	} else {
-		slog.Info("WAL checkpoint complete after "+operation, "duration", stats.Duration, "busy", stats.Busy, "log", stats.Log, "checkpointed", stats.Checkpointed)
+		slog.Debug("wal checkpoint complete", "operation", operation, "duration", stats.Duration, "busy", stats.Busy, "log", stats.Log, "checkpointed", stats.Checkpointed)
 	}
 	if err := ReleaseSQLiteMemory(ctx, s.db); err != nil {
-		slog.Warn("failed to release SQLite memory after "+operation, "err", err)
+		slog.Warn("failed to release sqlite memory", "operation", operation, "error", err)
 	}
 }

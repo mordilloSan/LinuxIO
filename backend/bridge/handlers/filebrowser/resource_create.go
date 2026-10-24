@@ -12,6 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 type resourcePostRequest struct {
@@ -28,20 +29,20 @@ func invalidEntryName(name string) bool {
 
 func parseResourcePostRequest(req apischema.FileResourcePostRequest) (resourcePostRequest, error) {
 	if req.Path == "" {
-		return resourcePostRequest{}, fmt.Errorf("bad_request:missing path")
+		return resourcePostRequest{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 
 	path, err := url.QueryUnescape(req.Path)
 	if err != nil {
-		return resourcePostRequest{}, fmt.Errorf("bad_request:invalid path encoding")
+		return resourcePostRequest{}, fmt.Errorf("%w: malformed path encoding", bridgeipc.ErrInvalidArgs)
 	}
 
 	cleanPath := fsroot.CleanAbsPath(path)
 	if cleanPath == "/" {
-		return resourcePostRequest{}, fmt.Errorf("bad_request:cannot create root")
+		return resourcePostRequest{}, fmt.Errorf("%w: cannot create root", bridgeipc.ErrInvalidArgs)
 	}
 	if invalidEntryName(filepath.Base(strings.TrimRight(path, "/"))) {
-		return resourcePostRequest{}, fmt.Errorf("bad_request:invalid name")
+		return resourcePostRequest{}, fmt.Errorf("%w: invalid name", bridgeipc.ErrInvalidArgs)
 	}
 
 	return resourcePostRequest{
@@ -57,7 +58,7 @@ func ensureResourcePostType(root *fsroot.FSRoot, req resourcePostRequest) error 
 		return nil
 	}
 	if stat.IsDir() != req.isDir {
-		return fmt.Errorf("bad_request:resource already exists with different type")
+		return fmt.Errorf("%w: resource already exists with a different type", bridgeipc.ErrConflict)
 	}
 	return nil
 }
@@ -66,16 +67,14 @@ func createDirectoryResource(ctx context.Context, root *fsroot.FSRoot, req resou
 	// MkdirAll would accept an existing folder and the chmod below would then
 	// rewrite its mode, so an existing folder has to be refused here.
 	if _, statErr := root.Root.Stat(req.relPath); statErr == nil {
-		return nil, fmt.Errorf("bad_request:folder already exists")
+		return nil, fmt.Errorf("%w: folder already exists", bridgeipc.ErrConflict)
 	}
 
 	if mkdirErr := root.Root.MkdirAll(req.relPath, services.PermDir); mkdirErr != nil {
-		slog.Debug("error writing directory", "path", req.cleanPath, "error", mkdirErr)
-		return nil, fmt.Errorf("bad_request:%w", mkdirErr)
+		return nil, fsError("create directory", mkdirErr)
 	}
 	if chmodErr := root.Root.Chmod(req.relPath, services.PermDir); chmodErr != nil {
-		slog.Debug("error setting directory permissions", "path", req.cleanPath, "error", chmodErr)
-		return nil, fmt.Errorf("bad_request:%w", chmodErr)
+		return nil, fsError("set directory permissions", chmodErr)
 	}
 
 	notifyIndexerForCreatedResource(ctx, root, req.cleanPath, req.relPath)
@@ -87,19 +86,17 @@ func createFileResource(ctx context.Context, root *fsroot.FSRoot, req resourcePo
 	parentRel := filepath.Dir(req.relPath)
 	if parentRel != "." {
 		if mkdirErr := root.Root.MkdirAll(parentRel, services.PermDir); mkdirErr != nil {
-			slog.Debug("error creating parent directory", "path", req.cleanPath, "error", mkdirErr)
-			return nil, fmt.Errorf("bad_request:failed to create parent directory: %w", mkdirErr)
+			return nil, fsError("create parent directory", mkdirErr)
 		}
 	}
 
 	if _, statErr := root.Root.Stat(req.relPath); statErr == nil {
-		return nil, fmt.Errorf("bad_request:file already exists")
+		return nil, fmt.Errorf("%w: file already exists", bridgeipc.ErrConflict)
 	}
 
 	f, err := root.Root.OpenFile(req.relPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, services.PermFile)
 	if err != nil {
-		slog.Debug("error creating file", "path", req.cleanPath, "error", err)
-		return nil, fmt.Errorf("bad_request:%w", err)
+		return nil, fsError("create file", err)
 	}
 	if cerr := f.Close(); cerr != nil {
 		slog.Warn("failed to close created file", "path", req.cleanPath, "error", cerr)
@@ -122,8 +119,7 @@ func resourcePost(ctx context.Context, req apischema.FileResourcePostRequest) (a
 
 	root, err := fsroot.Open()
 	if err != nil {
-		slog.Debug("error opening filesystem root", "error", err)
-		return nil, fmt.Errorf("bad_request:failed to access filesystem")
+		return nil, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer func() {
 		if cerr := root.Close(); cerr != nil {

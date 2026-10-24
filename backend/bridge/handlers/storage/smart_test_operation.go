@@ -89,7 +89,7 @@ func runSmartTestTask(ctx context.Context, task *bridgeipc.Task, req apischema.D
 	state.reportStart()
 
 	if err := RunSmartTest(ctx, req.Device, req.TestType); err != nil {
-		return SmartTestResult{}, bridgeipc.NewError(err.Error(), 500)
+		return SmartTestResult{}, err
 	}
 
 	state.pollInitial(ctx)
@@ -143,7 +143,7 @@ func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult
 			// Returning context.Canceled routes to the Task's canceled state,
 			// not markFailed.
 			if errors.Is(context.Cause(ctx), errSmartTestTimeout) {
-				return SmartTestResult{}, bridgeipc.NewError(errSmartTestTimeout.Error(), 500)
+				return SmartTestResult{}, errSmartTestTimeout
 			}
 			return SmartTestResult{}, ctx.Err()
 		case <-ticker.C:
@@ -182,9 +182,9 @@ func (s *smartTestTaskState) poll(ctx context.Context) (SmartTestResult, bool, e
 		return s.result(st), true, nil
 	}
 	if st.State == "idle" {
-		return SmartTestResult{}, false, bridgeipc.NewError("SMART self-test never started", 500)
+		return SmartTestResult{}, false, errors.New("SMART self-test never started")
 	}
-	return SmartTestResult{}, false, bridgeipc.NewError(st.Message, 500)
+	return SmartTestResult{}, false, errors.New(st.Message)
 }
 
 func (s *smartTestTaskState) handlePollError(ctx context.Context, err error) error {
@@ -193,7 +193,7 @@ func (s *smartTestTaskState) handlePollError(ctx context.Context, err error) err
 	}
 	s.consecutiveErrs++
 	if s.consecutiveErrs >= 3 {
-		return bridgeipc.NewError(err.Error(), 500)
+		return err
 	}
 	return nil
 }

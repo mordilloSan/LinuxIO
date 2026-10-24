@@ -19,13 +19,13 @@ import (
 // nil); the returned stats come from the subprocess's summary event, nil when
 // it never emitted one.
 func (d *daemon) runIndexSubprocess(ctx context.Context, onEvent func(indexWireEvent)) (*IndexRunStats, error) {
-	slog.Info("starting index process")
+	slog.Debug("starting index process")
 	stats, err := runIndexProcess(exec.CommandContext(ctx, os.Args[0], "--index-mode", "--config-file", d.settings.path), onEvent)
 	if err != nil {
 		return nil, err
 	}
 
-	slog.Info("index process completed successfully")
+	slog.Debug("index process completed successfully")
 	return stats, nil
 }
 

@@ -27,7 +27,7 @@ func CollectConnectionStats(ctx context.Context) (*networkmodel.ConnectionStats,
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		slog.Debug("network connection collection failed", "err", err)
+		slog.Debug("network connection collection failed", "error", err)
 	} else {
 		stats.NetConnectionsEnabled = true
 		for _, conn := range conns {

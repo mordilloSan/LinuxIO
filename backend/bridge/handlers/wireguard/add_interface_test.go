@@ -2,7 +2,6 @@ package wireguard
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -187,8 +186,7 @@ func TestAddInterfaceRefusesExistingInterface(t *testing.T) {
 		ListenPort: "51821",
 		EgressNic:  "eth0",
 	})
-	var ipcErr *bridgeipc.Error
-	if !errors.As(err, &ipcErr) || ipcErr.Code != 409 {
+	if bridgeipc.StatusCode(err) != 409 {
 		t.Fatalf("error = %v, want a 409 conflict", err)
 	}
 	cfg, err := ParseWireGuardConfig(configPath("wgtest"))

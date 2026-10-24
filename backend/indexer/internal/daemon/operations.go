@@ -83,7 +83,7 @@ func (d *daemon) handleIndex(ctx context.Context, w http.ResponseWriter, r *http
 			}
 		})
 		if err != nil {
-			slog.Error("manual index failed", "err", err)
+			slog.Error("manual index failed", "error", err)
 			sendSSEError(stream, fmt.Sprintf("index failed: %v", err))
 			return
 		}

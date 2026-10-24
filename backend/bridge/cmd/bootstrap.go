@@ -44,9 +44,7 @@ func initializeBridgeSession() (*session.Session, bool, error) {
 		return nil, false, err
 	}
 	if bootstrap.Verbose {
-		if configureErr := logging.Configure("linuxio-bridge", true); configureErr != nil {
-			return nil, false, fmt.Errorf("failed to reconfigure logger: %w", configureErr)
-		}
+		logging.SetDebug(true)
 	}
 	sess := &session.Session{
 		SessionID:  bootstrap.SessionID,

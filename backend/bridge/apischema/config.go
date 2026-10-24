@@ -11,6 +11,14 @@ type ConfigSetResult struct {
 	Path    string `json:"path"`
 }
 
+type LoggingDebugRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+type LoggingDebugState struct {
+	Enabled bool `json:"enabled"`
+}
+
 type AppConfig struct {
 	AppSettings AppSettings       `json:"appSettings"`
 	Dismissals  *Dismissals       `json:"dismissals,omitzero"`

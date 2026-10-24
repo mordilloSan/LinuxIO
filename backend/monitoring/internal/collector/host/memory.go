@@ -51,7 +51,7 @@ func updateCPUMetrics(ctx context.Context, cacheTimeMs uint16, systemStats *syst
 	} else if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	} else {
-		slog.Error("Error getting cpu metrics", "err", err)
+		slog.Error("cpu metrics lookup failed", "error", err)
 	}
 
 	if perCoreUsage, err := getPerCoreCpuUsage(ctx, cacheTimeMs); err == nil {
@@ -73,7 +73,7 @@ func updateLoadStats(ctx context.Context, systemStats *systemmodel.Stats) error 
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
-	slog.Error("Error getting load average", "err", err)
+	slog.Error("load average lookup failed", "error", err)
 	return nil
 }
 

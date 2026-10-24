@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
@@ -108,17 +109,17 @@ func ListSambaShares(ctx context.Context) ([]apischema.SambaShare, error) {
 // CreateSambaShare adds a new share section to smb.conf and reloads samba
 func CreateSambaShare(ctx context.Context, name string, properties map[string]string) error {
 	if !validShareName.MatchString(name) {
-		return fmt.Errorf("invalid share name: %s", name)
+		return fmt.Errorf("%w: share name %q", bridgeipc.ErrInvalidArgs, name)
 	}
 	if reservedSections[strings.ToLower(name)] {
-		return fmt.Errorf("cannot use reserved section name: %s", name)
+		return fmt.Errorf("%w: reserved share name %q", bridgeipc.ErrInvalidArgs, name)
 	}
 	path, ok := properties["path"]
 	if !ok || path == "" {
-		return fmt.Errorf("share must have a 'path' property")
+		return fmt.Errorf("%w: share path", bridgeipc.ErrInvalidArgs)
 	}
 	if !validExportPath.MatchString(path) {
-		return fmt.Errorf("invalid share path: %s", path)
+		return fmt.Errorf("%w: share path %q", bridgeipc.ErrInvalidArgs, path)
 	}
 
 	// Preflight before touching the filesystem so an uninstalled Samba returns a
@@ -158,20 +159,20 @@ func CreateSambaShare(ctx context.Context, name string, properties map[string]st
 // oldName identifies the existing section; newName is the section name to write.
 func UpdateSambaShare(ctx context.Context, oldName, newName string, properties map[string]string) error {
 	if reservedSections[strings.ToLower(oldName)] {
-		return fmt.Errorf("cannot modify reserved section: %s", oldName)
+		return fmt.Errorf("%w: reserved section %q", bridgeipc.ErrForbidden, oldName)
 	}
 	if !validShareName.MatchString(newName) {
-		return fmt.Errorf("invalid share name: %s", newName)
+		return fmt.Errorf("%w: share name %q", bridgeipc.ErrInvalidArgs, newName)
 	}
 	if reservedSections[strings.ToLower(newName)] {
-		return fmt.Errorf("cannot use reserved section name: %s", newName)
+		return fmt.Errorf("%w: reserved share name %q", bridgeipc.ErrInvalidArgs, newName)
 	}
 	path, ok := properties["path"]
 	if !ok || path == "" {
-		return fmt.Errorf("share must have a 'path' property")
+		return fmt.Errorf("%w: share path", bridgeipc.ErrInvalidArgs)
 	}
 	if !validExportPath.MatchString(path) {
-		return fmt.Errorf("invalid share path: %s", path)
+		return fmt.Errorf("%w: share path %q", bridgeipc.ErrInvalidArgs, path)
 	}
 
 	if err := requireSambaServerAvailability(); err != nil {
@@ -215,7 +216,7 @@ func UpdateSambaShare(ctx context.Context, oldName, newName string, properties m
 // DeleteSambaShare removes a share section from smb.conf and reloads samba
 func DeleteSambaShare(ctx context.Context, name string) error {
 	if reservedSections[strings.ToLower(name)] {
-		return fmt.Errorf("cannot modify reserved section: %s", name)
+		return fmt.Errorf("%w: reserved section %q", bridgeipc.ErrForbidden, name)
 	}
 	if err := requireSambaServerAvailability(); err != nil {
 		return err
@@ -375,7 +376,7 @@ func reloadSamba(ctx context.Context) error {
 	// smbcontrol is the most portable method
 	out, err := smbcontrolReload(ctx)
 	if err == nil {
-		slog.Info("Samba configuration reloaded via smbcontrol")
+		slog.Debug("Samba configuration reloaded via smbcontrol")
 		return nil
 	}
 	slog.Debug("smbcontrol reload failed",
@@ -386,7 +387,7 @@ func reloadSamba(ctx context.Context) error {
 	for _, service := range []string{"smbd.service", "smb.service", "samba.service"} {
 		err := systemdReloadUnit(ctx, service)
 		if err == nil {
-			slog.Info("Samba reloaded via systemd D-Bus", "service", service)
+			slog.Debug("Samba reloaded via systemd D-Bus", "service", service)
 			return nil
 		}
 		slog.Debug("systemd D-Bus reload failed", "service", service, "error", err)

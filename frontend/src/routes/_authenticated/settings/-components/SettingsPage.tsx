@@ -20,6 +20,7 @@ import CapabilityManagerSection from "./CapabilityManagerSection";
 import DockAccentGradientEditor from "./DockAccentGradientEditor";
 import DockerSettingsSection from "./docker/DockerSettingsSection";
 import IndexerSettingsSection from "./IndexerSettingsSection";
+import LoggingSettingsSection from "./LoggingSettingsSection";
 import MonitoringSettingsSection from "./MonitoringSettingsSection";
 import NotificationSettingsSection from "./NotificationSettingsSection";
 import PowerSettingsSection from "./PowerSettingsSection";
@@ -306,7 +307,16 @@ const SettingsPage = () => {
             {effectiveTab === "assistant" ? <AssistantSettingsSection /> : null}
             {effectiveTab === "indexer" ? <IndexerSettingsSection /> : null}
             {effectiveTab === "monitoring" ? (
-              <MonitoringSettingsSection />
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--app-space-6)",
+                }}
+              >
+                <MonitoringSettingsSection />
+                <LoggingSettingsSection />
+              </div>
             ) : null}
             {effectiveTab === "notifications" ? (
               <NotificationSettingsSection />

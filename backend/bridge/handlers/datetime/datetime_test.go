@@ -24,9 +24,7 @@ func TestSetNTPServersRejectsInvalidEntries(t *testing.T) {
 		strings.Repeat("a", 254),
 	} {
 		err := SetNTPServers(t.Context(), []string{"pool.ntp.org", server})
-		var ipcErr *bridgeipc.Error
-		require.ErrorAs(t, err, &ipcErr, "server %q", server)
-		assert.Equal(t, 400, ipcErr.Code, "server %q", server)
+		assert.Equal(t, 400, bridgeipc.StatusCode(err), "server %q", server)
 	}
 }
 

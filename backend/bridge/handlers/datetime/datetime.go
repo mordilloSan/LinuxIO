@@ -130,7 +130,7 @@ func GetNTPServers(ctx context.Context) ([]string, error) {
 func SetNTPServers(ctx context.Context, servers []string) error {
 	for _, server := range servers {
 		if !validNTPServer.MatchString(server) {
-			return bridgeipc.NewError(fmt.Sprintf("invalid NTP server %q", server), 400)
+			return fmt.Errorf("%w: NTP server %q", bridgeipc.ErrInvalidArgs, server)
 		}
 	}
 	backend, err := selectNTPServerBackend(ctx)

@@ -83,12 +83,12 @@ func New(ctx context.Context, dataDir string) (*App, error) {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, ctxErr
 	}
-	slog.Info("starting linuxio-monitoring", "version", version.Version)
+	slog.Debug("starting linuxio-monitoring", "version", version.Version)
 
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
-	slog.Info("Data directory", "path", dataDir)
+	slog.Debug("data directory", "path", dataDir)
 
 	app := &App{
 		dataDir:            dataDir,
@@ -125,13 +125,13 @@ func New(ctx context.Context, dataDir string) (*App, error) {
 	var err error
 	app.smartManager, err = smart.NewManager()
 	if err != nil {
-		slog.Debug("SMART", "err", err)
+		slog.Debug("SMART manager unavailable", "error", err)
 	}
 
 	// initialize GPU manager
 	app.gpuManager, err = gpu.NewManager()
 	if err != nil {
-		slog.Debug("GPU", "err", err)
+		slog.Debug("GPU manager unavailable", "error", err)
 	}
 
 	return app, nil
@@ -180,7 +180,7 @@ func (a *App) gatherBaseStats(ctx context.Context, options DataRequestOptions) (
 	}
 	identities := containerIdentitiesFromStats(data.Containers)
 	a.attachFilesystemStats(data)
-	slog.Debug("Extra FS", "count", len(data.Stats.ExtraFs))
+	slog.Debug("extra filesystems collected", "count", len(data.Stats.ExtraFs))
 
 	return a.host.AttachDetails(data, cacheTimeMs, options.IncludeDetails), identities, nil
 }
@@ -192,13 +192,13 @@ func (a *App) attachContainerStats(ctx context.Context, cacheTimeMs uint16, data
 	containerStats, err := a.dockerManager.GetStats(ctx, cacheTimeMs)
 	if err == nil {
 		data.Containers = containerStats
-		slog.Debug("Containers", "count", len(data.Containers))
+		slog.Debug("containers collected", "count", len(data.Containers))
 		return nil
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
-	slog.Debug("Containers", "err", err)
+	slog.Debug("containers collection failed", "error", err)
 	return nil
 }
 

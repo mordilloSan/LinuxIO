@@ -171,7 +171,7 @@ func (m *Manager) refreshNetInterfaces(netIO []psutilNet.IOCountersStat) {
 		}
 		seen[v.Name] = struct{}{}
 		if _, exists := m.netInterfaces[v.Name]; !exists {
-			slog.Info("Detected network interface", "name", v.Name, "sent", v.BytesSent, "recv", v.BytesRecv)
+			slog.Debug("network interface detected", "name", v.Name, "sent", v.BytesSent, "recv", v.BytesRecv)
 		}
 		m.netInterfaces[v.Name] = struct{}{}
 	}

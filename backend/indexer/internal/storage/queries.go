@@ -42,7 +42,7 @@ func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string
 			}
 			return results, nil
 		}
-		slog.Warn("FTS search failed; falling back to LIKE scan", "err", ftsErr)
+		slog.Warn("fts search failed; falling back to like scan", "error", ftsErr)
 	}
 
 	where, args := buildSearchFilter(opts)
@@ -64,7 +64,7 @@ func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			slog.Warn("rows close failed", "query", "search", "err", cerr)
+			slog.Warn("rows close failed", "query", "search", "error", cerr)
 		}
 	}()
 
@@ -237,7 +237,7 @@ func (s *Store) GetDirectSubfolders(ctx context.Context, parentPath string) ([]a
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			slog.Warn("rows close failed", "query", "subfolders", "err", cerr)
+			slog.Warn("rows close failed", "query", "subfolders", "error", cerr)
 		}
 	}()
 

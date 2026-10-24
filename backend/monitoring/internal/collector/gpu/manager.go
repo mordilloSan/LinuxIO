@@ -247,10 +247,10 @@ func (c *gpuCollector) start(ctx context.Context) {
 				return
 			}
 			if errors.Is(err, errNoValidData) {
-				slog.Warn(c.name + " found no valid GPU data, stopping")
+				slog.Warn("no valid GPU data, stopping", "collector", c.name)
 				break
 			}
-			slog.Warn(c.name+" failed, restarting", "err", err)
+			slog.Warn("GPU collector failed, restarting", "collector", c.name, "error", err)
 			if !sleepUntilDone(ctx, retryWaitTime) {
 				return
 			}
@@ -658,20 +658,20 @@ func logGPUDiscovery(mode string, caps gpuCapabilities, requested, selected []co
 	if reason != "" {
 		args = append(args, "reason", reason)
 	}
-	slog.Info(gpuDiscoveryLogMessage(mode, selected, reason), args...)
+	slog.Debug(gpuDiscoveryLogMessage(mode, selected, reason), args...)
 }
 
 func gpuDiscoveryLogMessage(mode string, selected []collectorSource, reason string) string {
 	if len(selected) > 1 {
-		return "Detected GPU collectors"
+		return "GPU collectors detected"
 	}
 	if len(selected) == 1 {
-		return "Detected GPU collector"
+		return "GPU collector detected"
 	}
 	if mode == "disabled" && reason == "SKIP_GPU=true" {
 		return "GPU monitoring disabled"
 	}
-	return "No GPU collector detected"
+	return "no GPU collector detected"
 }
 
 func (gm *Manager) startIntelCollector(ctx context.Context) {
@@ -679,7 +679,7 @@ func (gm *Manager) startIntelCollector(ctx context.Context) {
 		runRetryingCollector(ctx, retryWaitTime, func() error {
 			return gm.collectIntelStats(ctx)
 		}, func(err error) bool {
-			slog.Warn("Error collecting Intel GPU data", "err", err)
+			slog.Warn("GPU data collection via intel_gpu_top failed", "error", err)
 			return true
 		})
 	})
@@ -724,7 +724,7 @@ func (gm *Manager) startRocmSmiCollector(ctx context.Context, pollInterval time.
 		runRetryingCollector(ctx, pollInterval, func() error {
 			return collector.collect(ctx)
 		}, func(err error) bool {
-			slog.Warn("Error collecting AMD GPU data via rocm-smi", "err", err)
+			slog.Warn("GPU data collection via rocm-smi failed", "error", err)
 			return true
 		})
 	})
@@ -789,7 +789,7 @@ func parseCollectorPriority(value string) []collectorSource {
 		name := collectorSource(strings.TrimSpace(strings.ToLower(raw)))
 		if !isValidCollectorSource(name) {
 			if name != "" {
-				slog.Warn("Ignoring unknown GPU collector", "collector", name)
+				slog.Warn("ignoring unknown GPU collector", "collector", name)
 			}
 			continue
 		}
@@ -802,7 +802,7 @@ func parseCollectorPriority(value string) []collectorSource {
 func (gm *Manager) startNvmlCollector(ctx context.Context) bool {
 	collector := &nvmlCollector{gm: gm}
 	if err := collector.init(); err != nil {
-		slog.Warn("Failed to initialize NVML", "err", err)
+		slog.Warn("NVML initialization failed", "error", err)
 		return false
 	}
 	gm.startCollector(ctx, "nvml", func() {
@@ -817,7 +817,7 @@ func (gm *Manager) startNvmlCollector(ctx context.Context) bool {
 func (gm *Manager) startNvmlProcessCollector(ctx context.Context) bool {
 	collector := &nvmlCollector{gm: gm, processOnly: true}
 	if err := collector.init(); err != nil {
-		slog.Warn("Failed to initialize NVML GPU process collection", "err", err)
+		slog.Warn("NVML GPU process collection initialization failed", "error", err)
 		return false
 	}
 	gm.startCollector(ctx, "nvml-process", func() {
@@ -830,7 +830,7 @@ func (gm *Manager) startNvmlProcessCollector(ctx context.Context) bool {
 func (gm *Manager) startAmdSysfsCollector(ctx context.Context) bool {
 	gm.startCollector(ctx, "amd-sysfs", func() {
 		if err := gm.collectAmdStats(ctx); err != nil && ctx.Err() == nil {
-			slog.Warn("Error collecting AMD GPU data via sysfs", "err", err)
+			slog.Warn("GPU data collection via sysfs failed", "error", err)
 		}
 	})
 	return true
@@ -849,7 +849,7 @@ func (gm *Manager) startCollectorsByPriority(ctx context.Context, priorities []c
 		// nvtop is not a vendor-specific collector, so should only be used if no other collectors are selected or it is first in GPU_COLLECTOR.
 		if source == collectorSourceNVTop {
 			if len(selectedGroups) > 0 {
-				slog.Warn("Skipping nvtop because other collectors are selected")
+				slog.Warn("skipping nvtop because other collectors are selected")
 				continue
 			}
 			// if nvtop fails, fall back to remaining collectors.
@@ -866,7 +866,7 @@ func (gm *Manager) startCollectorsByPriority(ctx context.Context, priorities []c
 			continue
 		}
 		if definition.deprecationWarning != "" {
-			slog.Warn(definition.deprecationWarning)
+			slog.Warn("GPU collector deprecated", "collector", source, "reason", definition.deprecationWarning)
 		}
 		if definition.start(nil) {
 			selectedGroups[group] = true

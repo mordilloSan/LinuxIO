@@ -28,7 +28,7 @@ func streamDockerLogsChannel(parent context.Context, stream net.Conn, _ runtime.
 	ctx, cleanup := bridgeipc.ReceiveOnlyChannelContext(parent, stream)
 	defer cleanup()
 	if req.ContainerID == "" {
-		return streamrelay.WriteError(stream, 0, bridgeipc.NewError("missing containerID", 400))
+		return streamrelay.WriteError(stream, 0, fmt.Errorf("%w: missing containerID", bridgeipc.ErrInvalidArgs))
 	}
 	tail := "100"
 	if req.Tail != nil && *req.Tail != "" {

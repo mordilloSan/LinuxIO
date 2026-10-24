@@ -101,7 +101,7 @@ func readJournalLines(ctx context.Context, stdout io.Reader, lines chan<- string
 func stopJournalFollow(command *runningJournalCommand, readDone <-chan error) {
 	killLogsProcess(command.cmd)
 	if err := <-readDone; err != nil {
-		slog.Debug("journal line reader stopped", "err", err)
+		slog.Debug("journal line reader stopped", "error", err)
 	}
 	_ = command.cmd.Wait()
 }

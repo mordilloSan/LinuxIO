@@ -22,12 +22,12 @@ func loadExternalMountPoints() map[string]string {
 
 	file, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
-		slog.Warn("unable to read mountinfo", "err", err)
+		slog.Warn("unable to read mountinfo", "error", err)
 		return mounts
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			slog.Warn("unable to close mountinfo file", "err", closeErr)
+			slog.Warn("unable to close mountinfo file", "error", closeErr)
 		}
 	}()
 
@@ -42,7 +42,7 @@ func loadExternalMountPoints() map[string]string {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		slog.Warn("error while scanning mountinfo", "err", err)
+		slog.Warn("error while scanning mountinfo", "error", err)
 	}
 	return mounts
 }

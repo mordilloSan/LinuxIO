@@ -161,12 +161,12 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadBatchRequest, owner uploadOwner) (any, error) {
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	if err != nil {
-		return nil, bridgeipc.NewError(err.Error(), 400)
+		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 
 	root, err := fsroot.Open()
 	if err != nil {
-		return nil, bridgeipc.NewError("failed to access filesystem", 500)
+		return nil, fmt.Errorf("open filesystem root: %w", err)
 	}
 	destination, destErr := resolveBatchDestinationDir(root, destination)
 	closeErr := root.Close()

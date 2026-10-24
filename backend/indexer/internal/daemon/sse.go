@@ -170,7 +170,7 @@ func (b *workStreamBroadcaster) close() {
 
 func sendSSEEvent(s sseEventWriter, event string, data any) bool {
 	if err := s.SendEvent(event, data); err != nil {
-		slog.Warn("SSE send failed", "event", event, "err", err)
+		slog.Warn("SSE send failed", "event", event, "error", err)
 		return false
 	}
 	return true
@@ -178,7 +178,7 @@ func sendSSEEvent(s sseEventWriter, event string, data any) bool {
 
 func sendSSEError(s sseEventSender, msg string) {
 	if err := s.SendError(msg); err != nil {
-		slog.Warn("SSE send error event failed", "err", err)
+		slog.Warn("SSE send error event failed", "error", err)
 	}
 }
 

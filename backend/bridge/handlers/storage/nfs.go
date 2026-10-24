@@ -299,7 +299,7 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint string, option
 	}
 
 	args := buildNFSMountArgs(source, mountpoint, options)
-	slog.Info("mounting NFS share", "source", source, "mountpoint", mountpoint, "options", args)
+	slog.Debug("mounting NFS share", "source", source, "mountpoint", mountpoint, "options", args)
 	out, err := runMountCombinedOutput(ctx, nfsMountCommandTimeout, "mount", args...)
 	if err != nil {
 		message := commandFailureMessage(out, err)
@@ -356,7 +356,7 @@ func recordPersistentNFSMount(warning *string, source, mountpoint string, option
 		}
 		return
 	}
-	slog.Info("added NFS mount to fstab", "mountpoint", mountpoint)
+	slog.Debug("added NFS mount to fstab", "mountpoint", mountpoint)
 	if err := nfsMountStore.remove(mountpoint); err != nil {
 		slog.Warn("failed to clean up temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
 	}
@@ -415,7 +415,7 @@ func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, upd
 		fstype = entry.fstype
 	}
 	// Unmount first.
-	slog.Info("remount step 1/2", "mountpoint", mountpoint, "action", "unmount")
+	slog.Debug("remount step 1/2", "mountpoint", mountpoint, "action", "unmount")
 	out, err := runMountCombinedOutput(ctx, nfsUnmountCommandTimeout, "umount", mountpoint)
 	if err != nil {
 		message := commandFailureMessage(out, err)
@@ -428,7 +428,7 @@ func RemountNFS(ctx context.Context, mountpoint string, newOptions []string, upd
 		args = append(args, "-o", strings.Join(options, ","))
 	}
 	args = append(args, source, mountpoint)
-	slog.Info("remount step 2/2", "source", source, "mountpoint", mountpoint, "options", args)
+	slog.Debug("remount step 2/2", "source", source, "mountpoint", mountpoint, "options", args)
 	out, err = runMountCombinedOutput(ctx, nfsMountCommandTimeout, "mount", args...)
 	if err != nil {
 		message := commandFailureMessage(out, err)
@@ -494,9 +494,9 @@ func persistNFSConfig(op, mountpoint, source, fstype string, options []string, w
 			*warning = fmt.Sprintf("%s succeeded but fstab update failed: %v", op, err)
 		} else {
 			if inFstab {
-				slog.Info("updated fstab options", "mountpoint", mountpoint)
+				slog.Debug("updated fstab options", "mountpoint", mountpoint)
 			} else {
-				slog.Info("added mount to fstab", "mountpoint", mountpoint)
+				slog.Debug("added mount to fstab", "mountpoint", mountpoint)
 			}
 			if err := nfsMountStore.remove(mountpoint); err != nil {
 				slog.Warn("failed to clean up temporary NFS mount metadata", "mountpoint", mountpoint, "error", err)
@@ -511,7 +511,7 @@ func persistNFSConfig(op, mountpoint, source, fstype string, options []string, w
 			*warning = fmt.Sprintf("%s succeeded but fstab removal failed: %v", op, err)
 			return
 		}
-		slog.Info("removed mount from fstab", "mountpoint", mountpoint)
+		slog.Debug("removed mount from fstab", "mountpoint", mountpoint)
 	}
 	if err := nfsMountStore.upsert(managedMountEntry{Source: source, Mountpoint: mountpoint, FSType: fstype, Options: options}); err != nil {
 		slog.Warn("NFS operation succeeded but LinuxIO registry update failed", "operation", op, "mountpoint", mountpoint, "error", err)
@@ -556,7 +556,7 @@ func UnmountNFS(ctx context.Context, mountpoint string, removeFstab bool) (apisc
 	}
 
 	source, fstype, options := resolveNFSMountInfo(currentMount, entry, isConfiguredNFS, managedEntry, inManagedRegistry)
-	slog.Info("unmounting NFS share", "mountpoint", mountpoint)
+	slog.Debug("unmounting NFS share", "mountpoint", mountpoint)
 	out, err := runMountCombinedOutput(ctx, nfsUnmountCommandTimeout, "umount", mountpoint)
 	if err != nil {
 		message := commandFailureMessage(out, err)
@@ -623,7 +623,7 @@ func persistUnmountConfig(mountpoint, source, fstype string, options []string, r
 				slog.Warn("unmount succeeded but fstab update failed", "mountpoint", mountpoint, "error", err)
 				*warning = fmt.Sprintf("unmount succeeded but fstab update failed: %v", err)
 			} else {
-				slog.Info("removed mount from fstab", "mountpoint", mountpoint)
+				slog.Debug("removed mount from fstab", "mountpoint", mountpoint)
 			}
 		}
 		if err := nfsMountStore.remove(mountpoint); err != nil {
@@ -646,6 +646,6 @@ func persistUnmountConfig(mountpoint, source, fstype string, options []string, r
 		slog.Warn("unmount succeeded but LinuxIO registry update failed", "mountpoint", mountpoint, "error", err)
 		*warning = fmt.Sprintf("unmount succeeded but LinuxIO registry update failed: %v", err)
 	} else {
-		slog.Info("saved temporary NFS entry to LinuxIO registry", "mountpoint", mountpoint)
+		slog.Debug("saved temporary NFS entry to LinuxIO registry", "mountpoint", mountpoint)
 	}
 }

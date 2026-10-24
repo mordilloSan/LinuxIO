@@ -160,7 +160,7 @@ func registerFilesystemStats(existing map[string]*systemmodel.FsStats, device, m
 				}
 			}
 			if _, ioMatch = ctx.diskIoCounters[key]; !ioMatch {
-				slog.Warn("Root I/O unmapped; set FILESYSTEM", "device", device, "mountpoint", mountpoint)
+				slog.Warn("root I/O unmapped, set FILESYSTEM", "device", device, "mountpoint", mountpoint)
 			}
 		}
 	} else {
@@ -208,7 +208,7 @@ func (d *diskDiscovery) addFsStat(device, mountpoint string, root bool, customNa
 	if customName != "" {
 		name = customName
 	}
-	slog.Info("Detected disk", "name", name, "device", device, "mount", mountpoint, "io", key, "root", root)
+	slog.Debug("disk detected", "name", name, "device", device, "mount", mountpoint, "io", key, "root", root)
 }
 
 // addConfiguredRootFs resolves FILESYSTEM against partitions first, then falls
@@ -233,7 +233,7 @@ func (d *diskDiscovery) addConfiguredRootFs() bool {
 		return true
 	}
 
-	slog.Warn("Partition details not found", "filesystem", d.ctx.filesystem)
+	slog.Warn("partition details not found", "filesystem", d.ctx.filesystem)
 	return false
 }
 
@@ -262,13 +262,13 @@ func (d *diskDiscovery) addPartitionRootFs(device, mountpoint string) bool {
 func (d *diskDiscovery) addLastResortRootFs() {
 	rootKey := mostActiveIoDevice(d.ctx.diskIoCounters)
 	if rootKey != "" {
-		slog.Warn("Using most active device for root I/O; set FILESYSTEM to override", "device", rootKey)
+		slog.Warn("using most active device for root I/O, set FILESYSTEM to override", "device", rootKey)
 	} else {
 		rootKey = filepath.Base(d.rootMountPoint)
 		if _, exists := d.manager.fsStats[rootKey]; exists {
 			rootKey = "root"
 		}
-		slog.Warn("Root I/O device not detected; set FILESYSTEM to override")
+		slog.Warn("root I/O device not detected, set FILESYSTEM to override")
 	}
 	d.manager.fsStats[rootKey] = &systemmodel.FsStats{Root: true, Mountpoint: d.rootMountPoint, Device: rootKey}
 }
@@ -296,7 +296,7 @@ func (d *diskDiscovery) addConfiguredExtraFsEntry(filesystem, customName string)
 		d.addFsStat(filepath.Base(filesystem), filesystem, false, customName)
 		return
 	} else {
-		slog.Error("Invalid filesystem", "name", filesystem, "err", err)
+		slog.Error("invalid filesystem", "name", filesystem, "error", err)
 	}
 }
 
@@ -348,15 +348,15 @@ func (m *Manager) Initialize(ctx context.Context) {
 
 	partitions, err := psutilDisk.PartitionsWithContext(ctx, true)
 	if err != nil {
-		slog.Error("Error getting disk partitions", "err", err)
+		slog.Error("disk partitions lookup failed", "error", err)
 	}
-	slog.Debug("Disk partitions discovered", "count", len(partitions))
+	slog.Debug("disk partitions discovered", "count", len(partitions))
 
 	diskIoCounters, err := psutilDisk.IOCountersWithContext(ctx)
 	if err != nil {
-		slog.Error("Error getting diskstats", "err", err)
+		slog.Error("disk I/O counters lookup failed", "error", err)
 	}
-	slog.Debug("Disk I/O counters discovered", "count", len(diskIoCounters), "devices", diskCounterNames(diskIoCounters))
+	slog.Debug("disk I/O counters discovered", "count", len(diskIoCounters), "devices", diskCounterNames(diskIoCounters))
 	fsCtx := fsRegistrationContext{
 		filesystem:     filesystem,
 		diskIoCounters: diskIoCounters,
@@ -471,7 +471,7 @@ func (m *Manager) pruneDuplicateRootExtraFilesystems(ctx context.Context) {
 			continue
 		}
 		if hasSameDiskUsage(rootUsage, extraUsage) {
-			slog.Info("Ignoring duplicate FS", "name", name, "mount", stats.Mountpoint)
+			slog.Debug("ignoring duplicate filesystem", "name", name, "mount", stats.Mountpoint)
 			delete(m.fsStats, name)
 		}
 	}
@@ -539,7 +539,7 @@ func findIoDevice(filesystem string, diskIoCounters map[string]psutilDisk.IOCoun
 		}
 	}
 
-	slog.Info("Using disk I/O fallback", "requested", filesystem, "selected", best.name)
+	slog.Debug("using disk I/O fallback", "requested", filesystem, "selected", best.name)
 	return best.name, true
 }
 
@@ -610,7 +610,7 @@ func (m *Manager) initializeDiskIoStats(diskIoCounters map[string]psutilDisk.IOC
 		// skip if not in diskIoCounters
 		d, exists := diskIoCounters[device]
 		if !exists {
-			slog.Warn("Device not found in diskstats", "name", device)
+			slog.Warn("device not found in diskstats", "name", device)
 			continue
 		}
 		// populate initial values
@@ -661,7 +661,7 @@ func (m *Manager) UpdateUsage(ctx context.Context, systemStats *systemmodel.Stat
 			return ctxErr
 		} else {
 			// reset stats if error (likely unmounted)
-			slog.Error("Error getting disk stats", "name", stats.Mountpoint, "err", err)
+			slog.Error("disk stats lookup failed", "name", stats.Mountpoint, "error", err)
 			stats.DiskTotal = 0
 			stats.DiskUsed = 0
 			stats.TotalRead = 0
@@ -802,7 +802,7 @@ func (m *Manager) applyDiskIoCounters(cacheTimeMs uint16, systemStats *systemmod
 
 		// validate values
 		if readMbPerSecond > 50_000 || writeMbPerSecond > 50_000 {
-			slog.Warn("Invalid disk I/O. Resetting.", "name", d.Name, "read", readMbPerSecond, "write", writeMbPerSecond)
+			slog.Warn("invalid disk I/O, resetting", "name", d.Name, "read", readMbPerSecond, "write", writeMbPerSecond)
 			// also refresh agent baseline to avoid future negatives
 			m.initializeDiskIoStats(ioCounters)
 			continue

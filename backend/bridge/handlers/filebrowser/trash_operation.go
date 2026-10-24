@@ -2,6 +2,7 @@ package filebrowser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -44,10 +45,10 @@ func resolveTrashUser(owner uploadOwner) (trashUser, error) {
 func trashUserOrError(owner uploadOwner) (trashUser, error) {
 	u, err := resolveTrashUser(owner)
 	if err != nil {
-		return u, bridgeipc.NewError(fmt.Sprintf("cannot resolve home directory for trash: %v", err), 500)
+		return u, fmt.Errorf("resolve home directory for trash: %w", err)
 	}
 	if u.home == "" {
-		return u, bridgeipc.NewError("cannot resolve home directory for trash", 500)
+		return u, errors.New("cannot resolve home directory for trash")
 	}
 	return u, nil
 }
@@ -76,7 +77,7 @@ func listTrash(ctx context.Context, owner uploadOwner) (apischema.TrashListRespo
 // collecting per-item failures the way the other batch tasks do.
 func runPathBatch(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, phase string, fn func(ctx context.Context, path string) error) (FileBatchResult, error) {
 	if len(paths) == 0 {
-		return FileBatchResult{}, bridgeipc.NewError("no paths provided", 400)
+		return FileBatchResult{}, fmt.Errorf("%w: no paths provided", bridgeipc.ErrInvalidArgs)
 	}
 	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
 	limiter := newCountThrottle(taskSettingsForTask(ctx, task, store))
@@ -119,7 +120,7 @@ func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 	}
 	root, err := fsroot.Open()
 	if err != nil {
-		return FileBatchResult{}, bridgeipc.NewError("cannot open filesystem", 500)
+		return FileBatchResult{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 

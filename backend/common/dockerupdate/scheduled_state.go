@@ -132,7 +132,7 @@ func skipStoppedScheduledContainer(ctx context.Context, inspect container.Inspec
 	if err := markContainerUpdateDeferred(ctx, inspect, reason); err != nil {
 		return true, err
 	}
-	slog.Info("skipped automatic update for stopped Docker container",
+	slog.Debug("skipped automatic update for stopped Docker container",
 		"component", "docker",
 		"subsystem", "update",
 		"container", strings.TrimPrefix(inspect.Name, "/"))

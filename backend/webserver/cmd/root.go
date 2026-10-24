@@ -96,10 +96,9 @@ func newHTTPServer(cfg ServerConfig, sm *sessions.Manager) (*http.Server, *serve
 	}
 
 	router := web.BuildRouter(web.Config{
-		Verbose: cfg.Verbose,
-		UI:      ui,
+		UI: ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
-			auth.RegisterAuthRoutes(mux, sm, cfg.Verbose)
+			auth.RegisterAuthRoutes(mux, sm)
 			appupdate.RegisterRoutes(mux, sm)
 		},
 	}, sm)
@@ -231,11 +230,11 @@ func serveTLSListener(srv *http.Server, listener net.Listener, stop func(error),
 func waitForServerShutdown(ctx context.Context, srv *http.Server, done <-chan error) error {
 	select {
 	case <-ctx.Done():
-		slog.Info("shutdown signal received")
+		slog.Debug("shutdown signal received")
 		shutdownHTTPServer(srv)
 		return <-done
 	case err := <-done:
-		slog.Info("HTTP server stopped, beginning shutdown")
+		slog.Debug("HTTP server stopped, beginning shutdown")
 		return err
 	}
 }
@@ -257,7 +256,7 @@ func shutdownHTTPServer(srv *http.Server) {
 		slog.Warn("HTTP server shutdown failed", "error", err)
 		return
 	}
-	slog.Info("HTTP server closed")
+	slog.Debug("HTTP server closed")
 }
 
 func closeBridgeSessions(sm *sessions.Manager) {

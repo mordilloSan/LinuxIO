@@ -35,7 +35,7 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 	// Refuse before anything is written: an existing interface would otherwise
 	// get a new private key and its peers overwritten while possibly still up.
 	if _, statErr := os.Stat(configPath(req.name)); statErr == nil {
-		return nil, bridgeipc.NewError(fmt.Sprintf("interface %s already exists", req.name), 409)
+		return nil, fmt.Errorf("%w: interface %s already exists", bridgeipc.ErrConflict, req.name)
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("check interface config: %w", statErr)
 	}
@@ -229,7 +229,7 @@ func generatePeers(serverAddr string, count int) ([]PeerConfig, error) {
 			Name:                fmt.Sprintf("Peer%d", hostOffset),
 		})
 	}
-	slog.Info("generated peers", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "count", count)
+	slog.Debug("generated peers", "component", "wireguard", "subsystem", "peers", "path", serverAddr, "count", count)
 	return peers, nil
 }
 

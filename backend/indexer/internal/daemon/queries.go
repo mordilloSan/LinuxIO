@@ -26,7 +26,7 @@ func (d *daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resp.AddWarning(fmt.Sprintf("latest index unavailable: %v", err))
-		slog.Warn("status: latest index unavailable while indexing", "err", err)
+		slog.Warn("latest index unavailable while indexing", "error", err)
 	}
 	resp.DatabaseSize = d.store.DatabaseSize()
 	writeJSON(w, resp)

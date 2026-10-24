@@ -20,13 +20,13 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	if err := validateInterfaceName(name); err != nil {
 		return nil, fmt.Errorf("invalid interface name: %w", err)
 	}
-	slog.Info("removing WireGuard interface", "interface", name)
+	slog.Debug("removing WireGuard interface", "interface", name)
 
 	// Best-effort: bring it down, but don't abort on failure.
-	if _, err := DownInterface(ctx, apischema.NameRequest{Name: name}); err != nil {
+	if _, err := runWGQuickCommand(ctx, "down", name); err != nil {
 		slog.Warn("failed to bring down interface before removal", "interface", name, "error", err)
 	} else {
-		slog.Info("interface brought down before removal", "interface", name)
+		slog.Debug("interface brought down before removal", "interface", name)
 	}
 
 	// Remove config file
@@ -38,7 +38,7 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 			return nil, fmt.Errorf("remove config: %w", err)
 		}
 	} else {
-		slog.Info("removed interface config file", "interface", name, "path", cfgPath)
+		slog.Debug("removed interface config file", "interface", name, "path", cfgPath)
 	}
 
 	// Remove peer directory (best-effort)
@@ -46,7 +46,7 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	if err := os.RemoveAll(peerDir); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		slog.Warn("failed to remove peer directory", "interface", name, "path", peerDir, "error", err)
 	} else {
-		slog.Info("removed peer directory", "interface", name, "path", peerDir)
+		slog.Debug("removed peer directory", "interface", name, "path", peerDir)
 	}
 	slog.Info("WireGuard interface removed", "interface", name)
 	return "removed", nil

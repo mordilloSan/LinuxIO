@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -81,7 +82,7 @@ func RegisterTaskRoutes(router *bridgeipc.Router, rt runtime.Runtime) {
 
 func runDockerComposeTask(ctx context.Context, task *bridgeipc.Task, username string, store *userconfig.UserStore, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
 	if req.Action == "" || req.ProjectName == "" {
-		return ComposeTaskResult{}, bridgeipc.NewError("missing required arguments: action, projectName", 400)
+		return ComposeTaskResult{}, fmt.Errorf("%w: missing required arguments: action, projectName", bridgeipc.ErrInvalidArgs)
 	}
 
 	var composePath string
@@ -91,7 +92,7 @@ func runDockerComposeTask(ctx context.Context, task *bridgeipc.Task, username st
 
 	configFile, workingDir, err := resolveComposeTaskPaths(ctx, username, store, req.ProjectName, composePath)
 	if err != nil {
-		return ComposeTaskResult{}, bridgeipc.NewError("compose file not found: "+err.Error(), 404)
+		return ComposeTaskResult{}, fmt.Errorf("%w: compose file: %w", bridgeipc.ErrNotFound, err)
 	}
 
 	var reportMu sync.Mutex
@@ -117,15 +118,14 @@ func runDockerComposeTask(ctx context.Context, task *bridgeipc.Task, username st
 	case "restart":
 		err = composeUp(ctx, req.ProjectName, configFile, workingDir, true, report)
 	default:
-		return ComposeTaskResult{}, bridgeipc.NewError("unsupported action: "+req.Action, 400)
+		return ComposeTaskResult{}, fmt.Errorf("%w: unsupported action %q", bridgeipc.ErrInvalidArgs, req.Action)
 	}
 
 	if err != nil {
 		if ctx.Err() != nil {
 			return ComposeTaskResult{}, context.Canceled
 		}
-		msg := "command failed: " + err.Error()
-		return ComposeTaskResult{}, bridgeipc.NewError(msg, 500)
+		return ComposeTaskResult{}, fmt.Errorf("command failed: %w", err)
 	}
 	if req.Action == "up" || req.Action == "restart" {
 		notifyIndexerForComposeFile(ctx, configFile)

@@ -23,7 +23,7 @@ func statHostFile(rawPath, field, label string) (string, os.FileInfo, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", nil, notFoundf("%s path does not exist: %s", label, path)
+			return "", nil, notFoundf("%s path: %s", label, path)
 		}
 		return "", nil, fmt.Errorf("%s path is not accessible: %w", label, err)
 	}

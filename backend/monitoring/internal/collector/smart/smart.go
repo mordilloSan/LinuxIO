@@ -112,7 +112,7 @@ func (sm *Manager) Refresh(ctx context.Context, forceScan bool) error {
 
 	scanErr := sm.ScanDevices(ctx, forceScan)
 	if scanErr != nil {
-		slog.Debug("smartctl scan failed", "err", scanErr)
+		slog.Debug("smartctl scan failed", "error", scanErr)
 	}
 
 	devices := sm.devicesSnapshot()
@@ -202,7 +202,7 @@ func (sm *Manager) ScanDevices(ctx context.Context, force bool) error {
 	if configuredRaw, ok := config.LookupEnv(config.EnvSmartDevices); ok {
 		list := strings.TrimSpace(configuredRaw)
 		if list == "" {
-			slog.Info("No SMART device candidates discovered", "source", "configured", "reason", "SMART_DEVICES is empty")
+			slog.Debug("no SMART device candidates discovered", "source", "configured", "reason", "SMART_DEVICES is empty")
 			return errNoValidSmartData
 		}
 
@@ -256,17 +256,17 @@ func (sm *Manager) ScanDevices(ctx context.Context, force bool) error {
 	if len(finalDevices) == 0 {
 		args := []any{"source", smartDeviceSource(scannedDevices, configuredDevices)}
 		if scanErr != nil {
-			args = append(args, "err", scanErr)
-			slog.Info("No SMART device candidates discovered", args...)
-			slog.Debug("smartctl scan failed", "err", scanErr)
+			args = append(args, "error", scanErr)
+			slog.Debug("no SMART device candidates discovered", args...)
+			slog.Debug("smartctl scan failed", "error", scanErr)
 			return scanErr
 		}
-		slog.Info("No SMART device candidates discovered", args...)
+		slog.Debug("no SMART device candidates discovered", args...)
 		return errNoValidSmartData
 	}
 
 	sm.lastScanTime = time.Now()
-	slog.Info("Discovered SMART device candidates", "devices", smartDeviceLabels(finalDevices), "source", smartDeviceSource(scannedDevices, configuredDevices))
+	slog.Debug("SMART device candidates discovered", "devices", smartDeviceLabels(finalDevices), "source", smartDeviceSource(scannedDevices, configuredDevices))
 	return nil
 }
 
@@ -1275,12 +1275,12 @@ func NewManager() (*Manager, error) {
 		// Fail fast unless this host exposes eMMC or mdraid health via sysfs,
 		// in which case smartctl is optional.
 		if len(scanEmmcDevices()) > 0 || len(scanMdraidDevices()) > 0 {
-			slog.Debug("Capability check", "capability", "smartctl", "available", false, "err", err)
+			slog.Debug("capability check failed", "capability", "smartctl", "available", false, "error", err)
 			return sm, nil
 		}
 		return nil, err
 	}
-	slog.Debug("Capability check", "capability", "smartctl", "available", true, "path", path)
+	slog.Debug("capability check passed", "capability", "smartctl", "available", true, "path", path)
 	sm.smartctlPath = path
 	return sm, nil
 }

@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"errors"
 	"net/netip"
 	"reflect"
 	"strings"
@@ -107,8 +106,7 @@ func TestVolumeCreateOptionsAndSafeRemoval(t *testing.T) {
 	}
 	recorder.err = errdefs.ErrConflict
 	err = deleteVolume(context.Background(), recorder, "cache")
-	var responseErr *bridgeipc.Error
-	if !errors.As(err, &responseErr) || responseErr.Code != 409 || !strings.Contains(responseErr.Message, "in use") {
+	if bridgeipc.StatusCode(err) != 409 || !strings.Contains(err.Error(), "in use") {
 		t.Fatalf("in-use volume error = %#v, want HTTP 409 reason", err)
 	}
 }
@@ -232,8 +230,7 @@ func TestDockerNetworkProtectionAndAliases(t *testing.T) {
 	}
 	conflict := &networkRemoveRecorder{inspect: network.Inspect{Name: "app-net"}, removeErr: errdefs.ErrConflict}
 	err := deleteDockerNetwork(context.Background(), conflict, "network-id")
-	var responseErr *bridgeipc.Error
-	if !errors.As(err, &responseErr) || responseErr.Code != 409 || !strings.Contains(responseErr.Message, "app-net") {
+	if bridgeipc.StatusCode(err) != 409 || !strings.Contains(err.Error(), "app-net") {
 		t.Fatalf("in-use network error = %#v, want HTTP 409 reason", err)
 	}
 
