@@ -192,7 +192,7 @@ describe("AssistantPage", () => {
     });
   });
 
-  it("renders the history and new chat icons in the header slot when one exists", async () => {
+  it("keeps the chat icons in the page even when a header slot exists", async () => {
     function Harness() {
       const slot = useHeaderActionSlot();
       return (
@@ -208,14 +208,17 @@ describe("AssistantPage", () => {
       </HeaderActionSlotProvider>,
     );
     setState({ status: "ready", sessionId: "s", canListSessions: true });
-    const host = screen.getByTestId("header-host");
+    const actions = document.querySelector<HTMLElement>(".assistant__actions");
+    expect(actions).not.toBeNull();
     expect(
-      await within(host).findByRole("button", { name: "Previous chats" }),
+      await within(actions!).findByRole("button", { name: "Previous chats" }),
     ).toBeInTheDocument();
     expect(
-      within(host).getByRole("button", { name: "New chat" }),
+      within(actions!).getByRole("button", { name: "New chat" }),
     ).toBeInTheDocument();
-    expect(document.querySelector(".assistant__actions")).toBeNull();
+    expect(
+      within(screen.getByTestId("header-host")).queryAllByRole("button"),
+    ).toHaveLength(0);
   });
 
   it("shows the context gauge instead of a usage caption", async () => {
