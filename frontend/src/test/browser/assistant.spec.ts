@@ -259,18 +259,23 @@ test("chats with a fake ACP agent and approves a permission", async ({
   const input = page.getByLabel("Message");
   await expect(input).toBeEnabled();
 
-  await page.getByRole("button", { name: /^Model:/ }).click();
-  await page.getByRole("menuitem", { name: /Opus/ }).click();
-  await expect
-    .poll(
-      () =>
-        received.find(
-          (message) => message.method === "session/set_config_option",
-        )?.params,
-    )
-    .toMatchObject({ configId: "model", value: "opus" });
+  // A new Claude chat is switched to Opus before the prompt opens.
+  const modelChanges = () =>
+    received
+      .filter((message) => message.method === "session/set_config_option")
+      .map((message) => message.params);
+  expect(modelChanges()).toMatchObject([{ configId: "model", value: "opus" }]);
   await expect(page.getByRole("button", { name: /^Model:/ })).toContainText(
     "Opus",
+  );
+
+  await page.getByRole("button", { name: /^Model:/ }).click();
+  await page.getByRole("menuitem", { name: /Sonnet/ }).click();
+  await expect
+    .poll(() => modelChanges().at(-1))
+    .toMatchObject({ configId: "model", value: "sonnet" });
+  await expect(page.getByRole("button", { name: /^Model:/ })).toContainText(
+    "Sonnet",
   );
 
   await input.fill("how full is the disk?");

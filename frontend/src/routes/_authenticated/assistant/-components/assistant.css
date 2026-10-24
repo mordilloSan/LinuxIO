@@ -579,13 +579,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--app-space-4) var(--app-space-12);
 }
 
 .assistant__bar-group {
   display: flex;
   align-items: center;
-  gap: var(--app-space-8);
 }
 
 .assistant__bar-group--config {

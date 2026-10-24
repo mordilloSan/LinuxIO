@@ -269,6 +269,36 @@ const errorMessage = (error: unknown) =>
       ? String(error.message)
       : String(error);
 
+// A new Claude chat starts on Opus at high effort, whatever the user's Claude
+// Code settings pick. The model goes first: switching it rebuilds the effort
+// levels. Best effort: if the agent refuses, the chat keeps its own choice.
+const CLAUDE_CHAT_DEFAULTS = [
+  ["model", "opus"],
+  ["thought_level", "high"],
+] as const;
+
+async function withChatDefaults(
+  conn: AssistantConnection,
+  opened: SessionOpenResult,
+) {
+  let options = opened.configOptions;
+  if (conn.agent !== "claude") return options;
+  try {
+    for (const [category, value] of CLAUDE_CHAT_DEFAULTS) {
+      const option = options.find((entry) => entry.category === category);
+      if (option?.type !== "select" || option.currentValue === value) continue;
+      const values = option.options.flatMap((entry) =>
+        "group" in entry ? entry.options : [entry],
+      );
+      if (!values.some((entry) => entry.value === value)) continue;
+      options = await conn.setConfigOption(opened.sessionId, option.id, value);
+    }
+  } catch {
+    // The options from the last answer still describe the chat.
+  }
+  return options;
+}
+
 async function openSession(
   conn: AssistantConnection,
   isCurrent: () => boolean,
@@ -295,6 +325,10 @@ async function openSession(
       opened = await conn.newSession();
       if (!isCurrent()) return;
       setState({ ...sessionReset(), sessionId: opened.sessionId });
+      opened = {
+        ...opened,
+        configOptions: await withChatDefaults(conn, opened),
+      };
     }
     flushUpdates();
     // The open response is authoritative; replayed history may be older.
@@ -756,12 +790,13 @@ export const assistantStore = {
     void dropSide();
     try {
       const opened = await conn.newSession();
+      const configOptions = await withChatDefaults(conn, opened);
       if (!isCurrent()) return;
       setState({
         ...sessionReset(),
         sessionId: opened.sessionId,
         modes: opened.modes,
-        configOptions: opened.configOptions,
+        configOptions,
         status: "ready",
       });
       const sessions = await conn.listSessions();

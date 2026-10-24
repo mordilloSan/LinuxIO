@@ -103,6 +103,64 @@ describe("assistantStore", () => {
     expect(assistantStore.getState().sessionId).toBe("s-new");
   });
 
+  it("starts a new Claude chat on Opus at high effort", async () => {
+    const options = (model: string, effort: string) => [
+      {
+        id: "model",
+        name: "Model",
+        type: "select" as const,
+        category: "model",
+        currentValue: model,
+        options: [
+          { value: "sonnet", name: "Sonnet" },
+          { value: "opus", name: "Opus" },
+        ],
+      },
+      {
+        id: "effort",
+        name: "Effort",
+        type: "select" as const,
+        category: "thought_level",
+        currentValue: effort,
+        options: [
+          { value: "high", name: "High" },
+          { value: "xhigh", name: "Extra high" },
+        ],
+      },
+    ];
+    let current = options("sonnet", "xhigh");
+    const { conn, connector } = fakeConnection({
+      listSessions: vi.fn(async () => []),
+      newSession: vi.fn(async () => ({
+        sessionId: "s-new",
+        modes: null,
+        configOptions: current,
+      })),
+      setConfigOption: vi.fn(async (_sessionId, configId, value) => {
+        const [model, effort] = current.map((option) =>
+          option.id === configId ? String(value) : option.currentValue,
+        );
+        current = options(model, effort);
+        return current;
+      }),
+    });
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    expect(vi.mocked(conn.setConfigOption).mock.calls).toEqual([
+      ["s-new", "model", "opus"],
+      ["s-new", "effort", "high"],
+    ]);
+    expect(assistantStore.getState().configOptions).toMatchObject([
+      { currentValue: "opus" },
+      { currentValue: "high" },
+    ]);
+
+    // A chat that already starts on the defaults is left alone.
+    vi.mocked(conn.setConfigOption).mockClear();
+    await assistantStore.newSession();
+    expect(conn.setConfigOption).not.toHaveBeenCalled();
+  });
+
   it("marks auth_required when session creation needs a login", async () => {
     const { connector } = fakeConnection({
       listSessions: vi.fn(async () => []),
