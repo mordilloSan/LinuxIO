@@ -4,6 +4,7 @@ import { useCallback, useContext } from "react";
 
 import {
   type AppConfig,
+  type AssistantChatDefaults,
   type ConfigStorageMode,
   type DockerSettings,
   linuxio,
@@ -115,7 +116,12 @@ export function useDockerSettings(): DockerSettings {
   return data;
 }
 
-export function useAssistantSettings(): { agent: "" | AssistantAgentId } {
+const NO_ASSISTANT_DEFAULTS: Record<string, AssistantChatDefaults> = {};
+
+export function useAssistantSettings(): {
+  agent: "" | AssistantAgentId;
+  defaults: Record<string, AssistantChatDefaults>;
+} {
   const userId = useConfigUserId();
   const { data } = useQuery({
     ...linuxio.config.get,
@@ -124,7 +130,10 @@ export function useAssistantSettings(): { agent: "" | AssistantAgentId } {
     select: (config: AppConfig) => config.assistant,
   });
   const agent = data?.agent ?? "";
-  return { agent: isAssistantAgentId(agent) ? agent : "" };
+  return {
+    agent: isAssistantAgentId(agent) ? agent : "",
+    defaults: data?.defaults ?? NO_ASSISTANT_DEFAULTS,
+  };
 }
 
 export function useConfigStorageMode(): ConfigStorageMode {

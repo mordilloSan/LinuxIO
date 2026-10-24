@@ -5,15 +5,26 @@ import {
   type AuthStatus,
   connectAssistant,
   isAuthRequiredError,
+  type SessionOpenResult,
 } from "./connection";
+
+/** What a fresh chat offers: models, effort levels and permission modes. */
+export type ChatOptions = Pick<SessionOpenResult, "configOptions" | "modes">;
 
 export interface AssistantProbe {
   status: "logged_in" | "auth_required" | "unknown";
   authStatus: AuthStatus | null;
   authMethods: acp.AuthMethod[];
   canLogout: boolean;
+  /** Read from a throwaway chat when logged in; null when none could open. */
+  chatOptions: ChatOptions | null;
   error?: string;
 }
+
+const chatOptions = ({ configOptions, modes }: SessionOpenResult) => ({
+  configOptions,
+  modes,
+});
 
 const STATUS_WAIT_MS = 2000;
 
@@ -47,9 +58,10 @@ function connectGuarded(
 }
 
 /**
- * Opens the agent just long enough to learn how it is logged in. The Claude
- * adapter pushes `_auth/status_update`; other agents are probed by trying
- * to create a session and reading the auth_required error.
+ * Opens the agent just long enough to learn how it is logged in and what a
+ * chat offers. The Claude adapter pushes `_auth/status_update`; other agents
+ * are probed by trying to create a session and reading the auth_required
+ * error. Either way a logged-in probe opens a session for its options.
  */
 export async function probeAssistant(
   agent: AssistantAgentId,
@@ -87,23 +99,26 @@ export async function probeAssistant(
       ]),
     );
     if (authStatus) {
+      const loggedIn = (authStatus as AuthStatus).kind !== "none";
       return {
-        status:
-          (authStatus as AuthStatus).kind === "none"
-            ? "auth_required"
-            : "logged_in",
+        status: loggedIn ? "logged_in" : "auth_required",
         authStatus,
         authMethods,
         canLogout: connection.canLogout,
+        // The login answer stands even when no chat opens.
+        chatOptions: loggedIn
+          ? await guard(connection.newSession()).then(chatOptions, () => null)
+          : null,
       };
     }
     try {
-      await guard(connection.newSession());
+      const opened = await guard(connection.newSession());
       return {
         status: "logged_in",
         authStatus: null,
         authMethods,
         canLogout: connection.canLogout,
+        chatOptions: chatOptions(opened),
       };
     } catch (error) {
       if (isAuthRequiredError(error)) {
@@ -112,6 +127,7 @@ export async function probeAssistant(
           authStatus: null,
           authMethods,
           canLogout: connection.canLogout,
+          chatOptions: null,
         };
       }
       throw error;
@@ -122,6 +138,7 @@ export async function probeAssistant(
       authStatus: null,
       authMethods: connection?.init.authMethods ?? [],
       canLogout: false,
+      chatOptions: null,
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {

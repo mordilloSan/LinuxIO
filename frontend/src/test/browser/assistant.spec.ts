@@ -148,6 +148,7 @@ test("chats with a fake ACP agent and approves a permission", async ({
             break;
           case "session/close":
           case "session/delete":
+          case "session/set_mode":
             send({ jsonrpc: "2.0", id: request.id, result: {} });
             break;
           case "session/set_config_option":
@@ -259,7 +260,9 @@ test("chats with a fake ACP agent and approves a permission", async ({
   const input = page.getByLabel("Message");
   await expect(input).toBeEnabled();
 
-  // A new Claude chat is switched to Opus before the prompt opens.
+  // A new chat is switched to the Settings defaults before the prompt opens:
+  // Opus and Plan. The fake agent offers no effort, so that one is skipped.
+  await expect(page.getByRole("button", { name: "Mode: Plan" })).toBeVisible();
   const modelChanges = () =>
     received
       .filter((message) => message.method === "session/set_config_option")

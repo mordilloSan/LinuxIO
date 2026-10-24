@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useEffect, useState } from "react";
 
-import { useStreamMux } from "@/api";
+import { type AssistantChatDefaults, useStreamMux } from "@/api";
 import { ASSISTANT_AGENTS, type AssistantAgentId } from "@/api/acp/agents";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
@@ -41,8 +41,10 @@ const isFontSize = (value: unknown): value is number =>
 
 export default function AssistantPage({
   agent,
+  chatDefaults,
 }: {
   agent: AssistantAgentId | null;
+  chatDefaults?: AssistantChatDefaults;
 }) {
   const { isOpen } = useStreamMux();
   const state = useAssistantState();
@@ -66,6 +68,11 @@ export default function AssistantPage({
     setOwnFontSize(next);
     writePersistedState(FONT_SIZE_KEY, next);
   };
+
+  // Ahead of connect, so the first chat already starts on them.
+  useEffect(() => {
+    assistantStore.setChatDefaults(chatDefaults);
+  }, [chatDefaults]);
 
   useEffect(() => {
     if (agent && isOpen) void assistantStore.connect(agent);

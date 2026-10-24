@@ -1,6 +1,9 @@
 package userconfig
 
-import "path/filepath"
+import (
+	"maps"
+	"path/filepath"
+)
 
 // defaultAppSettings returns defaults for the important configuration file.
 func defaultAppSettings() PersistedAppSettings {
@@ -123,6 +126,20 @@ func EffectiveJobSettings(jobSettings PersistedJobSettings) PersistedJobSettings
 		jobSettings.ArchiveExtractWorkers = defaults.ArchiveExtractWorkers
 	}
 	return jobSettings
+}
+
+// EffectiveAssistantDefaults adds LinuxIO's starting point for an agent the
+// user has not configured: Claude starts on Opus at high effort in Auto mode.
+// Other agents keep their own defaults until the user picks some.
+func EffectiveAssistantDefaults(stored map[string]AssistantDefaults) map[string]AssistantDefaults {
+	out := maps.Clone(stored)
+	if out == nil {
+		out = map[string]AssistantDefaults{}
+	}
+	if _, ok := out["claude"]; !ok {
+		out["claude"] = AssistantDefaults{Model: "opus", Effort: "high", Mode: "auto"}
+	}
+	return out
 }
 
 // defaultSettings returns defaults for the important configuration file.

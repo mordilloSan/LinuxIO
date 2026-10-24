@@ -115,10 +115,20 @@ type Docker struct {
 	RequireMountsForFolders bool           `json:"requireMountsForFolders" yaml:"requireMountsForFolders"`
 }
 
-// Assistant holds the user's ACP agent choice for the Assistant page. Login
-// state is owned by the agent's own files, never stored here.
+// Assistant holds the user's ACP agent choice for the Assistant page and, per
+// agent id, what a new chat starts with. Login state is owned by the agent's
+// own files, never stored here.
 type Assistant struct {
-	Agent string `json:"agent" yaml:"agent"`
+	Agent    string                       `json:"agent" yaml:"agent"`
+	Defaults map[string]AssistantDefaults `json:"defaults,omitempty" yaml:"defaults,omitempty"`
+}
+
+// AssistantDefaults are the model, effort and permission mode a new chat
+// starts with, as the agent's own option values. Empty keeps the agent's own.
+type AssistantDefaults struct {
+	Model  string `json:"model" yaml:"model,omitempty"`
+	Effort string `json:"effort" yaml:"effort,omitempty"`
+	Mode   string `json:"mode" yaml:"mode,omitempty"`
 }
 
 // PersistedJobSettings holds job progress and worker tuning settings.

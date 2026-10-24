@@ -78,6 +78,7 @@ const selectOption = (value: string) => ({
 
 beforeEach(() => {
   assistantStore.disconnect();
+  assistantStore.setChatDefaults(undefined);
 });
 
 describe("assistantStore", () => {
@@ -103,7 +104,7 @@ describe("assistantStore", () => {
     expect(assistantStore.getState().sessionId).toBe("s-new");
   });
 
-  it("starts a new Claude chat on Opus at high effort", async () => {
+  it("starts a new chat on the defaults from Settings", async () => {
     const options = (model: string, effort: string) => [
       {
         id: "model",
@@ -128,12 +129,20 @@ describe("assistantStore", () => {
         ],
       },
     ];
+    const modes = (currentModeId: string) => ({
+      currentModeId,
+      availableModes: [
+        { id: "default", name: "Manual" },
+        { id: "auto", name: "Auto" },
+      ],
+    });
     let current = options("sonnet", "xhigh");
+    let mode = "default";
     const { conn, connector } = fakeConnection({
       listSessions: vi.fn(async () => []),
       newSession: vi.fn(async () => ({
         sessionId: "s-new",
-        modes: null,
+        modes: modes(mode),
         configOptions: current,
       })),
       setConfigOption: vi.fn(async (_sessionId, configId, value) => {
@@ -143,6 +152,14 @@ describe("assistantStore", () => {
         current = options(model, effort);
         return current;
       }),
+      setMode: vi.fn(async (_sessionId, modeId) => {
+        mode = modeId;
+      }),
+    });
+    assistantStore.setChatDefaults({
+      model: "opus",
+      effort: "high",
+      mode: "auto",
     });
     assistantStore._setConnector(connector);
     await assistantStore.connect("claude");
@@ -150,15 +167,21 @@ describe("assistantStore", () => {
       ["s-new", "model", "opus"],
       ["s-new", "effort", "high"],
     ]);
-    expect(assistantStore.getState().configOptions).toMatchObject([
-      { currentValue: "opus" },
-      { currentValue: "high" },
-    ]);
+    expect(conn.setMode).toHaveBeenCalledWith("s-new", "auto");
+    expect(assistantStore.getState()).toMatchObject({
+      configOptions: [{ currentValue: "opus" }, { currentValue: "high" }],
+      modes: { currentModeId: "auto" },
+    });
 
-    // A chat that already starts on the defaults is left alone.
+    // A chat that already starts on the defaults is left alone, and an empty
+    // default keeps the agent's own choice.
     vi.mocked(conn.setConfigOption).mockClear();
+    vi.mocked(conn.setMode).mockClear();
+    assistantStore.setChatDefaults({ model: "opus", effort: "", mode: "" });
+    current = options("opus", "xhigh");
     await assistantStore.newSession();
     expect(conn.setConfigOption).not.toHaveBeenCalled();
+    expect(conn.setMode).not.toHaveBeenCalled();
   });
 
   it("marks auth_required when session creation needs a login", async () => {
