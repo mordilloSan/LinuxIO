@@ -66,13 +66,15 @@ func TestApplyDaemonStorageStopsDockerAroundTheSwitch(t *testing.T) {
 	path, dropIn := storagePaths(t)
 
 	result, err := applyDaemonStorage(context.Background(), noReport, path, dropIn, apischema.DockerDaemonConfig{
-		DataRoot: "/mnt/pool/docker/", StorageDriver: "overlay2", UserlandProxy: true,
+		DataRoot: "/mnt/pool/docker/", ImageStore: "classic", StorageDriver: "overlay2", UserlandProxy: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "/mnt/pool/docker", result.Config.DataRoot)
 	require.False(t, result.RestartRequired)
 	require.Equal(t, []string{"stop containers", "stop docker.socket", "stop docker.service", "start docker.socket", "start docker.service"}, units.calls)
-	require.Equal(t, map[string]any{"data-root": "/mnt/pool/docker", "storage-driver": "overlay2"}, readJSON(t, path))
+	require.Equal(t, map[string]any{
+		"data-root": "/mnt/pool/docker", "features": map[string]any{"containerd-snapshotter": false}, "storage-driver": "overlay2",
+	}, readJSON(t, path))
 	content, err := os.ReadFile(dropIn)
 	require.NoError(t, err)
 	require.Contains(t, string(content), "RequiresMountsFor=/mnt/pool/docker\n")

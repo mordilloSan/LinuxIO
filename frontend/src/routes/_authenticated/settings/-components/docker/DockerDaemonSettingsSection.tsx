@@ -167,6 +167,7 @@ const DockerDaemonSettingsSection = () => {
     // Storage only changes with Docker stopped, which needs the user's go-ahead.
     if (
       trimDataRoot(draft.data_root) !== config.data_root ||
+      draft.image_store !== config.image_store ||
       draft.storage_driver !== config.storage_driver
     ) {
       setConfirmStorage(true);
@@ -185,12 +186,18 @@ const DockerDaemonSettingsSection = () => {
   }
   if (!draft) return <ComponentLoader />;
 
+  // Automatic follows the running daemon; unknown while Docker is down.
+  const containerdStore =
+    draft.image_store === ""
+      ? dockerInfo?.containerd_image_store
+      : draft.image_store === "containerd";
   const drivers =
-    dockerInfo == null
+    containerdStore == null
       ? [...new Set([...CLASSIC_DRIVERS, ...CONTAINERD_SNAPSHOTTERS])]
-      : dockerInfo.containerd_image_store
+      : containerdStore
         ? CONTAINERD_SNAPSHOTTERS
         : CLASSIC_DRIVERS;
+  const dataRootChanging = trimDataRoot(draft.data_root) !== config?.data_root;
 
   return (
     <div
@@ -267,6 +274,26 @@ const DockerDaemonSettingsSection = () => {
           <AppSelect
             disabled={disabled}
             fullWidth
+            label="Image store"
+            onChange={(event) => {
+              patchKey("image_store", event.target.value);
+              // Overlay and plain-copy driver names differ between the stores.
+              patchKey("storage_driver", "");
+            }}
+            size="small"
+            value={draft.image_store}
+          >
+            <option value="">
+              {dockerInfo
+                ? `Automatic (now ${dockerInfo.containerd_image_store ? "containerd" : "classic"})`
+                : "Automatic"}
+            </option>
+            <option value="classic">Classic (all in the data root)</option>
+            <option value="containerd">containerd</option>
+          </AppSelect>
+          <AppSelect
+            disabled={disabled}
+            fullWidth
             label="Storage driver"
             onChange={(event) => patchKey("storage_driver", event.target.value)}
             size="small"
@@ -291,16 +318,18 @@ const DockerDaemonSettingsSection = () => {
           </AppSelect>
         </SettingsGrid>
         <SettingsNote title="Saving stops Docker">
-          Changing either setting stops every container and Docker itself.
-          Images, containers and volumes in the old location are hidden, not
-          moved or deleted. The btrfs and zfs drivers need the data root on that
+          Changing any of these stops every container and Docker itself. Images,
+          containers and volumes in the old location are hidden, not moved or
+          deleted. The btrfs and zfs drivers need the data root on that
           filesystem.
         </SettingsNote>
-        {dockerInfo?.containerd_image_store ? (
-          <SettingsNote title="Images stay in containerd storage">
-            With the containerd image store, the data root holds volumes and
-            container settings only. Images and container layers stay in
-            containerd&apos;s root, /var/lib/containerd by default.
+        {draft.image_store !== "classic" &&
+        (containerdStore || dataRootChanging) ? (
+          <SettingsNote title="Images may stay in /var/lib/containerd">
+            Only the classic image store keeps images in the data root. The
+            containerd store keeps images and container layers in
+            containerd&apos;s root, and Docker 29+ picks it on Automatic for an
+            empty data root. Choose Classic to keep everything on the pool.
           </SettingsNote>
         ) : null}
       </SectionCard>

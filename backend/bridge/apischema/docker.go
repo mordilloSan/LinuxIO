@@ -289,11 +289,14 @@ type DockerDaemonConfig struct {
 	AddressPoolBase string `json:"address_pool_base"`
 	AddressPoolSize int    `json:"address_pool_size"`
 	DataRoot        string `json:"data_root"`
-	LiveRestore     bool   `json:"live_restore"`
-	LogMaxFile      string `json:"log_max_file"`
-	LogMaxSize      string `json:"log_max_size"`
-	StorageDriver   string `json:"storage_driver"`
-	UserlandProxy   bool   `json:"userland_proxy"`
+	// ImageStore is "classic" (graph drivers, everything under DataRoot),
+	// "containerd" (snapshotters in containerd's root) or "" for Docker's choice.
+	ImageStore    string `json:"image_store"`
+	LiveRestore   bool   `json:"live_restore"`
+	LogMaxFile    string `json:"log_max_file"`
+	LogMaxSize    string `json:"log_max_size"`
+	StorageDriver string `json:"storage_driver"`
+	UserlandProxy bool   `json:"userland_proxy"`
 }
 
 type DockerDaemonConfigSetResult struct {

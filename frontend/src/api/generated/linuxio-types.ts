@@ -1209,6 +1209,7 @@ export interface DockerDaemonConfig {
   address_pool_base: string;
   address_pool_size: number;
   data_root: string;
+  image_store: string;
   live_restore: boolean;
   log_max_file: string;
   log_max_size: string;

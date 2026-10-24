@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -26,7 +27,9 @@ import (
 const (
 	dockerDaemonConfigPath = "/etc/docker/daemon.json"
 	defaultDockerDataRoot  = "/var/lib/docker"
-	zfsSuperMagic          = 0x2fc12fc1
+	// shortcut: assumes containerd's default root, read /etc/containerd/config.toml if hosts move it.
+	containerdRoot = "/var/lib/containerd"
+	zfsSuperMagic  = 0x2fc12fc1
 )
 
 var (
@@ -41,8 +44,15 @@ var (
 var daemonReloadableKeys = map[string]bool{"live-restore": true}
 
 // daemonStorageKeys only change through applyDaemonStorage, which stops Docker
-// around the switch.
-var daemonStorageKeys = []string{"data-root", "storage-driver"}
+// around the switch. features carries containerd-snapshotter, the image store.
+var daemonStorageKeys = []string{"data-root", "features", "storage-driver"}
+
+// dockerd names overlay and the plain-copy driver differently per image store
+// and fails to start on the other store's name.
+var wrongImageStoreDrivers = map[string][]string{
+	"classic":    {"overlayfs", "native"},
+	"containerd": {"overlay2", "vfs"},
+}
 
 func (h dockerHandlers) handleGetDaemonConfig(_ context.Context, _ apischema.NoRequest) (apischema.DockerDaemonConfig, error) {
 	raw, err := readDaemonConfigFile(dockerDaemonConfigPath)
@@ -128,6 +138,14 @@ func daemonConfigFromMap(raw map[string]any) apischema.DockerDaemonConfig {
 	if v, ok := raw["userland-proxy"].(bool); ok {
 		cfg.UserlandProxy = v
 	}
+	if features, ok := raw["features"].(map[string]any); ok {
+		if v, ok := features["containerd-snapshotter"].(bool); ok {
+			cfg.ImageStore = "classic"
+			if v {
+				cfg.ImageStore = "containerd"
+			}
+		}
+	}
 	if opts, ok := raw["log-opts"].(map[string]any); ok {
 		cfg.LogMaxSize = stringValue(opts["max-size"])
 		cfg.LogMaxFile = stringValue(opts["max-file"])
@@ -150,6 +168,13 @@ func applyDaemonConfig(raw map[string]any, cfg apischema.DockerDaemonConfig) map
 	setOrDelete(raw, "storage-driver", cfg.StorageDriver, cfg.StorageDriver == "")
 	setOrDelete(raw, "live-restore", cfg.LiveRestore, !cfg.LiveRestore)
 	setOrDelete(raw, "userland-proxy", cfg.UserlandProxy, cfg.UserlandProxy)
+
+	features, _ := raw["features"].(map[string]any)
+	if features == nil {
+		features = map[string]any{}
+	}
+	setOrDelete(features, "containerd-snapshotter", cfg.ImageStore == "containerd", cfg.ImageStore == "")
+	setOrDelete(raw, "features", features, len(features) == 0)
 
 	opts, _ := raw["log-opts"].(map[string]any)
 	if opts == nil {
@@ -191,7 +216,7 @@ func daemonConfigChanges(before, after map[string]any) (reload, restart bool) {
 }
 
 func validateDaemonConfig(cfg apischema.DockerDaemonConfig) error {
-	if err := validateDaemonStorage(cfg.DataRoot, cfg.StorageDriver); err != nil {
+	if err := validateDaemonStorage(cfg); err != nil {
 		return err
 	}
 	if cfg.LogMaxSize != "" && !logMaxSizePattern.MatchString(cfg.LogMaxSize) {
@@ -215,25 +240,37 @@ func validateDaemonConfig(cfg apischema.DockerDaemonConfig) error {
 	return nil
 }
 
-func validateDaemonStorage(dataRoot, driver string) error {
-	if dataRoot != "" {
-		root := filepath.Clean(dataRoot)
+func validateDaemonStorage(cfg apischema.DockerDaemonConfig) error {
+	if cfg.DataRoot != "" {
+		root := filepath.Clean(cfg.DataRoot)
 		if !filepath.IsAbs(root) || root == "/" || strings.ContainsAny(root, "\r\n") {
 			return fmt.Errorf("data root must be an absolute path other than /")
 		}
 	}
-	if driver == "" {
+	if cfg.ImageStore != "" && wrongImageStoreDrivers[cfg.ImageStore] == nil {
+		return fmt.Errorf("image store must be classic or containerd")
+	}
+	if cfg.StorageDriver == "" {
 		return nil
 	}
-	if !storageDriverPattern.MatchString(driver) {
-		return fmt.Errorf("storage driver %q is not a valid driver name", driver)
+	if !storageDriverPattern.MatchString(cfg.StorageDriver) {
+		return fmt.Errorf("storage driver %q is not a valid driver name", cfg.StorageDriver)
 	}
-	return checkStorageDriverFilesystem(driver, dataRoot)
+	if slices.Contains(wrongImageStoreDrivers[cfg.ImageStore], cfg.StorageDriver) {
+		return fmt.Errorf("the %s storage driver does not work with the %s image store", cfg.StorageDriver, cfg.ImageStore)
+	}
+	// An explicit containerd store keeps btrfs and zfs snapshots in containerd's
+	// root; otherwise dockerd treats these names as classic graph drivers.
+	root := cfg.DataRoot
+	if cfg.ImageStore == "containerd" {
+		root = containerdRoot
+	}
+	return checkStorageDriverFilesystem(cfg.StorageDriver, root)
 }
 
-// checkStorageDriverFilesystem rejects the btrfs and zfs drivers on any other
-// filesystem, where dockerd would refuse to start.
-func checkStorageDriverFilesystem(driver, dataRoot string) error {
+// checkStorageDriverFilesystem rejects the btrfs and zfs drivers when root is
+// on any other filesystem, where dockerd would refuse to start.
+func checkStorageDriverFilesystem(driver, root string) error {
 	var want uint32
 	switch driver {
 	case "btrfs":
@@ -243,15 +280,16 @@ func checkStorageDriverFilesystem(driver, dataRoot string) error {
 	default:
 		return nil
 	}
-	if dataRoot == "" {
-		dataRoot = defaultDockerDataRoot
+	if root == "" {
+		root = defaultDockerDataRoot
 	}
-	got, err := filesystemMagic(filepath.Clean(dataRoot))
+	root = filepath.Clean(root)
+	got, err := filesystemMagic(root)
 	if err != nil {
 		return err
 	}
 	if got != want {
-		return fmt.Errorf("the %s storage driver needs the data root on a %s filesystem", driver, driver)
+		return fmt.Errorf("the %s storage driver needs %s on a %s filesystem", driver, root, driver)
 	}
 	return nil
 }

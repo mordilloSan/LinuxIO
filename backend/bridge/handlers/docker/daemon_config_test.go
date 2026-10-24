@@ -105,6 +105,9 @@ func TestSetDaemonConfigRejectsStorageChanges(t *testing.T) {
 
 	_, err = setDaemonConfig(context.Background(), path, apischema.DockerDaemonConfig{DataRoot: "/mnt/pool/docker", LiveRestore: true, UserlandProxy: true})
 	require.NoError(t, err, "other keys still save while the storage keys stay put")
+
+	_, err = setDaemonConfig(context.Background(), path, apischema.DockerDaemonConfig{DataRoot: "/mnt/pool/docker", ImageStore: "classic", UserlandProxy: true})
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs, "the image store is a storage setting too")
 }
 
 func TestValidateDaemonConfigStorage(t *testing.T) {
@@ -119,7 +122,27 @@ func TestValidateDaemonConfigStorage(t *testing.T) {
 	if magic == zfsSuperMagic {
 		t.Skip("temp dir is on zfs")
 	}
-	require.ErrorContains(t, validateDaemonConfig(apischema.DockerDaemonConfig{DataRoot: dir, StorageDriver: "zfs"}), "needs the data root on a zfs filesystem")
+	require.ErrorContains(t, validateDaemonConfig(apischema.DockerDaemonConfig{DataRoot: dir, StorageDriver: "zfs"}), "on a zfs filesystem")
+}
+
+func TestImageStoreRoundTripsThroughFeatures(t *testing.T) {
+	raw := applyDaemonConfig(map[string]any{"features": map[string]any{"buildkit": true}}, apischema.DockerDaemonConfig{ImageStore: "classic", UserlandProxy: true})
+	require.Equal(t, map[string]any{"buildkit": true, "containerd-snapshotter": false}, raw["features"])
+	require.Equal(t, "classic", daemonConfigFromMap(raw).ImageStore)
+
+	raw = applyDaemonConfig(raw, apischema.DockerDaemonConfig{ImageStore: "containerd", UserlandProxy: true})
+	require.Equal(t, "containerd", daemonConfigFromMap(raw).ImageStore)
+
+	raw = applyDaemonConfig(map[string]any{"features": map[string]any{"containerd-snapshotter": true}}, apischema.DockerDaemonConfig{UserlandProxy: true})
+	require.NotContains(t, raw, "features", "Docker's own choice leaves no empty features object")
+}
+
+func TestValidateDaemonConfigImageStore(t *testing.T) {
+	require.NoError(t, validateDaemonConfig(apischema.DockerDaemonConfig{ImageStore: "classic", StorageDriver: "overlay2"}))
+	require.NoError(t, validateDaemonConfig(apischema.DockerDaemonConfig{ImageStore: "containerd", StorageDriver: "overlayfs"}))
+	require.ErrorContains(t, validateDaemonConfig(apischema.DockerDaemonConfig{ImageStore: "legacy"}), "classic or containerd")
+	require.ErrorContains(t, validateDaemonConfig(apischema.DockerDaemonConfig{ImageStore: "classic", StorageDriver: "overlayfs"}), "does not work with the classic image store")
+	require.ErrorContains(t, validateDaemonConfig(apischema.DockerDaemonConfig{ImageStore: "containerd", StorageDriver: "vfs"}), "does not work with the containerd image store")
 }
 
 func TestValidateDaemonConfig(t *testing.T) {

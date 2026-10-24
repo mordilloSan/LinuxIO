@@ -64,6 +64,7 @@ const config: DockerDaemonConfig = {
   address_pool_base: "",
   address_pool_size: 0,
   data_root: "",
+  image_store: "",
   live_restore: false,
   log_max_file: "",
   log_max_size: "",
@@ -135,6 +136,16 @@ describe("DockerDaemonSettingsSection", () => {
     const { user } = renderSection();
 
     await user.type(screen.getByLabelText("Data root"), " /mnt/pool/docker/ ");
+    expect(
+      screen.getByText("Images may stay in /var/lib/containerd"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Image store"));
+    await user.click(
+      screen.getByRole("option", { name: "Classic (all in the data root)" }),
+    );
+    expect(
+      screen.queryByText("Images may stay in /var/lib/containerd"),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByLabelText("Storage driver"));
     expect(
       screen.queryByRole("option", { name: "overlayfs" }),
@@ -153,6 +164,7 @@ describe("DockerDaemonSettingsSection", () => {
     expect(mocks.applyStorage).toHaveBeenCalledWith({
       ...config,
       data_root: "/mnt/pool/docker",
+      image_store: "classic",
       storage_driver: "btrfs",
     });
     expect(mocks.save).not.toHaveBeenCalled();
@@ -161,6 +173,19 @@ describe("DockerDaemonSettingsSection", () => {
         screen.queryByText("Stop Docker to change storage?"),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("switches the driver list with the chosen image store", async () => {
+    const { user } = renderSection();
+
+    await user.click(screen.getByLabelText("Image store"));
+    await user.click(screen.getByRole("option", { name: "containerd" }));
+    await user.click(screen.getByLabelText("Storage driver"));
+
+    expect(screen.getByRole("option", { name: "native" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "overlay2" }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers containerd snapshotters when the containerd image store is on", async () => {
