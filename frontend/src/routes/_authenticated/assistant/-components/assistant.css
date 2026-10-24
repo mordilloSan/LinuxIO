@@ -508,10 +508,15 @@
   align-items: flex-end;
 }
 
+/* Only the prompt keeps a centred column; the conversation, status line and
+   permission card span the full width. */
 .assistant__composer-stack {
   display: flex;
   flex-direction: column;
   gap: var(--app-space-8);
+  width: 100%;
+  max-width: 768px;
+  margin-inline: auto;
   /* Room for the focus ring, which sits outside the box. */
   padding: 3px;
 }
