@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -70,8 +71,9 @@ func refuseLocalDial(_, address string, _ syscall.RawConn) error {
 }
 
 // errIconNotFound marks a definite upstream 404, as opposed to a network
-// failure; only this outcome is remembered as a miss.
-var errIconNotFound = errors.New("icon not found")
+// failure; only this outcome is remembered as a miss. It is a 404, not a
+// server fault: the frontend falls back to its bundled Docker icon.
+var errIconNotFound = fmt.Errorf("icon %w", bridgeipc.ErrNotFound)
 
 // Unix time of the last cache sweep in this process.
 var lastIconSweep atomic.Int64

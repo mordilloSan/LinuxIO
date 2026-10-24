@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestDerivedIconUsesSimpleIconCache(t *testing.T) {
@@ -89,6 +91,8 @@ func TestGetIconRemembersMissingIcon(t *testing.T) {
 	before := len(*requested)
 	if _, err := GetIcon(context.Background(), "ghost"); !errors.Is(err, errIconNotFound) {
 		t.Fatalf("GetIcon(ghost) again error = %v, want errIconNotFound", err)
+	} else if code := bridgeipc.StatusCode(err); code != http.StatusNotFound {
+		t.Fatalf("GetIcon(ghost) again status = %d, want 404", code)
 	}
 	if len(*requested) != before {
 		t.Fatalf("GetIcon(ghost) again made %d requests, want 0", len(*requested)-before)
