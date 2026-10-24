@@ -4,7 +4,11 @@ test("storage disks clear the drive and volume selection with Escape", async ({
   page,
 }) => {
   await page.goto("/storage");
-  await page.getByRole("button", { name: "Drive details nvme0n1" }).click();
+  // nvme0n1 holds /boot/efi and, through LVM, / and /srv/appdata.
+  await page
+    .getByRole("button", { name: "Drive details nvme0n1" })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\?drive=nvme0n1$/);
   const card = page.locator("button[aria-expanded]", { hasText: "nvme0n1" });
   await expect(card).toHaveAttribute("aria-expanded", "true");
@@ -17,6 +21,6 @@ test("storage disks clear the drive and volume selection with Escape", async ({
   await page.keyboard.press("Escape");
   await expect(page).toHaveURL(/\/storage$/);
   await expect(
-    page.getByRole("button", { name: "Drive details nvme0n1" }),
+    page.getByRole("button", { name: "Drive details nvme0n1" }).first(),
   ).toBeVisible();
 });

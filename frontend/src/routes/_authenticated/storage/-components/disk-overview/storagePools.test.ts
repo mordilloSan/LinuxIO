@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { BtrfsFilesystem, FilesystemInfo, NFSMount } from "@/api";
+import { storageBlock } from "@/test/storageTopologyFixture";
 
 import {
   buildStorageLayout,
   describePool,
+  deviceTypeLabel,
   fsTypeLabel,
   profileLabel,
 } from "./storagePools";
@@ -161,6 +163,7 @@ describe("buildStorageLayout", () => {
       ],
       drives,
       [nfs],
+      [],
     );
 
     expect(layout.poolStacks[0].volumes.map((v) => v.mountpoint)).toEqual([
@@ -191,9 +194,50 @@ describe("buildStorageLayout", () => {
       [volume("/", "/dev/nvme0n1p2", "btrfs")],
       drives,
       [],
+      [],
     );
     expect(layout.poolStacks).toEqual([]);
     expect(layout.driveStacks[0].drive.name).toBe("nvme0n1");
+  });
+
+  it("puts a RAID array's volumes over every member drive", () => {
+    const members = ["nvme0n1", "sda", "sdb"];
+    const layout = buildStorageLayout(
+      [],
+      [volume("/", "/dev/md127", "ext4")],
+      drives,
+      [],
+      [
+        ...members.map((name) => storageBlock(`/dev/${name}`, "disk", 500)),
+        ...members.map((name) =>
+          storageBlock(`/dev/${name}p2`, "part", 64, [`/dev/${name}`]),
+        ),
+        storageBlock(
+          "/dev/md127",
+          "raid1",
+          64,
+          members.map((name) => `/dev/${name}p2`),
+          ["/"],
+        ),
+      ],
+    );
+    expect(
+      layout.sourceStacks.map((s) => [
+        s.label,
+        s.type,
+        s.drives.map((d) => d.name),
+      ]),
+    ).toEqual([["/dev/md127", "raid1", members]]);
+    expect(layout.idleDrives).toEqual([]);
+  });
+});
+
+describe("deviceTypeLabel", () => {
+  it("names RAID levels and mapper types the way people say them", () => {
+    expect(deviceTypeLabel("raid1")).toBe("RAID 1");
+    expect(deviceTypeLabel("raid10")).toBe("RAID 10");
+    expect(deviceTypeLabel("lvm")).toBe("LVM");
+    expect(deviceTypeLabel("crypt")).toBe("Encrypted");
   });
 });
 

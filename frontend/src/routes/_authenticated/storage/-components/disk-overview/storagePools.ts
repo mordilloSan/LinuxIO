@@ -1,4 +1,9 @@
-import type { BtrfsFilesystem, FilesystemInfo, NFSMount } from "@/api";
+import type {
+  BtrfsFilesystem,
+  FilesystemInfo,
+  NFSMount,
+  StorageBlockDevice,
+} from "@/api";
 
 import type { DriveInfo } from "./types";
 import { findBackingDrive } from "./utils";
@@ -71,6 +76,13 @@ export const fsTypeLabel = (fstype: string) => {
   return known[fstype] ?? fstype;
 };
 
+/** lsblk's device type: "raid1" -> "RAID 1", "lvm" -> "LVM", "crypt" -> "Encrypted". */
+export const deviceTypeLabel = (type: string) => {
+  if (type.startsWith("raid")) return profileLabel(type);
+  const known: Record<string, string> = { lvm: "LVM", crypt: "Encrypted" };
+  return known[type] ?? type;
+};
+
 interface PoolStack {
   fs: BtrfsFilesystem;
   pool: PoolSummary;
@@ -82,11 +94,18 @@ interface DriveStack {
   volumes: FilesystemInfo[];
 }
 
-/** Volumes with no physical drive behind them: network shares, mapper devices. */
+/**
+ * Volumes not on a plain partition: network shares and virtual devices (RAID,
+ * LVM, dm-crypt) with the drives under them. `type` and `sizeBytes` are the
+ * device's as lsblk reports them.
+ */
 interface SourceStack {
+  drives: DriveInfo[];
   key: string;
   label: string;
   network: boolean;
+  sizeBytes: number;
+  type: string;
   volumes: FilesystemInfo[];
 }
 
@@ -97,16 +116,30 @@ export interface StorageLayout {
   sourceStacks: SourceStack[];
 }
 
+/** The drives under a device, found by walking up the kernel's block-device tree. */
+const drivesUnder = (
+  path: string,
+  devices: StorageBlockDevice[],
+  drives: DriveInfo[],
+): DriveInfo[] => {
+  const drive = drives.find((d) => `/dev/${d.name}` === path);
+  if (drive) return [drive];
+  const parents = devices.find((d) => d.path === path)?.parents ?? [];
+  return [...new Set(parents.flatMap((p) => drivesUnder(p, devices, drives)))];
+};
+
 /**
  * Places every mounted filesystem exactly once: under its btrfs pool, else
  * under the drive its partition lives on, else under its source (an NFS
- * server or a mapper device). Drives with neither are listed as idle.
+ * server, or a RAID, LVM or mapper device with the drives `devices` puts
+ * under it). Drives with none of these are listed as idle.
  */
 export const buildStorageLayout = (
   btrfs: BtrfsFilesystem[],
   filesystems: FilesystemInfo[],
   drives: DriveInfo[],
   nfsMounts: NFSMount[],
+  devices: StorageBlockDevice[],
 ): StorageLayout => {
   const claimed = new Set<string>();
   const poolStacks = btrfs.map((fs, index) => {
@@ -132,27 +165,33 @@ export const buildStorageLayout = (
     const nfs = nfsMounts.find((m) => m.mountpoint === volume.mountpoint);
     const network = nfs !== undefined || volume.fstype.startsWith("nfs");
     const label = nfs ? `${nfs.server}:${nfs.exportPath}` : volume.device;
+    const block = devices.find((d) => d.path === volume.device);
     const stack = bySource.get(label) ?? {
+      drives: drivesUnder(volume.device, devices, drives),
       key: label,
       label,
       network,
+      sizeBytes: block?.sizeBytes ?? 0,
+      type: block?.type ?? "",
       volumes: [],
     };
     stack.volumes.push(volume);
     bySource.set(label, stack);
   }
 
-  const pooled = new Set(
-    poolStacks.flatMap(({ pool }) =>
+  const sourceStacks = [...bySource.values()];
+  const pooled = new Set([
+    ...poolStacks.flatMap(({ pool }) =>
       pool.disks.flatMap(
         (disk) => findBackingDrive(disk.name, drives)?.name ?? [],
       ),
     ),
-  );
+    ...sourceStacks.flatMap((s) => s.drives.map((drive) => drive.name)),
+  ]);
   return {
     poolStacks,
     driveStacks: drives.flatMap((drive) => byDrive.get(drive.name) ?? []),
-    sourceStacks: [...bySource.values()],
+    sourceStacks,
     idleDrives: drives.filter(
       (drive) => !pooled.has(drive.name) && !byDrive.has(drive.name),
     ),

@@ -10,6 +10,7 @@ import type {
   NFSMount,
 } from "@/api";
 import { renderWithTanStackRouter } from "@/test/render";
+import { storageBlock } from "@/test/storageTopologyFixture";
 
 import StoragePools from "./StoragePools";
 import type { DriveInfo } from "./types";
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   mutations: {} as Record<string, ReturnType<typeof vi.fn> | undefined>,
   offline: vi.fn(),
+  topology: vi.fn(),
 }));
 
 vi.mock("@/api", async (importOriginal) => {
@@ -48,7 +50,7 @@ vi.mock("@/api", async (importOriginal) => {
         },
         get_topology: {
           queryKey: ["test-get-topology"],
-          queryFn: () => Promise.resolve({ devices: [], mounts: [] }),
+          queryFn: () => mocks.topology(),
         },
       },
     },
@@ -199,6 +201,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([raid, root]);
   mocks.offline.mockResolvedValue([]);
+  mocks.topology.mockResolvedValue({ devices: [], mounts: [] });
 });
 
 describe("StoragePools", () => {
@@ -284,6 +287,39 @@ describe("StoragePools", () => {
     expect(
       screen.getByRole("button", { name: "Volume /mnt/share" }),
     ).toHaveTextContent("NFS");
+  });
+
+  it("draws an md RAID array between its drives and its volume", async () => {
+    mocks.list.mockResolvedValue([]);
+    mocks.topology.mockResolvedValue({
+      devices: [
+        storageBlock("/dev/sda", "disk", 50),
+        storageBlock("/dev/sda2", "part", 64, ["/dev/sda"]),
+        storageBlock("/dev/sdb", "disk", 50),
+        storageBlock("/dev/sdb2", "part", 64, ["/dev/sdb"]),
+        storageBlock("/dev/md127", "raid1", 64, ["/dev/sda2", "/dev/sdb2"]),
+      ],
+      mounts: [],
+    });
+    renderPools({ filesystems: [volume("/", "/dev/md127", "ext4")] });
+
+    const array = (await screen.findByText("/dev/md127")).closest(
+      ".storage-pools__card",
+    );
+    expect(array).toHaveTextContent("RAID 1");
+    expect(array).toHaveTextContent("64 GB");
+    expect(screen.queryByText("No physical disk found")).toBeNull();
+    expect(screen.getByText("Crucial MX500")).toBeInTheDocument();
+    expect(screen.getByText("Blank disk")).toBeInTheDocument();
+    // Only the NVMe drives, which hold nothing here, are left over.
+    expect(
+      within(
+        screen.getByText("Disks without volumes")
+          .nextElementSibling as HTMLElement,
+      )
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Drive details nvme0n1", "Drive details nvme1n1"]);
   });
 
   it("opens a volume", async () => {
